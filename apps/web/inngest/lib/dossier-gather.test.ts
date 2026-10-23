@@ -196,7 +196,149 @@ suite('gatherCorpus', () => {
     await clearDocuments()
   })
 
-  const input = (round = 0) => ({ projectId, caseTitle: 'Gathertest', competitorLinks: [], round })
+  const input = (round = 0) => ({
+    projectId,
+    subject: 'Gathertest',
+    people: [] as string[],
+    sourceLinks: [] as { url: string }[],
+    competitorLinks: [],
+    round,
+  })
+
+  it('reads the owner sources first, pinned at tier 1, even one another case fetched as reporting', async () => {
+    const ownerNew = `${HOST}/owner-long-read`
+    const ownerStored = `${HOST}/owner-podcast`
+    const story = `${HOST}/story`
+    // Another case cited the podcast as a reference ten days ago, so the shared row is tier 2.
+    const storedRow = await upsertResearchDocument(db, {
+      url: ownerStored,
+      fetchedAt: new Date(Date.now() - 10 * DAY),
+      kind: 'reporting',
+      tier: 2,
+      text: 'The podcast transcript.',
+      tokens: 6,
+      httpStatus: 200,
+    })
+    const fetchDocument = vi.fn(async (target: string) => page(target, `The page at ${target}.`))
+
+    const result = await gatherCorpus(
+      recordingSteps(),
+      { ...input(), sourceLinks: [{ url: ownerNew }, { url: ownerStored }] },
+      {
+        db,
+        sources: () => companySources({ links: [story, ownerNew], fetchDocument }),
+        mocked: false,
+      },
+    )
+
+    expect(fetchDocument.mock.calls.map(([target]) => target)).toEqual([ownerNew, story])
+    const linked = await listDossierDocuments(db, projectId)
+    expect(linked.map((d) => [d.url, d.rank, d.tier])).toEqual([
+      [ownerNew, 1, 1],
+      [ownerStored, 2, 1],
+      [story, 3, 2],
+    ])
+    expect(result.read[1]).toBe(storedRow.id)
+    const [row] = await findResearchDocumentsByUrl(db, [ownerNew])
+    expect(row).toMatchObject({ kind: 'reporting', tier: 1, meta: { pinned: true } })
+  })
+
+  it('gathers a subject with no company article from the owner, the people and YouTube', async () => {
+    const owner = `${HOST}/owner-profile`
+    const adaStory = `${HOST}/ada-founder-story`
+    const [video] = VIDEO_IDS as [string]
+    const currentItems = vi.fn(async (title: string) => {
+      if (title !== 'Ada Founder') throw new Error(`unexpected article ${title}`)
+      return { categories: [], externalLinks: [adaStory], links: [] }
+    })
+    const youtubeSearch = vi.fn(async () => ({
+      fetchedAt: '2026-10-23',
+      videos: [
+        {
+          id: video,
+          channelId: 'UC1',
+          title: 'Adaco explained',
+          publishedAt: '2024-01-01',
+          durationSec: 600,
+          views: 10,
+        },
+      ],
+    }))
+    const base = fakeSources()
+    const sources = fakeSources({
+      wikipedia: {
+        ...base.wikipedia,
+        search: async (query) =>
+          query === 'Ada Founder'
+            ? [{ title: 'Ada Founder', pageid: 1 }]
+            : [{ title: 'Startup (film)', pageid: 2 }],
+        qidsFor: async () =>
+          new Map([
+            ['Ada Founder', 'Q7'],
+            ['Startup (film)', 'Q8'],
+          ]),
+        currentItems,
+      },
+      wikidata: {
+        sparql: unexpected('sparql'),
+        facts: async () =>
+          new Map(
+            (
+              [
+                ['Q7', ['Q5']],
+                ['Q8', ['Q11424']],
+              ] as const
+            ).map(([qid, instanceOf]) => [
+              qid,
+              {
+                qid,
+                enTitle: null,
+                sitelinks: {},
+                country: null,
+                cik: null,
+                dissolved: null,
+                instanceOf: [...instanceOf],
+                isClass: false,
+                ticker: null,
+                website: null,
+                inception: null,
+                people: [],
+              },
+            ]),
+          ),
+      },
+      youtube: {
+        ...youtubeWith(async (ids) => ids.map((id) => details(id, 'About Adaco.'))),
+        search: youtubeSearch,
+      },
+      fetchDocument: async (target) => page(target, `The page at ${target}.`),
+    })
+
+    const result = await gatherCorpus(
+      recordingSteps(),
+      { ...input(), subject: 'Adaco', people: ['Ada Founder'], sourceLinks: [{ url: owner }] },
+      { db, sources: () => sources, mocked: false },
+    )
+
+    expect(result.entity).toEqual({
+      qid: null,
+      titles: [],
+      cik: null,
+      ticker: null,
+      website: null,
+      people: [{ name: 'Ada Founder', qid: 'Q7', title: 'Ada Founder' }],
+      unresolved: true,
+      subject: 'Adaco',
+    })
+    expect(currentItems.mock.calls.map(([title]) => title)).toEqual(['Ada Founder'])
+    expect(youtubeSearch).toHaveBeenCalledWith('Adaco')
+    const linked = await listDossierDocuments(db, projectId)
+    expect(linked.map((d) => [d.url, d.rank, d.tier])).toEqual([
+      [owner, 1, 1],
+      [adaStory, 2, 2],
+      [watch(video), 3, 3],
+    ])
+  })
 
   it('stores every candidate, links the ranked ones and marks the rest unread', async () => {
     const links = Array.from({ length: 8 }, (_, i) => `${HOST}/story-${i + 1}`)
@@ -225,7 +367,7 @@ suite('gatherCorpus', () => {
       website: null,
       people: [],
       unresolved: false,
-      subject: null,
+      subject: 'Gathertest',
     })
     // Tier 2's 30% share plus tier 1's unspent 25% holds five 12,000-token documents.
     expect(result.read).toHaveLength(5)

@@ -131,7 +131,14 @@ export const dossierRunner = inngest.createFunction(
     // must not need DATA_CONTACT_EMAIL, and mock mode never builds them.
     const gathered = await gatherCorpus(
       steps,
-      { projectId, caseTitle: caseContext.title, competitorLinks, round: 0 },
+      {
+        projectId,
+        subject: caseContext.subject,
+        people: caseContext.people,
+        sourceLinks: caseContext.sourceLinks,
+        competitorLinks,
+        round: 0,
+      },
       { db, sources: () => liveResearchSources(), mocked },
     )
     const { documents, corpus } = await step.run('corpus-load-0', () => loadCorpus(db, projectId))

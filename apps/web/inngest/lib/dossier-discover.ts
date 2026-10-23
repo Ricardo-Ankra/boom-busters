@@ -1,7 +1,17 @@
-import { isPrimaryReference, stooqSymbol, videoIdFromUrl } from '@boom-busters/case-finder'
+import {
+  isPrimaryReference,
+  stooqSymbol,
+  videoIdFromUrl,
+  type EntityFacts,
+} from '@boom-busters/case-finder'
 import { normaliseDocumentUrl } from '@boom-busters/db'
 import { registrableDomain } from '@boom-busters/providers'
-import { DOCUMENT_TIERS, type DocumentKind, type ResearchEntity } from '@boom-busters/schemas'
+import {
+  DOCUMENT_TIERS,
+  PERSON_REFERENCE_CAP,
+  type DocumentKind,
+  type ResearchEntity,
+} from '@boom-busters/schemas'
 import type { ResearchSources } from '@/lib/research-sources'
 
 /**
@@ -35,7 +45,11 @@ export type ResolvedEntity = ResearchEntity & {
 /** business, company, public company, enterprise, organization, bank. */
 export const BUSINESS_CLASSES = ['Q4830453', 'Q783794', 'Q891723', 'Q6881511', 'Q43229', 'Q22687']
 
+/** Wikidata's "human". */
+const HUMAN = 'Q5'
+
 const SEARCH_HITS = 5
+const PERSON_SEARCH_HITS = 3
 const MAX_RELATED = 2
 const RELATED_WORDS = /\b(scandal|collapse|bankruptcy|fraud|affair)\b/i
 
@@ -65,44 +79,62 @@ export const EMPTY_ENTITY: ResolvedEntity = {
 export const REFERENCE_CAPS = { pressRelease: 20, reporting: 60, primary: 30 } as const
 
 /**
- * Case titles are editorial, so the top search hit is often the scandal
- * article, whose Wikidata item holds none of the company's facts. The facts
- * come from the first hit that is a business; the scandal articles still give
- * their references.
+ * The subject is the company's common name, so its search finds the company
+ * article among the top hits; the scandal articles beside it still give their
+ * references. When none of the hits is a business the entity is unresolved:
+ * the first hit of an editorial headline can be any page ("2022 in the United
+ * States" once), and a corpus read from it is about something else. Each
+ * person is searched too, and the first human hit is their article.
  */
 export async function resolveEntity(
   sources: ResearchSources,
-  caseTitle: string,
+  input: { subject: string; people: readonly string[] },
 ): Promise<ResolvedEntity> {
-  const hits = (await sources.wikipedia.search(caseTitle, SEARCH_HITS)).map((hit) => hit.title)
-  const first = hits[0]
-  if (first === undefined) return EMPTY_ENTITY
+  const { subject } = input
+  const [subjectHits, ...peopleHits] = await Promise.all([
+    sources.wikipedia.search(subject, SEARCH_HITS),
+    ...input.people.map((name) => sources.wikipedia.search(name, PERSON_SEARCH_HITS)),
+  ])
+  const hits = (subjectHits ?? []).map((hit) => hit.title)
+  const personHits = peopleHits.map((found) => found.map((hit) => hit.title))
+  const allTitles = [...new Set([...hits, ...personHits.flat()])]
 
-  const qids = await sources.wikipedia.qidsFor(hits)
-  const facts = await sources.wikidata.facts([...new Set(qids.values())])
-  const factsOf = (title: string) => {
+  const qids =
+    allTitles.length === 0 ? new Map<string, string>() : await sources.wikipedia.qidsFor(allTitles)
+  const facts =
+    qids.size === 0
+      ? new Map<string, EntityFacts>()
+      : await sources.wikidata.facts([...new Set(qids.values())])
+  const isA = (title: string, classes: readonly string[]) => {
     const qid = qids.get(title)
-    return qid === undefined ? undefined : facts.get(qid)
+    const known = qid === undefined ? undefined : facts.get(qid)
+    return known?.instanceOf.some((cls) => classes.includes(cls)) ?? false
   }
 
-  const business =
-    hits.find((title) =>
-      factsOf(title)?.instanceOf.some((cls) => BUSINESS_CLASSES.includes(cls)),
-    ) ?? first
+  const people = input.people.map((name, i) => {
+    const title = personHits[i]?.find((hit) => isA(hit, [HUMAN])) ?? null
+    return { name, qid: title === null ? null : (qids.get(title) ?? null), title }
+  })
+
+  const business = hits.find((title) => isA(title, BUSINESS_CLASSES)) ?? null
   const relatedTitles = hits
     .filter((title) => title !== business && RELATED_WORDS.test(title))
     .slice(0, MAX_RELATED)
-  const known = factsOf(business)
+  if (business === null) {
+    return { ...EMPTY_ENTITY, people, unresolved: true, subject, relatedTitles }
+  }
+  const qid = qids.get(business) ?? null
+  const known = qid === null ? undefined : facts.get(qid)
 
   return {
-    qid: qids.get(business) ?? null,
+    qid,
     titles: [business, ...relatedTitles],
     cik: known?.cik ?? null,
     ticker: known?.ticker?.symbol ?? null,
     website: known?.website ?? null,
-    people: [],
+    people,
     unresolved: false,
-    subject: null,
+    subject,
     businessTitle: business,
     relatedTitles,
     exchange: known?.ticker?.exchange ?? null,
@@ -173,51 +205,74 @@ function waybackWindow(entity: ResolvedEntity, today: Date): { from: string; to:
   return { from, to }
 }
 
+/** A page's external links, less archive copies and Wikimedia's own pages, with their hosts. */
+function referenceEntries(links: readonly string[]): { link: string; host: string }[] {
+  return [...new Set(links)].flatMap((link) => {
+    const host = hostOf(link)
+    if (host === null || SKIPPED_REFERENCE_HOSTS.some((domain) => onDomain(host, domain))) return []
+    return [{ link, host }]
+  })
+}
+
+const referencesOf = (sources: ResearchSources, title: string) =>
+  listing(`Wikipedia references of ${title}`, [] as string[], async () => {
+    const items = await sources.wikipedia.currentItems(title)
+    return items.externalLinks
+  })
+
+const recordKind = (host: string): DocumentKind => (isCourtHost(host) ? 'court' : 'regulator')
+
 export async function discoverCandidates(
   sources: ResearchSources,
   entity: ResolvedEntity,
-  input: { competitorLinks: readonly { url: string }[]; caseTitle: string },
+  input: {
+    competitorLinks: readonly { url: string }[]
+    sourceLinks: readonly { url: string }[]
+    subject: string
+  },
 ): Promise<Candidate[]> {
   const today = new Date()
   const { youtube } = sources
   const { cik, website, businessTitle } = entity
-  const pages = [businessTitle, ...entity.relatedTitles].filter((t): t is string => t !== null)
+  // An unresolved subject has no company article, and its hits' pages are about something else.
+  const pages = entity.unresolved
+    ? []
+    : [businessTitle, ...entity.relatedTitles].filter((t): t is string => t !== null)
+  const personPages = entity.people.flatMap((person) => person.title ?? [])
 
   // The listings are independent, so they are asked at once; the PoliteClient
   // still spaces requests to any one host.
-  const [exhibits, tenK, captures, references, searched, dockets] = await Promise.all([
-    cik === null
-      ? []
-      : listing('EDGAR exhibits', [], () =>
-          sources.edgar.exhibits(cik, { items: ['2.02', '8.01'], newest: 6 }),
-        ),
-    cik === null
-      ? null
-      : listing('EDGAR 10-K', null, () => sources.edgar.latestFiling(cik, '10-K')),
-    website === null
-      ? []
-      : listing('Wayback captures', [], () =>
-          // CDX lists oldest first; a negative limit takes the last six, the newest years.
-          sources.wayback.captures(website, { ...waybackWindow(entity, today), limit: -6 }),
-        ),
-    Promise.all(
-      pages.map((title) =>
-        listing(`Wikipedia references of ${title}`, [] as string[], async () => {
-          const items = await sources.wikipedia.currentItems(title)
-          return items.externalLinks
-        }),
-      ),
-    ),
-    youtube === null
-      ? null
-      : listing('YouTube search', null, () => youtube.search(input.caseTitle)),
-    businessTitle === null
-      ? []
-      : listing('CourtListener dockets', [], () =>
-          // "Wirecard (company)" is the article's name, not the company's.
-          sources.courtlistener.dockets(businessTitle.replace(/\s*\([^)]*\)$/, ''), isoDay(today)),
-        ),
-  ])
+  const [exhibits, tenK, captures, references, personReferences, searched, dockets] =
+    await Promise.all([
+      cik === null
+        ? []
+        : listing('EDGAR exhibits', [], () =>
+            sources.edgar.exhibits(cik, { items: ['2.02', '8.01'], newest: 6 }),
+          ),
+      cik === null
+        ? null
+        : listing('EDGAR 10-K', null, () => sources.edgar.latestFiling(cik, '10-K')),
+      website === null
+        ? []
+        : listing('Wayback captures', [], () =>
+            // CDX lists oldest first; a negative limit takes the last six, the newest years.
+            sources.wayback.captures(website, { ...waybackWindow(entity, today), limit: -6 }),
+          ),
+      Promise.all(pages.map((title) => referencesOf(sources, title))),
+      Promise.all(personPages.map((title) => referencesOf(sources, title))),
+      youtube === null
+        ? null
+        : listing('YouTube search', null, () => youtube.search(input.subject)),
+      businessTitle === null
+        ? []
+        : listing('CourtListener dockets', [], () =>
+            // "Wirecard (company)" is the article's name, not the company's.
+            sources.courtlistener.dockets(
+              businessTitle.replace(/\s*\([^)]*\)$/, ''),
+              isoDay(today),
+            ),
+          ),
+    ])
 
   const out: Candidate[] = []
   const seen = new Set<string>()
@@ -228,6 +283,8 @@ export async function discoverCandidates(
       title?: string | null
       publishedAt?: string | null
       meta?: Record<string, unknown>
+      /** The kind's own tier unless the source earns another (the owner's links). */
+      tier?: Candidate['tier']
     } = {},
   ): boolean => {
     const url = normaliseDocumentUrl(raw)
@@ -236,7 +293,7 @@ export async function discoverCandidates(
     out.push({
       url,
       kind,
-      tier: DOCUMENT_TIERS[kind],
+      tier: extra.tier ?? DOCUMENT_TIERS[kind],
       title: extra.title ?? null,
       publishedAt: extra.publishedAt ?? null,
       meta: extra.meta ?? null,
@@ -257,11 +314,7 @@ export async function discoverCandidates(
   }
 
   const ownDomain = website === null ? null : registrableDomain(website)
-  const links = [...new Set(references.flat())].flatMap((link) => {
-    const host = hostOf(link)
-    if (host === null || SKIPPED_REFERENCE_HOSTS.some((domain) => onDomain(host, domain))) return []
-    return [{ link, host }]
-  })
+  const links = referenceEntries(references.flat())
   const own = links.filter(
     ({ link }) => ownDomain !== null && registrableDomain(link) === ownDomain,
   )
@@ -269,7 +322,10 @@ export async function discoverCandidates(
   const primary = rest.filter(({ link }) => isPrimaryReference(link))
   const reporting = rest.filter((entry) => !primary.includes(entry))
 
-  // Tier 1, the company's own voice.
+  // Tier 1, the owner's own sources (outside every cap, read first), then the company's own voice.
+  for (const { url } of input.sourceLinks) {
+    add(url, 'reporting', { tier: 1, meta: { pinned: true } })
+  }
   for (const doc of exhibits) add(doc.url, 'filing', { title: doc.title, publishedAt: doc.datedAt })
   if (tenK !== null) add(tenK.url, 'filing', { title: tenK.title, publishedAt: tenK.datedAt })
   for (const capture of captures) {
@@ -278,8 +334,28 @@ export async function discoverCandidates(
   }
   addCapped(own, REFERENCE_CAPS.pressRelease, () => 'press-release')
 
-  // Tier 2, reporting.
+  // Tier 2, reporting: the company's articles, then each person's. A person's
+  // court and regulator links count toward their cap and are filed at tier 5
+  // below; one the company's article also cites is the company's.
   addCapped(reporting, REFERENCE_CAPS.reporting, () => 'reporting')
+  const companyRecord = new Set(primary.map(({ link }) => normaliseDocumentUrl(link)))
+  const personRecord: { link: string; host: string }[] = []
+  const deferred = new Set<string>()
+  for (const personLinks of personReferences) {
+    let taken = 0
+    for (const entry of referenceEntries(personLinks)) {
+      if (taken >= PERSON_REFERENCE_CAP) break
+      if (!isPrimaryReference(entry.link)) {
+        if (add(entry.link, 'reporting')) taken++
+        continue
+      }
+      const url = normaliseDocumentUrl(entry.link)
+      if (seen.has(url) || companyRecord.has(url) || deferred.has(url)) continue
+      deferred.add(url)
+      personRecord.push(entry)
+      taken++
+    }
+  }
 
   // Tier 3, video. A competitor link that is not a YouTube video is not a video candidate.
   for (const { url } of input.competitorLinks) {
@@ -310,7 +386,8 @@ export async function discoverCandidates(
   }
 
   // Tier 5, the record.
-  addCapped(primary, REFERENCE_CAPS.primary, (host) => (isCourtHost(host) ? 'court' : 'regulator'))
+  addCapped(primary, REFERENCE_CAPS.primary, recordKind)
+  for (const { link, host } of personRecord) add(link, recordKind(host))
   for (const docket of dockets) {
     add(docket.url, 'court', { title: docket.title, publishedAt: docket.datedAt })
   }

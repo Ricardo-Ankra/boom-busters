@@ -76,6 +76,12 @@ export const DOSSIER_TOLD_ALREADY_MAX = 30
 export const DOCUMENT_BODY_CAP_BYTES = 4 * 1024 * 1024
 /** Share of the corpus budget each tier may fill, so one tier cannot crowd out the rest. */
 export const DOSSIER_TIER_SHARES = { 1: 0.25, 2: 0.3, 3: 0.15, 4: 0.1, 5: 0.2 } as const
+/**
+ * References the gather takes from each person's Wikipedia article. A
+ * founder's article carries the aftermath (sentence, appeal, prison) that the
+ * company's article often does not.
+ */
+export const PERSON_REFERENCE_CAP = 20
 
 /**
  * What a gathered document is. The tier ranks how much a document's say-so

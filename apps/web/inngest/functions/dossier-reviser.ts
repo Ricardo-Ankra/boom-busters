@@ -162,7 +162,9 @@ export const dossierReviser = inngest.createFunction(
         steps,
         {
           projectId,
-          caseTitle: context.caseContext.title,
+          subject: context.subject,
+          people: context.people,
+          sourceLinks: context.sourceLinks,
           competitorLinks: context.competitorLinks,
           round: context.round,
         },

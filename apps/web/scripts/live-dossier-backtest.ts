@@ -111,7 +111,15 @@ async function main(): Promise<void> {
       console.log(`${title}: gathering`)
       const gathered = await gatherCorpus(
         inlineSteps,
-        { projectId: project.id, caseTitle: title, competitorLinks: [], round: 0 },
+        {
+          projectId: project.id,
+          // The cases carry no subject until the back-test gains its subject gate (Task 8).
+          subject: title,
+          people: [],
+          sourceLinks: [],
+          competitorLinks: [],
+          round: 0,
+        },
         { db, sources: () => sources, mocked: false },
       )
       const loaded = await loadCorpus(db, project.id)

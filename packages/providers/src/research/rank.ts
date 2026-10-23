@@ -13,6 +13,8 @@ export interface RankableDocument {
   tokens: number
   publishedAt: string | null
   text: string
+  /** A source the owner put on the case: read first in its tier, in the order given. */
+  pinned?: boolean
 }
 
 export interface RankedDocument extends RankableDocument {
@@ -41,6 +43,67 @@ function dateMs(value: string | null | undefined): number | null {
   return Number.isNaN(ms) ? null : ms
 }
 
+interface Dated<T> {
+  d: T
+  ms: number
+}
+
+const newestFirst = <T>(docs: readonly Dated<T>[]) => [...docs].sort((a, b) => b.ms - a.ms)
+
+const nearestFirst = <T>(docs: readonly Dated<T>[], anchor: number) =>
+  [...docs].sort((a, b) => Math.abs(a.ms - anchor) - Math.abs(b.ms - anchor))
+
+/** One from each list in turn, the first list first, each skipping what the other took. */
+function interleave<T>(first: readonly T[], second: readonly T[]): T[] {
+  const out: T[] = []
+  const taken = new Set<T>()
+  const lists = [first, second]
+  const at = [0, 0]
+  for (let turn = 0; out.length < first.length; turn = 1 - turn) {
+    const list = lists[turn]!
+    let i = at[turn]!
+    while (i < list.length && taken.has(list[i]!)) i++
+    if (i < list.length) {
+      taken.add(list[i]!)
+      out.push(list[i]!)
+      i++
+    }
+    at[turn] = i
+  }
+  return out
+}
+
+/**
+ * A tier's reading order (decision 5 of the subject addendum). Court and
+ * regulator records are read newest first, so the sentence and the appeal
+ * come before the charge. Reporting is read nearest the turning point and
+ * newest in turn, so the story runs to today without losing the turn. Every
+ * other tier is read nearest the anchor, or newest first without one. The
+ * owner's pinned documents lead their tier; undated documents close it.
+ */
+function tierOrder<T extends { publishedAt: string | null; pinned?: boolean }>(
+  tier: (typeof TIERS)[number],
+  docs: readonly T[],
+  anchor: number | null,
+): T[] {
+  const pinned = docs.filter((d) => d.pinned === true)
+  const rest = docs.filter((d) => d.pinned !== true)
+  const dated: Dated<T>[] = []
+  const undated: T[] = []
+  for (const d of rest) {
+    const ms = dateMs(d.publishedAt)
+    if (ms === null) undated.push(d)
+    else dated.push({ d, ms })
+  }
+
+  let ordered: Dated<T>[]
+  if (tier === 5 || anchor === null) ordered = newestFirst(dated)
+  else if (tier === 2) ordered = interleave(nearestFirst(dated, anchor), newestFirst(dated))
+  else ordered = nearestFirst(dated, anchor)
+
+  return [...pinned, ...ordered.map(({ d }) => d), ...undated]
+}
+
 /**
  * Decide which gathered documents the model reads. Each tier may spend its
  * share of the corpus budget, and what it leaves unspent rolls to the next
@@ -66,17 +129,13 @@ export function rankCorpus(
 
   for (const tier of TIERS) {
     let budget = DOSSIER_TIER_SHARES[tier] * corpusTokens + rollOver
-    const inTier = cut
-      .filter((d) => d.tier === tier)
-      .map((d) => ({ d, ms: dateMs(d.publishedAt) }))
-      .sort((a, b) => {
-        if (a.ms === null || b.ms === null) {
-          return a.ms === b.ms ? 0 : a.ms === null ? 1 : -1
-        }
-        return anchor !== null ? Math.abs(a.ms - anchor) - Math.abs(b.ms - anchor) : b.ms - a.ms
-      })
+    const inTier = tierOrder(
+      tier,
+      cut.filter((d) => d.tier === tier),
+      anchor,
+    )
 
-    for (const { d } of inTier) {
+    for (const d of inTier) {
       if (d.tokens <= budget) {
         budget -= d.tokens
         read.push({ ...d, rank: read.length + 1 })
