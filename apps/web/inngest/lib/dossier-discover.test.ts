@@ -3,6 +3,7 @@
 import type { EntityFacts } from '@boom-busters/case-finder'
 import { PERSON_REFERENCE_CAP } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
+import type { z } from 'zod'
 import type { ResearchSources } from '@/lib/research-sources'
 import { fakeSources as sharedFakeSources, unexpected } from '@/test/fake-research-sources'
 import {
@@ -45,6 +46,23 @@ function facts(qid: string, over: Partial<EntityFacts> = {}): EntityFacts {
     inception: null,
     people: [],
     ...over,
+  }
+}
+
+/**
+ * A SPARQL fake for the subclass walk: it answers the QIDs of the query's
+ * `VALUES ?item` list that `businesses` names, as the real service answers
+ * the items whose class chain reaches business or organization.
+ */
+function subclassWalk(businesses: readonly string[], queries: string[] = []) {
+  return async <T>(query: string, schema: z.ZodType<T>): Promise<T> => {
+    queries.push(query)
+    const items = /VALUES \?item \{([^}]*)\}/.exec(query)?.[1] ?? ''
+    const bindings = [...items.matchAll(/wd:(Q\d+)/g)]
+      .map((m) => m[1]!)
+      .filter((qid) => businesses.includes(qid))
+      .map((qid) => ({ item: { value: `http://www.wikidata.org/entity/${qid}` } }))
+    return schema.parse({ results: { bindings } })
   }
 }
 
@@ -151,7 +169,7 @@ describe('resolveEntity', () => {
         currentItems,
       },
       wikidata: {
-        sparql: unexpected('sparql'),
+        sparql: subclassWalk([]),
         facts: async () =>
           new Map([
             ['Q9', facts('Q9', { instanceOf: ['Q14795564'] })],
@@ -262,7 +280,7 @@ describe('resolveEntity', () => {
           ]),
       },
       wikidata: {
-        sparql: unexpected('sparql'),
+        sparql: subclassWalk([]),
         facts: async () =>
           new Map([
             ['Q7', facts('Q7', { instanceOf: ['Q5'] })],
@@ -280,6 +298,102 @@ describe('resolveEntity', () => {
       subject: 'Adaco',
       people: [{ name: 'Ada Founder', qid: 'Q7', title: 'Ada Founder' }],
     })
+  })
+
+  it('keeps a person whose search fails, unresolved, and still resolves the entity', async () => {
+    const sources = fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async (query) => {
+          if (query === 'Ada Founder') throw new Error('network down')
+          return [{ title: 'Adaco', pageid: 1 }]
+        },
+        qidsFor: async () => new Map([['Adaco', 'Q1']]),
+      },
+      wikidata: {
+        sparql: unexpected('sparql'),
+        facts: async () => new Map([['Q1', facts('Q1', { instanceOf: ['Q4830453'] })]]),
+      },
+    })
+
+    const resolved = await resolveEntity(sources, { subject: 'Adaco', people: ['Ada Founder'] })
+
+    expect(resolved).toMatchObject({
+      qid: 'Q1',
+      businessTitle: 'Adaco',
+      unresolved: false,
+      people: [{ name: 'Ada Founder', qid: null, title: null }],
+    })
+  })
+})
+
+describe('resolveEntity through the subclass walk', () => {
+  /** FTX's search as Wikipedia answers it, and its items' real direct classes. */
+  const ftxHits = ['FTX', 'Bankruptcy of FTX', 'FTX Arena']
+  const ftxQids = new Map([
+    ['FTX', 'Q108864780'],
+    ['Bankruptcy of FTX', 'Q115364245'],
+    ['FTX Arena', 'Q1140478'],
+  ])
+  const ftxFacts = new Map([
+    // FTX's only P31 is "cryptocurrency exchange", which no direct class names.
+    ['Q108864780', facts('Q108864780', { instanceOf: ['Q25401607'], cik: null })],
+    // A bankruptcy case and an arena.
+    ['Q115364245', facts('Q115364245', { instanceOf: ['Q1456832'] })],
+    ['Q1140478', facts('Q1140478', { instanceOf: ['Q641226'] })],
+  ])
+  const ftxSources = (sparql: ResearchSources['wikidata']['sparql']) =>
+    fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async (_query, limit) =>
+          ftxHits.slice(0, limit).map((title, i) => ({ title, pageid: i })),
+        qidsFor: async () => ftxQids,
+      },
+      wikidata: { sparql, facts: async () => ftxFacts },
+    })
+
+  it('resolves FTX, a cryptocurrency exchange, as a business through its class chain', async () => {
+    const queries: string[] = []
+    const resolved = await resolveEntity(ftxSources(subclassWalk(['Q108864780'], queries)), {
+      subject: 'FTX',
+      people: [],
+    })
+
+    expect(resolved).toMatchObject({
+      qid: 'Q108864780',
+      businessTitle: 'FTX',
+      titles: ['FTX', 'Bankruptcy of FTX'],
+      unresolved: false,
+    })
+    // One query over every subject hit, climbing to business and organization.
+    expect(queries).toHaveLength(1)
+    expect(queries[0]).toContain('wd:Q108864780 wd:Q115364245 wd:Q1140478')
+    expect(queries[0]).toContain('wdt:P31/wdt:P279*')
+    expect(queries[0]).toContain('wd:Q4830453 wd:Q43229')
+  })
+
+  it('leaves a subject unresolved when no hit is a business through its class chain either', async () => {
+    const resolved = await resolveEntity(ftxSources(subclassWalk([])), {
+      subject: 'FTX',
+      people: [],
+    })
+
+    expect(resolved).toMatchObject({ qid: null, businessTitle: null, unresolved: true })
+  })
+
+  it('falls back to the direct class check when the query fails, without failing the step', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const resolved = await resolveEntity(
+      ftxSources(async () => {
+        throw new Error('query.wikidata.org timed out')
+      }),
+      { subject: 'FTX', people: [] },
+    )
+
+    expect(resolved).toMatchObject({ businessTitle: null, unresolved: true })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('query.wikidata.org timed out'))
+    warn.mockRestore()
   })
 })
 

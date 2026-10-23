@@ -1,5 +1,6 @@
 import {
   isPrimaryReference,
+  qidOf,
   stooqSymbol,
   videoIdFromUrl,
   type EntityFacts,
@@ -12,6 +13,7 @@ import {
   type DocumentKind,
   type ResearchEntity,
 } from '@boom-busters/schemas'
+import { z } from 'zod'
 import type { ResearchSources } from '@/lib/research-sources'
 
 /**
@@ -44,6 +46,13 @@ export type ResolvedEntity = ResearchEntity & {
 
 /** business, company, public company, enterprise, organization, bank. */
 export const BUSINESS_CLASSES = ['Q4830453', 'Q783794', 'Q891723', 'Q6881511', 'Q43229', 'Q22687']
+
+/**
+ * The roots the subclass walk climbs to: business and organization. FTX's item
+ * is only a "cryptocurrency exchange" (Q25401607), a subclass of business that
+ * no direct class check names.
+ */
+const BUSINESS_ROOTS = ['Q4830453', 'Q43229']
 
 /** Wikidata's "human". */
 const HUMAN = 'Q5'
@@ -78,13 +87,61 @@ export const EMPTY_ENTITY: ResolvedEntity = {
  */
 export const REFERENCE_CAPS = { pressRelease: 20, reporting: 60, primary: 30 } as const
 
+const itemBindings = z.object({
+  results: z.object({ bindings: z.array(z.object({ item: z.object({ value: z.string() }) })) }),
+})
+
+/**
+ * The QIDs among `qids` that are a business or an organization through any
+ * chain of subclasses (P31/P279*), in one query, as `foundedBusinessesAmong`
+ * asks it. A failing query answers none: the direct class check has already
+ * run, and a subject it missed is reported unresolved rather than failing the
+ * step.
+ */
+async function businessesBySubclass(
+  sources: ResearchSources,
+  qids: readonly string[],
+): Promise<Set<string>> {
+  if (qids.length === 0) return new Set()
+  const items = qids.map((qid) => `wd:${qid}`).join(' ')
+  const roots = BUSINESS_ROOTS.map((qid) => `wd:${qid}`).join(' ')
+  try {
+    const { results } = await sources.wikidata.sparql(
+      `SELECT DISTINCT ?item WHERE { VALUES ?item { ${items} } VALUES ?root { ${roots} } ` +
+        `?item wdt:P31/wdt:P279* ?root . }`,
+      itemBindings,
+    )
+    return new Set(results.bindings.flatMap((b) => qidOf(b.item.value) ?? []))
+  } catch (error) {
+    console.warn(
+      `dossier gather: the subclass check failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return new Set()
+  }
+}
+
+/** A person's search, or no hits when it throws: one person's lookup must not lose the entity. */
+async function personSearch(sources: ResearchSources, name: string) {
+  try {
+    return await sources.wikipedia.search(name, PERSON_SEARCH_HITS)
+  } catch (error) {
+    console.warn(
+      `dossier gather: the search for ${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return []
+  }
+}
+
 /**
  * The subject is the company's common name, so its search finds the company
  * article among the top hits; the scandal articles beside it still give their
  * references. When none of the hits is a business the entity is unresolved:
  * the first hit of an editorial headline can be any page ("2022 in the United
- * States" once), and a corpus read from it is about something else. Each
- * person is searched too, and the first human hit is their article.
+ * States" once), and a corpus read from it is about something else. A hit
+ * is a business when its item is directly one of `BUSINESS_CLASSES`, or else,
+ * asked once over all the hits, when it is a business or organization through
+ * a subclass chain. Each person is searched too, and the first human hit is
+ * their article; a person whose search fails is kept unresolved.
  */
 export async function resolveEntity(
   sources: ResearchSources,
@@ -93,7 +150,7 @@ export async function resolveEntity(
   const { subject } = input
   const [subjectHits, ...peopleHits] = await Promise.all([
     sources.wikipedia.search(subject, SEARCH_HITS),
-    ...input.people.map((name) => sources.wikipedia.search(name, PERSON_SEARCH_HITS)),
+    ...input.people.map((name) => personSearch(sources, name)),
   ])
   const hits = (subjectHits ?? []).map((hit) => hit.title)
   const personHits = peopleHits.map((found) => found.map((hit) => hit.title))
@@ -116,7 +173,12 @@ export async function resolveEntity(
     return { name, qid: title === null ? null : (qids.get(title) ?? null), title }
   })
 
-  const business = hits.find((title) => isA(title, BUSINESS_CLASSES)) ?? null
+  let business = hits.find((title) => isA(title, BUSINESS_CLASSES)) ?? null
+  if (business === null) {
+    const hitQids = [...new Set(hits.flatMap((title) => qids.get(title) ?? []))]
+    const bySubclass = await businessesBySubclass(sources, hitQids)
+    business = hits.find((title) => bySubclass.has(qids.get(title) ?? '')) ?? null
+  }
   const relatedTitles = hits
     .filter((title) => title !== business && RELATED_WORDS.test(title))
     .slice(0, MAX_RELATED)
@@ -238,7 +300,8 @@ export async function discoverCandidates(
   const pages = entity.unresolved
     ? []
     : [businessTitle, ...entity.relatedTitles].filter((t): t is string => t !== null)
-  const personPages = entity.people.flatMap((person) => person.title ?? [])
+  // A resolved entity replayed from a run parked before people existed has none.
+  const personPages = (entity.people ?? []).flatMap((person) => person.title ?? [])
 
   // The listings are independent, so they are asked at once; the PoliteClient
   // still spaces requests to any one host.
