@@ -1,6 +1,12 @@
 import type { ProjectStage, StageStatus } from '@boom-busters/db'
 import { describe, expect, it } from 'vitest'
-import { QUEUED_STUCK_AFTER_MS, isGateOpen, isMoving, projectControl } from './run-state'
+import {
+  QUEUED_STUCK_AFTER_MS,
+  dossierChangesAllowed,
+  isGateOpen,
+  isMoving,
+  projectControl,
+} from './run-state'
 
 describe('isMoving', () => {
   it('is true while a run is executing', () => {
@@ -529,5 +535,40 @@ describe('projectControl', () => {
         }
       }
     }
+  })
+})
+
+describe('dossierChangesAllowed', () => {
+  const at = (stage: ProjectStage, stageStatus: StageStatus) => ({ stage, stageStatus })
+
+  it('is offered at the open dossier gate', () => {
+    expect(dossierChangesAllowed(at('dossier', 'awaiting_review'), true)).toBe(true)
+  })
+
+  it('is offered after approval, wherever the project has got to (decision 7)', () => {
+    expect(dossierChangesAllowed(at('script', 'awaiting_review'), true)).toBe(true)
+    expect(dossierChangesAllowed(at('script', 'approved'), true)).toBe(true)
+    expect(dossierChangesAllowed(at('voice', 'failed'), true)).toBe(true)
+    expect(dossierChangesAllowed(at('done', 'approved'), true)).toBe(true)
+  })
+
+  it('is refused while a dossier run is under way', () => {
+    expect(dossierChangesAllowed(at('dossier', 'running'), true)).toBe(false)
+    expect(dossierChangesAllowed(at('dossier', 'queued'), true)).toBe(false)
+  })
+
+  it('is refused while a later stage is being written from the dossier', () => {
+    expect(dossierChangesAllowed(at('script', 'running'), true)).toBe(false)
+    expect(dossierChangesAllowed(at('script', 'queued'), true)).toBe(false)
+  })
+
+  it('is refused with no dossier to revise', () => {
+    expect(dossierChangesAllowed(at('dossier', 'awaiting_review'), false)).toBe(false)
+    expect(dossierChangesAllowed(at('script', 'approved'), false)).toBe(false)
+  })
+
+  it('is refused at a dossier stage that failed or was stopped: that one is run again', () => {
+    expect(dossierChangesAllowed(at('dossier', 'failed'), true)).toBe(false)
+    expect(dossierChangesAllowed(at('dossier', 'cancelled'), true)).toBe(false)
   })
 })

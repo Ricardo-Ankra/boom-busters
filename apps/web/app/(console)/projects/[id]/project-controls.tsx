@@ -251,11 +251,18 @@ export function GateActionBar({
   blockedReason,
   placeholders = 0,
   handOffTimeoutMs = 8_000,
+  changesOnly = false,
 }: {
   projectId: string
   stage: string
   /** Runtime, warnings, cost of the next stage — section 11.3. */
   context: string
+  /**
+   * The dossier after approval (design decision 7): no gate is open, so there
+   * is nothing to approve, but changes can still be asked for. The bar keeps
+   * its note box and drops Approve.
+   */
+  changesOnly?: boolean
   /** When set, `Approve` is disabled and this is shown next to it. */
   blockedReason?: string | undefined
   /**
@@ -365,7 +372,7 @@ export function GateActionBar({
                   onClick={async () => {
                     const sent = await act(
                       () => requestChanges(projectId, stage, note),
-                      'Re-researching — the gate re-opens when the new dossier lands',
+                      'Researching again with your note. The dossier comes back for review when it lands.',
                       'changes',
                     )
                     if (sent) {
@@ -395,45 +402,47 @@ export function GateActionBar({
             </span>
           )}
 
-          <Button
-            variant="primary"
-            disabled={Boolean(blockedReason) || busy}
-            // The reason is a sibling span; without this a screen reader
-            // meets a disabled Approve and nothing that says why (decision 248).
-            aria-describedby={blockedReason ? blockedReasonId : undefined}
-            busy={pressed === 'approve'}
-            onClick={async () => {
-              const handed = await act(
-                () =>
-                  approveGate(
-                    projectId,
-                    stage,
-                    // The count the button's label named — the action
-                    // refuses if the board has drifted since this render.
-                    stage === 'visuals' && placeholders > 0
-                      ? { acknowledgePlaceholders: placeholders }
-                      : undefined,
-                  ),
-                stage === 'dossier'
-                  ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
-                  : stage === 'script'
-                    ? 'Approved — narration is being synthesised; review the audio when it lands'
-                    : stage === 'voice'
-                      ? 'Approved — the visual board is being planned; review it when it lands'
-                      : stage === 'visuals'
-                        ? 'Approved — the timeline is being assembled; review the preview when it lands'
-                        : 'Approved — moving on',
-                'approve',
-              )
-              if (handed) setHandedOff(stage)
-            }}
-          >
-            {stage === 'visuals' && placeholders > 0
-              ? `Approve with ${placeholders} placeholder${placeholders === 1 ? '' : 's'}`
-              : 'Approve'}
-          </Button>
+          {changesOnly ? null : (
+            <Button
+              variant="primary"
+              disabled={Boolean(blockedReason) || busy}
+              // The reason is a sibling span; without this a screen reader
+              // meets a disabled Approve and nothing that says why (decision 248).
+              aria-describedby={blockedReason ? blockedReasonId : undefined}
+              busy={pressed === 'approve'}
+              onClick={async () => {
+                const handed = await act(
+                  () =>
+                    approveGate(
+                      projectId,
+                      stage,
+                      // The count the button's label named — the action
+                      // refuses if the board has drifted since this render.
+                      stage === 'visuals' && placeholders > 0
+                        ? { acknowledgePlaceholders: placeholders }
+                        : undefined,
+                    ),
+                  stage === 'dossier'
+                    ? 'Approved — the script drafts now, and parks only if the self-check finds problems'
+                    : stage === 'script'
+                      ? 'Approved — narration is being synthesised; review the audio when it lands'
+                      : stage === 'voice'
+                        ? 'Approved — the visual board is being planned; review it when it lands'
+                        : stage === 'visuals'
+                          ? 'Approved — the timeline is being assembled; review the preview when it lands'
+                          : 'Approved — moving on',
+                  'approve',
+                )
+                if (handed) setHandedOff(stage)
+              }}
+            >
+              {stage === 'visuals' && placeholders > 0
+                ? `Approve with ${placeholders} placeholder${placeholders === 1 ? '' : 's'}`
+                : 'Approve'}
+            </Button>
+          )}
 
-          {blockedReason ? (
+          {blockedReason && !changesOnly ? (
             <span id={blockedReasonId} className="text-[13px] text-[var(--color-warning)]">
               {blockedReason}
             </span>

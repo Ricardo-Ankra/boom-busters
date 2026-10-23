@@ -17,15 +17,18 @@ import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
+import { awaitDossierApproval } from '../lib/dossier-approval'
 import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
 import { inngestSteps } from '../lib/steps'
 import {
   EMPTY_CORPUS_MESSAGE,
   gateCounts,
+  gateSubject,
   gateSummary,
   loadCorpus,
   predatesCorpus,
+  replayedCase,
   researchDossier,
   toDraftClaims,
 } from '../lib/dossier-research'
@@ -48,6 +51,12 @@ import {
  * different reading, not different documents, and a second gather would pay
  * for every fetch again. Only a project researched before the corpus existed
  * has none linked, and that one gathers first.
+ *
+ * Changes can be asked for after approval too (design decision 7). The
+ * runner finished at that approval, so the revision re-opens the dossier gate
+ * and waits on it itself; the script stays, marked as written from an older
+ * dossier through the version `saveDossier` bumps, and the Approve starts a
+ * fresh one.
  */
 
 const NO_ENTITY: ResearchEntity = {
@@ -129,6 +138,9 @@ export const dossierReviser = inngest.createFunction(
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,
+        // Approved once already: the runner finished at that approval, so
+        // nothing is parked on the gate this revision re-opens (decision 7).
+        approvedBefore: dossier?.approvedAt != null,
       }
     })
 
@@ -156,15 +168,19 @@ export const dossierReviser = inngest.createFunction(
       return { projectId, outcome: 'predates-corpus' as const }
     }
 
+    // A load-case stored between deploys may name no subject: the case title
+    // stands in, as the gather was searched with it then.
+    const named = replayedCase({ ...context, title: context.caseContext.title })
+
     let entity = context.entity
     if (context.linkedDocuments === 0) {
       const gathered = await gatherCorpus(
         steps,
         {
           projectId,
-          subject: context.subject,
-          people: context.people,
-          sourceLinks: context.sourceLinks,
+          subject: named.subject,
+          people: named.people,
+          sourceLinks: named.sourceLinks,
           competitorLinks: context.competitorLinks,
           round: context.round,
         },
@@ -226,9 +242,20 @@ export const dossierReviser = inngest.createFunction(
       openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: `${gateSummary(counts, corpus)} · revision ${context.round}`,
+        summary: `${gateSummary(counts, corpus, gateSubject(entity, named))} · revision ${context.round}`,
       }),
     )
+
+    // Before approval the runner is parked on the gate and closes it on the
+    // Approve. After approval it has finished, so this run holds the gate:
+    // the gate bar and the approve action look for a live run, and the
+    // Approve starts a fresh script from the revised dossier. `approvedBefore`
+    // is missing from a load-case stored before this rule; such a revision was
+    // asked for at an open gate, where the runner waits.
+    if (context.approvedBefore) {
+      const outcome = await awaitDossierApproval(step, ctx)
+      return { projectId, outcome, round: context.round }
+    }
 
     return { projectId, outcome: 'revised' as const, round: context.round }
   },

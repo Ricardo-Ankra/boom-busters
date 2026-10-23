@@ -33,6 +33,7 @@ import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { brokerConfigured, cancelRender } from '@/lib/broker'
 import { db } from '@/lib/db'
+import { dossierChangesRefusal } from '@/lib/run-state'
 
 /**
  * The buttons that drive a run (build spec section 11.1: every action is a
@@ -383,6 +384,20 @@ export async function requestChanges(
 
   const trimmed = note.trim()
   if (trimmed === '') return { ok: false, error: 'Say what needs to change.' }
+
+  /**
+   * The dossier takes changes at any time it exists and no run is working
+   * from it, after approval included (design decision 7). The reviser
+   * re-researches with the note and re-opens the dossier gate; the script
+   * stays, marked as written from an older dossier. Refused while a run is
+   * under way: a revision landing beside it would race it over the stage.
+   */
+  if (parsedStage.data === 'dossier') {
+    const project = await getProject(db, projectId)
+    if (!project) return { ok: false, error: 'Unknown project' }
+    const refusal = dossierChangesRefusal(project, project.dossierVersion !== null)
+    if (refusal) return { ok: false, error: refusal }
+  }
 
   const sent = await send(
     CHANGES_EVENT[parsedStage.data].create({ projectId, note: trimmed }),

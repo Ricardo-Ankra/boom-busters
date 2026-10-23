@@ -506,15 +506,28 @@ suite('gatherCorpus', () => {
   it('in mock mode stores the four mock documents and calls no source', async () => {
     const steps = recordingSteps()
 
-    const result = await gatherCorpus(steps, input(2), {
-      db,
-      sources: () => {
-        throw new Error('mock mode built the live sources')
+    const result = await gatherCorpus(
+      steps,
+      { ...input(2), subject: 'Wirecard', people: ['Markus Braun', 'Jan Marsalek'] },
+      {
+        db,
+        sources: () => {
+          throw new Error('mock mode built the live sources')
+        },
+        mocked: true,
       },
-      mocked: true,
-    })
+    )
 
     expect(steps.ids).toEqual(['gather-entity-2', 'gather-fetch-2-0'])
+    // The case's own subject and people, so a mock run's gate names them.
+    expect(result.entity).toMatchObject({
+      subject: 'Wirecard',
+      unresolved: false,
+      people: [
+        { name: 'Markus Braun', qid: null, title: null },
+        { name: 'Jan Marsalek', qid: null, title: null },
+      ],
+    })
     expect(result.read).toHaveLength(4)
     expect(result.unread).toEqual([])
     expect(result.failed).toBe(0)

@@ -2,7 +2,15 @@
 
 import {
   FIXTURE_PROJECT_ID,
+  createCase,
+  createProjectFromCase,
+  createScriptVersion,
+  deleteCase,
+  deleteProject,
   getProject,
+  listRunEvents,
+  listRuns,
+  markDossierApproved,
   requireTestDatabase,
   seed,
   setProjectStage,
@@ -13,6 +21,7 @@ import type { LLMTaskRequest } from '@boom-busters/providers'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { stageViewsForProject } from '@/lib/stage-view'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierReviser } from './dossier-reviser'
 
@@ -30,10 +39,13 @@ vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop: vi.fn() }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 const saveDossier = vi.hoisted(() => vi.fn())
-vi.mock('@boom-busters/db', async (importOriginal) => ({
-  ...(await importOriginal<typeof Db>()),
-  saveDossier: (...args: unknown[]) => saveDossier(...args),
-}))
+const real = vi.hoisted(() => ({ saveDossier: null as typeof Db.saveDossier | null }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const original = await importOriginal<typeof Db>()
+  real.saveDossier = original.saveDossier
+  return { ...original, saveDossier: (...args: unknown[]) => saveDossier(...args) }
+})
+const realSaveDossier: typeof Db.saveDossier = (...args) => real.saveDossier!(...args)
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -122,8 +134,34 @@ const corpusLoad = {
   handler: () => ({ documents: DOCUMENTS, corpus: CORPUS }),
 }
 
+const CORPUS_LINE = '2 documents read, 0 gathered not read, 0 could not be fetched'
+
+/** Every research pass's stored result, so no model is called. */
+const researchSteps = [
+  {
+    id: 'research-brief-1',
+    handler: () => ({ ok: true, value: BRIEF, split: true }),
+  },
+  { id: 'research-scenes-1', handler: () => ({ ok: true, value: SCENES }) },
+  { id: 'research-claims-1-1', handler: () => ({ ok: true, value: CLAIMS }) },
+  { id: 'research-claims-1-2', handler: () => ({ ok: true, value: [] }) },
+  { id: 'research-answers-1-1', handler: () => ({ ok: true, value: ANSWERS }) },
+  { id: 'research-answers-1-2', handler: () => ({ ok: true, value: ANSWERS_2 }) },
+]
+
 const stepIds = (ctx: { step: { run: unknown } }) =>
   vi.mocked(ctx.step.run as (id: string) => unknown).mock.calls.map(([id]) => id)
+
+/** Every run's, because the test engine gives each re-invocation a run id of its own. */
+async function gateMessages(): Promise<string[]> {
+  const messages: string[] = []
+  for (const run of await listRuns(db)) {
+    for (const event of await listRunEvents(db, run.id)) {
+      if (event.kind === 'gate.opened') messages.push(event.message ?? '')
+    }
+  }
+  return messages
+}
 
 describeDb('dossier-reviser', () => {
   let engine: InngestTestEngine
@@ -235,6 +273,20 @@ describeDb('dossier-reviser', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
   })
 
+  it('re-opens the gate naming the case title as subject for a load-case stored before subjects, and leaves the wait to the parked runner', async () => {
+    const { ctx, result } = await engine.execute({
+      events: changesRequested(),
+      steps: [loadCase(1), corpusLoad, ...researchSteps],
+    })
+
+    expect(result).toEqual({ projectId: FIXTURE_PROJECT_ID, outcome: 'revised', round: 1 })
+    // The dossier was never approved, so the runner is parked on its own wait.
+    expect(ctx.step.waitForEvent).not.toHaveBeenCalled()
+    expect(await gateMessages()).toEqual([
+      `Subject: Wirecard (company) · Dossier ready · 0 claims · ${CORPUS_LINE} · revision 1`,
+    ])
+  })
+
   it('gathers first for a project researched before it had a corpus', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     const gathered = { ...ENTITY, qid: 'Q2' }
@@ -256,5 +308,74 @@ describeDb('dossier-reviser', () => {
       'corpus-load-1',
     ])
     expect(saveDossier.mock.calls[0]![1].research.entity).toEqual(gathered)
+  })
+})
+
+/**
+ * Changes asked for after the dossier was approved (design decision 7). The
+ * runner finished at the approval, so the revision holds the gate itself; the
+ * script stays, written from an older dossier. A project of its own, so the
+ * fixture's dossier is never rewritten.
+ */
+describeDb('dossier-reviser after approval', () => {
+  let caseId = ''
+  let projectId = ''
+
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    saveDossier.mockReset()
+    saveDossier.mockImplementation(realSaveDossier)
+    await truncateRunMirror(db)
+    forgetRunRows()
+
+    const source = await createCase(db, {
+      title: `Revisetest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
+      category: 'collapse',
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+    })
+    caseId = source.id
+    projectId = (await createProjectFromCase(db, { caseId, title: source.title })).id
+    await realSaveDossier(db, { projectId, contentMd: '# First pass', claims: [] })
+    await createScriptVersion(db, projectId)
+    await markDossierApproved(db, projectId)
+    await setProjectStage(db, projectId, { stage: 'script', stageStatus: 'awaiting_review' })
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await deleteProject(db, projectId)
+    await deleteCase(db, caseId)
+  })
+
+  it('re-opens the dossier gate, marks the script as written from an older dossier, and waits for the Approve', async () => {
+    const before = await getProject(db, projectId)
+    expect(stageViewsForProject(before!).find((v) => v.stage === 'script')?.availability).toBe(
+      'ready',
+    )
+
+    const { ctx } = await new InngestTestEngine({ function: dossierReviser }).executeStep(
+      'await-dossier-gate',
+      {
+        events: [{ name: 'gate/dossier.changes_requested', data: { projectId, note: NOTE } }],
+      },
+    )
+
+    expect(stepIds(ctx)).toContain('reopen-gate')
+    const after = await getProject(db, projectId)
+    expect(after).toMatchObject({ stage: 'dossier', stageStatus: 'awaiting_review' })
+    // What the rail reads: the dossier's version moved past the script's.
+    expect(stageViewsForProject(after!).find((v) => v.stage === 'script')?.availability).toBe(
+      'stale',
+    )
+    // No runner is parked any more, so the revision waits on the Approve,
+    // which is what lets the gate bar and the approve action find a run.
+    expect(ctx.step.waitForEvent).toHaveBeenCalledWith(
+      'await-dossier-gate',
+      expect.objectContaining({ event: 'gate/dossier.approved', timeout: '30d' }),
+    )
+    expect(await gateMessages()).toEqual([
+      expect.stringMatching(/^Subject: Wirecard \(company\), Markus Braun · Dossier ready · /),
+    ])
   })
 })

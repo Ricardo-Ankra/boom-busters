@@ -98,7 +98,12 @@ export async function gatherCorpus(
 
   const resolved = await steps.run(`gather-entity-${round}`, async () =>
     mocked
-      ? EMPTY_ENTITY
+      ? // The case's own subject and people, so a mock run's gate names them.
+        {
+          ...EMPTY_ENTITY,
+          subject: input.subject,
+          people: input.people.map((name) => ({ name, qid: null, title: null })),
+        }
       : resolveEntity(sources(), { subject: input.subject, people: input.people }),
   )
   const entity: ResearchEntity = {

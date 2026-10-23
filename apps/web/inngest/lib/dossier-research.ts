@@ -499,12 +499,70 @@ export function predatesCorpus(loaded: object): boolean {
   return !('competitorLinks' in loaded)
 }
 
+/**
+ * The case subject and people of a replayed `load-case` result. One stored
+ * before cases had a subject has neither, and the case title stands in, as
+ * the gather was searched with it then. The keys are typed `unknown` so a
+ * key today's type always carries is still checked.
+ */
+export function replayedCase(stored: {
+  title: string
+  subject?: unknown
+  people?: unknown
+  sourceLinks?: unknown
+}): {
+  subject: string
+  people: string[]
+  sourceLinks: { url: string }[]
+} {
+  return {
+    subject:
+      typeof stored.subject === 'string' && stored.subject.trim() !== ''
+        ? stored.subject
+        : stored.title,
+    people: Array.isArray(stored.people)
+      ? stored.people.filter((name): name is string => typeof name === 'string')
+      : [],
+    sourceLinks: Array.isArray(stored.sourceLinks) ? (stored.sourceLinks as { url: string }[]) : [],
+  }
+}
+
+/** Who the dossier is about, as the gate names them (design decision 8). */
+export interface GateSubject {
+  subject: string
+  people: readonly string[]
+  /** No company among Wikipedia's top hits for the subject (decision 3). */
+  unresolved: boolean
+}
+
+/**
+ * The gate's subject, from the entity the gather resolved. An entity stored
+ * before it carried a subject or people takes the case's own.
+ */
+export function gateSubject(
+  entity: Partial<ResearchEntity>,
+  fallback: { subject: string; people: readonly string[] },
+): GateSubject {
+  const people = entity.people?.map((person) => person.name) ?? []
+  return {
+    subject: entity.subject ?? fallback.subject,
+    people: people.length > 0 ? people : fallback.people,
+    unresolved: entity.unresolved === true,
+  }
+}
+
+function subjectLine(who: GateSubject): string {
+  if (who.unresolved) return "Subject not found on Wikipedia: check the case's Subject"
+  return [`Subject: ${who.subject} (company)`, ...who.people].join(', ')
+}
+
 /** The one-line context the gate card shows (spec sections 7 and 11.3). */
 export function gateSummary(
   counts: { total: number; unverified: number; quarantined: number; unfetched?: number },
   corpus: CorpusCounts,
+  who: GateSubject,
 ): string {
-  const parts = [`Dossier ready · ${counts.total} claims`]
+  const parts = [subjectLine(who), `Dossier ready · ${counts.total} claims`]
 
   if (counts.unverified > 0) parts.push(`${counts.unverified} unsourced`)
   if (counts.quarantined > 0) parts.push(`${counts.quarantined} quarantined`)

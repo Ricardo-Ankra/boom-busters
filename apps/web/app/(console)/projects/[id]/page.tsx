@@ -36,7 +36,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { db } from '@/lib/db'
 import { caseCategoryLabel } from '@/lib/case-category'
 import { approvalBlockedReason, blockingCount } from '@/lib/claim-review'
-import { RESTARTABLE_STAGES, isGateOpen, isMoving, projectControl } from '@/lib/run-state'
+import {
+  RESTARTABLE_STAGES,
+  dossierChangesAllowed,
+  isGateOpen,
+  isMoving,
+  projectControl,
+} from '@/lib/run-state'
 import { downstreamOf, resolveViewedStage, stageViewsForProject } from '@/lib/stage-view'
 import { DossierReview } from './dossier-review'
 import { PreviewScreen } from './preview-screen'
@@ -244,6 +250,13 @@ export default async function ProjectPage({
   // the dossier stays readable from anywhere. It is not only a gate screen:
   // after approval it is the reference the script was written from.
   const showDossier = dossier !== undefined && viewing === 'dossier'
+  // Off the dossier stage only: at the open gate the gate bar already carries
+  // the note box beside Approve.
+  const offerDossierChanges =
+    showDossier &&
+    !viewingCurrent &&
+    !budgetGate &&
+    dossierChangesAllowed(project, project.dossierVersion !== null)
   const showScript = script !== undefined && viewing === 'script'
   const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
   const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
@@ -431,6 +444,23 @@ export default async function ProjectPage({
             ? { blockedReason: visuals.blockedReason }
             : {})}
           {...(project.stage === 'visuals' ? { placeholders: visuals.placeholders } : {})}
+        />
+      ) : null}
+
+      {/* The dossier after approval (design decision 7): read from a later
+          stage, it still takes a change request. The same bar, with the note
+          box and no Approve, because no dossier gate is open to approve. */}
+      {offerDossierChanges ? (
+        <GateActionBar
+          key="dossier-changes"
+          projectId={project.id}
+          stage="dossier"
+          changesOnly
+          context={
+            'This dossier is approved. Asking for changes researches it again with your note ' +
+            'and brings it back here for review. The work after it is kept, marked as built ' +
+            'from an older dossier, and approving it again writes a fresh script.'
+          }
         />
       ) : null}
 
