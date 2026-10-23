@@ -2,6 +2,7 @@ import {
   CASE_ANGLE_MAX,
   CASE_DEMAND_NOTES_MAX,
   CASE_LINK_NOTE_MAX,
+  CASE_SUBJECT_MAX,
   ValidationError,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -186,6 +187,43 @@ describe("a suggestion's limits (decision 293)", () => {
       { action: 'trimmed', field: 'the demand notes of Wirecard' },
       { action: 'trimmed', field: 'the note on link 2 of Wirecard' },
     ])
+  })
+
+  it('carries the title rule, the subject rule and the new output shape', () => {
+    const { system } = buildSuggestCasesRequest({ existingTitles: [], count: 4 })
+    const flat = system.replace(/\s+/g, ' ')
+    expect(flat).toContain(
+      '`title` is a working title: the company and the turn in plain words, no verdicts, no questions, no colon-and-subtitle; the hook belongs to `angle`.',
+    )
+    expect(flat).toContain(
+      "`subject` is the company's common name as Wikipedia titles it, nothing else; `people` are the main people, at most 6, full names.",
+    )
+    expect(flat).toContain('"subject": string, "people": [string]')
+  })
+
+  it('refuses a suggestion with no subject', () => {
+    const { subject: _subject, ...bare } = wirecard()
+    expect(() => parseSuggestedCases(answer(bare))).toThrow(ValidationError)
+  })
+
+  it('cuts a subject over its limit at the limit, with a note', () => {
+    const { notes, note } = collect()
+    const [parsed] = parseSuggestedCases(
+      answer({ ...wirecard(), subject: 'Wirecard Aktiengesellschaft '.repeat(10) }),
+      8,
+      note,
+    )
+    expect(parsed!.subject.length).toBeLessThanOrEqual(CASE_SUBJECT_MAX)
+    expect(parsed!.subject.startsWith('Wirecard')).toBe(true)
+    expect(notes).toEqual([{ action: 'trimmed', field: 'the subject of Wirecard' }])
+  })
+
+  it('caps people at the limit, with a note', () => {
+    const { notes, note } = collect()
+    const people = Array.from({ length: 9 }, (_, at) => `Person Number${at + 1}`)
+    const [parsed] = parseSuggestedCases(answer({ ...wirecard(), people }), 8, note)
+    expect(parsed!.people).toEqual(people.slice(0, 6))
+    expect(notes).toEqual([{ action: 'capped', field: 'people of Wirecard', kept: 6 }])
   })
 
   it('keeps the first 10 competitor links', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { suggestCases } from './actions'
+import { addCase, editCase, suggestCases } from './actions'
 
 /**
  * `Suggest cases` on the answer helper (decision 293), with the database,
@@ -11,6 +11,8 @@ import { suggestCases } from './actions'
  */
 
 const store = vi.hoisted(() => ({
+  createCase: vi.fn(),
+  updateCase: vi.fn(),
   existingCaseTitles: vi.fn(),
   createSuggestedCases: vi.fn(),
 }))
@@ -138,5 +140,79 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     const inputs = store.createSuggestedCases.mock.calls[0]![1] as { title: string }[]
     expect(inputs.map((input) => input.title)).toEqual(['Wirecard', 'Theranos'])
     expect(recordRepairs).not.toHaveBeenCalled()
+  })
+})
+
+describe('the case form actions: subject, people and source links', () => {
+  const form = {
+    title: 'Wirecard',
+    category: 'con',
+    priorityScore: 50,
+    subject: 'Wirecard',
+    people: ['Markus Braun'],
+    sourceLinks: [{ url: 'https://example.com/a' }],
+  }
+
+  beforeEach(() => {
+    store.createCase.mockReset().mockResolvedValue({ id: 'x' })
+    store.updateCase.mockReset().mockResolvedValue({ id: 'x' })
+  })
+
+  it('stores the three fields on a new case', async () => {
+    expect(await addCase(form)).toEqual({ ok: true })
+    expect(store.createCase.mock.calls[0]![1]).toMatchObject({
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+      sourceLinks: [{ url: 'https://example.com/a' }],
+      status: 'shortlisted',
+    })
+  })
+
+  it('refuses a new case with no subject', async () => {
+    const { subject: _subject, ...bare } = form
+    expect((await addCase(bare)).ok).toBe(false)
+    expect((await addCase({ ...form, subject: ' ' })).ok).toBe(false)
+    expect(store.createCase).not.toHaveBeenCalled()
+  })
+
+  it('refuses a source link that is not http or https, and more than 20', async () => {
+    const bad = await addCase({ ...form, sourceLinks: [{ url: 'ftp://example.com/a' }] })
+    expect(bad).toEqual({
+      ok: false,
+      error: 'Each source link must start with http:// or https://',
+    })
+    const many = Array.from({ length: 21 }, (_, at) => ({ url: `https://example.com/${at}` }))
+    expect((await addCase({ ...form, sourceLinks: many })).ok).toBe(false)
+    expect(store.createCase).not.toHaveBeenCalled()
+  })
+
+  it('defaults people and source links to empty', async () => {
+    await addCase({ title: 'Wirecard', category: 'con', priorityScore: 50, subject: 'Wirecard' })
+    expect(store.createCase.mock.calls[0]![1]).toMatchObject({ people: [], sourceLinks: [] })
+  })
+
+  it('edits the three fields without needing the rest', async () => {
+    const id = '01J00000000000000000000C01'
+    expect(
+      await editCase(id, { subject: 'Enron', people: [], sourceLinks: [{ url: 'http://a.com' }] }),
+    ).toEqual({ ok: true })
+    expect(store.updateCase.mock.calls[0]![2]).toEqual({
+      subject: 'Enron',
+      people: [],
+      sourceLinks: [{ url: 'http://a.com' }],
+    })
+  })
+
+  it('files a suggestion subject and people on the created case', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset().mockResolvedValueOnce(reply({ ...wirecard, people: ['Markus Braun'] }))
+    store.existingCaseTitles.mockReset().mockResolvedValue([])
+    store.createSuggestedCases.mockReset().mockResolvedValue(rows('Wirecard'))
+    await suggestCases({ count: 1 })
+    expect(store.createSuggestedCases.mock.calls[0]![1][0]).toMatchObject({
+      subject: 'Wirecard',
+      people: ['Markus Braun'],
+    })
+    vi.unstubAllEnvs()
   })
 })

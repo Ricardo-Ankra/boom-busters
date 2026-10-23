@@ -4,8 +4,11 @@ import {
   CASE_DEMAND_NOTES_MAX,
   CASE_LINK_NOTE_MAX,
   CASE_LINKS_MAX,
+  CASE_PEOPLE_MAX,
   CASE_PRIORITY_MAX,
   CASE_PRIORITY_MIN,
+  CASE_SUBJECT_MAX,
+  CASE_SUBJECT_MIN,
   CASE_SUGGESTIONS_MAX,
   CASE_TITLE_MAX,
   CASE_TITLE_MIN,
@@ -49,6 +52,8 @@ about what someone was thinking.
 Rules:
 - Only real, documented events. Never invent a company, a person or a figure.
 - Prefer cases with primary sources available: filings, judgments, inquiries.
+- \`title\` is a working title: the company and the turn in plain words, no verdicts, no questions, no colon-and-subtitle; the hook belongs to \`angle\`.
+- \`subject\` is the company's common name as Wikipedia titles it, nothing else; \`people\` are the main people, at most ${CASE_PEOPLE_MAX}, full names.
 - The angle must say what THIS telling does that existing coverage does not.
 - priorityScore is 0-100: how strongly you would recommend making it next,
   weighing documentation quality, story shape and evident audience demand.
@@ -57,11 +62,12 @@ Limits (the app checks them): title ${CASE_TITLE_MIN} to ${CASE_TITLE_MAX} chara
 ${CASE_ANGLE_MIN} to ${CASE_ANGLE_MAX} characters; demandNotes at most ${CASE_DEMAND_NOTES_MAX} characters;
 at most ${CASE_LINKS_MAX} competitorLinks, each note at most ${CASE_LINK_NOTE_MAX} characters;
 priorityScore a whole number from ${CASE_PRIORITY_MIN} to ${CASE_PRIORITY_MAX}; no more cases than asked for.
+subject ${CASE_SUBJECT_MIN} to ${CASE_SUBJECT_MAX} characters.
 
 Answer with JSON only, no prose around it:
 {"suggestions": [{"title": string, "category": "collapse"|"con"|"meltdown"|"turnaround"|"empire",
   "angle": string, "demandNotes": string, "competitorLinks": [{"url": string, "note": string}],
-  "priorityScore": number}]}`
+  "priorityScore": number, "subject": string, "people": [string]}]}`
 
 export function buildSuggestCasesRequest(input: SuggestCasesInput): LLMTaskRequest {
   const avoid =
@@ -159,6 +165,10 @@ function repairSuggestion(item: unknown, note: Note): unknown {
         )
       : links,
     priorityScore: fitPriority(item['priorityScore'], title, note),
+    subject: trimField(item['subject'], CASE_SUBJECT_MAX, ofCase('the subject', title), note),
+    ...(item['people'] === undefined
+      ? {}
+      : { people: capList(item['people'], CASE_PEOPLE_MAX, ofCase('people', title), note) }),
   }
 }
 

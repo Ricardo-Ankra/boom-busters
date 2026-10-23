@@ -13,6 +13,7 @@ import { CaseLibrary } from './case-library'
 const actions = vi.hoisted(() => ({
   acceptCase: vi.fn(),
   addCase: vi.fn(),
+  editCase: vi.fn(),
   dismissCase: vi.fn(),
   setStatus: vi.fn(),
   startProjectFromCase: vi.fn(),
@@ -127,6 +128,77 @@ describe('CaseLibrary notices (decision 293)', () => {
       expect(toast).toHaveBeenCalledWith({
         title: '2 new, 0 already in your library',
         description: dropped,
+      }),
+    )
+  })
+})
+
+describe('the case form: subject, people and source links', () => {
+  async function openAddForm() {
+    render(<CaseLibrary cases={[]} sort="priority" />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
+  }
+
+  it('prefills Subject from the title before its first colon while the box is empty', async () => {
+    await openAddForm()
+    await userEvent.type(screen.getByLabelText('Title'), 'Wirecard: the missing billion')
+    expect(screen.getByLabelText('Subject')).toHaveValue('Wirecard')
+    await userEvent.clear(screen.getByLabelText('Subject'))
+    await userEvent.type(screen.getByLabelText('Subject'), 'Wirecard AG')
+    await userEvent.type(screen.getByLabelText('Title'), ' and more')
+    expect(screen.getByLabelText('Subject')).toHaveValue('Wirecard AG')
+  })
+
+  it('sends the three fields to addCase', async () => {
+    actions.addCase.mockResolvedValue({ ok: true })
+    await openAddForm()
+    await userEvent.type(screen.getByLabelText('Title'), 'Wirecard')
+    await userEvent.type(screen.getByLabelText('People'), 'Markus Braun, Jan Marsalek')
+    await userEvent.type(
+      screen.getByLabelText('Source links'),
+      'https://example.com/a{enter}https://example.com/b',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save case' }))
+    await waitFor(() =>
+      expect(actions.addCase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Wirecard',
+          subject: 'Wirecard',
+          people: ['Markus Braun', 'Jan Marsalek'],
+          sourceLinks: [{ url: 'https://example.com/a' }, { url: 'https://example.com/b' }],
+        }),
+      ),
+    )
+  })
+
+  it('shows the same three fields when editing, and saves them', async () => {
+    actions.editCase.mockResolvedValue({ ok: true })
+    render(
+      <CaseLibrary
+        cases={[
+          kase({
+            status: 'shortlisted',
+            subject: 'Wirecard',
+            people: ['Markus Braun'],
+            sourceLinks: [{ url: 'https://example.com/a' }],
+          }),
+        ]}
+        sort="priority"
+      />,
+    )
+    const row = screen.getByText('Wirecard', { selector: 'p' }).closest('li')!
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit details' }))
+    expect(within(row).getByLabelText('Subject')).toHaveValue('Wirecard')
+    expect(within(row).getByLabelText('People')).toHaveValue('Markus Braun')
+    expect(within(row).getByLabelText('Source links')).toHaveValue('https://example.com/a')
+    await userEvent.clear(within(row).getByLabelText('People'))
+    await userEvent.type(within(row).getByLabelText('People'), 'Markus Braun, Jan Marsalek')
+    await userEvent.click(within(row).getByRole('button', { name: 'Save details' }))
+    await waitFor(() =>
+      expect(actions.editCase).toHaveBeenCalledWith(WIRECARD, {
+        subject: 'Wirecard',
+        people: ['Markus Braun', 'Jan Marsalek'],
+        sourceLinks: [{ url: 'https://example.com/a' }],
       }),
     )
   })
