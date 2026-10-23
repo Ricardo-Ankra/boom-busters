@@ -48,7 +48,16 @@ import {
  * has none linked, and that one gathers first.
  */
 
-const NO_ENTITY: ResearchEntity = { qid: null, titles: [], cik: null, ticker: null, website: null }
+const NO_ENTITY: ResearchEntity = {
+  qid: null,
+  titles: [],
+  cik: null,
+  ticker: null,
+  website: null,
+  people: [],
+  unresolved: false,
+  subject: null,
+}
 
 const FUNCTION_ID = 'dossier-reviser'
 

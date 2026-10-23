@@ -223,6 +223,9 @@ suite('gatherCorpus', () => {
       cik: null,
       ticker: null,
       website: null,
+      people: [],
+      unresolved: false,
+      subject: null,
     })
     // Tier 2's 30% share plus tier 1's unspent 25% holds five 12,000-token documents.
     expect(result.read).toHaveLength(5)

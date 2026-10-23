@@ -305,6 +305,15 @@ export const cases = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<{ url: string; note?: string }[]>(),
+    subject: text('subject'),
+    people: jsonb('people')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    sourceLinks: jsonb('source_links')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<{ url: string; note?: string }[]>(),
     priorityScore: integer('priority_score').notNull().default(0),
     status: caseStatusEnum('status').notNull().default('idea'),
     createdAt: createdAt(),

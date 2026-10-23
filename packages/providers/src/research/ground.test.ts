@@ -39,7 +39,16 @@ const docs: CorpusDocument[] = [
   },
 ]
 
-const entity = { qid: null, titles: [], cik: null, ticker: null, website: null }
+const entity = {
+  qid: null,
+  titles: [],
+  cik: null,
+  ticker: null,
+  website: null,
+  people: [],
+  unresolved: false,
+  subject: null,
+}
 let repairs: Repair[] = []
 const note = (r: Repair) => repairs.push(r)
 beforeEach(() => {

@@ -24,6 +24,7 @@ const valid = JSON.stringify({
       demandNotes: 'Sustained search interest since the 2020 collapse.',
       competitorLinks: [{ url: 'https://example.com/video', note: 'surface level' }],
       priorityScore: 88,
+      subject: 'Wirecard',
     },
   ],
 })
@@ -103,7 +104,13 @@ describe('parseSuggestedCases', () => {
   it('survives a missing optional field', () => {
     const minimal = JSON.stringify({
       suggestions: [
-        { title: 'Enron', category: 'collapse', angle: 'a'.repeat(20), priorityScore: 50 },
+        {
+          title: 'Enron',
+          category: 'collapse',
+          angle: 'a'.repeat(20),
+          priorityScore: 50,
+          subject: 'Enron',
+        },
       ],
     })
     expect(parseSuggestedCases(minimal)).toHaveLength(1)

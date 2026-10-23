@@ -21,8 +21,18 @@ const scene = (over: { ref?: Partial<GroundedRef> } = {}): GroundedResearch['sce
 })
 
 const grounded = (over: Partial<GroundedResearch> = {}): GroundedResearch => ({
-  entity: { qid: null, titles: [], cik: null, ticker: null, website: null },
+  entity: {
+    qid: null,
+    titles: [],
+    cik: null,
+    ticker: null,
+    website: null,
+    people: [],
+    unresolved: false,
+    subject: null,
+  },
   brief: {
+    currentStatus: null,
     summary: 'A payments company that reported cash it did not have.',
     turningPoint: 'The auditors could not find the 1.9 billion.',
     cast: [

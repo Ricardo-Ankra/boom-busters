@@ -32,6 +32,7 @@ const caseContext = {
 const corpus = '[D1] reporting · x · 2020 · https://x\nText'
 
 const brief: CaseBrief = {
+  currentStatus: null,
   summary: 'x'.repeat(60),
   turningPoint: 'The moment the mark-to-market accounting was approved.',
   cast: [

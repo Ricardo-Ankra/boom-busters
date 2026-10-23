@@ -35,7 +35,16 @@ const replaying = (stored: Record<string, unknown>): Steps => ({
 })
 
 const CASE = { title: 'Wirecard', category: 'con', angle: null, demandNotes: null }
-const ENTITY = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
+const ENTITY = {
+  qid: 'Q1',
+  titles: ['Wirecard'],
+  cik: null,
+  ticker: null,
+  website: null,
+  people: [],
+  unresolved: false,
+  subject: null,
+}
 
 const DOCUMENTS: CorpusDocument[] = [
   {

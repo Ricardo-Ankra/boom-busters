@@ -31,6 +31,8 @@ const wirecard = {
   demandNotes: 'Sustained search interest since the 2020 collapse.',
   competitorLinks: [{ url: 'https://example.com/video', note: 'surface level' }],
   priorityScore: 88,
+  subject: 'Wirecard',
+  people: [],
 }
 
 const reply = (...suggestions: Record<string, unknown>[]) => ({

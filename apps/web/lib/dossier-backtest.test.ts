@@ -68,8 +68,18 @@ const series = (
 })
 
 const research = (beats: { id: string; found: boolean }[] = []): GroundedResearch => ({
-  entity: { qid: null, titles: [], cik: null, ticker: null, website: null },
+  entity: {
+    qid: null,
+    titles: [],
+    cik: null,
+    ticker: null,
+    website: null,
+    people: [],
+    unresolved: false,
+    subject: null,
+  },
   brief: {
+    currentStatus: null,
     summary: '',
     turningPoint: '',
     cast: [],

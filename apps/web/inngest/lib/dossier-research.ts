@@ -383,7 +383,14 @@ function empty(entity: ResearchEntity, corpus: CorpusCounts): Omit<ResearchResul
   return {
     research: {
       entity,
-      brief: { summary: '', turningPoint: '', cast: [], toldAlready: [], openQuestions: [] },
+      brief: {
+        currentStatus: null,
+        summary: '',
+        turningPoint: '',
+        cast: [],
+        toldAlready: [],
+        openQuestions: [],
+      },
       scenes: [],
       answers: [],
       corpus,

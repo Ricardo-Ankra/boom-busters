@@ -100,6 +100,9 @@ export async function gatherCorpus(
     cik: resolved.cik,
     ticker: resolved.ticker,
     website: resolved.website,
+    people: resolved.people,
+    unresolved: resolved.unresolved,
+    subject: resolved.subject,
   }
 
   if (mocked) {

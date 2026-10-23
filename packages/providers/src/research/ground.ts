@@ -235,6 +235,7 @@ export function groundResearch(
     research: {
       entity: input.entity,
       brief: {
+        currentStatus: input.brief.currentStatus,
         summary: input.brief.summary,
         turningPoint: input.brief.turningPoint,
         cast,

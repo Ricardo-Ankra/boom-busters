@@ -284,6 +284,8 @@ export function mockSuggestedCases(count: number): CaseSuggestion[] {
       'no provider was called. Dismiss this row.',
     demandNotes: 'No demand evidence exists for a case that does not exist.',
     competitorLinks: [],
+    subject: `Mock subject ${index + 1}`,
+    people: [],
     // Descending so the sort-by-priority column has something to sort.
     priorityScore: Math.max(0, 50 - index * 3),
   }))
