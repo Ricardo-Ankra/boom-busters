@@ -8093,3 +8093,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      monthly usage limit ("regain access on 2026-11-01"), which also blocks
      every Anthropic-routed stage in production until then or until the limit
      is raised in the Anthropic console. Spent: $8.39 plus $1.90.
+     Wirecard re-run after the limit was raised, 2026-10-23
+     (`docs/cases/dossier-backtest-2026-10-23-wirecard.md`): Pass. Steps 84
+     to 95 s, quotes found 100%, URL resolution 92.2%, $2.06. Across the two
+     runs every one of the five cases now meets every gated rate, so the
+     rollout gate of decision 310 is met: the split passes fit the step,
+     grounding holds, and a dossier costs about $2 on claude-opus-5-5.
