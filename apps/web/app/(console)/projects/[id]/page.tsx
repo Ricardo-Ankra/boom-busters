@@ -573,6 +573,7 @@ export default async function ProjectPage({
           claims={dossier.claims}
           supports={dossier.supports}
           research={dossier.research}
+          downstream={downstreamOf('dossier', views)}
           documents={dossierDocuments.map((document) => ({
             id: document.id,
             url: document.url,
