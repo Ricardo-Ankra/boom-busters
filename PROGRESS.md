@@ -8190,3 +8190,23 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      back-test's Theranos case is the live check before that and has not yet
      been run. The numbers 311 to 315 are checked against `origin/master` at
      the merge.
+316. **Numbers are read the British way, and the script keeps its digits**
+     (2026-10-25). Eleven v3 expands 660 as "six hundred sixty". The owner
+     wants "six hundred and sixty" while the script, the captions and the
+     claim list keep "660". `spokenNumbers` (schemas) rewrites only the
+     numbers whose British reading carries an "and" (660, 1,050, 2008,
+     "$660 million" as "six hundred and sixty million dollars", "660%" as
+     "six hundred and sixty percent"); everything else is left to the
+     vendor. Years stay years: a bare 1100 to 1999 or 2010 to 2099 is not
+     touched, 2001 to 2009 become "two thousand and eight". Ordinals,
+     plurals, leading zeros, "9/11", "10:45", phone-style runs, bracketed
+     direction and "$660.50" are not touched. The ElevenLabs adapter applies
+     it after the respellings, in the request only, and
+     `foldSpokenNumbers` collapses the spoken words' alignment back onto the
+     script's token, so snap meets "660" and a long figure cannot open a QC
+     gap; when the alignment does not spell the sent text the timings pass
+     unfolded. `takeIdempotencyKey` gains `numbers=british-v1` only for a
+     paragraph the rule rewrites, so no existing take changes key unless its
+     reading changes, and a re-run of the voice stage re-buys exactly those
+     paragraphs. Cost is still estimated from the script text, as it is for
+     respellings, so a paragraph with a long figure is slightly under-priced.

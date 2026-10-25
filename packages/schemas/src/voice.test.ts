@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { splitParagraphs } from './script'
 import {
   latestTakes,
@@ -255,5 +256,52 @@ describe('pronunciations in the take key', () => {
         pronunciations: [{ term: 'Jan', hint: '/dʒæn/' }],
       }),
     ).toBe(takeIdempotencyKey({ ...base, text: 'It collapsed in January.' }))
+  })
+})
+
+describe('spoken numbers in the take key', () => {
+  /**
+   * Every take already bought for a paragraph without such a number keeps its
+   * key, so this rule re-narrates nothing it does not change.
+   */
+  it('is unchanged for a paragraph the number rule leaves alone', () => {
+    const plain = { ...base, text: 'In 1987 they hired 500 staff.' }
+    expect(takeIdempotencyKey(plain)).toBe(
+      createHash('sha256')
+        .update(
+          [
+            plain.projectId,
+            plain.chapterId,
+            String(plain.paragraphIndex),
+            createHash('sha256').update(plain.text).digest('hex'),
+            plain.voiceId,
+          ].join('\u0000'),
+        )
+        .digest('hex')
+        .slice(0, 32),
+    )
+  })
+
+  /**
+   * The number rule changes how 660 is spoken without changing a character of
+   * the script. Without the marker, re-running the voice stage would hand back
+   * the take that says "six hundred sixty".
+   */
+  it('changes for a paragraph whose numbers are now read the British way', () => {
+    const text = 'They lost 660 jobs.'
+    const unmarked = createHash('sha256')
+      .update(
+        [
+          base.projectId,
+          base.chapterId,
+          String(base.paragraphIndex),
+          createHash('sha256').update(text).digest('hex'),
+          base.voiceId,
+        ].join('\u0000'),
+      )
+      .digest('hex')
+      .slice(0, 32)
+
+    expect(takeIdempotencyKey({ ...base, text })).not.toBe(unmarked)
   })
 })

@@ -7,6 +7,7 @@ import {
   elevenlabsTts,
   ELEVENLABS_MODEL,
   ELEVEN_V3_STABILITY,
+  foldSpokenNumbers,
   wordTimingsFromAlignment,
 } from './elevenlabs'
 import { createMockTTS, mockNarrationPcm, mockTakeSeed } from './mock'
@@ -162,6 +163,54 @@ describe('elevenlabs TTS adapter', () => {
 
     const body = JSON.parse(String(seen.init?.body)) as { text: string }
     expect(body.text).toBe('[sighs] It was over. [long pause] Nobody said so.')
+  })
+
+  it('writes 660 out the British way, because v3 would say "six hundred sixty"', async () => {
+    const { fetchImpl, seen } = capture(timed(ONE_SECOND))
+    await elevenlabsTts.synthesise(
+      { ...request, text: 'Wirecard cut 660 jobs in June 2020.' },
+      { apiKey: 'k', fetchImpl },
+    )
+
+    const body = JSON.parse(String(seen.init?.body)) as { text: string }
+    expect(body.text).toBe('VEER-card cut six hundred and sixty jobs in June 2020.')
+  })
+
+  /**
+   * The script says 660, so the captions do. Four spoken words timed against
+   * one script word would read to snap as unheard script, and a long figure
+   * can cross its gap threshold; folded back, the script's token carries the
+   * span of everything said for it.
+   */
+  it('folds the spoken words of a number back onto the script token', async () => {
+    const sent = 'cut six hundred and sixty jobs'
+    const characters = [...sent]
+    const result = await elevenlabsTts.synthesise(
+      { ...request, phonemeHints: [], text: 'cut 660 jobs' },
+      {
+        apiKey: 'k',
+        fetchImpl: respondWith(
+          timed(ONE_SECOND, {
+            characters,
+            character_start_times_seconds: characters.map((_, index) => index * 0.1),
+            character_end_times_seconds: characters.map((_, index) => index * 0.1 + 0.08),
+          }),
+        ),
+      },
+    )
+
+    expect(result.wordTimings).toEqual([
+      { text: 'cut', startMs: 0, endMs: 280 },
+      { text: '660', startMs: 400, endMs: 2480 },
+      { text: 'jobs', startMs: 2600, endMs: 2980 },
+    ])
+  })
+
+  it('leaves the timings unfolded when the alignment is not of the text it sent', () => {
+    const alignment = byJuneAlignment()
+    expect(
+      foldSpokenNumbers(alignment, 'six hundred and one', [{ original: '601', start: 0, end: 19 }]),
+    ).toBe(alignment)
   })
 
   it('asks the with-timestamps endpoint — the alignment is free there', async () => {

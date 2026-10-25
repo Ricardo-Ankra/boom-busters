@@ -1,5 +1,5 @@
-import { ValidationError } from '@boom-busters/schemas'
-import type { StabilityTier, WordTiming } from '@boom-busters/schemas'
+import { spokenNumbers, ValidationError } from '@boom-busters/schemas'
+import type { SpokenNumberReplacement, StabilityTier, WordTiming } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { mapNetworkError, throwForResponse } from '../llm/http'
 import { NARRATION_SAMPLE_RATE, pcmDurationMs } from './audio'
@@ -30,6 +30,9 @@ import type {
  *    sentence structure. (The old pacing slider died with Chirp.)
  *  - **No phoneme markup.** Respellings are substituted into the text by
  *    `applyPronunciations`; IPA hints are dropped and reported.
+ *  - **American number reading.** 660 is read "six hundred sixty", so
+ *    `spokenNumbers` writes the British reading into the request, and
+ *    `foldSpokenNumbers` maps its timings back onto the script's "660".
  *  - **No request stitching.** Continuity between paragraphs comes from the
  *    voice itself and the stability setting, which is a discrete three-way
  *    on v3 — exposed in Settings as Creative / Natural / Robust.
@@ -125,6 +128,58 @@ export function wordTimingsFromAlignment(alignment: z.infer<typeof AlignmentSche
   return words
 }
 
+type Alignment = z.infer<typeof AlignmentSchema>
+
+/**
+ * The alignment with each written-out number collapsed back onto the script's
+ * token: "six hundred and sixty" becomes "660", its characters sharing out the
+ * span from the first spoken character's start to the last one's end. Snap
+ * then meets the word the script has, not four it does not. Exported for tests.
+ *
+ * Replacement offsets index the text that was sent, so the fold only runs when
+ * the alignment spells exactly that text; anything else is returned untouched,
+ * which snap already copes with.
+ */
+export function foldSpokenNumbers(
+  alignment: Alignment,
+  sent: string,
+  replacements: readonly SpokenNumberReplacement[],
+): Alignment {
+  if (replacements.length === 0 || alignment.characters.join('') !== sent) return alignment
+
+  const folded: Alignment = {
+    characters: [],
+    character_start_times_seconds: [],
+    character_end_times_seconds: [],
+  }
+  const keep = (from: number, to: number) => {
+    folded.characters.push(...alignment.characters.slice(from, to))
+    folded.character_start_times_seconds.push(
+      ...alignment.character_start_times_seconds.slice(from, to),
+    )
+    folded.character_end_times_seconds.push(
+      ...alignment.character_end_times_seconds.slice(from, to),
+    )
+  }
+
+  let last = 0
+  for (const { original, start, end } of replacements) {
+    keep(last, start)
+    const from = alignment.character_start_times_seconds[start] ?? 0
+    const to = alignment.character_end_times_seconds[end - 1] ?? from
+    const share = (to - from) / original.length
+    ;[...original].forEach((character, index) => {
+      folded.characters.push(character)
+      folded.character_start_times_seconds.push(from + share * index)
+      folded.character_end_times_seconds.push(from + share * (index + 1))
+    })
+    last = end
+  }
+  keep(last, alignment.characters.length)
+
+  return folded
+}
+
 interface ElevenLabsVoicesResponse {
   voices?: { voice_id?: string; name?: string; labels?: Record<string, string> }[]
 }
@@ -146,7 +201,11 @@ export const elevenlabsTts: TTSProvider = {
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {
     const doFetch = options.fetchImpl ?? fetch
 
-    const { text, dropped } = applyPronunciations(request.text, request.phonemeHints)
+    // Respellings first, so a hint term with a number in it ("Boeing 737")
+    // is the owner's call, then the British number reading over what is left.
+    const pronounced = applyPronunciations(request.text, request.phonemeHints)
+    const dropped = pronounced.dropped
+    const { text, replacements } = spokenNumbers(pronounced.text)
 
     let response: Response
     try {
@@ -184,7 +243,13 @@ export const elevenlabsTts: TTSProvider = {
     }
 
     const alignment = parsed.alignment ?? parsed.normalized_alignment
-    const wordTimings = alignment ? wordTimingsFromAlignment(alignment) : []
+    // Only the input-text alignment indexes the text sent; the normalised one
+    // has the vendor's own expansions in it and is used as it comes.
+    const wordTimings = parsed.alignment
+      ? wordTimingsFromAlignment(foldSpokenNumbers(parsed.alignment, text, replacements))
+      : alignment
+        ? wordTimingsFromAlignment(alignment)
+        : []
 
     return {
       audioBuffer,

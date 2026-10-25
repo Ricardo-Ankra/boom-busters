@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { matchedHints } from './settings'
 import type { PhonemeHint, StabilityTier } from './settings'
+import { spokenNumbers } from './spoken-numbers'
 
 /**
  * The voice stage's shared vocabulary (build spec sections 5, 6 and 7).
@@ -117,6 +118,12 @@ export function takeIdempotencyKey(input: {
         ...(input.stability === undefined || input.stability === 'natural'
           ? []
           : [`stability=${input.stability}`]),
+        // The British number reading (`spokenNumbers`) changes how a paragraph
+        // is spoken without changing a character of it, so it marks the key
+        // the same way. Only where it rewrites something: a paragraph without
+        // a 660 or a 2008 keeps the key its take was bought under. The suffix
+        // names the rule's version; a change to what it rewrites bumps it.
+        ...(spokenNumbers(input.text).replacements.length === 0 ? [] : ['numbers=british-v1']),
         // A NUL, written as an escape because it was previously a literal control
         // character sitting invisibly in this file — source that reads `join('')`
         // and is not. The separator itself is load-bearing and must not change:
