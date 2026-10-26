@@ -7,6 +7,7 @@ import {
   GraphicBriefSchema,
   HeadlineBriefSchema,
   HERO_SLOTS_ENABLED,
+  MIN_SHOT_SECONDS,
   PlannedBriefSchema,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
@@ -870,6 +871,27 @@ describe('claimHasSourcePage', () => {
     expect(claimHasSourcePage({ id: ID, sourceType: 'other', sourceUrl: null })).toBe(false)
     expect(claimHasSourcePage({ id: ID, sourceType: 'other', sourceUrl: 'not a url' })).toBe(false)
     expect(claimHasSourcePage(undefined)).toBe(false)
+  })
+})
+
+describe('minimum seconds per shot type (the stretch re-plan design)', () => {
+  it('holds the minimum seconds for every shot type', () => {
+    expect(MIN_SHOT_SECONDS).toEqual({
+      headline: 5,
+      social: 5,
+      chart: 4,
+      map: 4,
+      stock: 3,
+      archival: 3,
+      still: 3,
+      graphic: 3,
+      hero: 3,
+    })
+  })
+
+  it('accepts a stretch job on a slot', () => {
+    const job = { kind: 'stretch', jobId: newId(), startedAt: new Date().toISOString() }
+    expect(SlotJobSchema.parse(job).kind).toBe('stretch')
   })
 })
 
