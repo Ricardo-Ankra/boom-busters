@@ -106,6 +106,18 @@ describe('plannedToRows', () => {
     ])
   })
 
+  it('names the planned slot each row came from, past the sort and the drops', () => {
+    // Paragraph 5 does not exist in ch-a, so that slot is dropped.
+    const { rows, from } = plannedToRows({
+      chapterId: 'ch-a',
+      planned: [stock(1, 4), stock(5, 4), stock(0, 5), stock(0, 3)],
+      paragraphs,
+      claims: [],
+    })
+    expect(rows).toHaveLength(3)
+    expect(from).toEqual([2, 3, 0])
+  })
+
   it('never emits a slot shorter than the floor, even when the paragraph is spent', () => {
     const { rows } = plannedToRows({
       chapterId: 'ch-a',

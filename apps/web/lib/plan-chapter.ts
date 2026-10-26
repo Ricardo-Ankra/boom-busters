@@ -1,124 +1,114 @@
-import {
-  BANNED_PROMPT_WORDS,
-  buildShotListRequest,
-  buildShotRepairRequest,
-  parseShotList,
-  parseShotRepair,
-  withoutBannedWords,
-} from '@boom-busters/providers'
-import type { LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
-import { craftFindings, findingContext, repairTargets } from '@boom-busters/schemas'
-import type { DirectorsBook, FindingContext, LogoIndex, PlannedSlot } from '@boom-busters/schemas'
+import { parseShotList, withoutBannedWords } from '@boom-busters/providers'
+import type { PlannedSlot } from '@boom-busters/schemas'
 import { answerOrStop, callForAnswer } from '@/lib/answer'
-import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
+import {
+  chapterFindingContext,
+  chapterShotListRequest,
+  repairPlannedChapter,
+  type CompleteFn,
+  type PlanChapterInput,
+} from '@/lib/plan-shared'
+import { planStretchWith } from '@/lib/plan-stretch'
+import { plannedToRows } from '@/inngest/lib/shot-list'
+import { cutStretch, type StretchRow } from '@/inngest/lib/stretch'
+import { repairStretches, timingFindings } from '@/inngest/lib/timing-findings'
+
+export { chapterShotListRequest, type CompleteFn, type PlanChapterInput } from '@/lib/plan-shared'
 
 /**
- * One chapter's shot list, planned through whatever completes a request
- * (decision 287). The app passes its ledgered `callLlm`; the live harness
- * passes a Google call held under its own spend cap. Both then plan under
- * exactly the same request, retry and repair rules.
- */
-export type CompleteFn = (
-  request: LLMTaskRequest,
-  purpose: 'plan' | 'repair' | 'retry: cut off' | 'retry: refused',
-) => Promise<{ text: string; truncated?: boolean }>
-
-export interface PlanChapterInput {
-  caseTitle: string
-  chapter: { id: string; title: string; number: number }
-  paragraphs: readonly TimedParagraph[]
-  claims: readonly ScriptClaim[]
-  direction: DirectorsBook | null
-  photographed?: readonly string[]
-  sets?: readonly { name: string; look: string; layout?: string }[]
-  logos?: readonly LogoIndex[]
-}
-
-/**
- * The shot-list request for one chapter, or null when the chapter has no
- * narration to plan. Shared by planning and by the Fix button (decision 271),
- * so a repair is asked under exactly the rules and context the plan was.
- */
-export function chapterShotListRequest(input: PlanChapterInput): LLMTaskRequest | null {
-  const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
-  if (paragraphs.length === 0) return null
-  return buildShotListRequest({
-    caseTitle: input.caseTitle,
-    chapterTitle: input.chapter.title,
-    chapterNumber: input.chapter.number,
-    paragraphs,
-    claims: input.claims,
-    ...(input.direction ? { direction: input.direction } : {}),
-    ...(input.photographed && input.photographed.length > 0
-      ? { photographed: input.photographed }
-      : {}),
-    ...(input.sets && input.sets.length > 0
-      ? {
-          sets: input.sets.map((set) => ({
-            name: set.name,
-            look: set.look,
-            layout: set.layout,
-          })),
-        }
-      : {}),
-    logos: input.logos?.map((logo) => logo.title),
-  })
-}
-
-/**
- * One automatic repair of a freshly planned chapter (decision 271).
+ * One automatic timing repair of a freshly planned chapter (the stretch
+ * re-plan design, 3.2). The brief repair cannot move a sentence between
+ * shots, so each run of shots with a timing finding (too short, or a sentence
+ * quoted twice) is re-planned as a stretch, with the findings as its reason.
  *
- * Only `auto` findings are sent, so a clean chapter, or one whose only
- * findings are the producer's to weigh, costs nothing. `parseShotRepair`
- * refuses any change of type here, so this can never turn a free slot into a
- * paid one unasked. Any failure, budget included, keeps the plan exactly as
- * planned: an unrepaired plan is still a valid plan, and the Fix button can
- * repair it later.
+ * One pass, never a loop: whatever the pass leaves flagged stays flagged and
+ * shows as a timing note. A stretch that stops, or any failure, budget
+ * included, keeps its slots exactly as planned, as the brief repair does.
+ * Narration without word timings cannot be cut into a stretch, and its
+ * chapter keeps its plan.
  */
-async function repairPlannedChapter(
+async function repairChapterTiming(
   complete: CompleteFn,
-  input: {
-    request: LLMTaskRequest
-    slots: PlannedSlot[]
-    chapterNumber: number
-    context: FindingContext
-  },
+  input: PlanChapterInput,
+  slots: PlannedSlot[],
 ): Promise<PlannedSlot[]> {
-  const findings = craftFindings(
-    input.slots.map((slot) => ({ brief: slot.brief, chapter: `chapter ${input.chapterNumber}` })),
-    input.context,
-  )
-  const targets = repairTargets(findings, ['auto'])
-  if (targets.length === 0) return input.slots
-  const originals = targets.map((target) => input.slots[target.slotIndex]!.brief)
-  try {
-    const answer = await complete(
-      buildShotRepairRequest(
-        input.request,
-        targets.map((target, at) => ({
-          brief: originals[at],
-          problems: target.findings.map((finding) => finding.message),
-        })),
-        { allowStockToStill: false },
-      ),
-      'repair',
-    )
-    const replacements = parseShotRepair(answer.text, originals, { allowStockToStill: false })
-    const repaired = [...input.slots]
-    targets.forEach((target, at) => {
-      const brief = replacements[at]
-      if (brief) {
-        repaired[target.slotIndex] = {
-          ...repaired[target.slotIndex]!,
-          brief: withoutBannedWords(brief),
-        }
-      }
+  const conversion = plannedToRows({
+    chapterId: input.chapter.id,
+    planned: slots,
+    paragraphs: input.paragraphs,
+    claims: input.claims,
+    logos: input.logos,
+  })
+  // Synthetic ids: these rows are not stored yet, and a cut needs only to
+  // tell them apart.
+  const rows: StretchRow[] = conversion.rows.map((row, at) => ({
+    id: String(at),
+    chapterId: input.chapter.id,
+    index: at,
+    type: row.type,
+    brief: row.brief,
+    startMs: row.startMs ?? 0,
+    durationMs: row.durationMs ?? 0,
+    coversText: slots[conversion.from[at]!]!.brief.coversText ?? null,
+  }))
+  const findings = timingFindings(rows, input.paragraphs)
+  const stretches = repairStretches(findings)
+  if (stretches.length === 0) return slots
+
+  const repairs: { at: number; replaced: Set<number>; slots: PlannedSlot[] }[] = []
+  // Rows already re-planned, so a later stretch reads the chapter as it will be.
+  const replacedRows = new Set<number>()
+  let headlineAdded = false
+  // Last stretch first. The splice below does not depend on the order; the
+  // headline bookkeeping does, and reads whatever was re-planned before it.
+  for (const indexes of [...stretches].reverse()) {
+    const cut = cutStretch({
+      chapterRows: rows,
+      selectedIds: indexes.map(String),
+      paragraphs: input.paragraphs,
     })
-    return repaired
-  } catch (error) {
-    console.warn('[visuals] chapter repair skipped; the plan is kept as planned', error)
-    return input.slots
+    if (!cut.ok) continue
+    const inside = new Set(indexes)
+    const headlineElsewhere =
+      headlineAdded ||
+      rows.some((row, at) => !inside.has(at) && !replacedRows.has(at) && row.type === 'headline')
+    const reason = findings
+      .filter((finding) => finding.stretch.every((at) => inside.has(at)))
+      .map((finding) => finding.message)
+      .join('; ')
+    try {
+      const outcome = await planStretchWith(complete, {
+        ...input,
+        stretch: cut.stretch,
+        before: cut.before?.brief ?? null,
+        after: cut.after?.brief ?? null,
+        headlineAllowed: !headlineElsewhere,
+        reason,
+        startIndex: 0,
+      })
+      if (!outcome.ok) {
+        console.warn('[visuals] timing repair kept the plan as planned', outcome.issue)
+        continue
+      }
+      const replaced = new Set(indexes.map((at) => conversion.from[at]!))
+      repairs.push({ at: Math.min(...replaced), replaced, slots: outcome.slots })
+      for (const at of indexes) replacedRows.add(at)
+      if (outcome.rows.some((row) => row.type === 'headline')) headlineAdded = true
+    } catch (error) {
+      console.warn('[visuals] timing repair kept the plan as planned', error)
+    }
   }
+
+  // One splice over the planned order: each answer goes where the first slot
+  // it replaces was, and every slot it replaces goes. Done in a single pass
+  // because a model may emit a later paragraph's slot between two of an
+  // earlier one's, so two stretches' planned positions can interleave.
+  const replaced = new Set(repairs.flatMap((repair) => [...repair.replaced]))
+  const answers = new Map(repairs.map((repair) => [repair.at, repair.slots]))
+  return slots.flatMap((slot, at) => [
+    ...(answers.get(at) ?? []),
+    ...(replaced.has(at) ? [] : [slot]),
+  ])
 }
 
 export async function planChapterWith(
@@ -142,16 +132,10 @@ export async function planChapterWith(
     request,
     slots: parsed.slots.map((slot) => ({ ...slot, brief: withoutBannedWords(slot.brief) })),
     chapterNumber: input.chapter.number,
-    context: findingContext({
-      direction: input.direction,
-      cast: (input.photographed ?? []).map((name) => ({ name, photographed: true })),
-      sets: (input.sets ?? []).map((set) => ({
-        name: set.name,
-        look: set.look,
-        layout: set.layout,
-      })),
-      bannedWords: BANNED_PROMPT_WORDS,
-    }),
+    context: chapterFindingContext(input),
   })
-  return { slots, malformed: parsed.malformed.length }
+  return {
+    slots: await repairChapterTiming(complete, input, slots),
+    malformed: parsed.malformed.length,
+  }
 }

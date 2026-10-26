@@ -209,6 +209,11 @@ export interface PlannedConversion {
   rows: NewShotSlot[]
   /** Chart slots that cited claims outside the list — dropped, and named. */
   rejected: { paragraphIndex: number; reason: string }[]
+  /**
+   * For each row, the index in `planned` it came from: rows are sorted by
+   * paragraph and some slots are dropped, so row and slot positions differ.
+   */
+  from: number[]
 }
 
 /**
@@ -248,14 +253,17 @@ export function plannedToRows(input: {
   const rows: NewShotSlot[] = []
   const covers: (string | null)[] = []
   const rejected: PlannedConversion['rejected'] = []
+  const from: number[] = []
   const cursors = new Map<number, number>()
   let index = input.startIndex ?? 0
   let headlines = 0
 
   // Stable order: by paragraph, then as emitted within it.
-  const ordered = [...input.planned].sort((a, b) => a.paragraphIndex - b.paragraphIndex)
+  const ordered = input.planned
+    .map((slot, at) => ({ slot, at }))
+    .sort((a, b) => a.slot.paragraphIndex - b.slot.paragraphIndex)
 
-  for (const slot of ordered) {
+  for (const { slot, at } of ordered) {
     const paragraph = spans.get(slot.paragraphIndex)
     if (!paragraph) {
       rejected.push({
@@ -306,6 +314,7 @@ export function plannedToRows(input: {
       durationMs,
     })
     covers.push(brief.coversText)
+    from.push(at)
 
     cursors.set(slot.paragraphIndex, cursor + durationMs)
     index += 1
@@ -326,6 +335,7 @@ export function plannedToRows(input: {
   return {
     rows: rows.map((row, at) => ({ ...row, ...times[at]! })),
     rejected,
+    from,
   }
 }
 

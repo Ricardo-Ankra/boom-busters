@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ValidationError } from '@boom-busters/schemas'
+import type { LLMTaskRequest } from '@boom-busters/providers'
+import { BudgetExceededError, ValidationError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { planChapterWith } from './plan-chapter'
 
@@ -12,6 +13,7 @@ const paragraphs = [
     seconds: 8,
     startMs: 0,
     durationMs: 8000,
+    words: [],
   },
 ]
 const input = {
@@ -97,5 +99,123 @@ describe('planChapterWith', () => {
       .mockRejectedValueOnce(new ValidationError('down'))
     const result = await planChapterWith(complete, input)
     expect(result?.slots).toHaveLength(1)
+  })
+})
+
+describe('planChapterWith, the automatic timing repair (the stretch re-plan design, 3.2)', () => {
+  // The Theranos pair: a headline quoting the whole paragraph, then a stock
+  // shot quoting its second sentence, so the headline is on screen for 2 s
+  // and both shots quote the CNBC line.
+  const TEXT =
+    'Other tallies went higher. In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.'
+  const SECOND = 'In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.'
+  const tokens = TEXT.split(' ')
+  const timed = {
+    chapterId: 'ch1',
+    index: 0,
+    text: TEXT,
+    startMs: 0,
+    durationMs: tokens.length * 500,
+    words: tokens.map((text, i) => ({ text, startMs: i * 500 })),
+  }
+  const news = {
+    id: 'claim-cnbc',
+    text: 'CNBC reported that Holmes raised 945 million.',
+    sourceUrl: 'https://www.cnbc.com/2021/09/08/theranos-trial-investors.html',
+    confidence: 'high',
+    sourceType: 'major_outlet',
+  }
+  const theranosInput = { ...input, paragraphs: [timed], claims: [news] }
+  const headline = (coversText: string, seconds: number) => ({
+    paragraphIndex: 0,
+    seconds,
+    brief: {
+      type: 'headline',
+      coversText,
+      description: 'The CNBC report on the morning it ran.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      sourceRef: 1,
+    },
+  })
+  const stock = (coversText: string, seconds: number) => ({
+    paragraphIndex: 0,
+    seconds,
+    brief: {
+      type: 'stock',
+      coversText,
+      description: 'An empty open-plan office at dusk, desks cleared.',
+      shotSize: 'wide',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      query: 'empty office dusk',
+      rejectionCriteria: ['no watermarks'],
+    },
+  })
+  const pair = JSON.stringify({ slots: [headline(TEXT, 2), stock(SECOND, 6.5)] })
+  const whole = JSON.stringify({ slots: [headline(TEXT, 8.5)] })
+
+  function scripted(...texts: string[]) {
+    const purposes: string[] = []
+    const requests: LLMTaskRequest[] = []
+    const complete = vi.fn(async (request: LLMTaskRequest, purpose: string) => {
+      purposes.push(purpose)
+      requests.push(request)
+      return { text: texts[Math.min(purposes.length - 1, texts.length - 1)]! }
+    })
+    return { complete, purposes, requests }
+  }
+
+  it('re-plans the Theranos pair once after planning', async () => {
+    const { complete: scriptedComplete, purposes, requests } = scripted(pair, whole)
+    const planned = await planChapterWith(scriptedComplete, theranosInput)
+    expect(planned!.slots.map((s) => s.brief.type)).toEqual(['headline'])
+    expect(purposes).toEqual(['plan', 'stretch'])
+    const asked = requests[1]!.messages.at(-1)!.content
+    expect(asked).toContain(
+      'Why: this news headline is on screen for 2.0 s; it needs at least 5 s; this shot and the next both quote',
+    )
+  })
+
+  it('keeps the planned slots when the timing repair stops', async () => {
+    const { complete, purposes } = scripted(pair, 'no json here')
+    const planned = await planChapterWith(complete, theranosInput)
+    expect(planned!.slots.map((s) => s.brief.type)).toEqual(['headline', 'stock'])
+    expect(purposes).toEqual(['plan', 'stretch', 'retry: refused'])
+  })
+
+  it('makes no extra call for a chapter with no timing finding', async () => {
+    const { complete, purposes } = scripted(whole)
+    const planned = await planChapterWith(complete, theranosInput)
+    expect(planned!.slots).toHaveLength(1)
+    expect(purposes).toEqual(['plan'])
+  })
+
+  it('skips the repair for narration without word timings', async () => {
+    const { complete, purposes } = scripted(pair)
+    const planned = await planChapterWith(complete, {
+      ...theranosInput,
+      paragraphs: [{ ...timed, words: [] }],
+    })
+    expect(planned!.slots.map((s) => s.brief.type)).toEqual(['headline', 'stock'])
+    expect(purposes).toEqual(['plan'])
+  })
+
+  it('keeps the plan when the repair hits the budget', async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce({ text: pair })
+      .mockRejectedValueOnce(
+        new BudgetExceededError({
+          provider: 'google',
+          operation: 'llm.shotlist',
+          budgetUsd: 30,
+          monthSpendUsd: 30,
+          estimateUsd: 0.01,
+        }),
+      )
+    const planned = await planChapterWith(complete, theranosInput)
+    expect(planned!.slots.map((s) => s.brief.type)).toEqual(['headline', 'stock'])
   })
 })
