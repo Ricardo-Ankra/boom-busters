@@ -8,6 +8,7 @@ import {
   VisualsRedirectRequestedSchema,
   VisualsRefetchRequestedSchema,
   VisualsReplanRequestedSchema,
+  VisualsStretchRequestedSchema,
 } from './events'
 
 const projectId = fixtureId('project', 1)
@@ -202,6 +203,46 @@ describe('job ids on the side-job events (decision 286)', () => {
   it('refuses a job id that is not an id', () => {
     expect(
       VisualsRedirectRequestedSchema.safeParse({ projectId, slotId, jobId: 'not-an-id' }).success,
+    ).toBe(false)
+  })
+})
+
+describe('the stretch re-plan event (the stretch re-plan design, 3.3)', () => {
+  const chapterId = newId()
+  const jobId = newId()
+
+  it('carries the chapter, the selected slots, an optional note and the job id', () => {
+    const slotIds = [newId(), newId()]
+    expect(
+      parseEventData('visuals/stretch.requested', { projectId, chapterId, slotIds, jobId }),
+    ).toEqual({ projectId, chapterId, slotIds, jobId })
+    expect(
+      parseEventData('visuals/stretch.requested', {
+        projectId,
+        chapterId,
+        slotIds,
+        note: 'keep the headline up',
+        jobId,
+      }).note,
+    ).toBe('keep the headline up')
+  })
+
+  it('refuses an empty selection, a missing job id and a note over 500 characters', () => {
+    const slotIds = [newId()]
+    expect(
+      VisualsStretchRequestedSchema.safeParse({ projectId, chapterId, slotIds: [], jobId }).success,
+    ).toBe(false)
+    expect(VisualsStretchRequestedSchema.safeParse({ projectId, chapterId, slotIds }).success).toBe(
+      false,
+    )
+    expect(
+      VisualsStretchRequestedSchema.safeParse({
+        projectId,
+        chapterId,
+        slotIds,
+        note: 'x'.repeat(501),
+        jobId,
+      }).success,
     ).toBe(false)
   })
 })

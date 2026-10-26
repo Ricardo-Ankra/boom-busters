@@ -16,6 +16,7 @@ import { slotRefetcher } from './slot-refetcher'
 import { slotRebriefer } from './slot-rebriefer'
 import { slotRedirector } from './slot-redirector'
 import { slotRetyper } from './slot-retyper'
+import { stretchReplanner } from './stretch-replanner'
 import { visualsReplanner } from './visuals-replanner'
 import { visualsRunner } from './visuals-runner'
 import { voiceRetaker } from './voice-retaker'
@@ -59,6 +60,7 @@ export const functions = [
   slotRebriefer,
   slotRedirector,
   visualsReplanner,
+  stretchReplanner,
   assemblyRunner,
   draftRunner,
   renderRunner,
@@ -91,6 +93,7 @@ export {
   slotRedirector,
   slotRefetcher,
   slotRetyper,
+  stretchReplanner,
   visualsReplanner,
   visualsRunner,
   voiceRunner,
