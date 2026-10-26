@@ -1,4 +1,4 @@
-import { ShotListOutputSchema } from '@boom-busters/schemas'
+import { MIN_SHOT_SECONDS, ShotListOutputSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildShotListRequest,
@@ -437,10 +437,17 @@ describe('parseShotList', () => {
   })
 })
 
-const SENTENCE_PARAGRAPHS: ShotParagraph[] = [
-  { index: 0, text: 'One thing. Two things. Three things. Four things.', seconds: 12 },
-  { index: 1, text: 'Alpha one. Alpha two. Alpha three.', seconds: 9 },
-  { index: 2, text: 'Beta one. Beta two. Beta three.', seconds: 9 },
+/** `n` sentences of five words each, so a run of them is easy to time. */
+const lines = (name: string, n: number): string =>
+  Array.from({ length: n }, (_, at) => `${name} line ${at + 1} stands here.`).join(' ')
+const words = (text: string): number => text.split(/\s+/).filter(Boolean).length
+
+// Eight sentences over 16 s: 2 s a sentence, room for a stock slot and the
+// extras, each at or over its type's minimum.
+const LONG_PARAGRAPHS: ShotParagraph[] = [
+  { index: 0, text: lines('Alpha', 8), seconds: 16 },
+  { index: 1, text: lines('Beta', 8), seconds: 16 },
+  { index: 2, text: lines('Gamma', 8), seconds: 16 },
 ]
 
 describe('the chapter planning rules about minimums and sentences', () => {
@@ -454,7 +461,7 @@ describe('the chapter planning rules about minimums and sentences', () => {
 describe('mockShotList quotes', () => {
   it('gives each mock slot its own sentence', () => {
     const { slots } = mockShotList({
-      paragraphs: SENTENCE_PARAGRAPHS,
+      paragraphs: LONG_PARAGRAPHS,
       claimCount: 2,
       newsClaimRefs: [1],
       socialClaimRefs: [2],
@@ -469,40 +476,67 @@ describe('mockShotList quotes', () => {
   })
 
   it("splits a paragraph's seconds between the slots on it", () => {
-    const { slots } = mockShotList({ paragraphs: SENTENCE_PARAGRAPHS, claimCount: 2 })
+    const { slots } = mockShotList({ paragraphs: LONG_PARAGRAPHS, claimCount: 2 })
     const onSecond = slots.filter((slot) => slot.paragraphIndex === 1)
     expect(onSecond.length).toBeGreaterThan(1)
-    expect(onSecond.reduce((sum, slot) => sum + slot.seconds, 0)).toBeCloseTo(9, 5)
+    expect(onSecond.reduce((sum, slot) => sum + slot.seconds, 0)).toBeCloseTo(16, 5)
   })
 
-  it('moves an extra to the next paragraph that has a free sentence', () => {
+  it('moves an extra to the next paragraph that can hold it', () => {
     const paragraphs: ShotParagraph[] = [
-      { index: 0, text: 'Only one sentence here.', seconds: 6 },
-      { index: 1, text: 'Two here. And a second.', seconds: 8 },
+      { index: 0, text: lines('Short', 1), seconds: 2 },
+      { index: 1, text: lines('Beta', 8), seconds: 16 },
     ]
     const { slots } = mockShotList({ paragraphs, claimCount: 2 })
     const chart = slots.find((slot) => slot.brief.type === 'chart')
     expect(chart?.paragraphIndex).toBe(1)
-    expect(chart?.brief.coversText).toBe('And a second.')
-    // The map has no free sentence left anywhere, so it is not planned.
-    expect(slots.some((slot) => slot.brief.type === 'map')).toBe(false)
+    expect(chart?.brief.coversText).toBe('Beta line 3 stands here. Beta line 4 stands here.')
+  })
+
+  it('plans no slot under its type minimum on a short paragraph', () => {
+    const paragraphs: ShotParagraph[] = [
+      { index: 0, text: lines('Quick', 3), seconds: 3 },
+      { index: 1, text: lines('Brief', 3), seconds: 3 },
+    ]
+    const { slots } = mockShotList({
+      paragraphs,
+      claimCount: 2,
+      newsClaimRefs: [1],
+      socialClaimRefs: [2],
+      claimTexts: ['Revenue fell 40%', 'x'],
+    })
+    for (const slot of slots) {
+      const paragraph = paragraphs[slot.paragraphIndex] as ShotParagraph
+      const estimate = (words(slot.brief.coversText) / words(paragraph.text)) * paragraph.seconds
+      expect(estimate).toBeGreaterThanOrEqual(MIN_SHOT_SECONDS[slot.brief.type])
+      expect(slot.seconds).toBeGreaterThanOrEqual(MIN_SHOT_SECONDS[slot.brief.type])
+    }
+    // Each paragraph is only long enough for its stock slot, which keeps all of it.
+    expect(slots.map((slot) => slot.brief.type)).toEqual(['stock', 'stock'])
+    expect(slots[0]?.brief.coversText).toBe(paragraphs[0]?.text)
+  })
+
+  it('keeps the extras on paragraphs long enough for them', () => {
+    const { slots } = mockShotList({
+      paragraphs: LONG_PARAGRAPHS,
+      claimCount: 2,
+      newsClaimRefs: [1],
+      claimTexts: ['Revenue fell 40%', 'x'],
+    })
+    const types = slots.map((slot) => slot.brief.type)
+    expect(types).toEqual(expect.arrayContaining(['chart', 'map', 'graphic', 'headline']))
+    for (const slot of slots) {
+      const paragraph = LONG_PARAGRAPHS[slot.paragraphIndex] as ShotParagraph
+      const estimate = (words(slot.brief.coversText) / words(paragraph.text)) * paragraph.seconds
+      expect(estimate).toBeGreaterThanOrEqual(MIN_SHOT_SECONDS[slot.brief.type])
+    }
+    // The slots on a paragraph quote all of it, once, in order.
+    const first = slots.filter((slot) => slot.paragraphIndex === 0)
+    expect(first.map((slot) => slot.brief.coversText).join(' ')).toBe(LONG_PARAGRAPHS[0]?.text)
   })
 })
 
-// Three sentences a paragraph: the stock slot quotes the first and the extras
-// (chart, map, headline, graphic, social) have the second to quote.
-const THREE_SENTENCE_PARAGRAPHS: ShotParagraph[] = [
-  {
-    index: 0,
-    text: 'By June, the auditors could not find the money. They kept looking. Nothing turned up.',
-    seconds: 11.4,
-  },
-  {
-    index: 1,
-    text: 'The trail led from Munich to Manila. It ended in a trust. Nobody owned it.',
-    seconds: 8.2,
-  },
-]
+const THREE_SENTENCE_PARAGRAPHS = LONG_PARAGRAPHS.slice(0, 2)
 
 describe('mockShotList', () => {
   it('emits a valid plan with a chart and a map, so the board UI is exercised', () => {
@@ -535,14 +569,7 @@ describe('mockShotList', () => {
   })
 
   it('emits a social card, on the third paragraph, only when socialClaimRefs is given (decision 284)', () => {
-    const paragraphsWithThird: ShotParagraph[] = [
-      ...THREE_SENTENCE_PARAGRAPHS,
-      {
-        index: 2,
-        text: 'EY refused to sign the accounts. It said so on 18 June. Nobody argued.',
-        seconds: 6,
-      },
-    ]
+    const paragraphsWithThird = LONG_PARAGRAPHS
 
     const without = mockShotList({ paragraphs: paragraphsWithThird, claimCount: 2 })
     expect(without.slots.every((slot) => slot.brief.type !== 'social')).toBe(true)

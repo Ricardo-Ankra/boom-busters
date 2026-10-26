@@ -2,6 +2,7 @@ import {
   figureDigitGroups,
   GRAPHIC_INTENT_MAX,
   GRAPHIC_INTENT_REFS_MAX,
+  MIN_SHOT_SECONDS,
   HERO_SLOTS_ENABLED,
   PlannedSlotSchema,
   PlannedBriefSchema,
@@ -639,23 +640,72 @@ export function mockShotList(input: {
   /** Titles the logo library holds (decision 268, Plan B); accepted for callers, unused since decision 289. */
   logoTitles?: readonly string[]
 }): ShotListOutput {
-  const sentences = input.paragraphs.map((paragraph) => splitSentences(paragraph.text))
-  // The next sentence of each paragraph that no slot quotes yet. Every
-  // paragraph's stock slot quotes its first, so extras start from the second.
-  const nextFree = input.paragraphs.map(() => 1)
-  const planned: { at: number; brief: PlannedBrief }[] = input.paragraphs.map((_, index) => ({
-    at: index,
-    brief: mockStockBrief(sentences[index]?.[0] ?? '[mock] empty paragraph', index),
-  }))
+  // Each paragraph as whole sentences, with where each one sits in the text
+  // (so a quote is cut from the paragraph exactly as written) and its words.
+  const parts = input.paragraphs.map((paragraph) => {
+    let cursor = 0
+    const sentences = splitSentences(paragraph.text).map((text) => {
+      const start = paragraph.text.indexOf(text, cursor)
+      cursor = start + text.length
+      return { start, end: cursor, words: text.split(/\s+/).filter(Boolean).length }
+    })
+    return { sentences, words: sentences.reduce((sum, sentence) => sum + sentence.words, 0) }
+  })
+  // What a run of sentences is on screen for: mock TTS spaces words evenly
+  // over the take, so its share of the paragraph's words is its share of the
+  // paragraph's seconds.
+  const secondsOf = (at: number, from: number, to: number): number => {
+    const paragraph = input.paragraphs[at] as ShotParagraph
+    const part = parts[at]!
+    const words = part.sentences.slice(from, to).reduce((sum, sentence) => sum + sentence.words, 0)
+    return part.words === 0 ? paragraph.seconds : (words / part.words) * paragraph.seconds
+  }
+  // Every slot quotes consecutive whole sentences [start, end) of one
+  // paragraph, enough of them to reach its type's minimum (the stretch re-plan
+  // design). The stock slot's run comes first; an extra takes the next free
+  // run, moves to a later paragraph when too little is left to reach its
+  // minimum, and is dropped when no paragraph can hold it. A paragraph's last
+  // slot keeps any sentences left over, so each sentence is quoted once.
+  const planned: {
+    at: number
+    start: number
+    end: number
+    build: (coversText: string) => PlannedBrief
+  }[] = []
+  const nextFree = input.paragraphs.map(() => 0)
 
-  // Plan an extra on the first paragraph from `from` on that has a free
-  // sentence; with none free anywhere, plan nothing.
-  const extra = (from: number, make: (coversText: string) => PlannedBrief): void => {
+  const run = (at: number, minimum: number, whole: boolean): number | undefined => {
+    const count = parts[at]!.sentences.length
+    const start = nextFree[at] as number
+    let end = start + 1
+    while (end < count && secondsOf(at, start, end) < minimum) end += 1
+    if (start >= count) return undefined
+    if (secondsOf(at, start, end) < minimum && !whole) return undefined
+    return end
+  }
+
+  input.paragraphs.forEach((_, at) => {
+    const end = run(at, MIN_SHOT_SECONDS.stock, true)
+    if (end !== undefined) nextFree[at] = end
+    planned.push({
+      at,
+      start: 0,
+      end: end ?? 0,
+      build: (coversText) => mockStockBrief(coversText || '[mock] empty paragraph', at),
+    })
+  })
+
+  const extra = (
+    from: number,
+    type: PlannedBrief['type'],
+    build: (coversText: string) => PlannedBrief,
+  ): void => {
     for (let at = from; at < input.paragraphs.length; at += 1) {
-      const text = sentences[at]?.[nextFree[at] as number]
-      if (text === undefined) continue
-      nextFree[at] = (nextFree[at] as number) + 1
-      planned.push({ at, brief: make(text) })
+      const start = nextFree[at] as number
+      const end = run(at, MIN_SHOT_SECONDS[type], false)
+      if (end === undefined) continue
+      nextFree[at] = end
+      planned.push({ at, start, end, build })
       return
     }
   }
@@ -663,7 +713,7 @@ export function mockShotList(input: {
   const [first, second, third] = input.paragraphs
 
   if (first && input.claimCount > 0) {
-    extra(0, (coversText) => ({
+    extra(0, 'chart', (coversText) => ({
       type: 'chart',
       coversText,
       description: '[mock] Share-price collapse, drawn on in the accent colour.',
@@ -689,7 +739,7 @@ export function mockShotList(input: {
   }
 
   if (second) {
-    extra(1, (coversText) => ({
+    extra(1, 'map', (coversText) => ({
       type: 'map',
       coversText,
       description: '[mock] The money moves from Munich to Manila.',
@@ -712,7 +762,7 @@ export function mockShotList(input: {
   const graphicClaimText = input.claimTexts?.[0] ?? ''
   const graphicDigits = figureDigitGroups(graphicClaimText)[0]
   if (first && input.claimCount > 0 && graphicDigits !== undefined) {
-    extra(0, (coversText) => ({
+    extra(0, 'graphic', (coversText) => ({
       type: 'graphic',
       coversText,
       description: '[mock] The figure, large, with the mark beside it.',
@@ -728,7 +778,7 @@ export function mockShotList(input: {
   // show. Mirrors the real rule: it cites a claim, and nothing else.
   if (second && input.newsClaimRefs && input.newsClaimRefs.length > 0) {
     const sourceRef = input.newsClaimRefs[0] as number
-    extra(1, (coversText) => ({
+    extra(1, 'headline', (coversText) => ({
       type: 'headline',
       coversText,
       description: '[mock] The morning the story broke.',
@@ -745,7 +795,7 @@ export function mockShotList(input: {
   // card, so a chapter with both never fights over the same paragraph.
   if (third && input.socialClaimRefs && input.socialClaimRefs.length > 0) {
     const sourceRef = input.socialClaimRefs[0] as number
-    extra(2, (coversText) => ({
+    extra(2, 'social', (coversText) => ({
       type: 'social',
       coversText,
       description: '[mock] The post the narration quotes.',
@@ -756,15 +806,20 @@ export function mockShotList(input: {
     }))
   }
 
-  const perParagraph = input.paragraphs.map(
-    (_, at) => planned.filter((entry) => entry.at === at).length,
-  )
-  const slots: ShotListOutput['slots'] = planned.map(({ at, brief }) => {
+  // A paragraph's last slot runs to its end, so no sentence is left unquoted.
+  input.paragraphs.forEach((_, at) => {
+    const last = planned.findLast((entry) => entry.at === at)
+    if (last) last.end = parts[at]!.sentences.length
+  })
+  const slots: ShotListOutput['slots'] = planned.map(({ at, start, end, build }) => {
     const paragraph = input.paragraphs[at] as ShotParagraph
+    const sentences = parts[at]!.sentences
+    const quote =
+      end > start ? paragraph.text.slice(sentences[start]!.start, sentences[end - 1]!.end) : ''
     return {
       paragraphIndex: paragraph.index,
-      seconds: paragraph.seconds / (perParagraph[at] as number),
-      brief,
+      seconds: end > start ? secondsOf(at, start, end) : paragraph.seconds,
+      brief: build(quote),
     }
   })
 

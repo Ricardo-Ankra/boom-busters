@@ -79,10 +79,28 @@ describe('mockStretchPlan', () => {
     expect(() => ShotListOutputSchema.parse({ slots })).not.toThrow()
     expect(slots).toHaveLength(2)
     expect(slots[0]!.brief.coversText.startsWith('Other tallies went higher.')).toBe(true)
-    expect(slots[1]!.brief.coversText).toBe('In 2021, it rose. Then it fell.')
-    expect(slots[0]!.paragraphIndex).toBe(0)
     const total = slots.reduce((sum, slot) => sum + slot.seconds, 0)
     expect(total).toBeCloseTo(12.4, 5)
+  })
+
+  it('keeps each quote inside one piece when the stretch has two or more', () => {
+    const { slots } = mockStretchPlan(input)
+    expect(slots.map((slot) => slot.brief.coversText)).toEqual([
+      'Other tallies went higher. In 2021, it rose.',
+      'Then it fell.',
+    ])
+    expect(slots.map((slot) => slot.paragraphIndex)).toEqual([0, 1])
+    expect(slots[0]!.seconds).toBe(9)
+    expect(slots[1]!.seconds).toBeCloseTo(3.4, 5)
+  })
+
+  it('splits a one-piece stretch after its first sentence', () => {
+    const { slots } = mockStretchPlan({ pieces: [input.pieces[0]!] })
+    expect(slots.map((slot) => slot.brief.coversText)).toEqual([
+      'Other tallies went higher.',
+      'In 2021, it rose.',
+    ])
+    expect(slots.reduce((sum, slot) => sum + slot.seconds, 0)).toBeCloseTo(9, 5)
   })
 
   it('plans one slot for a one-sentence stretch, in the piece it starts in', () => {

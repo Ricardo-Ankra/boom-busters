@@ -68,52 +68,59 @@ export function buildStretchRequest(
 }
 
 /**
- * Mock answer for a stretch: one stock slot per sentence, at most two. The
- * first quotes the first sentence, the second the rest from the second
- * sentence on, so the pair covers the stretch with no sentence quoted twice.
+ * Mock answer for a stretch: stock slots, at most two. A quote never joins
+ * text across a paragraph boundary. With two or more pieces the first slot
+ * quotes the first piece's sentences and the second starts at the second
+ * piece's first sentence and quotes that piece's; with one piece the first
+ * slot quotes its first sentence and the second the rest. Either way no
+ * sentence is quoted twice.
  */
 export function mockStretchPlan(input: Pick<StretchRequestInput, 'pieces'>): {
   slots: PlannedSlot[]
 } {
-  const sentences = input.pieces.flatMap((piece) =>
-    splitSentences(piece.text).map((text) => ({ text, paragraphIndex: piece.paragraphIndex })),
-  )
   const totalSeconds = input.pieces.reduce((sum, piece) => sum + piece.seconds, 0)
-  const firstPiece = input.pieces[0]?.paragraphIndex ?? 0
-  const [first, ...rest] = sentences
-  if (!first) {
-    return {
-      slots: [
-        {
-          paragraphIndex: firstPiece,
-          seconds: totalSeconds,
-          brief: mockStockBrief('[mock] empty stretch', 0),
-        },
-      ],
+  const [firstPiece, secondPiece] = input.pieces
+  const only = (text: string, paragraphIndex: number): { slots: PlannedSlot[] } => ({
+    slots: [{ paragraphIndex, seconds: totalSeconds, brief: mockStockBrief(text, 0) }],
+  })
+  if (!firstPiece) return only('[mock] empty stretch', 0)
+
+  if (secondPiece) {
+    const firstText = splitSentences(firstPiece.text).join(' ')
+    const secondText = splitSentences(secondPiece.text).join(' ')
+    if (firstText && secondText) {
+      return {
+        slots: [
+          {
+            paragraphIndex: firstPiece.paragraphIndex,
+            seconds: firstPiece.seconds,
+            brief: mockStockBrief(firstText, 0),
+          },
+          {
+            paragraphIndex: secondPiece.paragraphIndex,
+            // Any pieces past the second add their time to this slot.
+            seconds: totalSeconds - firstPiece.seconds,
+            brief: mockStockBrief(secondText, 1),
+          },
+        ],
+      }
     }
   }
-  if (rest.length === 0) {
-    return {
-      slots: [
-        {
-          paragraphIndex: first.paragraphIndex,
-          seconds: totalSeconds,
-          brief: mockStockBrief(first.text, 0),
-        },
-      ],
-    }
-  }
-  const restText = rest.map((sentence) => sentence.text).join(' ')
-  const share = first.text.length / (first.text.length + restText.length)
+
+  const [first, ...rest] = splitSentences(firstPiece.text)
+  if (!first) return only('[mock] empty stretch', firstPiece.paragraphIndex)
+  if (rest.length === 0) return only(first, firstPiece.paragraphIndex)
+  const restText = rest.join(' ')
+  const share = first.length / (first.length + restText.length)
   return {
     slots: [
       {
-        paragraphIndex: first.paragraphIndex,
+        paragraphIndex: firstPiece.paragraphIndex,
         seconds: totalSeconds * share,
-        brief: mockStockBrief(first.text, 0),
+        brief: mockStockBrief(first, 0),
       },
       {
-        paragraphIndex: rest[0]!.paragraphIndex,
+        paragraphIndex: firstPiece.paragraphIndex,
         seconds: totalSeconds * (1 - share),
         brief: mockStockBrief(restText, 1),
       },
