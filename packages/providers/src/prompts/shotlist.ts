@@ -6,6 +6,7 @@ import {
   PlannedSlotSchema,
   PlannedBriefSchema,
   renderDirectorsBook,
+  splitSentences,
   STILL_GENERATIONS,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -18,6 +19,7 @@ import type {
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
 import { DIRECTION_CRAFT } from './direction-craft'
+import { MIN_SHOT_RULE } from './min-shot-rule'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -319,6 +321,8 @@ Planning rules:
 ${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
+${MIN_SHOT_RULE}
+- Every sentence is quoted by exactly one slot: never start a slot's "coversText" inside the sentence another slot quotes.
 - Each brief is a full creative direction, not a keyword: subject, composition,
   era, mood and lighting in "description". "coversText" quotes
   the sentence(s) the slot plays under, EXACTLY as written.
@@ -580,8 +584,35 @@ export function parseShotRepairAnswers(
 // ---------------------------------------------------------------------------
 
 /**
+ * The mock's stock brief, as the mock shot list and the mock stretch plan both
+ * shape it. `index` alternates the shot size, so the plan lint has something
+ * honest to read.
+ */
+export function mockStockBrief(coversText: string, index: number): PlannedBrief {
+  return {
+    type: 'stock',
+    coversText,
+    description:
+      '[mock] Deserted open-plan office at dusk, cool blue grade, empty desks. ' +
+      'No provider planned this slot.',
+    shotSize: index % 2 === 0 ? 'wide' : 'medium',
+    motion: { kind: 'kenburns', direction: 'in', speed: 'slow' },
+    transition: 'cut',
+    query: 'empty office dusk',
+    rejectionCriteria: ['no watermarks', 'no identifiable faces'],
+  }
+}
+
+/**
  * Mock shot list: one stock slot per paragraph, plus a chart on the first
  * paragraph when any claims exist and a map on the second when there is one.
+ *
+ * Every slot quotes its own sentence (the stretch re-plan design): the stock
+ * slot takes its paragraph's first sentence and each extra takes the next free
+ * one, moving on to a later paragraph when its own has none left. An extra that
+ * finds no free sentence anywhere is not planned, since a second slot on a
+ * sentence another already quotes is the fault the planning rules forbid. A
+ * paragraph's seconds are shared equally between the slots on it.
  *
  * The chart and map are there for the same reason the mock self-check warns:
  * a mock that only ever emitted stock slots would let the chart error card,
@@ -608,74 +639,69 @@ export function mockShotList(input: {
   /** Titles the logo library holds (decision 268, Plan B); accepted for callers, unused since decision 289. */
   logoTitles?: readonly string[]
 }): ShotListOutput {
-  const slots: ShotListOutput['slots'] = input.paragraphs.map((paragraph, index) => ({
-    paragraphIndex: paragraph.index,
-    seconds: Math.max(4, Math.min(15, paragraph.seconds)),
-    brief: {
-      type: 'stock',
-      coversText: paragraph.text.slice(0, 120) || '[mock] empty paragraph',
-      description:
-        '[mock] Deserted open-plan office at dusk, cool blue grade, empty desks. ' +
-        'No provider planned this slot.',
-      // Alternating sizes, so the plan lint has something honest to read.
-      shotSize: index % 2 === 0 ? 'wide' : 'medium',
-      motion: { kind: 'kenburns', direction: 'in', speed: 'slow' },
-      transition: 'cut',
-      query: 'empty office dusk',
-      rejectionCriteria: ['no watermarks', 'no identifiable faces'],
-    },
+  const sentences = input.paragraphs.map((paragraph) => splitSentences(paragraph.text))
+  // The next sentence of each paragraph that no slot quotes yet. Every
+  // paragraph's stock slot quotes its first, so extras start from the second.
+  const nextFree = input.paragraphs.map(() => 1)
+  const planned: { at: number; brief: PlannedBrief }[] = input.paragraphs.map((_, index) => ({
+    at: index,
+    brief: mockStockBrief(sentences[index]?.[0] ?? '[mock] empty paragraph', index),
   }))
+
+  // Plan an extra on the first paragraph from `from` on that has a free
+  // sentence; with none free anywhere, plan nothing.
+  const extra = (from: number, make: (coversText: string) => PlannedBrief): void => {
+    for (let at = from; at < input.paragraphs.length; at += 1) {
+      const text = sentences[at]?.[nextFree[at] as number]
+      if (text === undefined) continue
+      nextFree[at] = (nextFree[at] as number) + 1
+      planned.push({ at, brief: make(text) })
+      return
+    }
+  }
 
   const [first, second, third] = input.paragraphs
 
   if (first && input.claimCount > 0) {
-    slots.push({
-      paragraphIndex: first.index,
-      seconds: 8,
-      brief: {
-        type: 'chart',
-        coversText: first.text.slice(0, 120) || '[mock] empty paragraph',
-        description: '[mock] Share-price collapse, drawn on in the accent colour.',
-        shotSize: 'graphic',
-        motion: { kind: 'static' },
-        transition: 'dissolve',
-        chartKind: 'line',
-        series: [
-          {
-            label: '[mock] Share price',
-            unit: 'EUR',
-            points: [
-              { x: '2020-06-17', y: 104.5 },
-              { x: '2020-06-22', y: 14.44 },
-              { x: '2020-06-26', y: 1.28 },
-            ],
-          },
-        ],
-        dataRefs: [1],
-        takeaway: '[mock] The nine-day collapse.',
-        reveal: 'draw-on',
-      },
-    })
+    extra(0, (coversText) => ({
+      type: 'chart',
+      coversText,
+      description: '[mock] Share-price collapse, drawn on in the accent colour.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'dissolve',
+      chartKind: 'line',
+      series: [
+        {
+          label: '[mock] Share price',
+          unit: 'EUR',
+          points: [
+            { x: '2020-06-17', y: 104.5 },
+            { x: '2020-06-22', y: 14.44 },
+            { x: '2020-06-26', y: 1.28 },
+          ],
+        },
+      ],
+      dataRefs: [1],
+      takeaway: '[mock] The nine-day collapse.',
+      reveal: 'draw-on',
+    }))
   }
 
   if (second) {
-    slots.push({
-      paragraphIndex: second.index,
-      seconds: 6,
-      brief: {
-        type: 'map',
-        coversText: second.text.slice(0, 120) || '[mock] empty paragraph',
-        description: '[mock] The money moves from Munich to Manila.',
-        shotSize: 'graphic',
-        motion: { kind: 'static' },
-        transition: 'cut',
-        locations: [
-          { label: 'Munich', lat: 48.14, lon: 11.58 },
-          { label: 'Manila', lat: 14.6, lon: 120.98 },
-        ],
-        route: true,
-      },
-    })
+    extra(1, (coversText) => ({
+      type: 'map',
+      coversText,
+      description: '[mock] The money moves from Munich to Manila.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      locations: [
+        { label: 'Munich', lat: 48.14, lon: 11.58 },
+        { label: 'Manila', lat: 14.6, lon: 120.98 },
+      ],
+      route: true,
+    }))
   }
 
   // A graphic intent in mock mode, so the board and the e2e run exercise it
@@ -686,38 +712,31 @@ export function mockShotList(input: {
   const graphicClaimText = input.claimTexts?.[0] ?? ''
   const graphicDigits = figureDigitGroups(graphicClaimText)[0]
   if (first && input.claimCount > 0 && graphicDigits !== undefined) {
-    slots.push({
-      paragraphIndex: first.index,
-      seconds: 6,
-      brief: {
-        type: 'graphic',
-        coversText: first.text.slice(0, 120) || '[mock] empty paragraph',
-        description: '[mock] The figure, large, with the mark beside it.',
-        shotSize: 'graphic',
-        motion: { kind: 'static' },
-        transition: 'cut',
-        intent: '[mock] The figure, large, with the mark beside it.',
-        intentRefs: [1],
-      },
-    })
+    extra(0, (coversText) => ({
+      type: 'graphic',
+      coversText,
+      description: '[mock] The figure, large, with the mark beside it.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      intent: '[mock] The figure, large, with the mark beside it.',
+      intentRefs: [1],
+    }))
   }
 
   // A headline card in mock mode, so the board and the e2e run have one to
   // show. Mirrors the real rule: it cites a claim, and nothing else.
   if (second && input.newsClaimRefs && input.newsClaimRefs.length > 0) {
-    slots.push({
-      paragraphIndex: second.index,
-      seconds: 7,
-      brief: {
-        type: 'headline',
-        coversText: second.text.slice(0, 120) || '[mock] empty paragraph',
-        description: '[mock] The morning the story broke.',
-        shotSize: 'graphic',
-        motion: { kind: 'static' },
-        transition: 'cut',
-        sourceRef: input.newsClaimRefs[0] as number,
-      },
-    })
+    const sourceRef = input.newsClaimRefs[0] as number
+    extra(1, (coversText) => ({
+      type: 'headline',
+      coversText,
+      description: '[mock] The morning the story broke.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      sourceRef,
+    }))
   }
 
   // A social card in mock mode, so the board and the e2e run have one to
@@ -725,20 +744,29 @@ export function mockShotList(input: {
   // else. Planned on the third paragraph, one paragraph past the headline
   // card, so a chapter with both never fights over the same paragraph.
   if (third && input.socialClaimRefs && input.socialClaimRefs.length > 0) {
-    slots.push({
-      paragraphIndex: third.index,
-      seconds: 7,
-      brief: {
-        type: 'social',
-        coversText: third.text.slice(0, 120) || '[mock] empty paragraph',
-        description: '[mock] The post the narration quotes.',
-        shotSize: 'graphic',
-        motion: { kind: 'static' },
-        transition: 'cut',
-        sourceRef: input.socialClaimRefs[0] as number,
-      },
-    })
+    const sourceRef = input.socialClaimRefs[0] as number
+    extra(2, (coversText) => ({
+      type: 'social',
+      coversText,
+      description: '[mock] The post the narration quotes.',
+      shotSize: 'graphic',
+      motion: { kind: 'static' },
+      transition: 'cut',
+      sourceRef,
+    }))
   }
+
+  const perParagraph = input.paragraphs.map(
+    (_, at) => planned.filter((entry) => entry.at === at).length,
+  )
+  const slots: ShotListOutput['slots'] = planned.map(({ at, brief }) => {
+    const paragraph = input.paragraphs[at] as ShotParagraph
+    return {
+      paragraphIndex: paragraph.index,
+      seconds: paragraph.seconds / (perParagraph[at] as number),
+      brief,
+    }
+  })
 
   return { slots }
 }

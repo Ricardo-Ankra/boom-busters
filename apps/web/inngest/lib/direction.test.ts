@@ -423,7 +423,7 @@ describe('planChapterSlots plans a graphic and threads the logo library (decisio
     {
       chapterId: 'ch-1',
       index: 0,
-      text: 'The company raised four billion dollars in one round.',
+      text: 'The company raised four billion dollars in one round. Investors queued to join it. The round closed in a week.',
       startMs: 0,
       durationMs: 9000,
       words: [],

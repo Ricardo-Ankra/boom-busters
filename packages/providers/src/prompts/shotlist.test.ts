@@ -11,6 +11,7 @@ import {
   GRAPHIC_INTENT_RULES,
   SHOT_LIST_FLOOR_TOKENS,
 } from './shotlist'
+import { MIN_SHOT_RULE } from './stretch'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
 import type { ScriptClaim } from './script'
@@ -436,9 +437,76 @@ describe('parseShotList', () => {
   })
 })
 
+const SENTENCE_PARAGRAPHS: ShotParagraph[] = [
+  { index: 0, text: 'One thing. Two things. Three things. Four things.', seconds: 12 },
+  { index: 1, text: 'Alpha one. Alpha two. Alpha three.', seconds: 9 },
+  { index: 2, text: 'Beta one. Beta two. Beta three.', seconds: 9 },
+]
+
+describe('the chapter planning rules about minimums and sentences', () => {
+  it('puts the minimums and the one-slot-per-sentence rule in the planning rules', () => {
+    const { system } = buildShotListRequest(baseRequest())
+    expect(system).toContain(MIN_SHOT_RULE)
+    expect(system).toContain('exactly one slot')
+  })
+})
+
+describe('mockShotList quotes', () => {
+  it('gives each mock slot its own sentence', () => {
+    const { slots } = mockShotList({
+      paragraphs: SENTENCE_PARAGRAPHS,
+      claimCount: 2,
+      newsClaimRefs: [1],
+      socialClaimRefs: [2],
+      claimTexts: ['Revenue fell 40%', 'x'],
+    })
+    const quotes = slots.map((slot) => slot.brief.coversText)
+    expect(new Set(quotes).size).toBe(quotes.length)
+    expect(slots.map((slot) => slot.brief.type)).toEqual(
+      expect.arrayContaining(['chart', 'map', 'headline', 'social', 'graphic']),
+    )
+    expect(() => ShotListOutputSchema.parse({ slots })).not.toThrow()
+  })
+
+  it("splits a paragraph's seconds between the slots on it", () => {
+    const { slots } = mockShotList({ paragraphs: SENTENCE_PARAGRAPHS, claimCount: 2 })
+    const onSecond = slots.filter((slot) => slot.paragraphIndex === 1)
+    expect(onSecond.length).toBeGreaterThan(1)
+    expect(onSecond.reduce((sum, slot) => sum + slot.seconds, 0)).toBeCloseTo(9, 5)
+  })
+
+  it('moves an extra to the next paragraph that has a free sentence', () => {
+    const paragraphs: ShotParagraph[] = [
+      { index: 0, text: 'Only one sentence here.', seconds: 6 },
+      { index: 1, text: 'Two here. And a second.', seconds: 8 },
+    ]
+    const { slots } = mockShotList({ paragraphs, claimCount: 2 })
+    const chart = slots.find((slot) => slot.brief.type === 'chart')
+    expect(chart?.paragraphIndex).toBe(1)
+    expect(chart?.brief.coversText).toBe('And a second.')
+    // The map has no free sentence left anywhere, so it is not planned.
+    expect(slots.some((slot) => slot.brief.type === 'map')).toBe(false)
+  })
+})
+
+// Three sentences a paragraph: the stock slot quotes the first and the extras
+// (chart, map, headline, graphic, social) have the second to quote.
+const THREE_SENTENCE_PARAGRAPHS: ShotParagraph[] = [
+  {
+    index: 0,
+    text: 'By June, the auditors could not find the money. They kept looking. Nothing turned up.',
+    seconds: 11.4,
+  },
+  {
+    index: 1,
+    text: 'The trail led from Munich to Manila. It ended in a trust. Nobody owned it.',
+    seconds: 8.2,
+  },
+]
+
 describe('mockShotList', () => {
   it('emits a valid plan with a chart and a map, so the board UI is exercised', () => {
-    const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2 })
+    const output = mockShotList({ paragraphs: THREE_SENTENCE_PARAGRAPHS, claimCount: 2 })
     expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
 
     const types = output.slots.map((slot) => slot.brief.type)
@@ -448,15 +516,19 @@ describe('mockShotList', () => {
   })
 
   it('emits no chart when there are no claims to cite', () => {
-    const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
+    const output = mockShotList({ paragraphs: THREE_SENTENCE_PARAGRAPHS, claimCount: 0 })
     expect(output.slots.every((slot) => slot.brief.type !== 'chart')).toBe(true)
   })
 
   it('emits a headline card only when a news claim can back one', () => {
-    const without = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2 })
+    const without = mockShotList({ paragraphs: THREE_SENTENCE_PARAGRAPHS, claimCount: 2 })
     expect(without.slots.every((slot) => slot.brief.type !== 'headline')).toBe(true)
 
-    const output = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2, newsClaimRefs: [2] })
+    const output = mockShotList({
+      paragraphs: THREE_SENTENCE_PARAGRAPHS,
+      claimCount: 2,
+      newsClaimRefs: [2],
+    })
     expect(() => ShotListOutputSchema.parse(output)).not.toThrow()
     const card = output.slots.find((slot) => slot.brief.type === 'headline')
     expect(card?.brief.type === 'headline' && card.brief.sourceRef).toBe(2)
@@ -464,8 +536,12 @@ describe('mockShotList', () => {
 
   it('emits a social card, on the third paragraph, only when socialClaimRefs is given (decision 284)', () => {
     const paragraphsWithThird: ShotParagraph[] = [
-      ...PARAGRAPHS,
-      { index: 2, text: 'EY refused to sign the accounts.', seconds: 6 },
+      ...THREE_SENTENCE_PARAGRAPHS,
+      {
+        index: 2,
+        text: 'EY refused to sign the accounts. It said so on 18 June. Nobody argued.',
+        seconds: 6,
+      },
     ]
 
     const without = mockShotList({ paragraphs: paragraphsWithThird, claimCount: 2 })
@@ -482,13 +558,17 @@ describe('mockShotList', () => {
     expect(card?.brief.type === 'social' && card.brief.sourceRef).toBe(2)
 
     // No third paragraph means no social card: there is nowhere to put it.
-    const noThird = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 2, socialClaimRefs: [2] })
+    const noThird = mockShotList({
+      paragraphs: THREE_SENTENCE_PARAGRAPHS,
+      claimCount: 2,
+      socialClaimRefs: [2],
+    })
     expect(noThird.slots.every((slot) => slot.brief.type !== 'social')).toBe(true)
   })
 
   it('plans a mock graphic as an intent citing claim 1 (decision 289)', () => {
     const out = mockShotList({
-      paragraphs: PARAGRAPHS,
+      paragraphs: THREE_SENTENCE_PARAGRAPHS,
       claimCount: 2,
       claimTexts: ['The company raised $4 billion.', 'x'],
       logoTitles: ['Wirecard AG'],
@@ -504,7 +584,7 @@ describe('mockShotList', () => {
 
   it('plans a graphic only when the first claim carries a digit to cite', () => {
     const withDigits = mockShotList({
-      paragraphs: PARAGRAPHS,
+      paragraphs: THREE_SENTENCE_PARAGRAPHS,
       claimCount: 1,
       claimTexts: ['The company raised $4 billion.'],
     })
@@ -516,7 +596,7 @@ describe('mockShotList', () => {
     // all, and the rest of the plan (both stock slots, the chart, the map)
     // is exactly as it would otherwise be.
     const withoutDigits = mockShotList({
-      paragraphs: PARAGRAPHS,
+      paragraphs: THREE_SENTENCE_PARAGRAPHS,
       claimCount: 1,
       claimTexts: ['The auditors resigned without warning.'],
     })
@@ -717,7 +797,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
   })
 
   it('gives the mock plan alternating sizes so the lint stays quiet', () => {
-    const plan = mockShotList({ paragraphs: PARAGRAPHS, claimCount: 0 })
+    const plan = mockShotList({ paragraphs: THREE_SENTENCE_PARAGRAPHS, claimCount: 0 })
     expect(plan.slots.map((slot) => slot.brief.shotSize)).toEqual(['wide', 'medium', 'graphic'])
   })
 
