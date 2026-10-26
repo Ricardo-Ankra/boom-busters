@@ -94,8 +94,14 @@ describe('StretchBar', () => {
     replanStretchAction.mockResolvedValue({ ok: false, error: 'busy' })
     render(<Harness slots={[slot('a', 0, 0)]} act={vi.fn(run)} />)
     await userEvent.click(screen.getByRole('button', { name: 'pick a' }))
-    await userEvent.click(screen.getByRole('button', { name: /Re-plan these 1 shots/ }))
-    expect(screen.getByRole('button', { name: /Re-plan these 1 shots/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Re-plan this shot/ }))
+    expect(screen.getByRole('button', { name: /Re-plan this shot/ })).toBeInTheDocument()
+  })
+
+  it('says this shot, not these 1 shots, for a single selection', async () => {
+    render(<Harness slots={[slot('a', 0, 0)]} act={vi.fn(run)} />)
+    await userEvent.click(screen.getByRole('button', { name: 'pick a' }))
+    expect(screen.getByRole('button', { name: 'Re-plan this shot · ≈$0.03' })).toBeEnabled()
   })
 
   it('clears the selection from Clear selection', async () => {

@@ -153,7 +153,7 @@ export function StretchBar({
           disabled={problem !== null}
           onClick={() => void send()}
         >
-          {`Re-plan these ${selected.length} shots · ${STRETCH_REPLAN_ESTIMATE}`}
+          {`${selected.length === 1 ? 'Re-plan this shot' : `Re-plan these ${selected.length} shots`} · ${STRETCH_REPLAN_ESTIMATE}`}
         </Button>
         <Button variant="ghost" disabled={sending} onClick={clear}>
           Clear selection
