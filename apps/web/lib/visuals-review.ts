@@ -78,6 +78,7 @@ import type {
   VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
+import { timingFindings } from '@/inngest/lib/timing-findings'
 import { stillCatalogue, stillModelOptions } from './model-catalogue'
 import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
@@ -384,6 +385,16 @@ export interface NarrationSegment {
   durationMs: number
 }
 
+export interface TimingNoteView {
+  /** The shots the note is about. */
+  slotIds: string[]
+  /** The shots "Re-plan this stretch" selects. */
+  stretch: string[]
+  message: string
+  /** `${message} (ch N · m:ss)`, as the craft notes are listed. */
+  listed: string
+}
+
 export interface VisualsReviewModel {
   chapters: ChapterSlots[]
   coverage: VisualsCoverage
@@ -428,6 +439,12 @@ export interface VisualsReviewModel {
   warnings: string[]
   /** The same craft notes by slot id, so each card can say its own. */
   slotNotes: Record<string, string[]>
+  /**
+   * Timing notes (the stretch re-plan design, 3.1): shots on screen too briefly
+   * or quoting one sentence twice. Their own list, in screen order: never in
+   * `warnings`, `slotNotes` or `repair`, because Fix does not act on them.
+   */
+  timingNotes: TimingNoteView[]
   /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
@@ -486,6 +503,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     direction: null,
     warnings: [],
     slotNotes: {},
+    timingNotes: [],
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
@@ -1148,6 +1166,27 @@ export async function visualsReviewModel(
     return `${finding.message} (ch ${slot.chapterIndex + 1} · ${timecode(slot.startMs)})`
   })
 
+  // Timing notes (the stretch re-plan design, 3.1), from the same anchored
+  // times the cards seek to. A list of their own: Fix does not act on them.
+  const timingNotes = timingFindings(
+    rows.map((row, at) => ({
+      chapterId: row.chapterId,
+      type: row.type,
+      startMs: times[at]!.startMs,
+      durationMs: times[at]!.durationMs,
+      coversText: briefs[at]?.success === true ? briefs[at].data.coversText : null,
+    })),
+    paragraphs,
+  ).map((finding): TimingNoteView => {
+    const first = finding.slotIndexes[0]!
+    return {
+      slotIds: finding.slotIndexes.map((at) => rows[at]!.id),
+      stretch: finding.stretch.map((at) => rows[at]!.id),
+      message: finding.message,
+      listed: `${finding.message} (ch ${rows[first]!.chapterIndex + 1} · ${timecode(times[first]!.startMs)})`,
+    }
+  })
+
   return {
     chapters,
     coverage,
@@ -1169,6 +1208,7 @@ export async function visualsReviewModel(
     // per finding, so the list and the Fix button's count are the same set.
     warnings,
     slotNotes,
+    timingNotes,
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [

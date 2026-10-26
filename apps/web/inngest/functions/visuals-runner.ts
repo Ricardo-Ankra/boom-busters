@@ -44,6 +44,7 @@ import {
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { chunk, withinFailureTolerance } from '../lib/narration'
 import { RESOLUTION_CONCURRENCY, timedParagraphs } from '../lib/shot-list'
+import { timingFindings } from '../lib/timing-findings'
 
 /**
  * visuals-runner (build spec section 7.4; staged-visuals design 2026-08-26).
@@ -306,6 +307,18 @@ export const visualsRunner = inngest.createFunction(
           cast: film.cast,
           sets: film.sets,
         }).findings
+        // Timing notes (the stretch re-plan design, 3.1): the rows are already
+        // anchored by `plannedToRows`, so their times go in as they stand.
+        const timingNotes = timingFindings(
+          allRows.map((row) => ({
+            chapterId: row.chapterId,
+            type: row.type,
+            startMs: row.startMs,
+            durationMs: row.durationMs,
+            coversText: row.brief.coversText,
+          })),
+          setup.paragraphs,
+        ).length
         return openReviewGate(ctx, {
           stage: 'visuals',
           projectStage: 'visuals',
@@ -320,6 +333,9 @@ export const visualsRunner = inngest.createFunction(
               : '') +
             (warnings.length > 0
               ? ` · ${warnings.length} craft note${warnings.length === 1 ? '' : 's'}`
+              : '') +
+            (timingNotes > 0
+              ? ` · ${timingNotes} timing note${timingNotes === 1 ? '' : 's'}`
               : '') +
             ' · nothing fetched yet — review the plan, then fetch',
         })

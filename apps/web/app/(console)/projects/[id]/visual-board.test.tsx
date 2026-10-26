@@ -500,6 +500,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     direction: null,
     warnings: [],
     slotNotes: {},
+    timingNotes: [],
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,

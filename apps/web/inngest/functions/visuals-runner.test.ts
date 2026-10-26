@@ -28,6 +28,7 @@ import { DirectorsBookSchema, newId } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notify'
 import { visualsReviewModel } from '@/lib/visuals-review'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { visualsRunner } from './visuals-runner'
@@ -116,6 +117,37 @@ describeDb('visuals-runner (mock mode)', () => {
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
     expect(slots.length).toBeGreaterThan(0)
     expect(slots.some((slot) => (slot.brief as { shotSize?: string }).shotSize)).toBe(true)
+  })
+
+  it('counts timing notes in the plan summary', async () => {
+    const covers = 'By June, the auditors could not find the money.'
+    const slot = (seconds: number) => ({
+      paragraphIndex: 0,
+      seconds,
+      brief: {
+        type: 'stock',
+        coversText: covers,
+        description: 'An empty audit office at dusk.',
+        shotSize: 'wide',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        query: 'empty office dusk',
+        rejectionCriteria: [],
+      },
+    })
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const book = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 1, cast: [] })
+    stubDirectionAndShotList(book, { slots: [slot(1), slot(5)] })
+    vi.mocked(notify).mockClear()
+
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+
+    const bodies = vi.mocked(notify).mock.calls.map(([n]) => (n as { body: string }).body)
+    expect(bodies.some((body) => / · \d+ timing notes? · nothing fetched yet/.test(body))).toBe(
+      true,
+    )
   })
 
   it('reuses an owner-edited book instead of redrafting it', async () => {
