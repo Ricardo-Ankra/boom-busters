@@ -4,15 +4,21 @@ import {
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
   createProjectFromCase,
+  createScriptVersion,
   deleteProject,
   ensureRun,
+  listShotSlots,
+  replaceShotList,
   requireTestDatabase,
+  saveChapter,
   saveDossier,
   seed,
   setProjectStage,
   setRunStatus,
+  setSlotJob,
   truncateRunMirror,
 } from '@boom-busters/db'
+import { newId } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { approveGate, requestChanges } from './actions'
@@ -164,5 +170,72 @@ describeDb('requestChanges on the dossier', () => {
         data: { projectId, approvedBy: 'owner@example.com' },
       }),
     )
+  })
+})
+
+describeDb('approving the visuals gate while a stretch re-plan runs', () => {
+  let projectId = ''
+
+  beforeEach(async () => {
+    inngest.send.mockReset()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await truncateRunMirror(db)
+    projectId = (
+      await createProjectFromCase(db, { caseId: FIXTURE_CASE_ID, title: 'Stretch gate (unit)' })
+    ).id
+    const script = await createScriptVersion(db, projectId)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.',
+      estRuntimeSec: 30,
+    })
+    await replaceShotList(db, projectId, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: {
+          type: 'stock',
+          coversText: 'One.',
+          description: 'the lobby',
+          motion: { kind: 'static' },
+          transition: 'cut',
+          query: 'office',
+          rejectionCriteria: [],
+        },
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'awaiting_review' })
+    const runId = await ensureRun(db, {
+      inngestRunId: `visuals-${projectId}`,
+      functionName: 'visuals-runner',
+      projectId,
+      stage: 'visuals',
+    })
+    await setRunStatus(db, runId, 'awaiting_gate')
+  })
+
+  afterEach(async () => {
+    await deleteProject(db, projectId)
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
+  })
+
+  it('refuses, so the write cannot land on an approved list', async () => {
+    const [slot] = await listShotSlots(db, projectId)
+    await setSlotJob(db, slot!.id, {
+      kind: 'stretch',
+      jobId: newId(),
+      startedAt: new Date().toISOString(),
+    })
+    expect(await approveGate(projectId, 'visuals')).toEqual({
+      ok: false,
+      error: 'Wait for the stretch re-plan to finish.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
   })
 })

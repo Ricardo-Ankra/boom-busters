@@ -2,6 +2,7 @@
 
 import {
   assets,
+  claimTake,
   claims,
   createScriptVersion,
   deleteCastMember,
@@ -24,8 +25,10 @@ import {
   saveChapter,
   scriptableClaims,
   seed,
+  setSlotJob,
   setSlotResolution,
   setProjectStage,
+  setVisualsJob,
   setSetPlates,
   setSlotRoute,
   setSocialPostManual,
@@ -33,6 +36,7 @@ import {
   shotSlots,
   slotNeedsResolution,
   socialPosts,
+  storeTakeAudio,
   truncateRunMirror,
   updateSettings,
   updateSlotBrief,
@@ -43,7 +47,7 @@ import {
   SOCIAL_HIGHLIGHT_OUTSIDE,
   SOCIAL_MISSING_PREFIX,
 } from '@boom-busters/compositions/social'
-import { fixtureId, NOT_A_POST_ERROR } from '@boom-busters/schemas'
+import { fixtureId, JOB_STALE_MS, newId, NOT_A_POST_ERROR } from '@boom-busters/schemas'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -60,6 +64,7 @@ import {
   refetchSocialPostAction,
   removeSocialImageAction,
   replanShotsAction,
+  replanStretchAction,
   retypeSlotAction,
   retypeToHeadlineAction,
   retypeToSocialAction,
@@ -1994,5 +1999,217 @@ describeDb('job stamps (decision 286)', () => {
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
     expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
     expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({ name: 'visuals/fetch.resume' })
+  })
+})
+
+describeDb('re-planning a stretch of shots (the stretch re-plan design, 3.3)', () => {
+  const P0 = 'The auditors arrived in June. They could not find the money.'
+  const P1 = 'The founder said the cash was safe. The bank said otherwise.'
+  const P2 = 'By August the company had collapsed. Investors lost everything they had put in.'
+  const takeMs = (text: string) => text.split(' ').length * 700 + 300
+  const timings = (text: string) =>
+    text.split(' ').map((word, at) => ({ text: word, startMs: at * 700, endMs: at * 700 + 600 }))
+
+  let chapterId = ''
+  let ids: string[] = []
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await truncateRunMirror(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: [P0, P1, P2].join('\n\n'),
+      estRuntimeSec: 30,
+    })
+    chapterId = chapter.id
+    for (const [paragraphIndex, text] of [P0, P1, P2].entries()) {
+      const claimed = await claimTake(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        chapterId,
+        paragraphIndex,
+        idempotencyKey: newId(),
+        provider: 'elevenlabs',
+        voiceId: 'v-narrator',
+        builtFromScriptVersion: script.version,
+      })
+      await storeTakeAudio(db, claimed.take.id, {
+        r2Key: `voice/${claimed.take.id}.mp3`,
+        durationMs: takeMs(text),
+        costUsd: 0,
+        waveform: [],
+        timings: timings(text),
+      })
+    }
+    const p1Start = takeMs(P0)
+    const p2Start = p1Start + takeMs(P1)
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId,
+        index: 0,
+        type: 'stock',
+        brief: stock('The auditors arrived in June.', 'old 0'),
+        startMs: 0,
+        durationMs: 3500,
+      },
+      {
+        chapterId,
+        index: 1,
+        type: 'stock',
+        brief: stock('They could not find the money.', 'old 1'),
+        startMs: 3500,
+        durationMs: p1Start - 3500,
+      },
+      {
+        chapterId,
+        index: 2,
+        type: 'stock',
+        brief: stock(P1, 'old 2'),
+        startMs: p1Start,
+        durationMs: takeMs(P1),
+      },
+      {
+        chapterId,
+        index: 3,
+        type: 'stock',
+        brief: stock(P2, 'old 3'),
+        startMs: p2Start,
+        durationMs: takeMs(P2),
+      },
+    ])
+    ids = (await listShotSlots(db, FIXTURE_PROJECT_ID)).map((row) => row.id)
+    await setVisualsJob(db, FIXTURE_PROJECT_ID, null)
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+  })
+
+  const stamps = async () => (await listShotSlots(db, FIXTURE_PROJECT_ID)).map((r) => r.pendingJob)
+  const stamp = (kind: 'refetch' | 'stretch', ageMs = 0) => ({
+    kind,
+    jobId: newId(),
+    startedAt: new Date(Date.now() - ageMs).toISOString(),
+  })
+
+  it('refuses a stage that is not open', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, null)
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error: 'The visuals stage is not open on this project.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses while a plan-level job runs', async () => {
+    await setVisualsJob(db, FIXTURE_PROJECT_ID, {
+      op: 'shots',
+      jobId: newId(),
+      startedAt: new Date().toISOString(),
+    })
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!], '')).toEqual({
+      ok: false,
+      error: 'Wait for the running plan job to finish.',
+    })
+  })
+
+  it('refuses a selected shot that is still busy, but not one whose stamp has gone stale', async () => {
+    await setSlotJob(db, ids[2]!, stamp('refetch'))
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error: 'One of these shots is still busy. Wait for it to finish.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+
+    await setSlotJob(db, ids[2]!, stamp('refetch', JOB_STALE_MS + 1000))
+    expect((await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).ok).toBe(true)
+  })
+
+  it('refuses shots that are not neighbours, in cutStretch’s own words', async () => {
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[0]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error: 'Re-plan works on neighbouring shots in one chapter.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses a note over 500 characters', async () => {
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!], 'x'.repeat(501))).toEqual({
+      ok: false,
+      error: 'Keep the note under 500 characters.',
+    })
+    expect(await stamps()).toEqual([null, null, null, null])
+  })
+
+  it('stamps every selected shot and sends one event with the note', async () => {
+    const result = await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '  Closer. ')
+    expect(result).toEqual({ ok: true })
+
+    const [first, second, other, last] = (await stamps()) as { kind: string; jobId: string }[]
+    expect(first).toBeNull()
+    expect(second).toMatchObject({ kind: 'stretch' })
+    expect(other).toEqual(second)
+    expect(last).toBeNull()
+    expect(inngest.send).toHaveBeenCalledTimes(1)
+    expect(inngest.send.mock.calls[0]![0]).toMatchObject({
+      name: 'visuals/stretch.requested',
+      data: {
+        projectId: FIXTURE_PROJECT_ID,
+        chapterId,
+        slotIds: [ids[1], ids[2]],
+        note: 'Closer.',
+        jobId: second!.jobId,
+      },
+    })
+  })
+
+  it('leaves the note out when it is blank', async () => {
+    await replanStretchAction(FIXTURE_PROJECT_ID, [ids[3]!], '   ')
+    const data = (inngest.send.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+    expect('note' in data).toBe(false)
+  })
+
+  it('clears the stamps when Inngest cannot be reached', async () => {
+    inngest.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error:
+        'Could not reach Inngest to re-plan these shots. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    })
+    expect(await stamps()).toEqual([null, null, null, null])
+  })
+
+  it('refuses Re-plan shot list while a stretch runs', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setSlotJob(db, ids[1]!, stamp('stretch'))
+    expect(await replanShotsAction(FIXTURE_PROJECT_ID)).toEqual({
+      ok: false,
+      error: 'Wait for the stretch re-plan to finish.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+    expect((await getProject(db, FIXTURE_PROJECT_ID))!.visualsJob).toBeNull()
+  })
+
+  it('refuses Fetch visuals while a stretch runs', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setSlotJob(db, ids[1]!, stamp('stretch'))
+    expect(await approvePlanAction(FIXTURE_PROJECT_ID)).toEqual({
+      ok: false,
+      error: 'Wait for the stretch re-plan to finish.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('does not hold Re-plan shot list for a stretch stamp that has gone stale', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setSlotJob(db, ids[1]!, stamp('stretch', JOB_STALE_MS + 1000))
+    expect((await replanShotsAction(FIXTURE_PROJECT_ID)).ok).toBe(true)
   })
 })

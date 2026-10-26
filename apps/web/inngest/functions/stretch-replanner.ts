@@ -11,7 +11,6 @@ import {
   newId,
   parseEventData,
   serialiseError,
-  ShotBriefSchema,
 } from '@boom-busters/schemas'
 import type { SlotJob } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
@@ -26,8 +25,8 @@ import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { releaseFailedStretchJob } from '../lib/jobs'
 import { loadPlanInputs } from '../lib/plan-inputs'
-import { anchoredTimes } from '../lib/shot-list'
-import { cutStretch, type StretchRow } from '../lib/stretch'
+import { cutStretch } from '../lib/stretch'
+import { anchoredChapterRows } from '../lib/stretch-rows'
 
 /**
  * stretch-replanner (the stretch re-plan design, 3.3). Re-plans a run of
@@ -114,34 +113,7 @@ export const stretchReplanner = inngest.createFunction(
       // whole film, exactly as the board anchors them, then cut.
       const cut = await step.run('cut', async () => {
         const all = await listShotSlots(db, projectId)
-        const covers = all.map((row) => {
-          const brief = ShotBriefSchema.safeParse(row.brief)
-          return brief.success ? brief.data.coversText : null
-        })
-        const times = anchoredTimes(
-          all.map((row, at) => ({
-            startMs: row.startMs,
-            durationMs: row.durationMs,
-            coversText: covers[at] ?? null,
-          })),
-          setup.paragraphs,
-        )
-        const chapterRows: StretchRow[] = all.flatMap((row, at) =>
-          row.chapterId === chapterId
-            ? [
-                {
-                  id: row.id,
-                  chapterId: row.chapterId,
-                  index: row.index,
-                  type: row.type,
-                  brief: row.brief,
-                  startMs: times[at]!.startMs,
-                  durationMs: times[at]!.durationMs,
-                  coversText: covers[at] ?? null,
-                },
-              ]
-            : [],
-        )
+        const chapterRows = anchoredChapterRows(all, chapterId, setup.paragraphs)
         const outcome = cutStretch({
           chapterRows,
           selectedIds: slotIds,

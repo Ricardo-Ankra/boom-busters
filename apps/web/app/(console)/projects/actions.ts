@@ -33,6 +33,7 @@ import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { brokerConfigured, cancelRender } from '@/lib/broker'
 import { db } from '@/lib/db'
+import { hasLiveStretch, STRETCH_RUNNING } from '@/lib/stretch-jobs'
 import { dossierChangesRefusal } from '@/lib/run-state'
 
 /**
@@ -309,6 +310,12 @@ export async function approveGate(
     // Refused rather than sent into the void: an approval with no run waiting
     // on it would report success and change nothing.
     return { ok: false, error: 'No run is waiting at this gate.' }
+  }
+
+  // A stretch re-plan writes into the list this would approve (the stretch
+  // re-plan design, 3.3): the write must not land on an approved list.
+  if (parsedStage.data === 'visuals' && (await hasLiveStretch(projectId))) {
+    return { ok: false, error: STRETCH_RUNNING }
   }
 
   /**
