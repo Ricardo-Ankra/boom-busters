@@ -47,6 +47,7 @@ const linkCastHandleAction = vi.fn()
 const unlinkCastHandleAction = vi.fn()
 const removeSocialImageAction = vi.fn()
 const retypeToSocialAction = vi.fn()
+const replanStretchAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -81,6 +82,7 @@ vi.mock('./visuals-actions', () => ({
   unlinkCastHandleAction: (...args: unknown[]) => unlinkCastHandleAction(...args),
   removeSocialImageAction: (...args: unknown[]) => removeSocialImageAction(...args),
   retypeToSocialAction: (...args: unknown[]) => retypeToSocialAction(...args),
+  replanStretchAction: (...args: unknown[]) => replanStretchAction(...args),
 }))
 
 /** The shared card is the compositions suite's to test; here it only has to be handed its payload. */
@@ -159,6 +161,7 @@ beforeEach(() => {
   unlinkCastHandleAction.mockResolvedValue({ ok: true })
   removeSocialImageAction.mockResolvedValue({ ok: true })
   retypeToSocialAction.mockResolvedValue({ ok: true })
+  replanStretchAction.mockResolvedValue({ ok: true })
   createLogoUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
   finaliseLogoAction.mockResolvedValue({ ok: true })
   vi.stubGlobal(
@@ -3624,5 +3627,100 @@ describe('notices on the slot card (decision 293)', () => {
     const cardA = document.getElementById(`slot-${SLOT_A}`)!
     await userEvent.click(within(cardA).getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000N1')
+  })
+})
+
+describe('the stretch re-plan on the board', () => {
+  const ago = (ms: number) => new Date(Date.parse(RENDERED_AT) - ms).toISOString()
+  const second: SlotView = { ...stockSlot, id: SLOT_B, startMs: 8000 }
+  const third: SlotView = { ...stockSlot, id: SLOT_C, startMs: 16000 }
+  const NOTE = {
+    slotIds: [SLOT_A],
+    stretch: [SLOT_A, SLOT_B],
+    message: 'This shot is on screen for under 2 seconds.',
+    listed: 'This shot is on screen for under 2 seconds. (ch 1 · 0:00)',
+  }
+
+  it('selects shots from their cards and sends them with the note', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second, third])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    const selects = screen.getAllByRole('button', { name: 'Select' })
+    expect(selects).toHaveLength(3)
+    await userEvent.click(selects[0]!)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Select' })[0]!)
+    expect(screen.getAllByRole('button', { name: 'Selected' })[0]).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await userEvent.type(screen.getByLabelText('What should change? (optional)'), 'hold the card')
+    await userEvent.click(screen.getByRole('button', { name: 'Re-plan these 2 shots · ≈$0.03' }))
+    expect(replanStretchAction).toHaveBeenCalledWith(PROJECT, [SLOT_A, SLOT_B], 'hold the card')
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /Re-plan these/ })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('shows timing notes on board cards and selects their stretch', async () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second, third], { timingNotes: [NOTE] })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    const cardA = document.getElementById(`slot-${SLOT_A}`)!
+    expect(within(cardA).getByText(NOTE.message)).toBeInTheDocument()
+    expect(
+      within(document.getElementById(`slot-${SLOT_B}`)!).queryByText(NOTE.message),
+    ).not.toBeInTheDocument()
+    await userEvent.click(within(cardA).getByRole('button', { name: 'Re-plan this stretch' }))
+    expect(screen.getAllByRole('button', { name: 'Selected' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Re-plan these 2 shots · ≈$0.03' })).toBeEnabled()
+  })
+
+  it('lists timing notes apart from craft notes on the plan card', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], {
+          phase: 'plan',
+          warnings: ['a craft note'],
+          timingNotes: [NOTE],
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    const timing = screen.getByRole('list', { name: 'Timing notes' })
+    expect(within(timing).getByText(NOTE.listed)).toBeInTheDocument()
+    expect(within(timing).queryByText('a craft note')).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('list', { name: 'Craft notes' })).queryByText(NOTE.listed),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides Select on a busy card', () => {
+    const busy: SlotView = { ...stockSlot, job: { kind: 'stretch', startedAt: ago(5000) } }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([busy, second])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getAllByRole('button', { name: 'Select' })).toHaveLength(1)
+    expect(
+      screen.getByText(
+        'Re-planning these shots, started 0:05 ago. New shots replace them when the planner answers.',
+      ),
+    ).toBeInTheDocument()
   })
 })
