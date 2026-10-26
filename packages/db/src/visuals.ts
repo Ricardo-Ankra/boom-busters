@@ -107,6 +107,108 @@ export async function replaceShotList(
   })
 }
 
+/**
+ * Write a stretch over the old rows (the stretch re-plan design): delete
+ * `removeIds`, insert `rows` in their place and renumber the chapter by start
+ * time, in one transaction, so a Stop or a failed write never leaves half a
+ * stretch on the board.
+ *
+ * Throws, writing nothing, when a removed row is missing, belongs to another
+ * project or chapter, or no longer carries this job's stamp (a Stop or another
+ * job got there first). A row that borrowed from a removed one loses its link
+ * to the `ON DELETE SET NULL` and keeps its candidates. Returns the new rows'
+ * ids in input order.
+ *
+ * Renumbering goes through negative indexes so `shot_slots_chapter_index_key`
+ * never sees two rows on one index mid-write. Ties on `startMs` keep the old
+ * order for survivors, input order for new rows, survivors first.
+ */
+export async function replaceStretch(
+  db: Database,
+  input: {
+    projectId: string
+    chapterId: string
+    removeIds: readonly string[]
+    rows: readonly NewShotSlot[]
+    jobId: string
+  },
+): Promise<string[]> {
+  const { projectId, chapterId, removeIds, rows, jobId } = input
+  const ids = await db.transaction(async (tx) => {
+    if (removeIds.length > 0) {
+      const held = await tx
+        .select({
+          id: shotSlots.id,
+          projectId: shotSlots.projectId,
+          chapterId: shotSlots.chapterId,
+          stamped: sql<boolean>`${shotSlots.pendingJob}->>'jobId' = ${jobId}`,
+        })
+        .from(shotSlots)
+        .where(inArray(shotSlots.id, [...removeIds]))
+        .for('update')
+      const byId = new Map(held.map((row) => [row.id, row]))
+      for (const id of removeIds) {
+        const row = byId.get(id)
+        if (!row) throw new Error(`replaceStretch: slot ${id} no longer exists`)
+        if (row.projectId !== projectId || row.chapterId !== chapterId) {
+          throw new Error(`replaceStretch: slot ${id} is not in this project and chapter`)
+        }
+        if (!row.stamped) {
+          throw new Error(`replaceStretch: slot ${id} no longer carries this stretch stamp`)
+        }
+      }
+      await tx.delete(shotSlots).where(inArray(shotSlots.id, [...removeIds]))
+    }
+
+    // Park the new rows on distinct negative indexes below any the renumber uses.
+    const inserted =
+      rows.length === 0
+        ? []
+        : await tx
+            .insert(shotSlots)
+            .values(
+              rows.map((slot, at) => ({
+                projectId,
+                chapterId,
+                index: -1_000_000 + at,
+                type: slot.type,
+                brief: slot.brief as unknown as Record<string, unknown>,
+                startMs: slot.startMs,
+                durationMs: slot.durationMs,
+              })),
+            )
+            .returning({ id: shotSlots.id, index: shotSlots.index })
+    const newIds = inserted
+      .slice()
+      .sort((x, y) => x.index - y.index)
+      .map((row) => row.id)
+    const fresh = new Set(newIds)
+
+    const all = await tx
+      .select({ id: shotSlots.id, index: shotSlots.index, startMs: shotSlots.startMs })
+      .from(shotSlots)
+      .where(eq(shotSlots.chapterId, chapterId))
+    const order = all.sort(
+      (x, y) =>
+        x.startMs - y.startMs ||
+        Number(fresh.has(x.id)) - Number(fresh.has(y.id)) ||
+        x.index - y.index,
+    )
+    for (const [at, row] of order.entries()) {
+      await tx
+        .update(shotSlots)
+        .set({ index: -(at + 1) })
+        .where(eq(shotSlots.id, row.id))
+    }
+    for (const [at, row] of order.entries()) {
+      await tx.update(shotSlots).set({ index: at }).where(eq(shotSlots.id, row.id))
+    }
+    return newIds
+  })
+  await touchProject(db, projectId)
+  return ids
+}
+
 /** The whole board, in script order. */
 export async function listShotSlots(
   db: Database,
