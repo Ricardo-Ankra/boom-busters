@@ -8244,34 +8244,52 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `planChapterWith`, and the mock plans meet the minimums anyway. The pass
      is covered by the `planChapterWith` unit tests.
 320. **The stretch re-plan** (2026-10-26). On the plan screen and the board,
-     while `visualsPhase` is `plan` or `board`, each shot card has a `Select`
-     toggle. A selection is valid when it is one or more shots, adjacent,
-     inside one chapter; anything else is refused in words. The stretch is
-     the narration from the first word of the first selected quote to the
-     word before the next unselected shot's first word, or the chapter's
-     end. The planner gets that text with its seconds, the briefs of the shot
-     before and after (read only), the chapter's context and the owner's
-     note. Its answer is judged after `plannedToRows`: every quote inside the
-     stretch, the first starting at the stretch's first word, narration
-     order, no overlap, and a slot dropped in conversion (the headline cap, a
-     headline or chart citing a claim it may not) counts as a broken answer
-     so the shot before cannot hold on into the gap. A broken answer is asked
-     once more with its reason (decision 292) and then the re-plan stops with
-     the old shots kept. Timing findings refuse only the first answer; a
-     second answer with a short shot is kept and carries its note. The
-     action stamps a job on every selected shot before sending (decision 286) and clears the stamps when the send fails. It refuses a stretch
-     that overlaps a shot with a job in flight, any stretch while the stage
-     runs, and any stretch alongside a project-level Re-plan shot list,
-     Redraft or Fix, and those buttons are refused while a stretch runs,
-     Approve included (`STRETCH_RUNNING`). The new function
-     `stretch-replanner` queues one chapter's stretches behind each other
-     (concurrency 1 per `chapterId`, never cancelled) so a second stretch is
-     cut from the rows the first one wrote; the visuals-replanner's
-     per-project singleton would have cancelled it. Stretches in different
-     chapters run side by side. On the board the new
-     shots are fetched at once through `slot-refetcher`, the Regenerate path.
-     Shipping: a new Inngest function, so `PUT /api/inngest` after the Vercel
-     deploy; no migration, the `pending_job` kind lives in JSON.
+     while the project sits at the visuals stage with `visualsPhase` `plan`
+     or `board`, each shot card has a `Select` toggle. The phase alone is
+     not enough: it stays `board` after the visuals gate is approved and
+     `plan` through a voice re-run, so the action, the function and the
+     board (the model's `stretchOpen`) all require `stage` `visuals`; past
+     it the board hides Select, the bar and the timing notes' buttons, and
+     the notes still show. A selection is valid when it is one or more
+     shots, adjacent, inside one chapter; anything else is refused in words,
+     and a shot that starts on the same word as the next one is refused in
+     its own words. The stretch is the narration from the first word of the
+     first selected quote to the word before the next unselected shot's
+     first word, or the chapter's end. The planner gets that text with its
+     seconds, the briefs of the shot before and after (read only), the
+     chapter's context and the owner's note. Its answer is judged after
+     `plannedToRows`: every quote inside the stretch, the first starting at
+     the stretch's first word, narration order, no overlap, and a slot
+     dropped in conversion (the headline cap, a headline or chart citing a
+     claim it may not) counts as a broken answer so the shot before cannot
+     hold on into the gap. A broken answer is asked once more with its
+     reason (decision 292) and then the re-plan stops with the old shots
+     kept. Timing findings refuse only the first answer, and they are read
+     among the chapter's other rows, re-anchored together, so the last new
+     shot ends where the shot after the stretch starts; only a finding that
+     names a new shot refuses. A second answer with a short shot is kept and
+     carries its note. The action sends the selection in screen order and
+     stamps a job on every selected shot before sending (decision 286), and
+     clears the stamps when the send fails. It refuses a stretch that
+     overlaps a shot with a job in flight, any stretch while the stage runs
+     (a plan job, or the fetch pass, read with `isFetching` and the run
+     mirror as the board reads it, because the runner clears the plan job
+     as the fetch starts), and any stretch alongside a project-level Re-plan
+     shot list, Redraft or Fix; those buttons are refused while a stretch
+     runs, Approve included (`STRETCH_RUNNING`). The board disables the
+     bar's send while it is locked. The new function `stretch-replanner`
+     queues one chapter's stretches behind each other (concurrency 1 per
+     `chapterId`, never cancelled) so a second stretch is cut from the rows
+     the first one wrote; the visuals-replanner's per-project singleton
+     would have cancelled it. Stretches in different chapters run side by
+     side. Its `check-phase` step repeats the stage and fetch refusals,
+     leaving its own mirrored run out of `hasLiveRun`. The write renumbers
+     the chapter by position, never by stored `startMs` (a voice retake
+     moves the clock without re-anchoring it): the survivors before the
+     first removed row, then the new rows, then the rest. On the board the
+     new shots are fetched at once through `slot-refetcher`, the Regenerate
+     path. Shipping: a new Inngest function, so `PUT /api/inngest` after the
+     Vercel deploy; no migration, the `pending_job` kind lives in JSON.
 321. **The mock quotes one sentence per slot** (2026-10-26). `mockShotList`
      used to give every shot on a paragraph the same first 120 characters, so
      every mock plan would have failed the new checks. Each mock slot now
