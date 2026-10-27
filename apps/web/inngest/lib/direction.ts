@@ -313,6 +313,8 @@ export async function planChapterSlots(input: {
         .filter((ref) => ref > 0),
     }).slots
   } else {
+    // The first ask and the brief repair are the ledger's plain rows; the
+    // automatic timing repair ('stretch') and the retries are named on theirs.
     const planned = await planChapterWith(
       (request, purpose) =>
         callLlm(request, {

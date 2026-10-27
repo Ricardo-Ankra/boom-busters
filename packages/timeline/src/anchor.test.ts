@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Caption } from '@boom-busters/schemas'
-import { anchorSlots } from './anchor'
+import { anchorSlots, anchorWordRanges } from './anchor'
 
 /**
  * One paragraph of narration, one word every 500ms, so a word's index is its
@@ -114,5 +114,71 @@ describe('anchorSlots', () => {
   it('keeps every planned start when the narration was never timed', () => {
     const planned = [{ startMs: 4000, durationMs: 4000, coversText: 'The board met on a Friday.' }]
     expect(anchorSlots(planned, [], spans)).toEqual(planned)
+  })
+})
+
+describe('anchorWordRanges', () => {
+  const text =
+    'Other tallies went higher. In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.'
+  const tokens = text.split(' ').map((t, i) => ({ text: t, startMs: i * 500 }))
+  const paragraph = [{ startMs: 0, endMs: 8_500 }]
+  const second = 'In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.'
+
+  it('gives each quote its first and last word', () => {
+    const ranges = anchorWordRanges(
+      [
+        { startMs: 0, durationMs: 2_000, coversText: text },
+        { startMs: 2_000, durationMs: 6_500, coversText: second },
+      ],
+      tokens,
+      paragraph,
+    )
+    expect(ranges).toEqual([
+      { first: 0, last: 16 },
+      { first: 4, last: 16 },
+    ])
+  })
+
+  it('returns null for a quote that is not spoken', () => {
+    const ranges = anchorWordRanges(
+      [{ startMs: 0, durationMs: 2_000, coversText: 'Nothing like this was said' }],
+      tokens,
+      paragraph,
+    )
+    expect(ranges).toEqual([null])
+  })
+
+  it('clamps a range that matched only its opening to the paragraph end', () => {
+    const ranges = anchorWordRanges(
+      [
+        {
+          startMs: 2_000,
+          durationMs: 6_500,
+          coversText: `${second} And then a great deal more was said besides.`,
+        },
+      ],
+      tokens,
+      paragraph,
+    )
+    expect(ranges).toEqual([{ first: 4, last: 16 }])
+  })
+
+  it('returns null for a slot with no quote', () => {
+    expect(anchorWordRanges([{ startMs: 0, durationMs: 1_000 }], tokens, paragraph)).toEqual([null])
+  })
+
+  it('keeps results in input order when slots are given out of clock order', () => {
+    const ranges = anchorWordRanges(
+      [
+        { startMs: 2_000, durationMs: 6_500, coversText: second },
+        { startMs: 0, durationMs: 2_000, coversText: 'Other tallies went higher.' },
+      ],
+      tokens,
+      paragraph,
+    )
+    expect(ranges).toEqual([
+      { first: 4, last: 16 },
+      { first: 0, last: 3 },
+    ])
   })
 })

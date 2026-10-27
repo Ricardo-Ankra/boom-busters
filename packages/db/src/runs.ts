@@ -415,12 +415,27 @@ export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[
  * hand-edited project can read `awaiting_review` with no run waiting on it, and
  * the UI must not then offer an Approve button whose event nothing is
  * listening for.
+ *
+ * A run asking from inside itself passes its own id as `exceptInngestRunId`:
+ * the mirror records it as running, and it is not the run it is asking about.
  */
-export async function hasLiveRun(db: Database, projectId: string): Promise<boolean> {
+export async function hasLiveRun(
+  db: Database,
+  projectId: string,
+  options: { exceptInngestRunId?: string } = {},
+): Promise<boolean> {
   const [row] = await db
     .select({ id: runs.id })
     .from(runs)
-    .where(and(eq(runs.projectId, projectId), inArray(runs.status, ['running', 'awaiting_gate'])))
+    .where(
+      and(
+        eq(runs.projectId, projectId),
+        inArray(runs.status, ['running', 'awaiting_gate']),
+        options.exceptInngestRunId === undefined
+          ? undefined
+          : ne(runs.inngestRunId, options.exceptInngestRunId),
+      ),
+    )
     .limit(1)
   return row !== undefined
 }

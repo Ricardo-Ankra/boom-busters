@@ -20,6 +20,7 @@ import {
   VisualsRefetchRequestedSchema,
   VisualsReplanRequestedSchema,
   VisualsRetypeRequestedSchema,
+  VisualsStretchRequestedSchema,
   VoiceRetakeRequestedSchema,
   EVENT_SCHEMAS,
 } from '@boom-busters/schemas'
@@ -93,6 +94,9 @@ export const events = {
   }),
   visualsReplanRequested: eventType('visuals/replan.requested', {
     schema: VisualsReplanRequestedSchema,
+  }),
+  visualsStretchRequested: eventType('visuals/stretch.requested', {
+    schema: VisualsStretchRequestedSchema,
   }),
   visualsRedirectRequested: eventType('visuals/redirect.requested', {
     schema: VisualsRedirectRequestedSchema,

@@ -78,6 +78,7 @@ import type {
   VisualsJobOp,
 } from '@boom-busters/schemas'
 import { anchoredTimes, timedParagraphs } from '@/inngest/lib/shot-list'
+import { timingFindings } from '@/inngest/lib/timing-findings'
 import { stillCatalogue, stillModelOptions } from './model-catalogue'
 import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
@@ -90,6 +91,7 @@ import {
   type ReusableRow,
   type ReuseSource,
 } from './visuals-reuse'
+import { isFetching } from './visuals-fetching'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -150,27 +152,9 @@ export function visualsJobView(raw: unknown): VisualsJobView | null {
   return parsed.success ? { op: parsed.data.op, startedAt: parsed.data.startedAt } : null
 }
 
-/**
- * Whether Fetch visuals is under way (decision 286). The runner keeps the
- * plan phase for the whole fetch pass, and the stage reads `running` from the
- * moment it closes the gate, so no stamp is needed; a stopped or failed fetch
- * leaves the stage `cancelled` or `failed`, which is not fetching.
- *
- * `running` counts only with a live run behind it, `isMoving`'s rule: a
- * runner that died without its `onFailure` leaves the column saying running,
- * and reading that as a fetch would lock the board for good and refuse the
- * one free way out, Fetch visuals resuming at the fetch pass (decision 279).
- * And only while the project is at the visuals stage: a voice re-run leaves
- * the plan phase in the row, and its run is not a fetch.
- */
-export function isFetching(
-  phase: 'plan' | 'board' | null,
-  project: { stage: string; stageStatus: string } | undefined,
-  liveRun: boolean,
-): boolean {
-  if (phase !== 'plan' || project?.stage !== 'visuals') return false
-  return project.stageStatus === 'queued' || (project.stageStatus === 'running' && liveRun)
-}
+// In a module of its own so an Inngest function can read it without this
+// file's imports (the stretch-replanner's check-phase step).
+export { isFetching }
 
 /**
  * Whether the page should keep polling for this board (decision 286). A job
@@ -384,6 +368,16 @@ export interface NarrationSegment {
   durationMs: number
 }
 
+export interface TimingNoteView {
+  /** The shots the note is about. */
+  slotIds: string[]
+  /** The shots "Re-plan this stretch" selects. */
+  stretch: string[]
+  message: string
+  /** `${message} (ch N · m:ss)`, as the craft notes are listed. */
+  listed: string
+}
+
 export interface VisualsReviewModel {
   chapters: ChapterSlots[]
   coverage: VisualsCoverage
@@ -428,6 +422,19 @@ export interface VisualsReviewModel {
   warnings: string[]
   /** The same craft notes by slot id, so each card can say its own. */
   slotNotes: Record<string, string[]>
+  /**
+   * Timing notes (the stretch re-plan design, 3.1): shots on screen too briefly
+   * or quoting one sentence twice. Their own list, in screen order: never in
+   * `warnings`, `slotNotes` or `repair`, because Fix does not act on them.
+   */
+  timingNotes: TimingNoteView[]
+  /**
+   * Whether shots may be selected for a stretch re-plan (the stretch re-plan
+   * design, 3.3): the project sits at the visuals stage with a phase open. The
+   * phase alone outlives the stage (it stays `board` after the visuals gate is
+   * approved), so the board reads this, as the action does.
+   */
+  stretchOpen: boolean
   /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
@@ -486,6 +493,8 @@ export function emptyVisualsModel(): VisualsReviewModel {
     direction: null,
     warnings: [],
     slotNotes: {},
+    timingNotes: [],
+    stretchOpen: false,
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
@@ -1148,6 +1157,27 @@ export async function visualsReviewModel(
     return `${finding.message} (ch ${slot.chapterIndex + 1} · ${timecode(slot.startMs)})`
   })
 
+  // Timing notes (the stretch re-plan design, 3.1), from the same anchored
+  // times the cards seek to. A list of their own: Fix does not act on them.
+  const timingNotes = timingFindings(
+    rows.map((row, at) => ({
+      chapterId: row.chapterId,
+      type: row.type,
+      startMs: times[at]!.startMs,
+      durationMs: times[at]!.durationMs,
+      coversText: briefs[at]?.success === true ? briefs[at].data.coversText : null,
+    })),
+    paragraphs,
+  ).map((finding): TimingNoteView => {
+    const first = finding.slotIndexes[0]!
+    return {
+      slotIds: finding.slotIndexes.map((at) => rows[at]!.id),
+      stretch: finding.stretch.map((at) => rows[at]!.id),
+      message: finding.message,
+      listed: `${finding.message} (ch ${rows[first]!.chapterIndex + 1} · ${timecode(times[first]!.startMs)})`,
+    }
+  })
+
   return {
     chapters,
     coverage,
@@ -1169,6 +1199,9 @@ export async function visualsReviewModel(
     // per finding, so the list and the Fix button's count are the same set.
     warnings,
     slotNotes,
+    timingNotes,
+    stretchOpen:
+      project?.stage === 'visuals' && (options.phase === 'plan' || options.phase === 'board'),
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [

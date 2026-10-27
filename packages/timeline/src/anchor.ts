@@ -68,9 +68,52 @@ export function anchorSlots<T extends AnchorableSlot>(
   paragraphs: readonly ParagraphSpan[],
 ): T[] {
   if (slots.length === 0 || words.length === 0) return [...slots]
+  const walked = walkSlots(slots, words, paragraphs)
+  return slots.map((slot, index) => ({ ...slot, startMs: walked[index]!.startMs }))
+}
 
+/** The first and last spoken word of a slot's quote; indexes into `words`, inclusive. */
+export interface WordRange {
+  first: number
+  last: number
+}
+
+/**
+ * The words each slot's quote covers, in input order, `null` where the quote is
+ * not found. Same search, floor and paragraph rules as `anchorSlots`, so the
+ * range always starts on the word the slot is anchored to. A quote matched
+ * only by its opening is clamped to the end of its paragraph.
+ */
+export function anchorWordRanges(
+  slots: readonly AnchorableSlot[],
+  words: readonly AnchorWord[],
+  paragraphs: readonly ParagraphSpan[],
+): (WordRange | null)[] {
+  if (slots.length === 0 || words.length === 0) return slots.map(() => null)
+  return walkSlots(slots, words, paragraphs).map((step) =>
+    step.at === -1
+      ? null
+      : { first: step.at, last: Math.min(step.at + step.tokenCount - 1, step.until - 1) },
+  )
+}
+
+interface WalkedSlot {
+  startMs: number
+  /** Index into `words` the quote matched at, or -1. */
+  at: number
+  tokenCount: number
+  /** One past the last word of the slot's paragraph. */
+  until: number
+}
+
+/** The per-slot walk both entry points share, results in input order. */
+function walkSlots(
+  slots: readonly AnchorableSlot[],
+  words: readonly AnchorWord[],
+  paragraphs: readonly ParagraphSpan[],
+): WalkedSlot[] {
   const spoken = words.map((word) => normalizeWord(word.text))
-  const anchored = [...slots]
+  const walked: WalkedSlot[] = []
   // Clock order, because the floor below is "wherever the previous shot went".
   const order = slots.map((_, index) => index).sort((a, b) => slots[a]!.startMs - slots[b]!.startMs)
 
@@ -80,12 +123,13 @@ export function anchorSlots<T extends AnchorableSlot>(
     const span = paragraphAt(paragraphs, slot.startMs)
     const from = firstWordFrom(words, Math.max(span.startMs, floorMs))
     const until = firstWordFrom(words, span.endMs)
-    const at = anchorIndex(spoken, coverTokens(slot.coversText), from, until)
+    const tokens = coverTokens(slot.coversText)
+    const at = anchorIndex(spoken, tokens, from, until)
     const startMs = at === -1 ? Math.max(slot.startMs, floorMs) : words[at]!.startMs
-    anchored[index] = { ...slot, startMs }
+    walked[index] = { startMs, at, tokenCount: tokens.length, until }
     floorMs = startMs
   }
-  return anchored
+  return walked
 }
 
 /** The quote as comparable tokens: performance tags and punctuation gone. */

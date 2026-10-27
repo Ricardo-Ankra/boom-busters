@@ -1,21 +1,13 @@
 import {
   getProject,
-  latestScriptParagraphSources,
-  listProjectSets,
   listShotSlots,
-  listVoiceTakes,
   releaseVisualsJob,
   replaceShotList,
-  scriptableClaims,
   setSlotRetype,
-  listCastMembers,
-  listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
-  DirectorsBookSchema,
   mayBecomeStill,
   parseEventData,
   repairTargets,
@@ -38,7 +30,7 @@ import {
 import { budgetGateData, markSideJobFailed, type GateContext } from '../lib/gates'
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { releaseFailedVisualsJob } from '../lib/jobs'
-import { timedParagraphs } from '../lib/shot-list'
+import { loadPlanInputs } from '../lib/plan-inputs'
 
 /**
  * visuals-replanner (decision 252). The plan screen's two model-backed
@@ -165,56 +157,7 @@ export const visualsReplanner = inngest.createFunction(
       // Re-plan every chapter from the stored book
       // -----------------------------------------------------------------------
 
-      const setup = await step.run('load-plan-inputs', async () => {
-        const project = await getProject(db, projectId)
-        if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
-        const book = DirectorsBookSchema.safeParse(project.direction)
-        const sources = await latestScriptParagraphSources(db, projectId)
-        const takes = await listVoiceTakes(db, projectId)
-        const claims = await scriptableClaims(db, projectId)
-        const cast = await listCastMembers(db, projectId)
-        // Loaded once for the whole re-plan: the shot-list prompt lists the
-        // film's rooms, and the craft notes count how often each is used.
-        const sets = await listProjectSets(db, projectId)
-        // The logo library (decision 268, Plan B), threaded exactly like `sets`.
-        const logos = await listLogos(db)
-        return {
-          caseTitle: project.title,
-          direction: book.success ? book.data : null,
-          chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
-          paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
-          claims: claims.map((claim) => ({
-            id: claim.id,
-            text: claim.text,
-            sourceUrl: claim.sourceUrl,
-            confidence: claim.confidence,
-            // Which claims a headline card may cite (decision 257).
-            sourceType: claim.sourceType,
-          })) satisfies ScriptClaim[],
-          // Who the producer has photographed (decision 253, amended). Their
-          // prompts name them and carry no physical description, because the
-          // photograph is the likeness.
-          photographed: cast
-            .filter((member) => member.photos.length > 0)
-            .map((member) => member.name),
-          // Every member, photographed or not (decision 271): the Fix button
-          // weighs an unphotographed person as a manual finding.
-          cast: cast.map((member) => ({
-            name: member.name,
-            photographed: member.photos.length > 0,
-          })),
-          // The film's rooms: named, described and inventoried for the
-          // shot-list prompt (decision 275), and counted by the craft notes
-          // below (decision 264).
-          sets: sets.map(({ name, look, layout }) => ({ name, look, layout })),
-          logos: logos.map((row) => ({
-            id: row.id,
-            title: row.title ?? '',
-            width: row.width,
-            height: row.height,
-          })),
-        }
-      })
+      const setup = await step.run('load-plan-inputs', () => loadPlanInputs(projectId))
 
       // -----------------------------------------------------------------------
       // Fix the flagged slots, and nothing else (decision 271)

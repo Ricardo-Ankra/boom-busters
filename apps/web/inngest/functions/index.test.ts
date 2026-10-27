@@ -57,10 +57,14 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - teaser-shot-fetcher works per beat, and two beats of the same Short
   //   fetching at once is a feature; the action refuses per-beat duplicates
   //   against the stored fetch state instead.
+  // - stretch-replanner queues one chapter's stretches behind each other
+  //   (`concurrency` keyed on the chapter, the stretch re-plan design 3.3):
+  //   a second stretch is another selection, never a duplicate to cancel.
   'analytics-runner': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,
+  'stretch-replanner': null,
 }
 
 describe('function singletons (decision 233)', () => {

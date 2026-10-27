@@ -674,13 +674,31 @@ export const SlotRefusalSchema = z.object({
 export type SlotRefusal = z.infer<typeof SlotRefusalSchema>
 
 /**
+ * The least a shot should stay on screen, in seconds, by type (the stretch
+ * re-plan design). Text a viewer has to read (headline, social) needs longest;
+ * charts and maps need time to be taken in; footage and images read at a glance.
+ * The visuals stage checks planned shots against these once narration is timed.
+ */
+export const MIN_SHOT_SECONDS: Record<ShotBrief['type'], number> = {
+  headline: 5,
+  social: 5,
+  chart: 4,
+  map: 4,
+  stock: 3,
+  archival: 3,
+  still: 3,
+  graphic: 3,
+  hero: 3,
+}
+
+/**
  * A background job running on one slot (decision 286): stamped by the server
  * action before it sends the event, released by the job that answers it, and
  * cleared by Stop. `jobId` lets a job clear only its own stamp, so one that
  * finishes late never unlocks a newer press.
  */
 export const SlotJobSchema = z.object({
-  kind: z.enum(['refetch', 'redirect']),
+  kind: z.enum(['refetch', 'redirect', 'stretch']),
   jobId: UlidSchema,
   startedAt: z.iso.datetime(),
 })

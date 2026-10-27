@@ -56,6 +56,7 @@ import type {
   SlotJobView,
   SlotReference,
   SlotView,
+  TimingNoteView,
   VisualsJobView,
   VisualsReviewModel,
 } from '@/lib/visuals-review'
@@ -114,6 +115,7 @@ import {
   type BrandChartColors,
 } from './slot-previews'
 import { SocialPreview } from './social-preview'
+import { StretchBar, useStretchSelection } from './stretch-bar'
 
 /**
  * The visual board (build spec section 11.3): a filmstrip synced to an audio
@@ -214,6 +216,9 @@ function slotJobWords(job: SlotJobView, now: number, planning: boolean): string 
   const age = timecode(jobAgeMs(job.startedAt, now))
   if (job.kind === 'redirect') {
     return `Redirecting the scene without the likeness, started ${age} ago.`
+  }
+  if (job.kind === 'stretch') {
+    return `Re-planning these shots, started ${age} ago. New shots replace them when the planner answers.`
   }
   return planning
     ? `Fetching this slot, started ${age} ago. The card updates when it lands.`
@@ -1667,6 +1672,7 @@ function VisualBoardContent({
     })
   }, [refreshing, locks])
 
+  const selection = useStretchSelection(model.chapters)
   const playable = model.segments.some((segment) => segment.takeId !== null)
   const allSlots = model.chapters.flatMap((chapter) => chapter.slots)
 
@@ -1875,6 +1881,23 @@ function VisualBoardContent({
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>
+              ) : null}
+              {/* Timing notes get a list of their own: Fix cannot clear them,
+                  and each card beside them carries the Re-plan button. */}
+              {model.timingNotes.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+                    Timing notes
+                  </p>
+                  <ul
+                    className="list-disc pl-5 text-[12px] text-[var(--color-warning)]"
+                    aria-label="Timing notes"
+                  >
+                    {model.timingNotes.map((note) => (
+                      <li key={note.listed}>{note.listed}</li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
               {/* Apart from the craft notes (decision 277): the Fix button
                   cannot clear these, so they are not counted against it. */}
@@ -2159,6 +2182,11 @@ function VisualBoardContent({
                 act={act}
                 phase={model.phase}
                 notes={model.slotNotes[slot.id] ?? []}
+                timingNotes={model.timingNotes.filter((note) => note.slotIds.includes(slot.id))}
+                selected={selection.selected.includes(slot.id)}
+                selectable={model.stretchOpen}
+                onToggleSelect={() => selection.toggle(slot.id)}
+                onSelectStretch={selection.selectStretch}
                 articleClaims={model.articleClaims}
                 postClaims={model.postClaims}
                 supportClaims={model.supportClaims}
@@ -2172,6 +2200,16 @@ function VisualBoardContent({
           ))}
         </ChapterSection>
       ))}
+      {/* Only while the visuals stage is open: the phase outlives it. */}
+      {model.stretchOpen ? (
+        <StretchBar
+          projectId={projectId}
+          selection={selection}
+          chapters={model.chapters}
+          act={act}
+          locked={planBusy}
+        />
+      ) : null}
     </div>
   )
 }
@@ -2322,6 +2360,11 @@ function SlotCard({
   act,
   phase,
   notes,
+  timingNotes,
+  selected,
+  selectable,
+  onToggleSelect,
+  onSelectStretch,
   articleClaims,
   postClaims,
   supportClaims,
@@ -2341,6 +2384,14 @@ function SlotCard({
   phase: VisualsReviewModel['phase']
   /** This slot's craft notes (decision 277), the ones the plan card lists by chapter and time. */
   notes: readonly string[]
+  /** The timing notes about this shot, shown in both phases (the stretch re-plan design, 3.4). */
+  timingNotes: readonly TimingNoteView[]
+  /** Whether this shot is in the stretch selection. */
+  selected: boolean
+  /** The stretch re-plan is open on this project (the model's `stretchOpen`). */
+  selectable: boolean
+  onToggleSelect: () => void
+  onSelectStretch: (slotIds: readonly string[]) => void
   articleClaims: ArticleClaimOption[]
   postClaims: PostClaimOption[]
   supportClaims: PostClaimOption[]
@@ -2371,7 +2422,10 @@ function SlotCard({
   const picture = REUSABLE_SLOT_TYPES.includes(slot.type as (typeof REUSABLE_SLOT_TYPES)[number])
 
   return (
-    <Card id={`slot-${slot.id}`}>
+    <Card
+      id={`slot-${slot.id}`}
+      className={selected ? 'outline-2 outline-[var(--color-accent)]' : undefined}
+    >
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <TypeBadge type={slot.type} />
@@ -2385,6 +2439,18 @@ function SlotCard({
           <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
             {timecode(slot.startMs)} · {Math.round(slot.durationMs / 1000)}s
           </span>
+          {/* Hidden exactly when the card's other buttons lock (a job in flight),
+              and once the visuals stage has closed. */}
+          {busy || !selectable ? null : (
+            <Button
+              variant={selected ? 'primary' : 'outline'}
+              className="ml-auto"
+              aria-pressed={selected}
+              onClick={onToggleSelect}
+            >
+              {selected ? 'Selected' : 'Select'}
+            </Button>
+          )}
         </div>
         {brief ? (
           <CardTitle className="text-[13px] font-normal text-[var(--color-text-secondary)]">
@@ -2413,6 +2479,30 @@ function SlotCard({
         ) : null}
         {brief ? (
           <p className="text-[13px] text-[var(--color-text-primary)]">{brief.description}</p>
+        ) : null}
+
+        {/* Timing notes on the board as well as the plan screen: the board is
+            where the times are visible. The button selects the stretch to fix. */}
+        {timingNotes.length > 0 ? (
+          <ul
+            className="flex flex-col gap-2 text-[12px] text-[var(--color-warning)]"
+            aria-label="Timing notes on this shot"
+          >
+            {timingNotes.map((note) => (
+              <li key={note.listed} className="flex flex-wrap items-center gap-2">
+                <span>{note.message}</span>
+                {selectable ? (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => onSelectStretch(note.stretch)}
+                  >
+                    Re-plan this stretch
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         ) : null}
 
         {/* On the card as well as in the plan card's list: with chapters

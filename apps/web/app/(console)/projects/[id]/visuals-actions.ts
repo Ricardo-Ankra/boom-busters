@@ -11,9 +11,12 @@ import {
   getShotSlot,
   getSocialPost,
   hasLiveRun,
+  latestScriptParagraphSources,
   linkSlotReuse,
   listLogos,
+  listShotSlots,
   listSlotDependants,
+  listVoiceTakes,
   scriptableClaims,
   setArticleSourceManual,
   setCastXHandle,
@@ -81,6 +84,9 @@ import { z } from 'zod'
 import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
+import { timedParagraphs } from '@/inngest/lib/shot-list'
+import { cutStretch } from '@/inngest/lib/stretch'
+import { anchoredChapterRows } from '@/inngest/lib/stretch-rows'
 import { articleForClaim, articleFromRow, refetchArticle } from '@/lib/article-source'
 import { db } from '@/lib/db'
 import { stillCatalogue } from '@/lib/model-catalogue'
@@ -95,7 +101,8 @@ import {
   R2_PREFIX,
   storageConfigured,
 } from '@/lib/storage'
-import { isFetching } from '@/lib/visuals-review'
+import { hasLiveStretch, liveSlotJob, STRETCH_RUNNING } from '@/lib/stretch-jobs'
+import { isFetching } from '@/lib/visuals-fetching'
 import { timecode } from '@/lib/visuals-reuse'
 
 /**
@@ -396,6 +403,9 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
       error: 'The fetch is already running. The board updates as the shots land.',
     }
   }
+  // A stretch re-plan writes into the list this would approve (the stretch
+  // re-plan design, 3.3), so Fetch waits for it.
+  if (await hasLiveStretch(projectId)) return { ok: false, error: STRETCH_RUNNING }
 
   const job: VisualsJob = { op: 'fetch', jobId: newId(), startedAt: new Date().toISOString() }
   await setVisualsJob(db, projectId, job)
@@ -2030,6 +2040,7 @@ async function sendReplan(
   if (project.visualsPhase !== 'plan') {
     return { ok: false, error: 'The plan checkpoint is not open on this project.' }
   }
+  if (await hasLiveStretch(projectId)) return { ok: false, error: STRETCH_RUNNING }
 
   const job: VisualsJob = { op, jobId: newId(), startedAt: new Date().toISOString() }
   await setVisualsJob(db, projectId, job)
@@ -2083,6 +2094,102 @@ export async function redirectSceneAction(
       ok: false,
       error:
         'Could not reach Inngest to redirect this scene. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/** The longest note the owner may give a stretch re-plan; the event repeats it. */
+const MAX_STRETCH_NOTE = 500
+
+/**
+ * "Re-plan these shots" (the stretch re-plan design, 3.3): the owner selected
+ * a run of neighbouring shots in one chapter and the planner plans only that
+ * stretch again. Every refusal is decided here, before any stamp, so a press
+ * that cannot work never spends anything; the stretch-replanner cuts the same
+ * stretch again from the rows it finds.
+ */
+export async function replanStretchAction(
+  projectId: string,
+  slotIds: string[],
+  note: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId, ...slotIds)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  // The phase outlives the stage: it stays `board` after the visuals gate is
+  // approved and `plan` through a voice re-run, so the stage is checked too.
+  if (
+    project.stage !== 'visuals' ||
+    (project.visualsPhase !== 'plan' && project.visualsPhase !== 'board')
+  ) {
+    return { ok: false, error: 'The visuals stage is not open on this project.' }
+  }
+  // The runner clears the plan job as the fetch pass starts, so the fetch is
+  // read the board's way (decision 286), not from the job alone.
+  if (
+    project.visualsJob ||
+    isFetching(project.visualsPhase, project, await hasLiveRun(db, projectId))
+  ) {
+    return { ok: false, error: 'Wait for the running plan job to finish.' }
+  }
+
+  const all = await listShotSlots(db, projectId)
+  const wanted = new Set(slotIds)
+  const selected = all.filter((row) => wanted.has(row.id))
+  if (selected.some((row) => liveSlotJob(row.pendingJob) !== null)) {
+    return { ok: false, error: 'One of these shots is still busy. Wait for it to finish.' }
+  }
+
+  // The same rows and paragraphs the function's `cut` step reads. A selection
+  // with a row missing, or spread over chapters, gets the neighbours copy from
+  // `cutStretch` itself (the first row's chapter is the one it cuts).
+  const sources = await latestScriptParagraphSources(db, projectId)
+  const paragraphs = timedParagraphs({
+    chapters: sources.chapters,
+    takes: await listVoiceTakes(db, projectId),
+  })
+  const chapterId = selected[0]?.chapterId ?? ''
+  const cut = cutStretch({
+    chapterRows: anchoredChapterRows(all, chapterId, paragraphs),
+    selectedIds: slotIds,
+    paragraphs,
+  })
+  if (!cut.ok) return { ok: false, error: cut.refused }
+
+  const steer = note.trim()
+  if (steer.length > MAX_STRETCH_NOTE) {
+    return { ok: false, error: 'Keep the note under 500 characters.' }
+  }
+
+  // Stamped first (decision 286), so the refresh this action triggers already
+  // says these shots are busy. Screen order, as the event carries them: the
+  // board's order, whatever order the press sent them in.
+  const ordered = selected.map((row) => row.id)
+  const job: SlotJob = { kind: 'stretch', jobId: newId(), startedAt: new Date().toISOString() }
+  for (const slotId of ordered) await setSlotJob(db, slotId, job)
+  try {
+    await inngest.send(
+      events.visualsStretchRequested.create({
+        projectId,
+        chapterId,
+        slotIds: ordered,
+        ...(steer === '' ? {} : { note: steer }),
+        jobId: job.jobId,
+      }),
+    )
+  } catch (error) {
+    console.error('[visuals] could not send stretch re-plan', error)
+    for (const slotId of ordered) await setSlotJob(db, slotId, null)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to re-plan these shots. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }

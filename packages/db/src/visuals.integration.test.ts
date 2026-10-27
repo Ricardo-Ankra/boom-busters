@@ -28,6 +28,7 @@ import {
   listSlotDependants,
   releaseSlotJob,
   replaceShotList,
+  replaceStretch,
   retypeShotSlot,
   setSlotJob,
   setSlotRefusal,
@@ -714,6 +715,171 @@ suite('shot slots', () => {
       // A refusal is an answer, not a job: it stays until dismissed.
       expect((await getShotSlot(db, b))!.retype).toMatchObject({ state: 'refused' })
       expect((await getProject(db, projectId))!.visualsJob).toBeNull()
+    })
+  })
+
+  describe('writing a stretch over the old rows', () => {
+    const jobId = newId()
+    const stamp = { kind: 'stretch' as const, jobId, startedAt: new Date().toISOString() }
+
+    function row(chapterId: string, index: number, startMs: number, durationMs = 4000) {
+      return {
+        chapterId,
+        index,
+        type: 'stock' as const,
+        brief: { ...stockBrief, description: `Shot ${index}` },
+        startMs,
+        durationMs,
+      }
+    }
+
+    async function fourRows() {
+      await replaceShotList(db, projectId, [
+        row(chapterA, 0, 0),
+        row(chapterA, 1, 4000),
+        row(chapterA, 2, 8000),
+        row(chapterA, 3, 12000),
+        row(chapterB, 0, 0),
+      ])
+      const all = await listShotSlots(db, projectId)
+      return {
+        a: all.filter((s) => s.chapterId === chapterA).map((s) => s.id),
+        b: all.filter((s) => s.chapterId === chapterB).map((s) => s.id),
+      }
+    }
+
+    it('replaces two rows with one and renumbers the chapter', async () => {
+      const { a } = await fourRows()
+      await setSlotJob(db, a[1]!, stamp)
+      await setSlotJob(db, a[2]!, stamp)
+      const before = await getShotSlot(db, a[3]!)
+
+      const ids = await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[1]!, a[2]!],
+        rows: [row(chapterA, 99, 4000, 8000)],
+        jobId,
+      })
+
+      expect(ids).toHaveLength(1)
+      const now = (await listShotSlots(db, projectId)).filter((s) => s.chapterId === chapterA)
+      expect(now.map((s) => s.index)).toEqual([0, 1, 2])
+      expect(now.map((s) => s.id)).toEqual([a[0], ids[0], a[3]])
+      expect(now.map((s) => s.startMs)).toEqual([0, 4000, 12000])
+      expect(now[1]!.pendingJob).toBeNull()
+      const last = (await getShotSlot(db, a[3]!))!
+      expect(last.brief).toEqual(before!.brief)
+      expect(last.candidates).toEqual(before!.candidates)
+    })
+
+    it('puts the new rows where the removed ones were, whatever their stored times', async () => {
+      // A voice retake moves the clock but never the stored `startMs`: the
+      // new rows arrive on the current clock, later than the shot after them.
+      const { a } = await fourRows()
+      await setSlotJob(db, a[1]!, stamp)
+      await setSlotJob(db, a[2]!, stamp)
+
+      const ids = await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[1]!, a[2]!],
+        rows: [row(chapterA, 0, 20000), row(chapterA, 0, 14000)],
+        jobId,
+      })
+
+      const now = (await listShotSlots(db, projectId)).filter((s) => s.chapterId === chapterA)
+      expect(now.map((s) => s.index)).toEqual([0, 1, 2, 3])
+      expect(now.map((s) => s.id)).toEqual([a[0], ids[0], ids[1], a[3]])
+      // Stored as given, not re-timed.
+      expect(now.map((s) => s.startMs)).toEqual([0, 20000, 14000, 12000])
+    })
+
+    it('keeps survivors in their old order when their stored times disagree', async () => {
+      await replaceShotList(db, projectId, [
+        row(chapterA, 0, 9000),
+        row(chapterA, 1, 4000),
+        row(chapterA, 2, 8000),
+        row(chapterA, 3, 1000),
+      ])
+      const a = (await listShotSlots(db, projectId)).map((s) => s.id)
+      await setSlotJob(db, a[2]!, stamp)
+
+      const ids = await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[2]!],
+        rows: [row(chapterA, 0, 0)],
+        jobId,
+      })
+
+      const now = await listShotSlots(db, projectId)
+      expect(now.map((s) => s.id)).toEqual([a[0], a[1], ids[0], a[3]])
+      expect(now.map((s) => s.index)).toEqual([0, 1, 2, 3])
+    })
+
+    it('leaves another chapter untouched', async () => {
+      const { a, b } = await fourRows()
+      await setSlotJob(db, a[1]!, stamp)
+      await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[1]!],
+        rows: [row(chapterA, 0, 4000), row(chapterA, 0, 6000)],
+        jobId,
+      })
+      const mine = (await listShotSlots(db, projectId)).filter((s) => s.chapterId === chapterA)
+      expect(mine.map((s) => s.index)).toEqual([0, 1, 2, 3, 4])
+      const other = (await listShotSlots(db, projectId)).filter((s) => s.chapterId === chapterB)
+      expect(other.map((s) => [s.id, s.index])).toEqual([[b[0], 0]])
+    })
+
+    it('nulls the link of a row that borrowed from a removed row', async () => {
+      const { a } = await fourRows()
+      await sql`update shot_slots set reuse_of_slot_id = ${a[1]!}, candidates = '[{"id":"keep-me"}]'::jsonb where id = ${a[3]!}`
+      const held = (await getShotSlot(db, a[3]!))!.candidates
+      await setSlotJob(db, a[1]!, stamp)
+
+      await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[1]!],
+        rows: [row(chapterA, 0, 4000)],
+        jobId,
+      })
+
+      const borrower = (await getShotSlot(db, a[3]!))!
+      expect(borrower.reuseOfSlotId).toBeNull()
+      expect(borrower.candidates).toEqual(held)
+    })
+
+    it('changes nothing when a row lost its stretch stamp', async () => {
+      const { a } = await fourRows()
+      await setSlotJob(db, a[1]!, stamp)
+      // a[2] never carried the stamp (a Stop cleared it).
+      const before = await listShotSlots(db, projectId)
+
+      await expect(
+        replaceStretch(db, {
+          projectId,
+          chapterId: chapterA,
+          removeIds: [a[1]!, a[2]!],
+          rows: [row(chapterA, 0, 4000)],
+          jobId,
+        }),
+      ).rejects.toThrow(/stretch stamp/)
+      await expect(
+        replaceStretch(db, {
+          projectId,
+          chapterId: chapterB,
+          removeIds: [a[1]!],
+          rows: [],
+          jobId,
+        }),
+      ).rejects.toThrow(/chapter/)
+
+      const after = await listShotSlots(db, projectId)
+      expect(after.map((s) => [s.id, s.index])).toEqual(before.map((s) => [s.id, s.index]))
     })
   })
 })

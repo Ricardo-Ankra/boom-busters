@@ -8210,3 +8210,94 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      reading changes, and a re-run of the voice stage re-buys exactly those
      paragraphs. Cost is still estimated from the script text, as it is for
      respellings, so a paragraph with a long figure is slightly under-priced.
+317. **Short shots are checked on anchored times** (2026-10-26). Two timing
+     checks read the same anchored times the board shows and the render cuts.
+     A shot is too short when it runs under `MIN_SHOT_SECONDS` for its type
+     (schemas): headline and social 5 s, chart and map 4 s, stock, archival,
+     still, graphic and hero 3 s. A shot whose whole paragraph is shorter than
+     its minimum, and which is that paragraph's only shot, is exempt, because
+     there is nothing to fix. Two shots share a sentence when some word of the
+     narration lies inside both quotes, found by word ranges on the take
+     timings, not by comparing text. The shotlist prompt now states the
+     minimums and the rule that every sentence is quoted by exactly one shot;
+     the 4 to 15 second rule stays. The silent clamps (`MIN_SLOT_MS`,
+     `MIN_SHOT_MS`) are unchanged.
+318. **Timing notes are their own list, and Fix ignores them** (2026-10-26).
+     Fix rewrites briefs and `parseShotRepair` refuses an answer that changes
+     `coversText`, so it could never clear a timing note. The notes therefore
+     have their own count on the plan card and the gate summary ("Timing
+     notes"), show on board cards as well as plan cards, and each carries a
+     `Re-plan this stretch` button that selects the shots the repair would
+     pick and opens the re-plan bar.
+319. **A freshly planned chapter gets one automatic timing repair**
+     (2026-10-26). After the brief repair, `planChapterWith` re-plans each
+     run of shots that has a timing finding as a stretch, with the findings
+     as the reason. A same-sentence finding takes the two shots whose quotes
+     overlap; a too-short finding takes the flagged shot and the next shot in
+     its paragraph, or the one before it when it is the paragraph's last.
+     Findings whose shots touch or overlap merge into one stretch inside the
+     chapter. One pass per chapter, never a loop: what is still flagged
+     afterwards stays flagged and shows as a note. A stopped answer, a
+     budget stop or any failure keeps the plan as planned, and so does
+     narration without word timings. Mock mode does not run the pass:
+     `planChapterSlots` takes the mock plan without calling
+     `planChapterWith`, and the mock plans meet the minimums anyway. The pass
+     is covered by the `planChapterWith` unit tests.
+320. **The stretch re-plan** (2026-10-26). On the plan screen and the board,
+     while the project sits at the visuals stage with `visualsPhase` `plan`
+     or `board`, each shot card has a `Select` toggle. The phase alone is
+     not enough: it stays `board` after the visuals gate is approved and
+     `plan` through a voice re-run, so the action, the function and the
+     board (the model's `stretchOpen`) all require `stage` `visuals`; past
+     it the board hides Select, the bar and the timing notes' buttons, and
+     the notes still show. A selection is valid when it is one or more
+     shots, adjacent, inside one chapter; anything else is refused in words,
+     and a shot that starts on the same word as the next one is refused in
+     its own words. The stretch is the narration from the first word of the
+     first selected quote to the word before the next unselected shot's
+     first word, or the chapter's end. The planner gets that text with its
+     seconds, the briefs of the shot before and after (read only), the
+     chapter's context and the owner's note. Its answer is judged after
+     `plannedToRows`: every quote inside the stretch, the first starting at
+     the stretch's first word, narration order, no overlap, and a slot
+     dropped in conversion (the headline cap, a headline or chart citing a
+     claim it may not) counts as a broken answer so the shot before cannot
+     hold on into the gap. A broken answer is asked once more with its
+     reason (decision 292) and then the re-plan stops with the old shots
+     kept. Timing findings refuse only the first answer, and they are read
+     among the chapter's other rows, re-anchored together, so the last new
+     shot ends where the shot after the stretch starts; only a finding that
+     names a new shot refuses. A second answer with a short shot is kept and
+     carries its note. The action sends the selection in screen order and
+     stamps a job on every selected shot before sending (decision 286), and
+     clears the stamps when the send fails. It refuses a stretch that
+     overlaps a shot with a job in flight, any stretch while the stage runs
+     (a plan job, or the fetch pass, read with `isFetching` and the run
+     mirror as the board reads it, because the runner clears the plan job
+     as the fetch starts), and any stretch alongside a project-level Re-plan
+     shot list, Redraft or Fix; those buttons are refused while a stretch
+     runs, Approve included (`STRETCH_RUNNING`). The board disables the
+     bar's send while it is locked. The new function `stretch-replanner`
+     queues one chapter's stretches behind each other (concurrency 1 per
+     `chapterId`, never cancelled) so a second stretch is cut from the rows
+     the first one wrote; the visuals-replanner's per-project singleton
+     would have cancelled it. Stretches in different chapters run side by
+     side. Its `check-phase` step repeats the stage and fetch refusals,
+     leaving its own mirrored run out of `hasLiveRun`. The write renumbers
+     the chapter by position, never by stored `startMs` (a voice retake
+     moves the clock without re-anchoring it): the survivors before the
+     first removed row, then the new rows, then the rest. On the board the
+     new shots are fetched at once through `slot-refetcher`, the Regenerate
+     path. Shipping: a new Inngest function, so `PUT /api/inngest` after the
+     Vercel deploy; no migration, the `pending_job` kind lives in JSON.
+321. **The mock quotes one sentence per slot** (2026-10-26). `mockShotList`
+     used to give every shot on a paragraph the same first 120 characters, so
+     every mock plan would have failed the new checks. Each mock slot now
+     quotes its own whole sentence and meets its minimum seconds, the seed
+     fixtures have enough sentences for the chart, map, headline and graphic
+     shots the e2e suite relies on, and the checks are not switched off in
+     mock mode. The mock answer to a stretch request covers the stretch in
+     two shots. The e2e spec runs without Inngest, so it asserts the
+     selection, the bar, the refused send and the cleared stamps (after a
+     reload as well); the replacement itself is proven by the stretch
+     replanner's own tests.

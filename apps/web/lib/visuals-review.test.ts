@@ -1,6 +1,22 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  claimTake,
+  createScriptVersion,
+  FIXTURE_PROJECT_ID,
+  listShotSlots,
+  replaceShotList,
+  requireTestDatabase,
+  saveChapter,
+  seed,
+  setProjectStage,
+  setVisualsPhase,
+  shotSlots,
+  storeTakeAudio,
+  truncateRunMirror,
+} from '@boom-busters/db'
+import { db } from '@/lib/db'
 import {
   needsExcerptIn,
   SOCIAL_FRAMES,
@@ -22,6 +38,7 @@ import {
   slotJobView,
   socialSlotView,
   visualsJobView,
+  visualsReviewModel,
 } from './visuals-review'
 
 /**
@@ -352,5 +369,118 @@ describe('codeLogoMarks (decision 295)', () => {
 
   it('lists nothing for an empty library', () => {
     expect(codeLogoMarks([])).toEqual({})
+  })
+})
+
+const describeDb = requireTestDatabase() ? describe : describe.skip
+
+describeDb('timing notes on the board model (the stretch re-plan design, 3.1)', () => {
+  const FIRST = 'The auditors arrived in June.'
+  const SECOND = 'They could not find the money.'
+  const text = `${FIRST} ${SECOND}`
+  const stock = (coversText: string) => ({
+    type: 'stock' as const,
+    coversText,
+    description: 'an office',
+    motion: { kind: 'static' as const },
+    transition: 'cut' as const,
+    query: 'q',
+    rejectionCriteria: [],
+  })
+
+  beforeEach(async () => {
+    await seed(db)
+    await truncateRunMirror(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: text,
+      estRuntimeSec: 10,
+    })
+    const claimed = await claimTake(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      chapterId: chapter.id,
+      paragraphIndex: 0,
+      idempotencyKey: newId(),
+      provider: 'elevenlabs',
+      voiceId: 'v-narrator',
+      builtFromScriptVersion: script.version,
+    })
+    const words = text.split(' ')
+    await storeTakeAudio(db, claimed.take.id, {
+      r2Key: `voice/${claimed.take.id}.mp3`,
+      durationMs: words.length * 700 + 300,
+      costUsd: 0,
+      waveform: [],
+      timings: words.map((word, at) => ({ text: word, startMs: at * 700, endMs: at * 700 + 600 })),
+    })
+    // Two shots quote the second sentence, and the first is on screen for 2 s.
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock(SECOND),
+        startMs: 0,
+        durationMs: 2_000,
+      },
+      {
+        chapterId: chapter.id,
+        index: 1,
+        type: 'stock',
+        brief: stock(SECOND),
+        startMs: 2_000,
+        durationMs: 6_000,
+      },
+    ])
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+  })
+
+  it('lists the Theranos pair as two timing notes with one stretch', async () => {
+    const ids = (await listShotSlots(db, FIXTURE_PROJECT_ID)).map((row) => row.id)
+    const { timingNotes } = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    expect(timingNotes).toHaveLength(2)
+    expect(timingNotes[0]).toMatchObject({ slotIds: [ids[0]], stretch: ids })
+    expect(timingNotes[1]).toMatchObject({ slotIds: ids, stretch: ids })
+    for (const note of timingNotes) {
+      // The anchored start (on the words quoted), as the cards show it.
+      expect(note.listed).toBe(`${note.message} (ch 1 · 0:03)`)
+    }
+    expect(timingNotes[1]!.message).toContain('one sentence needs one shot')
+  })
+
+  it('opens the stretch re-plan only while the project sits at the visuals stage', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).stretchOpen).toBe(
+      true,
+    )
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: null })).stretchOpen).toBe(
+      false,
+    )
+    // The phase stays `board` after the visuals gate is approved.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'assembly', stageStatus: 'running' })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).stretchOpen).toBe(
+      false,
+    )
+  })
+
+  it('keeps timing notes out of the craft notes and the Fix count', async () => {
+    const model = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
+    expect(model.timingNotes.length).toBeGreaterThan(0)
+    const said = model.timingNotes.map((note) => note.message)
+    expect(model.warnings.some((warning) => said.some((m) => warning.includes(m)))).toBe(false)
+    expect(
+      Object.values(model.slotNotes)
+        .flat()
+        .some((n) => said.includes(n)),
+    ).toBe(false)
+    expect(model.decisions.some((d) => said.some((m) => d.includes(m)))).toBe(false)
+    expect(model.repair).toEqual({ slots: 0, becomeStills: 0, chapters: 0 })
   })
 })

@@ -26,3 +26,19 @@ export async function releaseFailedVisualsJob(data: Record<string, unknown>): Pr
     console.error('[jobs] could not release a failed visuals job', error)
   })
 }
+
+/**
+ * A stretch re-plan stamps every selected slot with one job id (the stretch
+ * re-plan design, 3.3), so a failed one lets go of each of them, still only
+ * where the stamp is its own.
+ */
+export async function releaseFailedStretchJob(data: Record<string, unknown>): Promise<void> {
+  const { slotIds, jobId } = data
+  if (!Array.isArray(slotIds) || typeof jobId !== 'string') return
+  for (const slotId of slotIds) {
+    if (typeof slotId !== 'string') continue
+    await releaseSlotJob(db, slotId, jobId).catch((error: unknown) => {
+      console.error('[jobs] could not release a failed stretch job', error)
+    })
+  }
+}

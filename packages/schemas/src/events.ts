@@ -147,6 +147,23 @@ export const VisualsReplanRequestedSchema = z.object({
 })
 
 /**
+ * Re-plan a run of neighbouring shots in one chapter (the stretch re-plan
+ * design, 3.3). Handled by the stretch-replanner, which replaces only the
+ * selected rows. `slotIds` are the selection as the owner made it; the
+ * function checks they are neighbours. The job id is required: the action
+ * stamps every selected slot with it before sending, and the write refuses a
+ * slot that no longer carries it.
+ */
+export const VisualsStretchRequestedSchema = z.object({
+  ...projectRef,
+  chapterId: UlidSchema,
+  slotIds: z.array(UlidSchema).min(1),
+  /** What should change, in the owner's words. */
+  note: z.string().max(500).optional(),
+  jobId: UlidSchema,
+})
+
+/**
  * Draft a DIFFERENT brief for one slot (decision 258), with the producer's
  * steer. Handled by the slot-rebriefer. The format never changes: only the
  * idea inside it is in question, which is what separates this from a re-type.
@@ -362,6 +379,7 @@ export const EVENT_SCHEMAS = {
   'visuals/fetch.resume': VisualsFetchResumedSchema,
   'visuals/retype.requested': VisualsRetypeRequestedSchema,
   'visuals/replan.requested': VisualsReplanRequestedSchema,
+  'visuals/stretch.requested': VisualsStretchRequestedSchema,
   'visuals/redirect.requested': VisualsRedirectRequestedSchema,
   'visuals/rebrief.requested': VisualsRebriefRequestedSchema,
   'media/job.completed': MediaJobCompletedSchema,
