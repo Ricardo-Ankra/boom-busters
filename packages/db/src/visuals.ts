@@ -109,9 +109,9 @@ export async function replaceShotList(
 
 /**
  * Write a stretch over the old rows (the stretch re-plan design): delete
- * `removeIds`, insert `rows` in their place and renumber the chapter by start
- * time, in one transaction, so a Stop or a failed write never leaves half a
- * stretch on the board.
+ * `removeIds`, insert `rows` in their place and renumber the chapter by
+ * position, in one transaction, so a Stop or a failed write never leaves half
+ * a stretch on the board.
  *
  * Throws, writing nothing, when a removed row is missing, belongs to another
  * project or chapter, or no longer carries this job's stamp (a Stop or another
@@ -119,9 +119,14 @@ export async function replaceShotList(
  * to the `ON DELETE SET NULL` and keeps its candidates. Returns the new rows'
  * ids in input order.
  *
- * Renumbering goes through negative indexes so `shot_slots_chapter_index_key`
- * never sees two rows on one index mid-write. Ties on `startMs` keep the old
- * order for survivors, input order for new rows, survivors first.
+ * The order is by position, never by stored `startMs`: a voice retake moves
+ * the clock without re-anchoring stored times, so survivors (old clock) and
+ * new rows (current clock) could interleave and reorder shots outside the
+ * selection. Survivors before the first removed row keep their old order,
+ * then the new rows in input order, then the remaining survivors. With
+ * nothing removed the new rows go last. Renumbering goes through negative
+ * indexes so `shot_slots_chapter_index_key` never sees two rows on one index
+ * mid-write.
  */
 export async function replaceStretch(
   db: Database,
@@ -135,12 +140,15 @@ export async function replaceStretch(
 ): Promise<string[]> {
   const { projectId, chapterId, removeIds, rows, jobId } = input
   const ids = await db.transaction(async (tx) => {
+    // Where the new rows go: the old index of the first removed row.
+    let insertAt = Number.POSITIVE_INFINITY
     if (removeIds.length > 0) {
       const held = await tx
         .select({
           id: shotSlots.id,
           projectId: shotSlots.projectId,
           chapterId: shotSlots.chapterId,
+          index: shotSlots.index,
           stamped: sql<boolean>`${shotSlots.pendingJob}->>'jobId' = ${jobId}`,
         })
         .from(shotSlots)
@@ -156,6 +164,7 @@ export async function replaceStretch(
         if (!row.stamped) {
           throw new Error(`replaceStretch: slot ${id} no longer carries this stretch stamp`)
         }
+        insertAt = Math.min(insertAt, row.index)
       }
       await tx.delete(shotSlots).where(inArray(shotSlots.id, [...removeIds]))
     }
@@ -184,16 +193,19 @@ export async function replaceStretch(
       .map((row) => row.id)
     const fresh = new Set(newIds)
 
-    const all = await tx
-      .select({ id: shotSlots.id, index: shotSlots.index, startMs: shotSlots.startMs })
-      .from(shotSlots)
-      .where(eq(shotSlots.chapterId, chapterId))
-    const order = all.sort(
-      (x, y) =>
-        x.startMs - y.startMs ||
-        Number(fresh.has(x.id)) - Number(fresh.has(y.id)) ||
-        x.index - y.index,
+    const survivors = (
+      await tx
+        .select({ id: shotSlots.id, index: shotSlots.index })
+        .from(shotSlots)
+        .where(eq(shotSlots.chapterId, chapterId))
     )
+      .filter((row) => !fresh.has(row.id))
+      .sort((x, y) => x.index - y.index)
+    const order = [
+      ...survivors.filter((row) => row.index < insertAt),
+      ...newIds.map((id) => ({ id })),
+      ...survivors.filter((row) => row.index >= insertAt),
+    ]
     for (const [at, row] of order.entries()) {
       await tx
         .update(shotSlots)

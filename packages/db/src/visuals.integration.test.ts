@@ -773,6 +773,51 @@ suite('shot slots', () => {
       expect(last.candidates).toEqual(before!.candidates)
     })
 
+    it('puts the new rows where the removed ones were, whatever their stored times', async () => {
+      // A voice retake moves the clock but never the stored `startMs`: the
+      // new rows arrive on the current clock, later than the shot after them.
+      const { a } = await fourRows()
+      await setSlotJob(db, a[1]!, stamp)
+      await setSlotJob(db, a[2]!, stamp)
+
+      const ids = await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[1]!, a[2]!],
+        rows: [row(chapterA, 0, 20000), row(chapterA, 0, 14000)],
+        jobId,
+      })
+
+      const now = (await listShotSlots(db, projectId)).filter((s) => s.chapterId === chapterA)
+      expect(now.map((s) => s.index)).toEqual([0, 1, 2, 3])
+      expect(now.map((s) => s.id)).toEqual([a[0], ids[0], ids[1], a[3]])
+      // Stored as given, not re-timed.
+      expect(now.map((s) => s.startMs)).toEqual([0, 20000, 14000, 12000])
+    })
+
+    it('keeps survivors in their old order when their stored times disagree', async () => {
+      await replaceShotList(db, projectId, [
+        row(chapterA, 0, 9000),
+        row(chapterA, 1, 4000),
+        row(chapterA, 2, 8000),
+        row(chapterA, 3, 1000),
+      ])
+      const a = (await listShotSlots(db, projectId)).map((s) => s.id)
+      await setSlotJob(db, a[2]!, stamp)
+
+      const ids = await replaceStretch(db, {
+        projectId,
+        chapterId: chapterA,
+        removeIds: [a[2]!],
+        rows: [row(chapterA, 0, 0)],
+        jobId,
+      })
+
+      const now = await listShotSlots(db, projectId)
+      expect(now.map((s) => s.id)).toEqual([a[0], a[1], ids[0], a[3]])
+      expect(now.map((s) => s.index)).toEqual([0, 1, 2, 3])
+    })
+
     it('leaves another chapter untouched', async () => {
       const { a, b } = await fourRows()
       await setSlotJob(db, a[1]!, stamp)
