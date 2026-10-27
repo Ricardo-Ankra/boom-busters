@@ -55,6 +55,8 @@ export const DENSE_WARNINGS_TITLE = 'A chapter with every warning kind (E2E)'
 export const NARRATED_PROJECT_TITLE = 'Narration ready for review (E2E)'
 export const FLAGGED_TAKE_TITLE = 'Narration with a flagged take (E2E)'
 export const VISUAL_BOARD_TITLE = 'Visual board ready for review (E2E)'
+/** The stretch re-plan board: a short headline sharing a sentence with its neighbour. */
+export const STRETCH_BOARD_TITLE = 'Stretch re-plan board (E2E)'
 /** The article the seeded headline card cites, and cannot read (decision 257). */
 export const HEADLINE_ARTICLE_URL = 'https://financialrecord.example/2023/03/14/auditors'
 export const VISUAL_PLAN_TITLE = 'Shot plan awaiting fetch (E2E)'
@@ -846,6 +848,169 @@ export default async function globalSetup(): Promise<void> {
         data: { gate: 'visuals' },
       })
       await setRunStatus(connection.db, boardRunId, 'awaiting_gate')
+    }
+
+    /**
+     * 6a. The stretch re-plan board (the stretch re-plan design): one chapter,
+     * a 17-word paragraph that a headline and a stock shot share between them
+     * (the headline is cut to "Other tallies went higher.", two seconds, which
+     * the timing check flags), and a second paragraph with its own stock shot
+     * that the re-plan must never touch. Takes carry word timings, 500 ms a
+     * word, because the timing check reads them. Deliberately resolved: no
+     * placeholder, so the gate's wording is not this fixture's concern.
+     */
+    {
+      const {
+        replaceShotList,
+        getShotSlot,
+        listShotSlots,
+        setSlotResolution,
+        scriptableClaims,
+        updateSlotBrief,
+        setVisualsPhase,
+      } = await import('@boom-busters/db')
+
+      const stretch = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: STRETCH_BOARD_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: stretch.id,
+        contentMd: '# The research the stretch board was planned from.',
+        claims: [
+          {
+            text: 'CNBC reported that Holmes persuaded investors to put up 945 million.',
+            sourceUrl: 'https://cnbc.example/2021/holmes-investors',
+            sourceType: 'major_outlet',
+            confidence: 'sourced',
+          },
+        ],
+      })
+      const stretchScript = await createScriptVersion(connection.db, stretch.id)
+      const stretchParagraphs = [
+        'Other tallies went higher. In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.',
+        'The company folded soon after. Nobody inside it was surprised.',
+      ]
+      const stretchChapter = await saveChapter(connection.db, {
+        scriptId: stretchScript.id,
+        index: 0,
+        title: 'The tallies',
+        contentMd: stretchParagraphs.join('\n\n'),
+        estRuntimeSec: 20,
+      })
+
+      for (const [paragraphIndex, text] of stretchParagraphs.entries()) {
+        const key = takeIdempotencyKey({
+          projectId: stretch.id,
+          chapterId: stretchChapter.id,
+          paragraphIndex,
+          text,
+          voiceId: 'mock-narrator',
+        })
+        const claimed = await claimTake(connection.db, {
+          projectId: stretch.id,
+          chapterId: stretchChapter.id,
+          paragraphIndex,
+          idempotencyKey: key,
+          provider: 'elevenlabs',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: stretchScript.version,
+        })
+        const words = text.split(/\s+/)
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs: words.length * 500,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 5) % 100),
+          timings: words.map((word, i) => ({
+            text: word,
+            startMs: i * 500,
+            endMs: (i + 1) * 500,
+          })),
+        })
+      }
+
+      const stretchCommon = { motion: { kind: 'static' as const }, transition: 'cut' as const }
+      await replaceShotList(connection.db, stretch.id, [
+        {
+          chapterId: stretchChapter.id,
+          index: 0,
+          type: 'headline',
+          brief: {
+            type: 'headline',
+            ...stretchCommon,
+            coversText: stretchParagraphs[0]!,
+            description: 'The CNBC story on screen.',
+            sourceClaimId: '',
+          },
+          startMs: 0,
+          durationMs: 2_000,
+        },
+        {
+          chapterId: stretchChapter.id,
+          index: 1,
+          type: 'stock',
+          brief: {
+            type: 'stock',
+            ...stretchCommon,
+            coversText:
+              'In 2021, CNBC reported that Holmes persuaded investors to put up 945 million.',
+            description: 'Investors around a boardroom table.',
+            query: 'investors boardroom table',
+            rejectionCriteria: [],
+          },
+          startMs: 2_000,
+          durationMs: 6_500,
+        },
+        {
+          chapterId: stretchChapter.id,
+          index: 2,
+          type: 'stock',
+          brief: {
+            type: 'stock',
+            ...stretchCommon,
+            coversText: stretchParagraphs[1]!,
+            description: 'An empty office after the collapse.',
+            query: 'empty office collapse',
+            rejectionCriteria: [],
+          },
+          startMs: 8_500,
+          durationMs: 6_000,
+        },
+      ])
+
+      const stretchSlots = await listShotSlots(connection.db, stretch.id)
+      const stretchClaim = (await scriptableClaims(connection.db, stretch.id)).find(
+        (claim) => claim.sourceType === 'major_outlet',
+      )
+      const stretchHeadline = stretchSlots.find((slot) => slot.type === 'headline')
+      if (!stretchClaim || !stretchHeadline)
+        throw new Error('the stretch fixture lost its headline')
+      await updateSlotBrief(connection.db, stretchHeadline.id, {
+        ...(stretchHeadline.brief as Record<string, unknown>),
+        sourceClaimId: stretchClaim.id,
+      } as never)
+      for (const slot of stretchSlots) {
+        const current = await getShotSlot(connection.db, slot.id)
+        await setSlotResolution(connection.db, slot.id, {
+          candidates: [],
+          status: 'resolved',
+          answered: { brief: current?.brief, route: current?.route },
+        })
+      }
+
+      await setProjectStage(connection.db, stretch.id, {
+        stage: 'visuals',
+        stageStatus: 'awaiting_review',
+      })
+      await setVisualsPhase(connection.db, stretch.id, 'board')
+      const stretchRunId = await ensureRun(connection.db, {
+        inngestRunId: '01E2ESETUP000000000000STRE',
+        functionName: 'visuals-runner',
+        projectId: stretch.id,
+        stage: 'visuals',
+      })
+      await setRunStatus(connection.db, stretchRunId, 'awaiting_gate')
     }
 
     // Marks leak the same way renders, timelines and article sources do
