@@ -91,6 +91,7 @@ import {
   type ReusableRow,
   type ReuseSource,
 } from './visuals-reuse'
+import { isFetching } from './visuals-fetching'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -151,27 +152,9 @@ export function visualsJobView(raw: unknown): VisualsJobView | null {
   return parsed.success ? { op: parsed.data.op, startedAt: parsed.data.startedAt } : null
 }
 
-/**
- * Whether Fetch visuals is under way (decision 286). The runner keeps the
- * plan phase for the whole fetch pass, and the stage reads `running` from the
- * moment it closes the gate, so no stamp is needed; a stopped or failed fetch
- * leaves the stage `cancelled` or `failed`, which is not fetching.
- *
- * `running` counts only with a live run behind it, `isMoving`'s rule: a
- * runner that died without its `onFailure` leaves the column saying running,
- * and reading that as a fetch would lock the board for good and refuse the
- * one free way out, Fetch visuals resuming at the fetch pass (decision 279).
- * And only while the project is at the visuals stage: a voice re-run leaves
- * the plan phase in the row, and its run is not a fetch.
- */
-export function isFetching(
-  phase: 'plan' | 'board' | null,
-  project: { stage: string; stageStatus: string } | undefined,
-  liveRun: boolean,
-): boolean {
-  if (phase !== 'plan' || project?.stage !== 'visuals') return false
-  return project.stageStatus === 'queued' || (project.stageStatus === 'running' && liveRun)
-}
+// In a module of its own so an Inngest function can read it without this
+// file's imports (the stretch-replanner's check-phase step).
+export { isFetching }
 
 /**
  * Whether the page should keep polling for this board (decision 286). A job

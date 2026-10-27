@@ -102,7 +102,7 @@ import {
   storageConfigured,
 } from '@/lib/storage'
 import { hasLiveStretch, liveSlotJob, STRETCH_RUNNING } from '@/lib/stretch-jobs'
-import { isFetching } from '@/lib/visuals-review'
+import { isFetching } from '@/lib/visuals-fetching'
 import { timecode } from '@/lib/visuals-reuse'
 
 /**
@@ -2122,10 +2122,22 @@ export async function replanStretchAction(
 
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'This project no longer exists.' }
-  if (project.visualsPhase !== 'plan' && project.visualsPhase !== 'board') {
+  // The phase outlives the stage: it stays `board` after the visuals gate is
+  // approved and `plan` through a voice re-run, so the stage is checked too.
+  if (
+    project.stage !== 'visuals' ||
+    (project.visualsPhase !== 'plan' && project.visualsPhase !== 'board')
+  ) {
     return { ok: false, error: 'The visuals stage is not open on this project.' }
   }
-  if (project.visualsJob) return { ok: false, error: 'Wait for the running plan job to finish.' }
+  // The runner clears the plan job as the fetch pass starts, so the fetch is
+  // read the board's way (decision 286), not from the job alone.
+  if (
+    project.visualsJob ||
+    isFetching(project.visualsPhase, project, await hasLiveRun(db, projectId))
+  ) {
+    return { ok: false, error: 'Wait for the running plan job to finish.' }
+  }
 
   const all = await listShotSlots(db, projectId)
   const wanted = new Set(slotIds)

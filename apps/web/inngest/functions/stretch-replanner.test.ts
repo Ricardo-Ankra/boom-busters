@@ -3,6 +3,7 @@
 import {
   claimTake,
   createScriptVersion,
+  ensureRun,
   FIXTURE_PROJECT_ID,
   getShotSlot,
   listShotSlots,
@@ -266,6 +267,42 @@ describeDb('stretch-replanner', () => {
     expect(result).toMatchObject({ outcome: 'not-open' })
     expect(await descriptions()).toEqual(['old 0', 'old 1', 'old 2', 'old 3'])
     expect((await getShotSlot(db, ids[1]!))!.pendingJob).toBeNull()
+  })
+
+  it('does nothing once the project has moved past the visuals stage', async () => {
+    // The phase stays `board` after the visuals gate is approved.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'assembly', stageStatus: 'running' })
+    const { result } = await engine.execute({ events: await stretchEvent([ids[1]!, ids[2]!]) })
+
+    expect(result).toMatchObject({ outcome: 'not-open' })
+    expect(await descriptions()).toEqual(['old 0', 'old 1', 'old 2', 'old 3'])
+    expect((await rows()).map((row) => row.pendingJob)).toEqual([null, null, null, null])
+  })
+
+  it('does nothing while the fetch pass runs', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    await ensureRun(db, {
+      inngestRunId: 'run-fetching',
+      functionName: 'visuals-runner',
+      projectId: FIXTURE_PROJECT_ID,
+      stage: 'visuals',
+    })
+    const { result } = await engine.execute({ events: await stretchEvent([ids[1]!, ids[2]!]) })
+
+    expect(result).toMatchObject({ outcome: 'not-open' })
+    expect(await descriptions()).toEqual(['old 0', 'old 1', 'old 2', 'old 3'])
+    expect((await rows()).map((row) => row.pendingJob)).toEqual([null, null, null, null])
+  })
+
+  it('does not count its own run as the fetch pass', async () => {
+    // A stage left `running` by a runner that died: the board is not locked,
+    // so the re-plan the action let through must not refuse itself.
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    const { result } = await engine.execute({ events: await stretchEvent([ids[1]!, ids[2]!]) })
+
+    expect(result).toMatchObject({ outcome: 'replanned' })
   })
 
   it('keeps the rows and says why when the budget stops it', async () => {

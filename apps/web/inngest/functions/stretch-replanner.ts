@@ -1,5 +1,6 @@
 import {
   getProject,
+  hasLiveRun,
   listShotSlots,
   releaseSlotJob,
   replaceStretch,
@@ -14,6 +15,7 @@ import { callLlm } from '@/lib/llm'
 import { notify } from '@/lib/notify'
 import type { CompleteFn } from '@/lib/plan-shared'
 import { planStretchWith } from '@/lib/plan-stretch'
+import { isFetching } from '@/lib/visuals-fetching'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
@@ -94,10 +96,19 @@ export const stretchReplanner = inngest.createFunction(
     const removeIds = [...new Set(slotIds)]
 
     const result = await (async () => {
+      // The action's refusals, again: the stage may have moved on, or the
+      // fetch pass started, while the event waited in the chapter's queue.
+      // Null when closed, so a run parked on the old phase string replays.
       const phase = await step.run('check-phase', async () => {
         const project = await getProject(db, projectId)
         if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
-        return project.visualsPhase
+        const { visualsPhase } = project
+        if (project.stage !== 'visuals') return null
+        if (visualsPhase !== 'plan' && visualsPhase !== 'board') return null
+        // Its own mirrored run is live too, and is not the fetch.
+        const liveRun = await hasLiveRun(db, projectId, { exceptInngestRunId: runId })
+        if (isFetching(visualsPhase, project, liveRun)) return null
+        return visualsPhase
       })
       if (phase !== 'plan' && phase !== 'board') {
         return { projectId, chapterId, outcome: 'not-open' as const }

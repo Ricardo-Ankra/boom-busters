@@ -13,6 +13,7 @@ import {
 import {
   cancelRunsForProject,
   ensureRun,
+  hasLiveRun,
   listActiveRuns,
   listActivity,
   listFailedRuns,
@@ -163,6 +164,28 @@ describeDb('run mirror', () => {
       })
       await setRunStatus(db, runId, 'awaiting_gate')
       expect((await listActiveRuns(db)).length).toBe(0)
+    })
+
+    it('can leave the asking run out of whether the project has a live run', async () => {
+      // A stretch re-plan asks whether the fetch pass runs; its own mirrored
+      // run must not answer yes.
+      await ensureRun(db, {
+        inngestRunId: '01JRUN0010',
+        functionName: 'stretch-replanner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+      expect(await hasLiveRun(db, FIXTURE_PROJECT_ID)).toBe(true)
+      expect(await hasLiveRun(db, FIXTURE_PROJECT_ID, { exceptInngestRunId: '01JRUN0010' })).toBe(
+        false,
+      )
+      await ensureRun(db, {
+        inngestRunId: '01JRUN0011',
+        functionName: 'visuals-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+      expect(await hasLiveRun(db, FIXTURE_PROJECT_ID, { exceptInngestRunId: '01JRUN0010' })).toBe(
+        true,
+      )
     })
 
     it('does not count finished runs', async () => {

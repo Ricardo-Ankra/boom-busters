@@ -2107,6 +2107,34 @@ describeDb('re-planning a stretch of shots (the stretch re-plan design, 3.3)', (
     expect(inngest.send).not.toHaveBeenCalled()
   })
 
+  it('refuses once the project has moved past the visuals stage', async () => {
+    // The phase stays `board` after the visuals gate is approved.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'assembly', stageStatus: 'running' })
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error: 'The visuals stage is not open on this project.',
+    })
+    expect(await stamps()).toEqual([null, null, null, null])
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses while the fetch pass runs, after the runner cleared the plan job', async () => {
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'running' })
+    await ensureRun(db, {
+      inngestRunId: 'run-fetching',
+      functionName: 'visuals-runner',
+      projectId: FIXTURE_PROJECT_ID,
+      stage: 'visuals',
+    })
+    expect(await replanStretchAction(FIXTURE_PROJECT_ID, [ids[1]!, ids[2]!], '')).toEqual({
+      ok: false,
+      error: 'Wait for the running plan job to finish.',
+    })
+    expect(await stamps()).toEqual([null, null, null, null])
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
   it('refuses while a plan-level job runs', async () => {
     await setVisualsJob(db, FIXTURE_PROJECT_ID, {
       op: 'shots',
