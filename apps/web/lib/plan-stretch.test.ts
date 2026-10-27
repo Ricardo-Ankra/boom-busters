@@ -186,6 +186,33 @@ describe('planStretchWith', () => {
     expect(flagged.map((finding) => finding.kind)).toEqual(['too-short'])
   })
 
+  it('judges timing among the chapter rows it is given', async () => {
+    // Only A is re-planned; B follows it in the same paragraph. On its own
+    // clock "company" runs to the paragraph's end; in the chapter it ends where
+    // B starts, half a second later.
+    const alone = cutStretch({ chapterRows: [A, B, C], selectedIds: [A.id], paragraphs })
+    if (!alone.ok) throw new Error('fixture')
+    const short = answer(
+      { seconds: 3, brief: still('In 2021 CNBC reported that the') },
+      { seconds: 0.5, brief: still('company') },
+    )
+    const whole = answer({ seconds: 3.5, brief: still('In 2021 CNBC reported that the company') })
+    const stretchInput = { ...input, stretch: alone.stretch, after: B.brief }
+
+    const blind = scripted(short, whole)
+    expect((await planStretchWith(blind.complete, stretchInput)).ok).toBe(true)
+    expect(blind.calls).toEqual(['stretch'])
+
+    const seen = scripted(short, whole)
+    const outcome = await planStretchWith(seen.complete, { ...stretchInput, context: [B, C] })
+    if (!outcome.ok) throw new Error(outcome.issue)
+    expect(seen.calls).toEqual(['stretch', 'retry: refused'])
+    expect(seen.requests[1]!.messages.at(-1)!.content).toMatch(
+      /^Your previous answer was refused: this AI image is on screen for 1\.0 s/,
+    )
+    expect(outcome.rows).toHaveLength(1)
+  })
+
   it('sends the owner note and the before and after briefs', async () => {
     const { complete, requests } = scripted(
       answer(

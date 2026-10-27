@@ -178,6 +178,49 @@ describe('planChapterWith, the automatic timing repair (the stretch re-plan desi
     )
   })
 
+  it('judges the repair among the shots outside it', async () => {
+    // The first shot is short; the repair's answer ends on "that Holmes",
+    // which is short only because the third planned shot starts right after.
+    const planned = JSON.stringify({
+      slots: [
+        stock('Other tallies', 1),
+        stock('went higher. In 2021, CNBC reported that Holmes', 4),
+        stock('persuaded investors to put up 945 million.', 3.5),
+      ],
+    })
+    const short = JSON.stringify({
+      slots: [
+        stock('Other tallies went higher. In 2021, CNBC reported', 4),
+        stock('that Holmes', 1),
+      ],
+    })
+    const joined = JSON.stringify({
+      slots: [stock('Other tallies went higher. In 2021, CNBC reported that Holmes', 5)],
+    })
+    // Answered by purpose: the craft repair may run between plan and stretch.
+    const byPurpose: Record<string, string> = {
+      plan: planned,
+      repair: '{"briefs": []}',
+      stretch: short,
+      'retry: refused': joined,
+    }
+    const purposes: string[] = []
+    const complete = vi.fn(async (_request: LLMTaskRequest, purpose: string) => {
+      purposes.push(purpose)
+      return { text: byPurpose[purpose] ?? '' }
+    })
+    const result = await planChapterWith(complete, theranosInput)
+    expect(purposes.filter((purpose) => purpose !== 'repair')).toEqual([
+      'plan',
+      'stretch',
+      'retry: refused',
+    ])
+    expect(result!.slots.map((s) => s.brief.coversText)).toEqual([
+      'Other tallies went higher. In 2021, CNBC reported that Holmes',
+      'persuaded investors to put up 945 million.',
+    ])
+  })
+
   it('keeps the planned slots when the timing repair stops', async () => {
     const { complete, purposes } = scripted(pair, 'no json here')
     const planned = await planChapterWith(complete, theranosInput)

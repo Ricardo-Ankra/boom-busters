@@ -11,7 +11,7 @@ import {
   type PlanChapterInput,
 } from '@/lib/plan-shared'
 import { plannedToRows } from '@/inngest/lib/shot-list'
-import { stretchAnswerIssue, type Stretch } from '@/inngest/lib/stretch'
+import { stretchAnswerIssue, type Stretch, type StretchRow } from '@/inngest/lib/stretch'
 
 export interface PlanStretchInput extends PlanChapterInput {
   stretch: Stretch
@@ -22,6 +22,11 @@ export interface PlanStretchInput extends PlanChapterInput {
   reason?: string
   /** Index the new rows start from; `replaceStretch` renumbers anyway. */
   startIndex: number
+  /**
+   * The chapter's rows outside the stretch, screen order, anchored times: the
+   * timing check judges the new shots among them (`stretchAnswerIssue`).
+   */
+  context?: readonly StretchRow[]
 }
 
 export type StretchOutcome =
@@ -94,6 +99,7 @@ export async function planStretchWith(
         paragraphs: input.paragraphs,
         headlineAllowed: input.headlineAllowed,
         strictTiming,
+        ...(input.context ? { context: input.context } : {}),
       })
       if (issue) throw new ValidationError(issue, { field: 'stretch' })
       return { slots, rows: conversion.rows }

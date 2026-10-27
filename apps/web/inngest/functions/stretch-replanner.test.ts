@@ -23,10 +23,12 @@ import { mockDirectorsBook } from '@boom-busters/providers'
 import { BudgetExceededError, newId } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import type * as Notices from '@/lib/notices'
+import type * as PlanStretch from '@/lib/plan-stretch'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { planStretchWith } from '@/lib/plan-stretch'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { stretchReplanner } from './stretch-replanner'
 
@@ -48,6 +50,12 @@ vi.mock('@/lib/notices', async (importOriginal) => ({
   ...(await importOriginal<typeof Notices>()),
   recordStop,
 }))
+
+// Watched, not replaced: what the planner is handed is asserted.
+vi.mock('@/lib/plan-stretch', async (importOriginal) => {
+  const actual = await importOriginal<typeof PlanStretch>()
+  return { ...actual, planStretchWith: vi.fn(actual.planStretchWith) }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -244,6 +252,16 @@ describeDb('stretch-replanner', () => {
       body: '2 shots re-planned as 2',
       href: `/projects/${FIXTURE_PROJECT_ID}`,
     })
+  })
+
+  it('hands the planner the rows the stretch leaves standing, for the timing check', async () => {
+    vi.mocked(planStretchWith).mockClear()
+    await engine.execute({
+      events: await stretchEvent([ids[1]!, ids[2]!]),
+      steps: [{ id: 'fetch-new', handler: () => undefined }],
+    })
+    const given = vi.mocked(planStretchWith).mock.calls[0]![1]
+    expect(given.context?.map((row) => row.id)).toEqual([ids[0], ids[3]])
   })
 
   it('replaces the rows at the plan checkpoint without fetching', async () => {

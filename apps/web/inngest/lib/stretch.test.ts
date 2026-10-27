@@ -178,3 +178,50 @@ describe('stretchAnswerIssue', () => {
     expect(stretchAnswerIssue({ ...base, rows, strictTiming: false })).toBeNull()
   })
 })
+
+describe('stretchAnswerIssue in chapter context', () => {
+  // Mid-paragraph: the selected shot X is followed by Y in the same paragraph.
+  const X = { ...row('x', 0, 0, 3500, 'In 2021 CNBC reported that the company'), type: 'still' }
+  const Y = {
+    ...row('y', 1, 3500, 5000, 'had lied to investors about its blood tests'),
+    type: 'still',
+  }
+  const cut = cutStretch({ chapterRows: [X, Y, C], selectedIds: [X.id], paragraphs })
+  if (!cut.ok) throw new Error('fixture')
+  const base = {
+    stretch: cut.stretch,
+    planned: 2,
+    rejected: [],
+    paragraphs,
+    headlineAllowed: true,
+    strictTiming: true,
+  }
+  // On its own clock the last new shot runs to the paragraph's end; in the
+  // chapter it ends where Y starts, half a second later.
+  const answer = [
+    { type: 'still', startMs: 0, durationMs: 3000, coversText: 'In 2021 CNBC reported that the' },
+    { type: 'still', startMs: 3000, durationMs: 5500, coversText: 'company' },
+  ]
+
+  it('accepts the answer judged alone (the blind spot)', () => {
+    expect(stretchAnswerIssue({ ...base, rows: answer })).toBeNull()
+  })
+
+  it('refuses it on the first attempt once the shot after the stretch is counted', () => {
+    expect(stretchAnswerIssue({ ...base, rows: answer, context: [Y, C] })).toBe(
+      'this AI image is on screen for 1.0 s; it needs at least 3 s',
+    )
+    expect(
+      stretchAnswerIssue({ ...base, rows: answer, context: [Y, C], strictTiming: false }),
+    ).toBeNull()
+  })
+
+  it('does not refuse for findings on shots outside the stretch', () => {
+    const W = { ...row('w', 2, 6000, 2500, 'about its blood tests'), type: 'headline' }
+    const shortY = { ...Y, durationMs: 2500, coversText: 'had lied to investors' }
+    const whole = [{ type: 'still', startMs: 0, durationMs: 3500, coversText: X.coversText }]
+    expect(
+      stretchAnswerIssue({ ...base, planned: 1, rows: whole, context: [shortY, W, C] }),
+    ).toBeNull()
+  })
+})

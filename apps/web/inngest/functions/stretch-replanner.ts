@@ -139,6 +139,11 @@ export const stretchReplanner = inngest.createFunction(
             (row) => !selected.has(row.id) && row.type === 'headline',
           ),
           startIndex: chapterRows.find((row) => selected.has(row.id))!.index,
+          // The rows the stretch leaves standing, for the timing check. Their
+          // briefs are not read there, so the step result leaves them out.
+          context: chapterRows
+            .filter((row) => !selected.has(row.id))
+            .map((row) => ({ ...row, brief: null })),
         }
       })
       if (!cut.ok) {
@@ -183,6 +188,7 @@ export const stretchReplanner = inngest.createFunction(
             after: cut.after,
             headlineAllowed: cut.headlineAllowed,
             startIndex: cut.startIndex,
+            context: cut.context,
             ...(note ? { note } : {}),
           })
         } catch (error) {

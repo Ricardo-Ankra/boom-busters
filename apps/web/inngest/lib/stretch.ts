@@ -1,5 +1,5 @@
 import { anchorWordRanges } from '@boom-busters/timeline'
-import type { TimedParagraph } from './shot-list'
+import { anchoredTimes, type TimedParagraph } from './shot-list'
 import { timingFindings } from './timing-findings'
 
 /**
@@ -142,6 +142,13 @@ export function stretchAnswerIssue(input: {
   headlineAllowed: boolean
   /** Timing findings refuse the answer only on the first attempt (spec 3.3). */
   strictTiming: boolean
+  /**
+   * The chapter's rows outside the stretch, screen order, at their anchored
+   * times. Given, the timing check reads the new rows among them: the last
+   * new shot then ends where the shot after the stretch starts, not at its
+   * paragraph's end, and a paragraph's lone-shot exemption counts every shot.
+   */
+  context?: readonly StretchRow[]
 }): string | null {
   const { stretch, rows, planned, rejected, paragraphs } = input
 
@@ -185,11 +192,42 @@ export function stretchAnswerIssue(input: {
     return 'this chapter already has its news headline shot, so none of the new shots may be a headline'
   }
   if (input.strictTiming) {
-    const findings = timingFindings(
-      rows.map((row) => ({ chapterId: stretch.chapterId, ...row })),
-      paragraphs,
-    )
-    if (findings[0]) return findings[0].message
+    const finding = input.context
+      ? chapterTimingFinding(stretch, rows, input.context, paragraphs)
+      : timingFindings(
+          rows.map((row) => ({ chapterId: stretch.chapterId, ...row })),
+          paragraphs,
+        )[0]
+    if (finding) return finding.message
   }
   return null
+}
+
+/**
+ * The first timing finding on a new row, judged among the chapter's other
+ * rows: context before the stretch, the new rows, context after, re-anchored
+ * together over the same paragraphs. Findings on context rows alone are not
+ * the answer's to fix.
+ */
+function chapterTimingFinding(
+  stretch: Stretch,
+  rows: readonly { type: string; startMs: number; durationMs: number; coversText: string | null }[],
+  context: readonly StretchRow[],
+  paragraphs: readonly TimedParagraph[],
+) {
+  // A row before the stretch starts no later than its first word; the row
+  // after it starts later (`cutStretch` refuses one on the same word).
+  const before = context.filter((row) => row.startMs <= stretch.startMs)
+  const after = context.filter((row) => row.startMs > stretch.startMs)
+  const merged = [...before, ...rows, ...after].map((row) => ({
+    chapterId: stretch.chapterId,
+    type: row.type,
+    startMs: row.startMs,
+    durationMs: row.durationMs,
+    coversText: row.coversText,
+  }))
+  const times = anchoredTimes(merged, paragraphs)
+  const anchored = merged.map((row, at) => ({ ...row, ...times[at]! }))
+  const fresh = (at: number) => at >= before.length && at < before.length + rows.length
+  return timingFindings(anchored, paragraphs).find((finding) => finding.slotIndexes.some(fresh))
 }

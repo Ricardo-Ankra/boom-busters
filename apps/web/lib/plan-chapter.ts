@@ -85,6 +85,9 @@ async function repairChapterTiming(
         headlineAllowed: !headlineElsewhere,
         reason,
         startIndex: 0,
+        // The planned rows outside the stretch, so the last new shot is
+        // judged against the shot that follows it.
+        context: rows.filter((_, at) => !inside.has(at)),
       })
       if (!outcome.ok) {
         console.warn('[visuals] timing repair kept the plan as planned', outcome.issue)
