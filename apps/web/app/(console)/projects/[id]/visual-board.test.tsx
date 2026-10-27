@@ -504,6 +504,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     warnings: [],
     slotNotes: {},
     timingNotes: [],
+    stretchOpen: true,
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
@@ -3704,6 +3705,45 @@ describe('the stretch re-plan on the board', () => {
     expect(
       within(screen.getByRole('list', { name: 'Craft notes' })).queryByText(NOTE.listed),
     ).not.toBeInTheDocument()
+  })
+
+  it('offers no re-plan once the project has moved past the visuals stage', () => {
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], { timingNotes: [NOTE], stretchOpen: false })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Select' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Re-plan this stretch' })).not.toBeInTheDocument()
+    // The notes themselves still show.
+    expect(
+      within(document.getElementById(`slot-${SLOT_A}`)!).getByText(NOTE.message),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the selection but locks its send while the fetch pass runs', async () => {
+    const { rerender } = render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], { phase: 'plan' })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    await userEvent.click(screen.getAllByRole('button', { name: 'Select' })[0]!)
+    rerender(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], { phase: 'plan', fetching: true })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Re-plan this shot · ≈$0.03' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear selection' })).toBeEnabled()
   })
 
   it('hides Select on a busy card', () => {

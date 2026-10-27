@@ -88,11 +88,17 @@ export function StretchBar({
   selection,
   chapters,
   act,
+  locked,
 }: {
   projectId: string
   selection: ReturnType<typeof useStretchSelection>
   chapters: Chapters
   act: Act
+  /**
+   * The board is locked (a plan job or the fetch pass): the send waits, as
+   * the action would refuse it. Clear selection stays usable.
+   */
+  locked: boolean
 }): React.ReactElement | null {
   const [note, setNote] = React.useState('')
   const [sending, setSending] = React.useState(false)
@@ -150,7 +156,7 @@ export function StretchBar({
         <Button
           variant="primary"
           busy={sending}
-          disabled={problem !== null}
+          disabled={problem !== null || locked}
           onClick={() => void send()}
         >
           {`${selected.length === 1 ? 'Re-plan this shot' : `Re-plan these ${selected.length} shots`} · ${STRETCH_REPLAN_ESTIMATE}`}

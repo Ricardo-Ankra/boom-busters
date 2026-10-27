@@ -429,6 +429,13 @@ export interface VisualsReviewModel {
    */
   timingNotes: TimingNoteView[]
   /**
+   * Whether shots may be selected for a stretch re-plan (the stretch re-plan
+   * design, 3.3): the project sits at the visuals stage with a phase open. The
+   * phase alone outlives the stage (it stays `board` after the visuals gate is
+   * approved), so the board reads this, as the action does.
+   */
+  stretchOpen: boolean
+  /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
    * sit apart from the craft notes so the Fix button is never expected to
@@ -487,6 +494,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     warnings: [],
     slotNotes: {},
     timingNotes: [],
+    stretchOpen: false,
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
@@ -1192,6 +1200,8 @@ export async function visualsReviewModel(
     warnings,
     slotNotes,
     timingNotes,
+    stretchOpen:
+      project?.stage === 'visuals' && (options.phase === 'plan' || options.phase === 'board'),
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [

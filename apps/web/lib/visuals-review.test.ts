@@ -10,6 +10,7 @@ import {
   requireTestDatabase,
   saveChapter,
   seed,
+  setProjectStage,
   setVisualsPhase,
   shotSlots,
   storeTakeAudio,
@@ -449,6 +450,24 @@ describeDb('timing notes on the board model (the stretch re-plan design, 3.1)', 
       expect(note.listed).toBe(`${note.message} (ch 1 · 0:03)`)
     }
     expect(timingNotes[1]!.message).toContain('one sentence needs one shot')
+  })
+
+  it('opens the stretch re-plan only while the project sits at the visuals stage', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).stretchOpen).toBe(
+      true,
+    )
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: null })).stretchOpen).toBe(
+      false,
+    )
+    // The phase stays `board` after the visuals gate is approved.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'assembly', stageStatus: 'running' })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).stretchOpen).toBe(
+      false,
+    )
   })
 
   it('keeps timing notes out of the craft notes and the Fix count', async () => {

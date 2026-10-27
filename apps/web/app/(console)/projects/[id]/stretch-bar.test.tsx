@@ -40,7 +40,15 @@ type TestAct = (
 ) => Promise<{ ok: boolean }>
 
 /** A harness that shows the hook the way the board does: a toggle per shot, then the bar. */
-function Harness({ slots, act }: { slots: SlotView[]; act: TestAct }) {
+function Harness({
+  slots,
+  act,
+  locked = false,
+}: {
+  slots: SlotView[]
+  act: TestAct
+  locked?: boolean
+}) {
   const grouped = chapters(slots)
   const selection = useStretchSelection(grouped)
   return (
@@ -50,7 +58,13 @@ function Harness({ slots, act }: { slots: SlotView[]; act: TestAct }) {
           {`pick ${s.id}`}
         </button>
       ))}
-      <StretchBar projectId={PROJECT} selection={selection} chapters={grouped} act={act as never} />
+      <StretchBar
+        projectId={PROJECT}
+        selection={selection}
+        chapters={grouped}
+        act={act as never}
+        locked={locked}
+      />
     </div>
   )
 }
@@ -102,6 +116,13 @@ describe('StretchBar', () => {
     render(<Harness slots={[slot('a', 0, 0)]} act={vi.fn(run)} />)
     await userEvent.click(screen.getByRole('button', { name: 'pick a' }))
     expect(screen.getByRole('button', { name: 'Re-plan this shot · ≈$0.03' })).toBeEnabled()
+  })
+
+  it('locks the send, not Clear selection, while the board is locked', async () => {
+    render(<Harness slots={[slot('a', 0, 0)]} act={vi.fn(run)} locked />)
+    await userEvent.click(screen.getByRole('button', { name: 'pick a' }))
+    expect(screen.getByRole('button', { name: 'Re-plan this shot · ≈$0.03' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear selection' })).toBeEnabled()
   })
 
   it('clears the selection from Clear selection', async () => {

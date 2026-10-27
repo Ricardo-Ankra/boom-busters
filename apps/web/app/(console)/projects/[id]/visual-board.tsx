@@ -2184,6 +2184,7 @@ function VisualBoardContent({
                 notes={model.slotNotes[slot.id] ?? []}
                 timingNotes={model.timingNotes.filter((note) => note.slotIds.includes(slot.id))}
                 selected={selection.selected.includes(slot.id)}
+                selectable={model.stretchOpen}
                 onToggleSelect={() => selection.toggle(slot.id)}
                 onSelectStretch={selection.selectStretch}
                 articleClaims={model.articleClaims}
@@ -2199,7 +2200,16 @@ function VisualBoardContent({
           ))}
         </ChapterSection>
       ))}
-      <StretchBar projectId={projectId} selection={selection} chapters={model.chapters} act={act} />
+      {/* Only while the visuals stage is open: the phase outlives it. */}
+      {model.stretchOpen ? (
+        <StretchBar
+          projectId={projectId}
+          selection={selection}
+          chapters={model.chapters}
+          act={act}
+          locked={planBusy}
+        />
+      ) : null}
     </div>
   )
 }
@@ -2352,6 +2362,7 @@ function SlotCard({
   notes,
   timingNotes,
   selected,
+  selectable,
   onToggleSelect,
   onSelectStretch,
   articleClaims,
@@ -2377,6 +2388,8 @@ function SlotCard({
   timingNotes: readonly TimingNoteView[]
   /** Whether this shot is in the stretch selection. */
   selected: boolean
+  /** The stretch re-plan is open on this project (the model's `stretchOpen`). */
+  selectable: boolean
   onToggleSelect: () => void
   onSelectStretch: (slotIds: readonly string[]) => void
   articleClaims: ArticleClaimOption[]
@@ -2426,8 +2439,9 @@ function SlotCard({
           <span className="font-mono text-[11px] text-[var(--color-text-muted)]">
             {timecode(slot.startMs)} · {Math.round(slot.durationMs / 1000)}s
           </span>
-          {/* Hidden exactly when the card's other buttons lock (a job in flight). */}
-          {busy ? null : (
+          {/* Hidden exactly when the card's other buttons lock (a job in flight),
+              and once the visuals stage has closed. */}
+          {busy || !selectable ? null : (
             <Button
               variant={selected ? 'primary' : 'outline'}
               className="ml-auto"
@@ -2477,13 +2491,15 @@ function SlotCard({
             {timingNotes.map((note) => (
               <li key={note.listed} className="flex flex-wrap items-center gap-2">
                 <span>{note.message}</span>
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onSelectStretch(note.stretch)}
-                >
-                  Re-plan this stretch
-                </Button>
+                {selectable ? (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => onSelectStretch(note.stretch)}
+                  >
+                    Re-plan this stretch
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
