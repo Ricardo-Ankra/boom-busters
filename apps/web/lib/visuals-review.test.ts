@@ -470,6 +470,32 @@ describeDb('timing notes on the board model (the stretch re-plan design, 3.1)', 
     )
   })
 
+  it('offers Back to visuals on an approved board, and says why while a run is live', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).reopen).toEqual({
+      offered: false,
+      blocked: null,
+    })
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'done', stageStatus: 'approved' })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).reopen).toEqual({
+      offered: true,
+      blocked: null,
+    })
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'assembly',
+      stageStatus: 'awaiting_review',
+    })
+    const parked = await visualsReviewModel(db, FIXTURE_PROJECT_ID, {
+      phase: 'board',
+      liveRun: true,
+    })
+    expect(parked.reopen.offered).toBe(true)
+    expect(parked.reopen.blocked).toMatch(/Press Stop first/)
+  })
+
   it('keeps timing notes out of the craft notes and the Fix count', async () => {
     const model = await visualsReviewModel(db, FIXTURE_PROJECT_ID)
     expect(model.timingNotes.length).toBeGreaterThan(0)

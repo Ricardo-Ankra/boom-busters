@@ -86,6 +86,7 @@ import {
   setHeadlineArticleAction,
   setSocialPostAction,
   replanShotsAction,
+  reopenVisualsAction,
   retypeSlotAction,
   rebriefSlotAction,
   retypeToHeadlineAction,
@@ -2010,6 +2011,46 @@ function VisualBoardContent({
             </CardContent>
           </Card>
         </>
+      ) : null}
+
+      {/* Back to visuals (decision 322): an approved board reopens from any
+          later stage, so a shot found wrong after approval can be fixed. */}
+      {model.reopen.offered ? (
+        <Card>
+          <CardContent className="flex flex-col gap-2 pt-4">
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              This board was approved and the project has moved on. Reopen it to change shots.
+            </p>
+            {model.reopen.blocked ? (
+              <p className="text-[12px] text-[var(--color-warning)]" role="status">
+                {model.reopen.blocked}
+              </p>
+            ) : null}
+            <div>
+              <ConfirmButton
+                variant="outline"
+                confirmVariant="primary"
+                busy={locks.has('reopen')}
+                disabled={model.reopen.blocked !== null || locks.has('reopen')}
+                label="Back to visuals"
+                confirmLabel="Reopen the board"
+                consequence={
+                  'The project goes back to the visuals stage with every pick, upload and brief ' +
+                  'kept, and nothing is fetched again. When you approve the board, assembly ' +
+                  'runs again at its usual cost. The current master stays until a new one ' +
+                  'replaces it, and nothing is published without you.'
+                }
+                onConfirm={() =>
+                  act(
+                    'reopen',
+                    () => reopenVisualsAction(projectId),
+                    'Reopening the board. It is ready for review in a moment.',
+                  )
+                }
+              />
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ------------------------------------------------------------------ */}

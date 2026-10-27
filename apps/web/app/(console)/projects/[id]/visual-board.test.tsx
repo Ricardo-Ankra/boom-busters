@@ -48,6 +48,7 @@ const unlinkCastHandleAction = vi.fn()
 const removeSocialImageAction = vi.fn()
 const retypeToSocialAction = vi.fn()
 const replanStretchAction = vi.fn()
+const reopenVisualsAction = vi.fn()
 
 vi.mock('./visuals-actions', () => ({
   chooseCandidateAction: (...args: unknown[]) => chooseCandidateAction(...args),
@@ -83,6 +84,7 @@ vi.mock('./visuals-actions', () => ({
   removeSocialImageAction: (...args: unknown[]) => removeSocialImageAction(...args),
   retypeToSocialAction: (...args: unknown[]) => retypeToSocialAction(...args),
   replanStretchAction: (...args: unknown[]) => replanStretchAction(...args),
+  reopenVisualsAction: (...args: unknown[]) => reopenVisualsAction(...args),
 }))
 
 /** The shared card is the compositions suite's to test; here it only has to be handed its payload. */
@@ -505,6 +507,7 @@ function model(slots: SlotView[], overrides: Partial<VisualsReviewModel> = {}): 
     slotNotes: {},
     timingNotes: [],
     stretchOpen: true,
+    reopen: { offered: false, blocked: null },
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: ARTICLE_CLAIMS,
@@ -3722,6 +3725,43 @@ describe('the stretch re-plan on the board', () => {
     expect(
       within(document.getElementById(`slot-${SLOT_A}`)!).getByText(NOTE.message),
     ).toBeInTheDocument()
+  })
+
+  it('offers Back to visuals on a board that was moved on from, behind a confirm', async () => {
+    reopenVisualsAction.mockResolvedValue({ ok: true })
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], {
+          stretchOpen: false,
+          reopen: { offered: true, blocked: null },
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Back to visuals' }))
+    expect(reopenVisualsAction).not.toHaveBeenCalled()
+    expect(screen.getByText(/assembly runs again at its usual cost/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^Reopen the board$/ }))
+    expect(reopenVisualsAction).toHaveBeenCalledWith(PROJECT)
+  })
+
+  it('says why Back to visuals cannot be pressed while a later run is live', () => {
+    const blocked = 'A later stage is still running or waiting for your review.'
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([stockSlot, second], {
+          stretchOpen: false,
+          reopen: { offered: true, blocked },
+        })}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Back to visuals' })).toBeDisabled()
+    expect(screen.getByText(blocked)).toBeInTheDocument()
   })
 
   it('keeps the selection but locks its send while the fetch pass runs', async () => {

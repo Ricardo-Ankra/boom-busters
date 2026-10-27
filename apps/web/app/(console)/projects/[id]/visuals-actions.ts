@@ -28,7 +28,9 @@ import {
   setSlotResolution,
   setSlotRetype,
   setSlotRoute,
+  setProjectStage,
   setVisualsJob,
+  setVisualsPhase,
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
@@ -103,6 +105,7 @@ import {
 } from '@/lib/storage'
 import { hasLiveStretch, liveSlotJob, STRETCH_RUNNING } from '@/lib/stretch-jobs'
 import { isFetching } from '@/lib/visuals-fetching'
+import { reopenRefusal } from '@/lib/visuals-reopen'
 import { timecode } from '@/lib/visuals-reuse'
 
 /**
@@ -422,6 +425,67 @@ export async function approvePlanAction(projectId: string): Promise<ActionResult
       ok: false,
       error:
         'Could not reach Inngest to start the fetch. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  refresh(projectId)
+  return { ok: true }
+}
+
+/**
+ * "Back to visuals" (decision 322): reopen an approved board from any later
+ * stage, published included, keeping every pick, upload and brief.
+ *
+ * It is Fetch visuals' resume (decision 279) from a later stage: the project
+ * goes back to `visuals` in the plan phase with the fetch stamp, and a new
+ * run starts at the fetch pass. Every resolved slot is skipped, so nothing is
+ * bought again, and the run parks at the board gate. Approving it runs
+ * assembly again. The plan phase, not the board, so a run that dies leaves
+ * Fetch visuals as the free way back rather than a full re-plan.
+ *
+ * The state is written before the event (the runner's first step reads it);
+ * a failed send puts it all back, or a queued plan phase with no run behind
+ * it would read as fetching and lock the board.
+ */
+export async function reopenVisualsAction(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badIds(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'This project no longer exists.' }
+  const refusal = reopenRefusal(project, await hasLiveRun(db, projectId))
+  if (refusal) return { ok: false, error: refusal }
+  // A shot still regenerating would be fetched by the resumed run as well.
+  if ((await listShotSlots(db, projectId)).some((row) => liveSlotJob(row.pendingJob))) {
+    return { ok: false, error: 'A shot on the board is still busy. Wait for it to finish.' }
+  }
+
+  await setProjectStage(db, projectId, {
+    stage: 'visuals',
+    stageStatus: 'queued',
+    inngestRunId: null,
+    cancelledAt: null,
+  })
+  await setVisualsPhase(db, projectId, 'plan')
+  const job: VisualsJob = { op: 'fetch', jobId: newId(), startedAt: new Date().toISOString() }
+  await setVisualsJob(db, projectId, job)
+  try {
+    await inngest.send(events.visualsFetchResumed.create({ projectId }))
+  } catch (error) {
+    console.error('[visuals] could not send the reopen', error)
+    await setVisualsJob(db, projectId, null)
+    await setVisualsPhase(db, projectId, 'board')
+    await setProjectStage(db, projectId, {
+      stage: project.stage,
+      stageStatus: project.stageStatus,
+      inngestRunId: project.inngestRunId,
+      cancelledAt: project.cancelledAt,
+    })
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to reopen the board. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }
