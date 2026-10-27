@@ -87,6 +87,17 @@ describe('cutStretch', () => {
     })
   })
 
+  it('refuses a shot that starts on the same word as the next one', () => {
+    // Two shots anchored to one word: nothing lies between them to re-plan.
+    const X = row('x', 0, 0, 0, 'In 2021 CNBC reported that the company')
+    const Y = row('y', 1, 0, 8500, 'In 2021 CNBC reported that the company')
+    expect(cutStretch({ chapterRows: [X, Y, C], selectedIds: [X.id], paragraphs })).toEqual({
+      ok: false,
+      refused:
+        'These shots and the next one start on the same word, so there is no narration to re-plan. Include the next shot in the selection.',
+    })
+  })
+
   it('refuses narration without word timings', () => {
     const bare = paragraphs.map((p) => ({ ...p, words: [] }))
     expect(cutStretch({ chapterRows: [A, B, C], selectedIds: [A.id], paragraphs: bare })).toEqual({

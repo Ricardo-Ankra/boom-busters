@@ -41,6 +41,8 @@ export interface StretchRow {
 const NEIGHBOURS_ONLY = 'Re-plan works on neighbouring shots in one chapter.'
 const NO_TIMINGS =
   'This narration has no word timings, so a stretch cannot be cut. Use Re-plan shot list instead.'
+const SAME_WORD =
+  'These shots and the next one start on the same word, so there is no narration to re-plan. Include the next shot in the selection.'
 
 const refuse = (refused: string) => ({ ok: false as const, refused })
 
@@ -79,7 +81,10 @@ export function cutStretch(input: {
   flat.forEach((entry, i) => {
     if (entry.word.startMs < endMs) lastWord = i
   })
-  if (firstWord === -1 || lastWord < firstWord) return refuse(NO_TIMINGS)
+  if (firstWord === -1) return refuse(NO_TIMINGS)
+  // The next shot starts on the selection's first word (two shots anchored
+  // to one word): nothing lies between them to re-plan.
+  if (lastWord < firstWord) return refuse(after ? SAME_WORD : NO_TIMINGS)
 
   const pieces: StretchPiece[] = []
   for (let i = firstWord; i <= lastWord;) {
