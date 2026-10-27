@@ -92,6 +92,7 @@ import {
   type ReuseSource,
 } from './visuals-reuse'
 import { isFetching } from './visuals-fetching'
+import { reopenOffered, reopenRefusal } from './visuals-reopen'
 
 /**
  * What the visual board shows, and what the visuals gate refuses on — one
@@ -436,6 +437,12 @@ export interface VisualsReviewModel {
    */
   stretchOpen: boolean
   /**
+   * Back to visuals (decision 322): `offered` once the approved board has
+   * been moved on from, published included; `blocked` is why it cannot be
+   * pressed now (a later run is live), else null.
+   */
+  reopen: { offered: boolean; blocked: string | null }
+  /**
    * Notes no rewrite of a brief can clear (decision 277): a cast member the
    * book forgot, references nothing names, shots shared between slots. They
    * sit apart from the craft notes so the Fix button is never expected to
@@ -495,6 +502,7 @@ export function emptyVisualsModel(): VisualsReviewModel {
     slotNotes: {},
     timingNotes: [],
     stretchOpen: false,
+    reopen: { offered: false, blocked: null },
     decisions: [],
     repair: { slots: 0, becomeStills: 0, chapters: 0 },
     articleClaims: [],
@@ -796,6 +804,17 @@ function slotReferences(
     : []
 
   return [...people, ...set]
+}
+
+/** Back to visuals as the board sees it (decision 322); the action re-checks. */
+function reopenView(
+  project: { stage: string } | undefined,
+  options: { phase?: 'plan' | 'board' | null; liveRun?: boolean },
+): VisualsReviewModel['reopen'] {
+  if (!project) return { offered: false, blocked: null }
+  const state = { stage: project.stage, visualsPhase: options.phase ?? null }
+  if (!reopenOffered(state)) return { offered: false, blocked: null }
+  return { offered: true, blocked: reopenRefusal(state, options.liveRun ?? false) }
 }
 
 export async function visualsReviewModel(
@@ -1202,6 +1221,7 @@ export async function visualsReviewModel(
     timingNotes,
     stretchOpen:
       project?.stage === 'visuals' && (options.phase === 'plan' || options.phase === 'board'),
+    reopen: reopenView(project, options),
     // What no rewrite of a brief can clear: a cast member the book forgot
     // (decision 253), references nothing names, shots shared between slots.
     decisions: [

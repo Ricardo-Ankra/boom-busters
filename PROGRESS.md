@@ -8301,3 +8301,24 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      selection, the bar, the refused send and the cleared stamps (after a
      reload as well); the replacement itself is proven by the stretch
      replanner's own tests.
+322. **Back to visuals** (2026-10-27). An approved board can be reopened from
+     any later stage, published included, so a shot found wrong after
+     approval can still be fixed (the stretch re-plan works only at the
+     visuals stage, decision 320). The board shows a **Back to visuals**
+     button behind a confirm once the project has moved on with the board
+     phase kept. The action is Fetch visuals' resume (decision 279) from a
+     later stage: the project goes back to `visuals`/`queued` in the plan
+     phase with the fetch stamp, and `visuals/fetch.resume` starts a run at
+     the fetch pass. Every resolved slot is skipped, so nothing is bought
+     again, and the run parks at the board gate; approving it runs assembly
+     again. The plan phase, not the board, so a run that dies leaves Fetch
+     visuals as the free way back instead of a full re-plan. A failed send
+     restores the old stage, status, run id and phase. It does not stop a
+     live later run itself: Stop's `project/cancelled` is reconciled by a
+     function that closes every live run on the project and marks it
+     cancelled, and landing after the reopen it would wedge the new visuals
+     run. So a live run (a parked preview gate included) is a refusal naming
+     Stop, and so is a shot with a live job. Nothing is deleted; the old
+     master stays until a new one replaces it, and publishing still waits for
+     its own request. One rule (`lib/visuals-reopen.ts`) serves the board's
+     offer and the action's refusal. No migration, no new Inngest function.

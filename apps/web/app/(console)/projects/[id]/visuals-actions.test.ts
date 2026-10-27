@@ -63,6 +63,7 @@ import {
   redirectSceneAction,
   refetchSocialPostAction,
   removeSocialImageAction,
+  reopenVisualsAction,
   replanShotsAction,
   replanStretchAction,
   retypeSlotAction,
@@ -966,6 +967,105 @@ describeDb('Fetch visuals with or without a parked run (decision 279)', () => {
       name: 'visuals/fetch.resume',
       data: { projectId: FIXTURE_PROJECT_ID },
     })
+  })
+})
+
+// Decision 322: an approved board reopens from any later stage, as Fetch
+// visuals' resume, keeping every pick and upload.
+describeDb('Back to visuals (decision 322)', () => {
+  let slotId = ''
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    inngest.send.mockResolvedValue(undefined)
+    await seed(db)
+    await truncateRunMirror(db)
+    await db.delete(shotSlots)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'One.',
+      estRuntimeSec: 6,
+    })
+    await replaceShotList(db, FIXTURE_PROJECT_ID, [
+      {
+        chapterId: chapter.id,
+        index: 0,
+        type: 'stock',
+        brief: stock('One.', 'a lab'),
+        startMs: 0,
+        durationMs: 6000,
+      },
+    ])
+    slotId = (await listShotSlots(db, FIXTURE_PROJECT_ID))[0]!.id
+    await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'board')
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'done', stageStatus: 'approved' })
+  })
+
+  it('moves a published project back to visuals and resumes at the fetch pass', async () => {
+    expect(await reopenVisualsAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    const project = await getProject(db, FIXTURE_PROJECT_ID)
+    expect(project).toMatchObject({ stage: 'visuals', stageStatus: 'queued', visualsPhase: 'plan' })
+    expect(project?.visualsJob).toMatchObject({ op: 'fetch' })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/fetch.resume',
+      data: { projectId: FIXTURE_PROJECT_ID },
+    })
+    // The board is kept: the slot is still there.
+    expect(await getShotSlot(db, slotId)).toBeDefined()
+  })
+
+  it('asks for a Stop while a later stage has a live run, and changes nothing', async () => {
+    await ensureRun(db, {
+      inngestRunId: 'run-preview-gate',
+      functionName: 'assembly-runner',
+      projectId: FIXTURE_PROJECT_ID,
+      stage: 'assembly',
+    })
+    const result = await reopenVisualsAction(FIXTURE_PROJECT_ID)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/Press Stop first/)
+    expect(await getProject(db, FIXTURE_PROJECT_ID)).toMatchObject({
+      stage: 'done',
+      visualsPhase: 'board',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('waits for a shot that is still busy', async () => {
+    await setSlotJob(db, slotId, {
+      kind: 'refetch',
+      jobId: '01J0000000000000000000JB01',
+      startedAt: new Date().toISOString(),
+    })
+    expect(await reopenVisualsAction(FIXTURE_PROJECT_ID)).toEqual({
+      ok: false,
+      error: 'A shot on the board is still busy. Wait for it to finish.',
+    })
+    expect(inngest.send).not.toHaveBeenCalled()
+  })
+
+  it('refuses while the board is still the current stage', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'visuals',
+      stageStatus: 'awaiting_review',
+    })
+    expect(await reopenVisualsAction(FIXTURE_PROJECT_ID)).toEqual({
+      ok: false,
+      error: 'The board is already open.',
+    })
+  })
+
+  it('puts everything back when Inngest cannot be reached', async () => {
+    inngest.send.mockRejectedValueOnce(new Error('offline'))
+    const result = await reopenVisualsAction(FIXTURE_PROJECT_ID)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/Could not reach Inngest to reopen the board/)
+    const project = await getProject(db, FIXTURE_PROJECT_ID)
+    expect(project).toMatchObject({ stage: 'done', stageStatus: 'approved', visualsPhase: 'board' })
+    expect(project?.visualsJob).toBeNull()
   })
 })
 
