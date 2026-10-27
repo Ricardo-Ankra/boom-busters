@@ -1011,7 +1011,8 @@ describeDb('Back to visuals (decision 322)', () => {
     expect(project?.visualsJob).toMatchObject({ op: 'fetch' })
     expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
       name: 'visuals/fetch.resume',
-      data: { projectId: FIXTURE_PROJECT_ID },
+      // Decision 323: the reopen flag is what stops the run buying shots.
+      data: { projectId: FIXTURE_PROJECT_ID, reopen: true },
     })
     // The board is kept: the slot is still there.
     expect(await getShotSlot(db, slotId)).toBeDefined()

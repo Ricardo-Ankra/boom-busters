@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { shotBriefHash, slotNeedsResolution } from './visuals'
@@ -23,7 +24,36 @@ describe('shotBriefHash', () => {
     expect(shotBriefHash(brief)).toBe(shotBriefHash({ ...brief }))
     expect(shotBriefHash(brief)).not.toBe(shotBriefHash({ ...brief, query: 'boardroom' }))
   })
+
+  it('ignores key order, nested and in the route (decision 323)', () => {
+    // Inngest hands step data back with its keys sorted; Postgres jsonb keeps
+    // its own order. The same brief must stamp the same either way.
+    const reordered = sortKeys(brief) as ShotBrief
+    expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(brief))
+    expect(shotBriefHash(reordered)).toBe(shotBriefHash(brief))
+    const route = { provider: 'google', model: 'gemini-3-pro-image' }
+    expect(shotBriefHash(reordered, { model: route.model, provider: route.provider })).toBe(
+      shotBriefHash(brief, route),
+    )
+  })
 })
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
+    )
+  }
+  return value
+}
+
+/** The order-sensitive stamp every row written before decision 323 holds. */
+function legacyHash(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
 
 describe('slotNeedsResolution', () => {
   const hash = shotBriefHash(brief)
@@ -45,6 +75,38 @@ describe('slotNeedsResolution', () => {
         status: 'resolved',
         brief: { ...brief, query: 'boardroom' },
         resolvedBriefHash: hash,
+      }),
+    ).toBe(true)
+  })
+
+  it('owes nothing to a slot stamped from a key-sorted copy of its brief (decision 323)', () => {
+    expect(
+      slotNeedsResolution({
+        status: 'resolved',
+        brief,
+        resolvedBriefHash: legacyHash(sortKeys(brief)),
+      }),
+    ).toBe(false)
+  })
+
+  it('still honours a stamp written in the old, order-sensitive form', () => {
+    const route = { provider: 'google', model: 'gemini-3-pro-image' }
+    expect(
+      slotNeedsResolution({ status: 'resolved', brief, resolvedBriefHash: legacyHash(brief) }),
+    ).toBe(false)
+    expect(
+      slotNeedsResolution({
+        status: 'resolved',
+        brief,
+        route,
+        resolvedBriefHash: legacyHash({ brief, route }),
+      }),
+    ).toBe(false)
+    expect(
+      slotNeedsResolution({
+        status: 'resolved',
+        brief: { ...brief, query: 'boardroom' },
+        resolvedBriefHash: legacyHash(brief),
       }),
     ).toBe(true)
   })

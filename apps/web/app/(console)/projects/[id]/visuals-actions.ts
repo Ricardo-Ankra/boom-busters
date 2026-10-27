@@ -471,7 +471,9 @@ export async function reopenVisualsAction(projectId: string): Promise<ActionResu
   const job: VisualsJob = { op: 'fetch', jobId: newId(), startedAt: new Date().toISOString() }
   await setVisualsJob(db, projectId, job)
   try {
-    await inngest.send(events.visualsFetchResumed.create({ projectId }))
+    // `reopen` makes the run skip the fetch pass (decision 323): without it
+    // the run re-bought every slot the pass judged owed.
+    await inngest.send(events.visualsFetchResumed.create({ projectId, reopen: true }))
   } catch (error) {
     console.error('[visuals] could not send the reopen', error)
     await setVisualsJob(db, projectId, null)

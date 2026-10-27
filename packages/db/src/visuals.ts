@@ -45,11 +45,41 @@ import type { AssetRow, ShotSlotRow } from './schema'
  * A slot with no route hashes exactly as it did before this existed, so
  * every stamp already in the database stays valid and no live board
  * suddenly owes work for every slot it holds.
+ *
+ * Key order does not count (decision 323). Postgres jsonb stores keys in its
+ * own order, and Inngest hands step data back with them sorted, so the
+ * visuals runner stamped every slot it fetched from a sorted copy of the
+ * brief that never matched the stored row. Every one of those slots looked
+ * owed forever, and the next fetch pass bought it again. Hashing the
+ * key-sorted form makes those stamps valid as they stand.
  */
 export function shotBriefHash(brief: unknown, route?: unknown): string {
-  return createHash('sha256')
-    .update(JSON.stringify(route ? { brief, route } : brief))
-    .digest('hex')
+  return digest(sortKeys(route ? { brief, route } : brief))
+}
+
+/**
+ * The order-sensitive stamp every row written before decision 323 holds,
+ * still honoured so that no slot stamped in the row's own order is owed.
+ */
+function legacyShotBriefHash(brief: unknown, route?: unknown): string {
+  return digest(route ? { brief, route } : brief)
+}
+
+function digest(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeys)
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sortKeys(record[key])]),
+    )
+  }
+  return value
 }
 
 /**
@@ -65,8 +95,10 @@ export function slotNeedsResolution(slot: {
   route?: unknown
 }): boolean {
   if (slot.reuseOfSlotId) return false
+  if (slot.status !== 'resolved' || slot.resolvedBriefHash === null) return true
   return (
-    slot.status !== 'resolved' || slot.resolvedBriefHash !== shotBriefHash(slot.brief, slot.route)
+    slot.resolvedBriefHash !== shotBriefHash(slot.brief, slot.route) &&
+    slot.resolvedBriefHash !== legacyShotBriefHash(slot.brief, slot.route)
   )
 }
 

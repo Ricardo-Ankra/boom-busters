@@ -111,9 +111,14 @@ export const VisualsPlanApprovedSchema = z.object({
  * that planned it failed, and re-running the stage would plan again over the
  * producer's work. The visuals-runner takes this as its second trigger and
  * starts at the fetch pass.
+ *
+ * `reopen` is Back to visuals (decisions 322 and 323): the run skips the
+ * fetch pass entirely and opens the board as it stands, so a reopen never
+ * buys a shot. Anything owed is left for the owner's Fetch visuals.
  */
 export const VisualsFetchResumedSchema = z.object({
   ...projectRef,
+  reopen: z.boolean().optional(),
 })
 
 /**
