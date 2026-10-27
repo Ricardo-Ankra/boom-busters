@@ -305,6 +305,12 @@ describeDb('stretch-replanner', () => {
     expect(result).toMatchObject({ outcome: 'replanned' })
   })
 
+  it('queues one chapter’s stretches rather than cancelling them', () => {
+    const opts = (stretchReplanner as unknown as { opts: Record<string, unknown> }).opts
+    expect(opts['concurrency']).toEqual([{ key: 'event.data.chapterId', limit: 1 }])
+    expect(opts['singleton']).toBeUndefined()
+  })
+
   it('keeps the rows and says why when the budget stops it', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     callLlm.mockRejectedValue(

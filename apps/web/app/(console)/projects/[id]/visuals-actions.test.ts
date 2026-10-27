@@ -2135,6 +2135,13 @@ describeDb('re-planning a stretch of shots (the stretch re-plan design, 3.3)', (
     expect(inngest.send).not.toHaveBeenCalled()
   })
 
+  it('sends the selection in screen order, whatever order it came in', async () => {
+    expect((await replanStretchAction(FIXTURE_PROJECT_ID, [ids[2]!, ids[1]!], '')).ok).toBe(true)
+    expect(inngest.send.mock.calls[0]![0]).toMatchObject({
+      data: { slotIds: [ids[1], ids[2]] },
+    })
+  })
+
   it('refuses while a plan-level job runs', async () => {
     await setVisualsJob(db, FIXTURE_PROJECT_ID, {
       op: 'shots',

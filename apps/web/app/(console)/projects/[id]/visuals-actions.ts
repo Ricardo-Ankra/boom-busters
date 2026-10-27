@@ -2168,8 +2168,9 @@ export async function replanStretchAction(
   }
 
   // Stamped first (decision 286), so the refresh this action triggers already
-  // says these shots are busy. Screen order, as the event carries them.
-  const ordered = [...new Set(slotIds)]
+  // says these shots are busy. Screen order, as the event carries them: the
+  // board's order, whatever order the press sent them in.
+  const ordered = selected.map((row) => row.id)
   const job: SlotJob = { kind: 'stretch', jobId: newId(), startedAt: new Date().toISOString() }
   for (const slotId of ordered) await setSlotJob(db, slotId, job)
   try {
