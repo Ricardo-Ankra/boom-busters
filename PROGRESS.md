@@ -8239,8 +8239,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      chapter. One pass per chapter, never a loop: what is still flagged
      afterwards stays flagged and shows as a note. A stopped answer, a
      budget stop or any failure keeps the plan as planned, and so does
-     narration without word timings. The mock plans meet the minimums, so the
-     pass finds nothing to repair in mock mode.
+     narration without word timings. Mock mode does not run the pass:
+     `planChapterSlots` takes the mock plan without calling
+     `planChapterWith`, and the mock plans meet the minimums anyway. The pass
+     is covered by the `planChapterWith` unit tests.
 320. **The stretch re-plan** (2026-10-26). On the plan screen and the board,
      while `visualsPhase` is `plan` or `board`, each shot card has a `Select`
      toggle. A selection is valid when it is one or more shots, adjacent,
@@ -8265,7 +8267,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `stretch-replanner` queues one chapter's stretches behind each other
      (concurrency 1 per `chapterId`, never cancelled) so a second stretch is
      cut from the rows the first one wrote; the visuals-replanner's
-     per-project singleton would have cancelled it. On the board the new
+     per-project singleton would have cancelled it. Stretches in different
+     chapters run side by side. On the board the new
      shots are fetched at once through `slot-refetcher`, the Regenerate path.
      Shipping: a new Inngest function, so `PUT /api/inngest` after the Vercel
      deploy; no migration, the `pending_job` kind lives in JSON.

@@ -6,12 +6,7 @@ import {
   setSlotJob,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, mockStretchPlan } from '@boom-busters/providers'
-import {
-  BudgetExceededError,
-  newId,
-  parseEventData,
-  serialiseError,
-} from '@boom-busters/schemas'
+import { BudgetExceededError, newId, parseEventData, serialiseError } from '@boom-busters/schemas'
 import type { SlotJob } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -35,10 +30,11 @@ import { anchoredChapterRows } from '../lib/stretch-rows'
  * stays exactly as it was.
  *
  * Its own function rather than an op on the visuals-replanner: two stretches
- * may be re-planned at once, so it cannot share that function's per-project
+ * may be requested together, so it cannot share that function's per-project
  * singleton, which cancels the duplicate. Instead one chapter's stretches
  * queue behind each other (concurrency 1 per chapter, never cancelled), so a
- * second stretch is cut from the rows the first one wrote.
+ * second stretch is cut from the rows the first one wrote; different
+ * chapters' stretches run side by side.
  *
  * Any stop (closed stage, refused selection, budget, an answer refused twice,
  * a stamp Stop took first) keeps the old shots, and the words land on the
