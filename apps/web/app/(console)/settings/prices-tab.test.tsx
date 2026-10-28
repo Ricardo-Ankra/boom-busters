@@ -53,6 +53,7 @@ function renderPrices(
   options = modelOptions(),
   prices = EMPTY_MODEL_PRICES,
   routedKeys: string[] = [],
+  setSheetKeys: string[] = [],
 ) {
   return render(
     <WorkspaceForm
@@ -61,6 +62,7 @@ function renderPrices(
       mockProviders
       modelOptions={options}
       routedKeys={routedKeys}
+      setSheetKeys={setSheetKeys}
       initialTab="prices"
     />,
   )
@@ -248,6 +250,27 @@ describe('pricing image models (decision 288)', () => {
     expect(
       screen.getByText('Enter a price above zero, using a full stop for decimals.'),
     ).toBeInTheDocument()
+  })
+
+  it('requires a 4K price for a Google model a channel routes for set sheets, and only then', async () => {
+    const options = modelOptions()
+    options.image.google.push(unpriced)
+    renderPrices(options, undefined, [], ['google:imagen-mock'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Set price for Imagen Mock' }))
+    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0.05')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+    expect(saveWorkspaceSettings).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a price above zero')
+
+    await userEvent.type(screen.getByLabelText('4K price per image ($)'), '0.2')
+    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
+    expect(saveWorkspaceSettings).toHaveBeenCalledWith({
+      modelPrices: {
+        llm: {},
+        image: { 'google:imagen-mock': { pricePerImage: 0.05, pricesBySize: { '4K': 0.2 } } },
+      },
+    })
   })
 
   it('asks only for a per-image price on a fal model', async () => {

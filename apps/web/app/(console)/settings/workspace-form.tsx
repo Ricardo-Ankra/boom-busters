@@ -63,6 +63,7 @@ export function WorkspaceForm({
   musicBeds = [],
   modelOptions,
   routedKeys = [],
+  setSheetKeys = [],
   initialTab = 'connections',
 }: {
   initialSettings: WorkspaceSettings
@@ -74,6 +75,8 @@ export function WorkspaceForm({
   modelOptions: ModelOptions
   /** `provider:model` for every model some channel routes to. */
   routedKeys?: string[]
+  /** `google:model` for every Google model some channel routes for set sheets. */
+  setSheetKeys?: string[]
   /** From `?tab=`, validated by the page. */
   initialTab?: string
 }) {
@@ -122,6 +125,7 @@ export function WorkspaceForm({
           prices={settings.modelPrices}
           options={modelOptions}
           routedKeys={routedKeys}
+          setSheetKeys={setSheetKeys}
           saving={saving}
           commit={commitPrices}
         />

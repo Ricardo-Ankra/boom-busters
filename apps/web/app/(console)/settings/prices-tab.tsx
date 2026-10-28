@@ -76,6 +76,7 @@ export function PricesTab({
   prices,
   options,
   routedKeys,
+  setSheetKeys,
   saving,
   commit,
 }: {
@@ -83,6 +84,8 @@ export function PricesTab({
   options: ModelOptions
   /** `provider:model` for every model some channel routes to. */
   routedKeys: string[]
+  /** `google:model` for every Google model some channel routes for set sheets. */
+  setSheetKeys: string[]
   saving: boolean
   commit: (patch: { modelPrices: ModelPrices }, optimistic: ModelPrices) => Promise<void>
 }) {
@@ -182,7 +185,7 @@ export function PricesTab({
         title={`Your price for ${row.option.label}.`}
         initial={row.option.price}
         sizes={row.provider === 'google'}
-        require4K={false}
+        require4K={row.provider === 'google' && setSheetKeys.includes(key)}
         saveLabel="Save price"
         onSave={(price) => save('image', key, price)}
         onCancel={() => setEditing(null)}

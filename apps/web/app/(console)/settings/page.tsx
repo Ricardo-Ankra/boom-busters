@@ -61,6 +61,17 @@ export default async function WorkspaceSettingsPage({
     ),
   ]
 
+  // Google models some channel routes for set sheets: a sheet is billed at 4K,
+  // so a price saved for one of them must carry a 4K price.
+  const setSheetKeys = [
+    ...new Set(
+      channels.flatMap(({ settings }) => {
+        const route = settings.modelRouting.setSheet
+        return route.provider === 'google' ? [modelPriceKey(route.provider, route.model)] : []
+      }),
+    ),
+  ]
+
   const modelOptions = await loadModelOptions({ prices: workspace.settings.modelPrices })
   const channel = await channelFromSlug(slug)
   const shell = await loadShellData(channel)
@@ -82,6 +93,7 @@ export default async function WorkspaceSettingsPage({
           mockProviders={mockProvidersEnabled()}
           initialTab={tab}
           routedKeys={routedKeys}
+          setSheetKeys={setSheetKeys}
           modelOptions={modelOptions}
           musicBeds={beds.map((bed) => ({
             id: bed.id,
