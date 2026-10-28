@@ -10,9 +10,25 @@ export class BibleSlotMissingError extends Error {
   }
 }
 
-const IF_BLOCK = /\[\[if:([a-z0-9-]+)\]\]([\s\S]*?)\[\[\/if\]\]/g
-const EXAMPLE_MARKER = /\[\[example:([a-z0-9-]+)\]\]/g
-const ANY_MARKER = /\[\[(?:example|if):([a-z0-9-]+)\]\]/g
+// Mirrors SLOT_ID_PATTERN in packages/schemas (channels.ts), without the anchors.
+const IF_BLOCK = /\[\[if:([a-z]+(?:-[a-z0-9]+)+)\]\]([\s\S]*?)\[\[\/if\]\]/g
+const EXAMPLE_MARKER = /\[\[example:([a-z]+(?:-[a-z0-9]+)+)\]\]/g
+const ANY_MARKER = /\[\[(?:example|if):([a-z]+(?:-[a-z0-9]+)+)\]\]/g
+const MARKER_START = /\[\[\/?(?:if|example)/
+
+/** Fails closed: any marker-looking text that is not a well-formed marker or pair throws. */
+function assertWellFormed(text: string): void {
+  const residue = text
+    .replace(IF_BLOCK, (_match, _id: string, inner: string) => {
+      if (inner.includes('[[if:')) throw new Error('nested [[if:]] blocks are not supported')
+      return inner
+    })
+    .replace(EXAMPLE_MARKER, '')
+  const stray = MARKER_START.exec(residue)
+  if (stray) {
+    throw new Error(`malformed bible marker near "${residue.slice(stray.index, stray.index + 40)}"`)
+  }
+}
 
 /**
  * Resolves a prompt's bible markers. `[[if:id]]...[[/if]]` blocks go first, then
@@ -20,8 +36,8 @@ const ANY_MARKER = /\[\[(?:example|if):([a-z0-9-]+)\]\]/g
  * inserted text is literal (`$&` and friends mean nothing) and never re-scanned.
  */
 export function fillSlots(text: string, inUse: BibleInUse): string {
+  assertWellFormed(text)
   const kept = text.replace(IF_BLOCK, (_match, id: string, inner: string) => {
-    if (inner.includes('[[if:')) throw new Error('nested [[if:]] blocks are not supported')
     return inUse.slotIds.includes(id) ? inner : ''
   })
   return kept.replace(EXAMPLE_MARKER, (_match, id: string) => {

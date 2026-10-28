@@ -37,6 +37,21 @@ describe('fillSlots', () => {
     expect(fillSlots('p[[if:a-b]]x[[/if]]q', inUse({}, []))).toBe('pq')
   })
 
+  it('throws on stray or malformed markers', () => {
+    const u = inUse({ 'a-b': 'x' }, ['a-b'])
+    expect(() => fillSlots('a [[/if]] b', u)).toThrow('malformed bible marker')
+    expect(() => fillSlots('[[if:a-b]]never closed', u)).toThrow('malformed bible marker')
+    expect(() => fillSlots('[[example:]]', u)).toThrow('malformed bible marker')
+    expect(() => fillSlots('[[example:A-B]]', u)).toThrow('malformed bible marker')
+    expect(() => fillSlots('[[example:a-\nb]]', u)).toThrow('malformed bible marker')
+  })
+
+  it('checks examples inside if blocks only when the block is kept', () => {
+    const text = '[[if:a-b]][[example:a-c]][[/if]]'
+    expect(() => fillSlots(text, inUse({}, ['a-b']))).toThrow(BibleSlotMissingError)
+    expect(fillSlots(text, inUse({}, []))).toBe('')
+  })
+
   it('throws on a nested if block', () => {
     expect(() => fillSlots('[[if:a-b]][[if:a-c]]x[[/if]][[/if]]', inUse({}, ['a-b']))).toThrow(
       'nested [[if:]] blocks are not supported',
