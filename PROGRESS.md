@@ -8350,7 +8350,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      its own request. One rule (`lib/visuals-reopen.ts`) serves the board's
      offer and the action's refusal. No migration, no new Inngest function.
 
-323. **Channels, and the workspace split** (2026-10-28). The console now
+<!-- Decisions 323 to 325 are on master; this comment keeps Prettier from renumbering 326 onward on this branch. Delete it at merge. -->
+
+326. **Channels, and the workspace split** (2026-10-28). The console now
      runs several YouTube channels. A `channels` table holds each one's
      name, handle, slug, bible and settings, and a one-row `workspace`
      table holds what is shared: the model price overrides, the monthly
@@ -8360,8 +8362,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      so one logo uploaded to two channels is two rows and one R2 object).
      Every row that belongs to a channel carries a `channel_id`: cases,
      projects, publish records, analytics snapshots, logos, and the ledger
-     and run rows (nullable, null for workspace-level work such as the
-     analytics cron). The first channel has a constant id,
+     and run rows (nullable: migration 0037 backfilled every existing
+     `cost_ledger` and `runs` row to the first channel, and only rows the
+     analytics cron writes after it have a null channel). The first channel has a constant id,
      `FIRST_CHANNEL_ID` (`01BB0000000000000000000001`), and slug
      `boom-busters`. Migration 0037 creates it from the old `settings` row
      (or from defaults when none was ever written), backfills every
@@ -8377,7 +8380,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      migration integration test; the rehearsal on a Neon branch comes
      before production.
 
-324. **Channel resolution and the `/c/<slug>` routes** (2026-10-28). Code
+327. **Channel resolution and the `/c/<slug>` routes** (2026-10-28). Code
      finds its channel from data first and the URL second, never from a
      cookie. A server action or Inngest runner on a project resolves the
      channel from the project row, inside the step that needs it (a run
@@ -8399,7 +8402,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      3100 on the owner's machine can be held by another project's server
      that Playwright would otherwise reuse and test against.
 
-325. **One YouTube connection per channel** (2026-10-28). Each channel
+328. **One YouTube connection per channel** (2026-10-28). Each channel
      uploads to its own YouTube account, so the refresh token moved from
      the unique `youtube` row of `provider_credentials` to a
      `youtube_connections` row per channel, which also stores the YouTube
@@ -8424,7 +8427,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      so there is no daily nag. With no slug in the callback's state the
      redirect goes to the landing channel's Connections tab.
 
-326. **The bible as structured fields, the gate, and archiving** (2026-10-28).
+329. **The bible as structured fields, the gate, and archiving** (2026-10-28).
      Stage A stores each channel's bible but does not yet feed it to the
      prompts. It is structured fields (subject, what a case is, how a
      subject is named, audience, narration and visual registers, title
