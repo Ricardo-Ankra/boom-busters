@@ -1,9 +1,12 @@
 import { eq, sql } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb, type Database } from './client'
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { createCase } from './cases'
+import { createChannel, getChannelBySlug } from './channels'
 import { FIXTURE_PROJECT_ID } from './fixtures'
 import {
+  createProjectFromCase,
   getProject,
   listProjects,
   listProjectsAwaitingReview,
@@ -150,10 +153,10 @@ describeDb('run mirror', () => {
       })
       await recordRunEvent(db, { runId, kind: 'step.started', stepId: 'gather-sources' })
 
-      const active = await listActiveRuns(db)
+      const active = await listActiveRuns(db, FIRST_CHANNEL_ID)
       expect(active).toHaveLength(1)
       expect(active[0]?.currentStep).toBe('gather-sources')
-      expect((await listActiveRuns(db)).length).toBe(1)
+      expect((await listActiveRuns(db, FIRST_CHANNEL_ID)).length).toBe(1)
     })
 
     it('does not count a run parked at a gate as active', async () => {
@@ -164,7 +167,7 @@ describeDb('run mirror', () => {
         functionName: 'demo-runner',
       })
       await setRunStatus(db, runId, 'awaiting_gate')
-      expect((await listActiveRuns(db)).length).toBe(0)
+      expect((await listActiveRuns(db, FIRST_CHANNEL_ID)).length).toBe(0)
     })
 
     it('can leave the asking run out of whether the project has a live run', async () => {
@@ -195,7 +198,7 @@ describeDb('run mirror', () => {
         functionName: 'demo-runner',
       })
       await setRunStatus(db, runId, 'completed')
-      expect((await listActiveRuns(db)).length).toBe(0)
+      expect((await listActiveRuns(db, FIRST_CHANNEL_ID)).length).toBe(0)
     })
   })
 
@@ -212,7 +215,7 @@ describeDb('run mirror', () => {
       // failed run and a failed project stage arrive together.
       await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'failed' })
 
-      const [failed] = await listFailedRuns(db)
+      const [failed] = await listFailedRuns(db, FIRST_CHANNEL_ID)
       expect(failed?.error).toMatchObject({ name: 'ValidationError' })
       expect(failed?.completedAt).toBeInstanceOf(Date)
       expect(failed?.projectTitle).toBeTruthy()
@@ -232,11 +235,11 @@ describeDb('run mirror', () => {
       })
       await setRunStatus(db, runId, 'failed', { name: 'ValidationError', message: 'no sources' })
       await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'failed' })
-      expect(await listFailedRuns(db)).toHaveLength(1)
+      expect(await listFailedRuns(db, FIRST_CHANNEL_ID)).toHaveLength(1)
 
       // The human pressed re-run: the stage is queued again.
       await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'queued' })
-      expect(await listFailedRuns(db)).toHaveLength(0)
+      expect(await listFailedRuns(db, FIRST_CHANNEL_ID)).toHaveLength(0)
     })
 
     /**
@@ -255,14 +258,14 @@ describeDb('run mirror', () => {
       // Another job's success does not retire it.
       const other = await ensureRun(db, { inngestRunId: '01JRUN0014', functionName: 'cron-sweep' })
       await setRunStatus(db, other, 'completed')
-      expect((await listFailedRuns(db)).map((run) => run.id)).toEqual([failed])
+      expect((await listFailedRuns(db, FIRST_CHANNEL_ID)).map((run) => run.id)).toEqual([failed])
 
       const later = await ensureRun(db, {
         inngestRunId: '01JRUN0015',
         functionName: 'analytics-runner',
       })
       await setRunStatus(db, later, 'completed')
-      expect(await listFailedRuns(db)).toHaveLength(0)
+      expect(await listFailedRuns(db, FIRST_CHANNEL_ID)).toHaveLength(0)
     })
 
     it('keeps a project-less failure that is newer than the last success', async () => {
@@ -280,7 +283,7 @@ describeDb('run mirror', () => {
         functionName: 'analytics-runner',
       })
       await setRunStatus(db, failed, 'failed', { message: 'still broken' })
-      expect((await listFailedRuns(db)).map((run) => run.id)).toEqual([failed])
+      expect((await listFailedRuns(db, FIRST_CHANNEL_ID)).map((run) => run.id)).toEqual([failed])
     })
   })
 
@@ -303,7 +306,7 @@ describeDb('run mirror', () => {
       await recordRunEvent(db, { runId, kind: 'gate.opened', data: gateData })
       await setRunStatus(db, runId, 'awaiting_gate')
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate).toMatchObject({ provider: 'anthropic', budgetUsd: 30, estimateUsd: 0.45 })
       expect(gate?.projectTitle).toBeTruthy()
     })
@@ -329,7 +332,7 @@ describeDb('run mirror', () => {
       })
       await setRunStatus(db, runId, 'running')
 
-      expect(await listOpenBudgetGates(db)).toEqual([])
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toEqual([])
     })
 
     it('ignores a review gate — those live on the project, not the run', async () => {
@@ -341,7 +344,7 @@ describeDb('run mirror', () => {
       await recordRunEvent(db, { runId, kind: 'gate.opened', data: { gate: 'dossier' } })
       await setRunStatus(db, runId, 'awaiting_gate')
 
-      expect(await listOpenBudgetGates(db)).toEqual([])
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toEqual([])
     })
   })
 
@@ -360,7 +363,7 @@ describeDb('run mirror', () => {
       await setRunStatus(db, parked, 'awaiting_gate')
 
       expect(await cancelRunsForProject(db, FIXTURE_PROJECT_ID)).toBe(2)
-      expect((await listActiveRuns(db)).length).toBe(0)
+      expect((await listActiveRuns(db, FIRST_CHANNEL_ID)).length).toBe(0)
       expect((await listRunEvents(db, running)).map((e) => e.kind)).toContain('run.cancelled')
     })
 
@@ -373,6 +376,124 @@ describeDb('run mirror', () => {
       await setRunStatus(db, done, 'completed')
 
       expect(await cancelRunsForProject(db, FIXTURE_PROJECT_ID)).toBe(0)
+    })
+  })
+
+  describe('two channels', () => {
+    let otherChannelId = ''
+    let otherProjectId = ''
+    let otherCaseId = ''
+
+    beforeEach(async () => {
+      const existing = await getChannelBySlug(db, 'second-test')
+      const other =
+        existing ??
+        (await createChannel(db, {
+          name: 'Second test channel',
+          handle: null,
+          slug: 'second-test',
+          settings: DEFAULT_SETTINGS,
+          bible: EMPTY_BIBLE,
+        }))
+      otherChannelId = other.id
+      const madeCase = await createCase(db, {
+        channelId: otherChannelId,
+        title: `Run isolation ${Date.now()}`,
+        category: 'con',
+      })
+      otherCaseId = madeCase.id
+      otherProjectId = (await createProjectFromCase(db, { caseId: madeCase.id, title: 'On B' })).id
+    })
+
+    afterEach(async () => {
+      // Leaves the shared database as found.
+      await db.execute(sql`delete from projects where case_id = ${otherCaseId}`)
+      await db.execute(sql`delete from cases where id = ${otherCaseId}`)
+    })
+
+    it('stamps a project run with the project channel, whatever the identity says', async () => {
+      const runId = await ensureRun(db, {
+        inngestRunId: '01JCHAN0001',
+        functionName: 'demo-runner',
+        projectId: otherProjectId,
+        channelId: FIRST_CHANNEL_ID,
+      })
+      const [row] = await db.select().from(runs).where(eq(runs.id, runId))
+      expect(row?.channelId).toBe(otherChannelId)
+    })
+
+    it('takes the identity channel for a run with no project, and null for a cron run', async () => {
+      const named = await ensureRun(db, {
+        inngestRunId: '01JCHAN0002',
+        functionName: 'demo-runner',
+        channelId: otherChannelId,
+      })
+      const cron = await ensureRun(db, { inngestRunId: '01JCHAN0003', functionName: 'cron' })
+      const rows = await db.select().from(runs)
+      expect(rows.find((row) => row.id === named)?.channelId).toBe(otherChannelId)
+      expect(rows.find((row) => row.id === cron)?.channelId).toBeNull()
+    })
+
+    it('lists a run for a project on B under B and never under A', async () => {
+      const runId = await ensureRun(db, {
+        inngestRunId: '01JCHAN0004',
+        functionName: 'demo-runner',
+        projectId: otherProjectId,
+      })
+      await recordRunEvent(db, { runId, kind: 'step.started', stepId: 'gather-sources' })
+
+      expect((await listActiveRuns(db, otherChannelId)).map((run) => run.id)).toEqual([runId])
+      expect(await listActiveRuns(db, FIRST_CHANNEL_ID)).toEqual([])
+      expect(
+        (await listActivity(db, { channelId: otherChannelId })).map((entry) => entry.runId),
+      ).toEqual([runId])
+      expect(await listActivity(db, { channelId: FIRST_CHANNEL_ID })).toEqual([])
+      // No channel asked for: the whole console, as before.
+      expect(await listActivity(db)).toHaveLength(1)
+    })
+
+    it('scopes failed runs and budget gates by channel', async () => {
+      const failed = await ensureRun(db, {
+        inngestRunId: '01JCHAN0005',
+        functionName: 'script-runner',
+        projectId: otherProjectId,
+      })
+      await setRunStatus(db, failed, 'failed')
+      await db.execute(
+        sql`update projects set stage_status = 'failed' where id = ${otherProjectId}`,
+      )
+
+      const parked = await ensureRun(db, {
+        inngestRunId: '01JCHAN0006',
+        functionName: 'script-runner',
+        projectId: otherProjectId,
+      })
+      await recordRunEvent(db, {
+        runId: parked,
+        kind: 'gate.opened',
+        data: { gate: 'budget', provider: 'anthropic', operation: 'scripting' },
+      })
+      await setRunStatus(db, parked, 'awaiting_gate')
+
+      expect((await listFailedRuns(db, otherChannelId)).map((run) => run.id)).toEqual([failed])
+      expect(await listFailedRuns(db, FIRST_CHANNEL_ID)).toEqual([])
+      expect((await listOpenBudgetGates(db, otherChannelId)).map((gate) => gate.runId)).toEqual([
+        parked,
+      ])
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toEqual([])
+    })
+
+    it('shows a cron run with no channel under both channels', async () => {
+      const cron = await ensureRun(db, { inngestRunId: '01JCHAN0007', functionName: 'cron' })
+      await recordRunEvent(db, { runId: cron, kind: 'run.started' })
+      const failedCron = await ensureRun(db, { inngestRunId: '01JCHAN0008', functionName: 'cron2' })
+      await setRunStatus(db, failedCron, 'failed')
+
+      for (const channelId of [FIRST_CHANNEL_ID, otherChannelId]) {
+        expect((await listActiveRuns(db, channelId)).map((run) => run.id)).toEqual([cron])
+        expect((await listActivity(db, { channelId })).map((entry) => entry.runId)).toEqual([cron])
+        expect((await listFailedRuns(db, channelId)).map((run) => run.id)).toEqual([failedCron])
+      }
     })
   })
 

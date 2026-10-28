@@ -1,8 +1,11 @@
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { ensureFirstChannel } from './channels'
+import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { createCase } from './cases'
+import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
+import { createProjectFromCase } from './projects'
 import { globalPulse, projectPulse } from './pulse'
 import { cases, projects, runs } from './schema'
 import { requireTestDatabase } from './test-database'
@@ -65,14 +68,39 @@ suite('pulse', () => {
     expect(await projectPulse(db, '01HQ00000000000000000NOPE1')).toBe('')
   })
 
-  it('the global pulse covers every project', async () => {
-    const before = await globalPulse(db)
+  it("the channel pulse covers that channel's projects", async () => {
+    const before = await globalPulse(db, FIRST_CHANNEL_ID)
     expect(before).not.toBe('')
     await new Promise((resolve) => setTimeout(resolve, 5))
     await db
       .update(projects)
       .set({ stageStatus: 'failed' })
       .where(dsql`${projects.id} = ${FIXTURE_PROJECT_ID}`)
-    expect(await globalPulse(db)).not.toBe(before)
+    expect(await globalPulse(db, FIRST_CHANNEL_ID)).not.toBe(before)
+  })
+
+  it("holds still for another channel's project, and moves for a run with no channel", async () => {
+    const other =
+      (await getChannelBySlug(db, 'pulse-test')) ??
+      (await createChannel(db, {
+        name: 'Pulse test channel',
+        handle: null,
+        slug: 'pulse-test',
+        settings: DEFAULT_SETTINGS,
+        bible: EMPTY_BIBLE,
+      }))
+    const otherCase = await createCase(db, { channelId: other.id, title: 'B', category: 'con' })
+    const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On B' })
+
+    const before = await globalPulse(db, FIRST_CHANNEL_ID)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await db
+      .update(projects)
+      .set({ stageStatus: 'failed' })
+      .where(dsql`${projects.id} = ${otherProject.id}`)
+    expect(await globalPulse(db, FIRST_CHANNEL_ID)).toBe(before)
+
+    await db.insert(runs).values({ inngestRunId: 'run-pulse-cron', functionName: 'cron' })
+    expect(await globalPulse(db, FIRST_CHANNEL_ID)).not.toBe(before)
   })
 })

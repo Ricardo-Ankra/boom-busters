@@ -19,6 +19,7 @@ vi.mock('@boom-busters/db', () => ({
 }))
 
 const PROJECT = '01HQ0000000000000000000PR1'
+const CHANNEL = '01BB0000000000000000000001'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -34,12 +35,19 @@ describe('GET /api/pulse', () => {
     expect(response.status).toBe(401)
   })
 
-  it('answers the global pulse without a project param', async () => {
-    const response = await GET(new Request('http://localhost/api/pulse'))
+  it("answers one channel's pulse with ?channel", async () => {
+    const response = await GET(new Request(`http://localhost/api/pulse?channel=${CHANNEL}`))
     expect(response.status).toBe(200)
+    expect(pulses.globalPulse).toHaveBeenCalledWith({}, CHANNEL)
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(await response.json()).toEqual({ pulse: '1787327111.456' })
     expect(pulses.projectPulse).not.toHaveBeenCalled()
+  })
+
+  it('needs a project or a channel', async () => {
+    const response = await GET(new Request('http://localhost/api/pulse'))
+    expect(response.status).toBe(400)
+    expect(pulses.globalPulse).not.toHaveBeenCalled()
   })
 
   it('scopes to one project with ?project', async () => {

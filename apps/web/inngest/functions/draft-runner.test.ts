@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  costLedger,
   FIXTURE_PROJECT_ID,
   getProject,
   insertTimeline,
@@ -13,7 +14,7 @@ import {
   updateSettings,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -193,6 +194,9 @@ describeDb('draft-runner', () => {
         const [entry] = await listLedger(db)
         expect(entry).toMatchObject({ operation: 'render-draft', settled: false })
         expect(Number(entry?.estimatedUsd)).toBeCloseTo(0.0014, 4)
+        // The runner names only the project; the row carries the project's channel.
+        const [row] = await db.select().from(costLedger)
+        expect(row?.channelId).toBe(FIRST_CHANNEL_ID)
 
         // The gate stays parked and the stage untouched — the draft renders
         // beside Gate 5a, never instead of it.

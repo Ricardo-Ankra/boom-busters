@@ -1,16 +1,30 @@
-import { costLedger, createDb, requireTestDatabase, seed, type Database } from '@boom-busters/db'
+import {
+  costLedger,
+  createCase,
+  createChannel,
+  createDb,
+  createProjectFromCase,
+  getChannelBySlug,
+  requireTestDatabase,
+  seed,
+  type Database,
+} from '@boom-busters/db'
 import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_ID,
   TransientProviderError,
 } from '@boom-busters/schemas'
 import type { Settings } from '@boom-busters/schemas'
 import { FIXTURE_PROJECT_ID } from '@boom-busters/db'
-import { sql } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { eq, sql } from 'drizzle-orm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { budgetStatus, release, reserve, settle, withCost } from './guard'
 import {
   listLedger,
+  monthOtherChannelsUsd,
+  monthSpendByProject,
   monthSpendByProvider,
   monthSpendUsd,
   monthTotalUsd,
@@ -430,5 +444,170 @@ describeDb('cost guard', () => {
     expect(status.remainingUsd).toBeCloseTo(0.5)
     // Read-only: asking must not consume budget.
     expect(await listLedger(db)).toHaveLength(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // Two channels, one ceiling
+  // -------------------------------------------------------------------------
+
+  describe('two channels', () => {
+    let otherChannelId = ''
+    let otherCaseId = ''
+    let otherProjectId = ''
+
+    beforeEach(async () => {
+      const other =
+        (await getChannelBySlug(db, 'second-test')) ??
+        (await createChannel(db, {
+          name: 'Second test channel',
+          handle: null,
+          slug: 'second-test',
+          settings: DEFAULT_SETTINGS,
+          bible: EMPTY_BIBLE,
+        }))
+      otherChannelId = other.id
+      const madeCase = await createCase(db, {
+        channelId: otherChannelId,
+        title: `Ledger isolation ${Date.now()}`,
+        category: 'con',
+      })
+      otherCaseId = madeCase.id
+      otherProjectId = (await createProjectFromCase(db, { caseId: madeCase.id, title: 'On B' })).id
+    })
+
+    afterEach(async () => {
+      await db.execute(sql`TRUNCATE TABLE ${costLedger}`)
+      await db.execute(sql`delete from projects where case_id = ${otherCaseId}`)
+      await db.execute(sql`delete from cases where id = ${otherCaseId}`)
+    })
+
+    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+
+    async function channelOf(ledgerId: string): Promise<string | null> {
+      const [row] = await db
+        .select({ channelId: costLedger.channelId })
+        .from(costLedger)
+        .where(eq(costLedger.id, ledgerId))
+      return row?.channelId ?? null
+    }
+
+    it('writes the project channel on a reservation that names only the project', async () => {
+      const onB = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'a', projectId: otherProjectId, estimateUsd: 1 },
+        settings,
+        NOW,
+      )
+      const onA = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'b', projectId: FIXTURE_PROJECT_ID, estimateUsd: 1 },
+        settings,
+        NOW,
+      )
+      expect(await channelOf(onB)).toBe(otherChannelId)
+      expect(await channelOf(onA)).toBe(FIRST_CHANNEL_ID)
+    })
+
+    it('writes a named channel when there is no project, and none for workspace spend', async () => {
+      const named = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'a', channelId: otherChannelId, estimateUsd: 1 },
+        settings,
+        NOW,
+      )
+      const workspace = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'b', estimateUsd: 1 },
+        settings,
+        NOW,
+      )
+      expect(await channelOf(named)).toBe(otherChannelId)
+      expect(await channelOf(workspace)).toBeNull()
+    })
+
+    it('records unguarded spend against the project channel', async () => {
+      const id = await recordCost(db, {
+        provider: 'remotion',
+        operation: 'render-master',
+        projectId: otherProjectId,
+        actualUsd: 0.25,
+        occurredAt: NOW,
+      })
+      expect(await channelOf(id)).toBe(otherChannelId)
+    })
+
+    it("never lists channel B's projects or providers in channel A's breakdowns", async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 2,
+        occurredAt: NOW,
+      })
+      await recordCost(db, {
+        provider: 'google',
+        operation: 'b',
+        projectId: otherProjectId,
+        actualUsd: 3,
+        occurredAt: NOW,
+      })
+
+      const byProject = await monthSpendByProject(db, NOW, FIRST_CHANNEL_ID)
+      expect(byProject.map((row) => row.projectId)).toEqual([FIXTURE_PROJECT_ID])
+      expect((await monthSpendByProject(db, NOW, otherChannelId)).map((r) => r.projectId)).toEqual([
+        otherProjectId,
+      ])
+      expect(await monthSpendByProvider(db, NOW, FIRST_CHANNEL_ID)).toEqual({ anthropic: 2 })
+      expect(await monthSpendByProvider(db, NOW, otherChannelId)).toEqual({ google: 3 })
+      // No channel asked for: the workspace, as before.
+      expect(await monthSpendByProvider(db, NOW)).toEqual({ anthropic: 2, google: 3 })
+      expect(
+        (await listLedger(db, { channelId: FIRST_CHANNEL_ID })).map((e) => e.provider),
+      ).toEqual(['anthropic'])
+    })
+
+    it("sums every other channel's rows, workspace spend included, for monthOtherChannelsUsd", async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 2,
+        occurredAt: NOW,
+      })
+      await recordCost(db, {
+        provider: 'google',
+        operation: 'b',
+        projectId: otherProjectId,
+        actualUsd: 3,
+        occurredAt: NOW,
+      })
+      await recordCost(db, { provider: 'openai', operation: 'c', actualUsd: 0.5, occurredAt: NOW })
+
+      expect(await monthOtherChannelsUsd(db, NOW, FIRST_CHANNEL_ID)).toBeCloseTo(3.5)
+      expect(await monthOtherChannelsUsd(db, NOW, otherChannelId)).toBeCloseTo(2.5)
+      // The guard's own total stays the workspace's.
+      expect(await monthTotalUsd(db, NOW)).toBeCloseTo(5.5)
+    })
+
+    it('parks a reservation on B once A has spent to the one ceiling', async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 9.5,
+        occurredAt: NOW,
+      })
+
+      await expect(
+        reserve(
+          db,
+          { provider: 'anthropic', operation: 'b', projectId: otherProjectId, estimateUsd: 1 },
+          settings,
+          NOW,
+        ),
+      ).rejects.toBeInstanceOf(BudgetExceededError)
+      // The refused reservation left nothing behind.
+      expect(await listLedger(db, { channelId: otherChannelId })).toEqual([])
+    })
   })
 })

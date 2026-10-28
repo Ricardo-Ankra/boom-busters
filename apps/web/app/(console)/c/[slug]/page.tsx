@@ -49,10 +49,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   const [awaitingReview, budgetGates, failedRuns, activeRuns, pulse, youtubeReconnect] =
     await Promise.all([
       listProjectsAwaitingReview(db, channel.id),
-      listOpenBudgetGates(db),
-      listFailedRuns(db),
-      listActiveRuns(db),
-      globalPulse(db),
+      listOpenBudgetGates(db, channel.id),
+      listFailedRuns(db, channel.id),
+      listActiveRuns(db, channel.id),
+      globalPulse(db, channel.id),
       youtubeReconnectNeeded(db),
     ])
 
@@ -82,7 +82,11 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-[15px] font-semibold">Active runs</h2>
-          <LiveRefresh active={activeRuns.length > 0} pulseUrl="/api/pulse" initialPulse={pulse} />
+          <LiveRefresh
+            active={activeRuns.length > 0}
+            pulseUrl={`/api/pulse?channel=${channel.id}`}
+            initialPulse={pulse}
+          />
         </div>
         {activeRuns.length === 0 ? (
           <p className="rounded-[8px] border border-[var(--color-border)] p-6 text-center text-[13px] text-[var(--color-text-muted)]">

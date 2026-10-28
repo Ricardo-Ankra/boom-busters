@@ -32,12 +32,16 @@ export async function projectPulse(db: Database, projectId: string): Promise<str
   return pulse ?? ''
 }
 
-/** The dashboard's variant: the newest change across every project. */
-export async function globalPulse(db: Database): Promise<string> {
+/**
+ * The dashboard's variant: the newest change across one channel's projects and
+ * runs. A run with no channel (the cron's) moves every channel's pulse.
+ */
+export async function globalPulse(db: Database, channelId: string): Promise<string> {
   const rows = await db.execute(sql`
     select extract(epoch from greatest(
-      (select max(${projects.updatedAt}) from ${projects}),
-      (select max(${runs.updatedAt}) from ${runs})
+      (select max(${projects.updatedAt}) from ${projects} where ${projects.channelId} = ${channelId}),
+      (select max(${runs.updatedAt}) from ${runs}
+         where ${runs.channelId} = ${channelId} or ${runs.channelId} is null)
     ))::text as pulse
   `)
   const pulse = (rows[0] as { pulse: string | null } | undefined)?.pulse

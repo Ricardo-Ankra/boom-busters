@@ -13,9 +13,10 @@ import { db } from './db'
  */
 export async function loadShellData(channel: Channel) {
   const [monthSpendUsd, activeRuns, activity, settings, all] = await Promise.all([
+    // Global: the one ceiling is a workspace total.
     monthTotalUsd(db, new Date()),
-    listActiveRuns(db),
-    listActivity(db, { limit: 60 }),
+    listActiveRuns(db, channel.id),
+    listActivity(db, { channelId: channel.id, limit: 60 }),
     // Transitional: the workspace budgets ride on this wrapper until Task 9.
     getSettings(db),
     listChannels(db),

@@ -1,6 +1,7 @@
 import { getSettings } from '@boom-busters/db'
 import {
   listLedger,
+  monthOtherChannelsUsd,
   monthSpendByProject,
   monthSpendByProvider,
   monthTotalUsd,
@@ -8,6 +9,7 @@ import {
 import { PROVIDERS, effectiveCeilingUsd, monthKey } from '@boom-busters/schemas'
 import type { Provider } from '@boom-busters/schemas'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { CeilingEditor } from './cost-controls'
 import { LedgerTable } from './ledger-table'
@@ -33,14 +35,18 @@ export default async function CostsPage({
   searchParams: Promise<{ provider?: string; project?: string }>
 }) {
   const [{ slug }, filters] = await Promise.all([params, searchParams])
+  const channel = await channelFromSlug(slug)
   const now = new Date()
 
-  const [settings, byProvider, byProject, total, ledger] = await Promise.all([
+  const [settings, byProvider, byProject, total, otherChannelsUsd, ledger] = await Promise.all([
     getSettings(db),
-    monthSpendByProvider(db, now),
-    monthSpendByProject(db, now),
+    monthSpendByProvider(db, now, channel.id),
+    monthSpendByProject(db, now, channel.id),
+    // The ceiling is one workspace number, so the meter reads the workspace total.
     monthTotalUsd(db, now),
+    monthOtherChannelsUsd(db, now, channel.id),
     listLedger(db, {
+      channelId: channel.id,
       ...(isProvider(filters.provider) ? { provider: filters.provider } : {}),
       ...(filters.project ? { projectId: filters.project } : {}),
       limit: 200,
@@ -144,6 +150,10 @@ export default async function CostsPage({
               </tbody>
             </table>
           )}
+          <p className="mt-3 text-[13px] text-[var(--color-text-secondary)]">
+            Other channels this month:{' '}
+            <span className="font-mono tabular-nums">${otherChannelsUsd.toFixed(2)}</span>
+          </p>
         </CardContent>
       </Card>
 

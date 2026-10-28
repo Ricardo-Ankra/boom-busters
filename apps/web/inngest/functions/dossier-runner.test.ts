@@ -12,6 +12,7 @@ import {
   truncateRunMirror,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -291,6 +292,25 @@ describeDb('dossier-runner', () => {
         reason: 'cites a document that was not given',
       },
     ])
+  })
+
+  it('completes a run whose memoised load-case has no channelId, mirrored under the project channel', async () => {
+    // A run parked before channels existed replays a load-case that names none;
+    // everything after it must work from the project alone.
+    const { ctx } = await engine.executeStep('await-dossier-gate', {
+      events: created(),
+      steps: [
+        { id: 'load-case', handler: () => ({ ...CASE, competitorLinks: [] }) },
+        ...stored().filter((entry) => entry.id !== 'load-case'),
+      ],
+    })
+
+    const ids = vi.mocked(ctx.step.run).mock.calls.map(([id]) => id)
+    expect(ids).toContain('open-gate')
+    expect(saveDossier).toHaveBeenCalledTimes(1)
+
+    const [run] = await listRuns(db)
+    expect(run?.channelId).toBe(FIRST_CHANNEL_ID)
   })
 
   it('saves research replayed from before the notices, with no notice and no crash', async () => {

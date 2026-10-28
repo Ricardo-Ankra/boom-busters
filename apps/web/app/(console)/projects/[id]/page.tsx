@@ -30,6 +30,7 @@ import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
 import { BudgetGateCard } from '@/components/budget-gate-card'
 import { LiveRefresh } from '@/components/live-refresh'
+import { channelForProjectOrNotFound } from '@/lib/channel-context'
 import { Notices } from '@/components/notices'
 import { PipelineRail, SEGMENT_LABELS } from '@/components/pipeline-rail'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -186,7 +187,7 @@ export default async function ProjectPage({
     notices,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
-    listOpenBudgetGates(db),
+    channelForProjectOrNotFound(id).then(({ channelId }) => listOpenBudgetGates(db, channelId)),
     wants('dossier') ? getDossier(db, id) : Promise.resolve(undefined),
     wants('dossier') ? listDossierDocumentSummaries(db, id) : Promise.resolve([]),
     wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),

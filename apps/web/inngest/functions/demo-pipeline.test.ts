@@ -13,6 +13,7 @@ import {
   updateSettings,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
@@ -145,7 +146,7 @@ describeDb('demo pipeline', () => {
         events: demoEvent({ forceBudgetGate: true }),
       })
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate).toMatchObject({ provider: 'anthropic', budgetUsd: 30 })
       expect(gate?.estimateUsd).toBe(1_000_000)
 
@@ -167,7 +168,7 @@ describeDb('demo pipeline', () => {
 
       await engine.executeStep('open-budget-gate-0', { events: demoEvent() })
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate?.budgetUsd).toBe(0)
       // The estimate is the real one, not the forced million.
       expect(gate?.estimateUsd).toBeCloseTo(0.0001)

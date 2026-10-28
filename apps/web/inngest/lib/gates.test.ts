@@ -20,7 +20,12 @@ import {
   updateSettings,
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
-import { BudgetExceededError, monthKey, takeIdempotencyKey } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  FIRST_CHANNEL_ID,
+  monthKey,
+  takeIdempotencyKey,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -196,7 +201,7 @@ describeDb('gate helpers', () => {
       const ctx = context()
       await openBudgetGate(ctx, budgetGateData(error))
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate).toMatchObject({
         provider: 'anthropic',
         operation: 'scripting',
@@ -209,11 +214,11 @@ describeDb('gate helpers', () => {
     it('closes when the overage is approved, and stops being a gate', async () => {
       const ctx = context()
       await openBudgetGate(ctx, budgetGateData(error))
-      expect(await listOpenBudgetGates(db)).toHaveLength(1)
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toHaveLength(1)
 
       await closeBudgetGate(ctx, 'Overage of $1.00 approved for anthropic')
 
-      expect(await listOpenBudgetGates(db)).toEqual([])
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toEqual([])
       const [run] = await listRuns(db)
       expect(run?.status).toBe('running')
     })

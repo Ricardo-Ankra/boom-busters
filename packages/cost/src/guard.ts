@@ -3,7 +3,7 @@ import type { Database } from '@boom-busters/db'
 import { BudgetExceededError, effectiveCeilingUsd, spentUsd } from '@boom-busters/schemas'
 import type { Settings } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
-import { monthTotalUsd, round4, type DbLike, type LedgerProvider } from './ledger'
+import { ledgerChannelId, monthTotalUsd, round4, type DbLike, type LedgerProvider } from './ledger'
 
 /**
  * The budget guard (build spec section 6):
@@ -57,6 +57,12 @@ export interface CostSpec {
   /** Free text, shown in the ledger: `scripting`, `tts`, `stock-search`. */
   operation: string
   projectId?: string | null
+  /**
+   * The channel the spend is attributed to. Falls back to the project's
+   * channel; leave both off for spend that belongs to the workspace. The
+   * ceiling and its lock stay global whatever this says.
+   */
+  channelId?: string | null
   estimateUsd: number
   meta?: Record<string, unknown>
 }
@@ -137,6 +143,7 @@ export async function reserve(
       .values({
         provider: spec.provider,
         operation: spec.operation,
+        channelId: ledgerChannelId(spec),
         projectId: spec.projectId ?? null,
         estimatedUsd: estimate.toFixed(4),
         actualUsd: null,
