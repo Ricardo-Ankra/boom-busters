@@ -14,7 +14,7 @@ import {
 import type { ChannelBible, Settings, SettingsPatch } from '@boom-busters/schemas'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { channels, projects, workspace } from './schema'
+import { cases, channels, projects, workspace } from './schema'
 import type { ChannelRow } from './schema'
 import { mergeSettings, normaliseSettings } from './settings-merge'
 
@@ -236,4 +236,15 @@ export async function channelForProject(
     settings: channel.settings,
     bible: channel.bible,
   }
+}
+
+/** The channel a case belongs to, or undefined when the case is gone. */
+export async function channelForCase(db: Database, caseId: string): Promise<Channel | undefined> {
+  const [row] = await db
+    .select({ channel: channels })
+    .from(cases)
+    .innerJoin(channels, eq(channels.id, cases.channelId))
+    .where(eq(cases.id, caseId))
+    .limit(1)
+  return row ? toChannel(row.channel) : undefined
 }

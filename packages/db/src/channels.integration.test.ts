@@ -12,6 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase } from './cases'
 import {
   archiveChannel,
+  channelForCase,
   channelForProject,
   createChannel,
   ensureFirstChannel,
@@ -148,6 +149,14 @@ suite('channels', () => {
     const resolved = await channelForProject(db, project.id)
     expect(resolved).toMatchObject({ channelId: b.id, slug: 'beta', bible: EMPTY_BIBLE })
     expect(resolved.settings).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('channelForCase returns the case channel, and undefined for a missing case', async () => {
+    const b = await createChannel(db, channelInput('gamma'))
+    const kase = await createCase(db, { title: 'Enron', category: 'collapse', channelId: b.id })
+
+    expect((await channelForCase(db, kase.id))?.id).toBe(b.id)
+    expect(await channelForCase(db, '01BB0000000000000000000009')).toBeUndefined()
   })
 
   it('channelForProject throws for a missing project', async () => {

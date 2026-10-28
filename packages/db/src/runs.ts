@@ -67,8 +67,10 @@ export interface RunIdentity {
  * Rows of one channel, plus the cron's rows that belong to none: a null
  * `runs.channel_id` shows everywhere.
  */
-function runsOfChannel(channelId: string) {
-  return or(eq(runs.channelId, channelId), isNull(runs.channelId))
+function runsOfChannel(channelId: string, ownOnly = false) {
+  return ownOnly
+    ? eq(runs.channelId, channelId)
+    : or(eq(runs.channelId, channelId), isNull(runs.channelId))
 }
 
 /**
@@ -268,11 +270,16 @@ export interface ActiveRun {
 }
 
 /**
- * Runs that are actually executing. `awaiting_gate` is excluded on purpose:
+ * Runs that are actually executing. `ownOnly` leaves out the cron's null-channel
+ * rows that otherwise show in every channel. `awaiting_gate` is excluded on purpose:
  * a run parked for three days waiting on a human is not "active", and showing
  * it as such would make the pulsing dot in the top bar meaningless.
  */
-export async function listActiveRuns(db: Database, channelId: string): Promise<ActiveRun[]> {
+export async function listActiveRuns(
+  db: Database,
+  channelId: string,
+  options: { ownOnly?: boolean } = {},
+): Promise<ActiveRun[]> {
   const latestStep = db
     .select({
       runId: runEvents.runId,
@@ -297,7 +304,7 @@ export async function listActiveRuns(db: Database, channelId: string): Promise<A
     .from(runs)
     .leftJoin(projects, eq(runs.projectId, projects.id))
     .leftJoin(latestStep, eq(latestStep.runId, runs.id))
-    .where(and(eq(runs.status, 'running'), runsOfChannel(channelId)))
+    .where(and(eq(runs.status, 'running'), runsOfChannel(channelId, options.ownOnly)))
     .orderBy(desc(runs.startedAt))
 
   return rows
@@ -395,6 +402,7 @@ export interface OpenBudgetGate {
 export async function listOpenBudgetGates(
   db: Database,
   channelId: string,
+  options: { ownOnly?: boolean } = {},
 ): Promise<OpenBudgetGate[]> {
   const rows = await db
     .select({
@@ -410,7 +418,7 @@ export async function listOpenBudgetGates(
     .where(
       and(
         eq(runs.status, 'awaiting_gate'),
-        runsOfChannel(channelId),
+        runsOfChannel(channelId, options.ownOnly),
         eq(runEvents.kind, 'gate.opened'),
         sql`${runEvents.data} ->> 'gate' = 'budget'`,
         // Only gates that were never closed.

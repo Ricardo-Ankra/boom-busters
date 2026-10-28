@@ -159,6 +159,28 @@ describeDb('run mirror', () => {
       expect((await listActiveRuns(db, FIRST_CHANNEL_ID)).length).toBe(1)
     })
 
+    it('leaves the cron rows that belong to no channel out when asked for the channel own', async () => {
+      await ensureRun(db, { inngestRunId: '01JRUNCRON1', functionName: 'analytics-cron' })
+      const own = await ensureRun(db, {
+        inngestRunId: '01JRUNOWN01',
+        functionName: 'demo-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+
+      expect(await listActiveRuns(db, FIRST_CHANNEL_ID)).toHaveLength(2)
+      const ownOnly = await listActiveRuns(db, FIRST_CHANNEL_ID, { ownOnly: true })
+      expect(ownOnly.map((run) => run.id)).toEqual([own])
+    })
+
+    it('leaves a null-channel budget gate out when asked for the channel own', async () => {
+      const runId = await ensureRun(db, { inngestRunId: '01JRUNCRON2', functionName: 'cron' })
+      await recordRunEvent(db, { runId, kind: 'gate.opened', data: { gate: 'budget' } })
+      await setRunStatus(db, runId, 'awaiting_gate')
+
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toHaveLength(1)
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID, { ownOnly: true })).toEqual([])
+    })
+
     it('does not count a run parked at a gate as active', async () => {
       // A run waiting three days on a human is not "running"; counting it
       // would make the top bar's pulsing dot mean nothing.
