@@ -205,7 +205,7 @@ export default async function globalSetup(): Promise<void> {
     })
     await recordChannelYoutubeVerify(connection.db, FIRST_CHANNEL_ID, 'ok', 'UC-mock-first')
     // The second fixture channel: no connection, no cases, no logos, a blank
-    // bible. channels.spec.ts takes it from set-up to usable and also creates
+    // bible. channels.spec.ts fills its Channel tab (still incomplete until the tab sets the new fields) and also creates
     // and archives a third, so both are dropped and re-created every run.
     // Their dependants (the cases the spec adds) go first: the channel foreign
     // keys restrict.

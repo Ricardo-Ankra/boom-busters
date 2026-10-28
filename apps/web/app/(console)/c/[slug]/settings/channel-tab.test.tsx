@@ -45,7 +45,7 @@ function renderTab(over: Partial<React.ComponentProps<typeof ChannelTab>> = {}) 
 describe('ChannelTab', () => {
   it('counts what keeps an empty bible incomplete, and says complete for a full one', () => {
     const { unmount } = renderTab()
-    expect(screen.getByText('Bible incomplete: 8 fields')).toBeInTheDocument()
+    expect(screen.getByText('Bible incomplete: 13 fields')).toBeInTheDocument()
     unmount()
 
     renderTab({ channel: { ...CHANNEL, bible: FIRST_CHANNEL_BIBLE } })

@@ -1,3 +1,4 @@
+import { missingBibleFields as schemaMissingBibleFields } from '@boom-busters/schemas'
 import type { ChannelBible } from '@boom-busters/schemas'
 
 /** The bible's text fields, in the order the Channel tab shows them. */
@@ -70,5 +71,11 @@ export function missingBibleFields(bible: ChannelBible): string[] {
     (field) => field.required && bible[field.key].trim().length === 0,
   ).map((field) => field.label)
   if (bible.caseCategories.length < 2) missing.push('Case categories (at least two)')
+  // Fields the Channel tab cannot edit yet still stop the bible being complete.
+  const editable = new Set<string>([
+    ...BIBLE_TEXT_FIELDS.map((field) => field.key),
+    'caseCategories',
+  ])
+  missing.push(...schemaMissingBibleFields(bible).filter((key) => !editable.has(key)))
   return missing
 }
