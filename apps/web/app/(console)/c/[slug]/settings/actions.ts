@@ -4,6 +4,7 @@ import { updateChannelSettings } from '@boom-busters/db'
 import { SettingsPatchSchema, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
@@ -27,6 +28,8 @@ async function requireOwner(): Promise<void> {
 export async function saveSettings(channelId: string, patch: unknown): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
 
   // Validate at the edge, not just at the database (spec section 2: Zod
   // everywhere, at API edges).

@@ -22,6 +22,7 @@ import {
   listActivity,
   listFailedRuns,
   listOpenBudgetGates,
+  listParkedRuns,
   listRunEvents,
   recordRunEvent,
   setRunStatus,
@@ -179,6 +180,25 @@ describeDb('run mirror', () => {
 
       expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toHaveLength(1)
       expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID, { ownOnly: true })).toEqual([])
+    })
+
+    it('lists every parked run of the channel, whatever the gate, and not the cron rows', async () => {
+      const own = await ensureRun(db, {
+        inngestRunId: '01JRUNPARK1',
+        functionName: 'demo-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+      await recordRunEvent(db, { runId: own, kind: 'gate.opened', data: { gate: 'review' } })
+      await setRunStatus(db, own, 'awaiting_gate')
+      const cron = await ensureRun(db, { inngestRunId: '01JRUNPARK2', functionName: 'cron' })
+      await setRunStatus(db, cron, 'awaiting_gate')
+      await ensureRun(db, {
+        inngestRunId: '01JRUNPARK3',
+        functionName: 'demo-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+
+      expect((await listParkedRuns(db, FIRST_CHANNEL_ID)).map((run) => run.id)).toEqual([own])
     })
 
     it('does not count a run parked at a gate as active', async () => {

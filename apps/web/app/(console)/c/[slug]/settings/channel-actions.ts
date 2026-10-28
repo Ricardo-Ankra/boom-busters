@@ -9,6 +9,8 @@ import {
   listActiveRuns,
   listChannels,
   listOpenBudgetGates,
+  listParkedRuns,
+  listProjectsAwaitingReview,
   scheduledPublishItems,
   setDefaultChannel,
   updateChannel,
@@ -28,6 +30,7 @@ import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { LAST_CHANNEL_COOKIE } from '@/lib/channel-href'
+import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import type { ActionResult } from './actions'
 
@@ -134,6 +137,8 @@ export async function updateChannelAction(
 ): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
 
   const parsed = UpdateChannelSchema.safeParse(patch)
   if (!parsed.success) {
@@ -186,9 +191,11 @@ export async function archiveChannelAction(
     return { ok: false, error: 'Create another channel before archiving this one' }
   }
 
-  const [active, gates, scheduled] = await Promise.all([
+  const [active, gates, parked, reviews, scheduled] = await Promise.all([
     listActiveRuns(db, channelId, { ownOnly: true }),
     listOpenBudgetGates(db, channelId, { ownOnly: true }),
+    listParkedRuns(db, channelId),
+    listProjectsAwaitingReview(db, channelId),
     scheduledPublishItems(db, channelId),
   ])
   if (active.length > 0) {
@@ -198,6 +205,18 @@ export async function archiveChannelAction(
     return {
       ok: false,
       error: 'A budget gate is open for this channel. Resolve it on the dashboard first.',
+    }
+  }
+  if (parked.length > 0) {
+    return {
+      ok: false,
+      error: 'A run is parked at a gate for this channel. Approve or stop it first.',
+    }
+  }
+  if (reviews.length > 0) {
+    return {
+      ok: false,
+      error: 'A project is waiting on your review in this channel. Finish the review first.',
     }
   }
   if (scheduled.some((item) => item.status === 'scheduled')) {

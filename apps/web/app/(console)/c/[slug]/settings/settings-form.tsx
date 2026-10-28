@@ -19,6 +19,7 @@ import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
+import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { saveSettings } from './actions'
 import { updateChannelAction } from './channel-actions'
 import { ChannelTab, type ChannelPatch, type ChannelView } from './channel-tab'
@@ -136,66 +137,113 @@ export function SettingsForm({
   )
 
   return (
-    <Tabs defaultValue={initialTab}>
-      <TabsList>
-        <TabsTrigger value="channel">Channel</TabsTrigger>
-        <TabsTrigger value="models">Models</TabsTrigger>
-        <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
-        <TabsTrigger value="voice">Voice</TabsTrigger>
-        <TabsTrigger value="logos">Logos</TabsTrigger>
-        <TabsTrigger value="exemplars">Exemplars</TabsTrigger>
-        <TabsTrigger value="publishing">Publishing</TabsTrigger>
-        <TabsTrigger value="connections">Connections</TabsTrigger>
-      </TabsList>
+    <div className="flex flex-col gap-3">
+      {channel.archived ? (
+        <p
+          role="status"
+          className="rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
+        >
+          {CHANNEL_ARCHIVED_MESSAGE}. Its settings can be read but not changed.
+        </p>
+      ) : null}
+      <Tabs defaultValue={initialTab}>
+        <TabsList>
+          <TabsTrigger value="channel">Channel</TabsTrigger>
+          <TabsTrigger value="models">Models</TabsTrigger>
+          <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
+          <TabsTrigger value="voice">Voice</TabsTrigger>
+          <TabsTrigger value="logos">Logos</TabsTrigger>
+          <TabsTrigger value="exemplars">Exemplars</TabsTrigger>
+          <TabsTrigger value="publishing">Publishing</TabsTrigger>
+          <TabsTrigger value="connections">Connections</TabsTrigger>
+        </TabsList>
 
-      <TabsContent value="channel">
-        <ChannelTab
-          channel={channel}
-          channels={channels}
-          showNew={showNewChannel}
-          saving={saving}
-          commit={commitChannel}
-        />
-      </TabsContent>
+        <TabsContent value="channel">
+          <Lock archived={channel.archived}>
+            {' '}
+            <ChannelTab
+              channel={channel}
+              channels={channels}
+              showNew={showNewChannel}
+              saving={saving}
+              commit={commitChannel}
+            />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="models">
-        <ModelsTab settings={settings} saving={saving} commit={commit} options={modelOptions} />
-      </TabsContent>
+        <TabsContent value="models">
+          <Lock archived={channel.archived}>
+            {' '}
+            <ModelsTab settings={settings} saving={saving} commit={commit} options={modelOptions} />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="brand-kit">
-        <BrandKitTab settings={settings} saving={saving} commit={commit} />
-      </TabsContent>
+        <TabsContent value="brand-kit">
+          <Lock archived={channel.archived}>
+            {' '}
+            <BrandKitTab settings={settings} saving={saving} commit={commit} />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="voice">
-        <VoiceTab channelId={channelId} settings={settings} saving={saving} commit={commit} />
-      </TabsContent>
+        <TabsContent value="voice">
+          <Lock archived={channel.archived}>
+            {' '}
+            <VoiceTab channelId={channelId} settings={settings} saving={saving} commit={commit} />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="logos">
-        <LogosTab
-          channelId={channelId}
-          logos={logos}
-          channelMarkKey={channelMarkKey}
-          brandBackground={settings.brandKit.colors.background}
-        />
-      </TabsContent>
+        <TabsContent value="logos">
+          <Lock archived={channel.archived}>
+            {' '}
+            <LogosTab
+              channelId={channelId}
+              logos={logos}
+              channelMarkKey={channelMarkKey}
+              brandBackground={settings.brandKit.colors.background}
+            />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="exemplars">
-        <ExemplarsTab exemplars={exemplars} brand={settings.brandKit} exemplarLogo={exemplarLogo} />
-      </TabsContent>
+        <TabsContent value="exemplars">
+          <Lock archived={channel.archived}>
+            {' '}
+            <ExemplarsTab
+              exemplars={exemplars}
+              brand={settings.brandKit}
+              exemplarLogo={exemplarLogo}
+            />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="publishing">
-        <PublishingTab settings={settings} saving={saving} commit={commit} />
-      </TabsContent>
+        <TabsContent value="publishing">
+          <Lock archived={channel.archived}>
+            {' '}
+            <PublishingTab settings={settings} saving={saving} commit={commit} />
+          </Lock>
+        </TabsContent>
 
-      <TabsContent value="connections">
-        <ConnectionsTab
-          youtubeConnection={youtubeConnection}
-          channelId={channelId}
-          channelSlug={channelSlug}
-          youtubeEnvReady={youtubeEnvReady}
-        />
-      </TabsContent>
-    </Tabs>
+        <TabsContent value="connections">
+          <Lock archived={channel.archived}>
+            {' '}
+            <ConnectionsTab
+              youtubeConnection={youtubeConnection}
+              channelId={channelId}
+              channelSlug={channelSlug}
+              youtubeEnvReady={youtubeEnvReady}
+            />
+          </Lock>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+/** Disables every control inside it while the channel is archived. */
+function Lock({ archived, children }: { archived: boolean; children: React.ReactNode }) {
+  return (
+    <fieldset disabled={archived} className="m-0 min-w-0 border-0 p-0">
+      {children}
+    </fieldset>
   )
 }
 

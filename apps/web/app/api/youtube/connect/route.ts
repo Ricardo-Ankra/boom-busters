@@ -30,8 +30,11 @@ export async function GET(request: Request): Promise<Response> {
   const channelId = url.searchParams.get('channel')
   if (!channelId) return new Response('A channel is required.', { status: 400 })
   const channel = await getChannel(db, channelId).catch(() => null)
-  if (!channel || channel.archivedAt !== null) {
-    return new Response('That channel does not exist or is archived.', { status: 400 })
+  if (!channel) return new Response('That channel does not exist.', { status: 400 })
+  if (channel.archivedAt !== null) {
+    // An archived channel is read-only: back to its Connections tab, no OAuth.
+    const to = channelHref(channel.slug, '/settings', { tab: 'connections', youtube: 'archived' })
+    return Response.redirect(`${origin}${to}`, 302)
   }
 
   if (!youtubeConfigured()) {

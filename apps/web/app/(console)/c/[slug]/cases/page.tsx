@@ -48,6 +48,7 @@ export default async function CasesPage({
       sort={active}
       notices={notices}
       bibleComplete={isBibleComplete(channel.bible)}
+      archived={channel.archivedAt !== null}
     />
   )
 }

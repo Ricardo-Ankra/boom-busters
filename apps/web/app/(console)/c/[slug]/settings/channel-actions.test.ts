@@ -6,7 +6,12 @@ import {
   createChannel,
   createProjectFromCase,
   ensurePublishRecord,
+  channelYoutubeConnection,
   ensureRun,
+  insertLogo,
+  listLogos,
+  saveChannelYoutubeConnection,
+  setProjectStage,
   getChannel,
   getWorkspace,
   listChannels,
@@ -101,6 +106,19 @@ describeDb('channel actions', () => {
 
     it("copies another channel's voice and routing but not its logo mark or YouTube", async () => {
       const source = await makeChannel()
+      await saveChannelYoutubeConnection(db, source.id, {
+        refreshToken: 'refresh-token-from-a',
+        encryptionKey: Buffer.alloc(32, 1).toString('base64'),
+        youtubeChannelId: 'UC-source',
+        youtubeChannelTitle: 'Source',
+      })
+      await insertLogo(db, source.id, {
+        r2Key: 'a/logos/mark.png',
+        contentHash: 'b'.repeat(64),
+        title: 'Acme',
+        width: 10,
+        height: 10,
+      })
       await updateChannelSettings(db, source.id, {
         tts: { voiceId: 'voice-from-a' },
         brandKit: {
@@ -127,6 +145,11 @@ describeDb('channel actions', () => {
       expect(copy.settings.brandKit.look.logoR2Key).toBeNull()
       expect(copy.settings.features).toEqual(DEFAULT_SETTINGS.features)
       expect(copy.bible).toEqual(EMPTY_BIBLE)
+      // What lives outside the settings does not travel either.
+      expect(await channelYoutubeConnection(db, copy.id)).toBeUndefined()
+      expect(await listLogos(db, copy.id)).toEqual([])
+      expect(await channelYoutubeConnection(db, source.id)).toBeDefined()
+      expect(await listLogos(db, source.id)).toHaveLength(1)
     })
 
     it('refuses a copy from a channel that does not exist', async () => {
@@ -247,6 +270,34 @@ describeDb('channel actions', () => {
       const result = await archiveChannelAction(channel.id, channel.slug)
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/budget/i)
+    })
+
+    it('refuses while a run is parked at a gate that is not a budget gate', async () => {
+      const channel = await makeChannel()
+      const runId = await ensureRun(db, {
+        inngestRunId: `park-${channel.id}`,
+        functionName: 'demo-runner',
+        channelId: channel.id,
+      })
+      await recordRunEvent(db, { runId, kind: 'gate.opened', data: { gate: 'dossier' } })
+      await setRunStatus(db, runId, 'awaiting_gate')
+
+      const result = await archiveChannelAction(channel.id, channel.slug)
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/parked at a gate/)
+      expect((await getChannel(db, channel.id)).archivedAt).toBeNull()
+    })
+
+    it('refuses while a project of the channel is awaiting review', async () => {
+      const channel = await makeChannel()
+      const kase = await createCase(db, { channelId: channel.id, title: 'Review', category: 'con' })
+      const project = await createProjectFromCase(db, { caseId: kase.id, title: 'Review' })
+      await setProjectStage(db, project.id, { stage: 'dossier', stageStatus: 'awaiting_review' })
+
+      const result = await archiveChannelAction(channel.id, channel.slug)
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/waiting on your review/)
+      expect((await getChannel(db, channel.id)).archivedAt).toBeNull()
     })
 
     it('refuses while a publish is scheduled', async () => {

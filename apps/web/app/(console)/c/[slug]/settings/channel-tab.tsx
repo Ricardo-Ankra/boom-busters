@@ -56,8 +56,9 @@ export function ChannelTab({
   return (
     <div className="flex flex-col gap-3">
       {showNew ? <NewChannelForm channels={channels} /> : null}
-      <IdentityCard channel={channel} saving={saving} commit={commit} />
-      <BibleCard channel={channel} saving={saving} commit={commit} />
+      {/* An archived channel is read-only. */}
+      <IdentityCard channel={channel} saving={saving || channel.archived} commit={commit} />
+      <BibleCard channel={channel} saving={saving || channel.archived} commit={commit} />
       {channel.archived ? null : <ArchiveCard channel={channel} />}
     </div>
   )

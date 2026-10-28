@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { channelHref } from '@/lib/channel-href'
 import {
   acceptCase,
@@ -65,6 +66,7 @@ export function CaseLibrary({
   sort,
   notices = [],
   bibleComplete = true,
+  archived = false,
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
@@ -76,6 +78,8 @@ export function CaseLibrary({
   notices?: readonly Notice[]
   /** Whether the channel's bible is complete; until it is, nothing here starts work. */
   bibleComplete?: boolean
+  /** An archived channel is read-only: nothing here starts or adds work. */
+  archived?: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -94,6 +98,11 @@ export function CaseLibrary({
     [router, toast],
   )
 
+  const blockedReason = archived
+    ? CHANNEL_ARCHIVED_MESSAGE
+    : bibleComplete
+      ? null
+      : BIBLE_INCOMPLETE_MESSAGE
   const suggestions = cases.filter((item) => item.status === 'idea')
   const backlog = cases.filter((item) => item.status !== 'idea')
 
@@ -102,22 +111,24 @@ export function CaseLibrary({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[20px] font-semibold">Case Library</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <SuggestButton channelId={channelId} blocked={!bibleComplete} />
-          <AddCaseButton channelId={channelId} run={run} />
+          <SuggestButton channelId={channelId} blocked={blockedReason} />
+          <AddCaseButton channelId={channelId} run={run} disabled={archived} />
         </div>
       </header>
 
-      {bibleComplete ? null : (
+      {blockedReason === null ? null : (
         <p
           role="status"
           className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
         >
-          <span>{BIBLE_INCOMPLETE_MESSAGE}.</span>
-          <Button asChild variant="outline">
-            <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
-              Open the Channel tab
-            </Link>
-          </Button>
+          <span>{blockedReason}.</span>
+          {archived ? null : (
+            <Button asChild variant="outline">
+              <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
+                Open the Channel tab
+              </Link>
+            </Button>
+          )}
         </p>
       )}
 
@@ -165,7 +176,7 @@ export function CaseLibrary({
               <li key={item.id}>
                 <BacklogRow
                   slug={slug}
-                  blocked={!bibleComplete}
+                  blocked={blockedReason}
                   item={item}
                   run={run}
                   notices={noticesFor(notices, 'case', item.id)}
@@ -403,8 +414,8 @@ function BacklogRow({
   notices,
 }: {
   slug: string
-  /** The bible is incomplete: a project cannot start. */
-  blocked: boolean
+  /** Why a project cannot start, or null when it can. */
+  blocked: string | null
   item: CaseSummary
   run: Run
   notices: readonly Notice[]
@@ -436,8 +447,8 @@ function BacklogRow({
           <Button
             variant="primary"
             busy={busy}
-            disabled={blocked}
-            title={blocked ? BIBLE_INCOMPLETE_MESSAGE : undefined}
+            disabled={blocked !== null}
+            title={blocked ?? undefined}
             onClick={async () => {
               setBusy(true)
               try {
@@ -483,7 +494,7 @@ function RowNotices({ notices }: { notices: readonly Notice[] }) {
   )
 }
 
-function SuggestButton({ channelId, blocked }: { channelId: string; blocked: boolean }) {
+function SuggestButton({ channelId, blocked }: { channelId: string; blocked: string | null }) {
   const router = useRouter()
   const { toast } = useToast()
   const [open, setOpen] = React.useState(false)
@@ -495,8 +506,8 @@ function SuggestButton({ channelId, blocked }: { channelId: string; blocked: boo
     return (
       <Button
         variant="outline"
-        disabled={blocked}
-        title={blocked ? BIBLE_INCOMPLETE_MESSAGE : undefined}
+        disabled={blocked !== null}
+        title={blocked ?? undefined}
         onClick={() => setOpen(true)}
       >
         <Sparkles aria-hidden />
@@ -569,7 +580,15 @@ function SuggestButton({ channelId, blocked }: { channelId: string; blocked: boo
   )
 }
 
-function AddCaseButton({ channelId, run }: { channelId: string; run: Run }) {
+function AddCaseButton({
+  channelId,
+  run,
+  disabled,
+}: {
+  channelId: string
+  run: Run
+  disabled: boolean
+}) {
   const [open, setOpen] = React.useState(false)
   const [title, setTitle] = React.useState('')
   const [category, setCategory] = React.useState<string>('collapse')
@@ -584,7 +603,12 @@ function AddCaseButton({ channelId, run }: { channelId: string; run: Run }) {
 
   if (!open) {
     return (
-      <Button variant="primary" onClick={() => setOpen(true)}>
+      <Button
+        variant="primary"
+        disabled={disabled}
+        title={disabled ? CHANNEL_ARCHIVED_MESSAGE : undefined}
+        onClick={() => setOpen(true)}
+      >
         <Plus aria-hidden />
         Add case
       </Button>

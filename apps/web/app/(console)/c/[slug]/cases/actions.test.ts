@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import type * as ChannelLookup from '@/lib/channel-lookup'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   EMPTY_BIBLE,
@@ -27,7 +28,10 @@ const store = vi.hoisted(() => ({
   setProjectStage: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/channel-lookup', () => ({ findChannel }))
+vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
+  ...(await importOriginal<typeof ChannelLookup>()),
+  findChannel,
+}))
 vi.mock('@boom-busters/db', () => store)
 vi.mock('@/lib/db', () => ({ db: { marker: 'db' } }))
 vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.com' } }) }))
@@ -66,7 +70,9 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     recordRepairs.mockReset()
     store.existingCaseTitles.mockReset().mockResolvedValue([])
     store.createSuggestedCases.mockReset()
-    findChannel.mockReset().mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE })
+    findChannel
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
   })
 
   afterEach(() => {
@@ -250,7 +256,9 @@ describe('the channel bible gate and an unknown channel', () => {
     store.getCase.mockReset()
     store.channelForCase.mockReset()
     store.createProjectFromCase.mockReset()
-    findChannel.mockReset().mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE })
+    findChannel
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE, archivedAt: null })
   })
 
   it('suggestCases refuses a channel whose bible is incomplete, before any model call', async () => {
@@ -263,7 +271,7 @@ describe('the channel bible gate and an unknown channel', () => {
 
   it('startProjectFromCase refuses a case on a channel whose bible is incomplete', async () => {
     store.getCase.mockResolvedValue({ id: CHANNEL_ID, title: 'Wirecard', status: 'shortlisted' })
-    store.channelForCase.mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE })
+    store.channelForCase.mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE, archivedAt: null })
 
     expect(await startProjectFromCase(CHANNEL_ID)).toEqual({
       ok: false,

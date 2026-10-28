@@ -42,7 +42,7 @@ import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 import { callForAnswer } from '@/lib/answer'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
-import { findChannel } from '@/lib/channel-lookup'
+import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import type { Answer, AnswerComplete } from '@/lib/answer'
 import { callLlm } from '@/lib/llm'
 import { recordRepairs } from '@/lib/notices'
@@ -99,7 +99,8 @@ export async function addCase(channelId: string, input: unknown): Promise<Action
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
   // A well-formed id that names no channel would otherwise surface a foreign-key error.
-  if (!(await findChannel(channelId))) return { ok: false, error: 'Unknown channel' }
+  const refusal = writeRefusalFor(await findChannel(channelId))
+  if (refusal) return refusal
 
   const parsed = CaseFormSchema.safeParse(input)
   if (!parsed.success) {
@@ -228,7 +229,8 @@ export async function suggestCases(channelId: string, input: unknown): Promise<S
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
   const channel = await findChannel(channelId)
-  if (!channel) return { ok: false, error: 'Unknown channel' }
+  const refusal = writeRefusalFor(channel)
+  if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
   if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const parsed = SuggestInputSchema.safeParse(input)
@@ -332,6 +334,8 @@ export async function startProjectFromCase(
 
   const channel = await channelForCase(db, id)
   if (!channel) return { ok: false, error: 'That case no longer exists' }
+  const refusal = writeRefusalFor(channel)
+  if (refusal) return refusal
   if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const runtime = z

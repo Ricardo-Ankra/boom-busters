@@ -262,3 +262,22 @@ describe('CaseLibrary with an incomplete channel bible', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 })
+
+describe('CaseLibrary for an archived channel', () => {
+  it('disables Suggest, Add and New project with the archived notice', () => {
+    render(
+      <CaseLibrary
+        slug="old"
+        channelId={CHANNEL_ID}
+        cases={[kase({ status: 'shortlisted' })]}
+        sort="priority"
+        archived
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Add case/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent('This channel is archived')
+  })
+})

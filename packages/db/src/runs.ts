@@ -310,6 +310,20 @@ export async function listActiveRuns(
   return rows
 }
 
+/**
+ * Runs of one channel parked at any gate: review, budget or otherwise. Only
+ * the channel's own rows: the cron's null-channel rows belong to no channel.
+ */
+export async function listParkedRuns(
+  db: Database,
+  channelId: string,
+): Promise<{ id: string; projectId: string | null }[]> {
+  return db
+    .select({ id: runs.id, projectId: runs.projectId })
+    .from(runs)
+    .where(and(eq(runs.status, 'awaiting_gate'), eq(runs.channelId, channelId)))
+}
+
 export interface FailedRun {
   id: string
   projectId: string | null

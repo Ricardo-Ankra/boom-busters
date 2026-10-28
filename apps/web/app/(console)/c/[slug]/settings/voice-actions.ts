@@ -19,6 +19,7 @@ import {
 import type { Provider, TtsProvider } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { MAX_AUDITIONS, MAX_SAMPLE_CHARS, sampleHash } from '@/lib/audition'
@@ -109,6 +110,8 @@ export async function generateAuditions(
 ): Promise<AuditionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
 
   const text = sample.trim()
   if (text === '') return { ok: false, error: 'Paste a paragraph for the voices to read.' }
@@ -253,6 +256,8 @@ export async function addPronunciation(
 ): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
 
   const cleanTerm = term.trim()
   const cleanHint = hint.trim()
@@ -295,6 +300,8 @@ export async function checkPronunciation(
 ): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
 
   if (term.trim() === '' || hint.trim() === '') {
     return { ok: false, error: 'Both a term and a pronunciation are needed.' }
