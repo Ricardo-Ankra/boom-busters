@@ -15,6 +15,7 @@ import {
   applyScores,
   articleIsRenderable,
   resolveBrandKit,
+  PLATE_GENERATIONS,
   setForBrief,
   STILL_GENERATIONS,
   ValidationError,
@@ -92,15 +93,21 @@ function adapterOffers(
  * same rule as every mock: budgets are configuration that outlives a test
  * run. A route stored on the slot overrides the derived one, so a re-routed
  * slot is priced on what it will actually spend.
+ *
+ * Exported for the board, which prices each still card's Regenerate from the
+ * lists it already loaded (decision 324), so the button and the ledger quote
+ * the same number.
  */
-async function stillBriefPriceUsd(
+export function stillBriefPriceUsd(
   brief: StillBrief,
   cast: readonly CastMember[],
   sets: readonly ProjectSet[],
   routing: ModelRouting,
   stored: StillRoute | null | undefined,
   catalogue: Record<StillProvider, ImageGenProvider>,
-): Promise<number> {
+  kind: StillKind = 'still',
+): number {
+  const count = generationsFor(kind)
   const members = depictedFrom(brief, cast)
   const derived = routeForBrief(brief, cast, sets, routing)
   const route = stored && adapterOffers(stored, catalogue) ? stored : derived
@@ -112,9 +119,15 @@ async function stillBriefPriceUsd(
   const set = setFrom(brief, sets)
   const plan = planStillReferences(members, set, budgets, brief.camera?.facing)
   const billed = live.referenceRoute?.(route.model, plan.photos.length + plan.plates.length) ?? null
-  return billed
-    ? billed.pricePerImage * STILL_GENERATIONS
-    : imageGenPrice(live, STILL_GENERATIONS, route.model, '1K')
+  return billed ? billed.pricePerImage * count : imageGenPrice(live, count, route.model, '1K')
+}
+
+/**
+ * How many images one generation buys for each kind of still (decision 324):
+ * a set plate keeps its pair, a board or teaser still buys one.
+ */
+export function generationsFor(kind: StillKind): number {
+  return kind === 'plate' ? PLATE_GENERATIONS : STILL_GENERATIONS
 }
 
 /**
@@ -130,11 +143,15 @@ async function stillBriefPriceUsd(
  * `routes` is a stored route per brief, in the same order as `briefs`,
  * every brief, not only stills, so the two stay aligned. A missing or null
  * entry means derive the route by rule instead of trusting a stored one.
+ *
+ * `kind` is the still's kind: the set card prices another view of a set
+ * through here, and a plate buys more images than a board still.
  */
 export async function stillsEstimateUsd(
   briefs: readonly ShotBrief[],
   projectId: string,
   routes?: readonly (StillRoute | null | undefined)[],
+  kind: StillKind = 'still',
 ): Promise<number> {
   const stills = briefs
     .map((brief, at) => ({ brief, stored: routes?.[at] ?? null }))
@@ -148,10 +165,8 @@ export async function stillsEstimateUsd(
   const catalogue = await stillCatalogue(settings, routes ?? [])
   const cast = await listCastMembers(db, projectId)
   const sets = await listProjectSets(db, projectId)
-  const prices = await Promise.all(
-    stills.map(({ brief, stored }) =>
-      stillBriefPriceUsd(brief, cast, sets, routing, stored, catalogue),
-    ),
+  const prices = stills.map(({ brief, stored }) =>
+    stillBriefPriceUsd(brief, cast, sets, routing, stored, catalogue, kind),
   )
   return round4(prices.reduce((total, price) => total + price, 0))
 }
@@ -407,7 +422,7 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
 export async function plateEstimateUsd(): Promise<number> {
   const settings = await getSettings(db)
   const catalogue = await stillCatalogue(settings)
-  return round4(routePriceUsd(catalogue, settings.modelRouting.stills, STILL_GENERATIONS))
+  return round4(routePriceUsd(catalogue, settings.modelRouting.stills, PLATE_GENERATIONS))
 }
 
 /** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
@@ -598,6 +613,7 @@ export async function generateStillCandidates(
    * takes its references inline on the same model.
    */
   const billed = live.referenceRoute?.(route.model, cast.referenceUrls.length) ?? null
+  const count = generationsFor(kind)
 
   const result = await withCost(
     db,
@@ -608,8 +624,8 @@ export async function generateStillCandidates(
       // Priced from the LIVE adapter even in mock mode — same rule as the
       // estimate button, so plan and ledger never quote different numbers.
       estimateUsd: billed
-        ? billed.pricePerImage * STILL_GENERATIONS
-        : imageGenPrice(live, STILL_GENERATIONS, route.model, '1K'),
+        ? billed.pricePerImage * count
+        : imageGenPrice(live, count, route.model, '1K'),
       meta: {
         model: billed ? billed.id : route.model,
         prompt: prompt.slice(0, 200),
@@ -625,7 +641,7 @@ export async function generateStillCandidates(
         {
           prompt,
           ...(brief.negativePrompt ? { negativePrompt: brief.negativePrompt } : {}),
-          count: STILL_GENERATIONS,
+          count,
           size: '1K',
           ...(mocked ? {} : { model: route.model }),
           ...(cast.references.length > 0 ? { references: cast.references } : {}),

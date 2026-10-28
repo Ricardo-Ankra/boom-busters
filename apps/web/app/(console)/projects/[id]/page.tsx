@@ -141,11 +141,17 @@ export default async function ProjectPage({
   const plateEstimate = showCast ? await plateEstimateUsd() : 0
   const sheetEstimate = showCast ? await setSheetEstimateUsd() : 0
   // Another view carries the set's plates, so it is priced as the still it
-  // is, on whichever route a still of that set would take (decision 273).
+  // is, on whichever route a still of that set would take (decision 273),
+  // and at a plate's count of images (decision 324).
   const viewEstimates: Record<string, number> = {}
   for (const set of sets) {
     if (set.plates.length > 0) {
-      viewEstimates[set.id] = await stillsEstimateUsd([setPlateBrief(set, 'south')], project.id)
+      viewEstimates[set.id] = await stillsEstimateUsd(
+        [setPlateBrief(set, 'south')],
+        project.id,
+        undefined,
+        'plate',
+      )
     }
   }
   const setPlateUrls: Record<string, string> = {}

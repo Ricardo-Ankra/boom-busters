@@ -188,6 +188,16 @@ function useServerNow(renderedAt: string, ticking: boolean): number {
 const jobAgeMs = (startedAt: string, now: number) => Math.max(0, now - Date.parse(startedAt))
 const jobIsLive = (startedAt: string, now: number) => jobAgeMs(startedAt, now) < JOB_STALE_MS
 
+/**
+ * The price a still's fetch button names (decision 324): this slot's own
+ * estimate, from the server. Nothing on a slot that is not a still, and
+ * nothing for a route nothing prices, which would read as free.
+ */
+function stillPriceLabel(slot: Pick<SlotView, 'stillEstimateUsd'>): string {
+  const usd = slot.stillEstimateUsd
+  return usd === null || usd <= 0 ? '' : ` · ≈$${usd.toFixed(2)}`
+}
+
 /** The amber line a stale stamp gets, on a card or on the plan card. */
 function staleJobWords(startedAt: string, now: number): string {
   const minutes = Math.floor(jobAgeMs(startedAt, now) / 60_000)
@@ -2821,16 +2831,9 @@ function SlotCard({
                     }
                   >
                     <RefreshCw aria-hidden />
-                    {/* Two variants at the dearer generator's price (Gemini,
-                        $0.04/image) — the label errs against the budget, like
-                        every estimate. */}
-                    {planning
-                      ? brief.type === 'still'
-                        ? 'Fetch this slot · ≈$0.08'
-                        : 'Fetch this slot'
-                      : brief.type === 'still'
-                        ? 'Regenerate · ≈$0.08'
-                        : 'Regenerate'}
+                    {/* This still's own price: its route and references,
+                        priced as the ledger will reserve it (decision 324). */}
+                    {`${planning ? 'Fetch this slot' : 'Regenerate'}${stillPriceLabel(slot)}`}
                   </Button>
                 ) : null}
               </>
@@ -4118,7 +4121,7 @@ function BriefEditor({
         <Button type="submit" variant="primary" busy={pressed === 'brief'} disabled={busy}>
           {planning || brief.type === 'archival'
             ? 'Save'
-            : `Save & re-fetch${brief.type === 'still' ? ' · ≈$0.08' : ''}`}
+            : `Save & re-fetch${stillPriceLabel(slot)}`}
         </Button>
         <Button type="button" variant="ghost" onClick={onDone}>
           Cancel

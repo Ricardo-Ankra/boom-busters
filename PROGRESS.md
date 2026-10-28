@@ -8345,3 +8345,35 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      stopped or failed (stage visuals, phase board): Stop on a reopened run
      otherwise left Restart stage as the only button, and that plans the
      board again and buys every shot.
+324. **One image per still, and Regenerate adds** (2026-10-28). A cost
+     audit found stills are about half of a film's spend, and each slot
+     bought two images although stills are never scored: the first was
+     always the one chosen, so the second was paid for on every slot to be
+     looked at on a few. `STILL_GENERATIONS` is now 1 for board and teaser
+     stills, halving the fetch pass (48 stills: about $6.72 down to $3.36).
+     A set plate keeps two (`PLATE_GENERATIONS`): every still in that room
+     is drawn from the plate the owner picks, and a plate press replaces
+     what the set card shows. Regenerate on a still now adds its image
+     beside the ones the slot holds, newest after the pick, the pick and the
+     chosen asset kept (`addRegenerated`), so a second look no longer costs
+     the first. It adds only while the slot's images still answer its brief
+     and route (`slotNeedsResolution` false); an edited brief or a changed
+     model replaces them, as before. A policy refusal on such a press keeps
+     the images already bought and records the refusal. The board's
+     hard-coded "≈$0.08" labels on Regenerate, Fetch this slot and Save &
+     re-fetch now read each slot's own price (`SlotView.stillEstimateUsd`),
+     from the function the Fetch visuals estimate uses, and name no price
+     when the route has none. Batch generation was weighed and left for
+     later: it saves about the same, but the board would wait hours.
+325. **Narration is priced at the pay-as-you-go API rate** (2026-10-28).
+     The account bills ElevenLabs on the pay-as-you-go API plan, which
+     charges Eleven v3 at $0.08 per 1,000 characters in US dollars, not in
+     plan credits (elevenlabs.io/pricing/api). The adapter's provisional
+     $0.18 was the Creator website plan's list rate and over-stated every
+     narration about 2.25 times, in the budget guard and on the Costs
+     screen alike. No ElevenLabs endpoint returns a dollar price:
+     `GET /v1/models` gives cost multipliers only, and
+     `/v1/user/subscription` gives counts and invoices, so the rate stays a
+     constant on the adapter and is re-read from the pricing page when it
+     changes. Free credits are spent before the paid balance, so the ledger
+     can over-state a month, never under-state it.

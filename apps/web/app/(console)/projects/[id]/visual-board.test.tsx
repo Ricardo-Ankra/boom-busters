@@ -211,6 +211,7 @@ const stockSlot: SlotView = {
   briefError: undefined,
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [
     {
       id: 'a1',
@@ -283,6 +284,7 @@ const chartSlot: SlotView = {
   briefError: undefined,
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -322,6 +324,7 @@ const headlineSlot: SlotView = {
   briefError: undefined,
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -390,6 +393,7 @@ const graphicSlot: SlotView = {
   briefError: undefined,
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,
@@ -455,6 +459,7 @@ const brokenSlot: SlotView = {
   briefError: 'This brief no longer matches its schema and cannot be rendered or re-fetched as is.',
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: true,
@@ -683,11 +688,41 @@ describe('VisualBoard', () => {
       },
       candidates: [],
       extraCandidates: 0,
+      // The slot's own price from the server (decision 324), never a constant.
+      stillEstimateUsd: 0.134,
     }
     render(<VisualBoard projectId={PROJECT} model={model([still])} colors={COLORS} brand={BRAND} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /Regenerate · ≈\$0.08/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Regenerate · ≈$0.13' }))
     expect(refetchSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_B, 'Regenerate')
+  })
+
+  it('names no price on a still whose route nothing prices, nor on a stock slot', () => {
+    const unpriced: SlotView = {
+      ...stockSlot,
+      id: SLOT_B,
+      type: 'still',
+      brief: {
+        type: 'still',
+        coversText: 'The trading floor.',
+        description: 'CRT monitors.',
+        motion: { kind: 'static' },
+        transition: 'cut',
+        prompt: '1995 trading floor',
+      },
+      candidates: [],
+      extraCandidates: 0,
+      stillEstimateUsd: 0,
+    }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        model={model([unpriced, stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getAllByRole('button', { name: 'Regenerate' })).toHaveLength(2)
   })
 
   it('edits the brief through the inline form and hands it to the re-fetch', async () => {
@@ -1351,6 +1386,7 @@ describe('the plan phase (staged-visuals design)', () => {
     candidates: [],
     extraCandidates: 0,
     needsFetch: true,
+    stillEstimateUsd: 0.07,
     brief: {
       type: 'still',
       coversText: 'By June, the auditors could not find the money.',
@@ -1571,7 +1607,7 @@ describe('the plan phase (staged-visuals design)', () => {
     expect(refetchSlotAction).not.toHaveBeenCalled()
 
     // A single risky slot can be tried before committing to the lot.
-    await userEvent.click(screen.getByRole('button', { name: /Fetch this slot · ≈\$0\.08/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Fetch this slot · ≈$0.07' }))
     expect(refetchSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_B, 'Fetched early from the plan')
   })
 
@@ -2543,6 +2579,7 @@ const socialSlot: SlotView = {
   briefError: undefined,
   scene: null,
   promptSent: null,
+  stillEstimateUsd: null,
   candidates: [],
   extraCandidates: 0,
   needsFetch: false,

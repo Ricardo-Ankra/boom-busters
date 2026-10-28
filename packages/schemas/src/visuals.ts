@@ -527,8 +527,22 @@ export function applyScores(
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
 }
 
-/** How many generations a still prompt buys per resolution pass. */
-export const STILL_GENERATIONS = 2
+/**
+ * How many images one board or teaser still buys per resolution pass
+ * (decision 324). One, not two: stills are never scored, so the first image
+ * was always the one chosen, and the second was paid for on every slot to be
+ * looked at on a few. Regenerate adds another image beside the ones a slot
+ * already holds, so a second look is bought only where it is wanted.
+ */
+export const STILL_GENERATIONS = 1
+
+/**
+ * How many images one set plate buys (decision 324). Two, kept from before:
+ * every still in that room is drawn from the plate the owner picks, so the
+ * side-by-side choice matters most here, and a plate press replaces what the
+ * card shows rather than adding to it.
+ */
+export const PLATE_GENERATIONS = 2
 
 // ---------------------------------------------------------------------------
 // Re-typing (staged-visuals design, 2026-08-26)

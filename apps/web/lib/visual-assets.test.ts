@@ -22,7 +22,12 @@ import {
   upsertAssetByHash,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  newId,
+  PLATE_GENERATIONS,
+  STILL_GENERATIONS,
+} from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -1355,7 +1360,7 @@ describeDb('a live-only route the cache no longer holds (decision 288)', () => {
     })
     // Gemini 3.1 Flash Image's price: $0.07 per image, $0.16 at 4K.
     expect(await stillSlotEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
-    expect(await plateEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await plateEstimateUsd()).toBeCloseTo(0.07 * PLATE_GENERATIONS)
     expect(await setSheetEstimateUsd()).toBeCloseTo(0.16)
     expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBeCloseTo(
       0.07 * STILL_GENERATIONS,
