@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES, type Settings } from '@boom-buste
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 import { SettingsForm } from './settings-form'
 
 /**
@@ -23,6 +24,12 @@ vi.mock('./actions', () => ({
 // unmounted panels never call these, but the modules still load, and their
 // `'use server'` chains reach `next-auth` and R2 in ways this suite has no
 // use for. Stubbed the same way `voice-tab.test.tsx` stubs them.
+vi.mock('./channel-actions', () => ({
+  createChannelAction: vi.fn(),
+  updateChannelAction: vi.fn(),
+  archiveChannelAction: vi.fn(),
+}))
+
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
@@ -81,6 +88,7 @@ function renderModelsTab(
     <SettingsForm
       channelId="01J00000000000000000000001"
       channelSlug="first"
+      channel={FIXTURE_CHANNEL_VIEW}
       initialSettings={settings}
       modelOptions={options}
     />,

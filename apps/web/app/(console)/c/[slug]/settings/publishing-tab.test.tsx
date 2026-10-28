@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 import { SettingsForm } from './settings-form'
 
 /**
@@ -17,6 +18,12 @@ const saveSettings = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
+}))
+
+vi.mock('./channel-actions', () => ({
+  createChannelAction: vi.fn(),
+  updateChannelAction: vi.fn(),
+  archiveChannelAction: vi.fn(),
 }))
 
 vi.mock('./logo-actions', () => ({
@@ -72,6 +79,7 @@ describe('the daily upload budget (decision 302)', () => {
       <SettingsForm
         channelId="01J00000000000000000000001"
         channelSlug="first"
+        channel={FIXTURE_CHANNEL_VIEW}
         initialSettings={settings}
         modelOptions={modelOptions()}
       />,

@@ -1,4 +1,5 @@
-import type { Settings } from '@boom-busters/schemas'
+import { isBibleComplete } from '@boom-busters/schemas'
+import type { ChannelBible, Settings } from '@boom-busters/schemas'
 import type { Route } from 'next'
 import { channelHref } from './channel-href'
 
@@ -23,7 +24,7 @@ import { channelHref } from './channel-href'
  */
 
 export interface ChecklistItem {
-  id: 'youtube' | 'voice' | 'music' | 'cases'
+  id: 'bible' | 'youtube' | 'voice' | 'music' | 'cases'
   label: string
   detail: string
   /** Typed against the app's real routes, so a rename breaks the build. */
@@ -40,15 +41,30 @@ export interface FirstRunInput {
   /** The channel whose setup this is; every button links into it. */
   slug: string
   settings: Settings
+  /** The channel's bible: a channel cannot start work without a complete one. */
+  bible: ChannelBible
   youtubeConnected: boolean
   musicBedCount: number
   caseCount: number
 }
 
 export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
-  const { slug, settings, youtubeConnected, musicBedCount, caseCount } = input
+  const { slug, settings, bible, youtubeConnected, musicBedCount, caseCount } = input
+
+  const bibleDone = isBibleComplete(bible)
 
   return [
+    {
+      id: 'bible',
+      label: 'Write the channel bible',
+      detail: bibleDone
+        ? 'Complete.'
+        : 'What the channel is about, who it is for and how it sounds. Cases and projects wait for it.',
+      href: channelHref(slug, '/settings', { tab: 'channel' }),
+      buttonLabel: bibleDone ? 'Review bible' : 'Write bible',
+      done: bibleDone,
+      blocksPipeline: true,
+    },
     {
       id: 'voice',
       label: 'Choose narration voice',

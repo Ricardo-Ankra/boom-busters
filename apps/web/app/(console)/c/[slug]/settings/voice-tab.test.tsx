@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 import { SettingsForm } from './settings-form'
 
 /**
@@ -28,6 +29,12 @@ const generateAuditions = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
+}))
+
+vi.mock('./channel-actions', () => ({
+  createChannelAction: vi.fn(),
+  updateChannelAction: vi.fn(),
+  archiveChannelAction: vi.fn(),
 }))
 
 vi.mock('./logo-actions', () => ({
@@ -107,6 +114,7 @@ async function openVoiceTab(): Promise<void> {
     <SettingsForm
       channelId={CHANNEL}
       channelSlug="first"
+      channel={FIXTURE_CHANNEL_VIEW}
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       modelOptions={modelOptions()}
     />,

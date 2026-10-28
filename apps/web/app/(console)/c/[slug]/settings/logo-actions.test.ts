@@ -90,6 +90,32 @@ describeDb('logo actions', () => {
     })
   })
 
+  it('says Unknown channel for a well-formed id that names none, in all three channel-taking actions', async () => {
+    const missing = '01BB0000000000000000000099'
+    const expected = { ok: false, error: 'Unknown channel' }
+
+    expect(
+      await createLogoUploadAction(missing, {
+        fileType: 'image/png',
+        fileSize: 1000,
+        contentHash: HASH,
+      }),
+    ).toEqual(expected)
+    expect(
+      await finaliseLogoAction(missing, {
+        key: `boom-busters/logos/${HASH}.png`,
+        contentHash: HASH,
+        title: 'Acme',
+        width: 10,
+        height: 10,
+      }),
+    ).toEqual(expected)
+    expect(
+      await addLogoFromUrlAction(missing, { url: 'https://example.com/a.png', title: 'Acme' }),
+    ).toEqual(expected)
+    expect(storage.put).toEqual([])
+  })
+
   it('presigns a PUT for a raster mark under the logos key, and refuses SVG and AVIF here', async () => {
     const created = await createLogoUploadAction(FIRST_CHANNEL_ID, {
       fileType: 'image/png',

@@ -224,3 +224,41 @@ describe('the case form: subject, people and source links', () => {
     )
   })
 })
+
+describe('CaseLibrary with an incomplete channel bible', () => {
+  it('disables Suggest cases and New project and links to the Channel tab', () => {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        cases={[kase({ status: 'shortlisted' })]}
+        sort="priority"
+        bibleComplete={false}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Complete the channel bible in Settings first',
+    )
+    expect(screen.getByRole('link', { name: 'Open the Channel tab' })).toHaveAttribute(
+      'href',
+      '/c/psychology/settings?tab=channel',
+    )
+  })
+
+  it('leaves both enabled once the bible is complete', () => {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        cases={[kase({ status: 'shortlisted' })]}
+        sort="priority"
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})

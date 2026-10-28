@@ -376,6 +376,36 @@ describeDb('dossier-runner', () => {
     expect(entry?.meta['model']).toBe('claude-haiku-4-5-20251001')
   })
 
+  it('stops at once, with no retries and no model call, for a project on a channel with an empty bible', async () => {
+    const other = await createChannel(db, {
+      name: 'Blank bible',
+      handle: null,
+      slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const otherCase = await createCase(db, { channelId: other.id, title: 'B', category: 'con' })
+    const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On B' })
+    researchDossier.mockClear()
+
+    // No stored steps: load-case runs for real, and is where the gate sits.
+    const run = (await engine.execute({
+      events: [
+        {
+          name: 'project/created',
+          data: { projectId: otherProject.id, caseId: otherCase.id },
+        },
+      ],
+    })) as { error?: { name: string; message: string } }
+
+    expect(run.error).toMatchObject({
+      name: 'NonRetriableError',
+      message: expect.stringContaining('channel bible incomplete'),
+    })
+    expect(researchDossier).not.toHaveBeenCalled()
+    expect(await listLedger(db, { projectId: otherProject.id, limit: 1 })).toEqual([])
+  })
+
   it('saves research replayed from before the notices, with no notice and no crash', async () => {
     await engine.executeStep('save-dossier', { events: created(), steps: stored() })
 

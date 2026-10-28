@@ -5,6 +5,7 @@ import { effectiveCeilingUsd } from '@boom-busters/schemas'
 import 'server-only'
 import type { SwitcherEntry } from '@/components/channel-switcher'
 import { db } from './db'
+import { needsYouCount } from './needs-you-count'
 
 /**
  * What the console shell shows around every screen of a channel: the top
@@ -24,13 +25,14 @@ export async function loadShellData(channel: Channel) {
 
   // The viewed channel stays listed even when archived, so the switcher can name it.
   const listed = all.some((entry) => entry.id === channel.id) ? all : [...all, channel]
-  // Per-channel needs-you counts arrive with Task 11.
-  const channels: SwitcherEntry[] = listed.map((entry) => ({
-    id: entry.id,
-    slug: entry.slug,
-    name: entry.name,
-    needsYou: 0,
-  }))
+  const channels: SwitcherEntry[] = await Promise.all(
+    listed.map(async (entry) => ({
+      id: entry.id,
+      slug: entry.slug,
+      name: entry.name,
+      needsYou: await needsYouCount(db, entry.id),
+    })),
+  )
 
   return {
     channel: {

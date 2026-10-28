@@ -1,6 +1,7 @@
 import {
   getChannelSettings,
   getWorkspace,
+  listChannels,
   listLogos,
   maskKey,
   channelYoutubeConnection,
@@ -19,6 +20,7 @@ export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
 
 const TABS = [
+  'channel',
   'models',
   'brand-kit',
   'voice',
@@ -38,11 +40,12 @@ export default async function SettingsPage({
 }) {
   const { slug } = await routeParams
   const channel = await channelFromSlug(slug)
-  const [settings, workspace, connectionRow, logos, params] = await Promise.all([
+  const [settings, workspace, connectionRow, logos, liveChannels, params] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
     listLogos(db, channel.id),
+    listChannels(db),
     searchParams,
   ])
 
@@ -96,8 +99,8 @@ export default async function SettingsPage({
       <header className="flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold">Settings</h1>
         <p className="text-[14px] text-[var(--color-text-secondary)]">
-          This channel&apos;s routing, brand, voice and publishing. Provider keys, prices and the
-          music library are shared and live in the workspace settings.
+          This channel&apos;s bible, routing, brand, voice and publishing. Provider keys, prices and
+          the music library are shared and live in the workspace settings.
         </p>
       </header>
 
@@ -106,6 +109,16 @@ export default async function SettingsPage({
         youtubeConnection={youtubeConnection}
         channelId={channel.id}
         channelSlug={channel.slug}
+        channel={{
+          id: channel.id,
+          slug: channel.slug,
+          name: channel.name,
+          handle: channel.handle,
+          bible: channel.bible,
+          archived: channel.archivedAt !== null,
+        }}
+        channels={liveChannels.map((entry) => ({ id: entry.id, name: entry.name }))}
+        showNewChannel={params['new'] === '1'}
         youtubeEnvReady={hasEnvGroup('youtube')}
         initialTab={tab}
         logos={logoViews}

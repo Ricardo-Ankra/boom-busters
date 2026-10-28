@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS, DEFAULT_WORKSPACE_SETTINGS } from '@boom-busters/sche
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIXTURE_CHANNEL_VIEW } from '../c/[slug]/settings/channel-view-fixture'
 import { SettingsForm } from '../c/[slug]/settings/settings-form'
 import { WorkspaceForm } from './workspace-form'
 
@@ -27,6 +28,11 @@ vi.mock('@/app/(console)/c/[slug]/settings/model-actions', () => ({
   refreshModelListsAction: vi.fn(),
 }))
 vi.mock('../c/[slug]/settings/actions', () => ({ saveSettings: vi.fn() }))
+vi.mock('../c/[slug]/settings/channel-actions', () => ({
+  createChannelAction: vi.fn(),
+  updateChannelAction: vi.fn(),
+  archiveChannelAction: vi.fn(),
+}))
 vi.mock('../c/[slug]/settings/logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
@@ -143,6 +149,7 @@ describe('the channel SettingsForm after the move', () => {
       <SettingsForm
         channelId="01J00000000000000000000001"
         channelSlug="first"
+        channel={FIXTURE_CHANNEL_VIEW}
         initialSettings={structuredClone(DEFAULT_SETTINGS)}
         modelOptions={modelOptions()}
       />,

@@ -4,6 +4,7 @@ import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { noticesFor } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
 import { Check, Pencil, Plus, Sparkles, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { channelHref } from '@/lib/channel-href'
 import {
   acceptCase,
@@ -62,6 +64,7 @@ export function CaseLibrary({
   cases,
   sort,
   notices = [],
+  bibleComplete = true,
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
@@ -71,6 +74,8 @@ export function CaseLibrary({
   sort: CaseSort
   /** The cases' open notices (decision 293); each row shows its own. */
   notices?: readonly Notice[]
+  /** Whether the channel's bible is complete; until it is, nothing here starts work. */
+  bibleComplete?: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -97,10 +102,24 @@ export function CaseLibrary({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[20px] font-semibold">Case Library</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <SuggestButton channelId={channelId} />
+          <SuggestButton channelId={channelId} blocked={!bibleComplete} />
           <AddCaseButton channelId={channelId} run={run} />
         </div>
       </header>
+
+      {bibleComplete ? null : (
+        <p
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
+        >
+          <span>{BIBLE_INCOMPLETE_MESSAGE}.</span>
+          <Button asChild variant="outline">
+            <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
+              Open the Channel tab
+            </Link>
+          </Button>
+        </p>
+      )}
 
       {suggestions.length > 0 ? (
         <section className="flex flex-col gap-2">
@@ -146,6 +165,7 @@ export function CaseLibrary({
               <li key={item.id}>
                 <BacklogRow
                   slug={slug}
+                  blocked={!bibleComplete}
                   item={item}
                   run={run}
                   notices={noticesFor(notices, 'case', item.id)}
@@ -377,11 +397,14 @@ function SuggestionRow({
 
 function BacklogRow({
   slug,
+  blocked,
   item,
   run,
   notices,
 }: {
   slug: string
+  /** The bible is incomplete: a project cannot start. */
+  blocked: boolean
   item: CaseSummary
   run: Run
   notices: readonly Notice[]
@@ -413,6 +436,8 @@ function BacklogRow({
           <Button
             variant="primary"
             busy={busy}
+            disabled={blocked}
+            title={blocked ? BIBLE_INCOMPLETE_MESSAGE : undefined}
             onClick={async () => {
               setBusy(true)
               try {
@@ -458,7 +483,7 @@ function RowNotices({ notices }: { notices: readonly Notice[] }) {
   )
 }
 
-function SuggestButton({ channelId }: { channelId: string }) {
+function SuggestButton({ channelId, blocked }: { channelId: string; blocked: boolean }) {
   const router = useRouter()
   const { toast } = useToast()
   const [open, setOpen] = React.useState(false)
@@ -468,7 +493,12 @@ function SuggestButton({ channelId }: { channelId: string }) {
 
   if (!open) {
     return (
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        variant="outline"
+        disabled={blocked}
+        title={blocked ? BIBLE_INCOMPLETE_MESSAGE : undefined}
+        onClick={() => setOpen(true)}
+      >
         <Sparkles aria-hidden />
         Suggest cases
       </Button>

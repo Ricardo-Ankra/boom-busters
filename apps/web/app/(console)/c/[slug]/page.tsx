@@ -42,7 +42,14 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
     countCases(db, channel.id),
   ])
 
-  const items = buildChecklist({ slug, settings, youtubeConnected, musicBedCount, caseCount })
+  const items = buildChecklist({
+    slug,
+    settings,
+    bible: channel.bible,
+    youtubeConnected,
+    musicBedCount,
+    caseCount,
+  })
   const actionable = actionableSetup(items)
   const upcoming = upcomingSetup(items)
 

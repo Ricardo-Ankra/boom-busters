@@ -26,6 +26,7 @@ import {
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { findChannel } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { fetchRemoteLogo } from '@/lib/remote-image'
 import {
@@ -46,6 +47,8 @@ async function requireOwner(): Promise<void> {
 const HEX_64 = /^[0-9a-f]{64}$/
 const MAX_TITLE = 80
 const UNKNOWN_CHANNEL: ActionResult = { ok: false, error: 'Unknown channel.' }
+/** A well-formed id that names no channel: refused before a foreign-key error can surface. */
+const NO_SUCH_CHANNEL: ActionResult = { ok: false, error: 'Unknown channel' }
 
 /**
  * `insertLogo` upserts on a channel's own `(contentHash, channelId)` index,
@@ -88,6 +91,7 @@ export async function createLogoUploadAction(
 ): Promise<ActionResult & { url?: string; key?: string }> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
+  if (!(await findChannel(channelId))) return NO_SUCH_CHANNEL
 
   const mime = LogoStoredMimeSchema.safeParse(input.fileType)
   if (!mime.success) {
@@ -125,6 +129,7 @@ export async function finaliseLogoAction(
 ): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
+  if (!(await findChannel(channelId))) return NO_SUCH_CHANNEL
 
   const title = cleanTitle(input.title)
   if (!title)
@@ -172,6 +177,7 @@ export async function addLogoFromUrlAction(
 ): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
+  if (!(await findChannel(channelId))) return NO_SUCH_CHANNEL
 
   const title = cleanTitle(input.title)
   if (!title)

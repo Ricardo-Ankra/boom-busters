@@ -1,8 +1,12 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
-import { addCase, editCase, suggestCases } from './actions'
+import {
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_BIBLE,
+  FIRST_CHANNEL_ID as CHANNEL_ID,
+} from '@boom-busters/schemas'
+import { addCase, editCase, startProjectFromCase, suggestCases } from './actions'
 
 /**
  * `Suggest cases` on the answer helper (decision 293), with the database,
@@ -16,7 +20,14 @@ const store = vi.hoisted(() => ({
   updateCase: vi.fn(),
   existingCaseTitles: vi.fn(),
   createSuggestedCases: vi.fn(),
+  getCase: vi.fn(),
+  channelForCase: vi.fn(),
+  createProjectFromCase: vi.fn(),
+  markCaseInProduction: vi.fn(),
+  setProjectStage: vi.fn(),
 }))
+const findChannel = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/channel-lookup', () => ({ findChannel }))
 vi.mock('@boom-busters/db', () => store)
 vi.mock('@/lib/db', () => ({ db: { marker: 'db' } }))
 vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.com' } }) }))
@@ -55,6 +66,7 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     recordRepairs.mockReset()
     store.existingCaseTitles.mockReset().mockResolvedValue([])
     store.createSuggestedCases.mockReset()
+    findChannel.mockReset().mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE })
   })
 
   afterEach(() => {
@@ -226,5 +238,51 @@ describe('the case form actions: subject, people and source links', () => {
       people: ['Markus Braun'],
     })
     vi.unstubAllEnvs()
+  })
+})
+
+describe('the channel bible gate and an unknown channel', () => {
+  const UNKNOWN_ID = '01BB0000000000000000000099'
+
+  beforeEach(() => {
+    callLlm.mockReset()
+    store.createCase.mockReset()
+    store.getCase.mockReset()
+    store.channelForCase.mockReset()
+    store.createProjectFromCase.mockReset()
+    findChannel.mockReset().mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE })
+  })
+
+  it('suggestCases refuses a channel whose bible is incomplete, before any model call', async () => {
+    expect(await suggestCases(CHANNEL_ID, { count: 3 })).toEqual({
+      ok: false,
+      error: 'Complete the channel bible in Settings first',
+    })
+    expect(callLlm).not.toHaveBeenCalled()
+  })
+
+  it('startProjectFromCase refuses a case on a channel whose bible is incomplete', async () => {
+    store.getCase.mockResolvedValue({ id: CHANNEL_ID, title: 'Wirecard', status: 'shortlisted' })
+    store.channelForCase.mockResolvedValue({ id: CHANNEL_ID, bible: EMPTY_BIBLE })
+
+    expect(await startProjectFromCase(CHANNEL_ID)).toEqual({
+      ok: false,
+      error: 'Complete the channel bible in Settings first',
+    })
+    expect(store.createProjectFromCase).not.toHaveBeenCalled()
+  })
+
+  it('addCase and suggestCases say Unknown channel for a well-formed id that names none', async () => {
+    findChannel.mockResolvedValue(null)
+
+    expect(await addCase(UNKNOWN_ID, { title: 'Enron' })).toEqual({
+      ok: false,
+      error: 'Unknown channel',
+    })
+    expect(await suggestCases(UNKNOWN_ID, { count: 3 })).toEqual({
+      ok: false,
+      error: 'Unknown channel',
+    })
+    expect(store.createCase).not.toHaveBeenCalled()
   })
 })

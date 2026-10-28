@@ -4,6 +4,7 @@ import { type GradePreset, type Settings, type SettingsPatch } from '@boom-buste
 import type { ModelOptions } from '@boom-busters/providers'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,8 @@ import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveSettings } from './actions'
+import { updateChannelAction } from './channel-actions'
+import { ChannelTab, type ChannelPatch, type ChannelView } from './channel-tab'
 
 /**
  * Loaded on demand: the specimen carries @remotion/player and the whole
@@ -40,6 +43,9 @@ export function SettingsForm({
   youtubeConnection,
   channelId,
   channelSlug,
+  channel: initialChannel,
+  channels = [],
+  showNewChannel = false,
   youtubeEnvReady = false,
   initialTab = 'models',
   logos = [],
@@ -53,6 +59,12 @@ export function SettingsForm({
   youtubeConnection?: YoutubeConnectionView
   channelId: string
   channelSlug: string
+  /** The channel's name, handle and bible, as stored. */
+  channel: ChannelView
+  /** Every live channel, for the New channel form's Copy from list. */
+  channels?: { id: string; name: string }[]
+  /** `?new=1`: open the New channel form on the Channel tab. */
+  showNewChannel?: boolean
   /** Whether the YouTube OAuth client env vars exist — server-resolved too. */
   youtubeEnvReady?: boolean
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
@@ -69,6 +81,7 @@ export function SettingsForm({
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
   const { toast } = useToast()
+  const router = useRouter()
 
   /**
    * Optimistic update with a rollback toast on failure (spec section 11.1).
@@ -94,9 +107,38 @@ export function SettingsForm({
     [settings, toast, channelId],
   )
 
+  const [channel, setChannel] = React.useState(initialChannel)
+
+  /** The same optimistic-with-rollback save, for the channel's own row. */
+  const commitChannel = React.useCallback(
+    async (patch: ChannelPatch) => {
+      const previous = channel
+      setChannel({
+        ...channel,
+        ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
+        ...(patch.handle === undefined ? {} : { handle: patch.handle.trim() || null }),
+        ...(patch.bible === undefined ? {} : { bible: patch.bible }),
+      })
+      setSaving(true)
+
+      const result = await updateChannelAction(channelId, patch)
+
+      setSaving(false)
+      if (!result.ok) {
+        setChannel(previous)
+        toast({ title: 'Could not save', description: result.error, variant: 'error' })
+      } else {
+        toast({ title: 'Saved' })
+        router.refresh()
+      }
+    },
+    [channel, channelId, toast, router],
+  )
+
   return (
     <Tabs defaultValue={initialTab}>
       <TabsList>
+        <TabsTrigger value="channel">Channel</TabsTrigger>
         <TabsTrigger value="models">Models</TabsTrigger>
         <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
         <TabsTrigger value="voice">Voice</TabsTrigger>
@@ -105,6 +147,16 @@ export function SettingsForm({
         <TabsTrigger value="publishing">Publishing</TabsTrigger>
         <TabsTrigger value="connections">Connections</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="channel">
+        <ChannelTab
+          channel={channel}
+          channels={channels}
+          showNew={showNewChannel}
+          saving={saving}
+          commit={commitChannel}
+        />
+      </TabsContent>
 
       <TabsContent value="models">
         <ModelsTab settings={settings} saving={saving} commit={commit} options={modelOptions} />

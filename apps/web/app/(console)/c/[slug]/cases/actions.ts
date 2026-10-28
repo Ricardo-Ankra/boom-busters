@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  channelForCase,
   createCase,
   createProjectFromCase,
   createSuggestedCases,
@@ -29,6 +30,7 @@ import {
   CASE_SUBJECT_MIN,
   CaseCategorySchema,
   UlidSchema,
+  isBibleComplete,
   serialiseError,
 } from '@boom-busters/schemas'
 import type { CaseSuggestion } from '@boom-busters/schemas'
@@ -39,6 +41,8 @@ import { db } from '@/lib/db'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 import { callForAnswer } from '@/lib/answer'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { findChannel } from '@/lib/channel-lookup'
 import type { Answer, AnswerComplete } from '@/lib/answer'
 import { callLlm } from '@/lib/llm'
 import { recordRepairs } from '@/lib/notices'
@@ -94,6 +98,8 @@ const CaseFormSchema = z.object({
 export async function addCase(channelId: string, input: unknown): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  // A well-formed id that names no channel would otherwise surface a foreign-key error.
+  if (!(await findChannel(channelId))) return { ok: false, error: 'Unknown channel' }
 
   const parsed = CaseFormSchema.safeParse(input)
   if (!parsed.success) {
@@ -221,6 +227,9 @@ const completeForLibrary =
 export async function suggestCases(channelId: string, input: unknown): Promise<SuggestResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const channel = await findChannel(channelId)
+  if (!channel) return { ok: false, error: 'Unknown channel' }
+  if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const parsed = SuggestInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
@@ -320,6 +329,10 @@ export async function startProjectFromCase(
   if (existing.status === 'retired') {
     return { ok: false, error: 'That case is retired. Move it back to shortlisted first.' }
   }
+
+  const channel = await channelForCase(db, id)
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const runtime = z
     .number()
