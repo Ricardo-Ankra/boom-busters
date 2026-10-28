@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  costLedger,
   FIXTURE_PROJECT_ID,
   getProject,
   insertTimeline,
@@ -10,10 +11,10 @@ import {
   setProjectStage,
   timelines,
   truncateRunMirror,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -130,7 +131,7 @@ describeDb('draft-runner', () => {
     forgetRunRows()
     await db.delete(renders)
     await db.delete(timelines)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'assembly',
       stageStatus: 'awaiting_review',
@@ -193,6 +194,9 @@ describeDb('draft-runner', () => {
         const [entry] = await listLedger(db)
         expect(entry).toMatchObject({ operation: 'render-draft', settled: false })
         expect(Number(entry?.estimatedUsd)).toBeCloseTo(0.0014, 4)
+        // The runner names only the project; the row carries the project's channel.
+        const [row] = await db.select().from(costLedger)
+        expect(row?.channelId).toBe(FIRST_CHANNEL_ID)
 
         // The gate stays parked and the stage untouched — the draft renders
         // beside Gate 5a, never instead of it.
@@ -204,7 +208,7 @@ describeDb('draft-runner', () => {
       'refuses over budget on its own row only — the project never fails',
       { timeout: 120_000 },
       async () => {
-        await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+        await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
         await engine.executeStep('draft-over-budget', { events: requestedEvent() })
 

@@ -199,7 +199,11 @@ export function PublishScreen({
           busy={pressed === 'refresh-analytics'}
           disabled={busy}
           onClick={() =>
-            void act(() => refreshAnalytics(), 'Analytics pass started', 'refresh-analytics')
+            void act(
+              () => refreshAnalytics(projectId),
+              'Analytics pass started',
+              'refresh-analytics',
+            )
           }
         >
           <RefreshCw aria-hidden className="h-4 w-4" />

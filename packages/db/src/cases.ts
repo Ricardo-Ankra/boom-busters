@@ -72,9 +72,12 @@ function orderFor(sort: CaseSort) {
 
 export async function listCases(
   db: Database,
+  channelId: string,
   options: { sort?: CaseSort; status?: readonly CaseStatus[] } = {},
 ): Promise<CaseSummary[]> {
-  const where = options.status?.length ? inArray(cases.status, [...options.status]) : undefined
+  const where = options.status?.length
+    ? and(eq(cases.channelId, channelId), inArray(cases.status, [...options.status]))
+    : eq(cases.channelId, channelId)
 
   const rows = await db
     .select(summaryColumns)
@@ -100,6 +103,7 @@ export async function getCase(db: Database, id: string): Promise<CaseSummary | u
 }
 
 export interface CaseInput {
+  channelId: string
   title: string
   category: CaseCategory
   angle?: string | null
@@ -116,6 +120,7 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
   const [row] = await db
     .insert(cases)
     .values({
+      channelId: input.channelId,
       title: input.title,
       category: input.category,
       angle: input.angle ?? null,
@@ -142,11 +147,15 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
  */
 export async function createSuggestedCases(
   db: Database,
-  inputs: readonly CaseInput[],
+  channelId: string,
+  inputs: readonly Omit<CaseInput, 'channelId'>[],
 ): Promise<{ created: CaseRow[]; skippedTitles: string[] }> {
   if (inputs.length === 0) return { created: [], skippedTitles: [] }
 
-  const existing = await db.select({ title: cases.title }).from(cases)
+  const existing = await db
+    .select({ title: cases.title })
+    .from(cases)
+    .where(eq(cases.channelId, channelId))
   const seen = new Set(existing.map((row) => row.title.trim().toLowerCase()))
 
   const created: CaseRow[] = []
@@ -161,7 +170,7 @@ export async function createSuggestedCases(
       continue
     }
     seen.add(key)
-    created.push(await createCase(db, input))
+    created.push(await createCase(db, { ...input, channelId }))
   }
 
   return { created, skippedTitles }
@@ -212,8 +221,12 @@ export async function truncateCases(db: Database): Promise<void> {
 }
 
 /** Everything the suggestion prompt should avoid proposing again. */
-export async function existingCaseTitles(db: Database): Promise<string[]> {
-  const rows = await db.select({ title: cases.title }).from(cases).orderBy(asc(cases.title))
+export async function existingCaseTitles(db: Database, channelId: string): Promise<string[]> {
+  const rows = await db
+    .select({ title: cases.title })
+    .from(cases)
+    .where(eq(cases.channelId, channelId))
+    .orderBy(asc(cases.title))
   return rows.map((row) => row.title)
 }
 

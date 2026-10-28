@@ -8,6 +8,7 @@ import {
   deleteProject,
   listDossierDocuments,
   projectLedgerSummary,
+  ensureFirstChannel,
 } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import type { AnswerComplete } from '@/lib/answer'
@@ -109,7 +110,14 @@ async function main(): Promise<void> {
     const spec = BACKTEST_CASES.find((c) => c.title === title)!
     const { category, subject } = spec
     const people = [...spec.people]
-    const row = await createCase(db, { title, category, subject, people, sourceLinks: [] })
+    const row = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title,
+      category,
+      subject,
+      people,
+      sourceLinks: [],
+    })
     const project = await createProjectFromCase(db, { caseId: row.id, title })
     const before = spent
     try {

@@ -56,6 +56,21 @@ export interface RunIdentity {
   functionName: string
   projectId?: string | null
   stage?: ProjectStage | null
+  /**
+   * Used only when no project names the channel. A cron run belongs to no
+   * channel and leaves it null, so it shows under every channel.
+   */
+  channelId?: string | null
+}
+
+/**
+ * Rows of one channel, plus the cron's rows that belong to none: a null
+ * `runs.channel_id` shows everywhere.
+ */
+function runsOfChannel(channelId: string, ownOnly = false) {
+  return ownOnly
+    ? eq(runs.channelId, channelId)
+    : or(eq(runs.channelId, channelId), isNull(runs.channelId))
 }
 
 /**
@@ -71,6 +86,12 @@ export async function ensureRun(db: Database, identity: RunIdentity): Promise<st
     .values({
       inngestRunId: identity.inngestRunId,
       functionName: identity.functionName,
+      // A project's run always carries the project's channel.
+      channelId: identity.projectId
+        ? sql<
+            string | null
+          >`coalesce((select ${projects.channelId} from ${projects} where ${projects.id} = ${identity.projectId}), ${identity.channelId ?? null})`
+        : (identity.channelId ?? null),
       projectId: identity.projectId ?? null,
       stage: identity.stage ?? null,
       status: 'running',
@@ -198,7 +219,7 @@ export interface ActivityEntry {
  */
 export async function listActivity(
   db: Database,
-  options: { projectId?: string; limit?: number } = {},
+  options: { channelId?: string; projectId?: string; limit?: number } = {},
 ): Promise<ActivityEntry[]> {
   const rows = await db
     .select({
@@ -217,7 +238,12 @@ export async function listActivity(
     .from(runEvents)
     .innerJoin(runs, eq(runEvents.runId, runs.id))
     .leftJoin(projects, eq(runs.projectId, projects.id))
-    .where(options.projectId ? eq(runs.projectId, options.projectId) : undefined)
+    .where(
+      and(
+        options.projectId ? eq(runs.projectId, options.projectId) : undefined,
+        options.channelId ? runsOfChannel(options.channelId) : undefined,
+      ),
+    )
     .orderBy(desc(runEvents.occurredAt), desc(runEvents.id))
     .limit(Math.min(options.limit ?? 100, 500))
 
@@ -244,11 +270,16 @@ export interface ActiveRun {
 }
 
 /**
- * Runs that are actually executing. `awaiting_gate` is excluded on purpose:
+ * Runs that are actually executing. `ownOnly` leaves out the cron's null-channel
+ * rows that otherwise show in every channel. `awaiting_gate` is excluded on purpose:
  * a run parked for three days waiting on a human is not "active", and showing
  * it as such would make the pulsing dot in the top bar meaningless.
  */
-export async function listActiveRuns(db: Database): Promise<ActiveRun[]> {
+export async function listActiveRuns(
+  db: Database,
+  channelId: string,
+  options: { ownOnly?: boolean } = {},
+): Promise<ActiveRun[]> {
   const latestStep = db
     .select({
       runId: runEvents.runId,
@@ -273,10 +304,24 @@ export async function listActiveRuns(db: Database): Promise<ActiveRun[]> {
     .from(runs)
     .leftJoin(projects, eq(runs.projectId, projects.id))
     .leftJoin(latestStep, eq(latestStep.runId, runs.id))
-    .where(eq(runs.status, 'running'))
+    .where(and(eq(runs.status, 'running'), runsOfChannel(channelId, options.ownOnly)))
     .orderBy(desc(runs.startedAt))
 
   return rows
+}
+
+/**
+ * Runs of one channel parked at any gate: review, budget or otherwise. Only
+ * the channel's own rows: the cron's null-channel rows belong to no channel.
+ */
+export async function listParkedRuns(
+  db: Database,
+  channelId: string,
+): Promise<{ id: string; projectId: string | null }[]> {
+  return db
+    .select({ id: runs.id, projectId: runs.projectId })
+    .from(runs)
+    .where(and(eq(runs.status, 'awaiting_gate'), eq(runs.channelId, channelId)))
 }
 
 export interface FailedRun {
@@ -305,7 +350,11 @@ export interface FailedRun {
  * of daily successes, with only an Open button that led nowhere. One that is
  * still failing stays, because nothing else would surface it.
  */
-export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRun[]> {
+export async function listFailedRuns(
+  db: Database,
+  channelId: string,
+  limit = 20,
+): Promise<FailedRun[]> {
   return db
     .select({
       id: runs.id,
@@ -321,6 +370,7 @@ export async function listFailedRuns(db: Database, limit = 20): Promise<FailedRu
     .where(
       and(
         eq(runs.status, 'failed'),
+        runsOfChannel(channelId),
         or(
           and(
             isNull(runs.projectId),
@@ -363,7 +413,11 @@ export interface OpenBudgetGate {
  * is not an entity — it is a run's current position, and duplicating it into a
  * table would give two answers to one question.
  */
-export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[]> {
+export async function listOpenBudgetGates(
+  db: Database,
+  channelId: string,
+  options: { ownOnly?: boolean } = {},
+): Promise<OpenBudgetGate[]> {
   const rows = await db
     .select({
       runId: runs.id,
@@ -378,6 +432,7 @@ export async function listOpenBudgetGates(db: Database): Promise<OpenBudgetGate[
     .where(
       and(
         eq(runs.status, 'awaiting_gate'),
+        runsOfChannel(channelId, options.ownOnly),
         eq(runEvents.kind, 'gate.opened'),
         sql`${runEvents.data} ->> 'gate' = 'budget'`,
         // Only gates that were never closed.

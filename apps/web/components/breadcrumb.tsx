@@ -22,10 +22,15 @@ const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/
  * and on a phone, where the rail is hidden, it was the only wayfinding on
  * screen.
  */
-export function Breadcrumb() {
+export function Breadcrumb({ slug }: { slug: string }) {
   const pathname = usePathname()
   const segments = pathname.split('/').filter(Boolean)
-  const trail = segments.length === 0 ? [''] : segments
+  // `c/<slug>` is the channel, which the switcher names; the trail starts at
+  // the section. A project page lives outside `/c`, so its list crumb is
+  // pointed into the channel the project belongs to.
+  const inChannel = segments[0] === 'c'
+  const rest = inChannel ? segments.slice(2) : segments
+  const trail = rest.length === 0 ? [''] : rest
 
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">
@@ -33,7 +38,13 @@ export function Breadcrumb() {
         {trail.map((segment, index) => {
           const last = index === trail.length - 1
           const label = LABELS[segment] ?? (ULID.test(segment) ? 'Project' : segment)
-          const href = `/${trail.slice(0, index + 1).join('/')}` as Route
+          const tail = trail
+            .slice(0, index + 1)
+            .filter(Boolean)
+            .join('/')
+          const href = (
+            inChannel || segment === 'projects' ? `/c/${slug}${tail ? `/${tail}` : ''}` : `/${tail}`
+          ) as Route
           return (
             <li key={`${segment}-${index}`} className="flex min-w-0 items-center gap-2">
               {index > 0 ? (

@@ -117,15 +117,16 @@ describe('refreshAccessToken', () => {
 describe('pingChannel', () => {
   it('answers with the channel title on success', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(200, { items: [{ snippet: { title: 'Boom & Busters' } }] }),
+      jsonResponse(200, { items: [{ id: 'UC-first', snippet: { title: 'Boom & Busters' } }] }),
     )
 
     expect(await pingChannel('ya29.access')).toEqual({
       ok: true,
+      channelId: 'UC-first',
       channelTitle: 'Boom & Busters',
     })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toContain('part=snippet')
+    expect(url).toContain('part=id%2Csnippet')
     expect(url).toContain('mine=true')
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer ya29.access')
   })
@@ -141,6 +142,20 @@ describe('pingChannel', () => {
     fetchMock.mockResolvedValue(jsonResponse(403, { error: { message: 'Access Not Configured.' } }))
     const ping = await pingChannel('ya29.access')
     expect(ping).toEqual({ ok: false, error: 'Access Not Configured.' })
+  })
+
+  it.each([500, 503, 429])('a %i is a retriable failure', async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: 'try later' } }))
+    expect(await pingChannel('ya29.access')).toEqual({
+      ok: false,
+      error: 'try later',
+      retriable: true,
+    })
+  })
+
+  it.each([401, 403])('a %i is not retriable', async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: 'no' } }))
+    expect((await pingChannel('ya29.access')).retriable).toBeUndefined()
   })
 })
 

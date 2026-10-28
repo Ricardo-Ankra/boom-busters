@@ -1,5 +1,7 @@
+import { channelForProject } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import type { SetPlate } from '@boom-busters/schemas'
+import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { layoutDraftRequest } from '@/lib/set-layout-prompt'
 import { getObjectBytes } from '@/lib/storage'
@@ -34,6 +36,7 @@ export async function draftSetLayout(input: {
 }): Promise<string | null> {
   if (mockProvidersEnabled()) return MOCK_LAYOUT
   try {
+    const { channelId } = await channelForProject(db, input.projectId)
     const object = await getObjectBytes(input.plate.r2Key)
     const result = await callLlm(
       layoutDraftRequest({
@@ -44,7 +47,7 @@ export async function draftSetLayout(input: {
           data: Buffer.from(object.bytes).toString('base64'),
         },
       }),
-      { projectId: input.projectId },
+      { projectId: input.projectId, channelId },
     )
     if (result.truncated) {
       console.error('[sets] inventory draft was cut off at its token budget')

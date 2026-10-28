@@ -1,0 +1,130 @@
+import { listProjects } from '@boom-busters/db'
+import type { ProjectSummary } from '@boom-busters/db'
+import type { Route } from 'next'
+import Link from 'next/link'
+import { MiniPipelineRail } from '@/components/pipeline-rail'
+import { stageViewsForProject } from '@/lib/stage-view'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { caseCategoryLabel } from '@/lib/case-category'
+import { channelFromSlug } from '@/lib/channel-context'
+import { db } from '@/lib/db'
+
+export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Projects · Boom-Busters' }
+
+/**
+ * The Projects list (build spec section 11.3): one row per project with a mini
+ * pipeline rail, the current stage with its age, and a primary button whose
+ * label depends on state.
+ *
+ * The `New project` case picker arrives with the Case Library in M3. Until
+ * then the seeded fixture project is the one you drive.
+ */
+export default async function ProjectsPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const channel = await channelFromSlug(slug)
+  const projects = await listProjects(db, channel.id)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-[20px] font-semibold">Projects</h1>
+      </header>
+
+      {projects.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+            <p className="text-[15px]">No projects yet.</p>
+            <p className="text-[13px] text-[var(--color-text-muted)]">
+              A project starts from a shortlisted case. Add or accept one in the Case Library, then
+              press New project on its row.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
+          {projects.map((project) => (
+            <li key={project.id}>
+              <ProjectRow project={project} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ProjectRow({ project }: { project: ProjectSummary }) {
+  const action = primaryAction(project)
+
+  return (
+    <div className="flex flex-wrap items-center gap-4 p-4">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-medium">{project.title}</p>
+        <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
+          <Badge>{caseCategoryLabel(project.caseCategory)}</Badge>{' '}
+          <span className="capitalize">{project.stage}</span> · {statusLabel(project.stageStatus)}{' '}
+          {ageVerb(project.stageStatus)} {relativeAge(project.updatedAt)}
+        </p>
+      </div>
+
+      <MiniPipelineRail views={stageViewsForProject(project, project.hasActiveRun)} />
+
+      <span className="font-mono text-[13px] text-[var(--color-text-muted)] tabular-nums">
+        {project.targetRuntimeMin} min
+      </span>
+
+      <Button asChild variant={action.primary ? 'primary' : 'outline'}>
+        <Link href={`/projects/${project.id}` as Route}>{action.label}</Link>
+      </Button>
+    </div>
+  )
+}
+
+function primaryAction(project: ProjectSummary): { label: string; primary: boolean } {
+  switch (project.stageStatus) {
+    case 'awaiting_review':
+      return { label: 'Review', primary: true }
+    case 'failed':
+    case 'cancelled':
+      // Not "Resume": what the screen behind this offers is `restartStage`,
+      // which runs the stage from the start and costs what it cost the first
+      // time. A label that promises continuation and delivers a re-purchase
+      // is a label that teaches people not to read labels.
+      return { label: 'Re-run stage', primary: true }
+    default:
+      return { label: 'View', primary: false }
+  }
+}
+
+function statusLabel(status: ProjectSummary['stageStatus']): string {
+  return status === 'awaiting_review' ? 'awaiting review' : status
+}
+
+/** "running for 4 min", "waiting 2 h", "failed 3 d ago" — the verb follows
+ *  the status instead of every row claiming to wait. */
+function ageVerb(status: ProjectSummary['stageStatus']): string {
+  switch (status) {
+    case 'running':
+    case 'queued':
+      return '· for'
+    case 'failed':
+    case 'cancelled':
+      return '·'
+    default:
+      return '· waiting'
+  }
+}
+
+/** Coarse on purpose: "waiting 2 d" is the fact, not the exact minute. */
+function relativeAge(since: Date): string {
+  const ms = Date.now() - since.getTime()
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return 'under a minute'
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} h`
+  return `${Math.floor(hours / 24)} d`
+}

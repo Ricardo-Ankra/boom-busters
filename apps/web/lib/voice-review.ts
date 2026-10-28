@@ -1,4 +1,4 @@
-import { getSettings, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
+import { channelForProject, latestScriptParagraphSources, listVoiceTakes } from '@boom-busters/db'
 import type { Database, VoiceTakeRow } from '@boom-busters/db'
 import { narrationUnits } from '@boom-busters/providers'
 import { voiceKeyFacts } from '@/lib/voice-identity'
@@ -126,10 +126,10 @@ function takesFor(
 }
 
 export async function voiceReviewModel(db: Database, projectId: string): Promise<VoiceReviewModel> {
-  const [sources, takes, settings] = await Promise.all([
+  const [sources, takes, { settings }] = await Promise.all([
     latestScriptParagraphSources(db, projectId),
     listVoiceTakes(db, projectId),
-    getSettings(db),
+    channelForProject(db, projectId),
   ])
 
   let expectedParagraphs = 0

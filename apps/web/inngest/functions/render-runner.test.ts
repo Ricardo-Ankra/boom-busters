@@ -11,7 +11,7 @@ import {
   setProjectStage,
   timelines,
   truncateRunMirror,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
@@ -165,7 +165,7 @@ describeDb('render-runner', () => {
     // `seed` rebuilds the fixture rows but does not clear render bookkeeping.
     await db.delete(renders)
     await db.delete(timelines)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'assembly',
       stageStatus: 'awaiting_review',
@@ -320,7 +320,7 @@ describeDb('render-runner', () => {
     )
 
     it('refuses to start a render that would cross the ceiling', { timeout: 120_000 }, async () => {
-      await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
       await engine.executeStep('render-over-budget', { events: approvedEvent() })
 

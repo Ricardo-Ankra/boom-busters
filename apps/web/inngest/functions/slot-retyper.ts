@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   getShotSlot,
   listLogos,
@@ -158,7 +159,8 @@ export const slotRetyper = inngest.createFunction(
         const claimIds = claims.map((claim) => claim.id)
         // The logo library's index (decision 268, Plan B): a graphic drafted
         // here may name a mark the producer already holds.
-        const logos = (await listLogos(db)).map((row) => ({
+        const { channelId } = await channelForProject(db, projectId)
+        const logos = (await listLogos(db, channelId)).map((row) => ({
           id: row.id,
           title: row.title ?? '',
           width: row.width,

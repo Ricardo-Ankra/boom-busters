@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, FIXTURE_PROJECT_TITLE, openFixtureProject, signIn } from './fixtures'
+import {
+  channelPath,
+  expectHitTargets,
+  FIXTURE_PROJECT_TITLE,
+  openFixtureProject,
+  signIn,
+} from './fixtures'
 
 /**
  * The M2 screens (build spec section 14.2): the projects list, the project
@@ -18,7 +24,7 @@ test.beforeEach(async ({ page }) => {
 
 test.describe('projects', () => {
   test('lists the fixture project with its stage and a contextual button', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
 
     await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
     // Global setup parks the fixture project at the dossier gate.
@@ -27,7 +33,7 @@ test.describe('projects', () => {
   })
 
   test('the mini rail names each stage and its state for a screen reader', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
 
     /**
      * Scoped by title, not by position and not by "has a Review link".
@@ -138,7 +144,7 @@ test.describe('gate action bar', () => {
  */
 test.describe('costs', () => {
   test('shows the month total against the one ceiling', async ({ page }) => {
-    await page.goto('/costs')
+    await page.goto(channelPath('/costs'))
 
     await expect(page.getByRole('heading', { name: 'Costs' })).toBeVisible()
     await expect(page.getByRole('meter', { name: 'Month spend against the ceiling' })).toBeVisible()
@@ -147,7 +153,7 @@ test.describe('costs', () => {
   })
 
   test('a ceiling edit persists across a reload', async ({ page }) => {
-    await page.goto('/costs')
+    await page.goto(channelPath('/costs'))
 
     const field = page.getByLabel('Monthly ceiling, US dollars')
     await field.fill('120')
@@ -166,31 +172,31 @@ test.describe('costs', () => {
   })
 
   test('Save is disabled until the number actually changes', async ({ page }) => {
-    await page.goto('/costs')
+    await page.goto(channelPath('/costs'))
 
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   })
 
   test('the ledger filters by provider through visible buttons', async ({ page }) => {
-    await page.goto('/costs')
+    await page.goto(channelPath('/costs'))
 
     await page.getByRole('link', { name: 'elevenlabs', exact: true }).click()
     await expect(page).toHaveURL(/provider=elevenlabs/)
     await expect(page.getByText('No ledger entries for elevenlabs yet.')).toBeVisible()
 
     await page.getByRole('link', { name: 'All providers' }).click()
-    await expect(page).toHaveURL(/\/costs$/)
+    await expect(page).toHaveURL(/\/c\/boom-busters\/costs$/)
   })
 
   test('every visible control meets the 40px hit target', async ({ page }) => {
-    await page.goto('/costs')
+    await page.goto(channelPath('/costs'))
     await expectHitTargets(page)
   })
 })
 
 test.describe('activity drawer', () => {
   test('opens from the top bar and can be refreshed and closed', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
 
     await page.getByRole('button', { name: 'Activity' }).click()
     const drawer = page.getByRole('dialog')

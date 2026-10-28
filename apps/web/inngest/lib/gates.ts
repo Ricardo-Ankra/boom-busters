@@ -1,15 +1,17 @@
 import {
+  channelForProject,
   flagTake,
   getProject,
   recordRunEvent,
   setProjectStage,
   setRunStatus,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
 import type { BudgetExceededError, GateStage, NoticeSubject } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
+import { channelHref } from '@/lib/channel-href'
 import { recordStop } from '@/lib/notices'
 import { notify } from '@/lib/notify'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -162,6 +164,9 @@ export async function openBudgetGate(
   ctx: GateContext,
   gate: Record<string, unknown>,
 ): Promise<void> {
+  // Resolved before anything is written: a lookup that fails after the run
+  // is parked would leave it at the gate with no notice sent.
+  const { slug } = await channelForProject(db, ctx.projectId)
   const runId = await runRowId(ctx)
 
   await recordRunEvent(db, {
@@ -178,7 +183,7 @@ export async function openBudgetGate(
     body:
       `${String(gate['provider'])} needs $${Number(gate['estimateUsd']).toFixed(4)} ` +
       `against a $${Number(gate['budgetUsd']).toFixed(2)} cap.`,
-    href: '/costs',
+    href: channelHref(slug, '/costs'),
   })
 }
 
@@ -194,12 +199,14 @@ export async function closeBudgetGate(ctx: GateContext, message: string): Promis
 }
 
 /**
- * Record the headroom the human granted. Written into settings rather than
- * held in the run, so the cap the guard reads and the cap the Costs screen
- * shows are the same number — and so it expires with the month.
+ * Record the headroom the human granted. The budget is the workspace's, one
+ * ceiling for every channel, so the headroom is written there and not to the
+ * channel whose run parked. Written into settings rather than held in the
+ * run, so the cap the guard reads and the cap the Costs screen shows are the
+ * same number, and so it expires with the month.
  */
 export async function grantOverage(additionalUsd: number, now: Date = new Date()): Promise<void> {
-  await updateSettings(db, {
+  await updateWorkspace(db, {
     budgets: {
       approvedOverage: {
         month: monthKey(now),

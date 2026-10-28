@@ -175,15 +175,52 @@ export default async function globalSetup(): Promise<void> {
     timelines,
     deleteCasesExcept,
     deleteProjectsExcept,
-    getSettings,
-    updateSettings,
+    getChannelSettings,
+    createChannel,
+    ensureFirstChannel,
+    recordChannelYoutubeVerify,
+    saveChannelYoutubeConnection,
+    updateChannelSettings,
+    updateWorkspace,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
-  const { takeIdempotencyKey } = await import('@boom-busters/schemas')
+  const { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID, takeIdempotencyKey } =
+    await import('@boom-busters/schemas')
 
   const connection = createDb(url, { max: 2 })
   try {
     await seed(connection.db)
+    // Every console address now lives under /c/<slug>; the first channel
+    // (boom-busters) must exist before the first request names it.
+    await ensureFirstChannel(connection.db)
+    // The first channel is connected to a mock YouTube account, so the
+    // console reads as set up. MOCK_PROVIDERS keeps YouTube itself unreachable.
+    const encryptionKey = process.env['SECRETS_ENCRYPTION_KEY']
+    if (!encryptionKey) throw new Error('SECRETS_ENCRYPTION_KEY is not set for the E2E suite.')
+    await saveChannelYoutubeConnection(connection.db, FIRST_CHANNEL_ID, {
+      refreshToken: 'mock-refresh',
+      encryptionKey,
+      youtubeChannelId: 'UC-mock-first',
+      youtubeChannelTitle: 'Boom & Busters (mock)',
+    })
+    await recordChannelYoutubeVerify(connection.db, FIRST_CHANNEL_ID, 'ok', 'UC-mock-first')
+    // The second fixture channel: no connection, no cases, no logos, a blank
+    // bible. channels.spec.ts takes it from set-up to usable and also creates
+    // and archives a third, so both are dropped and re-created every run.
+    // Their dependants (the cases the spec adds) go first: the channel foreign
+    // keys restrict.
+    for (const slug of ['e2e-second', 'third-channel']) {
+      await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from youtube_connections where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from channels where slug = ${slug}`
+    }
+    await createChannel(connection.db, {
+      name: 'Second Channel',
+      handle: null,
+      slug: 'e2e-second',
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
     // Rows the previous run's tests created, before re-seeding leaves them
     // beside the fixture and every exact assertion starts matching twice.
     await deleteCasesExcept(connection.db, [FIXTURE_CASE_ID])
@@ -1021,7 +1058,7 @@ export default async function globalSetup(): Promise<void> {
     // turned up seeding this task's graphic slots. Every E2E-owned mark's
     // title ends "(E2E)" (every constant above does too); anything else here
     // is a stray from outside this suite.
-    for (const stray of (await listLogos(connection.db)).filter(
+    for (const stray of (await listLogos(connection.db, FIRST_CHANNEL_ID)).filter(
       (logo) => !logo.title?.endsWith('(E2E)'),
     )) {
       await removeLogo(connection.db, stray.id)
@@ -1029,7 +1066,7 @@ export default async function globalSetup(): Promise<void> {
 
     // Two marks (decision 268), on mock:// keys like the beds below: the tab
     // lists them, the watermark never draws them (mock storage has no bytes).
-    // No length guard: `insertLogo` upserts on `contentHash`, so re-running
+    // No length guard: `insertLogo` upserts on the channel's `contentHash`, so re-running
     // this every setup restores both titles even after a spec renamed one
     // and failed to revert it, the same guarantee `insertMusicBed` gets from
     // its own guard only by luck of the beds never being renamed. Seeded
@@ -1039,7 +1076,7 @@ export default async function globalSetup(): Promise<void> {
       [1, 'Stability AI (E2E)'],
       [2, 'Wirecard AG (E2E)'],
     ] as const) {
-      await insertLogo(connection.db, {
+      await insertLogo(connection.db, FIRST_CHANNEL_ID, {
         r2Key: `mock://logos/e2e-mark-${index}`,
         contentHash: `e2e-logo-${index}`,
         title,
@@ -1086,7 +1123,11 @@ export default async function globalSetup(): Promise<void> {
         ],
       })
       const fundingClaimId = planDossier.claims[0]!.id
-      const wirecardLogo = await findLogoByName(connection.db, 'Wirecard AG (E2E)')
+      const wirecardLogo = await findLogoByName(
+        connection.db,
+        FIRST_CHANNEL_ID,
+        'Wirecard AG (E2E)',
+      )
       const planScript = await createScriptVersion(connection.db, plan.id)
       const planChapter = await saveChapter(connection.db, {
         scriptId: planScript.id,
@@ -1320,10 +1361,13 @@ export default async function globalSetup(): Promise<void> {
     // Read before the reset: the merge replaces `brandKit.look` wholesale
     // (decision 268), so clearing `logoR2Key` below must carry the rest of
     // the current look forward rather than dropping it back to defaults.
-    const settingsBeforeReset = await getSettings(connection.db)
+    const settingsBeforeReset = await getChannelSettings(connection.db, FIRST_CHANNEL_ID)
 
-    await updateSettings(connection.db, {
+    // The one monthly ceiling is the workspace's, not the channel's.
+    await updateWorkspace(connection.db, {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+    })
+    await updateChannelSettings(connection.db, FIRST_CHANNEL_ID, {
       // Own the image routing: the plan checkpoint quotes a price per still,
       // and a settings row left by a unit-test run would otherwise decide
       // which model that is. The shipped default (decision 264).
@@ -1370,7 +1414,7 @@ export default async function globalSetup(): Promise<void> {
      */
     {
       const { compileTimeline } = await import('@boom-busters/timeline')
-      const { getSettings, insertRender, insertTimeline, setTimelineKey, updateRender } =
+      const { getChannelSettings, insertRender, insertTimeline, setTimelineKey, updateRender } =
         await import('@boom-busters/db')
       const { resolveBrandKit } = await import('@boom-busters/schemas')
 
@@ -1462,7 +1506,7 @@ export default async function globalSetup(): Promise<void> {
       }
 
       const timeline = compileTimeline({
-        brand: resolveBrandKit(await getSettings(connection.db)),
+        brand: resolveBrandKit(await getChannelSettings(connection.db, FIRST_CHANNEL_ID)),
         paragraphs,
         slots: [
           {
@@ -1594,7 +1638,7 @@ export default async function globalSetup(): Promise<void> {
     {
       const { compileTimeline } = await import('@boom-busters/timeline')
       const {
-        getSettings,
+        getChannelSettings,
         insertRender,
         insertShort,
         insertTimeline,
@@ -1698,7 +1742,7 @@ export default async function globalSetup(): Promise<void> {
       }
 
       const publishTimeline = compileTimeline({
-        brand: resolveBrandKit(await getSettings(connection.db)),
+        brand: resolveBrandKit(await getChannelSettings(connection.db, FIRST_CHANNEL_ID)),
         paragraphs,
         slots,
         music: null,

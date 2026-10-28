@@ -4,6 +4,8 @@ import {
   BrandKitTokensSchema,
   DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  WorkspaceSettingsSchema,
   LLM_TASKS,
   ModelPricesSchema,
   ModelRoutingSchema,
@@ -49,8 +51,14 @@ describe('SettingsSchema', () => {
     }
   })
 
-  it('ships one spending ceiling, not a matrix', () => {
-    expect(DEFAULT_SETTINGS.budgets.monthlyCeilingUsd).toBeGreaterThan(0)
+  it('ships one spending ceiling on the workspace, not a matrix', () => {
+    expect(DEFAULT_WORKSPACE_SETTINGS.budgets.monthlyCeilingUsd).toBeGreaterThan(0)
+  })
+
+  it('carries neither prices nor a budget: both belong to the workspace', () => {
+    const parsed = SettingsSchema.parse(DEFAULT_SETTINGS)
+    expect('modelPrices' in parsed).toBe(false)
+    expect('budgets' in parsed).toBe(false)
   })
 
   it('rejects an unknown LLM provider in the routing matrix', () => {
@@ -103,8 +111,15 @@ describe('SettingsSchema', () => {
 
 describe('SettingsPatchSchema', () => {
   it('accepts a partial nested patch', () => {
-    const patch = SettingsPatchSchema.parse({ budgets: { monthlyCeilingUsd: 25 } })
-    expect(patch.budgets?.monthlyCeilingUsd).toBe(25)
+    const patch = SettingsPatchSchema.parse({ render: { concurrency: 4 } })
+    expect(patch.render?.concurrency).toBe(4)
+  })
+
+  it('refuses the workspace keys', () => {
+    expect(SettingsPatchSchema.safeParse({ budgets: {} }).success).toBe(false)
+    expect(SettingsPatchSchema.safeParse({ modelPrices: { llm: {}, image: {} } }).success).toBe(
+      false,
+    )
   })
 
   it('still validates the values inside a partial patch', () => {
@@ -333,8 +348,8 @@ describe('effectiveCeilingUsd', () => {
     // The production row carries the old shape: a per-provider matrix and a
     // kill switch. Zod strips what it does not know and catches the missing
     // ceiling at 100 — a parse failure here would take the whole app down.
-    const parsed = SettingsSchema.parse({
-      ...DEFAULT_SETTINGS,
+    const parsed = WorkspaceSettingsSchema.parse({
+      ...DEFAULT_WORKSPACE_SETTINGS,
       budgets: { perProviderMonthlyUSD: { anthropic: 30 }, killSwitch: true },
     })
     expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
@@ -344,9 +359,9 @@ describe('effectiveCeilingUsd', () => {
 
 describe('modelPrices (decision 288)', () => {
   it('defaults to no overrides on a row stored before it existed', () => {
-    const older: Record<string, unknown> = { ...DEFAULT_SETTINGS }
+    const older: Record<string, unknown> = { ...DEFAULT_WORKSPACE_SETTINGS }
     delete older['modelPrices']
-    expect(SettingsSchema.parse(older).modelPrices).toEqual({ llm: {}, image: {} })
+    expect(WorkspaceSettingsSchema.parse(older).modelPrices).toEqual({ llm: {}, image: {} })
   })
 
   it('refuses a price that is not above zero', () => {
@@ -394,5 +409,13 @@ describe('the graphics route (decision 289)', () => {
     const { graphics: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
     const parsed = ModelRoutingSchema.parse(stored)
     expect(parsed.graphics).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' })
+  })
+})
+
+describe('WorkspaceSettingsSchema', () => {
+  it('parses an empty object to the defaults', () => {
+    const parsed = WorkspaceSettingsSchema.parse({})
+    expect(parsed).toEqual(DEFAULT_WORKSPACE_SETTINGS)
+    expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
   })
 })

@@ -9,13 +9,23 @@ import {
   fixtureProject,
   fixtureSupports,
 } from './fixtures'
-import { getSettings, importProviderEnvSeeds } from './queries'
-import { inArray, sql } from 'drizzle-orm'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { ensureFirstChannel } from './channels'
+import { importProviderEnvSeeds } from './queries'
+import { eq, inArray, sql } from 'drizzle-orm'
 import { linkDossierDocuments } from './research-documents'
-import { cases, claimSupports, claims, dossiers, projects, researchDocuments } from './schema'
+import {
+  cases,
+  channels,
+  claimSupports,
+  claims,
+  dossiers,
+  projects,
+  researchDocuments,
+} from './schema'
 
 export interface SeedResult {
-  settingsCreated: boolean
+  firstChannelCreated: boolean
   credentialsImported: string[]
 }
 
@@ -29,8 +39,12 @@ export async function seed(
   db: Database,
   options: { encryptionKey?: string; env?: Record<string, string | undefined> } = {},
 ): Promise<SeedResult> {
-  // Creates the row from DEFAULT_SETTINGS if it does not exist yet.
-  await getSettings(db)
+  // The fixture case belongs to the first channel, so the channel comes first.
+  const [existing] = await db
+    .select({ id: channels.id })
+    .from(channels)
+    .where(eq(channels.id, FIRST_CHANNEL_ID))
+  await ensureFirstChannel(db)
 
   await db.insert(cases).values(fixtureCase).onConflictDoNothing()
   await db.insert(projects).values(fixtureProject).onConflictDoNothing()
@@ -118,7 +132,7 @@ export async function seed(
     ? await importProviderEnvSeeds(db, options.encryptionKey, options.env)
     : []
 
-  return { settingsCreated: true, credentialsImported }
+  return { firstChannelCreated: existing === undefined, credentialsImported }
 }
 
 /**

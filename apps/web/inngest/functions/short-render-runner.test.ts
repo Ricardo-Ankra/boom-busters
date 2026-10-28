@@ -15,7 +15,7 @@ import {
   timelines,
   truncateRunMirror,
   updateRender,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
@@ -118,7 +118,7 @@ describeDb('short-render-runner', () => {
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'shorts',
       stageStatus: 'awaiting_review',
@@ -262,7 +262,7 @@ describeDb('short-render-runner', () => {
       'over budget fails this card only — the stage and siblings stand',
       { timeout: 120_000 },
       async () => {
-        await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+        await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
         await engine.executeStep('short-over-budget', { events: requestedEvent() })
 

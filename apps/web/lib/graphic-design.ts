@@ -1,3 +1,4 @@
+import { channelForProject } from '@boom-busters/db'
 import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
@@ -65,7 +66,10 @@ export async function designGraphic(
   }
 
   return designGraphicWith(
-    (request, callOptions) => callLlm(request, { projectId: context.projectId, ...callOptions }),
+    async (request, callOptions) => {
+      const { channelId } = await channelForProject(db, context.projectId)
+      return callLlm(request, { projectId: context.projectId, channelId, ...callOptions })
+    },
     context,
     slot,
     options,

@@ -7,16 +7,17 @@ import {
   getProject,
   getPublishRecord,
   getRender,
-  getSettings,
   getShort,
   hasLiveRun,
   latestRender,
   latestScriptParagraphSources,
-  recordVerifyResult,
+  channelForProject,
+  channelYoutubeConnected,
+  channelYoutubeToken,
+  recordChannelYoutubeVerify,
   scriptableClaims,
   setProjectStage,
   updatePublishRecord,
-  youtubeRefreshToken,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
@@ -670,7 +671,7 @@ export async function publishNow(targetType: string, targetId: string): Promise<
   const projectId = await projectIdOf(type, targetId)
   if (!projectId) return { ok: false, error: 'Unknown target' }
 
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, projectId)
   const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'
   // `publishAt` records the intended public moment — now. The runner sees a
   // moment that is not ahead and omits it from the upload job.
@@ -724,9 +725,18 @@ export async function reschedulePublish(
   }
 
   if (!mockProvidersEnabled()) {
-    const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+    const refreshToken = await channelYoutubeToken(db, record.channelId, env.SECRETS_ENCRYPTION_KEY)
     if (!refreshToken) {
       return { ok: false, error: 'YouTube is not connected — Settings → Connections.' }
+    }
+    // A token on an unverified or invalid connection may belong to another
+    // YouTube account: never move a slot with it.
+    if (!(await channelYoutubeConnected(db, record.channelId))) {
+      return {
+        ok: false,
+        error:
+          'The YouTube connection for this channel needs reconnecting. Open Settings, Connections.',
+      }
     }
 
     let accessToken: string
@@ -734,7 +744,7 @@ export async function reschedulePublish(
       accessToken = (await refreshAccessToken(refreshToken)).accessToken
     } catch (error) {
       if (error instanceof YoutubeAuthError && error.needsReconnect) {
-        await recordVerifyResult(db, 'youtube', 'invalid')
+        await recordChannelYoutubeVerify(db, record.channelId, 'invalid')
         return {
           ok: false,
           error: 'YouTube no longer honours the stored consent — reconnect in Settings.',
@@ -752,7 +762,7 @@ export async function reschedulePublish(
   await updatePublishRecord(db, record.id, { publishAt })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/calendar')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -764,10 +774,15 @@ export async function reschedulePublish(
  * and the only retry on offer was tomorrow). Free apart from YouTube API
  * quota, so no confirm step.
  */
-export async function refreshAnalytics(): Promise<ActionResult> {
+export async function refreshAnalytics(projectId: string): Promise<ActionResult> {
   await requireOwner()
+  const parsed = UlidSchema.safeParse(projectId)
+  if (!parsed.success) return { ok: false, error: 'Unknown project' }
   try {
-    await inngest.send(events.analyticsRefreshRequested.create({ requestedBy: 'publish-screen' }))
+    const { channelId } = await channelForProject(db, parsed.data)
+    await inngest.send(
+      events.analyticsRefreshRequested.create({ requestedBy: 'publish-screen', channelId }),
+    )
   } catch (error) {
     console.error('[analytics] could not request the refresh', error)
     return { ok: false, error: 'Could not reach Inngest to start the analytics pass.' }
@@ -811,7 +826,7 @@ export async function unlinkPublishRecord(
   })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/calendar')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -875,7 +890,7 @@ export async function advanceToPublish(projectId: string): Promise<ActionResult>
   await setProjectStage(db, projectId, { stage: 'publish', stageStatus: 'awaiting_review' })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -903,6 +918,6 @@ export async function markProjectDone(projectId: string): Promise<ActionResult> 
   await setProjectStage(db, projectId, { stage: 'done', stageStatus: 'approved' })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

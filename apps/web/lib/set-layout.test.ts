@@ -5,6 +5,7 @@ import type { SetPlate } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { draftSetLayout } from './set-layout'
 import { layoutDraftRequest } from './set-layout-prompt'
+import type * as Db from '@boom-busters/db'
 
 /**
  * The inventory draft's own handling of the reply (decision 275). The LLM
@@ -14,6 +15,18 @@ import { layoutDraftRequest } from './set-layout-prompt'
 
 const llm = vi.hoisted(() => ({ callLlm: vi.fn() }))
 vi.mock('@/lib/llm', () => llm)
+
+// The wrappers resolve the project's channel before they call the model; this
+// file has no database, so the lookup answers with a fixed channel.
+vi.mock('@boom-busters/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof Db>()),
+  channelForProject: async () => ({
+    channelId: '01J00000000000000000000CH1',
+    slug: 'first',
+    settings: {},
+    bible: {},
+  }),
+}))
 vi.mock('@/lib/storage', () => ({
   getObjectBytes: async () => ({ bytes: new Uint8Array([1, 2, 3]), contentType: 'image/png' }),
 }))

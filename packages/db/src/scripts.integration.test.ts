@@ -1,4 +1,5 @@
 import { desc, eq } from 'drizzle-orm'
+import { ensureFirstChannel } from './channels'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
@@ -50,7 +51,11 @@ suite('scripts and the edit trail', () => {
 
   beforeEach(async () => {
     await truncateCases(db)
-    const source = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Enron',
+      category: 'collapse',
+    })
     const project = await createProjectFromCase(db, { caseId: source.id, title: 'Enron' })
     projectId = project.id
     scriptId = (await createScriptVersion(db, projectId)).id

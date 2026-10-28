@@ -5,7 +5,7 @@ import {
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getProject,
-  getSettings,
+  getWorkspace,
   getVoiceTake,
   listOpenBudgetGates,
   listProjectNotices,
@@ -17,10 +17,15 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
-import { BudgetExceededError, monthKey, takeIdempotencyKey } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  FIRST_CHANNEL_ID,
+  monthKey,
+  takeIdempotencyKey,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -80,7 +85,7 @@ describeDb('gate helpers', () => {
     await truncateLedger(db)
     forgetRunRows()
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'running' })
-    await updateSettings(db, {
+    await updateWorkspace(db, {
       budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
     })
   })
@@ -196,7 +201,7 @@ describeDb('gate helpers', () => {
       const ctx = context()
       await openBudgetGate(ctx, budgetGateData(error))
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate).toMatchObject({
         provider: 'anthropic',
         operation: 'scripting',
@@ -206,14 +211,24 @@ describeDb('gate helpers', () => {
       })
     })
 
+    it('resolves the channel before it writes, so a lookup failure leaves no half-open gate', async () => {
+      notify.mockClear()
+      const ctx = { ...context(), projectId: '01J00000000000000000000NOP' }
+
+      await expect(openBudgetGate(ctx, budgetGateData(error))).rejects.toThrow()
+
+      expect(await listRuns(db)).toEqual([])
+      expect(notify).not.toHaveBeenCalled()
+    })
+
     it('closes when the overage is approved, and stops being a gate', async () => {
       const ctx = context()
       await openBudgetGate(ctx, budgetGateData(error))
-      expect(await listOpenBudgetGates(db)).toHaveLength(1)
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toHaveLength(1)
 
       await closeBudgetGate(ctx, 'Overage of $1.00 approved for anthropic')
 
-      expect(await listOpenBudgetGates(db)).toEqual([])
+      expect(await listOpenBudgetGates(db, FIRST_CHANNEL_ID)).toEqual([])
       const [run] = await listRuns(db)
       expect(run?.status).toBe('running')
     })
@@ -221,35 +236,35 @@ describeDb('gate helpers', () => {
 
   describe('grantOverage', () => {
     it('raises the ceiling the guard reads, for this month only', async () => {
-      const settingsBefore = await getSettings(db)
-      const before = await budgetStatus(db, settingsBefore, { estimateUsd: 40 })
+      const budgetsBefore = (await getWorkspace(db)).settings.budgets
+      const before = await budgetStatus(db, budgetsBefore, { estimateUsd: 40 })
       expect(before.wouldRefuse).toBe(true)
 
       await grantOverage(25)
 
-      const settingsAfter = await getSettings(db)
-      expect(settingsAfter.budgets.approvedOverage).toMatchObject({
+      const budgetsAfter = (await getWorkspace(db)).settings.budgets
+      expect(budgetsAfter.approvedOverage).toMatchObject({
         month: monthKey(new Date()),
         usd: 25,
       })
 
-      const after = await budgetStatus(db, settingsAfter, { estimateUsd: 40 })
+      const after = await budgetStatus(db, budgetsAfter, { estimateUsd: 40 })
       expect(after.ceilingUsd).toBe(55)
       expect(after.wouldRefuse).toBe(false)
     })
 
     it('stamps when it was approved, because a raised ceiling is an audit trail', async () => {
       await grantOverage(5)
-      const settings = await getSettings(db)
-      expect(settings.budgets.approvedOverage?.approvedAt).toBeTruthy()
+      const { budgets } = (await getWorkspace(db)).settings
+      expect(budgets.approvedOverage?.approvedAt).toBeTruthy()
     })
 
     it('does not apply to a different month', async () => {
       const march = new Date('2026-03-15T00:00:00.000Z')
       await grantOverage(25, march)
 
-      const settings = await getSettings(db)
-      const august = await budgetStatus(db, settings, {
+      const { budgets } = (await getWorkspace(db)).settings
+      const august = await budgetStatus(db, budgets, {
         now: new Date('2026-08-15T00:00:00.000Z'),
       })
       expect(august.ceilingUsd).toBe(30)

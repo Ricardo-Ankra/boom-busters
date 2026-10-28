@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureFirstChannel } from './channels'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
 import {
@@ -27,7 +28,11 @@ suite('notices', () => {
     await deleteProjectsExcept(db, [])
     await truncateCases(db)
     await sql`DELETE FROM notices`
-    const kase = await createCase(db, { title: 'Stability AI', category: 'collapse' })
+    const kase = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Stability AI',
+      category: 'collapse',
+    })
     projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Stability AI' })).id
   })
 
@@ -94,8 +99,16 @@ suite('notices', () => {
   })
 
   it('keeps Case Library notices apart from projects, by case', async () => {
-    const one = await createCase(db, { title: 'Theranos', category: 'con' })
-    const two = await createCase(db, { title: 'FTX', category: 'con' })
+    const one = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Theranos',
+      category: 'con',
+    })
+    const two = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'FTX',
+      category: 'con',
+    })
     await addNotice(
       db,
       { projectId: null, subject: 'case', subjectId: one.id },

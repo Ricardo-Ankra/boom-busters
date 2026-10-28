@@ -1,4 +1,5 @@
 import type { GroundedResearch } from '@boom-busters/schemas'
+import { ensureFirstChannel } from './channels'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
@@ -32,7 +33,11 @@ suite('dossiers and claims', () => {
 
   beforeEach(async () => {
     await truncateCases(db)
-    const source = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Enron',
+      category: 'collapse',
+    })
     const project = await createProjectFromCase(db, { caseId: source.id, title: 'Enron' })
     projectId = project.id
   })
@@ -219,7 +224,11 @@ suite('dossier research, supports and legal status', () => {
   beforeEach(async () => {
     await truncateCases(db)
     await db.delete(researchDocuments)
-    const source = await createCase(db, { title: 'Wirecard', category: 'collapse' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Wirecard',
+      category: 'collapse',
+    })
     const project = await createProjectFromCase(db, { caseId: source.id, title: 'Wirecard' })
     projectId = project.id
   })

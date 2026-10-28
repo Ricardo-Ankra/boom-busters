@@ -1,6 +1,6 @@
 import { costLedger, projects } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, lt, ne, or, sql } from 'drizzle-orm'
 
 /**
  * The cost ledger: every provider call that spends money leaves a row here,
@@ -67,16 +67,26 @@ export async function monthSpendUsd(
   return round4(toUsd(row?.total ?? 0))
 }
 
-/** This month's spend for every provider that has any. Feeds the Costs bars. */
+/**
+ * This month's spend for every provider that has any. Feeds the Costs bars.
+ * Given a channel, only that channel's rows; without one, the workspace's.
+ */
 export async function monthSpendByProvider(
   db: DbLike,
   when: Date,
+  channelId?: string,
 ): Promise<Partial<Record<LedgerProvider, number>>> {
   const { start, end } = monthBounds(when)
   const rows = await db
     .select({ provider: costLedger.provider, total: spendExpr })
     .from(costLedger)
-    .where(and(gte(costLedger.occurredAt, start), lt(costLedger.occurredAt, end)))
+    .where(
+      and(
+        gte(costLedger.occurredAt, start),
+        lt(costLedger.occurredAt, end),
+        channelId ? eq(costLedger.channelId, channelId) : undefined,
+      ),
+    )
     .groupBy(costLedger.provider)
 
   const out: Partial<Record<LedgerProvider, number>> = {}
@@ -84,6 +94,7 @@ export async function monthSpendByProvider(
   return out
 }
 
+/** The workspace total. The ceiling is one number, so this stays global. */
 export async function monthTotalUsd(db: DbLike, when: Date): Promise<number> {
   const { start, end } = monthBounds(when)
   const [row] = await db
@@ -93,14 +104,42 @@ export async function monthTotalUsd(db: DbLike, when: Date): Promise<number> {
   return round4(toUsd(row?.total ?? 0))
 }
 
+/**
+ * This month's spend on every channel but this one, workspace rows with no
+ * channel included: what the Costs screen shows beside this channel's own
+ * figures, so the one shared ceiling is not a surprise.
+ */
+export async function monthOtherChannelsUsd(
+  db: DbLike,
+  when: Date,
+  channelId: string,
+): Promise<number> {
+  const { start, end } = monthBounds(when)
+  const [row] = await db
+    .select({ total: spendExpr })
+    .from(costLedger)
+    .where(
+      and(
+        gte(costLedger.occurredAt, start),
+        lt(costLedger.occurredAt, end),
+        or(isNull(costLedger.channelId), ne(costLedger.channelId, channelId)),
+      ),
+    )
+  return round4(toUsd(row?.total ?? 0))
+}
+
 export interface ProjectSpend {
   projectId: string | null
   title: string | null
   totalUsd: number
 }
 
-/** Per-project breakdown for the Costs screen (spec section 11.3). */
-export async function monthSpendByProject(db: DbLike, when: Date): Promise<ProjectSpend[]> {
+/** Per-project breakdown of one channel's spend (spec section 11.3). */
+export async function monthSpendByProject(
+  db: DbLike,
+  when: Date,
+  channelId: string,
+): Promise<ProjectSpend[]> {
   const { start, end } = monthBounds(when)
   const rows = await db
     .select({
@@ -110,7 +149,13 @@ export async function monthSpendByProject(db: DbLike, when: Date): Promise<Proje
     })
     .from(costLedger)
     .leftJoin(projects, eq(costLedger.projectId, projects.id))
-    .where(and(gte(costLedger.occurredAt, start), lt(costLedger.occurredAt, end)))
+    .where(
+      and(
+        gte(costLedger.occurredAt, start),
+        lt(costLedger.occurredAt, end),
+        eq(costLedger.channelId, channelId),
+      ),
+    )
     .groupBy(costLedger.projectId, projects.title)
 
   return rows
@@ -141,6 +186,7 @@ export interface LedgerEntry {
 export interface LedgerFilter {
   provider?: LedgerProvider
   projectId?: string
+  channelId?: string
   limit?: number
   offset?: number
 }
@@ -150,6 +196,7 @@ export async function listLedger(db: DbLike, filter: LedgerFilter = {}): Promise
   const conditions = [
     filter.provider ? eq(costLedger.provider, filter.provider) : undefined,
     filter.projectId ? eq(costLedger.projectId, filter.projectId) : undefined,
+    filter.channelId ? eq(costLedger.channelId, filter.channelId) : undefined,
   ].filter((c) => c !== undefined)
 
   const rows = await db
@@ -174,6 +221,16 @@ export async function listLedger(db: DbLike, filter: LedgerFilter = {}): Promise
 }
 
 /**
+ * The channel a ledger row is attributed to: the one named, else the one the
+ * project belongs to, else none (workspace spend).
+ */
+export function ledgerChannelId(spec: { projectId?: string | null; channelId?: string | null }) {
+  return sql<
+    string | null
+  >`coalesce(${spec.channelId ?? null}, (select ${projects.channelId} from ${projects} where ${projects.id} = ${spec.projectId ?? null}))`
+}
+
+/**
  * Record spend that no cap governs — renders and YouTube uploads, whose
  * spending decision is the explicit pre-render confirm rather than a monthly
  * budget (spec section 8.1). Visible in the ledger and the Costs screen; never
@@ -185,6 +242,8 @@ export async function recordCost(
     provider: LedgerProvider
     operation: string
     projectId?: string | null
+    /** Falls back to the project's channel; null for workspace spend. */
+    channelId?: string | null
     actualUsd: number
     meta?: Record<string, unknown>
     occurredAt?: Date
@@ -196,6 +255,7 @@ export async function recordCost(
     .values({
       provider: entry.provider,
       operation: entry.operation,
+      channelId: ledgerChannelId(entry),
       projectId: entry.projectId ?? null,
       estimatedUsd: amount.toFixed(4),
       actualUsd: amount.toFixed(4),

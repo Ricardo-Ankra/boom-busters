@@ -12,7 +12,12 @@ import {
   setProjectDirection,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { CAST_IDENTITY_MAX, noticesFor, ValidationError } from '@boom-busters/schemas'
+import {
+  CAST_IDENTITY_MAX,
+  FIRST_CHANNEL_ID,
+  noticesFor,
+  ValidationError,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -400,9 +405,13 @@ describeDb('cast actions (mock mode)', () => {
 
       expect(await describeCastMemberAction(id)).toEqual({ ok: true })
       expect(callLlm).toHaveBeenCalledTimes(2)
-      expect(callLlm.mock.calls[0]![1]).toEqual({ projectId: FIXTURE_PROJECT_ID })
+      expect(callLlm.mock.calls[0]![1]).toEqual({
+        projectId: FIXTURE_PROJECT_ID,
+        channelId: FIRST_CHANNEL_ID,
+      })
       expect(callLlm.mock.calls[1]![1]).toEqual({
         projectId: FIXTURE_PROJECT_ID,
+        channelId: FIRST_CHANNEL_ID,
         purpose: 'retry: refused',
       })
       expect((await listCastMembers(db, FIXTURE_PROJECT_ID))[0]?.identityString).toBe(

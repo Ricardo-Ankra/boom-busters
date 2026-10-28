@@ -1,6 +1,17 @@
 import { expect, type Page } from '@playwright/test'
 import { QUEUED_PROJECT_TITLE as QUEUED_PROJECT_TITLE_FOR_TOUCH } from '../global-setup'
 
+/** The first channel's slug: the channel every fixture project belongs to. */
+export const FIRST_SLUG = 'boom-busters'
+
+/** The second fixture channel: no connection, no cases, a blank bible. */
+export const SECOND_SLUG = 'e2e-second'
+
+/** An address inside a channel's console (the first by default), e.g. `channelPath('/projects')`. */
+export function channelPath(section: string, slug: string = FIRST_SLUG): string {
+  return `/c/${slug}${section}`
+}
+
 /** The seeded fixture project's title, from `packages/db/src/fixtures.ts`. */
 export const FIXTURE_PROJECT_TITLE = 'Wirecard: The €1.9 Billion That Never Existed'
 
@@ -66,7 +77,7 @@ export async function expectHitTargets(page: Page): Promise<void> {
  * property of the seed order rather than of the thing under test.
  */
 export async function openFixtureProject(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   // Click-and-verify, retried: a click that lands before hydration on a
   // mid-compile dev server vanishes without navigating. The inner wait must
   // be LONGER than a slow-but-real navigation (a cold compile takes ~2-3s) —
@@ -101,20 +112,24 @@ export async function openFixtureProject(page: Page): Promise<void> {
  * here rather than relying on the previous run's own cleanup.
  */
 export async function resetResearchModel(): Promise<void> {
-  const { createDb, getSettings, updateSettings } = await import('@boom-busters/db')
+  const { createDb, getChannelSettings, getWorkspace, updateChannelSettings, updateWorkspace } =
+    await import('@boom-busters/db')
+  const { FIRST_CHANNEL_ID } = await import('@boom-busters/schemas')
   const { e2eDatabaseUrl } = await import('../database')
 
   const connection = createDb(e2eDatabaseUrl(), { max: 1 })
   try {
-    const settings = await getSettings(connection.db)
-    const { 'anthropic:claude-mock-unpriced': _unused, ...llm } = settings.modelPrices.llm
-    await updateSettings(connection.db, {
+    const settings = await getChannelSettings(connection.db, FIRST_CHANNEL_ID)
+    const { modelPrices } = (await getWorkspace(connection.db)).settings
+    const { 'anthropic:claude-mock-unpriced': _unused, ...llm } = modelPrices.llm
+    await updateChannelSettings(connection.db, FIRST_CHANNEL_ID, {
       modelRouting: {
         ...settings.modelRouting,
         research: { provider: 'anthropic', model: 'claude-opus-5' },
       },
-      modelPrices: { ...settings.modelPrices, llm },
     })
+    // Model prices are the workspace's.
+    await updateWorkspace(connection.db, { modelPrices: { ...modelPrices, llm } })
   } finally {
     await connection.sql.end({ timeout: 5 })
   }

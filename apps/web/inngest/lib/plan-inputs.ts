@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   latestScriptParagraphSources,
   listCastMembers,
@@ -32,7 +33,8 @@ export async function loadPlanInputs(projectId: string) {
   // film's rooms, and the craft notes count how often each is used.
   const sets = await listProjectSets(db, projectId)
   // The logo library (decision 268, Plan B), threaded exactly like `sets`.
-  const logos = await listLogos(db)
+  const { channelId } = await channelForProject(db, projectId)
+  const logos = await listLogos(db, channelId)
   return {
     caseTitle: project.title,
     direction: book.success ? book.data : null,

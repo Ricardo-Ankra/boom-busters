@@ -38,7 +38,7 @@ import {
   socialPosts,
   storeTakeAudio,
   truncateRunMirror,
-  updateSettings,
+  updateChannelSettings,
   updateSlotBrief,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
@@ -47,7 +47,13 @@ import {
   SOCIAL_HIGHLIGHT_OUTSIDE,
   SOCIAL_MISSING_PREFIX,
 } from '@boom-busters/compositions/social'
-import { fixtureId, JOB_STALE_MS, newId, NOT_A_POST_ERROR } from '@boom-busters/schemas'
+import {
+  fixtureId,
+  JOB_STALE_MS,
+  newId,
+  NOT_A_POST_ERROR,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import type { ShotBrief, SlotCandidate } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -408,7 +414,7 @@ describeDb('the model select on a shot (decision 264)', () => {
     // A provider drops a model and the id stays on the row. Reading it
     // unguarded threw, which took the whole project page down over one
     // dead slot (decision 264).
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
         stillsLikeness: null,
@@ -660,6 +666,7 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
         id: '01HQ00000000000000000000M1',
         kind: 'logo',
         r2Key: 'boom-busters/logos/wirecard.png',
+        channelId: FIRST_CHANNEL_ID,
         contentHash: 'fixture-logo-wirecard-ag',
         licence: 'Uploaded by owner',
         title: 'Wirecard AG',
@@ -749,6 +756,7 @@ describeDb('attaching an uploaded mark to a waiting graphic (decision 268, Plan 
         id: '01HQ00000000000000000000M1',
         kind: 'logo',
         r2Key: 'boom-busters/logos/wirecard.png',
+        channelId: FIRST_CHANNEL_ID,
         contentHash: 'fixture-logo-wirecard-ag',
         licence: 'Uploaded by owner',
         title: 'Wirecard AG',

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn, openFixtureProject } from './fixtures'
+import { channelPath, expectHitTargets, signIn, openFixtureProject } from './fixtures'
 
 /**
  * The M3 writing room, driven the way a human drives it (build spec section
@@ -17,7 +17,7 @@ test.describe('Case Library', () => {
   test('suggests cases into a triage list, and accepting moves one to the backlog', async ({
     page,
   }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
 
     await page.getByRole('button', { name: 'Suggest cases' }).click()
     await page.getByLabel('How many').fill('3')
@@ -37,7 +37,7 @@ test.describe('Case Library', () => {
   })
 
   test('dismissing a suggestion removes that row', async ({ page }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
     await page.getByRole('button', { name: 'Suggest cases' }).click()
     await page.getByRole('button', { name: 'Get suggestions' }).click()
 
@@ -61,7 +61,7 @@ test.describe('Case Library', () => {
   })
 
   test('a case can be added by hand and lands shortlisted', async ({ page }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
 
     await page.getByRole('button', { name: 'Add case' }).click()
     await page.getByLabel('Title').fill('A case I decided on myself')
@@ -74,7 +74,7 @@ test.describe('Case Library', () => {
   })
 
   test('the library sorts by every column offered', async ({ page }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
 
     for (const sort of ['Category', 'Status', 'Newest', 'Priority']) {
       await page.getByRole('button', { name: sort, exact: true }).click()
@@ -83,7 +83,7 @@ test.describe('Case Library', () => {
   })
 
   test('every control is reachable and large enough to hit', async ({ page }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
     await expectHitTargets(page)
   })
 })

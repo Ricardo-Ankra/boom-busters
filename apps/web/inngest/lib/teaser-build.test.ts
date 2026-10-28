@@ -10,7 +10,7 @@ import {
   scripts,
   seed,
 } from '@boom-busters/db'
-import { BudgetExceededError, noticesFor } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_ID, noticesFor } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -84,7 +84,10 @@ describeDb('writeTeaserScript (decision 293)', () => {
       scriptVersion: 1,
     })
     expect(callLlm).toHaveBeenCalledTimes(1)
-    expect(callLlm.mock.calls[0]![1]).toEqual({ projectId: FIXTURE_PROJECT_ID })
+    expect(callLlm.mock.calls[0]![1]).toEqual({
+      projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
+    })
     expect(await teaserNotices()).toEqual([])
   })
 
@@ -102,6 +105,7 @@ describeDb('writeTeaserScript (decision 293)', () => {
     expect(callLlm).toHaveBeenCalledTimes(2)
     expect(callLlm.mock.calls[1]![1]).toEqual({
       projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
       purpose: 'retry: refused',
     })
     expect((await teaserNotices()).map((notice) => notice.message)).toEqual([

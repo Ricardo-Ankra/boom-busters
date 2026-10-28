@@ -13,7 +13,7 @@ import {
   deleteMusicBedAction,
   finaliseMusicBedAction,
   recordMusicBedDurationAction,
-} from './actions'
+} from './workspace-actions'
 
 /**
  * The music library (build spec section 10.1): user-populated only. The

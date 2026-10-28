@@ -20,7 +20,7 @@ import {
   truncateRunMirror,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { BudgetExceededError, newId } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_ID, newId } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import type * as Notices from '@/lib/notices'
 import type * as PlanStretch from '@/lib/plan-stretch'
@@ -343,7 +343,11 @@ describeDb('stretch-replanner', () => {
     const { result } = await engine.execute({ events: await stretchEvent([ids[1]!, ids[2]!]) })
 
     expect(result).toMatchObject({ outcome: 'over-budget' })
-    expect(callLlm.mock.calls[0]![1]).toEqual({ projectId: FIXTURE_PROJECT_ID, purpose: 'stretch' })
+    expect(callLlm.mock.calls[0]![1]).toEqual({
+      projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
+      purpose: 'stretch',
+    })
     expect(await descriptions()).toEqual(['old 0', 'old 1', 'old 2', 'old 3'])
     expect(recordStop).toHaveBeenCalledWith(
       { projectId: FIXTURE_PROJECT_ID, subject: 'slot', subjectId: ids[1] },

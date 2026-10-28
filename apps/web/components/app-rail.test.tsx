@@ -1,13 +1,21 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { AppRail } from './app-rail'
+import { AppRail, navFor } from './app-rail'
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/settings' }))
+vi.mock('next/navigation', () => ({ usePathname: () => '/c/psychology/settings' }))
+
+describe('navFor', () => {
+  it('marks Projects current on a project page, which lives outside /c/<slug>', () => {
+    const items = navFor('psychology', '/projects/01HQ0000000000000000000PR1')
+    expect(items.filter((item) => item.active).map((item) => item.label)).toEqual(['Projects'])
+    expect(items.find((item) => item.label === 'Projects')?.href).toBe('/c/psychology/projects')
+  })
+})
 
 describe('AppRail', () => {
   it('links to every screen in the information architecture', () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
 
     for (const label of [
       'Dashboard',
@@ -22,13 +30,13 @@ describe('AppRail', () => {
   })
 
   it('marks the current screen for assistive technology, not only by colour', () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
   })
 
   it('keeps every label readable when collapsed — icons are never the only cue', async () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Collapse rail' }))
 
@@ -38,8 +46,15 @@ describe('AppRail', () => {
     }
   })
 
+  it('links the workspace settings from under Settings, as a 40 px target', () => {
+    render(<AppRail slug="psychology" name="Psychology" />)
+    const link = screen.getByRole('link', { name: 'Workspace' })
+    expect(link).toHaveAttribute('href', '/settings')
+    expect(link.className).toContain('h-10')
+  })
+
   it('exposes the collapse state', async () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
     const toggle = screen.getByRole('button', { name: 'Collapse rail' })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
 

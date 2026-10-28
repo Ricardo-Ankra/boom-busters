@@ -7,11 +7,12 @@ import {
   suggestExcerpt,
 } from '@boom-busters/compositions/social'
 import {
+  channelForProject,
   getArticleSources,
   getAsset,
   getClaims,
+  getWorkspace,
   getProject,
-  getSettings,
   getSocialPosts,
   latestScriptParagraphSources,
   listCastMembers,
@@ -909,15 +910,15 @@ export async function visualsReviewModel(
    * slot. `castWarnings` below reuses this same cast rather than loading it
    * again.
    */
-  const [cast, sets, settings] = await Promise.all([
+  const [cast, sets, { settings, channelId }] = await Promise.all([
     listCastMembers(db, projectId),
     listProjectSets(db, projectId),
-    getSettings(db),
+    channelForProject(db, projectId),
   ])
   // Every slot's stored route too, so a slot on a model the lists have
   // since dropped shows and prices as itself (decision 288 follow-up).
   const catalogue = await stillCatalogue(
-    settings,
+    { routing: settings.modelRouting, prices: (await getWorkspace(db)).settings.modelPrices },
     rows.map((row) => {
       const stored = StillRouteSchema.nullable().safeParse(row.route)
       return stored.success ? stored.data : null
@@ -962,7 +963,7 @@ export async function visualsReviewModel(
         parsed.data.code !== undefined,
     )
     if (anyCode) {
-      const library = await listLogos(db)
+      const library = await listLogos(db, channelId)
       Object.assign(graphicLogoMarks, codeLogoMarks(library))
       for (const logo of library) {
         if (graphicLogoMarks[logo.id] && graphicLogoUrls[logo.id] === undefined) {

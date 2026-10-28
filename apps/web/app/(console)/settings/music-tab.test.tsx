@@ -10,7 +10,7 @@ const finaliseMusicBedAction = vi.fn()
 const deleteMusicBedAction = vi.fn()
 const recordMusicBedDurationAction = vi.fn()
 
-vi.mock('./actions', () => ({
+vi.mock('./workspace-actions', () => ({
   createMusicUploadAction: (...args: unknown[]) => createMusicUploadAction(...args),
   finaliseMusicBedAction: (...args: unknown[]) => finaliseMusicBedAction(...args),
   deleteMusicBedAction: (...args: unknown[]) => deleteMusicBedAction(...args),

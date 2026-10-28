@@ -1,4 +1,4 @@
-import { desc, eq, and, isNull } from 'drizzle-orm'
+import { desc, eq, and, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { assets } from './schema'
 import type { AssetRow } from './schema'
@@ -41,6 +41,8 @@ export async function insertMusicBed(
     })
     .onConflictDoUpdate({
       target: assets.contentHash,
+      // Music is shared by every channel: the shared-row hash index.
+      targetWhere: sql`channel_id is null`,
       // The bytes already exist under their hash key; a re-upload is the
       // human renaming or re-tagging, so those fields win. The original
       // r2Key is kept — same bytes, same home.

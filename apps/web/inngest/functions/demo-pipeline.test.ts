@@ -10,9 +10,10 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
-  updateSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
@@ -62,7 +63,7 @@ async function resetFixture(): Promise<void> {
   await truncateLedger(db)
   // The mirror memo would otherwise point at rows the truncate deleted.
   forgetRunRows()
-  await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+  await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
 }
 
 describeDb('demo pipeline', () => {
@@ -145,7 +146,7 @@ describeDb('demo pipeline', () => {
         events: demoEvent({ forceBudgetGate: true }),
       })
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate).toMatchObject({ provider: 'anthropic', budgetUsd: 30 })
       expect(gate?.estimateUsd).toBe(1_000_000)
 
@@ -163,11 +164,11 @@ describeDb('demo pipeline', () => {
     })
 
     it('parks the same way at a ceiling of zero, which is the kill switch now', async () => {
-      await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
       await engine.executeStep('open-budget-gate-0', { events: demoEvent() })
 
-      const [gate] = await listOpenBudgetGates(db)
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
       expect(gate?.budgetUsd).toBe(0)
       // The estimate is the real one, not the forced million.
       expect(gate?.estimateUsd).toBeCloseTo(0.0001)

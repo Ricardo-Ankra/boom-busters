@@ -1,98 +1,111 @@
-import { getSettings, listCredentials, listLogos, listMusicBeds } from '@boom-busters/db'
-import { hasEnvGroup } from '@boom-busters/schemas'
-import { db } from '@/lib/db'
-import { loadModelOptions } from '@/lib/model-catalogue'
-import { exemplarViews } from '@/lib/exemplar-views'
+import { getWorkspace, listChannels, listCredentials, listMusicBeds } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { presignGet, storageConfigured } from '@/lib/storage'
-import { exemplarLogoFor } from './exemplar-logo'
-import { SettingsForm } from './settings-form'
+import { LLM_TASKS, modelPriceKey } from '@boom-busters/schemas'
+import { ConsoleShell } from '@/components/console-shell'
+import { channelFromSlug, landingSlug } from '@/lib/channel-context'
+import { db } from '@/lib/db'
+import { redirectToLandingChannel } from '@/lib/legacy-redirect'
+import type { SearchParams } from '@/lib/legacy-redirect'
+import { loadModelOptions } from '@/lib/model-catalogue'
+import { loadShellData } from '@/lib/shell-data'
+import { WorkspaceForm } from './workspace-form'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Settings · Boom-Busters' }
+export const metadata = { title: 'Workspace settings · Boom-Busters' }
 
-const TABS = [
-  'models',
-  'brand-kit',
-  'voice',
-  'music',
-  'logos',
-  'exemplars',
-  'publishing',
-  'connections',
-] as const
-type SettingsTab = (typeof TABS)[number]
+const TABS = ['connections', 'prices', 'music'] as const
 
-export default async function SettingsPage({
+/**
+ * The workspace settings: provider keys, the model price table and the shared
+ * music library. Everything else that used to live at `/settings?tab=...`
+ * belongs to a channel now, so any other tab forwards to the landing channel's
+ * settings with the query kept and an old bookmark still lands where it did.
+ */
+export default async function WorkspaceSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
+  searchParams: SearchParams
 }) {
-  const [settings, credentials, beds, logos, params] = await Promise.all([
-    getSettings(db),
+  const params = await searchParams
+  const requested = typeof params['tab'] === 'string' ? params['tab'] : undefined
+  if (requested !== undefined && !(TABS as readonly string[]).includes(requested)) {
+    return redirectToLandingChannel('/settings', searchParams)
+  }
+  const tab = (requested ?? 'connections') as (typeof TABS)[number]
+
+  const [workspace, credentials, beds, channels, slug] = await Promise.all([
+    getWorkspace(db),
     listCredentials(db),
     listMusicBeds(db),
-    listLogos(db),
-    searchParams,
+    listChannels(db),
+    landingSlug(),
   ])
 
-  // The dropdowns' options: the cached live lists merged with the catalogue
-  // and priced with the owner's overrides (decision 288). Needs the settings,
-  // so it runs after the batch above.
-  const modelOptions = await loadModelOptions(settings)
+  // The prices list is about models, not about one channel's routes; it
+  // needs to know which models any channel still routes to, so that clearing
+  // a price never leaves a route every run refuses.
+  const routedKeys = [
+    ...new Set(
+      channels.flatMap(({ settings }) => {
+        const { modelRouting } = settings
+        const routes = [
+          ...LLM_TASKS.map((task) => modelRouting[task]),
+          modelRouting.stills,
+          modelRouting.stillsLikeness,
+          modelRouting.setSheet,
+        ]
+        return routes.flatMap((route) =>
+          route ? [modelPriceKey(route.provider, route.model)] : [],
+        )
+      }),
+    ),
+  ]
 
-  const logoViews = await Promise.all(
-    logos.map(async (logo) => ({
-      id: logo.id,
-      title: logo.title ?? 'Unnamed mark',
-      r2Key: logo.r2Key,
-      width: logo.width,
-      height: logo.height,
-      url:
-        storageConfigured() && !logo.r2Key.startsWith('mock://')
-          ? await presignGet(logo.r2Key)
-          : null,
-    })),
-  )
+  // Google models some channel routes for set sheets: a sheet is billed at 4K,
+  // so a price saved for one of them must carry a 4K price.
+  const setSheetKeys = [
+    ...new Set(
+      channels.flatMap(({ settings }) => {
+        const route = settings.modelRouting.setSheet
+        return route.provider === 'google' ? [modelPriceKey(route.provider, route.model)] : []
+      }),
+    ),
+  ]
 
-  // Every checklist and cross-link in the app addresses a tab as `?tab=`;
-  // until this was honoured, all of them landed on Models.
-  const requested = typeof params['tab'] === 'string' ? params['tab'] : undefined
-  const tab: SettingsTab = (TABS as readonly string[]).includes(requested ?? '')
-    ? (requested as SettingsTab)
-    : 'models'
+  const modelOptions = await loadModelOptions({ prices: workspace.settings.modelPrices })
+  const channel = await channelFromSlug(slug)
+  const shell = await loadShellData(channel)
 
   return (
-    <div className="prose-measure mx-auto flex max-w-4xl flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-[20px] font-semibold">Settings</h1>
-        <p className="text-[14px] text-[var(--color-text-secondary)]">
-          Behavioural configuration lives here, not in environment variables — changing a model, a
-          budget or the brand never needs a redeploy.
-        </p>
-      </header>
+    <ConsoleShell {...shell}>
+      <div className="prose-measure mx-auto flex max-w-4xl flex-col gap-4">
+        <header className="flex flex-col gap-1">
+          <h1 className="text-[20px] font-semibold">Workspace settings</h1>
+          <p className="text-[14px] text-[var(--color-text-secondary)]">
+            Provider keys, model prices and the music library, shared by every channel. Each
+            channel&apos;s own routing, brand, voice and publishing are under its Settings.
+          </p>
+        </header>
 
-      <SettingsForm
-        initialSettings={settings}
-        credentials={credentials}
-        mockProviders={mockProvidersEnabled()}
-        youtubeEnvReady={hasEnvGroup('youtube')}
-        initialTab={tab}
-        musicBeds={beds.map((bed) => ({
-          id: bed.id,
-          title: bed.title ?? 'Untitled track',
-          licence: bed.licence,
-          moodTags: bed.moodTags,
-          createdAt: bed.createdAt.toISOString(),
-          attributionText: bed.attributionText,
-          durationMs: bed.durationMs,
-        }))}
-        logos={logoViews}
-        channelMarkKey={settings.brandKit.look.logoR2Key}
-        modelOptions={modelOptions}
-        exemplars={exemplarViews()}
-        exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
-      />
-    </div>
+        <WorkspaceForm
+          initialSettings={workspace.settings}
+          credentials={credentials}
+          mockProviders={mockProvidersEnabled()}
+          initialTab={tab}
+          routedKeys={routedKeys}
+          setSheetKeys={setSheetKeys}
+          modelOptions={modelOptions}
+          musicBeds={beds.map((bed) => ({
+            id: bed.id,
+            title: bed.title ?? 'Untitled track',
+            licence: bed.licence,
+            moodTags: bed.moodTags,
+            createdAt: bed.createdAt.toISOString(),
+            attributionText: bed.attributionText,
+            durationMs: bed.durationMs,
+          }))}
+        />
+      </div>
+    </ConsoleShell>
   )
 }

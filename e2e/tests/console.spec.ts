@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 test.beforeEach(async ({ page }) => {
   await signIn(page)
@@ -13,7 +13,7 @@ test.describe('dashboard', () => {
    * running product.
    */
   test('shows the Needs-you queue, never the old full-page checklist', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(channelPath(''))
 
     await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Set up Boom-Busters' })).toBeHidden()
@@ -21,35 +21,58 @@ test.describe('dashboard', () => {
     await expect(page.getByRole('link', { name: 'Review' }).first()).toBeVisible()
   })
 
-  test('names setup that belongs to later milestones without blocking anything', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    await expect(page.getByText(/Coming with later milestones/)).toBeVisible()
+  test('a connected YouTube leaves nothing waiting on a later milestone', async ({ page }) => {
+    // Global setup connects the first channel to a mock YouTube account, and
+    // "Connect YouTube" was the only checklist item the strip held back for a
+    // later milestone (it used to read "Coming with later milestones").
+    await page.goto(channelPath(''))
+    await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+    await expect(page.getByText(/Coming with later milestones/)).toBeHidden()
+    await expect(page.getByText('Connect YouTube')).toBeHidden()
   })
 
   test('a settings deep link lands on the tab it names', async ({ page }) => {
     // Every checklist button and cross-link addresses a tab as `?tab=`; until
     // this was honoured, all of them landed on Models.
-    await page.goto('/settings?tab=connections')
+    await page.goto(channelPath('/settings?tab=connections'))
     await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
       'data-state',
       'active',
     )
   })
+
+  test('an old bookmark forwards to the channel and keeps its query', async ({ page }) => {
+    await page.goto('/settings?tab=voice')
+    await expect(page).toHaveURL(/\/c\/boom-busters\/settings\?tab=voice$/)
+    await expect(page.getByRole('tab', { name: 'Voice' })).toHaveAttribute('data-state', 'active')
+  })
+
+  test('the connections tab at /settings is the workspace page, with the provider keys', async ({
+    page,
+  }) => {
+    await page.goto('/settings?tab=connections')
+    await expect(page).toHaveURL(/\/settings\?tab=connections$/)
+    await expect(page).not.toHaveURL(/\/c\//)
+    await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    await expect(page.getByLabel('anthropic API key')).toBeVisible()
+  })
 })
 
 test.describe('app shell', () => {
   test('the rail reaches every screen in the information architecture', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(channelPath(''))
     const rail = page.getByRole('navigation', { name: 'Primary' })
 
     for (const [label, expected] of [
-      ['Projects', /\/projects/],
-      ['Case Library', /\/cases/],
-      ['Calendar', /\/calendar/],
-      ['Costs', /\/costs/],
-      ['Settings', /\/settings/],
+      ['Projects', /\/c\/boom-busters\/projects/],
+      ['Case Library', /\/c\/boom-busters\/cases/],
+      ['Calendar', /\/c\/boom-busters\/calendar/],
+      ['Costs', /\/c\/boom-busters\/costs/],
+      ['Settings', /\/c\/boom-busters\/settings/],
+      ['Workspace', /^https?:\/\/[^/]+\/settings$/],
     ] as const) {
       await rail.getByRole('link', { name: label }).click()
       await expect(page, label).toHaveURL(expected)
@@ -57,7 +80,7 @@ test.describe('app shell', () => {
   })
 
   test('the activity drawer opens and closes from visible buttons', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(channelPath(''))
 
     await page.getByRole('button', { name: 'Activity' }).click()
     const drawer = page.getByRole('dialog')
@@ -72,7 +95,7 @@ test.describe('app shell', () => {
   })
 
   test('dark is the default theme and the toggle persists across a reload', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(channelPath(''))
     await expect(page.locator('html')).not.toHaveClass(/light/)
 
     await page.getByRole('button', { name: /Switch to light theme/ }).click()
@@ -86,7 +109,7 @@ test.describe('app shell', () => {
   })
 
   test('every visible control meets the 40px hit target', async ({ page }) => {
-    await page.goto('/')
+    await page.goto(channelPath(''))
     await expectHitTargets(page)
   })
 })
@@ -96,7 +119,7 @@ test.describe('settings', () => {
     // The Budgets tab this test used to flip a switch on is gone — budgets are
     // one ceiling on the Costs screen now. The Publishing audit toggle is the
     // same shape of control through the same save path.
-    await page.goto('/settings')
+    await page.goto(channelPath('/settings'))
     await page.getByRole('tab', { name: 'Publishing' }).click()
 
     const audit = page.getByRole('switch', { name: /Audit passed|Audit not passed yet/ })
@@ -120,7 +143,7 @@ test.describe('settings', () => {
   })
 
   test('model routing offers every task the spec names', async ({ page }) => {
-    await page.goto('/settings')
+    await page.goto(channelPath('/settings'))
 
     for (const label of [
       'Research (dossiers)',

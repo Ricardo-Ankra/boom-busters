@@ -267,6 +267,13 @@
       "when": 1793213813102,
       "tag": "0037_short_captions",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793216557962,
+      "tag": "0038_channels",
+      "breakpoints": true
     }
   ]
 }

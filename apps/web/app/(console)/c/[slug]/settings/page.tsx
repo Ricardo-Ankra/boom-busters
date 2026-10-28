@@ -1,0 +1,133 @@
+import {
+  getChannelSettings,
+  getWorkspace,
+  listChannels,
+  listLogos,
+  maskKey,
+  channelYoutubeConnection,
+} from '@boom-busters/db'
+import { hasEnvGroup } from '@boom-busters/schemas'
+import { redirect } from 'next/navigation'
+import { channelFromSlug } from '@/lib/channel-context'
+import { db } from '@/lib/db'
+import { loadModelOptions } from '@/lib/model-catalogue'
+import { exemplarViews } from '@/lib/exemplar-views'
+import { presignGet, storageConfigured } from '@/lib/storage'
+import { exemplarLogoFor } from './exemplar-logo'
+import { SettingsForm } from './settings-form'
+
+export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Settings · Boom-Busters' }
+
+const TABS = [
+  'channel',
+  'models',
+  'brand-kit',
+  'voice',
+  'logos',
+  'exemplars',
+  'publishing',
+  'connections',
+] as const
+type SettingsTab = (typeof TABS)[number]
+
+export default async function SettingsPage({
+  params: routeParams,
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await routeParams
+  const channel = await channelFromSlug(slug)
+  const [settings, workspace, connectionRow, logos, liveChannels, params] = await Promise.all([
+    getChannelSettings(db, channel.id),
+    getWorkspace(db),
+    channelYoutubeConnection(db, channel.id),
+    listLogos(db, channel.id),
+    listChannels(db),
+    searchParams,
+  ])
+
+  // The music library and the price table are the workspace's now; an old
+  // bookmark to either lands on the workspace page.
+  const requestedTab = typeof params['tab'] === 'string' ? params['tab'] : undefined
+  if (requestedTab === 'music' || requestedTab === 'prices') {
+    redirect(`/settings?tab=${requestedTab}`)
+  }
+
+  // The dropdowns' options: the cached live lists merged with the catalogue
+  // and priced with the workspace's overrides (decision 288). Needs the
+  // settings, so it runs after the batch above.
+  const youtubeConnection = connectionRow
+    ? {
+        masked: maskKey(connectionRow.keyHint),
+        verifyStatus: connectionRow.verifyStatus,
+        lastVerifiedAt: connectionRow.lastVerifiedAt,
+        youtubeChannelTitle: connectionRow.youtubeChannelTitle,
+      }
+    : undefined
+
+  const modelOptions = await loadModelOptions({
+    routing: settings.modelRouting,
+    prices: workspace.settings.modelPrices,
+  })
+
+  const logoViews = await Promise.all(
+    logos.map(async (logo) => ({
+      id: logo.id,
+      title: logo.title ?? 'Unnamed mark',
+      r2Key: logo.r2Key,
+      width: logo.width,
+      height: logo.height,
+      url:
+        storageConfigured() && !logo.r2Key.startsWith('mock://')
+          ? await presignGet(logo.r2Key)
+          : null,
+    })),
+  )
+
+  // Every checklist and cross-link in the app addresses a tab as `?tab=`;
+  // until this was honoured, all of them landed on Models.
+  const requested = typeof params['tab'] === 'string' ? params['tab'] : undefined
+  const tab: SettingsTab = (TABS as readonly string[]).includes(requested ?? '')
+    ? (requested as SettingsTab)
+    : 'models'
+
+  return (
+    <div className="prose-measure mx-auto flex max-w-4xl flex-col gap-4">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-[20px] font-semibold">Settings</h1>
+        <p className="text-[14px] text-[var(--color-text-secondary)]">
+          This channel&apos;s bible, routing, brand, voice and publishing. Provider keys, prices and
+          the music library are shared and live in the workspace settings.
+        </p>
+      </header>
+
+      <SettingsForm
+        initialSettings={settings}
+        youtubeConnection={youtubeConnection}
+        channelId={channel.id}
+        channelSlug={channel.slug}
+        channel={{
+          id: channel.id,
+          slug: channel.slug,
+          name: channel.name,
+          handle: channel.handle,
+          bible: channel.bible,
+          archived: channel.archivedAt !== null,
+        }}
+        channels={liveChannels.map((entry) => ({ id: entry.id, name: entry.name }))}
+        showNewChannel={params['new'] === '1'}
+        youtubeEnvReady={hasEnvGroup('youtube')}
+        youtubeOutcome={typeof params['youtube'] === 'string' ? params['youtube'] : undefined}
+        initialTab={tab}
+        logos={logoViews}
+        channelMarkKey={settings.brandKit.look.logoR2Key}
+        modelOptions={modelOptions}
+        exemplars={exemplarViews()}
+        exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
+      />
+    </div>
+  )
+}

@@ -1,24 +1,39 @@
 // @vitest-environment node
 
 import {
+  archiveChannel,
+  channelYoutubeConnection,
+  createChannel,
   FIXTURE_PROJECT_ID,
   getPublishRecord,
   latestSnapshotForVideo,
   publishRecords,
+  recordChannelYoutubeVerify,
   requireTestDatabase,
+  saveChannelYoutubeConnection,
   seed,
   snapshotsSince,
   truncateAnalytics,
   truncateRunMirror,
+  youtubeConnections,
 } from '@boom-busters/db'
 import { buildDigestRequest } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { env } from '@/lib/env'
 import { forgetRunRows } from '../middleware/run-mirror'
+import { YoutubeAuthError } from '@/lib/youtube'
+import type * as YoutubeAnalytics from '@/lib/youtube-analytics'
+import { mockVideoAnalytics } from '@/lib/youtube-analytics'
 import { analyticsRunner, worstRetentionDrop, writeDigestWith } from './analytics-runner'
 
 /**
@@ -33,13 +48,60 @@ vi.mock('@/lib/notify', () => ({
   notify: (...args: unknown[]) => notify(...args),
 }))
 
+const google = vi.hoisted(() => ({
+  refreshAccessToken: vi.fn(),
+  pingChannel: vi.fn(),
+}))
+vi.mock('@/lib/youtube', () => ({
+  refreshAccessToken: (...args: unknown[]) => google.refreshAccessToken(...args),
+  pingChannel: (...args: unknown[]) => google.pingChannel(...args),
+  youtubeConfigured: () => true,
+  YoutubeAuthError: class YoutubeAuthError extends Error {
+    needsReconnect = true
+  },
+}))
+
+const analytics = vi.hoisted(() => ({
+  fetchPrivacyStatuses: vi.fn(),
+  fetchVideoAnalytics: vi.fn(),
+}))
+vi.mock('@/lib/youtube-analytics', async (importOriginal) => ({
+  ...(await importOriginal<typeof YoutubeAnalytics>()),
+  fetchPrivacyStatuses: (...args: unknown[]) => analytics.fetchPrivacyStatuses(...args),
+  fetchVideoAnalytics: (...args: unknown[]) => analytics.fetchVideoAnalytics(...args),
+}))
+
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const LIVE_VIDEO = 'yt-live-1'
 const SCHEDULED_VIDEO = 'yt-scheduled-1'
 
-function refreshEvent(): [{ name: string; data: Record<string, unknown> }] {
-  return [{ name: 'analytics/refresh.requested', data: {} }]
+function refreshEvent(
+  data: Record<string, unknown> = {},
+): [{ name: string; data: Record<string, unknown> }] {
+  return [{ name: 'analytics/refresh.requested', data }]
+}
+
+async function connect(channelId: string, youtubeChannelId: string): Promise<void> {
+  await saveChannelYoutubeConnection(db, channelId, {
+    refreshToken: `1//refresh-${youtubeChannelId}`,
+    encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+    youtubeChannelId,
+    youtubeChannelTitle: youtubeChannelId,
+  })
+  await recordChannelYoutubeVerify(db, channelId, 'ok', youtubeChannelId)
+}
+
+/** A fresh channel each time: an earlier test may have archived the last one. */
+async function secondChannel(): Promise<string> {
+  const created = await createChannel(db, {
+    name: 'Second channel',
+    handle: null,
+    slug: `analytics-second-${Math.random().toString(36).slice(2, 8)}`,
+    settings: DEFAULT_SETTINGS,
+    bible: EMPTY_BIBLE,
+  })
+  return created.id
 }
 
 describe('worstRetentionDrop', () => {
@@ -126,9 +188,13 @@ describeDb('analytics-runner (mock mode)', () => {
     await truncateAnalytics(db)
     forgetRunRows()
     await db.delete(publishRecords)
+    // Only the first channel is connected unless a test says otherwise.
+    await db.delete(youtubeConnections)
+    await connect(FIRST_CHANNEL_ID, 'UC-first')
 
     await db.insert(publishRecords).values([
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'master',
         targetId: FIXTURE_PROJECT_ID,
         youtubeVideoId: LIVE_VIDEO,
@@ -136,6 +202,7 @@ describeDb('analytics-runner (mock mode)', () => {
         publishAt: new Date('2026-08-20T15:00:00Z'),
       },
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'short',
         targetId: '01HQ00000000000000000000S1',
         youtubeVideoId: SCHEDULED_VIDEO,
@@ -144,6 +211,7 @@ describeDb('analytics-runner (mock mode)', () => {
         publishAt: new Date('2026-08-21T09:00:00Z'),
       },
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'short',
         targetId: '01HQ00000000000000000000S2',
         status: 'draft',
@@ -162,7 +230,10 @@ describeDb('analytics-runner (mock mode)', () => {
     async () => {
       const { result } = await engine.execute({ events: refreshEvent() })
 
-      expect(result).toMatchObject({ outcome: 'ran', reconciled: 1 })
+      expect(result).toMatchObject({
+        outcome: 'ran',
+        channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ran', reconciled: 1 }],
+      })
 
       const flipped = await getPublishRecord(db, 'short', '01HQ00000000000000000000S1')
       expect(flipped?.status).toBe('live')
@@ -195,7 +266,7 @@ describeDb('analytics-runner (mock mode)', () => {
       const midnight = new Date(
         Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
       )
-      const rows = await snapshotsSince(db, midnight)
+      const rows = await snapshotsSince(db, FIRST_CHANNEL_ID, midnight)
       expect(rows.filter((row) => row.videoId === LIVE_VIDEO)).toHaveLength(1)
     },
   )
@@ -209,7 +280,7 @@ describeDb('analytics-runner (mock mode)', () => {
       vi.setSystemTime(new Date('2026-08-31T06:00:05Z')) // a Monday
 
       const { result } = await engine.execute({ events: refreshEvent() })
-      expect(result).toMatchObject({ digestSent: true })
+      expect(result).toMatchObject({ channels: [{ digestSent: true }] })
 
       const digest = notify.mock.calls
         .map(([notification]) => notification as { kind: string; body: string })
@@ -222,7 +293,7 @@ describeDb('analytics-runner (mock mode)', () => {
       vi.setSystemTime(new Date('2026-09-01T06:00:05Z'))
       engine = new InngestTestEngine({ function: analyticsRunner })
       const second = await engine.execute({ events: refreshEvent() })
-      expect(second.result).toMatchObject({ digestSent: false })
+      expect(second.result).toMatchObject({ channels: [{ digestSent: false }] })
       expect(
         notify.mock.calls.some(
           ([notification]) => (notification as { kind: string }).kind === 'weekly-digest',
@@ -230,4 +301,225 @@ describeDb('analytics-runner (mock mode)', () => {
       ).toBe(false)
     },
   )
+
+  describe('across channels', () => {
+    function liveMode(): void {
+      vi.stubEnv('MOCK_PROVIDERS', '0')
+      // A Tuesday: no digest unless a test asks for one.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-09-01T06:00:05Z'))
+      google.refreshAccessToken.mockResolvedValue({ accessToken: 'ya29.fresh' })
+      google.pingChannel.mockResolvedValue({ ok: true, channelId: 'UC-first' })
+      analytics.fetchPrivacyStatuses.mockResolvedValue(new Map())
+      analytics.fetchVideoAnalytics.mockImplementation((_token: string, videoId: string) =>
+        Promise.resolve(mockVideoAnalytics(videoId)),
+      )
+    }
+
+    it(
+      'with two channels and one connected: one token, one digest, no failure, the other untouched',
+      { timeout: 60_000 },
+      async () => {
+        const second = await secondChannel()
+        vi.setSystemTime(new Date('2026-08-31T06:00:05Z')) // a Monday
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        // Mock mode on a Monday: the connected channel's digest, nobody else's.
+        expect(result).toMatchObject({
+          outcome: 'ran',
+          channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ran', digestSent: true }],
+        })
+        const digests = notify.mock.calls.filter(
+          ([notification]) => (notification as { kind: string }).kind === 'weekly-digest',
+        )
+        expect(digests).toHaveLength(1)
+        expect(await channelYoutubeConnection(db, second)).toBeUndefined()
+
+        // Live mode: exactly one token is minted, for the connected channel.
+        vi.unstubAllEnvs()
+        liveMode()
+        engine = new InngestTestEngine({ function: analyticsRunner })
+        const live = await engine.execute({ events: refreshEvent() })
+        expect(live.result).toMatchObject({ channels: [{ channelId: FIRST_CHANNEL_ID }] })
+        expect(google.refreshAccessToken).toHaveBeenCalledTimes(1)
+        expect(google.refreshAccessToken).toHaveBeenCalledWith('1//refresh-UC-first')
+        expect(await channelYoutubeConnection(db, second)).toBeUndefined()
+      },
+    )
+
+    it(
+      'skips a connected channel that is archived, and leaves its connection alone',
+      { timeout: 60_000 },
+      async () => {
+        const second = await secondChannel()
+        await connect(second, 'UC-second')
+        await archiveChannel(db, second)
+        const before = await channelYoutubeConnection(db, second)
+
+        liveMode()
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect(result).toMatchObject({ channels: [{ channelId: FIRST_CHANNEL_ID }] })
+        expect((result as { channels: unknown[] }).channels).toHaveLength(1)
+        expect(google.refreshAccessToken).toHaveBeenCalledTimes(1)
+        expect(google.refreshAccessToken).not.toHaveBeenCalledWith('1//refresh-UC-second')
+        expect(await channelYoutubeConnection(db, second)).toEqual(before)
+      },
+    )
+
+    it('a refresh that names a channel runs only that channel', { timeout: 60_000 }, async () => {
+      const second = await secondChannel()
+      await connect(second, 'UC-second')
+      liveMode()
+      google.pingChannel.mockResolvedValue({ ok: true, channelId: 'UC-second' })
+
+      const { result } = await engine.execute({ events: refreshEvent({ channelId: second }) })
+
+      expect((result as { channels: { channelId: string }[] }).channels).toEqual([
+        expect.objectContaining({ channelId: second, outcome: 'ran' }),
+      ])
+      expect(google.refreshAccessToken).toHaveBeenCalledTimes(1)
+      expect(google.refreshAccessToken).toHaveBeenCalledWith('1//refresh-UC-second')
+    })
+
+    it(
+      'a dead token marks that channel and notifies with its href; the others still run',
+      { timeout: 60_000 },
+      async () => {
+        const second = await secondChannel()
+        await connect(second, 'UC-second')
+        liveMode()
+        google.refreshAccessToken.mockImplementation((token: string) =>
+          token === '1//refresh-UC-first'
+            ? Promise.reject(new YoutubeAuthError('invalid_grant'))
+            : Promise.resolve({ accessToken: 'ya29.second' }),
+        )
+        google.pingChannel.mockResolvedValue({ ok: true, channelId: 'UC-second' })
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        const outcomes = (result as { channels: { channelId: string; outcome: string }[] }).channels
+        expect(outcomes).toEqual([
+          { channelId: FIRST_CHANNEL_ID, outcome: 'needs-reconnect' },
+          expect.objectContaining({ channelId: second, outcome: 'ran' }),
+        ])
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('invalid')
+        expect((await channelYoutubeConnection(db, second))?.verifyStatus).toBe('ok')
+
+        const reconnect = notify.mock.calls
+          .map(([notification]) => notification as { kind: string; href: string })
+          .filter((notification) => notification.kind === 'reconnect-youtube')
+        expect(reconnect).toHaveLength(1)
+        expect(reconnect[0]!.href).toBe('/c/boom-busters/settings?tab=connections')
+      },
+    )
+
+    it(
+      'a connection stored invalid is pinged again and heals when the ping answers with its own id',
+      { timeout: 60_000 },
+      async () => {
+        // A transient failure (5xx, quota) marked it invalid yesterday.
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+        liveMode() // the ping answers ok with UC-first, the stored id
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect(result).toMatchObject({
+          channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ran', reconciled: 0, snapshots: 1 }],
+        })
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('ok')
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeDefined()
+        expect(
+          notify.mock.calls.some(
+            ([notification]) => (notification as { kind: string }).kind === 'reconnect-youtube',
+          ),
+        ).toBe(false)
+      },
+    )
+
+    it(
+      'a retriable ping failure leaves an ok connection ok, sends no notice and skips the channel',
+      { timeout: 60_000 },
+      async () => {
+        liveMode()
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
+        google.pingChannel.mockResolvedValue({ ok: false, error: 'Backend Error', retriable: true })
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect(result).toMatchObject({
+          channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ping-unavailable' }],
+        })
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('ok')
+        expect(
+          notify.mock.calls.some(
+            ([notification]) => (notification as { kind: string }).kind === 'reconnect-youtube',
+          ),
+        ).toBe(false)
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeUndefined()
+      },
+    )
+
+    it(
+      'an auth failure on the ping (401) still marks the connection invalid',
+      { timeout: 60_000 },
+      async () => {
+        liveMode()
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
+        google.pingChannel.mockResolvedValue({ ok: false, error: 'Invalid Credentials' })
+
+        await engine.execute({ events: refreshEvent() })
+
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('invalid')
+      },
+    )
+
+    it(
+      'a ping naming another YouTube channel marks it invalid, says so once, and does no work for it',
+      { timeout: 60_000 },
+      async () => {
+        const second = await secondChannel()
+        await connect(second, 'UC-second')
+        liveMode()
+        google.refreshAccessToken.mockImplementation((token: string) =>
+          Promise.resolve({
+            accessToken: token === '1//refresh-UC-first' ? 'ya29.first' : 'ya29.second',
+          }),
+        )
+        // The first channel's grant now answers for a different YouTube channel.
+        google.pingChannel.mockImplementation((accessToken: string) =>
+          Promise.resolve({
+            ok: true,
+            channelId: accessToken === 'ya29.first' ? 'UC-someone-else' : 'UC-second',
+          }),
+        )
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect((result as { channels: { channelId: string; outcome: string }[] }).channels).toEqual(
+          [
+            { channelId: FIRST_CHANNEL_ID, outcome: 'needs-reconnect' },
+            expect.objectContaining({ channelId: second, outcome: 'ran' }),
+          ],
+        )
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('invalid')
+        expect((await channelYoutubeConnection(db, second))?.verifyStatus).toBe('ok')
+
+        const reconnect = notify.mock.calls
+          .map(([notification]) => notification as { kind: string; href: string })
+          .filter((notification) => notification.kind === 'reconnect-youtube')
+        expect(reconnect).toHaveLength(1)
+        expect(reconnect[0]!.href).toBe('/c/boom-busters/settings?tab=connections')
+
+        // No reconcile or snapshot work was done with the wrong account's token.
+        for (const call of [
+          ...analytics.fetchPrivacyStatuses.mock.calls,
+          ...analytics.fetchVideoAnalytics.mock.calls,
+        ]) {
+          expect(call[0]).not.toBe('ya29.first')
+        }
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeUndefined()
+      },
+    )
+  })
 })

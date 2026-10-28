@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { PUBLISH_PROJECT_TITLE } from '../global-setup'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 /**
  * The publish flow — the fifth gate (build spec sections 11.3 and 13),
@@ -15,7 +15,7 @@ import { expectHitTargets, signIn } from './fixtures'
  */
 
 async function openProject(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   await expect(async () => {
     await page
       .getByRole('listitem')

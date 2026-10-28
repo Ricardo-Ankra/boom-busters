@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { FRESH_PREVIEW_TITLE } from '../global-setup'
-import { signIn } from './fixtures'
+import { channelPath, signIn } from './fixtures'
 
 /**
  * Two guards on how the server bundles things (decision 295). The e2e server
@@ -21,7 +21,7 @@ test.describe('server bundling (decision 295)', () => {
     page,
   }) => {
     await signIn(page)
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
     await page
       .getByRole('listitem')
       .filter({ hasText: FRESH_PREVIEW_TITLE })

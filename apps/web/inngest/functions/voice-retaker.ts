@@ -1,7 +1,7 @@
 import {
   claimTake,
   mockVoiceTakeKey,
-  getSettings,
+  channelForProject,
   getVoiceTake,
   latestScriptParagraphSources,
   setTakeStatus,
@@ -94,7 +94,7 @@ export const voiceRetaker = inngest.createFunction(
       }
       const text = unit.text
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
 
       // Before the claim, so a retake with nowhere to go does not burn a take
       // number. See `takeStorage`.
@@ -149,11 +149,14 @@ export const voiceRetaker = inngest.createFunction(
       }
 
       try {
-        const narration = await synthesise({
-          text,
-          idempotencyKey: `${idempotencyKey}#${claimed.take.takeNumber}`,
-          projectId,
-        })
+        const narration = await synthesise(
+          {
+            text,
+            idempotencyKey: `${idempotencyKey}#${claimed.take.takeNumber}`,
+            projectId,
+          },
+          settings,
+        )
 
         const key =
           takeStorage() === 'r2'

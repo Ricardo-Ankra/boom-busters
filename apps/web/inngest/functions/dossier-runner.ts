@@ -1,4 +1,10 @@
-import { getCase, getProject, saveDossier, setProjectStage } from '@boom-busters/db'
+import {
+  channelForProject,
+  getCase,
+  getProject,
+  saveDossier,
+  setProjectStage,
+} from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
@@ -20,6 +26,7 @@ import {
 import { awaitDossierApproval } from '../lib/dossier-approval'
 import { nameSubjectIfMissing } from '../lib/name-subject'
 import { gatherCorpus } from '../lib/dossier-gather'
+import { requireCompleteBible } from '../lib/channel'
 import { inngestSteps } from '../lib/steps'
 import {
   EMPTY_CORPUS_MESSAGE,
@@ -97,6 +104,10 @@ export const dossierRunner = inngest.createFunction(
     const loaded = await step.run('load-case', async () => {
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
+
+      // Every later stage follows a dossier, so this one stops a blank channel.
+      // The channel is read here, in the step, never from an earlier step's output.
+      requireCompleteBible(await channelForProject(db, projectId))
 
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)

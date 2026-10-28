@@ -1,6 +1,7 @@
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { getChannelSettings } from './channels'
 import { createDb, type Database } from './client'
 import { decryptSecret } from './crypto'
 import {
@@ -12,17 +13,16 @@ import {
 } from './fixtures'
 import {
   countMusicBeds,
-  getSettings,
   hasCredential,
   importProviderEnvSeeds,
   listCredentials,
   setCredential,
-  updateSettings,
 } from './queries'
 import { seed } from './seed'
 import {
   assets,
   cases,
+  channels,
   claimSupports,
   claims,
   dossierDocuments,
@@ -30,7 +30,7 @@ import {
   projects,
   providerCredentials,
   researchDocuments,
-  settings,
+  workspace,
 } from './schema'
 import { requireTestDatabase } from './test-database'
 
@@ -38,7 +38,7 @@ const DATABASE_URL = requireTestDatabase()
 const KEY = Buffer.alloc(32, 3).toString('base64')
 
 /**
- * These exercise real SQL: the singleton settings row, the seed's
+ * These exercise real SQL: the first channel the seed creates, the seed's
  * idempotency, and the credential encryption round-trip through Postgres.
  * They skip rather than fail when no database is configured, so `pnpm test`
  * still works on a fresh clone; CI always sets DATABASE_URL, so they always
@@ -57,9 +57,10 @@ describeDb('database integration', () => {
     // `assets` is here because the music-bed test asserts over it: an E2E run
     // uploads beds through the Settings UI and leaves them (found 2026-08-19,
     // when this suite first ran after one), so without the truncate this
-    // suite's result depends on which suite ran before it.
+    // suite's result depends on which suite ran before it. `channels` is
+    // here so the seed's first channel starts from defaults.
     await db.execute(
-      sql`TRUNCATE TABLE ${settings}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims}, ${assets}, ${researchDocuments} RESTART IDENTITY CASCADE`,
+      sql`TRUNCATE TABLE ${channels}, ${workspace}, ${providerCredentials}, ${cases}, ${projects}, ${dossiers}, ${claims}, ${assets}, ${researchDocuments} RESTART IDENTITY CASCADE`,
     )
   })
 
@@ -67,37 +68,12 @@ describeDb('database integration', () => {
     await connection.sql.end({ timeout: 5 })
   })
 
-  describe('getSettings', () => {
-    it('creates the singleton row from defaults on first read', async () => {
-      expect(await getSettings(db)).toEqual(DEFAULT_SETTINGS)
+  describe('getChannelSettings', () => {
+    it("reads the seeded first channel's own settings", async () => {
+      await seed(db)
 
-      const rows = await db.select().from(settings)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]?.id).toBe('singleton')
-    })
-
-    it('never creates a second row', async () => {
-      await getSettings(db)
-      await getSettings(db)
-      expect(await db.select().from(settings)).toHaveLength(1)
-    })
-  })
-
-  describe('updateSettings', () => {
-    it('persists a patch and leaves untouched sections alone', async () => {
-      await updateSettings(db, { budgets: { monthlyCeilingUsd: 42 } })
-      const stored = await getSettings(db)
-
-      expect(stored.budgets.monthlyCeilingUsd).toBe(42)
-      expect(stored.modelRouting).toEqual(DEFAULT_SETTINGS.modelRouting)
-
-      await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
-      expect((await getSettings(db)).budgets.monthlyCeilingUsd).toBe(100)
-    })
-
-    it('rejects a patch that would store an invalid row', async () => {
-      await expect(updateSettings(db, { render: { concurrency: 99 } })).rejects.toThrow()
-      expect((await getSettings(db)).render.concurrency).toBe(DEFAULT_SETTINGS.render.concurrency)
+      expect(await getChannelSettings(db, FIRST_CHANNEL_ID)).toEqual(DEFAULT_SETTINGS)
+      expect(await db.select().from(channels)).toHaveLength(1)
     })
   })
 

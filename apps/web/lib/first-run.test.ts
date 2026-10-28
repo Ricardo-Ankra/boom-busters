@@ -1,4 +1,9 @@
-import { DEFAULT_SETTINGS, type Settings } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_BIBLE,
+  type Settings,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { actionableSetup, buildChecklist, pipelineBlockers, upcomingSetup } from './first-run'
 
@@ -9,18 +14,41 @@ function settingsWith(overrides: (settings: Settings) => void): Settings {
 }
 
 const freshInstall = {
+  slug: 'psychology',
   settings: DEFAULT_SETTINGS,
+  bible: EMPTY_BIBLE,
   youtubeConnected: false,
   musicBedCount: 0,
   caseCount: 0,
 }
 
 describe('buildChecklist', () => {
+  it('leads with the channel bible, done only when it is complete', () => {
+    const [first] = buildChecklist(freshInstall)
+    expect(first).toMatchObject({
+      id: 'bible',
+      label: 'Write the channel bible',
+      done: false,
+      blocksPipeline: true,
+      href: '/c/psychology/settings?tab=channel',
+    })
+
+    const complete = buildChecklist({ ...freshInstall, bible: FIRST_CHANNEL_BIBLE })[0]
+    expect(complete?.done).toBe(true)
+    expect(
+      buildChecklist({
+        ...freshInstall,
+        bible: { ...FIRST_CHANNEL_BIBLE, audience: '  ' },
+      })[0]?.done,
+    ).toBe(false)
+  })
+
   it('lists the setup items a human can act on, actionable first', () => {
     // Brand Kit is gone: its done-predicate (three chart colours) was
     // satisfied by the schema's own min(3), so it ticked itself on a fresh
     // install and was permanent green noise.
     expect(buildChecklist(freshInstall).map((item) => item.id)).toEqual([
+      'bible',
       'voice',
       'cases',
       'music',
@@ -35,7 +63,7 @@ describe('buildChecklist', () => {
    */
   it('blocks the pipeline only on what a run before M6 actually needs', () => {
     const blockers = pipelineBlockers(buildChecklist(freshInstall)).map((item) => item.id)
-    expect(blockers).toEqual(['voice'])
+    expect(blockers).toEqual(['bible', 'voice'])
   })
 
   it('does not block the pipeline on YouTube — publishing is the last step', () => {
@@ -47,7 +75,12 @@ describe('buildChecklist', () => {
     // Music moved from coming-later to actionable when its library arrived
     // with M6.4; YouTube stays upcoming until M7 delivers OAuth.
     const items = buildChecklist(freshInstall)
-    expect(actionableSetup(items).map((item) => item.id)).toEqual(['voice', 'cases', 'music'])
+    expect(actionableSetup(items).map((item) => item.id)).toEqual([
+      'bible',
+      'voice',
+      'cases',
+      'music',
+    ])
     expect(upcomingSetup(items).map((item) => item.id)).toEqual(['youtube'])
   })
 
@@ -99,6 +132,8 @@ describe('buildChecklist', () => {
 
   it('completes once every item is satisfied', () => {
     const items = buildChecklist({
+      slug: 'psychology',
+      bible: FIRST_CHANNEL_BIBLE,
       settings: settingsWith((s) => {
         s.tts.voiceId = 'v-narrator'
       }),
@@ -131,7 +166,10 @@ describe('buildChecklist', () => {
 
   it('gives every item a deep link and a button label', () => {
     for (const item of buildChecklist(freshInstall)) {
-      expect(item.href, item.id).toMatch(/^\//)
+      // The music library is the workspace's, so its link leaves the channel.
+      expect(item.href, item.id).toMatch(
+        item.id === 'music' ? /^\/settings\?tab=music$/ : /^\/c\/psychology(\/|$)/,
+      )
       expect(item.buttonLabel.length, item.id).toBeGreaterThan(0)
     }
   })

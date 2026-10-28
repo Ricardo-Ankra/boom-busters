@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { VISUAL_PLAN_TITLE } from '../global-setup'
-import { signIn } from './fixtures'
+import { channelPath, signIn } from './fixtures'
 
 /**
  * The Cast card (decision 253) on a project past the dossier: a person is
@@ -13,7 +13,7 @@ import { signIn } from './fixtures'
 const NAME = `Emad Mostaque ${Date.now()}`
 
 async function openProject(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   await expect(async () => {
     await page
       .getByRole('listitem')

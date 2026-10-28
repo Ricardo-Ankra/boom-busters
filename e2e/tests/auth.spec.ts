@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { signIn } from './fixtures'
+import { channelPath, signIn } from './fixtures'
 
 test.describe('authentication', () => {
   test('an unauthenticated visitor is redirected to sign in', async ({ page }) => {
@@ -9,7 +9,10 @@ test.describe('authentication', () => {
   })
 
   test('every console route is protected, not just the dashboard', async ({ page }) => {
-    for (const path of ['/projects', '/cases', '/calendar', '/costs', '/settings']) {
+    for (const path of ['/projects', '/cases', '/calendar', '/costs', '/settings'].flatMap((p) => [
+      p,
+      channelPath(p),
+    ])) {
       await page.goto(path)
       await expect(page, `${path} should be protected`).toHaveURL(/\/signin/)
     }
@@ -25,11 +28,11 @@ test.describe('authentication', () => {
   })
 
   test('the intended destination survives the sign-in round trip', async ({ page }) => {
-    await page.goto('/settings')
-    await expect(page).toHaveURL(/callbackUrl=%2Fsettings/)
+    await page.goto(channelPath('/settings'))
+    await expect(page).toHaveURL(/callbackUrl=%2Fc%2Fboom-busters%2Fsettings/)
 
     await page.getByRole('button', { name: 'Sign in as owner (mock mode)' }).click()
-    await expect(page).toHaveURL(/\/settings/)
+    await expect(page).toHaveURL(/\/c\/boom-busters\/settings/)
   })
 
   test('signing in reaches the console, and signing out returns to sign in', async ({ page }) => {
@@ -47,6 +50,6 @@ test.describe('authentication', () => {
   test('a signed-in visitor is bounced off the sign-in page', async ({ page }) => {
     await signIn(page)
     await page.goto('/signin')
-    await expect(page).toHaveURL(/^[^?]*\/$/)
+    await expect(page).toHaveURL(/\/c\/boom-busters$/)
   })
 })

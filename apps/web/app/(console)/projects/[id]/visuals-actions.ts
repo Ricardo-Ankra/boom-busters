@@ -7,7 +7,7 @@ import {
   getClaim,
   getProject,
   getProjectSet,
-  getSettings,
+  channelForProject,
   getShotSlot,
   getSocialPost,
   hasLiveRun,
@@ -23,6 +23,7 @@ import {
   setClaimSourceUrl,
   setSocialPostManual,
   retypeShotSlot,
+  getWorkspace,
   setProjectDirection,
   setSlotJob,
   setSlotResolution,
@@ -138,7 +139,7 @@ function badIds(...ids: string[]): ActionResult | null {
 
 function refresh(projectId: string): void {
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
 }
 
 /**
@@ -361,7 +362,11 @@ export async function setSlotRouteAction(
 
   if (parsedRoute) {
     try {
-      const catalogue = await stillCatalogue(await getSettings(db))
+      const { settings } = await channelForProject(db, projectId)
+      const catalogue = await stillCatalogue({
+        routing: settings.modelRouting,
+        prices: (await getWorkspace(db)).settings.modelPrices,
+      })
       imageGenModel(catalogue[parsedRoute.provider], parsedRoute.model)
     } catch (error) {
       return {
@@ -896,7 +901,8 @@ export async function attachGraphicLogosAction(
   const scene = parsed.data.scene
   if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
-  const logos = (await listLogos(db)).map((row) => ({
+  const { channelId } = await channelForProject(db, projectId)
+  const logos = (await listLogos(db, channelId)).map((row) => ({
     id: row.id,
     title: row.title ?? '',
     width: row.width,

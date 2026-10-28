@@ -4,7 +4,7 @@ import {
   editChapter,
   flagTake,
   getChapter,
-  getSettings,
+  channelForProject,
   getVoiceTake,
   unflagTake,
 } from '@boom-busters/db'
@@ -58,7 +58,7 @@ async function requireOwner(): Promise<string> {
 
 function refresh(projectId: string): void {
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
 }
 
 export async function flagVoiceTake(takeId: string, note: string): Promise<ActionResult> {
@@ -183,7 +183,7 @@ export async function retakeVoiceTake(takeId: string): Promise<ActionResult> {
   const take = await getVoiceTake(db, takeId)
   if (!take) return { ok: false, error: 'That take no longer exists.' }
 
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, take.projectId)
 
   // The same staleness the review screen shows: does the audio still match
   // what this unit would buy today? Only the note depends on the answer.

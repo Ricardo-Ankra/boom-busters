@@ -1,5 +1,7 @@
-import type { Settings } from '@boom-busters/schemas'
+import { isBibleComplete } from '@boom-busters/schemas'
+import type { ChannelBible, Settings } from '@boom-busters/schemas'
 import type { Route } from 'next'
+import { channelHref } from './channel-href'
 
 /**
  * The first-run setup checklist (build spec section 11.3), reduced to items a
@@ -22,7 +24,7 @@ import type { Route } from 'next'
  */
 
 export interface ChecklistItem {
-  id: 'youtube' | 'voice' | 'music' | 'cases'
+  id: 'bible' | 'youtube' | 'voice' | 'music' | 'cases'
   label: string
   detail: string
   /** Typed against the app's real routes, so a rename breaks the build. */
@@ -36,16 +38,33 @@ export interface ChecklistItem {
 }
 
 export interface FirstRunInput {
+  /** The channel whose setup this is; every button links into it. */
+  slug: string
   settings: Settings
+  /** The channel's bible: a channel cannot start work without a complete one. */
+  bible: ChannelBible
   youtubeConnected: boolean
   musicBedCount: number
   caseCount: number
 }
 
 export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
-  const { settings, youtubeConnected, musicBedCount, caseCount } = input
+  const { slug, settings, bible, youtubeConnected, musicBedCount, caseCount } = input
+
+  const bibleDone = isBibleComplete(bible)
 
   return [
+    {
+      id: 'bible',
+      label: 'Write the channel bible',
+      detail: bibleDone
+        ? 'Complete.'
+        : 'What the channel is about, who it is for and how it sounds. Cases and projects wait for it.',
+      href: channelHref(slug, '/settings', { tab: 'channel' }),
+      buttonLabel: bibleDone ? 'Review bible' : 'Write bible',
+      done: bibleDone,
+      blocksPipeline: true,
+    },
     {
       id: 'voice',
       label: 'Choose narration voice',
@@ -53,7 +72,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         settings.tts.voiceId.trim() === ''
           ? 'The voice is a brand asset: chosen once, by audition.'
           : `${settings.tts.provider} · ${settings.tts.voiceId}`,
-      href: '/settings?tab=voice',
+      href: channelHref(slug, '/settings', { tab: 'voice' }),
       buttonLabel: settings.tts.voiceId.trim() === '' ? 'Open audition' : 'Review voice',
       done: settings.tts.voiceId.trim() !== '',
       blocksPipeline: true,
@@ -65,7 +84,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         caseCount === 0
           ? 'The backlog the pipeline draws from.'
           : `${caseCount} case${caseCount === 1 ? '' : 's'} in the library.`,
-      href: '/cases',
+      href: channelHref(slug, '/cases'),
       buttonLabel: caseCount === 0 ? 'Add cases' : 'Open Case Library',
       done: caseCount > 0,
       blocksPipeline: false,
@@ -77,7 +96,8 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         musicBedCount === 0
           ? 'Download licensed beds (the YouTube Audio Library is free) and upload them.'
           : `${musicBedCount} of 3 uploaded.`,
-      href: '/settings?tab=music',
+      // The music library is the workspace's, shared by every channel.
+      href: '/settings?tab=music' as Route,
       buttonLabel: 'Open music library',
       done: musicBedCount >= 3,
       // Assembly is what needs beds; nothing before it does. The library
@@ -91,7 +111,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       detail: youtubeConnected
         ? 'Connected.'
         : 'Needed only to publish. Everything up to the publish gate works without it.',
-      href: '/settings?tab=connections',
+      href: channelHref(slug, '/settings', { tab: 'connections' }),
       buttonLabel: youtubeConnected ? 'Manage connection' : 'Connect',
       done: youtubeConnected,
       blocksPipeline: false,

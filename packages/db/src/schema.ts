@@ -5,7 +5,14 @@ import {
   NOTICE_SUBJECTS,
   newId,
 } from '@boom-busters/schemas'
-import type { GroundedResearch, Series, Settings, WordTiming } from '@boom-busters/schemas'
+import type {
+  ChannelBible,
+  GroundedResearch,
+  Series,
+  Settings,
+  WordTiming,
+  WorkspaceSettings,
+} from '@boom-busters/schemas'
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
@@ -212,20 +219,76 @@ export const runStatusEnum = pgEnum('run_status', [
 ])
 
 // ---------------------------------------------------------------------------
-// Settings (single row) and credentials
+// Channels, the workspace and credentials
 // ---------------------------------------------------------------------------
 
 /**
- * Exactly one row, guarded by the `singleton` check. Behavioural
- * configuration lives here rather than in env so a model, budget or brand
- * change never needs a redeploy (spec section 4).
+ * One YouTube channel the console produces for. Behavioural configuration
+ * lives in `settings` here rather than in env, so a model or brand change
+ * never needs a redeploy (spec section 4). Cases, projects, publish
+ * records and analytics belong to exactly one; the slug is the URL segment
+ * and is never reused, archived channels included. Archive, never delete:
+ * every foreign key to this table is `on delete restrict`.
  */
-export const settings = pgTable('settings', {
-  id: text('id').primaryKey().default('singleton').$type<'singleton'>(),
-  value: jsonb('value').notNull().$type<Settings>(),
+export const channels = pgTable('channels', {
+  id: id(),
+  slug: text('slug').notNull().unique('channels_slug_key'),
+  name: text('name').notNull(),
+  handle: text('handle'),
+  bible: jsonb('bible').notNull().$type<ChannelBible>(),
+  /** The channel's `Settings`: voice, brand kit, model routing, render, publish. */
+  settings: jsonb('settings').notNull().$type<Settings>(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
+
+/**
+ * Exactly one row: what belongs to the owner rather than to a channel, the
+ * model price overrides and the monthly budget, plus the channel the console
+ * opens on.
+ */
+export const workspace = pgTable('workspace', {
+  id: text('id').primaryKey().default('singleton').$type<'singleton'>(),
+  value: jsonb('value').notNull().$type<WorkspaceSettings>(),
+  defaultChannelId: text('default_channel_id').references(() => channels.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+})
+
+/**
+ * Each channel's YouTube OAuth grant. One per channel, keyed by it, because
+ * every channel uploads to its own YouTube account. `youtubeChannelId` is
+ * what `channels.list mine=true` answered at connect time; a later verify
+ * that answers a different id marks the connection invalid.
+ */
+export const youtubeConnections = pgTable(
+  'youtube_connections',
+  {
+    channelId: text('channel_id')
+      .primaryKey()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    /** AES-256-GCM, keyed by SECRETS_ENCRYPTION_KEY. Never leaves the server. */
+    encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
+    keyHint: text('key_hint').notNull(),
+    youtubeChannelId: text('youtube_channel_id'),
+    youtubeChannelTitle: text('youtube_channel_title'),
+    verifyStatus: verifyStatusEnum('verify_status').notNull().default('unchecked'),
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  // One YouTube account can back only one console channel, or an upload could
+  // land on the wrong account without anyone noticing.
+  (t) => [
+    uniqueIndex('youtube_connections_youtube_channel_id_key')
+      .on(t.youtubeChannelId)
+      .where(sql`${t.youtubeChannelId} is not null`),
+  ],
+)
+
+/** The owning channel, for the tables that belong to one. */
+const channelId = () => text('channel_id').references(() => channels.id, { onDelete: 'restrict' })
 
 export const providerCredentials = pgTable(
   'provider_credentials',
@@ -297,6 +360,7 @@ export const cases = pgTable(
   'cases',
   {
     id: id(),
+    channelId: channelId().notNull(),
     title: text('title').notNull(),
     category: caseCategoryEnum('category').notNull(),
     angle: text('angle'),
@@ -319,13 +383,19 @@ export const cases = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index('cases_status_idx').on(t.status), index('cases_priority_idx').on(t.priorityScore)],
+  (t) => [
+    index('cases_status_idx').on(t.status),
+    index('cases_priority_idx').on(t.priorityScore),
+    index('cases_channel_idx').on(t.channelId),
+  ],
 )
 
 export const projects = pgTable(
   'projects',
   {
     id: id(),
+    /** Always the case's channel. */
+    channelId: channelId().notNull(),
     caseId: text('case_id')
       .notNull()
       .references(() => cases.id, { onDelete: 'restrict' }),
@@ -361,6 +431,7 @@ export const projects = pgTable(
   (t) => [
     index('projects_case_idx').on(t.caseId),
     index('projects_stage_idx').on(t.stage, t.stageStatus),
+    index('projects_channel_idx').on(t.channelId),
   ],
 )
 
@@ -700,11 +771,20 @@ export const assets = pgTable(
   'assets',
   {
     id: id(),
+    /**
+     * Set for a logo, which belongs to one channel's library; null for
+     * music, stock and stills, which every channel shares.
+     */
+    channelId: channelId(),
     kind: assetKindEnum('kind').notNull(),
     r2Key: text('r2_key').notNull(),
     sourceUrl: text('source_url'),
     licence: text('licence').notNull(),
-    /** Dedupe key: the same stock clip fetched twice is stored once. */
+    /**
+     * Dedupe key: the same stock clip fetched twice is stored once. Unique
+     * among the shared rows, and per channel among a channel's own: the same
+     * logo uploaded to two channels is two rows over one R2 object.
+     */
     contentHash: text('content_hash').notNull(),
     width: integer('width'),
     height: integer('height'),
@@ -721,8 +801,14 @@ export const assets = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex('assets_content_hash_key').on(t.contentHash),
+    uniqueIndex('assets_content_hash_shared_key')
+      .on(t.contentHash)
+      .where(sql`channel_id is null`),
+    uniqueIndex('assets_content_hash_channel_key')
+      .on(t.contentHash, t.channelId)
+      .where(sql`channel_id is not null`),
     index('assets_kind_idx').on(t.kind),
+    index('assets_channel_idx').on(t.channelId),
   ],
 )
 
@@ -1048,6 +1134,7 @@ export const publishRecords = pgTable(
   'publish_records',
   {
     id: id(),
+    channelId: channelId().notNull(),
     targetType: publishTargetEnum('target_type').notNull(),
     /** projectId for a master, shortId for a Short. */
     targetId: text('target_id').notNull(),
@@ -1085,6 +1172,7 @@ export const publishRecords = pgTable(
      * UPDATE ... WHERE status='draft' against this row.
      */
     unique('publish_records_target_key').on(t.targetType, t.targetId),
+    index('publish_records_channel_idx').on(t.channelId),
   ],
 )
 
@@ -1098,6 +1186,8 @@ export const costLedger = pgTable(
     id: id(),
     provider: providerEnum('provider').notNull(),
     operation: text('operation').notNull(),
+    /** Null only for a spend that belongs to the workspace, not a channel. */
+    channelId: channelId(),
     projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
     estimatedUsd: usd('estimated_usd').notNull().default('0'),
     actualUsd: usd('actual_usd'),
@@ -1112,6 +1202,7 @@ export const costLedger = pgTable(
   (t) => [
     index('cost_ledger_provider_month_idx').on(t.provider, t.occurredAt),
     index('cost_ledger_project_idx').on(t.projectId),
+    index('cost_ledger_channel_idx').on(t.channelId),
   ],
 )
 
@@ -1121,6 +1212,8 @@ export const runs = pgTable(
   'runs',
   {
     id: id(),
+    /** Null for a cron run that belongs to no channel. */
+    channelId: channelId(),
     projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     inngestRunId: text('inngest_run_id'),
     functionName: text('function_name').notNull(),
@@ -1140,6 +1233,7 @@ export const runs = pgTable(
      * concurrent step hooks race and the drawer shows the same run twice.
      */
     uniqueIndex('runs_inngest_run_id_key').on(t.inngestRunId),
+    index('runs_channel_idx').on(t.channelId),
   ],
 )
 
@@ -1202,6 +1296,7 @@ export const analyticsSnapshots = pgTable(
   'analytics_snapshots',
   {
     id: id(),
+    channelId: channelId().notNull(),
     videoId: text('video_id').notNull(),
     date: timestamp('date', { withTimezone: true }).notNull(),
     retentionCurve: jsonb('retention_curve').$type<{ pct: number; ratio: number }[]>(),
@@ -1213,7 +1308,10 @@ export const analyticsSnapshots = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('analytics_video_date_key').on(t.videoId, t.date)],
+  (t) => [
+    uniqueIndex('analytics_video_date_key').on(t.videoId, t.date),
+    index('analytics_snapshots_channel_idx').on(t.channelId),
+  ],
 )
 
 // ---------------------------------------------------------------------------
@@ -1362,7 +1460,9 @@ export const socialPosts = pgTable('social_posts', {
 // Inferred row types
 // ---------------------------------------------------------------------------
 
-export type SettingsRow = typeof settings.$inferSelect
+export type ChannelRow = typeof channels.$inferSelect
+export type WorkspaceRow = typeof workspace.$inferSelect
+export type YoutubeConnectionRow = typeof youtubeConnections.$inferSelect
 export type CaseRow = typeof cases.$inferSelect
 export type NewCase = typeof cases.$inferInsert
 export type ProjectRow = typeof projects.$inferSelect

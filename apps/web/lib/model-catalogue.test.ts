@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, DEFAULT_WORKSPACE_SETTINGS } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const db = vi.hoisted(() => ({
@@ -92,6 +92,12 @@ describe('refreshModelCatalogue (decision 288)', () => {
   })
 })
 
+/** What a catalogue is built from: the default routing and an empty price table. */
+const INPUTS = {
+  routing: DEFAULT_SETTINGS.modelRouting,
+  prices: DEFAULT_WORKSPACE_SETTINGS.modelPrices,
+}
+
 describe('stillCatalogue', () => {
   it('builds each image adapter over the catalogue plus choosable cached models', async () => {
     db.listCatalogueModels.mockResolvedValueOnce([
@@ -108,7 +114,7 @@ describe('stillCatalogue', () => {
         fetchedAt: new Date(),
       },
     ])
-    const catalogue = await stillCatalogue(DEFAULT_SETTINGS)
+    const catalogue = await stillCatalogue(INPUTS)
     expect(catalogue.fal.models.map((m) => m.id)).toContain('fal-ai/mock-flux')
     expect(catalogue.google.models.map((m) => m.id)).toContain('gemini-3-pro-image')
   })
@@ -118,7 +124,7 @@ describe('stillCatalogue with per-slot routes (decision 288 follow-up)', () => {
   it('keeps a slot route on a Gemini model the cache lost, labelled for the board', async () => {
     db.listCatalogueModels.mockResolvedValueOnce([])
     const route = { provider: 'google' as const, model: 'gemini-8-flash-image' }
-    const catalogue = await stillCatalogue(DEFAULT_SETTINGS, [route])
+    const catalogue = await stillCatalogue(INPUTS, [route])
 
     const model = catalogue.google.models.find((m) => m.id === 'gemini-8-flash-image')
     // Priced by its family; the label stays the id, so a licence line names it exactly.
@@ -132,7 +138,7 @@ describe('stillCatalogue with per-slot routes (decision 288 follow-up)', () => {
   })
 
   it('generates over the catalogue it is given, with no second read of the cache', async () => {
-    const catalogue = await stillCatalogue(DEFAULT_SETTINGS)
+    const catalogue = await stillCatalogue(INPUTS)
     db.listCatalogueModels.mockClear()
     const adapter = stillGenerator('google', catalogue)
     expect(db.listCatalogueModels).not.toHaveBeenCalled()
@@ -143,7 +149,7 @@ describe('stillCatalogue with per-slot routes (decision 288 follow-up)', () => {
 describe('loadModelOptions', () => {
   it('reports no-key status lines and cannot refresh with no keys', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '0')
-    const options = await loadModelOptions(DEFAULT_SETTINGS)
+    const options = await loadModelOptions({ prices: DEFAULT_WORKSPACE_SETTINGS.modelPrices })
     expect(options.status.anthropic.kind).toBe('no-key')
     expect(options.canRefresh).toBe(false)
   })

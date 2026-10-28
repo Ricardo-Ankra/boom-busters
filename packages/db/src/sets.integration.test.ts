@@ -1,4 +1,5 @@
 import { MAX_SET_PLATES, ValidationError } from '@boom-busters/schemas'
+import { ensureFirstChannel } from './channels'
 import type { SetPlate } from '@boom-busters/schemas'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -49,7 +50,11 @@ suite('project sets', () => {
   beforeEach(async () => {
     await deleteProjectsExcept(db, [])
     await truncateCases(db)
-    const kase = await createCase(db, { title: 'Wirecard', category: 'con' })
+    const kase = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Wirecard',
+      category: 'con',
+    })
     projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
   })
 
@@ -78,7 +83,11 @@ suite('project sets', () => {
 
   it('allows the same set name in a different project', async () => {
     await insertProjectSet(db, { projectId, name: 'The trading floor' })
-    const otherCase = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const otherCase = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Enron',
+      category: 'collapse',
+    })
     const otherProjectId = (
       await createProjectFromCase(db, { caseId: otherCase.id, title: 'Enron' })
     ).id

@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { analyticsSnapshots } from './schema'
 import type { AnalyticsSnapshotRow } from './schema'
@@ -14,6 +14,7 @@ import type { AnalyticsSnapshotRow } from './schema'
  */
 
 export interface AnalyticsSnapshotInput {
+  channelId: string
   videoId: string
   /** UTC midnight of the day the snapshot was taken for. */
   date: Date
@@ -36,6 +37,7 @@ export async function upsertAnalyticsSnapshot(
   input: AnalyticsSnapshotInput,
 ): Promise<void> {
   const values = {
+    channelId: input.channelId,
     videoId: input.videoId,
     date: input.date,
     retentionCurve: input.retentionCurve ?? null,
@@ -77,11 +79,15 @@ export async function latestSnapshotForVideo(
 }
 
 /** Snapshots on or after a moment, oldest first — the weekly digest's read. */
-export async function snapshotsSince(db: Database, since: Date): Promise<AnalyticsSnapshotRow[]> {
+export async function snapshotsSince(
+  db: Database,
+  channelId: string,
+  since: Date,
+): Promise<AnalyticsSnapshotRow[]> {
   return db
     .select()
     .from(analyticsSnapshots)
-    .where(gte(analyticsSnapshots.date, since))
+    .where(and(eq(analyticsSnapshots.channelId, channelId), gte(analyticsSnapshots.date, since)))
     .orderBy(analyticsSnapshots.videoId, analyticsSnapshots.date)
 }
 

@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getRendersByIds,
   latestScriptParagraphSources,
   latestTimeline,
@@ -328,7 +329,7 @@ export async function shortsModel(
 
   // Priced once per read, only when a teaser will show the studio at all.
   const stillEstimateUsd = rows.some((row) => row.kind === 'teaser')
-    ? await stillSlotEstimateUsd()
+    ? await stillSlotEstimateUsd((await channelForProject(db, projectId)).channelId)
     : 0
 
   // One query for every card's render (decision 237), not one per card.

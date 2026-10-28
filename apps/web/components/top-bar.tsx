@@ -1,6 +1,8 @@
 import type { ActiveRun, ActivityEntry } from '@boom-busters/db'
 import { ActivityDrawer } from '@/components/activity-drawer'
 import { Breadcrumb } from '@/components/breadcrumb'
+import { RouteChannelSwitcher } from '@/components/channel-switcher'
+import type { SwitcherEntry } from '@/components/channel-switcher'
 import { ThemeToggle } from '@/components/theme-provider'
 import { SignOutButton } from '@/components/sign-out-button'
 
@@ -17,7 +19,12 @@ export function TopBar({
   ceilingUsd,
   activeRuns,
   activity,
+  channels,
+  current,
 }: {
+  channels: SwitcherEntry[]
+  /** The slug of the channel being viewed. */
+  current: string
   monthSpendUsd: number
   /** `effectiveCeilingUsd` — the configured ceiling plus this month's overage. */
   ceilingUsd: number
@@ -28,8 +35,9 @@ export function TopBar({
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
       {/* min-w-0 + flex-1 so the trail truncates instead of painting under
           the controls at 390px (decision 244). */}
+      <RouteChannelSwitcher current={current} channels={channels} />
       <div className="min-w-0 flex-1">
-        <Breadcrumb />
+        <Breadcrumb slug={current} />
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-4">

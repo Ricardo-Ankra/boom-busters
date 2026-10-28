@@ -11,10 +11,11 @@ import {
   seed,
   setProjectDirection,
   updateProjectSet,
-  updateSettings,
+  updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { mockDirectorsBook, mockImageGen } from '@boom-busters/providers'
-import { DEFAULT_SET_SHEET_ROUTE } from '@boom-busters/schemas'
+import { DEFAULT_SET_SHEET_ROUTE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { splitContactSheet } from '@/lib/contact-sheet'
@@ -132,7 +133,7 @@ describeDb('set actions (mock mode)', () => {
     // reset here `generateSetPlateAction` can trip a budget gate purely
     // because of how much other tests already spent this run.
     await truncateLedger(db)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
     for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
       await removeSetAction(set.id)
     }
@@ -746,7 +747,7 @@ describeDb('set actions (mock mode)', () => {
       width: 10,
       height: 10,
     })
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux/dev' } },
     })
     try {
@@ -758,7 +759,9 @@ describeDb('set actions (mock mode)', () => {
         expect(candidate.id.startsWith('fal-mock-sheet-')).toBe(true)
       }
     } finally {
-      await updateSettings(db, { modelRouting: { setSheet: DEFAULT_SET_SHEET_ROUTE } })
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+        modelRouting: { setSheet: DEFAULT_SET_SHEET_ROUTE },
+      })
     }
   })
 

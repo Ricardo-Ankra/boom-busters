@@ -1,5 +1,6 @@
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import { cases, projects, scripts } from './schema'
@@ -22,6 +23,7 @@ suite('shorts bookkeeping', () => {
 
   beforeEach(async () => {
     await db.execute(dsql`truncate table ${cases} restart identity cascade`)
+    await ensureFirstChannel(db)
     await db.insert(cases).values(fixtureCase)
     await db.insert(projects).values(fixtureProject)
   })

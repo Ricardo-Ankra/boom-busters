@@ -1,5 +1,8 @@
+import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
 import { createDb } from './client'
+import { countCases } from './queries'
 import {
   createCase,
   createSuggestedCases,
@@ -29,12 +32,76 @@ suite('cases', () => {
     await sql.end({ timeout: 5 })
   })
 
+  let channelId = ''
+  let otherChannelId = ''
+
   beforeEach(async () => {
     await truncateCases(db)
+    channelId = (await ensureFirstChannel(db)).id
+    otherChannelId = (await ensureSecondChannel()).id
+  })
+
+  async function ensureSecondChannel() {
+    const existing = await getChannelBySlug(db, 'second-test')
+    if (existing) return existing
+    return createChannel(db, {
+      name: 'Second test channel',
+      handle: null,
+      slug: 'second-test',
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+  }
+
+  describe('two channels', () => {
+    it('listCases never returns the other channel case', async () => {
+      await createCase(db, { channelId, title: 'Alpha case', category: 'con' })
+      await createCase(db, { channelId: otherChannelId, title: 'Beta case', category: 'con' })
+
+      expect((await listCases(db, channelId)).map((row) => row.title)).toEqual(['Alpha case'])
+      expect((await listCases(db, otherChannelId)).map((row) => row.title)).toEqual(['Beta case'])
+    })
+
+    it('dedupes suggestions within a channel only', async () => {
+      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
+
+      const { created, skippedTitles } = await createSuggestedCases(db, otherChannelId, [
+        { title: 'Enron', category: 'collapse' },
+      ])
+
+      expect(created).toHaveLength(1)
+      expect(created[0]?.channelId).toBe(otherChannelId)
+      expect(skippedTitles).toEqual([])
+    })
+
+    it('existingCaseTitles and countCases are per channel', async () => {
+      await createCase(db, { channelId, title: 'Alpha case', category: 'con' })
+      await createCase(db, { channelId, title: 'Alpha two', category: 'con' })
+      await createCase(db, { channelId: otherChannelId, title: 'Beta case', category: 'con' })
+
+      expect(await existingCaseTitles(db, otherChannelId)).toEqual(['Beta case'])
+      expect(await countCases(db, channelId)).toBe(2)
+      expect(await countCases(db, otherChannelId)).toBe(1)
+    })
+
+    it('a project carries its case channel and listProjects excludes the other', async () => {
+      const mine = await createCase(db, { channelId, title: 'Alpha case', category: 'con' })
+      const theirs = await createCase(db, {
+        channelId: otherChannelId,
+        title: 'Beta case',
+        category: 'con',
+      })
+      const project = await createProjectFromCase(db, { caseId: theirs.id, title: 'Beta' })
+      await createProjectFromCase(db, { caseId: mine.id, title: 'Alpha' })
+
+      expect(project.channelId).toBe(otherChannelId)
+      expect((await listProjects(db, channelId)).map((row) => row.title)).toEqual(['Alpha'])
+      expect((await listProjects(db, otherChannelId)).map((row) => row.title)).toEqual(['Beta'])
+    })
   })
 
   it('creates a case as an idea by default', async () => {
-    const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
 
     expect(row.status).toBe('idea')
     expect(row.priorityScore).toBe(0)
@@ -42,7 +109,7 @@ suite('cases', () => {
   })
 
   it('reports how many projects came from a case', async () => {
-    const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
     await createProjectFromCase(db, { caseId: row.id, title: 'Enron' })
     await createProjectFromCase(db, { caseId: row.id, title: 'Enron, again' })
 
@@ -54,14 +121,14 @@ suite('cases', () => {
     // suite seeds its extra projects against the fixture case precisely because
     // that case is kept — so without this they survived every reset and piled
     // up one run at a time.
-    const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
     const keep = await createProjectFromCase(db, { caseId: row.id, title: 'The one to keep' })
     await createProjectFromCase(db, { caseId: row.id, title: 'Left over from last run' })
     await createProjectFromCase(db, { caseId: row.id, title: 'And the run before that' })
 
     expect(await deleteProjectsExcept(db, [keep.id])).toBe(2)
 
-    const remaining = await listProjects(db)
+    const remaining = await listProjects(db, channelId)
     expect(remaining.map((project) => project.title)).toEqual(['The one to keep'])
     // The case itself is untouched: this clears projects, not the library.
     expect(await getCase(db, row.id)).toBeDefined()
@@ -70,34 +137,36 @@ suite('cases', () => {
   it('counts zero projects without dropping the case from the list', async () => {
     // A left join done wrong makes case rows vanish the moment they have no
     // projects, which is every case in a fresh library.
-    await createCase(db, { title: 'Enron', category: 'collapse' })
+    await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
 
-    const [only] = await listCases(db)
+    const [only] = await listCases(db, channelId)
     expect(only?.projectCount).toBe(0)
   })
 
   describe('sorting', () => {
     beforeEach(async () => {
-      await createCase(db, { title: 'Beta', category: 'con', priorityScore: 50 })
-      await createCase(db, { title: 'Alpha', category: 'collapse', priorityScore: 50 })
-      await createCase(db, { title: 'Gamma', category: 'meltdown', priorityScore: 90 })
+      await createCase(db, { channelId, title: 'Beta', category: 'con', priorityScore: 50 })
+      await createCase(db, { channelId, title: 'Alpha', category: 'collapse', priorityScore: 50 })
+      await createCase(db, { channelId, title: 'Gamma', category: 'meltdown', priorityScore: 90 })
     })
 
     it('sorts by priority, breaking ties by title for a stable table', async () => {
-      const titles = (await listCases(db, { sort: 'priority' })).map((c) => c.title)
+      const titles = (await listCases(db, channelId, { sort: 'priority' })).map((c) => c.title)
       expect(titles).toEqual(['Gamma', 'Alpha', 'Beta'])
     })
 
     it('sorts by category', async () => {
-      const categories = (await listCases(db, { sort: 'category' })).map((c) => c.category)
+      const categories = (await listCases(db, channelId, { sort: 'category' })).map(
+        (c) => c.category,
+      )
       expect(categories).toEqual(['collapse', 'con', 'meltdown'])
     })
 
     it('filters by status', async () => {
-      const [first] = await listCases(db)
+      const [first] = await listCases(db, channelId)
       await setCaseStatus(db, first!.id, 'published')
 
-      const published = await listCases(db, { status: ['published'] })
+      const published = await listCases(db, channelId, { status: ['published'] })
       expect(published).toHaveLength(1)
       expect(published[0]?.title).toBe('Gamma')
     })
@@ -105,9 +174,9 @@ suite('cases', () => {
 
   describe('createSuggestedCases', () => {
     it('skips a title already in the library', async () => {
-      await createCase(db, { title: 'Enron', category: 'collapse' })
+      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
 
-      const { created, skippedTitles } = await createSuggestedCases(db, [
+      const { created, skippedTitles } = await createSuggestedCases(db, channelId, [
         { title: 'Enron', category: 'collapse' },
         { title: 'Wirecard', category: 'con' },
       ])
@@ -117,9 +186,9 @@ suite('cases', () => {
     })
 
     it('matches titles case- and whitespace-insensitively', async () => {
-      await createCase(db, { title: 'Enron', category: 'collapse' })
+      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
 
-      const { created } = await createSuggestedCases(db, [
+      const { created } = await createSuggestedCases(db, channelId, [
         { title: '  enron  ', category: 'collapse' },
       ])
 
@@ -128,7 +197,7 @@ suite('cases', () => {
 
     it('deduplicates within a single batch', async () => {
       // A model asked for ten cases will phrase the same one twice.
-      const { created, skippedTitles } = await createSuggestedCases(db, [
+      const { created, skippedTitles } = await createSuggestedCases(db, channelId, [
         { title: 'Wirecard', category: 'con' },
         { title: 'wirecard', category: 'con' },
       ])
@@ -138,20 +207,23 @@ suite('cases', () => {
     })
 
     it('does nothing at all for an empty batch', async () => {
-      expect(await createSuggestedCases(db, [])).toEqual({ created: [], skippedTitles: [] })
+      expect(await createSuggestedCases(db, channelId, [])).toEqual({
+        created: [],
+        skippedTitles: [],
+      })
     })
   })
 
   describe('deleteCase', () => {
     it('deletes a case nothing was produced from', async () => {
-      const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+      const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
 
       expect(await deleteCase(db, row.id)).toBe(true)
       expect(await getCase(db, row.id)).toBeUndefined()
     })
 
     it('refuses to delete a case with projects behind it', async () => {
-      const row = await createCase(db, { title: 'Enron', category: 'collapse' })
+      const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
       await createProjectFromCase(db, { caseId: row.id, title: 'Enron' })
 
       // Deleting would orphan the record of why that project exists.
@@ -163,6 +235,7 @@ suite('cases', () => {
   describe('markCaseInProduction', () => {
     it('moves a shortlisted case into production', async () => {
       const row = await createCase(db, {
+        channelId,
         title: 'Enron',
         category: 'collapse',
         status: 'shortlisted',
@@ -176,6 +249,7 @@ suite('cases', () => {
     it('does not drag a published case backwards', async () => {
       // Starting a second project from a published case must not un-publish it.
       const row = await createCase(db, {
+        channelId,
         title: 'Enron',
         category: 'collapse',
         status: 'published',
@@ -188,14 +262,15 @@ suite('cases', () => {
   })
 
   it('lists existing titles alphabetically for the suggestion prompt', async () => {
-    await createCase(db, { title: 'Zeta', category: 'con' })
-    await createCase(db, { title: 'Alpha', category: 'con' })
+    await createCase(db, { channelId, title: 'Zeta', category: 'con' })
+    await createCase(db, { channelId, title: 'Alpha', category: 'con' })
 
-    expect(await existingCaseTitles(db)).toEqual(['Alpha', 'Zeta'])
+    expect(await existingCaseTitles(db, channelId)).toEqual(['Alpha', 'Zeta'])
   })
 
   it('updates a case without touching what was not patched', async () => {
     const row = await createCase(db, {
+      channelId,
       title: 'Enron',
       category: 'collapse',
       angle: 'original',
@@ -211,12 +286,13 @@ suite('cases', () => {
   })
 
   it('round-trips subject, people and source links, and defaults them', async () => {
-    const plain = await createCase(db, { title: 'Plain', category: 'collapse' })
+    const plain = await createCase(db, { channelId, title: 'Plain', category: 'collapse' })
     expect(plain.subject).toBeNull()
     expect(plain.people).toEqual([])
     expect(plain.sourceLinks).toEqual([])
 
     const row = await createCase(db, {
+      channelId,
       title: 'The Auditors',
       category: 'con',
       subject: 'Wirecard',
@@ -230,7 +306,7 @@ suite('cases', () => {
   })
 
   it('updateCase patches subject, people and source links', async () => {
-    const row = await createCase(db, { title: 'Patchable', category: 'con' })
+    const row = await createCase(db, { channelId, title: 'Patchable', category: 'con' })
     const updated = await updateCase(db, row.id, {
       subject: 'Enron',
       people: ['Jeff Skilling'],

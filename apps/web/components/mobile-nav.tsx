@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { NAV, RailIcon } from '@/components/app-rail'
+import { RailIcon, navFor } from '@/components/app-rail'
 import { cn } from '@/lib/cn'
 
 /**
@@ -18,7 +18,7 @@ import { cn } from '@/lib/cn'
  * menu), and the thumb reaches them. Same `aria-label` as the rail: they are
  * the same landmark at two widths, and only one is ever rendered visible.
  */
-export function MobileNav() {
+export function MobileNav({ slug }: { slug: string }) {
   const pathname = usePathname()
 
   return (
@@ -30,8 +30,7 @@ export function MobileNav() {
       )}
     >
       <ul className="grid grid-cols-6">
-        {NAV.map(({ href, label, icon }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+        {navFor(slug, pathname).map(({ href, label, icon, active }) => {
           return (
             <li key={href} className="min-w-0">
               <Link

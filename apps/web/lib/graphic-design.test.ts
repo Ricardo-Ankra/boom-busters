@@ -17,9 +17,22 @@ import type * as Providers from '@boom-busters/providers'
 import type * as Compile from './graphic-code/compile'
 import type * as DryRun from './graphic-code/dry-run'
 import { NonRetriableError } from 'inngest'
+import type * as Db from '@boom-busters/db'
 
 const callLlm = vi.fn()
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
+
+// The wrappers resolve the project's channel before they call the model; this
+// file has no database, so the lookup answers with a fixed channel.
+vi.mock('@boom-busters/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof Db>()),
+  channelForProject: async () => ({
+    channelId: '01J00000000000000000000CH1',
+    slug: 'first',
+    settings: {},
+    bible: {},
+  }),
+}))
 let mock = false
 /** When set, stands in for the corpus: the exemplar every slot is sent. */
 let exemplarStub: Providers.Exemplar | null = null

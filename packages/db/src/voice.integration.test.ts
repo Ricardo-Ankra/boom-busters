@@ -1,4 +1,5 @@
 import { takeIdempotencyKey } from '@boom-busters/schemas'
+import { ensureFirstChannel } from './channels'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
@@ -33,7 +34,11 @@ suite('voice takes', () => {
 
   beforeEach(async () => {
     await truncateCases(db)
-    const source = await createCase(db, { title: 'Wirecard', category: 'con' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Wirecard',
+      category: 'con',
+    })
     const project = await createProjectFromCase(db, { caseId: source.id, title: 'Wirecard' })
     projectId = project.id
     const script = await createScriptVersion(db, projectId)
@@ -324,7 +329,11 @@ suite('voice takes', () => {
     })
 
     it('is empty rather than throwing when there is no script at all', async () => {
-      const source = await createCase(db, { title: 'Nothing', category: 'collapse' })
+      const source = await createCase(db, {
+        channelId: (await ensureFirstChannel(db)).id,
+        title: 'Nothing',
+        category: 'collapse',
+      })
       const bare = await createProjectFromCase(db, { caseId: source.id, title: 'Nothing' })
 
       expect(await latestScriptParagraphSources(db, bare.id)).toEqual({

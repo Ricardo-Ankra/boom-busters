@@ -1,7 +1,7 @@
 import {
   getAsset,
   getProject,
-  getSettings,
+  channelForProject,
   getSocialPosts,
   insertTimeline,
   latestScriptParagraphSources,
@@ -120,7 +120,7 @@ export const assemblyRunner = inngest.createFunction(
         if (asset) assets.push([id, asset])
       }
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
       const beds = await listMusicBeds(db)
 
       return {
@@ -295,7 +295,8 @@ export const assemblyRunner = inngest.createFunction(
       // it says which titles, so the whole library rides along. The first
       // mark stored under a title wins, in `listLogos` order.
       const logoLibrary = new Map<string, { r2Key: string; width: number; height: number }>()
-      for (const [title, asset] of codeLogoLibrary(await listLogos(db))) {
+      const { channelId } = await channelForProject(db, projectId)
+      for (const [title, asset] of codeLogoLibrary(await listLogos(db, channelId))) {
         logoLibrary.set(title, { r2Key: asset.r2Key, width: asset.width, height: asset.height })
       }
 

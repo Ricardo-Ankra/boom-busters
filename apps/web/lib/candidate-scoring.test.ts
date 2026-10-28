@@ -1,9 +1,22 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SlotCandidate, StockBrief } from '@boom-busters/schemas'
+import type * as Db from '@boom-busters/db'
 
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
+
+// The wrappers resolve the project's channel before they call the model; this
+// file has no database, so the lookup answers with a fixed channel.
+vi.mock('@boom-busters/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof Db>()),
+  channelForProject: async () => ({
+    channelId: '01J00000000000000000000CH1',
+    slug: 'first',
+    settings: {},
+    bible: {},
+  }),
+}))
 
 import { scoreSlotCandidates } from './visual-assets'
 

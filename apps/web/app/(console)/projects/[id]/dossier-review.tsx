@@ -5,6 +5,7 @@ import type { DocumentKind, GroundedRef, GroundedResearch, Notice } from '@boom-
 import { ChevronRight, ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { useChannelHref } from '@/components/channel-slug'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Notices } from '@/components/notices'
 import { Button } from '@/components/ui/button'
@@ -738,6 +739,7 @@ function SubjectLine({
   downstream: readonly { stage: string }[]
   liveRun: boolean
 }) {
+  const casesHref = useChannelHref('/cases')
   // An old dossier never resolved a subject; there is nothing honest to say.
   if (!research) return null
   const { subject, unresolved } = research.entity
@@ -772,7 +774,7 @@ function SubjectLine({
             downstream={downstream}
           />
         )}
-        <a href="/cases" className={linkClass}>
+        <a href={casesHref} className={linkClass}>
           Edit the case in the library
         </a>
       </div>

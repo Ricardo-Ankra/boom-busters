@@ -1,16 +1,33 @@
-import { costLedger, createDb, requireTestDatabase, seed, type Database } from '@boom-busters/db'
+import {
+  costLedger,
+  createCase,
+  createChannel,
+  createDb,
+  createProjectFromCase,
+  getChannelBySlug,
+  getWorkspace,
+  requireTestDatabase,
+  seed,
+  updateWorkspace,
+  type Database,
+} from '@boom-busters/db'
 import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_ID,
   TransientProviderError,
 } from '@boom-busters/schemas'
-import type { Settings } from '@boom-busters/schemas'
+import type { Budgets } from '@boom-busters/schemas'
 import { FIXTURE_PROJECT_ID } from '@boom-busters/db'
-import { sql } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { eq, sql } from 'drizzle-orm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { budgetStatus, release, reserve, settle, withCost } from './guard'
 import {
   listLedger,
+  monthOtherChannelsUsd,
+  monthSpendByProject,
   monthSpendByProvider,
   monthSpendUsd,
   monthTotalUsd,
@@ -30,12 +47,9 @@ const describeDb = DATABASE_URL ? describe : describe.skip
 /** Mid-month, so a test never straddles a real month boundary. */
 const NOW = new Date('2026-03-15T12:00:00.000Z')
 
-/** Defaults with the ceiling overridden — the one number the guard reads. */
-function settingsWith(patch: { budgets?: Partial<Settings['budgets']> }): Settings {
-  return {
-    ...DEFAULT_SETTINGS,
-    budgets: { ...DEFAULT_SETTINGS.budgets, ...patch.budgets },
-  }
+/** The workspace defaults with the ceiling overridden: the one number the guard reads. */
+function budgetsWith(patch: Partial<Budgets>): Budgets {
+  return { ...DEFAULT_WORKSPACE_SETTINGS.budgets, ...patch }
 }
 
 describeDb('cost guard', () => {
@@ -62,13 +76,13 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('lets a call through when there is room', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
 
     const value = await withCost(
       db,
       { provider: 'anthropic', operation: 'research', estimateUsd: 1 },
       async () => ({ result: 'dossier', actualUsd: 0.9 }),
-      { settings, now: NOW },
+      { budgets, now: NOW },
     )
 
     expect(value).toBe('dossier')
@@ -76,26 +90,26 @@ describeDb('cost guard', () => {
   })
 
   it('allows spend that lands exactly on the cap', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
 
     await withCost(
       db,
       { provider: 'anthropic', operation: 'a', estimateUsd: 9 },
       async () => ({ result: null, actualUsd: 9 }),
-      { settings, now: NOW },
+      { budgets, now: NOW },
     )
     await withCost(
       db,
       { provider: 'anthropic', operation: 'b', estimateUsd: 1 },
       async () => ({ result: null, actualUsd: 1 }),
-      { settings, now: NOW },
+      { budgets, now: NOW },
     )
 
     expect(await monthSpendUsd(db, 'anthropic', NOW)).toBeCloseTo(10)
   })
 
   it('refuses the call that would cross the cap, not the one that reaches it', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
     await recordCost(db, {
       provider: 'anthropic',
       operation: 'prior',
@@ -108,7 +122,7 @@ describeDb('cost guard', () => {
         db,
         { provider: 'anthropic', operation: 'over', estimateUsd: 0.0001 },
         async () => ({ result: null }),
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toBeInstanceOf(BudgetExceededError)
   })
@@ -116,7 +130,7 @@ describeDb('cost guard', () => {
   it('does not trip on a floating-point artefact', async () => {
     // 29.9 + 0.1 > 30 is *true* in IEEE 754. Rounding to the ledger's own
     // scale before comparing is what stops a budget gate opening on nothing.
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 30 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 30 })
     await recordCost(db, {
       provider: 'anthropic',
       operation: 'prior',
@@ -129,13 +143,13 @@ describeDb('cost guard', () => {
         db,
         { provider: 'anthropic', operation: 'edge', estimateUsd: 0.1 },
         async () => ({ result: 'ok', actualUsd: 0.1 }),
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).resolves.toBe('ok')
   })
 
   it('carries the arithmetic on the error, so the gate card can show it', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 5 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 5 })
     await recordCost(db, {
       provider: 'google',
       operation: 'prior',
@@ -147,7 +161,7 @@ describeDb('cost guard', () => {
       db,
       { provider: 'google', operation: 'tts', estimateUsd: 0.5 },
       async () => ({ result: null }),
-      { settings, now: NOW },
+      { budgets, now: NOW },
     ).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BudgetExceededError)
@@ -160,7 +174,7 @@ describeDb('cost guard', () => {
   })
 
   it('never calls the provider when it refuses', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 0 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 0 })
     let called = 0
 
     await expect(
@@ -171,12 +185,39 @@ describeDb('cost guard', () => {
           called += 1
           return { result: null }
         },
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toBeInstanceOf(BudgetExceededError)
 
     expect(called).toBe(0)
     expect(await listLedger(db)).toEqual([])
+  })
+
+  it('reads the workspace ceiling when no budgets are passed', async () => {
+    const before = (await getWorkspace(db)).settings.budgets
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 1 } })
+    try {
+      await expect(
+        withCost(
+          db,
+          { provider: 'anthropic', operation: 'research', estimateUsd: 2 },
+          async () => ({ result: null }),
+          { now: NOW },
+        ),
+      ).rejects.toBeInstanceOf(BudgetExceededError)
+
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 10 } })
+      await expect(
+        withCost(
+          db,
+          { provider: 'anthropic', operation: 'research', estimateUsd: 2 },
+          async () => ({ result: 'ok', actualUsd: 2 }),
+          { now: NOW },
+        ),
+      ).resolves.toBe('ok')
+    } finally {
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: before.monthlyCeilingUsd } })
+    }
   })
 
   // -------------------------------------------------------------------------
@@ -189,7 +230,7 @@ describeDb('cost guard', () => {
    * anthropic untouched.
    */
   it("counts every provider's spend against the one ceiling", async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
     await recordCost(db, { provider: 'google', operation: 'a', actualUsd: 6, occurredAt: NOW })
     await recordCost(db, {
       provider: 'elevenlabs',
@@ -203,20 +244,20 @@ describeDb('cost guard', () => {
         db,
         { provider: 'anthropic', operation: 'research', estimateUsd: 1 },
         async () => ({ result: null }),
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toBeInstanceOf(BudgetExceededError)
   })
 
   it('a ceiling of zero refuses everything, which is all the kill switch ever did', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 0 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 0 })
 
     await expect(
       withCost(
         db,
         { provider: 'anthropic', operation: 'research', estimateUsd: 0.01 },
         async () => ({ result: null }),
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toBeInstanceOf(BudgetExceededError)
   })
@@ -226,8 +267,9 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('lets an approved overage raise this month, and only this month', async () => {
-    const settings = settingsWith({
-      budgets: { monthlyCeilingUsd: 5, approvedOverage: { month: '2026-03', usd: 3 } },
+    const budgets = budgetsWith({
+      monthlyCeilingUsd: 5,
+      approvedOverage: { month: '2026-03', usd: 3 },
     })
     await recordCost(db, {
       provider: 'elevenlabs',
@@ -241,13 +283,13 @@ describeDb('cost guard', () => {
         db,
         { provider: 'elevenlabs', operation: 'tts', estimateUsd: 2 },
         async () => ({ result: 'audio', actualUsd: 2 }),
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).resolves.toBe('audio')
 
     // April's guard sees the same grant expired.
     const april = new Date('2026-04-02T00:00:00.000Z')
-    const status = await budgetStatus(db, settings, { estimateUsd: 0.01, now: april })
+    const status = await budgetStatus(db, budgets, { estimateUsd: 0.01, now: april })
     expect(status.ceilingUsd).toBeCloseTo(5)
   })
 
@@ -258,7 +300,7 @@ describeDb('cost guard', () => {
   it('serialises concurrent reservations so only what fits gets through', async () => {
     // Room for exactly three $1 calls. Ten fan-out steps race for it; the
     // advisory lock is what stops all ten reading "there is room" at once.
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 3 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 3 })
 
     const attempts = await Promise.allSettled(
       Array.from({ length: 10 }, (_, index) =>
@@ -266,7 +308,7 @@ describeDb('cost guard', () => {
           db,
           { provider: 'fal', operation: `slot-${index}`, estimateUsd: 1 },
           async () => ({ result: index, actualUsd: 1 }),
-          { settings, now: NOW },
+          { budgets, now: NOW },
         ),
       ),
     )
@@ -283,11 +325,11 @@ describeDb('cost guard', () => {
   })
 
   it('counts an unsettled reservation at its estimate', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
     const ledgerId = await reserve(
       db,
       { provider: 'openai', operation: 'in-flight', estimateUsd: 4 },
-      settings,
+      budgets,
       NOW,
     )
 
@@ -302,13 +344,13 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('records the estimate when the provider reports no usage', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 1 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 1 })
 
     await withCost(
       db,
       { provider: 'pexels', operation: 'search', estimateUsd: 0.02 },
       async () => ({ result: [] }),
-      { settings, now: NOW },
+      { budgets, now: NOW },
     )
 
     const [entry] = await listLedger(db)
@@ -317,7 +359,7 @@ describeDb('cost guard', () => {
   })
 
   it('releases the reservation when the call spent nothing', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
 
     await expect(
       withCost(
@@ -326,7 +368,7 @@ describeDb('cost guard', () => {
         async () => {
           throw new TransientProviderError('anthropic', 'connect timeout')
         },
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toBeInstanceOf(TransientProviderError)
 
@@ -336,7 +378,7 @@ describeDb('cost guard', () => {
   })
 
   it('keeps spend the provider already charged for on a failed call', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
 
     await expect(
       withCost(
@@ -345,7 +387,7 @@ describeDb('cost guard', () => {
         async () => {
           throw new TransientProviderError('elevenlabs', 'stream aborted', { spentUsd: 0.12 })
         },
-        { settings, now: NOW },
+        { budgets, now: NOW },
       ),
     ).rejects.toThrow()
 
@@ -353,11 +395,11 @@ describeDb('cost guard', () => {
   })
 
   it('drops a reservation on release', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
     const ledgerId = await reserve(
       db,
       { provider: 'openai', operation: 'x', estimateUsd: 1 },
-      settings,
+      budgets,
       NOW,
     )
     await release(db, ledgerId)
@@ -418,10 +460,10 @@ describeDb('cost guard', () => {
   // -------------------------------------------------------------------------
 
   it('reports what the guard would decide without reserving anything', async () => {
-    const settings = settingsWith({ budgets: { monthlyCeilingUsd: 10 } })
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
     await recordCost(db, { provider: 'anthropic', operation: 'p', actualUsd: 9.5, occurredAt: NOW })
 
-    const status = await budgetStatus(db, settings, { estimateUsd: 1, now: NOW })
+    const status = await budgetStatus(db, budgets, { estimateUsd: 1, now: NOW })
 
     expect(status).toMatchObject({
       ceilingUsd: 10,
@@ -430,5 +472,170 @@ describeDb('cost guard', () => {
     expect(status.remainingUsd).toBeCloseTo(0.5)
     // Read-only: asking must not consume budget.
     expect(await listLedger(db)).toHaveLength(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // Two channels, one ceiling
+  // -------------------------------------------------------------------------
+
+  describe('two channels', () => {
+    let otherChannelId = ''
+    let otherCaseId = ''
+    let otherProjectId = ''
+
+    beforeEach(async () => {
+      const other =
+        (await getChannelBySlug(db, 'second-test')) ??
+        (await createChannel(db, {
+          name: 'Second test channel',
+          handle: null,
+          slug: 'second-test',
+          settings: DEFAULT_SETTINGS,
+          bible: EMPTY_BIBLE,
+        }))
+      otherChannelId = other.id
+      const madeCase = await createCase(db, {
+        channelId: otherChannelId,
+        title: `Ledger isolation ${Date.now()}`,
+        category: 'con',
+      })
+      otherCaseId = madeCase.id
+      otherProjectId = (await createProjectFromCase(db, { caseId: madeCase.id, title: 'On B' })).id
+    })
+
+    afterEach(async () => {
+      await db.execute(sql`TRUNCATE TABLE ${costLedger}`)
+      await db.execute(sql`delete from projects where case_id = ${otherCaseId}`)
+      await db.execute(sql`delete from cases where id = ${otherCaseId}`)
+    })
+
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
+
+    async function channelOf(ledgerId: string): Promise<string | null> {
+      const [row] = await db
+        .select({ channelId: costLedger.channelId })
+        .from(costLedger)
+        .where(eq(costLedger.id, ledgerId))
+      return row?.channelId ?? null
+    }
+
+    it('writes the project channel on a reservation that names only the project', async () => {
+      const onB = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'a', projectId: otherProjectId, estimateUsd: 1 },
+        budgets,
+        NOW,
+      )
+      const onA = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'b', projectId: FIXTURE_PROJECT_ID, estimateUsd: 1 },
+        budgets,
+        NOW,
+      )
+      expect(await channelOf(onB)).toBe(otherChannelId)
+      expect(await channelOf(onA)).toBe(FIRST_CHANNEL_ID)
+    })
+
+    it('writes a named channel when there is no project, and none for workspace spend', async () => {
+      const named = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'a', channelId: otherChannelId, estimateUsd: 1 },
+        budgets,
+        NOW,
+      )
+      const workspace = await reserve(
+        db,
+        { provider: 'anthropic', operation: 'b', estimateUsd: 1 },
+        budgets,
+        NOW,
+      )
+      expect(await channelOf(named)).toBe(otherChannelId)
+      expect(await channelOf(workspace)).toBeNull()
+    })
+
+    it('records unguarded spend against the project channel', async () => {
+      const id = await recordCost(db, {
+        provider: 'remotion',
+        operation: 'render-master',
+        projectId: otherProjectId,
+        actualUsd: 0.25,
+        occurredAt: NOW,
+      })
+      expect(await channelOf(id)).toBe(otherChannelId)
+    })
+
+    it("never lists channel B's projects or providers in channel A's breakdowns", async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 2,
+        occurredAt: NOW,
+      })
+      await recordCost(db, {
+        provider: 'google',
+        operation: 'b',
+        projectId: otherProjectId,
+        actualUsd: 3,
+        occurredAt: NOW,
+      })
+
+      const byProject = await monthSpendByProject(db, NOW, FIRST_CHANNEL_ID)
+      expect(byProject.map((row) => row.projectId)).toEqual([FIXTURE_PROJECT_ID])
+      expect((await monthSpendByProject(db, NOW, otherChannelId)).map((r) => r.projectId)).toEqual([
+        otherProjectId,
+      ])
+      expect(await monthSpendByProvider(db, NOW, FIRST_CHANNEL_ID)).toEqual({ anthropic: 2 })
+      expect(await monthSpendByProvider(db, NOW, otherChannelId)).toEqual({ google: 3 })
+      // No channel asked for: the workspace, as before.
+      expect(await monthSpendByProvider(db, NOW)).toEqual({ anthropic: 2, google: 3 })
+      expect(
+        (await listLedger(db, { channelId: FIRST_CHANNEL_ID })).map((e) => e.provider),
+      ).toEqual(['anthropic'])
+    })
+
+    it("sums every other channel's rows, workspace spend included, for monthOtherChannelsUsd", async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 2,
+        occurredAt: NOW,
+      })
+      await recordCost(db, {
+        provider: 'google',
+        operation: 'b',
+        projectId: otherProjectId,
+        actualUsd: 3,
+        occurredAt: NOW,
+      })
+      await recordCost(db, { provider: 'openai', operation: 'c', actualUsd: 0.5, occurredAt: NOW })
+
+      expect(await monthOtherChannelsUsd(db, NOW, FIRST_CHANNEL_ID)).toBeCloseTo(3.5)
+      expect(await monthOtherChannelsUsd(db, NOW, otherChannelId)).toBeCloseTo(2.5)
+      // The guard's own total stays the workspace's.
+      expect(await monthTotalUsd(db, NOW)).toBeCloseTo(5.5)
+    })
+
+    it('parks a reservation on B once A has spent to the one ceiling', async () => {
+      await recordCost(db, {
+        provider: 'anthropic',
+        operation: 'a',
+        projectId: FIXTURE_PROJECT_ID,
+        actualUsd: 9.5,
+        occurredAt: NOW,
+      })
+
+      await expect(
+        reserve(
+          db,
+          { provider: 'anthropic', operation: 'b', projectId: otherProjectId, estimateUsd: 1 },
+          budgets,
+          NOW,
+        ),
+      ).rejects.toBeInstanceOf(BudgetExceededError)
+      // The refused reservation left nothing behind.
+      expect(await listLedger(db, { channelId: otherChannelId })).toEqual([])
+    })
   })
 })

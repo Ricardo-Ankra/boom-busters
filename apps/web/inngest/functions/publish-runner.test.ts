@@ -9,13 +9,15 @@ import {
   renders,
   requireTestDatabase,
   seed,
-  setCredential,
+  recordChannelYoutubeVerify,
+  saveChannelYoutubeConnection,
   shorts,
   truncateRunMirror,
   updateRender,
-  updateSettings,
+  updateChannelSettings,
   updateShort,
 } from '@boom-busters/db'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -100,6 +102,7 @@ describeDb('publish-runner', () => {
     const [row] = await db
       .insert(publishRecords)
       .values({
+        channelId: FIRST_CHANNEL_ID,
         targetType,
         targetId,
         // A moment genuinely ahead: a hardcoded date rotted into the past
@@ -135,7 +138,7 @@ describeDb('publish-runner', () => {
     await db.delete(publishRecords)
     await db.delete(renders)
     await db.delete(shorts)
-    await updateSettings(db, { publish: { dailyUploadBudget: 4 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { publish: { dailyUploadBudget: 4 } })
   })
 
   it(
@@ -223,7 +226,7 @@ describeDb('publish-runner', () => {
   })
 
   it('the spent daily budget defers instead of uploading', { timeout: 120_000 }, async () => {
-    await updateSettings(db, { publish: { dailyUploadBudget: 1 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { publish: { dailyUploadBudget: 1 } })
     await doneMasterRender()
     // One upload already started in this quota day.
     await draftRecord('short', '01HQ00000000000000000000T9', {
@@ -250,7 +253,13 @@ describeDb('publish-runner', () => {
   describe('live path', () => {
     beforeEach(async () => {
       providers.mock = false
-      await setCredential(db, 'youtube', '1//refresh-token', env.SECRETS_ENCRYPTION_KEY)
+      await saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
+        refreshToken: '1//refresh-token',
+        encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+        youtubeChannelId: 'UC-first',
+        youtubeChannelTitle: 'First',
+      })
+      await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
     })
 
     it(
@@ -280,6 +289,64 @@ describeDb('publish-runner', () => {
         // The claim happened before the spend: the record is uploading.
         const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
         expect(stored?.status).toBe('uploading')
+      },
+    )
+
+    it(
+      'refuses with the reconnect message, and calls nothing, when the connection is invalid',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+        // A token is still stored (it may belong to the wrong YouTube account).
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+
+        const { result } = await engine.execute({
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+        })
+
+        expect(result).toMatchObject({ outcome: 'refused' })
+        expect((result as { reason: string }).reason).toContain('needs reconnecting')
+        expect(google.refreshAccessToken).not.toHaveBeenCalled()
+        expect(broker.submitMediaJob).not.toHaveBeenCalled()
+        const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+        expect(stored?.status).toBe('draft')
+      },
+    )
+
+    it(
+      'fails the claimed record instead of uploading when the connection went invalid after the preflight',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+
+        // Pre-flight ran against an ok connection; it then went invalid.
+        const { result } = await engine.execute({
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+          steps: [
+            {
+              id: 'claim',
+              handler: async () => {
+                await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+                return true
+              },
+            },
+          ],
+        })
+
+        expect(result).toMatchObject({ outcome: 'reconnect' })
+        expect(google.refreshAccessToken).not.toHaveBeenCalled()
+        expect(broker.submitMediaJob).not.toHaveBeenCalled()
+        const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+        expect(stored?.status).toBe('failed')
+        expect(stored?.error).toMatchObject({
+          message: expect.stringContaining('needs reconnecting'),
+        })
       },
     )
 

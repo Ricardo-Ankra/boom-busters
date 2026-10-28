@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
-import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
+import {
+  channelForProject,
+  getWorkspace,
+  upsertAssetByHash,
+  visualCredentials,
+} from '@boom-busters/db'
 import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
 import { imageGenModel, imageGenPrice, mockProvidersEnabled } from '@boom-busters/providers'
@@ -72,10 +77,13 @@ async function sheetBytes(url: string): Promise<{ sheet: Buffer; sheetType: stri
 export async function buildSetSheet(
   set: ProjectSet,
 ): Promise<{ candidates: SlotCandidate[]; views: SetPlateDirection[] }> {
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, set.projectId)
   const route = settings.modelRouting.setSheet
   const provider = route.provider
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue({
+    routing: settings.modelRouting,
+    prices: (await getWorkspace(db)).settings.modelPrices,
+  })
   const live = catalogue[provider]
   // buildSetSheetPrompt runs the prompt through stripBannedWords itself now
   // (decision 287 final review), so the harness that calls it directly gets

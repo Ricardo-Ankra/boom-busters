@@ -8,7 +8,7 @@ import { buildNeedsYouCards, NeedsYouQueue } from './needs-you-queue'
  */
 
 describe('the Reconnect YouTube card', () => {
-  const empty = { awaitingReview: [], budgetGates: [], failedRuns: [] }
+  const empty = { slug: 'psychology', awaitingReview: [], budgetGates: [], failedRuns: [] }
 
   it('appears only when the connection is known-dead', () => {
     expect(buildNeedsYouCards(empty)).toHaveLength(0)
@@ -23,7 +23,7 @@ describe('the Reconnect YouTube card', () => {
     expect(cards).toHaveLength(1)
     expect(cards[0]).toMatchObject({
       kind: 'reconnect',
-      href: '/settings?tab=connections',
+      href: '/c/psychology/settings?tab=connections',
       buttonLabel: 'Reconnect',
     })
   })
@@ -42,7 +42,7 @@ describe('the Reconnect YouTube card', () => {
     expect(screen.getByText(/Uploads, publishing and analytics stop/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Reconnect' })).toHaveAttribute(
       'href',
-      '/settings?tab=connections',
+      '/c/psychology/settings?tab=connections',
     )
   })
 })

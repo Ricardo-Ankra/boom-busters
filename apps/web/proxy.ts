@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from './auth'
+import { LAST_CHANNEL_COOKIE, slugFromPath } from './lib/channel-href'
 
 /**
  * Middleware-protected everything (build spec section 2).
@@ -48,7 +49,17 @@ export default auth((request) => {
     return NextResponse.redirect(new URL('/', request.nextUrl))
   }
 
-  return NextResponse.next()
+  const response = NextResponse.next()
+  const slug = isSignedIn ? slugFromPath(pathname) : null
+  if (slug) {
+    response.cookies.set(LAST_CHANNEL_COOKIE, slug, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  }
+  return response
 })
 
 export const config = {

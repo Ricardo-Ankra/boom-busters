@@ -1,6 +1,10 @@
-import { DEFAULT_SETTINGS, SettingsPatchSchema } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  SettingsPatchSchema,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { mergeSettings, normaliseSettings } from './settings-merge'
+import { mergeSettings, mergeWorkspaceSettings, normaliseSettings } from './settings-merge'
 
 describe('mergeSettings', () => {
   it('leaves everything untouched for an empty patch', () => {
@@ -8,24 +12,25 @@ describe('mergeSettings', () => {
   })
 
   it('applies a single nested field without disturbing its siblings', () => {
-    const next = mergeSettings(DEFAULT_SETTINGS, { budgets: { monthlyCeilingUsd: 42 } })
+    const next = mergeSettings(DEFAULT_SETTINGS, { render: { concurrency: 4 } })
 
-    expect(next.budgets.monthlyCeilingUsd).toBe(42)
+    expect(next.render.concurrency).toBe(4)
+    expect(next.render.timeoutMinutes).toBe(DEFAULT_SETTINGS.render.timeoutMinutes)
     expect(next.modelRouting).toEqual(DEFAULT_SETTINGS.modelRouting)
   })
 
   it('keeps an approved overage a ceiling change did not mention', () => {
     // The overage is the one budget field the app writes for itself (at a
     // budget gate), so a settings save must not quietly erase it.
-    const withOverage = mergeSettings(DEFAULT_SETTINGS, {
+    const withOverage = mergeWorkspaceSettings(DEFAULT_WORKSPACE_SETTINGS, {
       budgets: { approvedOverage: { month: '2026-08', usd: 10 } },
     })
-    const next = mergeSettings(withOverage, { budgets: { monthlyCeilingUsd: 42 } })
+    const next = mergeWorkspaceSettings(withOverage, { budgets: { monthlyCeilingUsd: 42 } })
 
     expect(next.budgets.approvedOverage).toMatchObject({ month: '2026-08', usd: 10 })
 
     // And null clears it explicitly.
-    const cleared = mergeSettings(next, { budgets: { approvedOverage: null } })
+    const cleared = mergeWorkspaceSettings(next, { budgets: { approvedOverage: null } })
     expect(cleared.budgets.approvedOverage).toBeUndefined()
   })
 
@@ -86,14 +91,14 @@ describe('mergeSettings', () => {
 
   it('does not mutate the input', () => {
     const before = structuredClone(DEFAULT_SETTINGS)
-    mergeSettings(DEFAULT_SETTINGS, { budgets: { monthlyCeilingUsd: 1 } })
+    mergeSettings(DEFAULT_SETTINGS, { render: { concurrency: 1 } })
     expect(DEFAULT_SETTINGS).toEqual(before)
   })
 })
 
 describe('merging modelPrices (decision 288)', () => {
   it('replaces the whole price map when a patch carries one, and keeps it otherwise', () => {
-    const priced = mergeSettings(DEFAULT_SETTINGS, {
+    const priced = mergeWorkspaceSettings(DEFAULT_WORKSPACE_SETTINGS, {
       modelPrices: {
         llm: { 'anthropic:claude-fable-5-1': { inputPerMTok: 10, outputPerMTok: 50 } },
         image: {},
@@ -101,12 +106,22 @@ describe('merging modelPrices (decision 288)', () => {
     })
     expect(priced.modelPrices.llm['anthropic:claude-fable-5-1']?.outputPerMTok).toBe(50)
 
-    const untouched = mergeSettings(priced, { budgets: { monthlyCeilingUsd: 120 } })
+    const untouched = mergeWorkspaceSettings(priced, { budgets: { monthlyCeilingUsd: 120 } })
     expect(untouched.modelPrices).toEqual(priced.modelPrices)
   })
 })
 
 describe('normaliseSettings', () => {
+  it('drops the keys that moved to the workspace from an old stored row', () => {
+    const normalised = normaliseSettings({
+      ...DEFAULT_SETTINGS,
+      budgets: { monthlyCeilingUsd: 5 },
+      modelPrices: { llm: {}, image: {} },
+    })
+    expect('budgets' in normalised).toBe(false)
+    expect('modelPrices' in normalised).toBe(false)
+  })
+
   it('passes a complete row through unchanged', () => {
     expect(normaliseSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS)
   })

@@ -35,7 +35,7 @@ import {
   runtimeDelta,
 } from '@/lib/script-editing'
 import type { ScriptDiff } from '@/lib/script-editing'
-import { addPronunciation } from '@/app/(console)/settings/voice-actions'
+import { addPronunciation } from '@/app/(console)/c/[slug]/settings/voice-actions'
 import {
   applyRegeneratedText,
   regenerateSection,
@@ -82,6 +82,7 @@ const HEDGE_INSTRUCTION =
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 
 export function ScriptStudio({
+  channelId,
   projectId,
   scriptId,
   chapters,
@@ -90,6 +91,7 @@ export function ScriptStudio({
   usedFallbackModel,
   notices = [],
 }: {
+  channelId: string
   projectId: string
   scriptId: string
   chapters: ChapterWithWarnings[]
@@ -155,7 +157,12 @@ export function ScriptStudio({
 
         {active ? (
           <div className="flex min-w-0 flex-col gap-3">
-            <ChapterEditor key={active.id} projectId={projectId} chapter={active} />
+            <ChapterEditor
+              key={active.id}
+              channelId={channelId}
+              projectId={projectId}
+              chapter={active}
+            />
             <ShortsStrip
               key={`shorts-${active.id}`}
               shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
@@ -344,9 +351,11 @@ function ChapterList({
 }
 
 function ChapterEditor({
+  channelId,
   projectId,
   chapter,
 }: {
+  channelId: string
   projectId: string
   chapter: ChapterWithWarnings
 }) {
@@ -388,7 +397,11 @@ function ChapterEditor({
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         {isPronounceable(selection) && !proposal ? (
-          <PronounceBar term={selection.trim()} onDone={() => setSelection('')} />
+          <PronounceBar
+            channelId={channelId}
+            term={selection.trim()}
+            onDone={() => setSelection('')}
+          />
         ) : null}
 
         {selection.trim().length >= 20 && !proposal ? (
@@ -516,14 +529,22 @@ function isPronounceable(selection: string): boolean {
  * hint is part of each take’s identity, saving one is also what makes the next
  * voice run re-read exactly the paragraphs containing the term.
  */
-function PronounceBar({ term, onDone }: { term: string; onDone: () => void }) {
+function PronounceBar({
+  channelId,
+  term,
+  onDone,
+}: {
+  channelId: string
+  term: string
+  onDone: () => void
+}) {
   const [hint, setHint] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const { toast } = useToast()
 
   async function save(): Promise<void> {
     setBusy(true)
-    const result = await addPronunciation(term, hint)
+    const result = await addPronunciation(channelId, term, hint)
     setBusy(false)
 
     if (result.ok) {
