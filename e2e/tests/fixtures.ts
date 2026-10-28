@@ -4,9 +4,12 @@ import { QUEUED_PROJECT_TITLE as QUEUED_PROJECT_TITLE_FOR_TOUCH } from '../globa
 /** The first channel's slug: the channel every fixture project belongs to. */
 export const FIRST_SLUG = 'boom-busters'
 
-/** An address inside the first channel's console, e.g. `channelPath('/projects')`. */
-export function channelPath(section: string): string {
-  return `/c/${FIRST_SLUG}${section}`
+/** The second fixture channel: no connection, no cases, a blank bible. */
+export const SECOND_SLUG = 'e2e-second'
+
+/** An address inside a channel's console (the first by default), e.g. `channelPath('/projects')`. */
+export function channelPath(section: string, slug: string = FIRST_SLUG): string {
+  return `/c/${slug}${section}`
 }
 
 /** The seeded fixture project's title, from `packages/db/src/fixtures.ts`. */

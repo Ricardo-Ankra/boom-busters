@@ -176,6 +176,7 @@ export default async function globalSetup(): Promise<void> {
     deleteCasesExcept,
     deleteProjectsExcept,
     getChannelSettings,
+    createChannel,
     ensureFirstChannel,
     recordChannelYoutubeVerify,
     saveChannelYoutubeConnection,
@@ -183,7 +184,9 @@ export default async function globalSetup(): Promise<void> {
     updateWorkspace,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
-  const { FIRST_CHANNEL_ID, takeIdempotencyKey } = await import('@boom-busters/schemas')
+  const { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID, takeIdempotencyKey } = await import(
+    '@boom-busters/schemas'
+  )
 
   const connection = createDb(url, { max: 2 })
   try {
@@ -202,6 +205,23 @@ export default async function globalSetup(): Promise<void> {
       youtubeChannelTitle: 'Boom & Busters (mock)',
     })
     await recordChannelYoutubeVerify(connection.db, FIRST_CHANNEL_ID, 'ok', 'UC-mock-first')
+    // The second fixture channel: no connection, no cases, no logos, a blank
+    // bible. channels.spec.ts takes it from set-up to usable and also creates
+    // and archives a third, so both are dropped and re-created every run.
+    // Their dependants (the cases the spec adds) go first: the channel foreign
+    // keys restrict.
+    for (const slug of ['e2e-second', 'third-channel']) {
+      await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from youtube_connections where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from channels where slug = ${slug}`
+    }
+    await createChannel(connection.db, {
+      name: 'Second Channel',
+      handle: null,
+      slug: 'e2e-second',
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
     // Rows the previous run's tests created, before re-seeding leaves them
     // beside the fixture and every exact assertion starts matching twice.
     await deleteCasesExcept(connection.db, [FIXTURE_CASE_ID])
