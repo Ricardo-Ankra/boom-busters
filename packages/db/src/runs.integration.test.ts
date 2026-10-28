@@ -548,10 +548,35 @@ describeDb('run mirror', () => {
     })
 
     it('treats awaiting_review as the open gate', async () => {
-      expect(await listProjectsAwaitingReview(db, FIRST_CHANNEL_ID)).toHaveLength(1)
+      // A channel of its own, so only this test's rows are read: other
+      // suites and e2e runs leave projects awaiting review on the first one.
+      const channel =
+        (await getChannelBySlug(db, 'review-gate-test')) ??
+        (await createChannel(db, {
+          name: 'Review gate test channel',
+          handle: null,
+          slug: 'review-gate-test',
+          settings: DEFAULT_SETTINGS,
+          bible: EMPTY_BIBLE,
+        }))
+      const madeCase = await createCase(db, {
+        channelId: channel.id,
+        title: `Review gate ${Date.now()}`,
+        category: 'con',
+      })
+      try {
+        const project = await createProjectFromCase(db, { caseId: madeCase.id, title: 'Gate' })
+        await setProjectStage(db, project.id, { stageStatus: 'awaiting_review' })
+        expect((await listProjectsAwaitingReview(db, channel.id)).map((item) => item.id)).toEqual([
+          project.id,
+        ])
 
-      await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'running' })
-      expect(await listProjectsAwaitingReview(db, FIRST_CHANNEL_ID)).toEqual([])
+        await setProjectStage(db, project.id, { stageStatus: 'running' })
+        expect(await listProjectsAwaitingReview(db, channel.id)).toEqual([])
+      } finally {
+        await db.execute(sql`delete from projects where case_id = ${madeCase.id}`)
+        await db.execute(sql`delete from cases where id = ${madeCase.id}`)
+      }
     })
 
     it('advances the stage and clears the gate together', async () => {

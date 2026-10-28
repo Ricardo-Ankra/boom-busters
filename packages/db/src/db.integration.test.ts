@@ -1,7 +1,4 @@
-import {
-  DEFAULT_SETTINGS,
-  FIRST_CHANNEL_ID,
-} from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { getChannelSettings } from './channels'
