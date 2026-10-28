@@ -11,10 +11,10 @@ import {
   setProjectStage,
   timelines,
   truncateRunMirror,
-  updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -165,9 +165,7 @@ describeDb('render-runner', () => {
     // `seed` rebuilds the fixture rows but does not clear render bookkeeping.
     await db.delete(renders)
     await db.delete(timelines)
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
-    })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'assembly',
       stageStatus: 'awaiting_review',
@@ -322,7 +320,7 @@ describeDb('render-runner', () => {
     )
 
     it('refuses to start a render that would cross the ceiling', { timeout: 120_000 }, async () => {
-      await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 0 } })
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
       await engine.executeStep('render-over-budget', { events: approvedEvent() })
 

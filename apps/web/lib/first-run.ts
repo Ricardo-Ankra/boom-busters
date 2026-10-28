@@ -80,7 +80,8 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         musicBedCount === 0
           ? 'Download licensed beds (the YouTube Audio Library is free) and upload them.'
           : `${musicBedCount} of 3 uploaded.`,
-      href: channelHref(slug, '/settings', { tab: 'music' }),
+      // The music library is the workspace's, shared by every channel.
+      href: '/settings?tab=music' as Route,
       buttonLabel: 'Open music library',
       done: musicBedCount >= 3,
       // Assembly is what needs beds; nothing before it does. The library

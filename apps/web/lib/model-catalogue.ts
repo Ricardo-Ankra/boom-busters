@@ -29,7 +29,7 @@ import type {
   ModelOptions,
 } from '@boom-busters/providers'
 import { STILL_PROVIDERS } from '@boom-busters/schemas'
-import type { Settings, StillProvider, StillRoute } from '@boom-busters/schemas'
+import type { ModelPrices, ModelRouting, StillProvider, StillRoute } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 
@@ -132,7 +132,23 @@ export async function refreshModelCatalogue(): Promise<RefreshOutcome[]> {
   )
 }
 
-export async function loadModelOptions(settings: Settings): Promise<ModelOptions> {
+/**
+ * What a catalogue is built from: a channel's routing and the workspace's
+ * prices. Neither alone is "the settings" any more.
+ */
+export interface CatalogueInputs {
+  routing: ModelRouting
+  prices: ModelPrices
+}
+
+export async function loadModelOptions({
+  routing,
+  prices,
+}: {
+  /** Left off on the workspace page, which lists models and not any one channel's routes. */
+  routing?: ModelRouting
+  prices: ModelPrices
+}): Promise<ModelOptions> {
   const mocked = mockProvidersEnabled()
   const [rows, refresh, keys] = await Promise.all([
     listCatalogueModels(db),
@@ -150,8 +166,8 @@ export async function loadModelOptions(settings: Settings): Promise<ModelOptions
     keys: Object.fromEntries(
       CATALOGUE_PROVIDERS.map((p) => [p, Boolean((keys as Record<string, string>)[p])]),
     ) as Record<CatalogueProvider, boolean>,
-    prices: settings.modelPrices,
-    routing: settings.modelRouting,
+    prices,
+    ...(routing ? { routing } : {}),
     mock: mocked,
   })
 }
@@ -177,7 +193,7 @@ function withRoutedModels(
   provider: StillProvider,
   models: ImageGenModel[],
   routes: readonly (StillRoute | null | undefined)[],
-  prices: Settings['modelPrices'],
+  prices: ModelPrices,
 ): ImageGenModel[] {
   for (const route of routes) {
     if (!route || route.provider !== provider) continue
@@ -205,23 +221,17 @@ function withRoutedModels(
  * listing.
  */
 export async function stillCatalogue(
-  settings: Settings,
+  { routing, prices }: CatalogueInputs,
   slotRoutes: readonly (StillRoute | null | undefined)[] = [],
 ): Promise<Record<StillProvider, ImageGenProvider>> {
   const listed = (await listCatalogueModels(db)).map(toListed)
-  const routing = settings.modelRouting
   const routes = [routing.stills, routing.stillsLikeness, routing.setSheet, ...slotRoutes]
   return Object.fromEntries(
     STILL_PROVIDERS.map((provider) => [
       provider,
       liveImageGenWith(
         provider,
-        withRoutedModels(
-          provider,
-          effectiveImageModels(provider, settings.modelPrices, listed),
-          routes,
-          settings.modelPrices,
-        ),
+        withRoutedModels(provider, effectiveImageModels(provider, prices, listed), routes, prices),
       ),
     ]),
   ) as Record<StillProvider, ImageGenProvider>

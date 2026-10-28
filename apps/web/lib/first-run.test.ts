@@ -95,7 +95,7 @@ describe('buildChecklist', () => {
 
   it('deep-links the music item straight to its tab', () => {
     const items = buildChecklist(freshInstall)
-    expect(items.find((item) => item.id === 'music')?.href).toBe('/c/psychology/settings?tab=music')
+    expect(items.find((item) => item.id === 'music')?.href).toBe('/settings?tab=music')
   })
 
   it('completes once every item is satisfied', () => {
@@ -133,7 +133,10 @@ describe('buildChecklist', () => {
 
   it('gives every item a deep link and a button label', () => {
     for (const item of buildChecklist(freshInstall)) {
-      expect(item.href, item.id).toMatch(/^\/c\/psychology(\/|$)/)
+      // The music library is the workspace's, so its link leaves the channel.
+      expect(item.href, item.id).toMatch(
+        item.id === 'music' ? /^\/settings\?tab=music$/ : /^\/c\/psychology(\/|$)/,
+      )
       expect(item.buttonLabel.length, item.id).toBeGreaterThan(0)
     }
   })

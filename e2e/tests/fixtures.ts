@@ -109,7 +109,7 @@ export async function openFixtureProject(page: Page): Promise<void> {
  * here rather than relying on the previous run's own cleanup.
  */
 export async function resetResearchModel(): Promise<void> {
-  const { createDb, getChannelSettings, updateChannelSettings, updateWorkspace } =
+  const { createDb, getChannelSettings, getWorkspace, updateChannelSettings, updateWorkspace } =
     await import('@boom-busters/db')
   const { FIRST_CHANNEL_ID } = await import('@boom-busters/schemas')
   const { e2eDatabaseUrl } = await import('../database')
@@ -117,7 +117,8 @@ export async function resetResearchModel(): Promise<void> {
   const connection = createDb(e2eDatabaseUrl(), { max: 1 })
   try {
     const settings = await getChannelSettings(connection.db, FIRST_CHANNEL_ID)
-    const { 'anthropic:claude-mock-unpriced': _unused, ...llm } = settings.modelPrices.llm
+    const { modelPrices } = (await getWorkspace(connection.db)).settings
+    const { 'anthropic:claude-mock-unpriced': _unused, ...llm } = modelPrices.llm
     await updateChannelSettings(connection.db, FIRST_CHANNEL_ID, {
       modelRouting: {
         ...settings.modelRouting,
@@ -125,7 +126,7 @@ export async function resetResearchModel(): Promise<void> {
       },
     })
     // Model prices are the workspace's.
-    await updateWorkspace(connection.db, { modelPrices: { ...settings.modelPrices, llm } })
+    await updateWorkspace(connection.db, { modelPrices: { ...modelPrices, llm } })
   } finally {
     await connection.sql.end({ timeout: 5 })
   }

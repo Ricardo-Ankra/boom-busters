@@ -1,7 +1,7 @@
-import { costLedger } from '@boom-busters/db'
+import { costLedger, getWorkspace } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import { BudgetExceededError, effectiveCeilingUsd, spentUsd } from '@boom-busters/schemas'
-import type { Settings } from '@boom-busters/schemas'
+import type { Budgets } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
 import { ledgerChannelId, monthTotalUsd, round4, type DbLike, type LedgerProvider } from './ledger'
 
@@ -71,22 +71,22 @@ export interface WithCostOptions {
   /** Injected so tests can pin a month boundary. */
   now?: Date
   /**
-   * The settings the ceiling is read from. Required: there is no "the"
-   * settings any more, so the caller names the channel it loaded them for.
+   * The budget the ceiling is read from. Left off, the guard reads the
+   * workspace's, which is the budget every channel spends against.
    */
-  settings: Settings
+  budgets?: Budgets
 }
 
 export async function withCost<T>(
   db: Database,
   spec: CostSpec,
   fn: () => Promise<Costed<T>>,
-  options: WithCostOptions,
+  options: WithCostOptions = {},
 ): Promise<T> {
   const now = options.now ?? new Date()
-  const { settings } = options
+  const budgets = options.budgets ?? (await getWorkspace(db)).settings.budgets
 
-  const ledgerId = await reserve(db, spec, settings, now)
+  const ledgerId = await reserve(db, spec, budgets, now)
 
   try {
     const { result, actualUsd } = await fn()
@@ -114,7 +114,7 @@ export async function withCost<T>(
 export async function reserve(
   db: Database,
   spec: CostSpec,
-  settings: Settings,
+  budgets: Budgets,
   now: Date = new Date(),
 ): Promise<string> {
   const estimate = round4(spec.estimateUsd)
@@ -126,7 +126,7 @@ export async function reserve(
     await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_NAMESPACE}, ${CEILING_LOCK_KEY})`)
 
     const monthSpend = await monthTotalUsd(tx, now)
-    const ceiling = round4(effectiveCeilingUsd(settings.budgets, now))
+    const ceiling = round4(effectiveCeilingUsd(budgets, now))
 
     // Rounded to the ledger's own scale before comparing: at floating-point
     // precision `29.9 + 0.1 > 30` is true, and tripping a budget gate on a
@@ -193,13 +193,13 @@ export interface BudgetStatus {
  */
 export async function budgetStatus(
   db: DbLike,
-  settings: Settings,
+  budgets: Budgets,
   options: { estimateUsd?: number; now?: Date } = {},
 ): Promise<BudgetStatus> {
   const now = options.now ?? new Date()
   const estimate = round4(options.estimateUsd ?? 0)
   const monthSpend = await monthTotalUsd(db, now)
-  const ceiling = round4(effectiveCeilingUsd(settings.budgets, now))
+  const ceiling = round4(effectiveCeilingUsd(budgets, now))
 
   return {
     monthSpendUsd: monthSpend,

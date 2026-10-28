@@ -5,7 +5,7 @@ import {
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getProject,
-  getChannelSettings,
+  getWorkspace,
   getVoiceTake,
   listOpenBudgetGates,
   listProjectNotices,
@@ -17,7 +17,7 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
-  updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
 import {
@@ -85,7 +85,7 @@ describeDb('gate helpers', () => {
     await truncateLedger(db)
     forgetRunRows()
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'running' })
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+    await updateWorkspace(db, {
       budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
     })
   })
@@ -236,35 +236,35 @@ describeDb('gate helpers', () => {
 
   describe('grantOverage', () => {
     it('raises the ceiling the guard reads, for this month only', async () => {
-      const settingsBefore = await getChannelSettings(db, FIRST_CHANNEL_ID)
-      const before = await budgetStatus(db, settingsBefore, { estimateUsd: 40 })
+      const budgetsBefore = (await getWorkspace(db)).settings.budgets
+      const before = await budgetStatus(db, budgetsBefore, { estimateUsd: 40 })
       expect(before.wouldRefuse).toBe(true)
 
-      await grantOverage(FIRST_CHANNEL_ID, 25)
+      await grantOverage(25)
 
-      const settingsAfter = await getChannelSettings(db, FIRST_CHANNEL_ID)
-      expect(settingsAfter.budgets.approvedOverage).toMatchObject({
+      const budgetsAfter = (await getWorkspace(db)).settings.budgets
+      expect(budgetsAfter.approvedOverage).toMatchObject({
         month: monthKey(new Date()),
         usd: 25,
       })
 
-      const after = await budgetStatus(db, settingsAfter, { estimateUsd: 40 })
+      const after = await budgetStatus(db, budgetsAfter, { estimateUsd: 40 })
       expect(after.ceilingUsd).toBe(55)
       expect(after.wouldRefuse).toBe(false)
     })
 
     it('stamps when it was approved, because a raised ceiling is an audit trail', async () => {
-      await grantOverage(FIRST_CHANNEL_ID, 5)
-      const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
-      expect(settings.budgets.approvedOverage?.approvedAt).toBeTruthy()
+      await grantOverage(5)
+      const { budgets } = (await getWorkspace(db)).settings
+      expect(budgets.approvedOverage?.approvedAt).toBeTruthy()
     })
 
     it('does not apply to a different month', async () => {
       const march = new Date('2026-03-15T00:00:00.000Z')
-      await grantOverage(FIRST_CHANNEL_ID, 25, march)
+      await grantOverage(25, march)
 
-      const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
-      const august = await budgetStatus(db, settings, {
+      const { budgets } = (await getWorkspace(db)).settings
+      const august = await budgetStatus(db, budgets, {
         now: new Date('2026-08-15T00:00:00.000Z'),
       })
       expect(august.ceilingUsd).toBe(30)

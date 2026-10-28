@@ -10,7 +10,7 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
-  updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
@@ -63,9 +63,7 @@ async function resetFixture(): Promise<void> {
   await truncateLedger(db)
   // The mirror memo would otherwise point at rows the truncate deleted.
   forgetRunRows()
-  await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-    budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
-  })
+  await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
 }
 
 describeDb('demo pipeline', () => {
@@ -166,7 +164,7 @@ describeDb('demo pipeline', () => {
     })
 
     it('parks the same way at a ceiling of zero, which is the kill switch now', async () => {
-      await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 0 } })
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 0 } })
 
       await engine.executeStep('open-budget-gate-0', { events: demoEvent() })
 

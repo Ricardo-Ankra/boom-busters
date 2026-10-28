@@ -1,17 +1,16 @@
 import {
   getChannelSettings,
-  listCredentials,
+  getWorkspace,
   listLogos,
-  listMusicBeds,
   maskKey,
   channelYoutubeConnection,
 } from '@boom-busters/db'
 import { hasEnvGroup } from '@boom-busters/schemas'
+import { redirect } from 'next/navigation'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
 import { exemplarViews } from '@/lib/exemplar-views'
-import { mockProvidersEnabled } from '@boom-busters/providers'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { exemplarLogoFor } from './exemplar-logo'
 import { SettingsForm } from './settings-form'
@@ -23,7 +22,6 @@ const TABS = [
   'models',
   'brand-kit',
   'voice',
-  'music',
   'logos',
   'exemplars',
   'publishing',
@@ -40,18 +38,24 @@ export default async function SettingsPage({
 }) {
   const { slug } = await routeParams
   const channel = await channelFromSlug(slug)
-  const [settings, credentials, connectionRow, beds, logos, params] = await Promise.all([
+  const [settings, workspace, connectionRow, logos, params] = await Promise.all([
     getChannelSettings(db, channel.id),
-    listCredentials(db),
+    getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
-    listMusicBeds(db),
     listLogos(db),
     searchParams,
   ])
 
+  // The music library and the price table are the workspace's now; an old
+  // bookmark to either lands on the workspace page.
+  const requestedTab = typeof params['tab'] === 'string' ? params['tab'] : undefined
+  if (requestedTab === 'music' || requestedTab === 'prices') {
+    redirect(`/settings?tab=${requestedTab}`)
+  }
+
   // The dropdowns' options: the cached live lists merged with the catalogue
-  // and priced with the owner's overrides (decision 288). Needs the settings,
-  // so it runs after the batch above.
+  // and priced with the workspace's overrides (decision 288). Needs the
+  // settings, so it runs after the batch above.
   const youtubeConnection = connectionRow
     ? {
         masked: maskKey(connectionRow.keyHint),
@@ -61,7 +65,10 @@ export default async function SettingsPage({
       }
     : undefined
 
-  const modelOptions = await loadModelOptions(settings)
+  const modelOptions = await loadModelOptions({
+    routing: settings.modelRouting,
+    prices: workspace.settings.modelPrices,
+  })
 
   const logoViews = await Promise.all(
     logos.map(async (logo) => ({
@@ -89,29 +96,18 @@ export default async function SettingsPage({
       <header className="flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold">Settings</h1>
         <p className="text-[14px] text-[var(--color-text-secondary)]">
-          Behavioural configuration lives here, not in environment variables — changing a model, a
-          budget or the brand never needs a redeploy.
+          This channel&apos;s routing, brand, voice and publishing. Provider keys, prices and the
+          music library are shared and live in the workspace settings.
         </p>
       </header>
 
       <SettingsForm
         initialSettings={settings}
-        credentials={credentials}
         youtubeConnection={youtubeConnection}
         channelId={channel.id}
         channelSlug={channel.slug}
-        mockProviders={mockProvidersEnabled()}
         youtubeEnvReady={hasEnvGroup('youtube')}
         initialTab={tab}
-        musicBeds={beds.map((bed) => ({
-          id: bed.id,
-          title: bed.title ?? 'Untitled track',
-          licence: bed.licence,
-          moodTags: bed.moodTags,
-          createdAt: bed.createdAt.toISOString(),
-          attributionText: bed.attributionText,
-          durationMs: bed.durationMs,
-        }))}
         logos={logoViews}
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}

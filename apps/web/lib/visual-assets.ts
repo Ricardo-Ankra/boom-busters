@@ -6,6 +6,7 @@ import {
   channelForProject,
   getAsset,
   getChannelSettings,
+  getWorkspace,
   listCastMembers,
   listProjectSets,
   logoById,
@@ -27,6 +28,7 @@ import type {
   ProjectSet,
   SetPlateDirection,
   SetPlateView,
+  Settings,
   ShotBrief,
   ShotSlotStatus,
   SlotCandidate,
@@ -58,6 +60,7 @@ import { env } from '@/lib/env'
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
+import type { CatalogueInputs } from '@/lib/model-catalogue'
 import {
   assembleStillPrompt,
   depictedFrom,
@@ -146,7 +149,10 @@ export async function stillsEstimateUsd(
   if (stills.length === 0) return 0
   const { settings } = await channelForProject(db, projectId)
   const routing = settings.modelRouting
-  const catalogue = await stillCatalogue(settings, routes ?? [])
+  const catalogue = await stillCatalogue(
+    { routing, prices: (await getWorkspace(db)).settings.modelPrices },
+    routes ?? [],
+  )
   const cast = await listCastMembers(db, projectId)
   const sets = await listProjectSets(db, projectId)
   const prices = await Promise.all(
@@ -405,16 +411,21 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
  * Settings says that is (decision 265). The Set card quotes this on its
  * Generate a plate button, the way the Fetch button quotes its own price.
  */
+/** A channel's routing with the workspace's prices: what a catalogue is built from. */
+async function catalogueInputs(settings: Settings): Promise<CatalogueInputs> {
+  return { routing: settings.modelRouting, prices: (await getWorkspace(db)).settings.modelPrices }
+}
+
 export async function plateEstimateUsd(channelId: string): Promise<number> {
   const settings = await getChannelSettings(db, channelId)
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue(await catalogueInputs(settings))
   return round4(routePriceUsd(catalogue, settings.modelRouting.stills, STILL_GENERATIONS))
 }
 
 /** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
 export async function setSheetEstimateUsd(channelId: string): Promise<number> {
   const settings = await getChannelSettings(db, channelId)
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue(await catalogueInputs(settings))
   const route = settings.modelRouting.setSheet
   if (!adapterOffers(route, catalogue)) return 0
   // The plate always rides as a reference (decision 297): on fal that is a
@@ -425,7 +436,7 @@ export async function setSheetEstimateUsd(channelId: string): Promise<number> {
 
 export async function stillSlotEstimateUsd(channelId: string): Promise<number> {
   const settings = await getChannelSettings(db, channelId)
-  const catalogue = await stillCatalogue(settings)
+  const catalogue = await stillCatalogue(await catalogueInputs(settings))
   const routing = settings.modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
   return Math.max(...routes.map((route) => routePriceUsd(catalogue, route, STILL_GENERATIONS)))
@@ -537,7 +548,7 @@ export async function generateStillCandidates(
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
   const { settings } = await channelForProject(db, projectId)
   const routing = settings.modelRouting
-  const catalogue = await stillCatalogue(settings, [stored])
+  const catalogue = await stillCatalogue(await catalogueInputs(settings), [stored])
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
   const route = stored && adapterOffers(stored, catalogue) ? stored : derived
   // By value, not by reference: a stored route equal to the plain one is the
@@ -636,7 +647,6 @@ export async function generateStillCandidates(
       )
       return { result: generated, actualUsd: generated.estimatedCostUsd }
     },
-    { settings },
   )
   const referenced = cast.names.length > 0 ? { references: cast.names } : {}
 

@@ -17,8 +17,6 @@ const saveSettings = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
-  saveProviderKey: vi.fn(),
-  verifyProviderKey: vi.fn(),
 }))
 
 vi.mock('./logo-actions', () => ({
@@ -75,8 +73,6 @@ describe('the daily upload budget (decision 302)', () => {
         channelId="01J00000000000000000000001"
         channelSlug="first"
         initialSettings={settings}
-        credentials={[]}
-        mockProviders
         modelOptions={modelOptions()}
       />,
     )

@@ -12,6 +12,7 @@ import {
   setProjectDirection,
   updateProjectSet,
   updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { mockDirectorsBook, mockImageGen } from '@boom-busters/providers'
 import { DEFAULT_SET_SHEET_ROUTE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
@@ -132,9 +133,7 @@ describeDb('set actions (mock mode)', () => {
     // reset here `generateSetPlateAction` can trip a budget gate purely
     // because of how much other tests already spent this run.
     await truncateLedger(db)
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
-    })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
     for (const set of await listProjectSets(db, FIXTURE_PROJECT_ID)) {
       await removeSetAction(set.id)
     }

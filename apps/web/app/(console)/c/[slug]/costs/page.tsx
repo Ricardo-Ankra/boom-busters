@@ -1,4 +1,4 @@
-import { getChannelSettings } from '@boom-busters/db'
+import { getWorkspace } from '@boom-busters/db'
 import {
   listLedger,
   monthOtherChannelsUsd,
@@ -38,8 +38,8 @@ export default async function CostsPage({
   const channel = await channelFromSlug(slug)
   const now = new Date()
 
-  const [settings, byProvider, byProject, total, otherChannelsUsd, ledger] = await Promise.all([
-    getChannelSettings(db, channel.id),
+  const [workspace, byProvider, byProject, total, otherChannelsUsd, ledger] = await Promise.all([
+    getWorkspace(db),
     monthSpendByProvider(db, now, channel.id),
     monthSpendByProject(db, now, channel.id),
     // The ceiling is one workspace number, so the meter reads the workspace total.
@@ -53,8 +53,9 @@ export default async function CostsPage({
     }),
   ])
 
-  const ceiling = effectiveCeilingUsd(settings.budgets, now)
-  const overage = ceiling - settings.budgets.monthlyCeilingUsd
+  const { budgets } = workspace.settings
+  const ceiling = effectiveCeilingUsd(budgets, now)
+  const overage = ceiling - budgets.monthlyCeilingUsd
   const ratio = ceiling === 0 ? (total > 0 ? 1 : 0) : Math.min(1, total / ceiling)
 
   const spenders = PROVIDERS.map((provider) => ({
@@ -110,7 +111,7 @@ export default async function CostsPage({
             </div>
           </div>
 
-          <CeilingEditor channelId={channel.id} ceilingUsd={settings.budgets.monthlyCeilingUsd} />
+          <CeilingEditor ceilingUsd={budgets.monthlyCeilingUsd} />
         </CardContent>
       </Card>
 

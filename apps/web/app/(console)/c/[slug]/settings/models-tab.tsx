@@ -10,13 +10,13 @@ import {
   LLM_PROVIDERS,
   LLM_TASKS,
   STILL_PROVIDERS,
-  modelPriceKey,
   type LlmProvider,
   type LlmTask,
   type Settings,
   type SettingsPatch,
   type StillProvider,
 } from '@boom-busters/schemas'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -24,13 +24,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { refreshModelListsAction } from './model-actions'
-import { ImagePriceForm, LlmPriceForm, type ImagePrice, type LlmPrice } from './price-forms'
 
 /**
  * Settings → Models (decision 288). Every row, LLM and image alike, offers
  * its provider's live list merged with the catalogue, every option labelled
- * with how it is priced, and an inline price form for the models the
- * catalogue cannot price.
+ * with how it is priced. Prices are the workspace's, one table for every
+ * channel, so they are read here and set on the workspace Prices tab; a model
+ * with no price cannot be routed until it has one.
  */
 
 const TASK_LABELS: Record<LlmTask, string> = {
@@ -45,10 +45,8 @@ const TASK_LABELS: Record<LlmTask, string> = {
 }
 
 /** The image routes, which are priced per image rather than per token. */
-const IMAGE_ROUTES = ['stills', 'stillsLikeness', 'setSheet'] as const
-type ImageRoute = (typeof IMAGE_ROUTES)[number]
+type ImageRoute = 'stills' | 'stillsLikeness' | 'setSheet'
 type RouteKey = LlmTask | ImageRoute
-type PriceKind = 'llm' | 'image'
 type AnyProvider = LlmProvider | StillProvider
 
 const ROUTE_LABELS: Record<RouteKey, string> = {
@@ -57,12 +55,6 @@ const ROUTE_LABELS: Record<RouteKey, string> = {
   stillsLikeness: 'Stills showing the cast',
   setSheet: 'Set sheets (Build the set)',
 }
-
-const kindOf = (key: RouteKey): PriceKind =>
-  (IMAGE_ROUTES as readonly RouteKey[]).includes(key) ? 'image' : 'llm'
-
-/** A price to store, tagged with the table it belongs in. */
-type PriceEntry = { kind: 'llm'; price: LlmPrice } | { kind: 'image'; price: ImagePrice }
 
 const PROVIDER_NAMES = {
   anthropic: 'Anthropic',
@@ -82,13 +74,6 @@ const SUFFIX: Record<ModelOption['status'], string> = {
   'needs-price': ' (needs a price)',
   incompatible: ' (not compatible)',
 }
-
-/** The statuses whose price the owner can set from the row. */
-const PRICEABLE: ReadonlySet<ModelOption['status']> = new Set([
-  'estimated',
-  'override',
-  'needs-price',
-])
 
 const PREVIEW_GROUP = 'Preview: Google can withdraw these without notice'
 
@@ -110,14 +95,6 @@ function describePrice(price: OptionPrice): string {
 /** A stored ISO time in the owner's local clock, or a plain word when absent. */
 const when = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('en-ZA') : 'an unknown time'
-
-/** A copy of one price table with `key` set to `value`, or removed when it is null. */
-function withEntry<T>(table: Record<string, T>, key: string, value: T | null): Record<string, T> {
-  const copy = { ...table }
-  if (value) copy[key] = value
-  else delete copy[key]
-  return copy
-}
 
 /** The routing patch that points `key` at a model. */
 function routePatch(
@@ -157,6 +134,15 @@ function statusLine(provider: (typeof STATUS_PROVIDERS)[number], options: ModelO
   }
 }
 
+/** Prices are the workspace's: a link to the tab that sets them. */
+function PricesLink({ children }: { children: React.ReactNode }) {
+  return (
+    <Button asChild variant="ghost">
+      <Link href="/settings?tab=prices">{children}</Link>
+    </Button>
+  )
+}
+
 export function ModelsTab({
   settings,
   saving,
@@ -171,15 +157,6 @@ export function ModelsTab({
   const router = useRouter()
   const { toast } = useToast()
   const [refreshing, setRefreshing] = React.useState(false)
-  /** A route waiting on a price before it can be saved. */
-  const [pending, setPending] = React.useState<{
-    key: RouteKey
-    provider: AnyProvider
-    model: string
-  } | null>(null)
-  /** Which route's price form is open, for Set price and Edit price. */
-  const [editing, setEditing] = React.useState<RouteKey | null>(null)
-  const [refusal, setRefusal] = React.useState<{ key: RouteKey; message: string } | null>(null)
 
   const refresh = React.useCallback(async () => {
     setRefreshing(true)
@@ -208,103 +185,30 @@ export function ModelsTab({
     if (options.canRefresh && isStale(options.lastAttemptAt, Date.now())) void refresh()
   }, [options.canRefresh, options.lastAttemptAt, refresh])
 
-  const optionsFor = (kind: PriceKind, provider: AnyProvider): ModelOption[] =>
-    (kind === 'llm'
-      ? options.llm[provider as LlmProvider]
-      : options.image[provider as StillProvider]) ?? []
-
-  const withPrice = (key: string, entry: PriceEntry | { kind: PriceKind; price: null }) => {
-    const prices = settings.modelPrices
-    return entry.kind === 'llm'
-      ? { ...prices, llm: withEntry(prices.llm, key, entry.price) }
-      : { ...prices, image: withEntry(prices.image, key, entry.price) }
-  }
-
-  const setRoute = (key: RouteKey, provider: AnyProvider, model: string) => {
+  const choose = (key: RouteKey, provider: AnyProvider, model: string) => {
     const modelRouting = routePatch(key, provider, model)
     const next = structuredClone(settings)
     Object.assign(next.modelRouting, modelRouting)
     void commit({ modelRouting }, next)
   }
 
-  const choose = (key: RouteKey, provider: AnyProvider, model: string) => {
-    setRefusal(null)
-    setEditing(null)
-    const option = optionsFor(kindOf(key), provider).find((o) => o.id === model)
-    // An unpriced model is never routed on its own: a run on it would be
-    // refused at pre-flight, so the route and its price are saved together.
-    if (option?.status === 'needs-price') {
-      setPending({ key, provider, model })
-      return
-    }
-    setPending(null)
-    setRoute(key, provider, model)
-  }
-
-  const savePrice = (
-    key: RouteKey,
-    provider: AnyProvider,
-    model: string,
-    entry: PriceEntry,
-    alsoRoute: boolean,
-  ) => {
-    const modelPrices = withPrice(modelPriceKey(provider, model), entry)
-    const modelRouting = alsoRoute ? routePatch(key, provider, model) : null
-    const next = structuredClone(settings)
-    next.modelPrices = modelPrices
-    if (modelRouting) Object.assign(next.modelRouting, modelRouting)
-    void commit(modelRouting ? { modelRouting, modelPrices } : { modelPrices }, next)
-    setPending(null)
-    setEditing(null)
-  }
-
-  const clearPrice = (key: RouteKey, provider: AnyProvider, model: string) => {
-    const kind = kindOf(key)
-    const option = optionsFor(kind, provider).find((o) => o.id === model)
-    // A model with nothing to fall back to (no catalogue row, no family, no
-    // published fal price) is unpriced without the override, so clearing it
-    // under a route would leave a route every run refuses.
-    const users = (kind === 'llm' ? LLM_TASKS : IMAGE_ROUTES).filter((k) => {
-      const route = settings.modelRouting[k]
-      return route?.provider === provider && route.model === model
-    })
-    if (option?.fallsBackTo === null && users.length > 0) {
-      setRefusal({
-        key,
-        message: `${ROUTE_LABELS[users[0]!]} uses this model. Pick another model first.`,
-      })
-      return
-    }
-    setRefusal(null)
-    setEditing(null)
-    const next = structuredClone(settings)
-    next.modelPrices = withPrice(modelPriceKey(provider, model), { kind, price: null })
-    void commit({ modelPrices: next.modelPrices }, next)
-  }
-
   /** Turns the likeness split off: one route generates every still again. */
   const sameAsAbove = () => {
-    setPending(null)
-    setEditing(null)
-    setRefusal(null)
     const next = structuredClone(settings)
     next.modelRouting.stillsLikeness = null
     void commit({ modelRouting: { stillsLikeness: null } }, next)
   }
-
-  /**
-   * The route a row shows: while a price is pending, the model waiting on
-   * it, not the route still saved. A pending route only ever holds a
-   * provider of its own row's kind, which is what the casts below rely on.
-   */
-  const waitingFor = (key: RouteKey) => (pending?.key === key ? pending : null)
 
   // An image option carries its price per image, as the still rows always
   // have; an LLM's two token prices are too long for an option.
   const optionLabel = (option: ModelOption) =>
     `${option.label}${option.price?.kind === 'image' ? ` (${perImage(option.price.pricePerImage)})` : ''}${SUFFIX[option.status]}`
   const renderOption = (option: ModelOption) => (
-    <option key={option.id} value={option.id} disabled={!option.selectable}>
+    <option
+      key={option.id}
+      value={option.id}
+      disabled={!option.selectable || option.status === 'needs-price'}
+    >
       {optionLabel(option)}
     </option>
   )
@@ -333,46 +237,10 @@ export function ModelsTab({
 
   /**
    * The lines under a row: why any listed option cannot be picked, how its
-   * model is priced, and the price forms. A disabled option can never be
+   * model is priced, and where to set a price. A disabled option can never be
    * selected, so its reason has to sit here rather than follow a choice.
    */
-  const renderNotes = (
-    key: RouteKey,
-    list: ModelOption[],
-    provider: AnyProvider,
-    model: string,
-    selected: ModelOption | undefined,
-    waiting: boolean,
-  ) => {
-    const priceForm = (
-      title: string,
-      initial: OptionPrice | null,
-      saveLabel: string,
-      alsoRoute: boolean,
-      onCancel: () => void,
-    ) =>
-      kindOf(key) === 'llm' ? (
-        <LlmPriceForm
-          key={`${provider}:${model}`}
-          title={title}
-          initial={initial}
-          saveLabel={saveLabel}
-          onSave={(price) => savePrice(key, provider, model, { kind: 'llm', price }, alsoRoute)}
-          onCancel={onCancel}
-        />
-      ) : (
-        <ImagePriceForm
-          key={`${provider}:${model}`}
-          title={title}
-          initial={initial}
-          sizes={provider === 'google'}
-          require4K={key === 'setSheet' && provider === 'google'}
-          saveLabel={saveLabel}
-          onSave={(price) => savePrice(key, provider, model, { kind: 'image', price }, alsoRoute)}
-          onCancel={onCancel}
-        />
-      )
-
+  const renderNotes = (list: ModelOption[], model: string, selected: ModelOption | undefined) => {
     // fal's active text-to-image list is long, so many incompatible
     // endpoints are summed up in one line with their names folded away,
     // rather than one line each under every fal row. A model kept only
@@ -419,82 +287,32 @@ export function ModelsTab({
         {ownNote}
         {incompatibleNote}
 
-        {!waiting && selected?.status === 'estimated' && selected.price ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Estimated at {selected.pricedAs}&apos;s price: {describePrice(selected.price)}.
-            </p>
-            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
-              Set price
-            </Button>
-          </div>
-        ) : null}
-
-        {!waiting && selected?.status === 'override' && selected.price ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[12px] text-[var(--color-text-muted)]">
-              Your price: {describePrice(selected.price)}.
-            </p>
-            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
-              Edit price
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={saving}
-              onClick={() => clearPrice(key, provider, model)}
-            >
-              Clear price
-            </Button>
-          </div>
-        ) : null}
-
-        {/* A route saved on an unpriced model (saved before its price was
-            cleared, or stored by hand) is refused by every run, and
-            re-picking the same option fires no change: so the fix sits here,
-            beside the row. The route is already saved, so this saves the
-            price alone. */}
-        {!waiting && selected?.status === 'needs-price' ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[12px] text-[var(--color-danger)]">
-              {selected.label} needs a price before it can run.
-            </p>
-            <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditing(key)}>
-              Set price
-            </Button>
-          </div>
-        ) : null}
-
-        {!waiting && selected?.status === 'retired' ? (
-          <p className="text-[12px] text-[var(--color-warning)]">
-            {PROVIDER_NAMES[provider]} no longer lists this model. Runs still try it, and fall back
-            if it is refused.
+        {selected?.status === 'estimated' && selected.price ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Estimated at {selected.pricedAs}&apos;s price: {describePrice(selected.price)}.{' '}
+            <PricesLink>Set a price</PricesLink>
           </p>
         ) : null}
 
-        {!waiting && editing === key && selected && PRICEABLE.has(selected.status)
-          ? priceForm(
-              `Your price for ${selected.label}.`,
-              selected.price,
-              'Save price',
-              false,
-              () => setEditing(null),
-            )
-          : null}
+        {selected?.status === 'override' && selected.price ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Your price: {describePrice(selected.price)}. <PricesLink>Change prices</PricesLink>
+          </p>
+        ) : null}
 
-        {waiting
-          ? priceForm(
-              `${selected?.label ?? model} needs a price before it can run.`,
-              selected?.price ?? null,
-              'Save price and use',
-              true,
-              () => setPending(null),
-            )
-          : null}
+        {/* A route saved on an unpriced model (saved before its price was
+            cleared, or stored by hand) is refused by every run. Prices are
+            the workspace's, so the fix is there. */}
+        {selected?.status === 'needs-price' ? (
+          <p className="text-[12px] text-[var(--color-danger)]">
+            {selected.label} needs a price before it can run. <PricesLink>Set its price</PricesLink>
+          </p>
+        ) : null}
 
-        {refusal?.key === key ? (
-          <p role="alert" className="text-[12px] text-[var(--color-danger)]">
-            {refusal.message}
+        {selected?.status === 'retired' ? (
+          <p className="text-[12px] text-[var(--color-warning)]">
+            {selected.label} is no longer listed by its provider. Runs still try it, and fall back
+            if it is refused.
           </p>
         ) : null}
       </>
@@ -505,32 +323,17 @@ export function ModelsTab({
   const firstRunnable = (list: ModelOption[]) =>
     list.find((o) => o.selectable && o.status !== 'needs-price')
 
-  const stillsWaiting = waitingFor('stills')
-  const stills = {
-    provider:
-      (stillsWaiting?.provider as StillProvider | undefined) ??
-      settings.modelRouting.stills.provider,
-    model: stillsWaiting?.model ?? settings.modelRouting.stills.model,
-  }
+  const stills = settings.modelRouting.stills
   const stillOptions = options.image[stills.provider]
   const stillSelected = stillOptions.find((o) => o.id === stills.model)
 
   // Off (null) until a provider is picked, and its model select stays empty:
   // the row above generates everything until then.
-  const likenessWaiting = waitingFor('stillsLikeness')
-  const likeness = likenessWaiting
-    ? { provider: likenessWaiting.provider as StillProvider, model: likenessWaiting.model }
-    : settings.modelRouting.stillsLikeness
+  const likeness = settings.modelRouting.stillsLikeness
   const likenessOptions = likeness ? options.image[likeness.provider] : []
   const likenessSelected = likenessOptions.find((o) => o.id === likeness?.model)
 
-  const sheetWaiting = waitingFor('setSheet')
-  const sheet = {
-    provider:
-      (sheetWaiting?.provider as StillProvider | undefined) ??
-      settings.modelRouting.setSheet.provider,
-    model: sheetWaiting?.model ?? settings.modelRouting.setSheet.model,
-  }
+  const sheet = settings.modelRouting.setSheet
   // Google: only models that make a 4K image, since a sheet is cut into four
   // plates; the stored choice stays listed so the select never shows a model
   // it is not using. fal (decision 297): every model, because the plate rides
@@ -589,11 +392,7 @@ export function ModelsTab({
         {LLM_TASKS.map((task) => {
           const route = settings.modelRouting[task]
           const label = TASK_LABELS[task]
-          const waiting = waitingFor(task)
-          const row = {
-            provider: (waiting?.provider as LlmProvider | undefined) ?? route.provider,
-            model: waiting?.model ?? route.model,
-          }
+          const row = route
           const providerOptions = options.llm[row.provider]
           const selected = providerOptions.find((o) => o.id === row.model)
 
@@ -634,14 +433,7 @@ export function ModelsTab({
                 </Select>
               </div>
 
-              {renderNotes(
-                task,
-                providerOptions,
-                row.provider,
-                row.model,
-                selected,
-                waiting !== null,
-              )}
+              {renderNotes(providerOptions, row.model, selected)}
             </div>
           )
         })}
@@ -682,14 +474,7 @@ export function ModelsTab({
             </Select>
           </div>
 
-          {renderNotes(
-            'stills',
-            stillOptions,
-            stills.provider,
-            stills.model,
-            stillSelected,
-            stillsWaiting !== null,
-          )}
+          {renderNotes(stillOptions, stills.model, stillSelected)}
         </div>
 
         {/* Stills that show a photographed cast member may go somewhere else
@@ -742,16 +527,7 @@ export function ModelsTab({
             </Select>
           </div>
 
-          {likeness
-            ? renderNotes(
-                'stillsLikeness',
-                likenessOptions,
-                likeness.provider,
-                likeness.model,
-                likenessSelected,
-                likenessWaiting !== null,
-              )
-            : null}
+          {likeness ? renderNotes(likenessOptions, likeness.model, likenessSelected) : null}
         </div>
         <p className="text-[12px] text-[var(--color-text-muted)]">
           A still counts as showing the cast when it depicts someone the Cast card holds a
@@ -797,14 +573,7 @@ export function ModelsTab({
             </Select>
           </div>
 
-          {renderNotes(
-            'setSheet',
-            sheetOptions,
-            sheet.provider,
-            sheet.model,
-            sheetSelected,
-            sheetWaiting !== null,
-          )}
+          {renderNotes(sheetOptions, sheet.model, sheetSelected)}
 
           {sheet.provider === 'fal' ? (
             <p className="text-[12px] text-[var(--color-text-muted)]">

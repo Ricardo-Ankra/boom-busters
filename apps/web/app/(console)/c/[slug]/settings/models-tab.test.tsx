@@ -17,8 +17,6 @@ const saveSettings = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
-  saveProviderKey: vi.fn(),
-  verifyProviderKey: vi.fn(),
 }))
 
 // `SettingsForm` statically imports every tab, including Voice and Logos —
@@ -84,8 +82,6 @@ function renderModelsTab(
       channelId="01J00000000000000000000001"
       channelSlug="first"
       initialSettings={settings}
-      credentials={[]}
-      mockProviders
       modelOptions={options}
     />,
   )
@@ -168,82 +164,46 @@ describe('live model lists (decision 288)', () => {
     ).toBeInTheDocument()
   })
 
-  it('asks for a price before routing to a model with none, then saves both together', async () => {
+  it('does not let a model with no price be picked, and says where to set one', () => {
     renderModelsTab()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Research (dossiers) model' }),
-      'claude-mock-unpriced',
-    )
+    const unpriced = screen.getAllByRole('option', { name: 'Claude Mock Unpriced (needs a price)' })
+    expect(unpriced.length).toBeGreaterThan(0)
+    for (const option of unpriced) expect(option).toBeDisabled()
     expect(saveSettings).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Claude Mock Unpriced needs a price before it can run.'),
-    ).toBeInTheDocument()
-
-    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), '7')
-    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
-
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelRouting: { research: { provider: 'anthropic', model: 'claude-mock-unpriced' } },
-      modelPrices: {
-        llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
-        image: {},
-      },
-    })
   })
 
-  it.each(['0', '-1', 'abc', '4,5'])('refuses the price %s and saves nothing', async (typed) => {
-    renderModelsTab()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Research (dossiers) model' }),
-      'claude-mock-unpriced',
-    )
-    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), typed)
-    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
-    expect(saveSettings).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Enter a price above zero, using a full stop for decimals.'),
-    ).toBeInTheDocument()
-  })
-
-  it('offers a price for a saved route already on an unpriced model, and saves only the price', async () => {
+  it('names a saved route on an unpriced model and links to the workspace prices', () => {
     const settings = structuredClone(DEFAULT_SETTINGS)
     settings.modelRouting.research = { provider: 'anthropic', model: 'claude-mock-unpriced' }
     renderModelsTab(modelOptions(), settings)
 
     expect(
-      screen.getByText('Claude Mock Unpriced needs a price before it can run.'),
+      screen.getByText(/Claude Mock Unpriced needs a price before it can run\./),
     ).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
-    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), '7')
-    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-
-    expect(saveSettings).toHaveBeenCalledTimes(1)
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelPrices: {
-        llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
-        image: {},
-      },
-    })
+    expect(screen.getByRole('link', { name: 'Set its price' })).toHaveAttribute(
+      'href',
+      '/settings?tab=prices',
+    )
+    // Prices are the workspace's: no price form is offered here.
+    expect(screen.queryByRole('button', { name: /price/i })).not.toBeInTheDocument()
   })
 
-  it('refuses to clear the price of a model a route still needs it for', async () => {
+  it('shows a workspace price read-only, with a link to change it', () => {
     const prices = {
-      llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
+      llm: { 'anthropic:claude-opus-mock-9': { inputPerMTok: 4, outputPerMTok: 20 } },
       image: {},
     }
     const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-mock-unpriced' }
-    settings.modelPrices = prices
+    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-mock-9' }
     renderModelsTab(modelOptions(prices), settings)
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Clear price' })[0]!)
-    expect(saveSettings).not.toHaveBeenCalled()
     expect(
-      screen.getByText('Research (dossiers) uses this model. Pick another model first.'),
+      screen.getByText(/Your price: \$4 in, \$20 out per million tokens\./),
     ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Change prices' })).toHaveAttribute(
+      'href',
+      '/settings?tab=prices',
+    )
   })
 
   it('refreshes when asked, and stays busy until the action returns', async () => {
@@ -403,201 +363,29 @@ describe('live image models (decision 288)', () => {
     expect(texts).toContain('Gemini 3.1 Flash Image ($0.07/image)')
     expect(texts).toContain('Gemini 9 Flash Image (mock) ($0.07/image) (estimated)')
   })
-
-  it('requires a 4K price when pricing a set sheet model', async () => {
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.setSheet = { provider: 'google', model: 'gemini-9-flash-image' }
-    renderModelsTab(modelOptions(), settings)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
-    const fourK = screen.getByLabelText('4K price per image ($)')
-    await userEvent.clear(fourK)
-    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-    expect(saveSettings).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Enter a price above zero, using a full stop for decimals.'),
-    ).toBeInTheDocument()
-
-    await userEvent.type(fourK, '0.3')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelPrices: {
-        llm: {},
-        image: {
-          'google:gemini-9-flash-image': {
-            pricePerImage: 0.07,
-            pricesBySize: { '1K': 0.07, '2K': 0.11, '4K': 0.3 },
-          },
-        },
-      },
-    })
-  })
 })
 
-describe('pricing image models (decision 288)', () => {
-  /** A live Google image model with no family and no price. */
-  const unpriced = {
-    id: 'imagen-mock',
-    label: 'Imagen Mock',
-    status: 'needs-price' as const,
-    preview: false,
-    selectable: true,
-    price: null,
-    pricedAs: null,
-    reason: null,
-    catalogued: false,
-    fallsBackTo: null,
-  }
-
-  it('asks for a per-image price before routing stills to an unpriced model, then saves both', async () => {
+describe('unpriced image models (decision 288)', () => {
+  it('does not let an image model with no price be picked for stills', () => {
     const options = modelOptions()
-    options.image.google.push(unpriced)
-    renderModelsTab(options)
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Still images model' }),
-      'imagen-mock',
-    )
-    expect(saveSettings).not.toHaveBeenCalled()
-    expect(screen.getByText('Imagen Mock needs a price before it can run.')).toBeInTheDocument()
-
-    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0.05')
-    await userEvent.type(screen.getByLabelText('4K price per image ($, optional)'), '0.2')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
-
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelRouting: { stills: { provider: 'google', model: 'imagen-mock' } },
-      modelPrices: {
-        llm: {},
-        image: { 'google:imagen-mock': { pricePerImage: 0.05, pricesBySize: { '4K': 0.2 } } },
-      },
-    })
-  })
-
-  it('refuses a bad per-image price and saves nothing', async () => {
-    const options = modelOptions()
-    options.image.google.push(unpriced)
-    renderModelsTab(options)
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Still images model' }),
-      'imagen-mock',
-    )
-    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0,05')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
-    expect(saveSettings).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Enter a price above zero, using a full stop for decimals.'),
-    ).toBeInTheDocument()
-  })
-
-  it('asks only for a per-image price on a fal model', async () => {
-    const options = modelOptions()
-    options.image.fal.push({ ...unpriced, id: 'fal-ai/unpriced', label: 'Unpriced fal' })
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.stills = { provider: 'fal', model: 'fal-ai/unpriced' }
-    renderModelsTab(options, settings)
-
-    expect(screen.getByText('Unpriced fal needs a price before it can run.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
-    expect(screen.queryByLabelText('4K price per image ($, optional)')).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Price per image ($)'), '0.03')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-
-    expect(saveSettings).toHaveBeenCalledTimes(1)
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelPrices: { llm: {}, image: { 'fal:fal-ai/unpriced': { pricePerImage: 0.03 } } },
-    })
-  })
-
-  it('refuses to clear the price of an image model the cast stills still need it for', async () => {
-    const prices = { llm: {}, image: { 'google:imagen-mock': { pricePerImage: 0.05 } } }
-    const options = modelOptions(prices)
     options.image.google.push({
-      ...unpriced,
-      status: 'override',
-      price: { kind: 'image', pricePerImage: 0.05 },
+      id: 'imagen-mock',
+      label: 'Imagen Mock',
+      status: 'needs-price',
+      preview: false,
+      selectable: true,
+      price: null,
+      pricedAs: null,
+      reason: null,
+      catalogued: false,
+      fallsBackTo: null,
     })
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.stillsLikeness = { provider: 'google', model: 'imagen-mock' }
-    settings.modelPrices = prices
-    renderModelsTab(options, settings)
-
-    expect(screen.getByText('Your price: $0.05 per image.')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Clear price' }))
-    expect(saveSettings).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Stills showing the cast uses this model. Pick another model first.'),
-    ).toBeInTheDocument()
+    renderModelsTab(options)
+    expect(screen.getByRole('option', { name: 'Imagen Mock (needs a price)' })).toBeDisabled()
   })
 })
 
 describe('Models tab follow-ups (decision 288)', () => {
-  it('names the price form and announces a refused price on the fields it covers', async () => {
-    renderModelsTab()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Research (dossiers) model' }),
-      'claude-mock-unpriced',
-    )
-    const form = screen.getByRole('form', {
-      name: 'Claude Mock Unpriced needs a price before it can run.',
-    })
-    expect(form).toBeInTheDocument()
-
-    await userEvent.type(screen.getByLabelText('Input, $ per million tokens'), 'abc')
-    await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
-
-    const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent('Enter a price above zero, using a full stop for decimals.')
-    const input = screen.getByLabelText('Input, $ per million tokens')
-    expect(input).toHaveAttribute('aria-invalid', 'true')
-    expect(input).toHaveAttribute('aria-describedby', alert.id)
-    expect(saveSettings).not.toHaveBeenCalled()
-  })
-
-  it('sets a price on an estimated model from its estimate, saving only the price', async () => {
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-mock-9' }
-    renderModelsTab(modelOptions(), settings)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Set price' }))
-    const input = screen.getByLabelText('Input, $ per million tokens')
-    // Prefilled with the family's price, Opus 5's.
-    expect(input).toHaveValue('5')
-    expect(screen.getByLabelText('Output, $ per million tokens')).toHaveValue('25')
-    await userEvent.clear(input)
-    await userEvent.type(input, '4')
-    await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelPrices: {
-        llm: {
-          'anthropic:claude-opus-mock-9': {
-            inputPerMTok: 4,
-            outputPerMTok: 25,
-            cachedInputPerMTok: 0.5,
-          },
-        },
-        image: {},
-      },
-    })
-  })
-
-  it('clears the owner’s price on a model its family can still price', async () => {
-    const prices = {
-      llm: { 'anthropic:claude-opus-mock-9': { inputPerMTok: 4, outputPerMTok: 20 } },
-      image: {},
-    }
-    const settings = structuredClone(DEFAULT_SETTINGS)
-    settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-mock-9' }
-    settings.modelPrices = prices
-    renderModelsTab(modelOptions(prices), settings)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Clear price' }))
-    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
-      modelPrices: { llm: {}, image: {} },
-    })
-  })
-
   it('shows a saved route no list holds any more as itself, not as unlisted', () => {
     const settings = structuredClone(DEFAULT_SETTINGS)
     settings.modelRouting.research = { provider: 'anthropic', model: 'claude-opus-6' }
@@ -622,7 +410,9 @@ describe('Models tab follow-ups (decision 288)', () => {
       screen.getByRole('option', { name: 'claude-opus-6 (no longer offered)' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /\(unlisted\)/ })).toBeNull()
-    expect(screen.getByText(/Anthropic no longer lists this model\./)).toBeInTheDocument()
+    expect(
+      screen.getByText(/claude-opus-6 is no longer listed by its provider\./),
+    ).toBeInTheDocument()
   })
 
   it('offers a model kept for one route in that row alone', () => {

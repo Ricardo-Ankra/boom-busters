@@ -1,5 +1,4 @@
 import {
-  channelForProject,
   getCase,
   getProject,
   saveDossier,
@@ -264,10 +263,7 @@ async function waitOutBudgetGate(
   const decision = parseEventData('budget/approved', approved.data)
 
   await step.run(`apply-overage-${round}`, async () => {
-    await grantOverage(
-      (await channelForProject(db, ctx.projectId)).channelId,
-      decision.additionalUsd,
-    )
+    await grantOverage(decision.additionalUsd)
     await closeBudgetGate(
       ctx,
       `Overage of $${decision.additionalUsd.toFixed(2)} approved for ${decision.provider}`,

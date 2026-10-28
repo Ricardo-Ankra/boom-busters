@@ -7,6 +7,7 @@ import {
   createProjectFromCase,
   setCredential,
   updateChannelSettings,
+  updateWorkspace,
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -320,9 +321,9 @@ describeDb('dossier-runner', () => {
       },
       bible: EMPTY_BIBLE,
     })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100 } })
     await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { research: { provider: 'anthropic', model: 'claude-sonnet-5' } },
-      budgets: { monthlyCeilingUsd: 100 },
     })
     await setCredential(db, 'anthropic', 'sk-ant-api03-test-key-0000', env.SECRETS_ENCRYPTION_KEY)
     const otherCase = await createCase(db, { channelId: other.id, title: 'B', category: 'con' })

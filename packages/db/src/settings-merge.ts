@@ -7,6 +7,8 @@ import {
   canonicalStillModelId,
 } from '@boom-busters/schemas'
 import type {
+  Budgets,
+  BudgetsPatch,
   ModelRouting,
   Settings,
   SettingsPatch,
@@ -33,10 +35,7 @@ import type {
  * writes for itself (at a budget gate), so a settings save that merely did not
  * mention it must not erase it.
  */
-function mergeBudgets(
-  current: Settings['budgets'],
-  patch?: SettingsPatch['budgets'],
-): Settings['budgets'] {
+function mergeBudgets(current: Budgets, patch?: BudgetsPatch): Budgets {
   const overage =
     patch && 'approvedOverage' in patch
       ? (patch.approvedOverage ?? undefined)
@@ -53,10 +52,8 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
     ...current,
     // Arrays are replaced wholesale, not concatenated.
     fallbackChain: patch.fallbackChain ?? current.fallbackChain,
-    modelPrices: patch.modelPrices ?? current.modelPrices,
     modelRouting: { ...current.modelRouting, ...patch.modelRouting },
     tts: { ...current.tts, ...patch.tts },
-    budgets: mergeBudgets(current.budgets, patch.budgets),
     render: { ...current.render, ...patch.render },
     publish: { ...current.publish, ...patch.publish },
     brandKit: { ...current.brandKit, ...patch.brandKit },
@@ -129,7 +126,6 @@ export function normaliseSettings(stored: unknown): Settings {
     ...partial,
     modelRouting: { ...DEFAULT_SETTINGS.modelRouting, ...partial.modelRouting },
     tts: { ...DEFAULT_SETTINGS.tts, ...partial.tts },
-    budgets: mergeBudgets(DEFAULT_SETTINGS.budgets, partial.budgets),
     render: { ...DEFAULT_SETTINGS.render, ...partial.render },
     publish: { ...DEFAULT_SETTINGS.publish, ...partial.publish },
     brandKit: { ...DEFAULT_SETTINGS.brandKit, ...partial.brandKit },

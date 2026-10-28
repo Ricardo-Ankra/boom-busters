@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { saveSettings } from '@/app/(console)/c/[slug]/settings/actions'
+import { saveWorkspaceSettings } from '@/app/(console)/settings/workspace-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
@@ -17,16 +17,11 @@ import { useToast } from '@/components/ui/toast'
  * every priced call, which is everything the kill switch did as a separate
  * concept.
  *
- * It writes through `saveSettings`, the same validated action the Settings
- * screen uses: two write paths to one row is how they drift.
+ * The ceiling is the workspace's, one number for every channel, so it writes
+ * through `saveWorkspaceSettings`, the same validated action the workspace
+ * settings use: two write paths to one row is how they drift.
  */
-export function CeilingEditor({
-  channelId,
-  ceilingUsd,
-}: {
-  channelId: string
-  ceilingUsd: number
-}) {
+export function CeilingEditor({ ceilingUsd }: { ceilingUsd: number }) {
   const router = useRouter()
   const { toast } = useToast()
   const [draft, setDraft] = React.useState(String(ceilingUsd))
@@ -39,7 +34,7 @@ export function CeilingEditor({
   async function save(): Promise<void> {
     setBusy(true)
     try {
-      const result = await saveSettings(channelId, { budgets: { monthlyCeilingUsd: parsed } })
+      const result = await saveWorkspaceSettings({ budgets: { monthlyCeilingUsd: parsed } })
       if (result.ok) {
         toast({
           title: `Ceiling set to $${parsed.toFixed(2)}/month`,
@@ -73,7 +68,8 @@ export function CeilingEditor({
         Save
       </Button>
       <span className="text-[12px] text-[var(--color-text-muted)]">
-        One number for everything. A run that would cross it parks and asks; zero parks every run.
+        One number for every channel. A run that would cross it parks and asks; zero parks every
+        run.
       </span>
     </div>
   )

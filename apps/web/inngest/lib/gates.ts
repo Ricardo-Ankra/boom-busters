@@ -5,7 +5,7 @@ import {
   recordRunEvent,
   setProjectStage,
   setRunStatus,
-  updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
@@ -199,17 +199,14 @@ export async function closeBudgetGate(ctx: GateContext, message: string): Promis
 }
 
 /**
- * Record the headroom the human granted. Written into settings rather than
- * held in the run, so the cap the guard reads and the cap the Costs screen
- * shows are the same number — and so it expires with the month.
+ * Record the headroom the human granted. The budget is the workspace's, one
+ * ceiling for every channel, so the headroom is written there and not to the
+ * channel whose run parked. Written into settings rather than held in the
+ * run, so the cap the guard reads and the cap the Costs screen shows are the
+ * same number, and so it expires with the month.
  */
-export async function grantOverage(
-  channelId: string,
-  additionalUsd: number,
-  now: Date = new Date(),
-): Promise<void> {
-  // The project's channel until Task 9 writes the workspace row directly.
-  await updateChannelSettings(db, channelId, {
+export async function grantOverage(additionalUsd: number, now: Date = new Date()): Promise<void> {
+  await updateWorkspace(db, {
     budgets: {
       approvedOverage: {
         month: monthKey(now),

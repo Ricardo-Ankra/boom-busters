@@ -7,6 +7,7 @@ import {
   seed,
   setCredential,
   updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID, newId } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -33,8 +34,8 @@ describeDb('callLlm routes by channel', () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
     await setCredential(db, 'anthropic', 'sk-ant-api03-test-key-0000', env.SECRETS_ENCRYPTION_KEY)
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100 } })
     await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      budgets: { monthlyCeilingUsd: 100 },
       modelRouting: { scripting: { provider: 'anthropic', model: 'claude-sonnet-5' } },
     })
   })

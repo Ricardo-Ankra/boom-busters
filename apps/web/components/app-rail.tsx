@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  Building2,
   Calendar,
   DollarSign,
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   Video,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import type { Route } from 'next'
 import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import * as React from 'react'
@@ -108,6 +110,24 @@ export function AppRail({ slug, name }: { slug: string; name: string }) {
           </Link>
         )
       })}
+
+      {/* Provider keys, prices and the music library belong to the workspace,
+          not to the channel the rail is showing. */}
+      <Link
+        href={'/settings' as Route}
+        aria-current={pathname.startsWith('/settings') ? 'page' : undefined}
+        className={cn(
+          'flex h-10 items-center gap-3 rounded-[8px] px-3 text-[14px]',
+          'transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]',
+          pathname.startsWith('/settings')
+            ? 'bg-[var(--color-surface-raised)] font-medium text-[var(--color-text-primary)]'
+            : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-primary)]',
+        )}
+      >
+        <RailIcon icon={Building2} />
+        <span className={cn(expanded ? '' : 'sr-only')}>Workspace</span>
+      </Link>
 
       <button
         type="button"

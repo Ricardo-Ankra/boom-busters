@@ -18,6 +18,7 @@ const session = vi.hoisted(() => ({ value: null as { user: { email: string } } |
 vi.mock('@/auth', () => ({ auth: () => Promise.resolve(session.value) }))
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('@/lib/env', () => ({ env: { SECRETS_ENCRYPTION_KEY: 'a'.repeat(44) } }))
+vi.mock('@/lib/channel-context', () => ({ landingSlug: () => Promise.resolve('boom-busters') }))
 
 const store = vi.hoisted(() => ({
   getChannel: vi.fn(),
@@ -110,7 +111,9 @@ describe('GET /api/youtube/callback', () => {
 
   it('refuses a forged state', async () => {
     const response = await GET(request({ code: 'x', state: 'attacker-state' }))
-    expect(redirectedTo(response)).toContain('youtube=state-mismatch')
+    expect(redirectedTo(response)).toContain(
+      '/c/boom-busters/settings?tab=connections&youtube=state-mismatch',
+    )
     expectNothingWritten()
   })
 

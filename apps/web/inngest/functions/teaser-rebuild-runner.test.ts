@@ -18,6 +18,7 @@ import {
   timelines,
   truncateRunMirror,
   updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
@@ -123,9 +124,9 @@ const STORED_SCRIPT = {
 }
 
 async function chooseVoice(): Promise<void> {
+  await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
   await updateChannelSettings(db, FIRST_CHANNEL_ID, {
     tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-    budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
   })
   await setCredential(
     db,

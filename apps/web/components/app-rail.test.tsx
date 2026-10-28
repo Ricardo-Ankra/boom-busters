@@ -46,6 +46,13 @@ describe('AppRail', () => {
     }
   })
 
+  it('links the workspace settings from under Settings, as a 40 px target', () => {
+    render(<AppRail slug="psychology" name="Psychology" />)
+    const link = screen.getByRole('link', { name: 'Workspace' })
+    expect(link).toHaveAttribute('href', '/settings')
+    expect(link.className).toContain('h-10')
+  })
+
   it('exposes the collapse state', async () => {
     render(<AppRail slug="psychology" name="Psychology" />)
     const toggle = screen.getByRole('button', { name: 'Collapse rail' })

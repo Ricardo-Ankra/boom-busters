@@ -145,7 +145,6 @@ export async function synthesise(input: SynthesisInput, settings: Settings): Pro
         // authoritative in case a vendor's rate differs from ours.
         return { result: synthesised, actualUsd: synthesised.estimatedCostUsd }
       },
-      { settings },
     ),
   )
 

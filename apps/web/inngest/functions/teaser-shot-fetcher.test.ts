@@ -1,4 +1,3 @@
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 // @vitest-environment node
 
 import {
@@ -10,7 +9,7 @@ import {
   seed,
   shorts,
   truncateRunMirror,
-  updateChannelSettings,
+  updateWorkspace,
   updateShort,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
@@ -116,9 +115,7 @@ describeDb('teaser-shot-fetcher', () => {
     vi.clearAllMocks()
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
-    })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(renders)

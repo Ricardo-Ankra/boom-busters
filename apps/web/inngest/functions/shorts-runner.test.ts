@@ -20,6 +20,7 @@ import {
   timelines,
   truncateRunMirror,
   updateChannelSettings,
+  updateWorkspace,
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
@@ -325,9 +326,9 @@ describeDb('shorts-runner', () => {
     async () => {
       // Production shape, 2026-09-08: the excerpts predate the teaser
       // feature, so the re-entry guard must not lock the teaser out forever.
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
       await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       })
       await setCredential(
         db,
@@ -438,11 +439,11 @@ describeDb('shorts-runner', () => {
       // setCredential rather than the env import: another suite may have left
       // a row encrypted under a different key, and the import skips existing
       // rows, leaving one this process cannot decrypt.
+      // The synthesis reserves against the monthly ceiling before calling
+      // the (mock) vendor; the default ceiling refuses it.
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
       await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-        // The synthesis reserves against the monthly ceiling before calling
-        // the (mock) vendor; the default ceiling refuses it.
-        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       })
       await setCredential(
         db,
@@ -524,9 +525,9 @@ describeDb('shorts-runner', () => {
     'says why on the Teaser place when the cut is skipped (decision 294)',
     { timeout: 120_000 },
     async () => {
+      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
       await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-        budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       })
       await setCredential(
         db,

@@ -42,12 +42,22 @@ test.describe('dashboard', () => {
   })
 
   test('an old bookmark forwards to the channel and keeps its query', async ({ page }) => {
+    await page.goto('/settings?tab=voice')
+    await expect(page).toHaveURL(/\/c\/boom-busters\/settings\?tab=voice$/)
+    await expect(page.getByRole('tab', { name: 'Voice' })).toHaveAttribute('data-state', 'active')
+  })
+
+  test('the connections tab at /settings is the workspace page, with the provider keys', async ({
+    page,
+  }) => {
     await page.goto('/settings?tab=connections')
-    await expect(page).toHaveURL(/\/c\/boom-busters\/settings\?tab=connections$/)
+    await expect(page).toHaveURL(/\/settings\?tab=connections$/)
+    await expect(page).not.toHaveURL(/\/c\//)
     await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
       'data-state',
       'active',
     )
+    await expect(page.getByLabel('anthropic API key')).toBeVisible()
   })
 })
 
@@ -62,6 +72,7 @@ test.describe('app shell', () => {
       ['Calendar', /\/c\/boom-busters\/calendar/],
       ['Costs', /\/c\/boom-busters\/costs/],
       ['Settings', /\/c\/boom-busters\/settings/],
+      ['Workspace', /^https?:\/\/[^/]+\/settings$/],
     ] as const) {
       await rail.getByRole('link', { name: label }).click()
       await expect(page, label).toHaveURL(expected)
@@ -147,7 +158,7 @@ test.describe('settings', () => {
   })
 
   test('one card per provider, with the key input masked', async ({ page }) => {
-    await page.goto(channelPath('/settings'))
+    await page.goto('/settings')
     await page.getByRole('tab', { name: 'Connections' }).click()
 
     const panel = page.getByRole('tabpanel', { name: 'Connections' })
@@ -165,7 +176,7 @@ test.describe('settings', () => {
   test('a stored provider key is never rendered, only its last four characters', async ({
     page,
   }) => {
-    await page.goto(channelPath('/settings'))
+    await page.goto('/settings')
     await page.getByRole('tab', { name: 'Connections' }).click()
 
     const panel = page.getByRole('tabpanel', { name: 'Connections' })

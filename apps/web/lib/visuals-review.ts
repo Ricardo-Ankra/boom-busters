@@ -11,6 +11,7 @@ import {
   getArticleSources,
   getAsset,
   getClaims,
+  getWorkspace,
   getProject,
   getSocialPosts,
   latestScriptParagraphSources,
@@ -902,7 +903,7 @@ export async function visualsReviewModel(
   // Every slot's stored route too, so a slot on a model the lists have
   // since dropped shows and prices as itself (decision 288 follow-up).
   const catalogue = await stillCatalogue(
-    settings,
+    { routing: settings.modelRouting, prices: (await getWorkspace(db)).settings.modelPrices },
     rows.map((row) => {
       const stored = StillRouteSchema.nullable().safeParse(row.route)
       return stored.success ? stored.data : null

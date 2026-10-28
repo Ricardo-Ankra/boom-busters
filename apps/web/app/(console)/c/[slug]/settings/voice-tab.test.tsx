@@ -28,8 +28,6 @@ const generateAuditions = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
-  saveProviderKey: vi.fn(),
-  verifyProviderKey: vi.fn(),
 }))
 
 vi.mock('./logo-actions', () => ({
@@ -110,8 +108,6 @@ async function openVoiceTab(): Promise<void> {
       channelId={CHANNEL}
       channelSlug="first"
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
-      credentials={[]}
-      mockProviders
       modelOptions={modelOptions()}
     />,
   )

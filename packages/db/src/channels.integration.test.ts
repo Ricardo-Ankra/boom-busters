@@ -156,34 +156,28 @@ suite('channels', () => {
     )
   })
 
-  it('the workspace ceiling is what every channel reads, and a budget patch lands in the workspace', async () => {
+  it('channel settings carry no prices or budget, whatever the workspace holds', async () => {
     const a = await createChannel(db, channelInput('alpha'))
-    const b = await createChannel(db, channelInput('beta'))
     await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 7 } })
 
-    expect((await getChannelSettings(db, a.id)).budgets.monthlyCeilingUsd).toBe(7)
-    expect((await getChannelSettings(db, b.id)).budgets.monthlyCeilingUsd).toBe(7)
+    const settings = await getChannelSettings(db, a.id)
+    expect('budgets' in settings).toBe(false)
+    expect('modelPrices' in settings).toBe(false)
 
-    const next = await updateChannelSettings(db, b.id, {
-      budgets: { monthlyCeilingUsd: 9 },
-      tts: { voiceId: 'voice-b' },
-    })
-    expect(next.budgets.monthlyCeilingUsd).toBe(9)
-    expect((await getWorkspace(db)).settings.budgets.monthlyCeilingUsd).toBe(9)
-    expect((await getChannelSettings(db, a.id)).budgets.monthlyCeilingUsd).toBe(9)
-    expect((await getChannelSettings(db, b.id)).tts.voiceId).toBe('voice-b')
-    expect((await getChannelSettings(db, a.id)).tts.voiceId).not.toBe('voice-b')
+    const next = await updateChannelSettings(db, a.id, { tts: { voiceId: 'voice-a' } })
+    expect(next.tts.voiceId).toBe('voice-a')
+    expect((await getWorkspace(db)).settings.budgets.monthlyCeilingUsd).toBe(7)
 
-    const [row] = await db.select().from(channels).where(eq(channels.id, b.id))
-    expect(row?.settings.budgets.monthlyCeilingUsd).toBe(DEFAULT_SETTINGS.budgets.monthlyCeilingUsd)
+    const [row] = await db.select().from(channels).where(eq(channels.id, a.id))
+    expect(row && 'budgets' in row.settings).toBe(false)
+    expect(row && 'modelPrices' in row.settings).toBe(false)
   })
 
-  it('channelForProject carries the workspace ceiling too', async () => {
+  it('channelForProject carries no budget either', async () => {
     const b = await createChannel(db, channelInput('beta'))
-    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 7 } })
     const kase = await createCase(db, { title: 'Enron', category: 'collapse', channelId: b.id })
     const project = await createProjectFromCase(db, { caseId: kase.id, title: 'Enron' })
-    expect((await channelForProject(db, project.id)).settings.budgets.monthlyCeilingUsd).toBe(7)
+    expect('budgets' in (await channelForProject(db, project.id)).settings).toBe(false)
   })
 
   it('the same logo hash on two channels is two rows; the same music hash twice is one', async () => {

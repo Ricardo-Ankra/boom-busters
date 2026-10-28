@@ -3,6 +3,7 @@ import {
   getRender,
   getShort,
   channelForProject,
+  getWorkspace,
   insertRender,
   latestRender,
   latestTimeline,
@@ -237,7 +238,7 @@ export const shortRenderRunner = inngest.createFunction(
             estimateUsd: setup.estimate,
             meta: { renderId: setup.renderId, shortId, timelineVersion: setup.timelineVersion },
           },
-          (await channelForProject(db, projectId)).settings,
+          (await getWorkspace(db)).settings.budgets,
           new Date(),
         )
       } catch (error) {

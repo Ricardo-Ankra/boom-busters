@@ -19,10 +19,17 @@ import {
   setSetPlates,
   updateProjectSet,
   updateChannelSettings,
+  updateWorkspace,
   upsertAssetByHash,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  newId,
+  STILL_GENERATIONS,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -127,7 +134,7 @@ describeDb('generateStillCandidates with the cast', () => {
     // shared test database by one of the runner suites that asserts the
     // budget gate, would fail this file on whatever ran first. Own the
     // setting rather than inherit it.
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 100 } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100 } })
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await deleteCastMember(db, member.id)
     }
@@ -200,7 +207,10 @@ describeDb('generateStillCandidates with the cast', () => {
     const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
     const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
     const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
-    const catalogue = await modelCatalogue.stillCatalogue(settings)
+    const catalogue = await modelCatalogue.stillCatalogue({
+      routing: settings.modelRouting,
+      prices: DEFAULT_WORKSPACE_SETTINGS.modelPrices,
+    })
     const preview = stillPromptFor(still, cast, sets, settings.modelRouting, null, catalogue)
 
     await generateStillCandidates(still, FIXTURE_PROJECT_ID)
@@ -1340,7 +1350,7 @@ describeDb('a live-only route the cache no longer holds (decision 288)', () => {
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 100 } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100 } })
     // A refresh that stopped returning every live-only Google model.
     await replaceCatalogue(db, 'google', [], new Date())
   })

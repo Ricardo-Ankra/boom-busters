@@ -1,6 +1,5 @@
 import {
   DEFAULT_SETTINGS,
-  DEFAULT_WORKSPACE_SETTINGS,
   FIRST_CHANNEL_ID,
 } from '@boom-busters/schemas'
 import { sql } from 'drizzle-orm'
@@ -73,13 +72,10 @@ describeDb('database integration', () => {
   })
 
   describe('getChannelSettings', () => {
-    it('reads the seeded first channel merged with the workspace', async () => {
+    it("reads the seeded first channel's own settings", async () => {
       await seed(db)
 
-      expect(await getChannelSettings(db, FIRST_CHANNEL_ID)).toEqual({
-        ...DEFAULT_SETTINGS,
-        ...DEFAULT_WORKSPACE_SETTINGS,
-      })
+      expect(await getChannelSettings(db, FIRST_CHANNEL_ID)).toEqual(DEFAULT_SETTINGS)
       expect(await db.select().from(channels)).toHaveLength(1)
     })
   })

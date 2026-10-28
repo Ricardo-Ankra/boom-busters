@@ -23,6 +23,7 @@ import {
   setClaimSourceUrl,
   setSocialPostManual,
   retypeShotSlot,
+  getWorkspace,
   setProjectDirection,
   setSlotJob,
   setSlotResolution,
@@ -361,7 +362,11 @@ export async function setSlotRouteAction(
 
   if (parsedRoute) {
     try {
-      const catalogue = await stillCatalogue((await channelForProject(db, projectId)).settings)
+      const { settings } = await channelForProject(db, projectId)
+      const catalogue = await stillCatalogue({
+        routing: settings.modelRouting,
+        prices: (await getWorkspace(db)).settings.modelPrices,
+      })
       imageGenModel(catalogue[parsedRoute.provider], parsedRoute.model)
     } catch (error) {
       return {

@@ -1,6 +1,7 @@
 import {
   failInFlightRenders,
   channelForProject,
+  getWorkspace,
   insertRender,
   latestTimeline,
   setTimelineKey,
@@ -148,7 +149,7 @@ export const draftRunner = inngest.createFunction(
             estimateUsd: setup.estimate,
             meta: { renderId: setup.renderId, timelineVersion: setup.timelineVersion },
           },
-          (await channelForProject(db, projectId)).settings,
+          (await getWorkspace(db)).settings.budgets,
           new Date(),
         )
       } catch (error) {

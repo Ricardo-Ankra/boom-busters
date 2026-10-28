@@ -7,6 +7,7 @@ import {
 import { cookies } from 'next/headers'
 import { auth } from '@/auth'
 import { channelHref } from '@/lib/channel-href'
+import { landingSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { exchangeCode, pingChannel, YoutubeAuthError } from '@/lib/youtube'
@@ -25,10 +26,12 @@ import { STATE_COOKIE } from '../connect/route'
 
 export const runtime = 'nodejs'
 
-function back(origin: string, outcome: string, slug?: string): Response {
-  const to = slug
-    ? channelHref(slug, '/settings', { tab: 'connections', youtube: outcome })
-    : `/settings?tab=connections&youtube=${outcome}`
+// With no channel known (a failed state check), the landing channel's Connections tab.
+async function back(origin: string, outcome: string, slug?: string): Promise<Response> {
+  const to = channelHref(slug ?? (await landingSlug()), '/settings', {
+    tab: 'connections',
+    youtube: outcome,
+  })
   return Response.redirect(`${origin}${to}`, 302)
 }
 
@@ -53,12 +56,12 @@ export async function GET(request: Request): Promise<Response> {
   const verified =
     state && nonce ? verifyOauthState(state, nonce, env.SECRETS_ENCRYPTION_KEY) : null
   const channel = verified ? await liveChannel(verified.channelId) : null
-  if (!channel) return back(origin, 'state-mismatch')
+  if (!channel) return await back(origin, 'state-mismatch')
   const slug = channel.slug
 
   // The user clicked Cancel on Google's consent screen, not an error.
-  if (url.searchParams.get('error') !== null) return back(origin, 'declined', slug)
-  if (!code) return back(origin, 'state-mismatch')
+  if (url.searchParams.get('error') !== null) return await back(origin, 'declined', slug)
+  if (!code) return await back(origin, 'state-mismatch')
 
   let grant
   try {
@@ -70,13 +73,13 @@ export async function GET(request: Request): Promise<Response> {
       '[youtube] code exchange failed:',
       error instanceof Error ? error.message : 'unknown error',
     )
-    return back(origin, error instanceof YoutubeAuthError ? 'exchange-failed' : 'error', slug)
+    return await back(origin, error instanceof YoutubeAuthError ? 'exchange-failed' : 'error', slug)
   }
 
   if (!grant.refreshToken) {
     // prompt=consent should make this impossible; if Google omits it
     // anyway, storing nothing and saying so beats pretending.
-    return back(origin, 'no-refresh-token', slug)
+    return await back(origin, 'no-refresh-token', slug)
   }
 
   // Wrapped so a store or ping failure mid-OAuth still lands on the Settings
@@ -97,7 +100,7 @@ export async function GET(request: Request): Promise<Response> {
       // stored: the previous token, id and title stay, so no upload can reach
       // the wrong account, and the connection is marked invalid.
       await recordChannelYoutubeVerify(db, channel.id, 'invalid', ping.channelId)
-      return back(origin, 'channel-changed', slug)
+      return await back(origin, 'channel-changed', slug)
     }
     await saveChannelYoutubeConnection(db, channel.id, {
       refreshToken: grant.refreshToken,
@@ -115,15 +118,15 @@ export async function GET(request: Request): Promise<Response> {
     )
     if (!ping.ok) {
       console.error('[youtube] connected but the channel ping failed:', ping.error)
-      return back(origin, 'no-channel', slug)
+      return await back(origin, 'no-channel', slug)
     }
   } catch (error) {
     console.error(
       '[youtube] storing the connection failed:',
       error instanceof Error ? error.message : 'unknown error',
     )
-    return back(origin, 'error', slug)
+    return await back(origin, 'error', slug)
   }
 
-  return back(origin, 'connected', slug)
+  return await back(origin, 'connected', slug)
 }

@@ -498,6 +498,7 @@ export const BudgetsPatchSchema = z.object({
   monthlyCeilingUsd: z.number().min(0).optional(),
   approvedOverage: BudgetOverageSchema.nullable().optional(),
 })
+export type BudgetsPatch = z.infer<typeof BudgetsPatchSchema>
 
 /**
  * Settings that belong to the whole workspace rather than one channel: model
@@ -511,13 +512,18 @@ export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   modelPrices: { llm: {}, image: {} },
+  // The sum of the old per-provider defaults was $60/month; $100 leaves the
+  // same order of magnitude with headroom for a real production month.
   budgets: { monthlyCeilingUsd: 100 },
 }
 
-export const WorkspaceSettingsPatchSchema = z.object({
-  modelPrices: ModelPricesSchema.optional(),
-  budgets: BudgetsPatchSchema.optional(),
-})
+export const WorkspaceSettingsPatchSchema = z
+  .object({
+    modelPrices: ModelPricesSchema.optional(),
+    budgets: BudgetsPatchSchema.optional(),
+    // Strict, so a channel key sent here is refused rather than dropped.
+  })
+  .strict()
 export type WorkspaceSettingsPatch = z.infer<typeof WorkspaceSettingsPatchSchema>
 
 /** `YYYY-MM` in UTC — the bucket both the ledger and the caps are keyed by. */
@@ -588,9 +594,7 @@ export const FeatureFlagsSchema = z.object({
 export const SettingsSchema = z.object({
   modelRouting: ModelRoutingSchema,
   fallbackChain: FallbackChainSchema.default([]),
-  modelPrices: ModelPricesSchema.default({ llm: {}, image: {} }),
   tts: VoiceConfigSchema,
-  budgets: BudgetsSchema,
   render: RenderSettingsSchema,
   publish: PublishSettingsSchema,
   brandKit: BrandKitStoredSchema,
@@ -626,20 +630,21 @@ function patchSection<Shape extends z.ZodRawShape>(
 }
 
 /** Deep-partial patch accepted by the settings update action. */
-export const SettingsPatchSchema = z.object({
-  modelRouting: patchSection(ModelRoutingSchema),
-  fallbackChain: FallbackChainSchema.optional(),
-  // Replaced whole, like fallbackChain: the form always sends the full map.
-  modelPrices: ModelPricesSchema.optional(),
-  // The bare shape: a partial of a preprocessed schema is not a thing, and a
-  // patch never needs the old-provider coercion — it can only say 'elevenlabs'.
-  tts: patchSection(VoiceConfigShape),
-  budgets: BudgetsPatchSchema.optional(),
-  render: patchSection(RenderSettingsSchema),
-  publish: patchSection(PublishSettingsSchema),
-  brandKit: patchSection(BrandKitStoredSchema),
-  features: patchSection(FeatureFlagsSchema),
-})
+export const SettingsPatchSchema = z
+  .object({
+    modelRouting: patchSection(ModelRoutingSchema),
+    fallbackChain: FallbackChainSchema.optional(),
+    // The bare shape: a partial of a preprocessed schema is not a thing, and a
+    // patch never needs the old-provider coercion — it can only say 'elevenlabs'.
+    tts: patchSection(VoiceConfigShape),
+    render: patchSection(RenderSettingsSchema),
+    publish: patchSection(PublishSettingsSchema),
+    brandKit: patchSection(BrandKitStoredSchema),
+    features: patchSection(FeatureFlagsSchema),
+    // Strict: prices and the budget moved to the workspace, so a patch that
+    // still carries them must fail loudly rather than be stripped in silence.
+  })
+  .strict()
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>
 
 // ---------------------------------------------------------------------------
@@ -683,16 +688,12 @@ export const DEFAULT_SETTINGS: Settings = {
     setSheet: DEFAULT_SET_SHEET_ROUTE,
   },
   fallbackChain: [],
-  modelPrices: { llm: {}, image: {} },
   tts: {
     provider: 'elevenlabs',
     voiceId: '',
     stability: 'natural',
     phonemeHints: [],
   },
-  // The sum of the old per-provider defaults was $60/month; $100 leaves the
-  // same order of magnitude with headroom for a real production month.
-  budgets: { monthlyCeilingUsd: 100 },
   render: { concurrency: 2, timeoutMinutes: 30, chapterChunking: true },
   publish: {
     defaultScheduleSlots: [

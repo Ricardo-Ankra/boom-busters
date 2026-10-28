@@ -17,8 +17,6 @@ const saveSettings = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
-  saveProviderKey: vi.fn(),
-  verifyProviderKey: vi.fn(),
 }))
 
 vi.mock('./logo-actions', () => ({
@@ -73,8 +71,6 @@ async function openBrandKitTab(): Promise<void> {
       channelId="01J00000000000000000000001"
       channelSlug="first"
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
-      credentials={[]}
-      mockProviders
       modelOptions={modelOptions()}
     />,
   )

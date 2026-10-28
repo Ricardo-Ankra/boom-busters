@@ -1,4 +1,4 @@
-import { channelForProject, setProjectStage } from '@boom-busters/db'
+import { setProjectStage } from '@boom-busters/db'
 import { withCost } from '@boom-busters/cost'
 import { BudgetExceededError, parseEventData, serialiseError } from '@boom-busters/schemas'
 import type { Provider } from '@boom-busters/schemas'
@@ -159,7 +159,6 @@ async function spendThroughBudgetGate(
 
   for (let round = 0; round < MAX_GATE_ROUNDS; round += 1) {
     const outcome = await step.run(`spend-${operation}-${round}`, async () => {
-      const { settings } = await channelForProject(db, ctx.projectId)
       // Forcing the gate asks for more than any cap can hold, rather than
       // faking a refusal — the guard makes the real decision either way.
       const estimateUsd = forceGate && round === 0 ? 1_000_000 : DEMO_ESTIMATE_USD
@@ -175,7 +174,6 @@ async function spendThroughBudgetGate(
             meta: { demo: true },
           },
           async () => ({ result: null, actualUsd: 0 }),
-          { settings },
         )
         return { gated: null }
       } catch (error) {
@@ -208,10 +206,7 @@ async function spendThroughBudgetGate(
     const decision = parseEventData('budget/approved', approved.data)
 
     await step.run(`apply-overage-${round}`, async () => {
-      await grantOverage(
-        (await channelForProject(db, ctx.projectId)).channelId,
-        decision.additionalUsd,
-      )
+      await grantOverage(decision.additionalUsd)
       await closeBudgetGate(
         ctx,
         `Overage of $${decision.additionalUsd.toFixed(2)} approved for ${decision.provider}`,

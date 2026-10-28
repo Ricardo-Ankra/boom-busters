@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { estimateLlmUsd, withCost } from '@boom-busters/cost'
-import { getChannelSettings, llmCredentials, recordRunEvent } from '@boom-busters/db'
+import { getChannelSettings, getWorkspace, llmCredentials, recordRunEvent } from '@boom-busters/db'
 import { findModel, llmAdapters, resolveLlmModel, route } from '@boom-busters/providers'
 import type { Downgrade, LLMTaskRequest, RoutedResult } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
@@ -15,7 +15,8 @@ import { env } from '@/lib/env'
  * Three things have to happen around every call and none of them are optional,
  * so they are bound together here rather than left to each caller to remember:
  *
- *  1. **Routing** comes from the channel's settings, read fresh on every call.
+ *  1. **Routing** comes from the channel's settings, and prices and the budget
+ *     from the workspace, all read fresh on every call.
  *  2. **The budget guard** wraps it, so a call that would cross a monthly cap
  *     raises `BudgetExceededError` *before* the provider is contacted, and the
  *     ledger settles on the real token usage afterwards.
@@ -60,6 +61,8 @@ export async function callLlm(
   },
 ): Promise<RoutedResult> {
   const settings = await getChannelSettings(db, options.channelId)
+  // Prices and the budget are the workspace's, whichever channel is calling.
+  const { settings: workspace } = await getWorkspace(db)
   const credentials = await llmCredentials(db, env.SECRETS_ENCRYPTION_KEY)
   const choice = settings.modelRouting[request.task]
 
@@ -79,7 +82,7 @@ export async function callLlm(
   // The owner's prices and live families first; the adapter's own list
   // second, which is what mock mode's `mock-*` ids resolve through.
   const resolveModel = (provider: LlmProvider, modelId: string) =>
-    resolveLlmModel(provider, modelId, settings.modelPrices)?.model ??
+    resolveLlmModel(provider, modelId, workspace.modelPrices)?.model ??
     findModel(adapters[provider], modelId)
 
   return withCost(
@@ -97,7 +100,7 @@ export async function callLlm(
         model: canonicalModelId(choice.provider, choice.model),
         inputTokens: promptTokens(request),
         outputTokens: options.estimateOutputTokens ?? request.maxTokens,
-        prices: settings.modelPrices,
+        prices: workspace.modelPrices,
       }),
       meta: {
         task: request.task,
@@ -123,6 +126,6 @@ export async function callLlm(
       // cheaper fallback than the one the estimate was built from.
       return { result, actualUsd: result.costUsd }
     },
-    { settings },
+    { budgets: workspace.budgets },
   )
 }
