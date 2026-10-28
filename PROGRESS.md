@@ -8371,9 +8371,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      plan credits (elevenlabs.io/pricing/api). The adapter's provisional
      $0.18 was the Creator website plan's list rate and over-stated every
      narration about 2.25 times, in the budget guard and on the Costs
-     screen alike. No ElevenLabs endpoint returns a dollar price: `GET
-     /v1/models` gives cost multipliers only, and `/v1/user/subscription`
-     gives counts and invoices, so the rate stays a constant on the adapter
-     and is re-read from the pricing page when it changes. Free credits are
-     spent before the paid balance, so the ledger can over-state a month,
-     never under-state it.
+     screen alike. No ElevenLabs endpoint returns a dollar price:
+     `GET /v1/models` gives cost multipliers only, and
+     `/v1/user/subscription` gives counts and invoices, so the rate stays a
+     constant on the adapter and is re-read from the pricing page when it
+     changes. Free credits are spent before the paid balance, so the ledger
+     can over-state a month, never under-state it.
