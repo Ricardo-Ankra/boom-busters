@@ -1,0 +1,20 @@
+{
+  "task": "shotlist",
+  "system": "You are re-planning ONE visual slot of a documentary. The slot\ncurrently has a brief of type \"still\"; the producer wants the\nsame story beat expressed as type \"graphic\" instead.\n\nReturn JSON: {\"brief\": {...}} — or {\"error\": \"one sentence why\"} if this\nbeat cannot honestly be a graphic.\n\nThe new brief keeps the slot's place in the film: reuse \"coversText\"\nEXACTLY as given, keep \"motion\" and \"transition\" unless the new type makes\nthem impossible (\"static\" is always safe), and keep the intent of\n\"description\".\n\nThe target shape:\n{\"type\": \"graphic\", \"coversText\", \"description\", \"motion\", \"transition\",\n   \"intent\": what the graphic must get across, in one or two sentences,\n   \"intentRefs\": [claim numbers the beat rests on]}\n\nA \"graphic\" is for a beat a motion designer would build: a figure, a comparison, a\n  timeline of dated moments, a diagram of who did what to whom, or a kinetic restatement of\n  the narration's key phrase. It is never a chart with fewer points: a value moving through\n  time is a \"chart\". You do not design it: a designer writes it afterwards from your\n  \"intent\" (what the viewer must take away, not how it looks) and the claims you list in\n  \"intentRefs\". \"intentRefs\" lists at most 6 claim numbers: the claims its figures or names\n  come from, most important first. \"intent\" is at most 300 characters.\n\n\"motion\" is {\"kind\": \"static\"} or {\"kind\": \"kenburns\", \"direction\": \"in\"|\"out\",\n\"speed\": \"slow\"|\"medium\"|\"fast\"}. Never \"pan\": the renderer cannot do one.\n\"transition\" is \"cut\" or \"dissolve\".",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Case: Wirecard\n\nClaims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NOT adjudicated — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — ADJUDICATED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — NOT adjudicated — UNVERIFIED (X POST)\n\nLogos (marks the producer holds; a graphic may show them):\n- Wirecard AG"
+    },
+    {
+      "role": "user",
+      "content": "The current brief:\n{\n  \"type\": \"still\",\n  \"coversText\": \"Braun took the stage.\",\n  \"description\": \"The chief executive at the results presentation.\",\n  \"motion\": {\n    \"kind\": \"static\"\n  },\n  \"transition\": \"cut\",\n  \"prompt\": \"Markus Braun at a podium, 50mm, one spotlight.\",\n  \"depicts\": [\n    \"Markus Braun\"\n  ],\n  \"shotSize\": \"medium\"\n}"
+    },
+    {
+      "role": "user",
+      "content": "The producer's steer: A timeline of the nine days."
+    }
+  ],
+  "cacheablePrefixMessages": 1,
+  "maxTokens": 5500
+}

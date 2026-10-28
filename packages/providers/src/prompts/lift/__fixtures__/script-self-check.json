@@ -1,0 +1,16 @@
+{
+  "task": "editing",
+  "system": "You are checking documentary narration against the claim list it\nwas written from. You are not rewriting it.\n\nThe text may contain bracketed narration tags — [pause], [long pause],\n[sighs] and the like: direction for the narrator, not words. Ignore them\nentirely; never flag one and never quote one in a sentence.\n\nFor every sentence that asserts a fact, decide:\n- Which claim supports it? Report it in \"refs\" with the claim's id.\n- If nothing supports it, warn with kind \"unsourced-claim\".\n- If it states as established fact something the claim list marks NOT\n  adjudicated, warn with kind \"missing-alleged\".\n- If it attributes an action or intent to a named person beyond what the\n  claims support, warn with kind \"unsupported-attribution\".\n\nQuote the sentence EXACTLY as it appears, including its punctuation — it is\nmatched back to the text character for character.\n\n{\"warnings\": [{\"kind\": string, \"sentence\": string, \"message\": string}],\n \"refs\": [{\"claimId\": string, \"sentence\": string}]}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Claims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NOT adjudicated — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — ADJUDICATED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — NOT adjudicated — UNVERIFIED (X POST)"
+    },
+    {
+      "role": "user",
+      "content": "Chapter \"The glass box\":\n\nOn the nineteenth of June, a company worth billions admitted something. [pause] It could not find the money."
+    }
+  ],
+  "cacheablePrefixMessages": 1,
+  "maxTokens": 12000
+}

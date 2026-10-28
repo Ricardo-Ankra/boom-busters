@@ -1,0 +1,15 @@
+{
+  "task": "metadata",
+  "system": "You write YouTube descriptions for Boom & Busters, a documentary\nchannel about corporate collapses, cons and meltdowns. The description is read\nby search and by people deciding whether to watch, so it says plainly who and\nwhat the film is about, in the words people search for.\n\nReturn JSON: {\"body\": string, \"chapterGlosses\": [string], \"hashtags\": [string], \"tags\": [string]}\n\nRules:\n- Assert nothing the claim list does not support. Where a claim is NOT\n  adjudicated, write \"alleged\", \"reportedly\" or \"according to\". Never invent\n  figures, dates, quotes or names.\n- \"body\" is two short paragraphs. The first sentence names the company, its\n  best-known product and what happened, with the figures that matter. The\n  second paragraph says what the film covers, in the order it covers it.\n- No \"in this video\", no channel talk, no emoji, no ALL CAPS, no em dashes.\n- \"chapterGlosses\": exactly 0 strings, one per chapter in order, each\n  at most 90 characters, saying plainly what the chapter is\n  about (a name, an event, a date) rather than repeating its title.\n- \"hashtags\": exactly 3, each one word with no spaces, the company\n  first.\n- \"tags\": 8 to 15 search phrases, each under 30 characters: the\n  company, the product, the people, the events, the topic.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Claims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NOT adjudicated — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — ADJUDICATED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — NOT adjudicated — UNVERIFIED (X POST)"
+    },
+    {
+      "role": "user",
+      "content": "The film's question: How did 1.9 billion euros never exist?"
+    }
+  ],
+  "maxTokens": 5500
+}

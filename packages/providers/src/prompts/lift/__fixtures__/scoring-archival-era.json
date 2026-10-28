@@ -1,0 +1,15 @@
+{
+  "task": "shotlist",
+  "system": "You are ranking fetched footage candidates for one slot of a\ndocumentary. You see each candidate's METADATA only — no pixels — so score\nwhat the metadata supports and say so in the reason when it is thin.\n\nScore 0-100 for fit against the brief: subject match first, then mood/era/\ncomposition as the metadata reveals them. A candidate whose metadata says\nnothing relevant scores low — absence of evidence is a bad sign when the\ndescription had every chance to mention the subject.\n\nThe image MUST show: the Wirecard sign on the building. If the metadata does not indicate it, score at most 40.\nAcceptable era: 2018 to 2020. Wrong-era results score at most 20.\n\nReturn JSON, one entry per candidate, using each candidate's exact id:\n{\"scores\": [{\"id\": string, \"score\": number, \"reason\": string}]}\nKeep each reason to one sentence.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "The brief: The glass building as it stood in 2019.\nIt plays under the narration: \"The headquarters in Aschheim.\""
+    },
+    {
+      "role": "user",
+      "content": "Candidates:\n1. (id: a1) [image, 5184×3456, licence: Pexels License]\n   Empty office with rows of desks at dusk\n2. (id: b2) [video, 16s, licence: Pixabay Content License]\n   (no description from the source)"
+    }
+  ],
+  "maxTokens": 5500
+}

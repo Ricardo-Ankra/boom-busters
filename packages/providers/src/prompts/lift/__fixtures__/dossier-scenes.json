@@ -1,0 +1,20 @@
+{
+  "task": "research",
+  "system": "You research corporate collapses, frauds and comebacks for a documentary\nchannel with commentary. You work as the story researcher: you look for the\nscenes, the people and what they wanted, the numbers that draw the arc, and\nwhat earlier videos already told. Real companies and living people are the\nsubject, so:\n\n- Write only what the documents in front of you say. A fact you remember but cannot quote from a document is an open question, not a claim.\n- Cite a document by its number in the list: [D3] is \"doc\": 3. Never cite a\n  number the list does not have.\n- Copy every quote from the cited document word for word. Never paraphrase,\n  correct or join two passages: the app looks for the quote in the document's\n  text, and a quote it cannot find counts as no source at all.\n- Distinguish what a court or regulator FOUND from what was ALLEGED or reported.\n- Where the documents do not settle something, say so. An open question is\n  useful; a confident invention is a liability.\n\nAnswer with JSON only, no prose around it.\n\nThe shape of that JSON, its rules and its limits are in the final message.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Subject: Wirecard (company)\nPeople: Markus Braun, Jan Marsalek\nWorking title: Wirecard: the missing billion\nCategory: collapse\nAngle to pursue: The auditors, not the traders.\nAudience notes: Viewers ask what happened to Marsalek.\n\nDocuments, numbered. Cite them by number.\n\n[D1] reporting · Financial Times · 2020 · https://www.ft.com/x\nText of the article."
+    },
+    {
+      "role": "assistant",
+      "content": "{\"currentStatus\":{\"asOf\":\"2024-01\",\"text\":\"Braun is on trial in Munich; Marsalek is still at large.\"},\"summary\":\"A payments company reported 1.9 billion euros it did not have, and the people paid to check stopped asking.\",\"turningPoint\":\"The June 2020 admission that the money could not be found.\",\"cast\":[{\"name\":\"Markus Braun\",\"role\":\"chief executive\",\"wanted\":\"To make every quarter look like growth.\",\"scene\":{\"doc\":1,\"quote\":\"Braun told investors the cash was safe\"}}],\"toldAlready\":[{\"beat\":\"The short seller attack of 2016.\",\"doc\":1,\"quote\":\"inflated\"}],\"openQuestions\":[\"What did the board know in 2018?\",\"Who signed off the trust accounts?\",\"Where is Jan Marsalek now?\"]}"
+    },
+    {
+      "role": "user",
+      "content": "Now find the scenes the story is told through, in the order they happened:\n{\"scenes\": [{\"when\": string, \"who\": string, \"what\": string, \"why\": string,\n  \"doc\": number, \"quote\": string}]}\n\n- A scene is a moment a documentary can show: something said or done, by\n  someone, at a time. A results call, a stage keynote, a board meeting, a raid,\n  a resignation, a short seller's report landing. This is the story's spine,\n  not a legal chronology: leave out filings and procedural steps unless that\n  moment changes the story.\n- `when` may be imprecise where the document is (\"late 2019\", \"March 2001\").\n- `who` is who acted or who was in the room.\n- `what` is what was said or done, concretely, as a viewer would see it.\n- `why` is why it matters to the arc: what it sets up, reveals or breaks.\n- `doc` and `quote` are the document the scene is on record in and the\n  shortest span of it that shows the moment, copied exactly and\n  long enough to find: a full clause of at least 20 letters and digits. For a video transcript leave out the [mm:ss] markers;\n  the app finds the time itself.\n- Include the scenes that make the turning point land, not every event.\n\nLimits (the app checks them): 1 to 60 scenes; \"when\" 3 to 100 characters;\n\"who\" 2 to 200 characters; \"what\" 10 to 1000 characters; \"why\" 10 to\n500 characters; \"quote\" at most 300 characters."
+    }
+  ],
+  "cacheablePrefixMessages": 1,
+  "maxTokens": 14000
+}
