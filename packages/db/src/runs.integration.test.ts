@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb, type Database } from './client'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { FIXTURE_PROJECT_ID } from './fixtures'
 import {
   getProject,
@@ -377,17 +378,17 @@ describeDb('run mirror', () => {
 
   describe('projects', () => {
     it('lists projects with their case', async () => {
-      const [project] = await listProjects(db)
+      const [project] = await listProjects(db, FIRST_CHANNEL_ID)
       expect(project?.id).toBe(FIXTURE_PROJECT_ID)
       expect(project?.caseTitle).toBeTruthy()
       expect(project?.caseCategory).toBeTruthy()
     })
 
     it('treats awaiting_review as the open gate', async () => {
-      expect(await listProjectsAwaitingReview(db)).toHaveLength(1)
+      expect(await listProjectsAwaitingReview(db, FIRST_CHANNEL_ID)).toHaveLength(1)
 
       await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'running' })
-      expect(await listProjectsAwaitingReview(db)).toEqual([])
+      expect(await listProjectsAwaitingReview(db, FIRST_CHANNEL_ID)).toEqual([])
     })
 
     it('advances the stage and clears the gate together', async () => {

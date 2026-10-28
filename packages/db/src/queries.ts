@@ -206,8 +206,11 @@ export async function countMusicBeds(db: Database): Promise<number> {
   return row?.value ?? 0
 }
 
-export async function countCases(db: Database): Promise<number> {
-  const [row] = await db.select({ value: count() }).from(cases)
+export async function countCases(db: Database, channelId: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(cases)
+    .where(eq(cases.channelId, channelId))
   return row?.value ?? 0
 }
 

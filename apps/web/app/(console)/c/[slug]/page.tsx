@@ -17,6 +17,7 @@ import { LiveRefresh } from '@/components/live-refresh'
 import { NeedsYouQueue, buildNeedsYouCards } from '@/components/needs-you-queue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { actionableSetup, buildChecklist, pipelineBlockers, upcomingSetup } from '@/lib/first-run'
 import type { ChecklistItem } from '@/lib/first-run'
@@ -33,11 +34,12 @@ export const dynamic = 'force-dynamic'
  */
 export default async function DashboardPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const channel = await channelFromSlug(slug)
   const [settings, youtubeConnected, musicBedCount, caseCount] = await Promise.all([
     getSettings(db),
     isYoutubeConnected(db),
     countMusicBeds(db),
-    countCases(db),
+    countCases(db, channel.id),
   ])
 
   const items = buildChecklist({ slug, settings, youtubeConnected, musicBedCount, caseCount })
@@ -46,7 +48,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
 
   const [awaitingReview, budgetGates, failedRuns, activeRuns, pulse, youtubeReconnect] =
     await Promise.all([
-      listProjectsAwaitingReview(db),
+      listProjectsAwaitingReview(db, channel.id),
       listOpenBudgetGates(db),
       listFailedRuns(db),
       listActiveRuns(db),

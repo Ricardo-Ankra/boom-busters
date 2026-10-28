@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureFirstChannel } from './channels'
 import { createCase, getCase, truncateCases } from './cases'
 import { createDb } from './client'
 import { saveDossier } from './dossiers'
@@ -38,7 +39,11 @@ suite('deleting a project', () => {
     await truncateCases(db)
     await db.delete(costLedger)
 
-    const source = await createCase(db, { title: 'Enron', category: 'collapse' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Enron',
+      category: 'collapse',
+    })
     caseId = source.id
     const project = await createProjectFromCase(db, { caseId, title: 'Enron' })
     projectId = project.id

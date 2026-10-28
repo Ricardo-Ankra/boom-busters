@@ -7,6 +7,7 @@ import {
   linkDossierDocuments,
   requireTestDatabase,
   upsertResearchDocument,
+  ensureFirstChannel,
 } from '@boom-busters/db'
 import type { CorpusDocument, LLMTaskRequest } from '@boom-busters/providers'
 import { BudgetExceededError, DOSSIER_DOCUMENT_TOKENS } from '@boom-busters/schemas'
@@ -787,6 +788,7 @@ suiteDb('loadCorpus', () => {
   beforeEach(async () => {
     await clearDocuments()
     const created = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
       title: `Corpusloadtest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
       category: 'collapse',
     })

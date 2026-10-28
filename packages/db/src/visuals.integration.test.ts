@@ -1,3 +1,4 @@
+import { ensureFirstChannel } from './channels'
 import {
   newId,
   type DirectorsBook,
@@ -68,7 +69,11 @@ suite('shot slots', () => {
 
   beforeEach(async () => {
     await truncateCases(db)
-    const source = await createCase(db, { title: 'Wirecard', category: 'con' })
+    const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Wirecard',
+      category: 'con',
+    })
     const project = await createProjectFromCase(db, { caseId: source.id, title: 'Wirecard' })
     projectId = project.id
     const script = await createScriptVersion(db, projectId)

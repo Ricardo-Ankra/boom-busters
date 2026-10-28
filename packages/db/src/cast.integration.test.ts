@@ -1,4 +1,5 @@
 import { ValidationError } from '@boom-busters/schemas'
+import { ensureFirstChannel } from './channels'
 import type { CastPhoto } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
@@ -49,7 +50,11 @@ suite('cast members', () => {
   beforeEach(async () => {
     await deleteProjectsExcept(db, [])
     await truncateCases(db)
-    const kase = await createCase(db, { title: 'Stability AI', category: 'collapse' })
+    const kase = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Stability AI',
+      category: 'collapse',
+    })
     projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Stability AI' })).id
   })
 
@@ -282,7 +287,11 @@ suite('cast members', () => {
     const found = await castMemberByXHandle(db, projectId, 'EMostaque')
     expect(found?.id).toBe(member.id)
 
-    const otherKase = await createCase(db, { title: 'Another film', category: 'collapse' })
+    const otherKase = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
+      title: 'Another film',
+      category: 'collapse',
+    })
     const otherProjectId = (
       await createProjectFromCase(db, { caseId: otherKase.id, title: 'Another film' })
     ).id

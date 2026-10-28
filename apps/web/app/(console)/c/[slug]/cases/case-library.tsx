@@ -58,12 +58,15 @@ const SORT_LABELS: Record<CaseSort, string> = {
 
 export function CaseLibrary({
   slug,
+  channelId,
   cases,
   sort,
   notices = [],
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
+  /** The channel the cases belong to; new and suggested cases land in it. */
+  channelId: string
   cases: CaseSummary[]
   sort: CaseSort
   /** The cases' open notices (decision 293); each row shows its own. */
@@ -94,8 +97,8 @@ export function CaseLibrary({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[20px] font-semibold">Case Library</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <SuggestButton />
-          <AddCaseButton run={run} />
+          <SuggestButton channelId={channelId} />
+          <AddCaseButton channelId={channelId} run={run} />
         </div>
       </header>
 
@@ -455,7 +458,7 @@ function RowNotices({ notices }: { notices: readonly Notice[] }) {
   )
 }
 
-function SuggestButton() {
+function SuggestButton({ channelId }: { channelId: string }) {
   const router = useRouter()
   const { toast } = useToast()
   const [open, setOpen] = React.useState(false)
@@ -501,7 +504,10 @@ function SuggestButton() {
         onClick={async () => {
           setBusy(true)
           try {
-            const result = await suggestCases({ count, steer: steer.trim() || undefined })
+            const result = await suggestCases(channelId, {
+              count,
+              steer: steer.trim() || undefined,
+            })
             if (!result.ok) {
               toast({
                 title: 'That did not work',
@@ -533,7 +539,7 @@ function SuggestButton() {
   )
 }
 
-function AddCaseButton({ run }: { run: Run }) {
+function AddCaseButton({ channelId, run }: { channelId: string; run: Run }) {
   const [open, setOpen] = React.useState(false)
   const [title, setTitle] = React.useState('')
   const [category, setCategory] = React.useState<string>('collapse')
@@ -624,7 +630,7 @@ function AddCaseButton({ run }: { run: Run }) {
           try {
             const ok = await run(
               () =>
-                addCase({
+                addCase(channelId, {
                   title,
                   category,
                   angle: angle || undefined,

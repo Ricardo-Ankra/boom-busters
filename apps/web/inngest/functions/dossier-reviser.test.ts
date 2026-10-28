@@ -18,6 +18,7 @@ import {
   setProjectStage,
   truncateRunMirror,
   upsertResearchDocument,
+  ensureFirstChannel,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
 import type { LLMTaskRequest } from '@boom-busters/providers'
@@ -398,6 +399,7 @@ describeDb('dossier-reviser after the case changed', () => {
     sourceLinks: { url: string }[]
   }) {
     const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
       title: `Regathertest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
       category: 'collapse',
       ...input,
@@ -511,6 +513,7 @@ describeDb('dossier-reviser after approval', () => {
     forgetRunRows()
 
     const source = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
       title: `Revisetest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
       category: 'collapse',
       subject: 'Wirecard',

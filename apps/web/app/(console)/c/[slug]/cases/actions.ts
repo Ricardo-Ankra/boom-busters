@@ -91,8 +91,9 @@ const CaseFormSchema = z.object({
     .default([]),
 })
 
-export async function addCase(input: unknown): Promise<ActionResult> {
+export async function addCase(channelId: string, input: unknown): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
 
   const parsed = CaseFormSchema.safeParse(input)
   if (!parsed.success) {
@@ -101,6 +102,7 @@ export async function addCase(input: unknown): Promise<ActionResult> {
 
   await createCase(db, {
     ...parsed.data,
+    channelId,
     // A case added by hand is one the human has already decided to make, so it
     // skips triage and lands shortlisted.
     status: 'shortlisted',
@@ -214,8 +216,9 @@ const completeForLibrary: AnswerComplete = (request, call) =>
  * The spend goes through `callLlm`, so it is capped by the same budget guard
  * as the pipeline and shows up on the Costs screen attributed to no project.
  */
-export async function suggestCases(input: unknown): Promise<SuggestResult> {
+export async function suggestCases(channelId: string, input: unknown): Promise<SuggestResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
 
   const parsed = SuggestInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
@@ -229,7 +232,7 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
       ? { ok: true, value: mockSuggestedCases(count), calls: 1 }
       : await callForAnswer({
           request: buildSuggestCasesRequest({
-            existingTitles: await existingCaseTitles(db),
+            existingTitles: await existingCaseTitles(db, channelId),
             count,
             ...(parsed.data.steer ? { steer: parsed.data.steer } : {}),
           }),
@@ -241,6 +244,7 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
 
     const { created, skippedTitles } = await createSuggestedCases(
       db,
+      channelId,
       suggestions.map((suggestion) => ({
         title: suggestion.title,
         category: suggestion.category as CaseCategory,

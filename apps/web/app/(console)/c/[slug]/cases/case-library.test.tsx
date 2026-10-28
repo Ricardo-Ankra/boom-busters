@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
+import { FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
@@ -70,6 +71,7 @@ describe('CaseLibrary notices (decision 293)', () => {
     render(
       <CaseLibrary
         slug="psychology"
+        channelId={CHANNEL_ID}
         cases={[kase({}), kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })]}
         sort="priority"
         notices={[trimmed]}
@@ -88,7 +90,15 @@ describe('CaseLibrary notices (decision 293)', () => {
 
   it("asks before a suggestion's Dismiss deletes it (decision 294)", async () => {
     actions.dismissCase.mockResolvedValue({ ok: true })
-    render(<CaseLibrary slug="psychology" cases={[kase({})]} sort="priority" notices={[trimmed]} />)
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        cases={[kase({})]}
+        sort="priority"
+        notices={[trimmed]}
+      />,
+    )
     const row = screen.getByText('Wirecard').closest('li')!
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
@@ -100,7 +110,14 @@ describe('CaseLibrary notices (decision 293)', () => {
   })
 
   it('says a suggestion with projects behind it is retired, not deleted', async () => {
-    render(<CaseLibrary slug="psychology" cases={[kase({ projectCount: 2 })]} sort="priority" />)
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        cases={[kase({ projectCount: 2 })]}
+        sort="priority"
+      />,
+    )
     const row = screen.getByText('Wirecard').closest('li')!
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
@@ -120,7 +137,7 @@ describe('CaseLibrary notices (decision 293)', () => {
       mocked: false,
       notice: dropped,
     })
-    render(<CaseLibrary slug="psychology" cases={[]} sort="priority" />)
+    render(<CaseLibrary slug="psychology" channelId={CHANNEL_ID} cases={[]} sort="priority" />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Suggest cases' }))
     await userEvent.click(screen.getByRole('button', { name: 'Get suggestions' }))
@@ -136,7 +153,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 
 describe('the case form: subject, people and source links', () => {
   async function openAddForm() {
-    render(<CaseLibrary slug="psychology" cases={[]} sort="priority" />)
+    render(<CaseLibrary slug="psychology" channelId={CHANNEL_ID} cases={[]} sort="priority" />)
     await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
   }
 
@@ -162,6 +179,7 @@ describe('the case form: subject, people and source links', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save case' }))
     await waitFor(() =>
       expect(actions.addCase).toHaveBeenCalledWith(
+        CHANNEL_ID,
         expect.objectContaining({
           title: 'Wirecard',
           subject: 'Wirecard',
@@ -177,6 +195,7 @@ describe('the case form: subject, people and source links', () => {
     render(
       <CaseLibrary
         slug="psychology"
+        channelId={CHANNEL_ID}
         cases={[
           kase({
             status: 'shortlisted',

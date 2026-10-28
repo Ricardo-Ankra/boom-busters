@@ -151,8 +151,8 @@ function summaryFrom(db: Database) {
     .leftJoin(dossiers, eq(dossiers.projectId, projects.id))
 }
 
-export async function listProjects(db: Database): Promise<ProjectSummary[]> {
-  return summaryFrom(db).orderBy(desc(projects.updatedAt))
+export async function listProjects(db: Database, channelId: string): Promise<ProjectSummary[]> {
+  return summaryFrom(db).where(eq(projects.channelId, channelId)).orderBy(desc(projects.updatedAt))
 }
 
 export async function getProject(db: Database, id: string): Promise<ProjectSummary | undefined> {
@@ -161,9 +161,12 @@ export async function getProject(db: Database, id: string): Promise<ProjectSumma
 }
 
 /** Projects parked at a gate — the review half of the Needs-you queue. */
-export async function listProjectsAwaitingReview(db: Database): Promise<ProjectSummary[]> {
+export async function listProjectsAwaitingReview(
+  db: Database,
+  channelId: string,
+): Promise<ProjectSummary[]> {
   return summaryFrom(db)
-    .where(eq(projects.stageStatus, 'awaiting_review'))
+    .where(and(eq(projects.channelId, channelId), eq(projects.stageStatus, 'awaiting_review')))
     .orderBy(projects.updatedAt)
 }
 

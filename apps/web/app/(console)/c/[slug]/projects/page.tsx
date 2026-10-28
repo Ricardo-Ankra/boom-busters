@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { caseCategoryLabel } from '@/lib/case-category'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -21,8 +22,10 @@ export const metadata = { title: 'Projects · Boom-Busters' }
  * The `New project` case picker arrives with the Case Library in M3. Until
  * then the seeded fixture project is the one you drive.
  */
-export default async function ProjectsPage() {
-  const projects = await listProjects(db)
+export default async function ProjectsPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const channel = await channelFromSlug(slug)
+  const projects = await listProjects(db, channel.id)
 
   return (
     <div className="flex flex-col gap-4">

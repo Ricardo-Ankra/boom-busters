@@ -1,6 +1,7 @@
 import { listCaseNotices, listCases } from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
 import { CaseLibrary } from './case-library'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -29,13 +30,16 @@ export default async function CasesPage({
 }) {
   const [{ slug }, { sort }] = await Promise.all([params, searchParams])
   const active = readSort(sort)
+  const channel = await channelFromSlug(slug)
 
-  const cases = await listCases(db, { sort: active })
+  const cases = await listCases(db, channel.id, { sort: active })
   // Each case's notices (decision 293): what a suggestion's repair trimmed, on its row.
   const notices = await listCaseNotices(
     db,
     cases.map((item) => item.id),
   )
 
-  return <CaseLibrary slug={slug} cases={cases} sort={active} notices={notices} />
+  return (
+    <CaseLibrary slug={slug} channelId={channel.id} cases={cases} sort={active} notices={notices} />
+  )
 }

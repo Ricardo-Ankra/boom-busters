@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { createCase, deleteCase, getCase, requireTestDatabase } from '@boom-busters/db'
+import {
+  createCase,
+  deleteCase,
+  getCase,
+  requireTestDatabase,
+  ensureFirstChannel,
+} from '@boom-busters/db'
 import { BudgetExceededError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +24,7 @@ describeDb('nameSubjectIfMissing', () => {
 
   async function bare() {
     const row = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
       title: `Namesubjecttest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
       category: 'collapse',
     })

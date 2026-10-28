@@ -8,6 +8,7 @@ import {
   findResearchDocumentsByUrl,
   requireTestDatabase,
   upsertResearchDocument,
+  ensureFirstChannel,
 } from '@boom-busters/db'
 import type { VideoDetails, YoutubeSource } from '@boom-busters/case-finder'
 import type { FetchedDocument } from '@boom-busters/providers'
@@ -183,6 +184,7 @@ suite('gatherCorpus', () => {
   beforeEach(async () => {
     await clearDocuments()
     const created = await createCase(db, {
+      channelId: (await ensureFirstChannel(db)).id,
       title: `Gathertest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
       category: 'collapse',
     })

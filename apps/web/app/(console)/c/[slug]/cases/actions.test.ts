@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
 import { addCase, editCase, suggestCases } from './actions'
 
 /**
@@ -64,7 +65,7 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     callLlm.mockResolvedValueOnce({ text: 'no json here' }).mockResolvedValueOnce(reply(wirecard))
     store.createSuggestedCases.mockResolvedValue(rows('Wirecard'))
 
-    expect(await suggestCases({ count: 3 })).toEqual({
+    expect(await suggestCases(CHANNEL_ID, { count: 3 })).toEqual({
       ok: true,
       created: 1,
       skipped: 0,
@@ -82,7 +83,7 @@ describe('suggestCases on the answer helper (decision 293)', () => {
   it('creates nothing after two refusals, and says why', async () => {
     callLlm.mockResolvedValue({ text: 'no json here' })
 
-    const result = await suggestCases({ count: 3 })
+    const result = await suggestCases(CHANNEL_ID, { count: 3 })
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/^The model returned no JSON for case suggestions/)
     expect(callLlm).toHaveBeenCalledTimes(2)
@@ -99,13 +100,13 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     )
     store.createSuggestedCases.mockResolvedValue(rows('Wirecard', 'Theranos', 'Enron'))
 
-    expect(await suggestCases({ count: 3 })).toEqual({
+    expect(await suggestCases(CHANNEL_ID, { count: 3 })).toEqual({
       ok: true,
       created: 3,
       skipped: 0,
       mocked: false,
     })
-    const inputs = store.createSuggestedCases.mock.calls[0]![1] as { priorityScore: number }[]
+    const inputs = store.createSuggestedCases.mock.calls[0]![2] as { priorityScore: number }[]
     expect(inputs.map((input) => input.priorityScore)).toEqual([88, 100, 88])
     expect(recordRepairs.mock.calls).toEqual([
       [
@@ -131,13 +132,13 @@ describe('suggestCases on the answer helper (decision 293)', () => {
     )
     store.createSuggestedCases.mockResolvedValue(rows('Wirecard', 'Theranos'))
 
-    const result = await suggestCases({ count: 2 })
+    const result = await suggestCases(CHANNEL_ID, { count: 2 })
     expect(result).toMatchObject({ ok: true, created: 2 })
     expect(result.notice).toBe(
       `Dropped suggestion 2 ("The${' very'.repeat(11)}..."): its title ran over 200 characters. ` +
         'Kept the first 2 suggestions.',
     )
-    const inputs = store.createSuggestedCases.mock.calls[0]![1] as { title: string }[]
+    const inputs = store.createSuggestedCases.mock.calls[0]![2] as { title: string }[]
     expect(inputs.map((input) => input.title)).toEqual(['Wirecard', 'Theranos'])
     expect(recordRepairs).not.toHaveBeenCalled()
   })
@@ -159,7 +160,7 @@ describe('the case form actions: subject, people and source links', () => {
   })
 
   it('stores the three fields on a new case', async () => {
-    expect(await addCase(form)).toEqual({ ok: true })
+    expect(await addCase(CHANNEL_ID, form)).toEqual({ ok: true })
     expect(store.createCase.mock.calls[0]![1]).toMatchObject({
       subject: 'Wirecard',
       people: ['Markus Braun'],
@@ -170,24 +171,32 @@ describe('the case form actions: subject, people and source links', () => {
 
   it('refuses a new case with no subject', async () => {
     const { subject: _subject, ...bare } = form
-    expect((await addCase(bare)).ok).toBe(false)
-    expect((await addCase({ ...form, subject: ' ' })).ok).toBe(false)
+    expect((await addCase(CHANNEL_ID, bare)).ok).toBe(false)
+    expect((await addCase(CHANNEL_ID, { ...form, subject: ' ' })).ok).toBe(false)
     expect(store.createCase).not.toHaveBeenCalled()
   })
 
   it('refuses a source link that is not http or https, and more than 20', async () => {
-    const bad = await addCase({ ...form, sourceLinks: [{ url: 'ftp://example.com/a' }] })
+    const bad = await addCase(CHANNEL_ID, {
+      ...form,
+      sourceLinks: [{ url: 'ftp://example.com/a' }],
+    })
     expect(bad).toEqual({
       ok: false,
       error: 'Each source link must start with http:// or https://',
     })
     const many = Array.from({ length: 21 }, (_, at) => ({ url: `https://example.com/${at}` }))
-    expect((await addCase({ ...form, sourceLinks: many })).ok).toBe(false)
+    expect((await addCase(CHANNEL_ID, { ...form, sourceLinks: many })).ok).toBe(false)
     expect(store.createCase).not.toHaveBeenCalled()
   })
 
   it('defaults people and source links to empty', async () => {
-    await addCase({ title: 'Wirecard', category: 'con', priorityScore: 50, subject: 'Wirecard' })
+    await addCase(CHANNEL_ID, {
+      title: 'Wirecard',
+      category: 'con',
+      priorityScore: 50,
+      subject: 'Wirecard',
+    })
     expect(store.createCase.mock.calls[0]![1]).toMatchObject({ people: [], sourceLinks: [] })
   })
 
@@ -208,8 +217,8 @@ describe('the case form actions: subject, people and source links', () => {
     callLlm.mockReset().mockResolvedValueOnce(reply({ ...wirecard, people: ['Markus Braun'] }))
     store.existingCaseTitles.mockReset().mockResolvedValue([])
     store.createSuggestedCases.mockReset().mockResolvedValue(rows('Wirecard'))
-    await suggestCases({ count: 1 })
-    expect(store.createSuggestedCases.mock.calls[0]![1][0]).toMatchObject({
+    await suggestCases(CHANNEL_ID, { count: 1 })
+    expect(store.createSuggestedCases.mock.calls[0]![2][0]).toMatchObject({
       subject: 'Wirecard',
       people: ['Markus Braun'],
     })
