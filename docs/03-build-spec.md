@@ -100,6 +100,8 @@ Behavioural configuration in the `settings` table (single row), editable in the 
 }
 ```
 
+> **Per channel (2026-10-28, decisions 326 to 329).** These settings now belong to a channel, one set per row of `channels`, edited under `/c/<slug>/settings`. What stays workspace wide is the provider keys, the model price overrides, the monthly budget ceiling and the music library; those live in the one-row `workspace` table and the workspace `/settings`. Design: `docs/superpowers/specs/2026-10-27-multi-channel-design.md`.
+
 ---
 
 ## 5. Data model (Drizzle/Postgres)
@@ -245,6 +247,8 @@ TimelineSchema = {
 - Thumbnails: `thumbnails.set` with the **Canva-exported PNG** the user uploaded (validate 1280×720 min, ≤2 MB, JPEG/PNG). Shorts get no thumbnail call.
 - Quota: `videos.insert`=1600 units against a 10k/day default → the app enforces its own daily upload budget (default 4) and queues the rest. Every YouTube error is mapped: `quotaExceeded` → requeue tomorrow + notify; `uploadLimitExceeded` → pause queue 24h; auth errors → "Reconnect YouTube" card in Needs-you.
 - **Until `apiAuditPassed` is set in settings**, the publish screen shows a completion checklist ending in "flip to public in YouTube Studio" instead of pretending the API can do it.
+
+> **Per channel (2026-10-28, decision 328).** Everything above is per channel: each channel holds its own connection in `youtube_connections`, with the YouTube channel id it was granted for, and connects from its own Connections tab. The OAuth `state` is signed and carries the channel id. Uploads are refused unless that channel's connection is `ok`.
 
 ---
 
