@@ -34,7 +34,8 @@ export interface LlmPrice {
  * Derived from the TTS adapters for the same reason LLM prices are: decision
  * 23 puts the price table on the adapter that knows what it is buying, and two
  * hand-maintained tables would eventually disagree — with the one the guard
- * happened to read deciding whether a cap held. Also provisional.
+ * happened to read deciding whether a cap held. The ElevenLabs rate is the
+ * pay-as-you-go API price, confirmed 2026-10-28 (decision 325).
  */
 export const TTS_PRICES: Record<TtsProvider, number> = TTS_PRICES_PER_KCHAR
 

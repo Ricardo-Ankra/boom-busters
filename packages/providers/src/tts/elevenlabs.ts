@@ -38,7 +38,14 @@ import type {
  *    on v3 — exposed in Settings as Creative / Natural / Robust.
  *
  * PCM output at 24 kHz keeps the WAV writer above this adapter with one job.
- * PRICES ARE PROVISIONAL. Confirm before the first live run.
+ *
+ * The price is the pay-as-you-go API rate the account is billed on, $0.08
+ * per 1,000 characters for Eleven v3 (elevenlabs.io/pricing/api, read
+ * 2026-10-28; decision 325). API usage is billed in US dollars per
+ * character, not in plan credits, and no endpoint returns a dollar price:
+ * `GET /v1/models` gives only cost multipliers, so the rate lives here and
+ * must be re-read from that page when ElevenLabs changes it. Free credits
+ * are spent first, so the ledger can only over-state, never under-state.
  */
 
 const BASE = 'https://api.elevenlabs.io/v1'
@@ -195,7 +202,7 @@ export function describeVoice(labels: Record<string, string> | undefined): strin
 
 export const elevenlabsTts: TTSProvider = {
   id: 'elevenlabs',
-  pricePerKChar: 0.18,
+  pricePerKChar: 0.08,
   sampleRate: NARRATION_SAMPLE_RATE,
 
   async synthesise(request: TTSRequest, options: TTSCallOptions): Promise<TTSResult> {

@@ -8365,3 +8365,15 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      from the function the Fetch visuals estimate uses, and name no price
      when the route has none. Batch generation was weighed and left for
      later: it saves about the same, but the board would wait hours.
+325. **Narration is priced at the pay-as-you-go API rate** (2026-10-28).
+     The account bills ElevenLabs on the pay-as-you-go API plan, which
+     charges Eleven v3 at $0.08 per 1,000 characters in US dollars, not in
+     plan credits (elevenlabs.io/pricing/api). The adapter's provisional
+     $0.18 was the Creator website plan's list rate and over-stated every
+     narration about 2.25 times, in the budget guard and on the Costs
+     screen alike. No ElevenLabs endpoint returns a dollar price: `GET
+     /v1/models` gives cost multipliers only, and `/v1/user/subscription`
+     gives counts and invoices, so the rate stays a constant on the adapter
+     and is re-read from the pricing page when it changes. Free credits are
+     spent before the paid balance, so the ledger can over-state a month,
+     never under-state it.

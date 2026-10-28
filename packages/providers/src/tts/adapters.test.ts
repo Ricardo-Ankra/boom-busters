@@ -409,7 +409,8 @@ describe('tts registry', () => {
 
 describe('ttsPrice', () => {
   it('is per thousand characters', () => {
-    expect(ttsPrice(elevenlabsTts, 'x'.repeat(2_000))).toBeCloseTo(0.36, 10)
+    // The pay-as-you-go API rate, $0.08 per 1,000 characters (decision 325).
+    expect(ttsPrice(elevenlabsTts, 'x'.repeat(2_000))).toBeCloseTo(0.16, 10)
   })
 
   it('is zero for nothing', () => {
