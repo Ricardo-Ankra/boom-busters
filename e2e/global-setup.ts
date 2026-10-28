@@ -176,6 +176,7 @@ export default async function globalSetup(): Promise<void> {
     deleteCasesExcept,
     deleteProjectsExcept,
     getSettings,
+    ensureFirstChannel,
     updateSettings,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
@@ -184,6 +185,9 @@ export default async function globalSetup(): Promise<void> {
   const connection = createDb(url, { max: 2 })
   try {
     await seed(connection.db)
+    // Every console address now lives under /c/<slug>; the first channel
+    // (boom-busters) must exist before the first request names it.
+    await ensureFirstChannel(connection.db)
     // Rows the previous run's tests created, before re-seeding leaves them
     // beside the fixture and every exact assertion starts matching twice.
     await deleteCasesExcept(connection.db, [FIXTURE_CASE_ID])

@@ -1,8 +1,10 @@
 'use client'
 
 import { RotateCcw, Square, Trash2 } from 'lucide-react'
+import type { Route } from 'next'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
+import { useChannelHref } from '@/components/channel-slug'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
@@ -206,6 +208,7 @@ export function DeleteProjectButton({
 }) {
   const { act, busy } = useAction()
   const router = useRouter()
+  const projectsHref = useChannelHref('/projects')
 
   const parts = [
     summary.claims > 0 ? `${summary.claims} claim${summary.claims === 1 ? '' : 's'}` : null,
@@ -237,7 +240,7 @@ export function DeleteProjectButton({
         const done = await act(() => deleteProjectAction(projectId), 'Project deleted')
         // Staying on the screen of a project that no longer exists would 404 on
         // the next refresh.
-        if (done) router.push('/projects')
+        if (done) router.push(projectsHref as Route)
         return done
       }}
     />

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { DENSE_WARNINGS_TITLE } from '../global-setup'
-import { expectHitTargets, openFixtureProject, signIn } from './fixtures'
+import { channelPath, expectHitTargets, openFixtureProject, signIn } from './fixtures'
 
 /**
  * Spec section 11.4: all review screens are responsive to 390px, and
@@ -26,8 +26,8 @@ test.describe('390px', () => {
   test('the page never scrolls sideways', async ({ page }) => {
     await signIn(page)
 
-    for (const path of ['/', '/settings', '/projects']) {
-      await page.goto(path)
+    for (const path of ['', '/settings', '/projects']) {
+      await page.goto(channelPath(path))
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       )
@@ -37,13 +37,13 @@ test.describe('390px', () => {
 
   test('controls stay tappable at 390px', async ({ page }) => {
     await signIn(page)
-    await page.goto('/settings')
+    await page.goto(channelPath('/settings'))
     await expectHitTargets(page)
   })
 
   test('the settings tabs are reachable without a wide viewport', async ({ page }) => {
     await signIn(page)
-    await page.goto('/settings')
+    await page.goto(channelPath('/settings'))
 
     await page.getByRole('tab', { name: 'Connections' }).click()
     await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
@@ -70,7 +70,7 @@ test.describe('390px', () => {
 
   test('the Script Studio reads single-column from a phone', async ({ page }) => {
     await signIn(page)
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
     await expect(async () => {
       await page
         .getByRole('listitem')

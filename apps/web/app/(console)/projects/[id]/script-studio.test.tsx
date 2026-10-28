@@ -10,7 +10,7 @@ vi.mock('./actions', () => ({
   reorderScriptChapters: vi.fn(),
   saveChapterText: vi.fn(),
 }))
-vi.mock('@/app/(console)/settings/voice-actions', () => ({ addPronunciation: vi.fn() }))
+vi.mock('@/app/(console)/c/[slug]/settings/voice-actions', () => ({ addPronunciation: vi.fn() }))
 const dismissNoticeAction = vi.fn()
 vi.mock('@/app/(console)/notice-actions', () => ({
   dismissNoticeAction: (...args: unknown[]) => dismissNoticeAction(...args),

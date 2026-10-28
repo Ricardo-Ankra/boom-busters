@@ -6,6 +6,7 @@ import { SEGMENT_LABELS } from '@/components/pipeline-rail'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { caseCategoryLabel } from '@/lib/case-category'
+import { channelHref } from '@/lib/channel-href'
 import { cn } from '@/lib/cn'
 
 /**
@@ -29,6 +30,8 @@ export interface NeedsYouCard {
 }
 
 export function buildNeedsYouCards(input: {
+  /** The channel whose queue this is; list links point into it. */
+  slug: string
   awaitingReview: ProjectSummary[]
   budgetGates: OpenBudgetGate[]
   failedRuns: FailedRun[]
@@ -44,7 +47,7 @@ export function buildNeedsYouCards(input: {
             title: 'Reconnect YouTube',
             context:
               'The stored refresh token was refused. Uploads, publishing and analytics stop until you reconnect.',
-            href: '/settings?tab=connections',
+            href: channelHref(input.slug, '/settings', { tab: 'connections' }),
             buttonLabel: 'Reconnect',
             at: input.youtubeReconnect.since ?? new Date(),
           } satisfies NeedsYouCard,
@@ -72,7 +75,9 @@ export function buildNeedsYouCards(input: {
       context:
         `$${gate.monthSpendUsd.toFixed(2)} spent of the $${gate.budgetUsd.toFixed(2)} ceiling · ` +
         `this call needs $${gate.estimateUsd.toFixed(4)}`,
-      href: (gate.projectId ? `/projects/${gate.projectId}` : '/costs') as Route,
+      href: gate.projectId
+        ? (`/projects/${gate.projectId}` as Route)
+        : channelHref(input.slug, '/costs'),
       buttonLabel: 'Decide',
       at: gate.openedAt,
     })),
@@ -81,7 +86,9 @@ export function buildNeedsYouCards(input: {
       kind: 'failure',
       title: `${run.projectTitle ?? run.functionName} failed`,
       context: String(run.error?.['message'] ?? 'No error message was recorded.'),
-      href: (run.projectId ? `/projects/${run.projectId}` : '/projects') as Route,
+      href: run.projectId
+        ? (`/projects/${run.projectId}` as Route)
+        : channelHref(input.slug, '/projects'),
       buttonLabel: 'Open',
       at: run.completedAt ?? new Date(0),
     })),

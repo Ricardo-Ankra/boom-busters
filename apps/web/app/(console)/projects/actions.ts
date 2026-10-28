@@ -88,10 +88,8 @@ async function send(
 }
 
 function refresh(projectId: string): void {
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/')
-  revalidatePath('/costs')
 }
 
 // ---------------------------------------------------------------------------
@@ -528,10 +526,7 @@ export async function deleteProjectAction(projectId: string): Promise<ActionResu
   const deleted = await deleteProject(db, projectId)
   if (!deleted) return { ok: false, error: 'That project no longer exists' }
 
-  revalidatePath('/projects')
-  revalidatePath('/')
-  revalidatePath('/cases')
-  revalidatePath('/costs')
+  revalidatePath('/c/[slug]', 'layout')
 
   return { ok: true }
 }

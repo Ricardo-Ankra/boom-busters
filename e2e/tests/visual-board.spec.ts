@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { VISUAL_BOARD_TITLE } from '../global-setup'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 /**
  * The visual board (build spec section 11.3), driven against the seeded
@@ -13,7 +13,7 @@ import { expectHitTargets, signIn } from './fixtures'
  */
 
 async function openBoard(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   // Click-and-verify, retried — the same pattern and the same timeouts as
   // `openProject` in project-lifecycle, for the same dev-server reason.
   await expect(async () => {

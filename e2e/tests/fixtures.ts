@@ -1,6 +1,14 @@
 import { expect, type Page } from '@playwright/test'
 import { QUEUED_PROJECT_TITLE as QUEUED_PROJECT_TITLE_FOR_TOUCH } from '../global-setup'
 
+/** The first channel's slug: the channel every fixture project belongs to. */
+export const FIRST_SLUG = 'boom-busters'
+
+/** An address inside the first channel's console, e.g. `channelPath('/projects')`. */
+export function channelPath(section: string): string {
+  return `/c/${FIRST_SLUG}${section}`
+}
+
 /** The seeded fixture project's title, from `packages/db/src/fixtures.ts`. */
 export const FIXTURE_PROJECT_TITLE = 'Wirecard: The €1.9 Billion That Never Existed'
 
@@ -66,7 +74,7 @@ export async function expectHitTargets(page: Page): Promise<void> {
  * property of the seed order rather than of the thing under test.
  */
 export async function openFixtureProject(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   // Click-and-verify, retried: a click that lands before hydration on a
   // mid-compile dev server vanishes without navigating. The inner wait must
   // be LONGER than a slow-but-real navigation (a cold compile takes ~2-3s) —

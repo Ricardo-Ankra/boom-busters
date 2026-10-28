@@ -9,6 +9,7 @@ function settingsWith(overrides: (settings: Settings) => void): Settings {
 }
 
 const freshInstall = {
+  slug: 'psychology',
   settings: DEFAULT_SETTINGS,
   youtubeConnected: false,
   musicBedCount: 0,
@@ -94,11 +95,12 @@ describe('buildChecklist', () => {
 
   it('deep-links the music item straight to its tab', () => {
     const items = buildChecklist(freshInstall)
-    expect(items.find((item) => item.id === 'music')?.href).toBe('/settings?tab=music')
+    expect(items.find((item) => item.id === 'music')?.href).toBe('/c/psychology/settings?tab=music')
   })
 
   it('completes once every item is satisfied', () => {
     const items = buildChecklist({
+      slug: 'psychology',
       settings: settingsWith((s) => {
         s.tts.voiceId = 'v-narrator'
       }),
@@ -131,7 +133,7 @@ describe('buildChecklist', () => {
 
   it('gives every item a deep link and a button label', () => {
     for (const item of buildChecklist(freshInstall)) {
-      expect(item.href, item.id).toMatch(/^\//)
+      expect(item.href, item.id).toMatch(/^\/c\/psychology(\/|$)/)
       expect(item.buttonLabel.length, item.id).toBeGreaterThan(0)
     }
   })

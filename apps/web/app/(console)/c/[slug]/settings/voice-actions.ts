@@ -262,7 +262,7 @@ export async function addPronunciation(
       ],
     },
   })
-  revalidatePath('/settings')
+  revalidatePath('/c/[slug]', 'layout')
 
   return checkPronunciation(cleanTerm, cleanHint)
 }

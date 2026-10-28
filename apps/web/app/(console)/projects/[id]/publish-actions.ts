@@ -752,7 +752,7 @@ export async function reschedulePublish(
   await updatePublishRecord(db, record.id, { publishAt })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/calendar')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -811,7 +811,7 @@ export async function unlinkPublishRecord(
   })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/calendar')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -875,7 +875,7 @@ export async function advanceToPublish(projectId: string): Promise<ActionResult>
   await setProjectStage(db, projectId, { stage: 'publish', stageStatus: 'awaiting_review' })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -903,6 +903,6 @@ export async function markProjectDone(projectId: string): Promise<ActionResult> 
   await setProjectStage(db, projectId, { stage: 'done', stageStatus: 'approved' })
 
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

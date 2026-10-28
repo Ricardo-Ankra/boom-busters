@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { STRETCH_BOARD_TITLE } from '../global-setup'
-import { signIn } from './fixtures'
+import { channelPath, signIn } from './fixtures'
 
 /**
  * The stretch re-plan on the board (the stretch re-plan design), driven
@@ -15,7 +15,7 @@ import { signIn } from './fixtures'
  */
 
 async function openBoard(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   await expect(async () => {
     await page
       .getByRole('listitem')

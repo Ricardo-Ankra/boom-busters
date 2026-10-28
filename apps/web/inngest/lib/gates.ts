@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   flagTake,
   getProject,
   recordRunEvent,
@@ -10,6 +11,7 @@ import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
 import type { BudgetExceededError, GateStage, NoticeSubject } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
+import { channelHref } from '@/lib/channel-href'
 import { recordStop } from '@/lib/notices'
 import { notify } from '@/lib/notify'
 import { resolveRunRowId } from '../middleware/run-mirror'
@@ -178,7 +180,7 @@ export async function openBudgetGate(
     body:
       `${String(gate['provider'])} needs $${Number(gate['estimateUsd']).toFixed(4)} ` +
       `against a $${Number(gate['budgetUsd']).toFixed(2)} cap.`,
-    href: '/costs',
+    href: channelHref((await channelForProject(db, ctx.projectId)).slug, '/costs'),
   })
 }
 

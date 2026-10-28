@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { CODED_GRAPHIC_TITLE, VISUAL_PLAN_TITLE } from '../global-setup'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 /**
  * The PLAN checkpoint (staged-visuals design, closed out in M8.7): the
@@ -12,7 +12,7 @@ import { expectHitTargets, signIn } from './fixtures'
  */
 
 async function openPlan(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   await expect(async () => {
     await page
       .getByRole('listitem')

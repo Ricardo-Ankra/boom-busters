@@ -35,7 +35,7 @@ import {
   runtimeDelta,
 } from '@/lib/script-editing'
 import type { ScriptDiff } from '@/lib/script-editing'
-import { addPronunciation } from '@/app/(console)/settings/voice-actions'
+import { addPronunciation } from '@/app/(console)/c/[slug]/settings/voice-actions'
 import {
   applyRegeneratedText,
   regenerateSection,

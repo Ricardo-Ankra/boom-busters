@@ -61,7 +61,10 @@ import type {
   VisualsReviewModel,
 } from '@/lib/visuals-review'
 import { CLOSE_REUSE_MS, describeGap, timecode } from '@/lib/visuals-reuse'
-import { createLogoUploadAction, finaliseLogoAction } from '@/app/(console)/settings/logo-actions'
+import {
+  createLogoUploadAction,
+  finaliseLogoAction,
+} from '@/app/(console)/c/[slug]/settings/logo-actions'
 import {
   addSlotImageFromUrlAction,
   approvePlanAction,

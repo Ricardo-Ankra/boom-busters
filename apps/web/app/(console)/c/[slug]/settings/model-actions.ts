@@ -16,6 +16,6 @@ export async function refreshModelListsAction(): Promise<{
   const session = await auth()
   if (!session?.user?.email) throw new Error('Not signed in')
   const results = await refreshModelCatalogue()
-  revalidatePath('/settings')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: results.every((r) => r.ok || r.skipped), results }
 }

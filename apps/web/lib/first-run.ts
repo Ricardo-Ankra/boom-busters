@@ -1,5 +1,6 @@
 import type { Settings } from '@boom-busters/schemas'
 import type { Route } from 'next'
+import { channelHref } from './channel-href'
 
 /**
  * The first-run setup checklist (build spec section 11.3), reduced to items a
@@ -36,6 +37,8 @@ export interface ChecklistItem {
 }
 
 export interface FirstRunInput {
+  /** The channel whose setup this is; every button links into it. */
+  slug: string
   settings: Settings
   youtubeConnected: boolean
   musicBedCount: number
@@ -43,7 +46,7 @@ export interface FirstRunInput {
 }
 
 export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
-  const { settings, youtubeConnected, musicBedCount, caseCount } = input
+  const { slug, settings, youtubeConnected, musicBedCount, caseCount } = input
 
   return [
     {
@@ -53,7 +56,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         settings.tts.voiceId.trim() === ''
           ? 'The voice is a brand asset: chosen once, by audition.'
           : `${settings.tts.provider} · ${settings.tts.voiceId}`,
-      href: '/settings?tab=voice',
+      href: channelHref(slug, '/settings', { tab: 'voice' }),
       buttonLabel: settings.tts.voiceId.trim() === '' ? 'Open audition' : 'Review voice',
       done: settings.tts.voiceId.trim() !== '',
       blocksPipeline: true,
@@ -65,7 +68,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         caseCount === 0
           ? 'The backlog the pipeline draws from.'
           : `${caseCount} case${caseCount === 1 ? '' : 's'} in the library.`,
-      href: '/cases',
+      href: channelHref(slug, '/cases'),
       buttonLabel: caseCount === 0 ? 'Add cases' : 'Open Case Library',
       done: caseCount > 0,
       blocksPipeline: false,
@@ -77,7 +80,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
         musicBedCount === 0
           ? 'Download licensed beds (the YouTube Audio Library is free) and upload them.'
           : `${musicBedCount} of 3 uploaded.`,
-      href: '/settings?tab=music',
+      href: channelHref(slug, '/settings', { tab: 'music' }),
       buttonLabel: 'Open music library',
       done: musicBedCount >= 3,
       // Assembly is what needs beds; nothing before it does. The library
@@ -91,7 +94,7 @@ export function buildChecklist(input: FirstRunInput): ChecklistItem[] {
       detail: youtubeConnected
         ? 'Connected.'
         : 'Needed only to publish. Everything up to the publish gate works without it.',
-      href: '/settings?tab=connections',
+      href: channelHref(slug, '/settings', { tab: 'connections' }),
       buttonLabel: youtubeConnected ? 'Manage connection' : 'Connect',
       done: youtubeConnected,
       blocksPipeline: false,

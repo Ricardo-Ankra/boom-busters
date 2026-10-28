@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, resetResearchModel, signIn } from './fixtures'
+import { channelPath, expectHitTargets, resetResearchModel, signIn } from './fixtures'
 
 /**
  * Settings → Models with live lists (decision 288), in mock-provider mode:
@@ -14,7 +14,7 @@ test.describe('Models tab, live lists', () => {
   test.beforeEach(async ({ page }) => {
     await resetResearchModel()
     await signIn(page)
-    await page.goto('/settings?tab=models')
+    await page.goto(channelPath('/settings?tab=models'))
   })
 
   test('refreshes, prices an unpriced model and routes to it', async ({ page }) => {

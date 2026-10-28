@@ -21,6 +21,7 @@ describe('LedgerTable', () => {
   it("shows a retry's label beside its operation, and nothing extra on a first call", () => {
     render(
       <LedgerTable
+        slug="psychology"
         entries={[entry('first', {}), entry('again', { purpose: 'retry: refused' })]}
         activeProvider={null}
       />,
@@ -31,7 +32,13 @@ describe('LedgerTable', () => {
   })
 
   it('still marks a demo row', () => {
-    render(<LedgerTable entries={[entry('demo', { demo: true })]} activeProvider={null} />)
+    render(
+      <LedgerTable
+        slug="psychology"
+        entries={[entry('demo', { demo: true })]}
+        activeProvider={null}
+      />,
+    )
     expect(screen.getByText('demo')).toBeTruthy()
   })
 })

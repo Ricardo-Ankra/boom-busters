@@ -69,6 +69,7 @@ describe('CaseLibrary notices (decision 293)', () => {
   it("shows a case's notice on its own row and no other", () => {
     render(
       <CaseLibrary
+        slug="psychology"
         cases={[kase({}), kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })]}
         sort="priority"
         notices={[trimmed]}
@@ -87,7 +88,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 
   it("asks before a suggestion's Dismiss deletes it (decision 294)", async () => {
     actions.dismissCase.mockResolvedValue({ ok: true })
-    render(<CaseLibrary cases={[kase({})]} sort="priority" notices={[trimmed]} />)
+    render(<CaseLibrary slug="psychology" cases={[kase({})]} sort="priority" notices={[trimmed]} />)
     const row = screen.getByText('Wirecard').closest('li')!
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
@@ -99,7 +100,7 @@ describe('CaseLibrary notices (decision 293)', () => {
   })
 
   it('says a suggestion with projects behind it is retired, not deleted', async () => {
-    render(<CaseLibrary cases={[kase({ projectCount: 2 })]} sort="priority" />)
+    render(<CaseLibrary slug="psychology" cases={[kase({ projectCount: 2 })]} sort="priority" />)
     const row = screen.getByText('Wirecard').closest('li')!
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
@@ -119,7 +120,7 @@ describe('CaseLibrary notices (decision 293)', () => {
       mocked: false,
       notice: dropped,
     })
-    render(<CaseLibrary cases={[]} sort="priority" />)
+    render(<CaseLibrary slug="psychology" cases={[]} sort="priority" />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Suggest cases' }))
     await userEvent.click(screen.getByRole('button', { name: 'Get suggestions' }))
@@ -135,7 +136,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 
 describe('the case form: subject, people and source links', () => {
   async function openAddForm() {
-    render(<CaseLibrary cases={[]} sort="priority" />)
+    render(<CaseLibrary slug="psychology" cases={[]} sort="priority" />)
     await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
   }
 
@@ -175,6 +176,7 @@ describe('the case form: subject, people and source links', () => {
     actions.editCase.mockResolvedValue({ ok: true })
     render(
       <CaseLibrary
+        slug="psychology"
         cases={[
           kase({
             status: 'shortlisted',

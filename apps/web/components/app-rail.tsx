@@ -13,6 +13,8 @@ import type { LucideIcon } from 'lucide-react'
 import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import * as React from 'react'
+import { channelHref } from '@/lib/channel-href'
+import type { ChannelSection } from '@/lib/channel-href'
 import { cn } from '@/lib/cn'
 
 /**
@@ -44,16 +46,25 @@ export function RailIcon({ icon: Icon }: { icon: LucideIcon }) {
 }
 
 /** The information architecture (section 11.2); shared with the mobile bar. */
-export const NAV = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/projects', label: 'Projects', icon: Video },
-  { href: '/cases', label: 'Case Library', icon: Library },
-  { href: '/calendar', label: 'Calendar', icon: Calendar },
-  { href: '/costs', label: 'Costs', icon: DollarSign },
-  { href: '/settings', label: 'Settings', icon: Settings },
-] as const
+const NAV_ITEMS: readonly { section: ChannelSection; label: string; icon: LucideIcon }[] = [
+  { section: '', label: 'Dashboard', icon: LayoutDashboard },
+  { section: '/projects', label: 'Projects', icon: Video },
+  { section: '/cases', label: 'Case Library', icon: Library },
+  { section: '/calendar', label: 'Calendar', icon: Calendar },
+  { section: '/costs', label: 'Costs', icon: DollarSign },
+  { section: '/settings', label: 'Settings', icon: Settings },
+]
 
-export function AppRail() {
+/** The navigation items as hrefs into one channel, with the current one marked. */
+export function navFor(slug: string, pathname: string) {
+  return NAV_ITEMS.map(({ section, label, icon }) => {
+    const href = channelHref(slug, section)
+    const active = section === '' ? pathname === href : pathname.startsWith(href)
+    return { href, label, icon, active }
+  })
+}
+
+export function AppRail({ slug, name }: { slug: string; name: string }) {
   const pathname = usePathname()
   const [expanded, setExpanded] = React.useState(true)
 
@@ -67,12 +78,11 @@ export function AppRail() {
     >
       <div className="mb-2 flex h-10 items-center px-2">
         {expanded ? (
-          <span className="text-[14px] font-semibold tracking-tight">Boom-Busters</span>
+          <span className="truncate text-[14px] font-semibold tracking-tight">{name}</span>
         ) : null}
       </div>
 
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+      {navFor(slug, pathname).map(({ href, label, icon: Icon, active }) => {
         return (
           <Link
             key={href}

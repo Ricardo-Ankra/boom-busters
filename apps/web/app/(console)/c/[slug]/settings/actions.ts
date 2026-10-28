@@ -71,8 +71,7 @@ export async function saveSettings(patch: unknown): Promise<ActionResult> {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not save settings' }
   }
 
-  revalidatePath('/settings')
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -89,7 +88,7 @@ export async function saveProviderKey(provider: string, apiKey: string): Promise
   // again — the UI only ever sees the masked hint (spec section 4).
   await setCredential(db, parsedProvider.data, trimmed, env.SECRETS_ENCRYPTION_KEY)
 
-  revalidatePath('/settings')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -177,7 +176,7 @@ export async function verifyProviderKey(provider: string): Promise<VerifyResult>
   try {
     await verifiable.verify(verifiable.apiKey)
     await recordVerifyResult(db, parsedProvider.data, 'ok')
-    revalidatePath('/settings')
+    revalidatePath('/c/[slug]', 'layout')
     return { ok: true, verified: true, mocked }
   } catch (error) {
     // A wrong key, a revoked key and a provider outage are different problems
@@ -187,7 +186,7 @@ export async function verifyProviderKey(provider: string): Promise<VerifyResult>
     const transient = isRetriable(error)
     if (!transient) await recordVerifyResult(db, parsedProvider.data, 'invalid')
 
-    revalidatePath('/settings')
+    revalidatePath('/c/[slug]', 'layout')
     return {
       ok: false,
       verified: false,
@@ -349,8 +348,7 @@ export async function finaliseMusicBedAction(input: {
     durationMs: sensibleDurationMs(input.durationMs),
   })
 
-  revalidatePath('/settings')
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -373,7 +371,7 @@ export async function recordMusicBedDurationAction(input: {
   if (durationMs === null) return { ok: false, error: 'That is not a length.' }
 
   await setMusicBedDuration(db, input.id, durationMs)
-  revalidatePath('/settings')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -391,8 +389,7 @@ export async function deleteMusicBedAction(id: string): Promise<ActionResult> {
     // Deliberately swallowed — see above.
   }
 
-  revalidatePath('/settings')
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -428,12 +425,12 @@ export async function verifyYoutubeConnection(): Promise<
     const grant = await refreshAccessToken(refreshToken)
     const ping = await pingChannel(grant.accessToken)
     await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
-    revalidatePath('/settings')
+    revalidatePath('/c/[slug]', 'layout')
     if (!ping.ok) return { ok: false, error: ping.error ?? 'The channel ping failed.' }
     return { ok: true, ...(ping.channelTitle ? { channelTitle: ping.channelTitle } : {}) }
   } catch (error) {
     await recordVerifyResult(db, 'youtube', 'invalid')
-    revalidatePath('/settings')
+    revalidatePath('/c/[slug]', 'layout')
     if (error instanceof YoutubeAuthError && error.needsReconnect) {
       return {
         ok: false,

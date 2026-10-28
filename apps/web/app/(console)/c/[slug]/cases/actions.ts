@@ -105,7 +105,7 @@ export async function addCase(input: unknown): Promise<ActionResult> {
     // skips triage and lands shortlisted.
     status: 'shortlisted',
   })
-  revalidatePath('/cases')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -128,7 +128,7 @@ export async function editCase(id: string, input: unknown): Promise<ActionResult
   const updated = await updateCase(db, id, parsed.data)
   if (!updated) return { ok: false, error: 'That case no longer exists' }
 
-  revalidatePath('/cases')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -148,7 +148,7 @@ export async function setStatus(id: string, status: string): Promise<ActionResul
   const updated = await setCaseStatus(db, id, status as CaseStatus)
   if (!updated) return { ok: false, error: 'That case no longer exists' }
 
-  revalidatePath('/cases')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -177,7 +177,7 @@ export async function dismissCase(id: string): Promise<ActionResult> {
     await setCaseStatus(db, id, 'retired')
   }
 
-  revalidatePath('/cases')
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }
 
@@ -270,7 +270,7 @@ export async function suggestCases(input: unknown): Promise<SuggestResult> {
     // What no row can carry goes in the toast.
     const notice = describeRepairs(filed.rest)
 
-    revalidatePath('/cases')
+    revalidatePath('/c/[slug]', 'layout')
     return {
       ok: true,
       created: created.length,
@@ -329,8 +329,7 @@ export async function startProjectFromCase(
     targetRuntimeMin: runtime.data,
   })
   await markCaseInProduction(db, id)
-  revalidatePath('/cases')
-  revalidatePath('/projects')
+  revalidatePath('/c/[slug]', 'layout')
 
   try {
     await inngest.send(events.projectCreated.create({ projectId: project.id, caseId: id }))
@@ -347,7 +346,7 @@ export async function startProjectFromCase(
      * button on the screen the human is about to open.
      */
     await setProjectStage(db, project.id, { stageStatus: 'failed' })
-    revalidatePath('/projects')
+    revalidatePath('/c/[slug]', 'layout')
 
     return {
       ok: false,

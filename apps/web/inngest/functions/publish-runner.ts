@@ -15,6 +15,7 @@ import {
 import { beginUpload } from '@boom-busters/db'
 import {
   describeYoutubeAction,
+  FIRST_CHANNEL_SLUG,
   mapYoutubeError,
   newId,
   parseEventData,
@@ -24,6 +25,7 @@ import {
 } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
+import { channelHref } from '@/lib/channel-href'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { brokerCallbackUrl, brokerConfigured, submitMediaJob } from '@/lib/broker'
@@ -102,7 +104,10 @@ export const publishRunner = inngest.createFunction(
         kind: 'run-failed',
         title: 'An upload failed',
         body: String(event.data.error?.message ?? 'Unknown error'),
-        href: typeof projectId === 'string' ? `/projects/${projectId}?stage=publish` : '/calendar',
+        href:
+          typeof projectId === 'string'
+            ? `/projects/${projectId}?stage=publish`
+            : channelHref(FIRST_CHANNEL_SLUG, '/calendar'),
       })
     },
     triggers: [events.publishRequested],
@@ -319,7 +324,7 @@ export const publishRunner = inngest.createFunction(
               kind: 'reconnect-youtube',
               title: 'YouTube needs reconnecting',
               body: 'The stored consent is no longer honoured. Reconnect in Settings → Connections.',
-              href: '/settings?tab=connections',
+              href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
             })
           }
           return { ok: false as const }
@@ -422,7 +427,7 @@ export const publishRunner = inngest.createFunction(
           body: describeYoutubeAction(action),
           href:
             action.kind === 'reconnect'
-              ? '/settings?tab=connections'
+              ? channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' })
               : `/projects/${projectId}?stage=publish`,
         })
       })

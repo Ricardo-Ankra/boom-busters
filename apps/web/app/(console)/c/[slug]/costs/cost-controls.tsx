@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { saveSettings } from '@/app/(console)/settings/actions'
+import { saveSettings } from '@/app/(console)/c/[slug]/settings/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'

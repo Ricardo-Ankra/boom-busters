@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 /**
  * The Logos tab (decision 268) in mock storage: the seeded marks list, the
@@ -12,7 +12,7 @@ import { expectHitTargets, signIn } from './fixtures'
 test.describe('Logos tab', () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page)
-    await page.goto('/settings?tab=logos')
+    await page.goto(channelPath('/settings?tab=logos'))
   })
 
   test('lists the seeded marks and lets the owner choose the channel mark', async ({ page }) => {

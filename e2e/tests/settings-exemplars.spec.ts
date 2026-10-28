@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectHitTargets, signIn } from './fixtures'
+import { channelPath, expectHitTargets, signIn } from './fixtures'
 
 /**
  * The Exemplars tab (decision 305): every technique the designer is shown an
@@ -10,7 +10,7 @@ import { expectHitTargets, signIn } from './fixtures'
 test.describe('Exemplars tab', () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page)
-    await page.goto('/settings?tab=exemplars')
+    await page.goto(channelPath('/settings?tab=exemplars'))
   })
 
   test('lists the eighteen written examples and plays one in portrait', async ({ page }) => {

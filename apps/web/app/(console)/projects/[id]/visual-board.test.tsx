@@ -112,7 +112,7 @@ vi.mock('./graphic-code-still', () => ({
 
 const createLogoUploadAction = vi.fn()
 const finaliseLogoAction = vi.fn()
-vi.mock('@/app/(console)/settings/logo-actions', () => ({
+vi.mock('@/app/(console)/c/[slug]/settings/logo-actions', () => ({
   createLogoUploadAction: (...args: unknown[]) => createLogoUploadAction(...args),
   finaliseLogoAction: (...args: unknown[]) => finaliseLogoAction(...args),
 }))

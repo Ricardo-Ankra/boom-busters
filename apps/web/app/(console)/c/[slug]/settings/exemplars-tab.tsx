@@ -4,7 +4,7 @@ import type { BrandKitStored } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { ExemplarView } from '@/lib/exemplar-views'
-import { GraphicPlayback, GraphicPlaybackProvider } from '../projects/[id]/graphic-playback'
+import { GraphicPlayback, GraphicPlaybackProvider } from '../../../projects/[id]/graphic-playback'
 import { exemplarCodeLogos, type ExemplarLogo } from './exemplar-logo'
 
 /**

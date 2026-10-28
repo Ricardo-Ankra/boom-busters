@@ -9,7 +9,13 @@ import {
   STALE_PROJECT_TITLE,
   STOPPED_PROJECT_TITLE,
 } from '../global-setup'
-import { expectHitTargets, openFixtureProject, signIn, touchQueuedProject } from './fixtures'
+import {
+  channelPath,
+  expectHitTargets,
+  openFixtureProject,
+  signIn,
+  touchQueuedProject,
+} from './fixtures'
 
 /**
  * What a project screen offers, in the states a real project actually passes
@@ -41,7 +47,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 async function openProject(page: Page, title: string): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
 
   /**
    * Click-and-verify, retried. On a dev server mid-compile the click can land
@@ -121,7 +127,7 @@ test.describe('making a project from a case', () => {
   const CASE_TITLE = 'A case that becomes a project (E2E)'
 
   test('creates it, and says plainly when the pipeline could not be reached', async ({ page }) => {
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
     await page.getByRole('button', { name: 'Add case' }).click()
     await page.getByLabel('Title').fill(CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
@@ -176,7 +182,7 @@ test.describe('a project that was stopped', () => {
   })
 
   test('the projects list agrees with the project screen', async ({ page }) => {
-    await page.goto('/projects')
+    await page.goto(channelPath('/projects'))
 
     // "Re-run stage" on the list has to lead somewhere that can actually
     // re-run. (It said "Resume" until 2026-08-16 — a label promising
@@ -276,7 +282,7 @@ test.describe('deleting a project', () => {
   test('removes it, states what goes, and keeps the case', async ({ page }) => {
     // Self-contained: it makes its own case and project rather than deleting a
     // shared fixture out from under the tests that follow it.
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
     await page.getByRole('button', { name: 'Add case' }).click()
     await page.getByLabel('Title').fill(CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
@@ -297,12 +303,12 @@ test.describe('deleting a project', () => {
     await expect(page.getByText(/The case it came from is kept/i)).toBeVisible()
     await page.getByRole('button', { name: 'Delete it' }).click()
 
-    await expect(page).toHaveURL(/\/projects$/)
+    await expect(page).toHaveURL(/\/c\/boom-busters\/projects$/)
     await expect(page.getByRole('listitem').filter({ hasText: CASE_TITLE })).toHaveCount(0)
 
     // The case survives: a case is a story worth telling, and abandoning one
     // attempt at it does not retract that.
-    await page.goto('/cases')
+    await page.goto(channelPath('/cases'))
     await expect(page.getByText(CASE_TITLE)).toBeVisible()
   })
 

@@ -62,8 +62,7 @@ function cleanTitle(title: string): string | null {
 }
 
 function refresh(): void {
-  revalidatePath('/settings')
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
 }
 
 /** A stored dimension is a whole number of at least one pixel. */

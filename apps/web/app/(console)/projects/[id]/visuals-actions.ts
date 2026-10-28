@@ -138,7 +138,7 @@ function badIds(...ids: string[]): ActionResult | null {
 
 function refresh(projectId: string): void {
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
 }
 
 /**

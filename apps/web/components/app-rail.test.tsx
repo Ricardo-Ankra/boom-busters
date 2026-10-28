@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AppRail } from './app-rail'
 
-vi.mock('next/navigation', () => ({ usePathname: () => '/settings' }))
+vi.mock('next/navigation', () => ({ usePathname: () => '/c/psychology/settings' }))
 
 describe('AppRail', () => {
   it('links to every screen in the information architecture', () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
 
     for (const label of [
       'Dashboard',
@@ -22,13 +22,13 @@ describe('AppRail', () => {
   })
 
   it('marks the current screen for assistive technology, not only by colour', () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
   })
 
   it('keeps every label readable when collapsed — icons are never the only cue', async () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Collapse rail' }))
 
@@ -39,7 +39,7 @@ describe('AppRail', () => {
   })
 
   it('exposes the collapse state', async () => {
-    render(<AppRail />)
+    render(<AppRail slug="psychology" name="Psychology" />)
     const toggle = screen.getByRole('button', { name: 'Collapse rail' })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
 

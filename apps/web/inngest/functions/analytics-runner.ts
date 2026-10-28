@@ -10,8 +10,9 @@ import {
 } from '@boom-busters/db'
 import { buildDigestRequest, mockDigest, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_SLUG } from '@boom-busters/schemas'
 import { answerOrStop, callForText, type AnswerComplete } from '@/lib/answer'
+import { channelHref } from '@/lib/channel-href'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
@@ -105,7 +106,7 @@ export const analyticsRunner = inngest.createFunction(
         kind: 'run-failed',
         title: 'The analytics refresh failed',
         body: String(event.data.error?.message ?? 'Unknown error'),
-        href: '/costs',
+        href: channelHref(FIRST_CHANNEL_SLUG, '/costs'),
       })
     },
     triggers: [{ cron: ANALYTICS_CRON }, events.analyticsRefreshRequested],
@@ -138,7 +139,7 @@ export const analyticsRunner = inngest.createFunction(
               kind: 'reconnect-youtube',
               title: 'YouTube needs reconnecting',
               body: 'The stored refresh token was refused. Uploads and analytics stop until you reconnect.',
-              href: '/settings?tab=connections',
+              href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
             })
           }
           return { mode: 'dead' }
@@ -159,7 +160,7 @@ export const analyticsRunner = inngest.createFunction(
             kind: 'reconnect-youtube',
             title: 'YouTube needs reconnecting',
             body: `The daily channel ping failed: ${ping.error ?? 'unknown error'}`,
-            href: '/settings?tab=connections',
+            href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
           })
         }
         return ping
@@ -313,7 +314,7 @@ export const analyticsRunner = inngest.createFunction(
         kind: 'weekly-digest',
         title: `Weekly digest · ${weekOf}`,
         body,
-        href: '/',
+        href: channelHref(FIRST_CHANNEL_SLUG),
       })
       return true
     })

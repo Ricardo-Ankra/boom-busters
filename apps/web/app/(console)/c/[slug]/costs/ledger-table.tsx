@@ -1,7 +1,7 @@
 import type { LedgerEntry } from '@boom-busters/cost'
 import { PROVIDERS } from '@boom-busters/schemas'
 import type { Provider } from '@boom-busters/schemas'
-import type { Route } from 'next'
+import { channelHref } from '@/lib/channel-href'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,9 +14,11 @@ import { Button } from '@/components/ui/button'
  * yourself later. Every filter is a visible labelled button (section 11.1).
  */
 export function LedgerTable({
+  slug,
   entries,
   activeProvider,
 }: {
+  slug: string
   entries: LedgerEntry[]
   activeProvider: Provider | null
 }) {
@@ -24,7 +26,7 @@ export function LedgerTable({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant={activeProvider === null ? 'selected' : 'outline'}>
-          <Link href={'/costs' as Route}>All providers</Link>
+          <Link href={channelHref(slug, '/costs')}>All providers</Link>
         </Button>
         {PROVIDERS.map((provider) => (
           <Button
@@ -32,7 +34,7 @@ export function LedgerTable({
             asChild
             variant={activeProvider === provider ? 'selected' : 'outline'}
           >
-            <Link href={`/costs?provider=${provider}` as Route}>{provider}</Link>
+            <Link href={channelHref(slug, '/costs', { provider })}>{provider}</Link>
           </Button>
         ))}
       </div>

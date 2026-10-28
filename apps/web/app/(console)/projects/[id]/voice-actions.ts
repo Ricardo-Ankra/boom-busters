@@ -58,7 +58,7 @@ async function requireOwner(): Promise<string> {
 
 function refresh(projectId: string): void {
   revalidatePath(`/projects/${projectId}`)
-  revalidatePath('/')
+  revalidatePath('/c/[slug]', 'layout')
 }
 
 export async function flagVoiceTake(takeId: string, note: string): Promise<ActionResult> {

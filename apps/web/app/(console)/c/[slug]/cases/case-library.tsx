@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { channelHref } from '@/lib/channel-href'
 import {
   acceptCase,
   addCase,
@@ -56,10 +57,13 @@ const SORT_LABELS: Record<CaseSort, string> = {
 }
 
 export function CaseLibrary({
+  slug,
   cases,
   sort,
   notices = [],
 }: {
+  /** The channel whose library this is; navigation stays inside it. */
+  slug: string
   cases: CaseSummary[]
   sort: CaseSort
   /** The cases' open notices (decision 293); each row shows its own. */
@@ -120,7 +124,7 @@ export function CaseLibrary({
       <section className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-[15px] font-medium">Backlog</h2>
-          <SortControls active={sort} />
+          <SortControls slug={slug} active={sort} />
         </div>
 
         {backlog.length === 0 ? (
@@ -137,7 +141,12 @@ export function CaseLibrary({
           <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
             {backlog.map((item) => (
               <li key={item.id}>
-                <BacklogRow item={item} run={run} notices={noticesFor(notices, 'case', item.id)} />
+                <BacklogRow
+                  slug={slug}
+                  item={item}
+                  run={run}
+                  notices={noticesFor(notices, 'case', item.id)}
+                />
               </li>
             ))}
           </ul>
@@ -147,7 +156,7 @@ export function CaseLibrary({
   )
 }
 
-function SortControls({ active }: { active: CaseSort }) {
+function SortControls({ slug, active }: { slug: string; active: CaseSort }) {
   const router = useRouter()
 
   return (
@@ -158,7 +167,7 @@ function SortControls({ active }: { active: CaseSort }) {
           key={sort}
           variant={sort === active ? 'outline' : 'ghost'}
           aria-pressed={sort === active}
-          onClick={() => router.push(`/cases?sort=${sort}`)}
+          onClick={() => router.push(channelHref(slug, '/cases', { sort }))}
         >
           {SORT_LABELS[sort]}
         </Button>
@@ -364,10 +373,12 @@ function SuggestionRow({
 }
 
 function BacklogRow({
+  slug,
   item,
   run,
   notices,
 }: {
+  slug: string
   item: CaseSummary
   run: Run
   notices: readonly Notice[]
@@ -404,7 +415,7 @@ function BacklogRow({
               try {
                 const result = await startProjectFromCase(item.id)
                 if (result.ok) {
-                  router.push('/projects')
+                  router.push(channelHref(slug, '/projects'))
                 } else {
                   await run(async () => result, '')
                 }

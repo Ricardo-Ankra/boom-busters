@@ -1,5 +1,5 @@
 import type { Technique } from '@boom-busters/providers'
-import type { CodeLogos } from '../projects/[id]/graphic-playback'
+import type { CodeLogos } from '../../../projects/[id]/graphic-playback'
 
 /**
  * The channel mark in the Exemplars tab (decision 305). The logo-reveal

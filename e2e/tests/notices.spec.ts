@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { VISUAL_PLAN_TITLE } from '../global-setup'
-import { signIn } from './fixtures'
+import { channelPath, signIn } from './fixtures'
 
 /**
  * Notices (decision 293): a line on the card an answer concerns, with a
@@ -43,7 +43,7 @@ async function seedNotice(): Promise<void> {
 }
 
 async function openPlan(page: Page): Promise<void> {
-  await page.goto('/projects')
+  await page.goto(channelPath('/projects'))
   await expect(async () => {
     await page
       .getByRole('listitem')
