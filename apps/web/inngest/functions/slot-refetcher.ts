@@ -1,14 +1,22 @@
-import { getShotSlot, releaseSlotJob, setSlotRefusal, setSlotResolution } from '@boom-busters/db'
+import {
+  getShotSlot,
+  releaseSlotJob,
+  setSlotRefusal,
+  setSlotResolution,
+  slotNeedsResolution,
+} from '@boom-busters/db'
 import {
   BudgetExceededError,
   ContentPolicyError,
   parseEventData,
   serialiseError,
   ShotBriefSchema,
+  SlotCandidateSchema,
   StillRouteSchema,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import { addRegenerated } from '@/lib/still-candidates'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -84,18 +92,40 @@ export const slotRefetcher = inngest.createFunction(
         await requireVisualKeys(new Set([brief.type]))
 
         const route = StillRouteSchema.nullable().safeParse(slot.route)
+
+        // A still whose images still answer its brief and route gains the
+        // new image beside them, pick kept (decision 324). A brief or route
+        // edited since is a new question, so its old images are replaced, as
+        // every other type's are.
+        const held = SlotCandidateSchema.array().safeParse(slot.candidates)
+        const adds =
+          brief.type === 'still' &&
+          !slotNeedsResolution(slot) &&
+          held.success &&
+          held.data.length > 0
+            ? held.data
+            : null
+
         try {
           const resolution = await resolveSlotBrief({
             projectId,
             brief,
             route: route.success ? route.data : null,
           })
+          const answered = { brief: slot.brief, route: slot.route }
+          if (adds && resolution.status === 'resolved') {
+            const added = addRegenerated({
+              existing: adds,
+              existingChosenAssetId: slot.chosenAssetId,
+              fresh: resolution.candidates,
+            })
+            await setSlotResolution(db, slotId, { status: 'resolved', ...added, answered })
+            return { status: 'resolved' as const, candidates: added.candidates.length }
+          }
           await setSlotResolution(
             db,
             slotId,
-            resolution.status === 'resolved'
-              ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
-              : resolution,
+            resolution.status === 'resolved' ? { ...resolution, answered } : resolution,
           )
           return { status: resolution.status, candidates: resolution.candidates.length }
         } catch (error) {
@@ -105,6 +135,19 @@ export const slotRefetcher = inngest.createFunction(
           if (error instanceof ContentPolicyError) {
             // The image model declined the prompt (decision 252): a placeholder
             // with the refusal on the row, so the card offers the two ways out.
+            // A still that already held images keeps them (decision 324): the
+            // refusal is of the new image, not of the ones already bought.
+            if (adds) {
+              await setSlotRefusal(db, slotId, {
+                reason: error.message,
+                at: new Date().toISOString(),
+              })
+              return {
+                status: 'resolved' as const,
+                candidates: adds.length,
+                refused: error.message,
+              }
+            }
             await setSlotResolution(db, slotId, { candidates: [], status: 'placeholder' })
             await setSlotRefusal(db, slotId, {
               reason: error.message,
