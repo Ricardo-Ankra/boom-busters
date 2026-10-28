@@ -103,9 +103,12 @@ export const visualsRunner = inngest.createFunction(
     // that planned it is gone, so this one starts at the fetch pass and the
     // producer's plan, choices and uploads are left exactly as they are.
     const resuming = event.name === 'visuals/fetch.resume'
-    const { projectId } = resuming
-      ? parseEventData('visuals/fetch.resume', event.data)
-      : parseEventData('gate/voice.approved', event.data)
+    const resumed = resuming ? parseEventData('visuals/fetch.resume', event.data) : null
+    const { projectId } = resumed ?? parseEventData('gate/voice.approved', event.data)
+    // Back to visuals (decision 323): the board reopens as it stands and no
+    // shot is bought. A trigger field, fixed when the run starts, so a parked
+    // run replaying its steps reads the same value.
+    const reopening = resumed?.reopen === true
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
     let rejectedSlots = 0
     let undesignedGraphics = 0
@@ -363,7 +366,9 @@ export const visualsRunner = inngest.createFunction(
       await closeReviewGate(ctx, {
         stage: 'visuals',
         nextStage: 'visuals',
-        message: 'Shot plan approved — fetching the visuals',
+        message: reopening
+          ? 'Board reopened — nothing is fetched'
+          : 'Shot plan approved — fetching the visuals',
       })
       // The fetch has been picked up (decision 286): from here "phase plan,
       // stage running" is what tells the board a fetch is under way, so the
@@ -372,6 +377,7 @@ export const visualsRunner = inngest.createFunction(
       // is how decision 279's parked runs crashed. Inside this step, so a run
       // parked before this shipped picks it up when it resumes.
       await releaseVisualsJob(db, projectId, { op: 'fetch' })
+      if (reopening) return []
 
       // Re-read, never reuse the generation-time rows: the whole point of
       // the park is that the briefs changed while the run slept.
@@ -459,7 +465,8 @@ export const visualsRunner = inngest.createFunction(
 
     const failed = outcomes.filter((outcome) => !outcome.ok).length
 
-    if (!withinFailureTolerance(failed, outcomes.length)) {
+    // A reopen resolves nothing, and "0 of 0" is not a failed fetch.
+    if (!reopening && !withinFailureTolerance(failed, outcomes.length)) {
       await step.run('resolution-failed', () =>
         markStageFailed(ctx, {
           message:

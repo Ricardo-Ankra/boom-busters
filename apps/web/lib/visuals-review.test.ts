@@ -494,6 +494,12 @@ describeDb('timing notes on the board model (the stretch re-plan design, 3.1)', 
     })
     expect(parked.reopen.offered).toBe(true)
     expect(parked.reopen.blocked).toMatch(/Press Stop first/)
+    // Decision 323: a stopped visuals board reopens too.
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'cancelled' })
+    expect((await visualsReviewModel(db, FIXTURE_PROJECT_ID, { phase: 'board' })).reopen).toEqual({
+      offered: true,
+      blocked: null,
+    })
   })
 
   it('keeps timing notes out of the craft notes and the Fix count', async () => {

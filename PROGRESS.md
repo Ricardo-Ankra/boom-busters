@@ -8322,3 +8322,26 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      master stays until a new one replaces it, and publishing still waits for
      its own request. One rule (`lib/visuals-reopen.ts`) serves the board's
      offer and the action's refusal. No migration, no new Inngest function.
+323. **A reopen fetches nothing, and a stamp ignores key order**
+     (2026-10-27). The first Back to visuals in production (Theranos)
+     regenerated 43 stills at $0.14 each, about $6.02, and replaced the
+     owner's picks on those slots. Two faults. The reopen resumed the fetch
+     pass, which buys every slot it judges owed; and 56 of the board's 91
+     slots looked owed although nothing about them had changed. A read-only
+     production query showed every one of those stamps was the hash of the
+     brief with its keys sorted: the visuals runner stamps from the brief
+     its load-plan step returned, Inngest hands step data back with keys
+     sorted, and Postgres jsonb keeps its own order, so the stamp never
+     matched the stored row (the same slots were stamped wrong again by the
+     reopen itself). Fixes: `shotBriefHash` now hashes the key-sorted value,
+     which makes every sorted stamp already in the database valid as it
+     stands, and `slotNeedsResolution` still honours the old order-sensitive
+     stamp, so no slot stamped in row order becomes owed. No migration. The
+     reopen sends `visuals/fetch.resume` with `reopen: true`; the runner
+     skips the fetch pass (and the 0-of-0 failure tolerance, which voice
+     still keeps) and opens the board as it stands. Anything owed waits for
+     the owner's Fetch visuals.
+     The same decision lets Back to visuals reopen a visuals board that was
+     stopped or failed (stage visuals, phase board): Stop on a reopened run
+     otherwise left Restart stage as the only button, and that plans the
+     board again and buys every shot.

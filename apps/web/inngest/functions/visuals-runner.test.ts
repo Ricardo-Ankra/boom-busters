@@ -503,6 +503,33 @@ describeDb('visuals-runner (mock mode)', () => {
     expect(project?.stageStatus).toBe('awaiting_review')
   })
 
+  // Decision 323: Back to visuals reopens the board and fetches nothing, even
+  // for slots a fetch pass would owe work. Fetch visuals is the owner's call.
+  it('fetches nothing on a reopen and opens the board as it stands', async () => {
+    await engine.executeStep('open-plan-park', {
+      events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],
+    })
+    const planned = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    expect(planned.some((slot) => slot.status === 'unresolved')).toBe(true)
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'queued' })
+
+    const reopen = new InngestTestEngine({ function: visualsRunner })
+    const { error } = await reopen.executeStep('open-gate', {
+      events: [
+        { name: 'visuals/fetch.resume', data: { projectId: FIXTURE_PROJECT_ID, reopen: true } },
+      ],
+    })
+
+    expect(error).toBeUndefined()
+    const after = await listShotSlots(db, FIXTURE_PROJECT_ID)
+    expect(after.map((slot) => [slot.id, slot.status, slot.updatedAt])).toEqual(
+      planned.map((slot) => [slot.id, slot.status, slot.updatedAt]),
+    )
+    const project = await getProject(db, FIXTURE_PROJECT_ID)
+    expect(project?.visualsPhase).toBe('board')
+    expect(project?.stageStatus).toBe('awaiting_review')
+  })
+
   it('hands the fetch stamp over when it closes the gate (decision 286)', async () => {
     await engine.executeStep('open-plan-park', {
       events: [{ name: 'gate/voice.approved', data: { projectId: FIXTURE_PROJECT_ID } }],

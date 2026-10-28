@@ -2019,7 +2019,8 @@ function VisualBoardContent({
         <Card>
           <CardContent className="flex flex-col gap-2 pt-4">
             <p className="text-[13px] text-[var(--color-text-secondary)]">
-              This board was approved and the project has moved on. Reopen it to change shots.
+              This board is closed: approved and moved on from, or stopped. Reopen it to change
+              shots.
             </p>
             {model.reopen.blocked ? (
               <p className="text-[12px] text-[var(--color-warning)]" role="status">
@@ -2035,8 +2036,8 @@ function VisualBoardContent({
                 label="Back to visuals"
                 confirmLabel="Reopen the board"
                 consequence={
-                  'The project goes back to the visuals stage with every pick, upload and brief ' +
-                  'kept, and nothing is fetched again. When you approve the board, assembly ' +
+                  'The board reopens with every pick, upload and brief kept, and nothing is ' +
+                  'fetched or generated. When you approve the board, assembly ' +
                   'runs again at its usual cost. The current master stays until a new one ' +
                   'replaces it, and nothing is published without you.'
                 }
