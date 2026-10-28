@@ -260,7 +260,7 @@ suite('channels', () => {
       expect((await channelYoutubeConnection(db, a.id))?.youtubeChannelId).toBe('UC-a')
     })
 
-    it('connectedChannelIds lists verified channels that are not archived', async () => {
+    it('connectedChannelIds lists every non-archived connection, invalid ones included', async () => {
       const a = await createChannel(db, channelInput('alpha'))
       const b = await createChannel(db, channelInput('beta'))
       const c = await createChannel(db, channelInput('gamma'))
@@ -274,9 +274,10 @@ suite('channels', () => {
       }
       await recordChannelYoutubeVerify(db, a.id, 'ok')
       await recordChannelYoutubeVerify(db, b.id, 'ok')
+      await recordChannelYoutubeVerify(db, c.id, 'invalid')
       await archiveChannel(db, b.id)
 
-      expect(await connectedChannelIds(db)).toEqual([a.id])
+      expect(await connectedChannelIds(db)).toEqual([a.id, c.id])
     })
   })
 })

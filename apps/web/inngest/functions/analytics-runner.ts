@@ -34,7 +34,7 @@ import { events } from '../events'
  * system, daily at 06:00 UTC, plus `analytics/refresh.requested` so the
  * owner has a button and the tests have a trigger.
  *
- * It loops the channels with a verified YouTube connection (archived ones
+ * It loops the channels that hold a YouTube connection, whatever its last verdict (archived ones
  * left out; a refresh request that names a channel runs only that one) and
  * does four jobs for each, in order:
  *

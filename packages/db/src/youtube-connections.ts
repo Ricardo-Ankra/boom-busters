@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq, isNull } from 'drizzle-orm'
 import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint } from './crypto'
 import { channels, youtubeConnections } from './schema'
@@ -129,13 +129,17 @@ export async function recordChannelYoutubeVerify(
     .where(eq(youtubeConnections.channelId, channelId))
 }
 
-/** Channels with a verified connection, archived ones left out: the analytics loop's list. */
+/**
+ * Channels that hold a YouTube connection, whatever its last verdict, archived
+ * ones left out: the analytics loop's list. An invalid connection stays on it
+ * so the daily ping can heal a transient failure.
+ */
 export async function connectedChannelIds(db: Database): Promise<string[]> {
   const rows = await db
     .select({ id: channels.id })
     .from(youtubeConnections)
     .innerJoin(channels, eq(channels.id, youtubeConnections.channelId))
-    .where(and(eq(youtubeConnections.verifyStatus, 'ok'), isNull(channels.archivedAt)))
+    .where(isNull(channels.archivedAt))
     .orderBy(asc(channels.createdAt), asc(channels.id))
   return rows.map((row) => row.id)
 }

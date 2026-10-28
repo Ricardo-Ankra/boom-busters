@@ -415,6 +415,29 @@ describeDb('analytics-runner (mock mode)', () => {
     )
 
     it(
+      'a connection stored invalid is pinged again and heals when the ping answers with its own id',
+      { timeout: 60_000 },
+      async () => {
+        // A transient failure (5xx, quota) marked it invalid yesterday.
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+        liveMode() // the ping answers ok with UC-first, the stored id
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect(result).toMatchObject({
+          channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ran', reconciled: 0, snapshots: 1 }],
+        })
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('ok')
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeDefined()
+        expect(
+          notify.mock.calls.some(
+            ([notification]) => (notification as { kind: string }).kind === 'reconnect-youtube',
+          ),
+        ).toBe(false)
+      },
+    )
+
+    it(
       'a ping naming another YouTube channel marks it invalid, says so once, and does no work for it',
       { timeout: 60_000 },
       async () => {
