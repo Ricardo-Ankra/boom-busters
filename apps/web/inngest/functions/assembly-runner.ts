@@ -5,6 +5,7 @@ import {
   getSocialPosts,
   insertTimeline,
   latestScriptParagraphSources,
+  latestTimeline,
   listCastMembers,
   listLogos,
   listMusicBeds,
@@ -29,7 +30,7 @@ import {
 } from '@boom-busters/schemas'
 import type { ArticleMetadata, SocialPostRecord, WordTiming } from '@boom-busters/schemas'
 import { SOCIAL_FRAMES } from '@boom-busters/compositions/social'
-import { compileTimeline } from '@boom-busters/timeline'
+import { assemblyCaptionStyle, compileTimeline } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
@@ -350,13 +351,17 @@ export const assemblyRunner = inngest.createFunction(
         },
       })
 
+      // Burned-in captions start off on the long form (decision 326); a
+      // re-assembly keeps whatever the owner last chose on the preview.
+      const style = assemblyCaptionStyle((await latestTimeline(db, projectId))?.json)
+
       try {
         const timeline = compileTimeline({
           brand: setup.brand,
           paragraphs: setup.plan.paragraphs,
           slots: plan.slots,
           music: setup.music,
-          captions: { words: captions.words, style: 'karaoke' },
+          captions: { words: captions.words, style },
         })
         return {
           ok: true as const,

@@ -5,19 +5,21 @@ import type { PlayerRef } from '@remotion/player'
 import { DocumentaryMaster } from '@boom-busters/compositions'
 import { gainAt } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
+import { captionsBurnedIn } from '@boom-busters/timeline'
 import { Captions, Clapperboard, Film, Music, Square } from 'lucide-react'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { approveGate, stopProject } from '../actions'
-import { chooseMusicBed, requestDraftRender } from './preview-actions'
+import { chooseMusicBed, requestDraftRender, setCaptions } from './preview-actions'
 import { useAction } from './project-controls'
 
 /**
  * Preview & render — Gate 5a (build spec section 11.3). Full-width
- * `@remotion/player` of the compiled timeline with chapter markers, a
- * caption toggle and the music-duck gain line; beside it the stats, the
+ * `@remotion/player` of the compiled timeline with chapter markers, the
+ * captions button (a stored setting the renders draw, decision 326) and the
+ * music-duck gain line; beside it the stats, the
  * music picker (a swap recompiles the timeline — cheap and free), and two
  * render choices side by side: a half-resolution draft (~a quarter of the
  * price, a real file to check before committing) and "Render master",
@@ -130,7 +132,7 @@ export function PreviewScreen({
   const runner = useAction()
   const playerRef = React.useRef<PlayerRef>(null)
   const fileRef = React.useRef<HTMLVideoElement>(null)
-  const [captionsOn, setCaptionsOn] = React.useState(true)
+  const captionsOn = captionsBurnedIn(timeline)
 
   const durationMs = timelineDuration(timeline)
   const durationInFrames = Math.max(1, msToFrames(durationMs, timeline.fps))
@@ -170,12 +172,6 @@ export function PreviewScreen({
   const [chosenCut, setChosenCut] = React.useState<Cut | null>(null)
   const defaultCut: Cut = masterCut ? 'master' : draftCut ? 'draft' : 'preview'
   const activeCut: Cut = chosenCut ?? defaultCut
-
-  const shown = React.useMemo<Timeline>(
-    () =>
-      captionsOn ? timeline : { ...timeline, captions: { ...timeline.captions, style: 'none' } },
-    [timeline, captionsOn],
-  )
 
   const droppedTotal = dropped.narration + dropped.slots + (dropped.music ? 1 : 0)
 
@@ -255,7 +251,7 @@ export function PreviewScreen({
             <Player
               ref={playerRef}
               component={DocumentaryMaster}
-              inputProps={{ timeline: shown }}
+              inputProps={{ timeline }}
               durationInFrames={durationInFrames}
               fps={timeline.fps}
               // Half resolution, preview only: the compositions size everything
@@ -324,13 +320,23 @@ export function PreviewScreen({
             <GainLine music={timeline.music} durationMs={durationMs} />
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* A stored setting, not a preview filter (decision 326): the
+                  draft and the master burn in what this says. */}
               <Button
                 variant="outline"
                 aria-pressed={captionsOn}
-                onClick={() => setCaptionsOn((on) => !on)}
+                busy={runner.pressed === 'captions'}
+                disabled={runner.busy}
+                onClick={() =>
+                  void runner.act(
+                    () => setCaptions(projectId, !captionsOn),
+                    captionsOn ? 'Captions off for the renders' : 'Captions on for the renders',
+                    'captions',
+                  )
+                }
               >
                 <Captions aria-hidden />
-                {captionsOn ? 'Hide captions' : 'Show captions'}
+                {captionsOn ? 'Captions on' : 'Captions off'}
               </Button>
               {droppedTotal > 0 ? (
                 <p className="text-[13px] text-[var(--color-warning)]">
