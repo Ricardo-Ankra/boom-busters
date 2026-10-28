@@ -8377,3 +8377,25 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      constant on the adapter and is re-read from the pricing page when it
      changes. Free credits are spent before the paid balance, so the ledger
      can over-state a month, never under-state it.
+326. **Captions are a per-video setting: off for the long form, on for
+     each Short** (2026-10-28). The preview's "Hide captions" button only
+     filtered the live player, so every draft, master and Short burned
+     captions in whatever it said. The long form's setting is now the
+     timeline's `captions.style`: the button (`setCaptions`) writes a new
+     version with the style flipped (`withCaptions`), exactly like a music
+     swap, so a draft of the old setting reads as stale. The assembly
+     compiles with `'none'` the first time and keeps the previous version's
+     style on a re-assembly (`assemblyCaptionStyle`); the caption words are
+     always carried, so turning them on is a flip, never a re-snap. Each
+     Short has its own `shorts.captions` (default true) with an On/Off pair
+     on its card, the ending toggle's twin: switching nulls the card's
+     render pointer, and a rendered card confirms first.
+     `compileShortTimeline` takes the flag and no longer copies the
+     master's style, so a long form without captions still cuts captioned
+     Shorts, teasers included. Migration 0037 adds the column and, at the
+     owner's request, turns captions off on every existing project by
+     appending a version with the style flipped to each project whose
+     latest timeline burned them in. The new row has no `s3_key`, so the
+     next draft or master render uploads it before invoking, the existing
+     path for a timeline compiled without storage. Already rendered and
+     published videos keep their captions until rendered again.
