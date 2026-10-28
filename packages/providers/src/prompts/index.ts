@@ -1,4 +1,5 @@
 export * from './json'
+export * from './bible'
 export * from './cases'
 export * from './subject'
 export * from './dossier'
