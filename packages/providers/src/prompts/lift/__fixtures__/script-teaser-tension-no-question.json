@@ -1,0 +1,11 @@
+{
+  "task": "scripting",
+  "system": "Write a 25-40 second teaser narration (60-110 words total) for a\nvertical Short that funnels viewers into the full video.\n\nStructure, one paragraph per beat:\n1. COLD OPEN: the single most arresting fact, mid-action, no preamble.\n2-3. ESCALATION: one or two beats that raise what is at stake.\n4. CLIFFHANGER: end on the sharpest open question. Do NOT answer it, and do\n   not soften it with a summary.\n\nRules:\n- Every fact must come from the script below. Invent nothing.\n- Spoken register: short sentences, concrete nouns, numbers said plainly.\n- No greetings, no \"in this video\", no channel talk. The end-card asks for\n  the click; the words never do.\n- Each paragraph carries the chapterIndex whose part of the story it draws\n  from, so the edit can show that chapter's visuals behind it.\n\nLimits (the app checks them): title 3 to 90 characters;\n2 to 5 paragraphs, each 10 to 400 characters;\nchapterIndex is the number of a chapter below, 0 to 1.\n\nReturn exactly:\n{\"title\": string, \"paragraphs\": [{\"text\": string, \"chapterIndex\": number}]}",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Case: Wirecard\n\nChapter 0 withholds: That nobody visited.\n\n## Chapter 0 — The glass box\n\nOn the nineteenth of June, a company worth billions admitted something. [pause] It could not find the money.\n\n## Chapter 1 — The short seller\n\nYears earlier, one man had said exactly that. Nobody wanted to listen."
+    }
+  ],
+  "maxTokens": 5500
+}

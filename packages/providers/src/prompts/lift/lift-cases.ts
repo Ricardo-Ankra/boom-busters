@@ -588,6 +588,25 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS,
     }),
   ),
+  // The final chapter's close, each field alone and none at all.
+  ...(
+    [
+      ['partial-close', { answer: 'It never existed, and nobody checked.' }],
+      ['close-echo-only', { echo: 'the empty trust account' }],
+      ['close-open-thread-only', { openThread: 'Where Jan Marsalek is.' }],
+      ['empty-close', {}],
+    ] as const
+  ).map(([suffix, close]) =>
+    lift(`script-chapter-${suffix}`, () =>
+      buildChapterRequest({
+        caseTitle: 'Wirecard',
+        outline: { ...OUTLINE, close },
+        chapterIndex: 2,
+        previousChapters: [CHAPTER_ONE, CHAPTER_TWO],
+        claims: CLAIMS,
+      }),
+    ),
+  ),
   lift('script-self-check', () =>
     buildSelfCheckRequest({
       chapterTitle: 'The glass box',
@@ -620,6 +639,26 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
+  lift('script-shorts-tension-no-question', () =>
+    buildShortsRequest({
+      chapters: [
+        { index: 0, ...CHAPTER_ONE },
+        { index: 1, ...CHAPTER_TWO },
+      ],
+      tension: {
+        chapters: [{ index: 0, withhold: 'That nobody visited.' }, { index: 1 }],
+      },
+    }),
+  ),
+  lift('script-shorts-tension-empty', () =>
+    buildShortsRequest({
+      chapters: [
+        { index: 0, ...CHAPTER_ONE },
+        { index: 1, ...CHAPTER_TWO },
+      ],
+      tension: { chapters: [{ index: 0 }, { index: 1 }] },
+    }),
+  ),
   lift('script-teaser', () =>
     buildTeaserRequest({
       caseTitle: 'Wirecard',
@@ -641,6 +680,28 @@ const scriptCases: LiftCase[] = [
         centralQuestion: 'How did 1.9 billion euros never exist?',
         chapters: [{ index: 0, withhold: 'That nobody visited.' }, { index: 1 }, { index: 2 }],
       },
+    }),
+  ),
+  lift('script-teaser-tension-no-question', () =>
+    buildTeaserRequest({
+      caseTitle: 'Wirecard',
+      chapters: [
+        { index: 0, ...CHAPTER_ONE },
+        { index: 1, ...CHAPTER_TWO },
+      ],
+      tension: {
+        chapters: [{ index: 0, withhold: 'That nobody visited.' }, { index: 1 }],
+      },
+    }),
+  ),
+  lift('script-teaser-tension-empty', () =>
+    buildTeaserRequest({
+      caseTitle: 'Wirecard',
+      chapters: [
+        { index: 0, ...CHAPTER_ONE },
+        { index: 1, ...CHAPTER_TWO },
+      ],
+      tension: { chapters: [{ index: 0 }, { index: 1 }] },
     }),
   ),
   lift('script-regenerate', () =>

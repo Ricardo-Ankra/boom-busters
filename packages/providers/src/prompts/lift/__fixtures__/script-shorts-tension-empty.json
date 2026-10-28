@@ -1,0 +1,11 @@
+{
+  "task": "metadata",
+  "system": "Pick 4 segments from this script that would work as vertical\nShorts. A segment is 20-50 seconds of narration, roughly 50 to 125 words.\n\nEach segment is a TEASER, not a summary. It funnels a scroller into the\nfull video, so:\n\n- OPEN on the most arresting sentence available: a number that should not\n  exist, a person doing something inexplicable, a flat contradiction. Never\n  open on scene-setting or dates.\n- END right BEFORE a reveal. The last sentence must sharpen a question, not\n  answer one. If the chapter answers its question two sentences later, stop\n  before those sentences.\n- Never include the sentence that resolves the tension you opened with. A\n  viewer who has the answer has no reason to click through.\n\nQuote the first and last sentence of each segment EXACTLY as they appear.\n\n{\"candidates\": [{\"chapterIndex\": number, \"startSentence\": string,\n  \"endSentence\": string, \"hookRationale\": string}]}\n\nLimits (the app checks them): at most 10 candidates; \"startSentence\" and\n\"endSentence\" at most 2000 characters each; \"hookRationale\" at most\n1000 characters.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "## Chapter 0 — The glass box\n\nOn the nineteenth of June, a company worth billions admitted something. [pause] It could not find the money.\n\n## Chapter 1 — The short seller\n\nYears earlier, one man had said exactly that. Nobody wanted to listen."
+    }
+  ],
+  "maxTokens": 7000
+}
