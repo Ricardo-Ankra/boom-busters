@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   getShotSlot,
   listCastMembers,
@@ -195,7 +196,8 @@ export const slotRebriefer = inngest.createFunction(
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B), which the
           // re-type prompt lists for every target.
-          const logos = (await listLogos(db)).map((row) => ({
+          const { channelId } = await channelForProject(db, projectId)
+          const logos = (await listLogos(db, channelId)).map((row) => ({
             id: row.id,
             title: row.title ?? '',
             width: row.width,

@@ -899,7 +899,8 @@ export async function attachGraphicLogosAction(
   const scene = parsed.data.scene
   if (!scene) return { ok: false, error: 'This graphic has not been designed yet.' }
 
-  const logos = (await listLogos(db)).map((row) => ({
+  const { channelId } = await channelForProject(db, projectId)
+  const logos = (await listLogos(db, channelId)).map((row) => ({
     id: row.id,
     title: row.title ?? '',
     width: row.width,

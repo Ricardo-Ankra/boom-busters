@@ -116,6 +116,7 @@ describe('LogosTab', () => {
 
     await waitFor(() => expect(actions.finaliseLogoAction).toHaveBeenCalled())
     expect(actions.createLogoUploadAction).toHaveBeenCalledWith(
+      CH,
       expect.objectContaining({
         fileType: 'image/png',
         fileSize: 3,
@@ -130,6 +131,7 @@ describe('LogosTab', () => {
       }),
     )
     expect(actions.finaliseLogoAction).toHaveBeenCalledWith(
+      CH,
       expect.objectContaining({
         key: 'boom-busters/logos/abc.png',
         title: 'Stability AI',
@@ -206,7 +208,7 @@ describe('LogosTab', () => {
       'https://cdn.example/mark.svg',
     )
     await userEvent.click(screen.getByRole('button', { name: 'Add from address' }))
-    expect(actions.addLogoFromUrlAction).toHaveBeenCalledWith({
+    expect(actions.addLogoFromUrlAction).toHaveBeenCalledWith(CH, {
       url: 'https://cdn.example/mark.svg',
       title: 'Wirecard AG',
     })
@@ -219,7 +221,10 @@ describe('LogosTab', () => {
     await userEvent.clear(name)
     await userEvent.type(name, 'Stability')
     await userEvent.click(within(row).getByRole('button', { name: 'Save name' }))
-    expect(actions.renameLogoAction).toHaveBeenCalledWith({ id: LOGOS[0]!.id, title: 'Stability' })
+    expect(actions.renameLogoAction).toHaveBeenCalledWith(CH, {
+      id: LOGOS[0]!.id,
+      title: 'Stability',
+    })
 
     await userEvent.click(within(row).getByRole('button', { name: 'Remove' }))
     await userEvent.click(within(row).getByRole('button', { name: 'Remove mark' }))

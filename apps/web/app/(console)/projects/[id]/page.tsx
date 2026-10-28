@@ -539,6 +539,7 @@ export default async function ProjectPage({
       ) : showVisuals ? (
         <VisualBoard
           projectId={project.id}
+          channelId={channel.channelId}
           model={visuals}
           setPhotos={setPhotos}
           // For a post card's "one of the cast?" question (decision 284): names

@@ -184,6 +184,7 @@ const COLORS: BrandChartColors = {
 const BRAND = DEFAULT_SETTINGS.brandKit
 
 const PROJECT = '01J0000000000000000000000A'
+const CHANNEL = '01J0000000000000000000000C'
 /** The server's clock in every model these tests build (decision 286). */
 const RENDERED_AT = '2026-09-30T10:00:00.000Z'
 const SLOT_A = '01J000000000000000000000AA'
@@ -523,6 +524,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, chartSlot, brokenSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -538,7 +540,13 @@ describe('VisualBoard', () => {
 
   it('marks the chosen candidate and swaps on click', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByText('Selected')).toBeInTheDocument()
@@ -555,7 +563,13 @@ describe('VisualBoard', () => {
 
   it('shows the chosen candidate’s licence and attribution — the audit line', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.getByText(/Pexels License · Photo by Christina Morillo/)).toBeInTheDocument()
     // The cast member whose photo conditioned the frame (decision 253).
@@ -564,7 +578,13 @@ describe('VisualBoard', () => {
 
   it('renders a chart with its takeaway and source-claim chips', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([chartSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([chartSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByRole('img', { name: /line chart/ })).toBeInTheDocument()
@@ -574,7 +594,13 @@ describe('VisualBoard', () => {
 
   it('renders an error card, never a chart, when the brief is broken', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([brokenSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([brokenSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('This chart cannot be rendered')
@@ -602,6 +628,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([archivalSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -647,6 +674,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([archivalSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -684,7 +712,15 @@ describe('VisualBoard', () => {
       candidates: [],
       extraCandidates: 0,
     }
-    render(<VisualBoard projectId={PROJECT} model={model([still])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([still])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     await userEvent.click(screen.getByRole('button', { name: /Regenerate · ≈\$0.08/ }))
     expect(refetchSlotAction).toHaveBeenCalledWith(PROJECT, SLOT_B, 'Regenerate')
@@ -692,7 +728,13 @@ describe('VisualBoard', () => {
 
   it('edits the brief through the inline form and hands it to the re-fetch', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit brief & re-fetch' }))
@@ -713,6 +755,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([placeholder])}
         colors={COLORS}
         brand={BRAND}
@@ -725,7 +768,13 @@ describe('VisualBoard', () => {
 
   it('says when there is no narration audio to scrub, rather than a dead Play', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByRole('button', { name: 'Play narration' })).toBeDisabled()
@@ -736,6 +785,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, chartSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -748,7 +798,13 @@ describe('VisualBoard', () => {
 
   it('enlarges the chosen candidate from the Preview button, at full size', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
@@ -769,7 +825,13 @@ describe('VisualBoard', () => {
 
   it('steps to the next candidate, plays video there, and can select it', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
@@ -794,6 +856,7 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -846,6 +909,7 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([danglingSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -858,6 +922,7 @@ describe('a graphic slot (decision 268, Plan B)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -870,10 +935,12 @@ describe('a graphic slot (decision 268, Plan B)', () => {
 
     await waitFor(() =>
       expect(finaliseLogoAction).toHaveBeenCalledWith(
+        CHANNEL,
         expect.objectContaining({ key: 'k', title: 'Stability AI' }),
       ),
     )
     expect(createLogoUploadAction).toHaveBeenCalledWith(
+      CHANNEL,
       expect.objectContaining({ fileType: 'image/png' }),
     )
     await waitFor(() => expect(attachGraphicLogosAction).toHaveBeenCalledWith(PROJECT, SLOT_E))
@@ -884,7 +951,13 @@ describe('a graphic slot (decision 268, Plan B)', () => {
 
   it('offers graphic in the format picker, and drafts it like chart and map', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'graphic' }))
@@ -902,7 +975,15 @@ describe('the graphic card (decision 289)', () => {
       ...graphicSlot,
       brief: { ...graphicSlot.brief!, intent: 'Four billion is the story.' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.getByText('Intent: Four billion is the story.')).toBeInTheDocument()
   })
 
@@ -910,6 +991,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -924,7 +1006,15 @@ describe('the graphic card (decision 289)', () => {
       ...graphicSlot,
       brief: { ...rest, intent: 'i', designIssue: 'no claim holds $5bn' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.getByText('Not designed: no claim holds $5bn')).toBeInTheDocument()
     // Persistent state, not an event: nothing announces it on load.
     expect(screen.queryByRole('alert')).toBeNull()
@@ -942,7 +1032,15 @@ describe('the graphic card (decision 289)', () => {
       status: 'unresolved',
       brief: { ...rest, intent: 'i' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.getByText('Being designed. This card updates when it lands.')).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Being designed.')
     expect(screen.queryByText(/Being fetched/)).toBeNull()
@@ -951,7 +1049,15 @@ describe('the graphic card (decision 289)', () => {
   it('says a graphic is being designed when it has neither scene nor issue, on a placeholder too', () => {
     const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
     const slot = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.queryByText(/Nothing usable was found/)).toBeNull()
   })
 
@@ -962,7 +1068,15 @@ describe('the graphic card (decision 289)', () => {
       brief: { ...rest, intent: 'i' },
       retype: { state: 'rebriefing' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(
       screen.getByText('Claude is redesigning this graphic. This card updates when it lands.'),
     ).toBeInTheDocument()
@@ -977,7 +1091,15 @@ describe('the graphic card (decision 289)', () => {
       brief: { ...rest, intent: 'i' },
       retype: { state: 'drafting', target: 'graphic' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     // One line announces, the format row's own.
     expect(screen.getByRole('status')).toHaveTextContent(
       'Claude is drafting the graphic. This card updates when it lands.',
@@ -995,7 +1117,15 @@ describe('the graphic card (decision 289)', () => {
       brief: { ...rest, intent: 'i', designIssue: 'old issue' },
       retype: { state: 'rebrief-refused', reason: 'no claim holds $5bn' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.getByText('No new design: no claim holds $5bn')).toBeInTheDocument()
     expect(screen.queryByText(/keeps the one it has/)).toBeNull()
   })
@@ -1004,6 +1134,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1028,6 +1159,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([{ ...graphicSlot, retype: { state: 'rebriefing' } }])}
         colors={COLORS}
         brand={BRAND}
@@ -1042,6 +1174,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([
           {
             ...graphicSlot,
@@ -1062,7 +1195,15 @@ describe('the graphic card (decision 289)', () => {
       ...graphicSlot,
       brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
     const intent = screen.getByLabelText('Intent')
     await userEvent.clear(intent)
@@ -1081,7 +1222,15 @@ describe('the graphic card (decision 289)', () => {
       ...graphicSlot,
       brief: { ...graphicSlot.brief!, description },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
     // No intent stored: the field may be left empty.
     expect(screen.getByLabelText('Intent')).not.toBeRequired()
@@ -1098,6 +1247,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1120,7 +1270,15 @@ describe('the graphic card (decision 289)', () => {
       ...graphicSlot,
       brief: { ...graphicSlot.brief!, intent: 'Old intent.' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
     expect(screen.getByLabelText('Intent')).toBeRequired()
     expect(screen.getByLabelText('Intent')).toHaveAttribute('maxLength', '300')
@@ -1130,6 +1288,7 @@ describe('the graphic card (decision 289)', () => {
     const { unmount } = render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1141,7 +1300,13 @@ describe('the graphic card (decision 289)', () => {
     const { scene: _scene, ...rest } = graphicSlot.brief as Record<string, unknown>
     const undesigned = { ...graphicSlot, brief: { ...rest, intent: 'i' } } as SlotView
     render(
-      <VisualBoard projectId={PROJECT} model={model([undesigned])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([undesigned])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.queryByRole('button', { name: 'Play graphic' })).toBeNull()
   })
@@ -1150,6 +1315,7 @@ describe('the graphic card (decision 289)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([graphicSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1165,7 +1331,13 @@ describe('the graphic card (decision 289)', () => {
 
   it('keeps the other types on the old wording', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.queryByRole('button', { name: 'Redesign graphic' })).toBeNull()
     expect(
@@ -1203,6 +1375,7 @@ describe('a design written as code (decision 295)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([codedGraphic])}
         colors={COLORS}
         brand={BRAND}
@@ -1227,7 +1400,15 @@ describe('a design written as code (decision 295)', () => {
         A2: { title: 'Globex', width: 300, height: 300 },
       },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await screen.findByTestId('graphic-code-still')
     // The code reads only Acme; it is handed Globex too, as the dry run and the render hand it.
     expect(stillProps).toHaveBeenLastCalledWith(
@@ -1246,7 +1427,15 @@ describe('a design written as code (decision 295)', () => {
       ...graphicSlot,
       brief: { ...graphicSlot.brief!, code: CODE },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.queryByRole('img', { name: /^graphic:/ })).toBeNull()
     // The old scene's missing mark is not asked for: the code draws the card now.
     expect(screen.queryByRole('button', { name: /^Add logo for/ })).toBeNull()
@@ -1256,7 +1445,13 @@ describe('a design written as code (decision 295)', () => {
 
   it('shows a coded chart by its title and still, with Play chart and Redesign chart', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([codedChart])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([codedChart])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.getByText('The fall, in nine days')).toBeInTheDocument()
     expect(await screen.findByTestId('graphic-code-still')).toBeInTheDocument()
@@ -1278,7 +1473,15 @@ describe('a design written as code (decision 295)', () => {
       ...chartSlot,
       brief: { ...chartSlot.brief!, designIssue: 'no claim holds 7bn' },
     } as SlotView
-    render(<VisualBoard projectId={PROJECT} model={model([slot])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([slot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.getByText('Not designed: no claim holds 7bn')).toBeInTheDocument()
     // Persistent state, not an event: nothing announces it on load.
     expect(screen.queryByRole('alert')).toBeNull()
@@ -1288,7 +1491,13 @@ describe('a design written as code (decision 295)', () => {
 
   it('redesigns a chart from its own form', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([chartSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([chartSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Redesign chart' }))
     expect(screen.getByLabelText('What should change? (optional)')).toBeInTheDocument()
@@ -1308,6 +1517,7 @@ describe('a design written as code (decision 295)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([{ ...chartSlot, retype: { state: 'rebriefing' } }])}
         colors={COLORS}
         brand={BRAND}
@@ -1322,6 +1532,7 @@ describe('a design written as code (decision 295)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([
           { ...chartSlot, retype: { state: 'rebrief-refused', reason: 'no claim holds 7bn' } },
         ])}
@@ -1371,7 +1582,15 @@ describe('the plan phase (staged-visuals design)', () => {
   }
 
   it('offers one Fetch visuals button carrying the count and the price, behind a confirm', async () => {
-    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     // Nothing is "being fetched" during plan review — the chip says planned.
     expect(screen.getAllByText('planned')).toHaveLength(2)
@@ -1388,7 +1607,15 @@ describe('the plan phase (staged-visuals design)', () => {
   })
 
   it('offers the re-plan beside the fetch, naming the slots it discards', async () => {
-    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     // Both spends sit in one row: fetch this plan, or plan again.
     expect(screen.getByRole('button', { name: /Fetch visuals/ })).toBeVisible()
@@ -1406,6 +1633,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={{ ...planModel(), repair: { slots: 3, becomeStills: 1, chapters: 2 } }}
         colors={COLORS}
         brand={BRAND}
@@ -1424,12 +1652,28 @@ describe('the plan phase (staged-visuals design)', () => {
   })
 
   it('shows no Fix button when nothing is flagged', () => {
-    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     expect(screen.queryByRole('button', { name: /Fix these/ })).not.toBeInTheDocument()
   })
 
   it('re-types a slot through the format picker — the suggestion is not a lock', async () => {
-    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     const pickers = screen.getAllByRole('group', { name: 'Slot format' })
     const first = pickers[0]!
@@ -1446,7 +1690,13 @@ describe('the plan phase (staged-visuals design)', () => {
 
   it('asks which article a headline would quote, and never guesses one', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const picker = screen.getByRole('group', { name: 'Slot format' })
@@ -1478,7 +1728,13 @@ describe('the plan phase (staged-visuals design)', () => {
    */
   it('lets the owner paste the address of a source a claim lacks, and quotes it', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: 'news headline' }))
     const chooser = screen.getByRole('group', { name: 'Which article this card quotes' })
@@ -1502,6 +1758,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot], { articleClaims: [] })}
         colors={COLORS}
         brand={BRAND}
@@ -1519,6 +1776,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1548,7 +1806,13 @@ describe('the plan phase (staged-visuals design)', () => {
   it('keeps the chooser open when the save is refused, so the pick is not lost', async () => {
     retypeToHeadlineAction.mockResolvedValue({ ok: false, error: 'That claim has no article.' })
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'news headline' }))
@@ -1560,7 +1824,15 @@ describe('the plan phase (staged-visuals design)', () => {
   })
 
   it('edits just save during plan review, and the per-slot fetch is offered', async () => {
-    render(<VisualBoard projectId={PROJECT} model={planModel()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={planModel()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     // The board-phase wording promises a re-fetch; the plan must not.
     expect(screen.queryByRole('button', { name: /Edit brief & re-fetch/ })).not.toBeInTheDocument()
@@ -1577,7 +1849,13 @@ describe('the plan phase (staged-visuals design)', () => {
 
   it('keeps the picker on the board phase too, with the re-fetch wording back', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.getByRole('group', { name: 'Slot format' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit brief & re-fetch' })).toBeInTheDocument()
@@ -1589,6 +1867,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([drafting], { phase: 'plan', toFetch: 1, stillsToFetch: 0 })}
         colors={COLORS}
         brand={BRAND}
@@ -1608,7 +1887,13 @@ describe('the plan phase (staged-visuals design)', () => {
 
   it('asks for a different brief, with an optional steer', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Draft a different brief' })[0]!)
@@ -1619,7 +1904,13 @@ describe('the plan phase (staged-visuals design)', () => {
 
   it('sends what the owner typed, and says the steer is not kept', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Draft a different brief' })[0]!)
@@ -1641,6 +1932,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -1654,7 +1946,13 @@ describe('the plan phase (staged-visuals design)', () => {
   it('says a new brief is being drafted, and holds the card while it is', () => {
     const drafting: SlotView = { ...stockSlot, retype: { state: 'rebriefing' } }
     render(
-      <VisualBoard projectId={PROJECT} model={model([drafting])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([drafting])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByRole('status')).toHaveTextContent(/drafting a new brief/)
@@ -1672,7 +1970,13 @@ describe('the plan phase (staged-visuals design)', () => {
       retype: { state: 'rebrief-refused', reason: 'This beat has only one honest image.' },
     }
     render(
-      <VisualBoard projectId={PROJECT} model={model([refused])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([refused])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const alert = screen.getByRole('alert')
@@ -1688,7 +1992,15 @@ describe('the plan phase (staged-visuals design)', () => {
       ...stockSlot,
       retype: { state: 'fix-note', note: 'Fix kept this brief: the answer changed its format.' },
     }
-    render(<VisualBoard projectId={PROJECT} model={model([noted])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([noted])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     const note = screen.getByText('Fix kept this brief: the answer changed its format.')
     const box = note.closest('div')!
@@ -1710,6 +2022,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([plannedStock], {
           phase: 'plan',
           toFetch: 1,
@@ -1737,6 +2050,7 @@ describe('the plan phase (staged-visuals design)', () => {
     const { rerender } = render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([drafting], plan)}
         colors={COLORS}
         brand={BRAND}
@@ -1748,6 +2062,7 @@ describe('the plan phase (staged-visuals design)', () => {
     rerender(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stale], plan)}
         colors={COLORS}
         brand={BRAND}
@@ -1769,6 +2084,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([refused], { phase: 'plan', toFetch: 1, stillsToFetch: 0 })}
         colors={COLORS}
         brand={BRAND}
@@ -1799,6 +2115,7 @@ describe('the plan phase (staged-visuals design)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={planModel()}
         colors={COLORS}
         brand={BRAND}
@@ -1850,7 +2167,13 @@ describe('a refused still (decision 252)', () => {
   it('offers Redirect the scene and Upload a real image, with the depiction brief', async () => {
     redirectSceneAction.mockResolvedValue({ ok: true })
     render(
-      <VisualBoard projectId={PROJECT} model={model([refused])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([refused])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const card = screen.getByRole('group', { name: 'Refused by the image model' })
@@ -1886,7 +2209,13 @@ describe('the model select on a shot (decision 264)', () => {
 
   it('offers a model select on a still card, and changing it calls the action', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stillSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stillSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
@@ -1912,7 +2241,13 @@ describe('the model select on a shot (decision 264)', () => {
   it('shows the stored route when there is one', async () => {
     const routed: SlotView = { ...stillSlot, route: { provider: 'fal', model: 'fal-ai/flux/dev' } }
     render(
-      <VisualBoard projectId={PROJECT} model={model([routed])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([routed])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
@@ -1922,7 +2257,13 @@ describe('the model select on a shot (decision 264)', () => {
 
   it('marks the plan’s own choice as the default', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stillSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stillSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
@@ -1933,7 +2274,13 @@ describe('the model select on a shot (decision 264)', () => {
 
   it('a chart card has no model select', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([chartSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([chartSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
@@ -1948,7 +2295,15 @@ describe('the model select on a shot (decision 264)', () => {
         { provider: 'fal' as const, id: 'fal-ai/mock-flux', label: 'Mock FLUX' },
       ],
     }
-    render(<VisualBoard projectId={PROJECT} model={live} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={live}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
     const select = screen.getByLabelText('Image model') as HTMLSelectElement
@@ -1975,6 +2330,7 @@ describe('the model select on a shot (decision 264)', () => {
       render(
         <VisualBoard
           projectId={PROJECT}
+          channelId={CHANNEL}
           model={withDropped(routed)}
           colors={COLORS}
           brand={BRAND}
@@ -1993,6 +2349,7 @@ describe('the model select on a shot (decision 264)', () => {
       render(
         <VisualBoard
           projectId={PROJECT}
+          channelId={CHANNEL}
           model={withDropped(stillSlot)}
           colors={COLORS}
           brand={BRAND}
@@ -2039,6 +2396,7 @@ describe('the board edits the scene and shows the prompt sent (decision 287)', (
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([promptSentSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2063,7 +2421,13 @@ describe('the board edits the scene and shows the prompt sent (decision 287)', (
   it('has nothing to disclose when the slot carries no prompt preview yet', async () => {
     const noPreview: SlotView = { ...promptSentSlot, promptSent: null }
     render(
-      <VisualBoard projectId={PROJECT} model={model([noPreview])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([noPreview])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit brief/ }))
 
@@ -2076,6 +2440,7 @@ describe('the headline card (decision 257)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2112,7 +2477,13 @@ describe('the headline card (decision 257)', () => {
       },
     }
     render(
-      <VisualBoard projectId={PROJECT} model={model([unread])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([unread])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByText(/The publisher returned 403/)).toBeTruthy()
@@ -2137,7 +2508,15 @@ describe('the headline card (decision 257)', () => {
           "This source is the site's front page, not an article, so it has no headline or date to read.",
       },
     }
-    render(<VisualBoard projectId={PROJECT} model={model([front])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([front])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     expect(screen.getByRole('link', { name: "Open the site's front page" })).toBeTruthy()
     const form = screen.getByRole('form', { name: "The article's address" })
@@ -2163,7 +2542,13 @@ describe('the headline card (decision 257)', () => {
       article: { ...headlineSlot.article!, publishedAt: null },
     }
     render(
-      <VisualBoard projectId={PROJECT} model={model([undated])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([undated])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.getByText(/stays a placeholder until it has the date/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Fill these in' })).toBeTruthy()
@@ -2174,6 +2559,7 @@ describe('the headline card (decision 257)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2207,6 +2593,7 @@ describe('the headline card (decision 257)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2239,6 +2626,7 @@ describe('reusing a shot (decision 261)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, placeholder])}
         colors={COLORS}
         brand={BRAND}
@@ -2276,6 +2664,7 @@ describe('reusing a shot (decision 261)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([plannedStock, plannedTarget], { phase: 'plan', toFetch: 2 })}
         colors={COLORS}
         brand={BRAND}
@@ -2306,6 +2695,7 @@ describe('reusing a shot (decision 261)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([source, linked])}
         colors={COLORS}
         brand={BRAND}
@@ -2343,6 +2733,7 @@ describe('reusing a shot (decision 261)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([emptySource, chartSlot, headlineSlot, placeholder])}
         colors={COLORS}
         brand={BRAND}
@@ -2394,6 +2785,7 @@ describe('VisualBoard: set photos in "Use an existing shot"', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2441,6 +2833,7 @@ describe('VisualBoard: set photos in "Use an existing shot"', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([archivalSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2465,6 +2858,7 @@ describe('VisualBoard: reference chips', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([
           withReferences([
             { kind: 'person', name: 'Markus Braun', resolved: true },
@@ -2490,6 +2884,7 @@ describe('VisualBoard: reference chips', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([withReferences([])])}
         colors={COLORS}
         brand={BRAND}
@@ -2586,7 +2981,13 @@ function socialWith(social: Partial<NonNullable<SlotView['social']>>): SlotView 
 describe('the post card (decision 284)', () => {
   it('draws the shared card and says where each field came from', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getAllByText('Post on X').length).toBeGreaterThan(0)
@@ -2622,7 +3023,13 @@ describe('the post card (decision 284)', () => {
       payload: null,
     })
     render(
-      <VisualBoard projectId={PROJECT} model={model([failed])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([failed])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.getByText(X_POST_MISSING, { exact: false })).toBeInTheDocument()
@@ -2639,7 +3046,13 @@ describe('the post card (decision 284)', () => {
 
   it('reads the post again on request', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Read again' }))
@@ -2649,7 +3062,13 @@ describe('the post card (decision 284)', () => {
   it('saves corrected details to the post', async () => {
     const user = userEvent.setup()
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
@@ -2672,7 +3091,13 @@ describe('the post card (decision 284)', () => {
   it('pre-fills the highlight with the first figure, and saves it', async () => {
     const user = userEvent.setup()
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const highlight = screen.getByLabelText('Highlight')
@@ -2687,7 +3112,13 @@ describe('the post card (decision 284)', () => {
 
   it('offers no excerpt for a post that fits', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(screen.queryByLabelText('Excerpt')).not.toBeInTheDocument()
@@ -2701,7 +3132,15 @@ describe('the post card (decision 284)', () => {
       suggestedExcerpt: suggestion,
       payload: null,
     })
-    render(<VisualBoard projectId={PROJECT} model={model([long])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([long])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     expect(screen.getByText(SOCIAL_TOO_LONG)).toBeInTheDocument()
     expect(screen.getByLabelText('Excerpt')).toHaveValue(suggestion)
@@ -2716,6 +3155,7 @@ describe('the post card (decision 284)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([socialSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -2741,6 +3181,7 @@ describe('the post card (decision 284)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([fromCast])}
         colors={COLORS}
         brand={BRAND}
@@ -2760,6 +3201,7 @@ describe('the post card (decision 284)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([fromCast])}
         colors={COLORS}
         brand={BRAND}
@@ -2780,6 +3222,7 @@ describe('the post card (decision 284)', () => {
     const { unmount } = render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([linkedNoPhoto])}
         colors={COLORS}
         brand={BRAND}
@@ -2789,7 +3232,13 @@ describe('the post card (decision 284)', () => {
     unmount()
 
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.queryByRole('button', { name: 'Unlink' })).not.toBeInTheDocument()
   })
@@ -2797,7 +3246,13 @@ describe('the post card (decision 284)', () => {
   it('names what each Close button closes', async () => {
     const user = userEvent.setup()
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Edit details' }))
@@ -2813,7 +3268,15 @@ describe('the post card (decision 284)', () => {
       suggestedExcerpt: 'The audit is finished.',
       payload: null,
     })
-    render(<VisualBoard projectId={PROJECT} model={model([long])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([long])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     expect(screen.getByLabelText('Highlight')).toHaveAttribute('maxLength', '120')
     expect(screen.getByLabelText('Excerpt')).toHaveAttribute('maxLength', '2000')
@@ -2825,7 +3288,13 @@ describe('the post card (decision 284)', () => {
   it('says a post ended with a link, and offers the image upload', () => {
     const linked = socialWith({ post: { ...fetchedPost, endedWithMediaLink: true } })
     render(
-      <VisualBoard projectId={PROJECT} model={model([linked])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([linked])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     expect(
@@ -2840,7 +3309,13 @@ describe('the post card (decision 284)', () => {
   it('removes an attached image', async () => {
     const withImage = socialWith({ mediaUrl: 'https://r2.example/media.png' })
     render(
-      <VisualBoard projectId={PROJECT} model={model([withImage])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([withImage])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }))
@@ -2853,7 +3328,13 @@ describe('the post card (decision 284)', () => {
     createOwnUploadAction.mockResolvedValue({ ok: true, url: 'https://r2.example/put', key: 'k' })
     finaliseOwnUploadAction.mockResolvedValue({ ok: true })
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const file = new File([new Uint8Array([1, 2, 3])], 'dana.png', { type: 'image/png' })
@@ -2870,7 +3351,13 @@ describe('the post card (decision 284)', () => {
 
   it('asks which post a card would show, and re-types on the pick', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const picker = screen.getByRole('group', { name: 'Slot format' })
@@ -2892,6 +3379,7 @@ describe('the post card (decision 284)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot], { postClaims: [] })}
         colors={COLORS}
         brand={BRAND}
@@ -2926,7 +3414,13 @@ describe('the post card (decision 284)', () => {
 
   it('still offers the paste form beside the claims that cite a post', async () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Post on X' }))
@@ -2940,6 +3434,7 @@ describe('the post card (decision 284)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot], { postClaims: [], supportClaims: [] })}
         colors={COLORS}
         brand={BRAND}
@@ -2970,7 +3465,13 @@ describe('button state on the board (decision 240)', () => {
     const pending = deferred()
     refetchSlotAction.mockReturnValueOnce(pending.promise)
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const regenerate = screen.getByRole('button', { name: 'Regenerate' })
@@ -3000,7 +3501,13 @@ describe('button state on the board (decision 240)', () => {
     const pending = deferred()
     refetchSlotAction.mockReturnValueOnce(pending.promise)
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.dblClick(screen.getByRole('button', { name: 'Regenerate' })).catch(() => {
@@ -3021,6 +3528,7 @@ describe('button state on the board (decision 240)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second])}
         colors={COLORS}
         brand={BRAND}
@@ -3048,7 +3556,13 @@ describe('button state on the board (decision 240)', () => {
   it('lets go at once and says why when the server refuses', async () => {
     refetchSlotAction.mockResolvedValueOnce({ ok: false, error: 'This slot no longer exists.' })
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
@@ -3063,7 +3577,13 @@ describe('button state on the board (decision 240)', () => {
   it('says the request never arrived when the call itself fails, and lets go', async () => {
     refetchSlotAction.mockRejectedValueOnce(new Error('network down'))
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
@@ -3078,7 +3598,13 @@ describe('button state on the board (decision 240)', () => {
     const pending = deferred()
     editBriefAction.mockReturnValueOnce(pending.promise)
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit brief & re-fetch' }))
@@ -3103,7 +3629,13 @@ describe('button state on the board (decision 240)', () => {
     createOwnUploadAction.mockReturnValueOnce(created.promise)
     finaliseOwnUploadAction.mockResolvedValue({ ok: true })
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.upload(
@@ -3125,7 +3657,13 @@ describe('button state on the board (decision 240)', () => {
     const pending = deferred()
     refetchSocialPostAction.mockReturnValueOnce(pending.promise)
     render(
-      <VisualBoard projectId={PROJECT} model={model([socialSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([socialSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Read again' }))
@@ -3146,6 +3684,7 @@ describe('button state on the board (decision 240)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([headlineSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -3174,6 +3713,7 @@ describe('button state on the board (decision 240)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([planned], {
           phase: 'plan',
           repair: { slots: 1, becomeStills: 0, chapters: 1 },
@@ -3202,6 +3742,7 @@ describe('button state on the board (decision 240)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, chartSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -3223,7 +3764,15 @@ describe('folding chapters', () => {
   const chapterTwo = () => screen.getByRole('button', { name: /^Chapter 2 — The collapse/ })
 
   it('folds a chapter from its header, and the header still says what it holds', async () => {
-    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     expect(chapterTwo()).toHaveAttribute('aria-expanded', 'true')
     expect(chapterTwo()).toHaveTextContent('1 shot')
@@ -3243,7 +3792,15 @@ describe('folding chapters', () => {
   })
 
   it('folds and opens every chapter at once, offering only the one that changes something', async () => {
-    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     const expand = screen.getByRole('button', { name: 'Expand all chapters' })
     const collapse = screen.getByRole('button', { name: 'Collapse all chapters' })
@@ -3264,19 +3821,39 @@ describe('folding chapters', () => {
 
   it('offers no fold-all row for a one-chapter film', () => {
     render(
-      <VisualBoard projectId={PROJECT} model={model([stockSlot])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stockSlot])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.queryByRole('button', { name: 'Collapse all chapters' })).not.toBeInTheDocument()
   })
 
   it('remembers the fold for this project in this browser', async () => {
     const { unmount } = render(
-      <VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     await userEvent.click(chapterTwo())
     unmount()
 
-    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await waitFor(() => expect(chapterTwo()).toHaveAttribute('aria-expanded', 'false'))
   })
 
@@ -3287,7 +3864,15 @@ describe('folding chapters', () => {
       run(0)
       return 0
     })
-    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     await userEvent.click(chapterTwo())
 
     const filmstrip = screen.getByRole('list', { name: 'Filmstrip' })
@@ -3303,7 +3888,15 @@ describe('folding chapters', () => {
   })
 
   it('keeps a half-typed brief when its chapter folds', async () => {
-    render(<VisualBoard projectId={PROJECT} model={threeSlots()} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={threeSlots()}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     const chapterOne = screen.getByRole('button', { name: /^Chapter 1 — The audit/ })
 
     await userEvent.click(card(SLOT_A).getByRole('button', { name: 'Edit brief & re-fetch' }))
@@ -3329,6 +3922,7 @@ describe('folding chapters', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([drafting, refused])}
         colors={COLORS}
         brand={BRAND}
@@ -3354,6 +3948,7 @@ describe('craft notes on the card (decision 277)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([planned, { ...chartSlot, status: 'unresolved' }], {
           phase: 'plan',
           warnings: [`${note} (ch 1 · ${timecode(0)})`],
@@ -3377,6 +3972,7 @@ describe('craft notes on the card (decision 277)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot], { slotNotes: { [SLOT_A]: [note] } })}
         colors={COLORS}
         brand={BRAND}
@@ -3397,7 +3993,13 @@ describe('background jobs on the board (decision 286)', () => {
   it('locks a card while its regenerate runs, keeps the button spinning, and says for how long', () => {
     const running: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(42_000) } }
     render(
-      <VisualBoard projectId={PROJECT} model={model([running])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([running])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
 
     const regenerate = screen.getByRole('button', { name: 'Regenerate' })
@@ -3417,7 +4019,15 @@ describe('background jobs on the board (decision 286)', () => {
 
   it('lets go of a stamp older than 10 minutes and says it may have stopped', () => {
     const stuck: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(11 * 60_000) } }
-    render(<VisualBoard projectId={PROJECT} model={model([stuck])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([stuck])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
 
     expect(screen.getByRole('button', { name: 'Regenerate' })).toBeEnabled()
     expect(
@@ -3434,7 +4044,13 @@ describe('background jobs on the board (decision 286)', () => {
       job: { kind: 'refetch', startedAt: ago(10 * 60_000 - 5_000) },
     }
     render(
-      <VisualBoard projectId={PROJECT} model={model([nearly])} colors={COLORS} brand={BRAND} />,
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([nearly])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
     )
     expect(screen.getByRole('button', { name: 'Regenerate' })).toBeDisabled()
 
@@ -3449,7 +4065,15 @@ describe('background jobs on the board (decision 286)', () => {
     // The laptop thinks it is three months later than the server does.
     vi.setSystemTime(new Date('2027-01-01T00:00:00.000Z'))
     const fresh: SlotView = { ...stockSlot, job: { kind: 'refetch', startedAt: ago(60_000) } }
-    render(<VisualBoard projectId={PROJECT} model={model([fresh])} colors={COLORS} brand={BRAND} />)
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([fresh])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
     act(() => {
       vi.advanceTimersByTime(15_000)
     })
@@ -3464,6 +4088,7 @@ describe('background jobs on the board (decision 286)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([redirecting])}
         colors={COLORS}
         brand={BRAND}
@@ -3486,6 +4111,7 @@ describe('background jobs on the board (decision 286)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([planned, { ...planned, id: SLOT_B }], {
           phase: 'plan',
           job: { op: 'shots', startedAt: ago(65_000) },
@@ -3520,6 +4146,7 @@ describe('background jobs on the board (decision 286)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([planned, { ...planned, id: SLOT_B }], { phase: 'plan', fetching: true })}
         colors={COLORS}
         brand={BRAND}
@@ -3542,6 +4169,7 @@ describe('background jobs on the board (decision 286)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([running, stuck])}
         colors={COLORS}
         brand={BRAND}
@@ -3578,6 +4206,7 @@ describe('notices on the slot card (decision 293)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, chartSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -3619,6 +4248,7 @@ describe('notices on the slot card (decision 293)', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot])}
         colors={COLORS}
         brand={BRAND}
@@ -3649,6 +4279,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second, third])}
         colors={COLORS}
         brand={BRAND}
@@ -3674,6 +4305,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second, third], { timingNotes: [NOTE] })}
         colors={COLORS}
         brand={BRAND}
@@ -3693,6 +4325,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], {
           phase: 'plan',
           warnings: ['a craft note'],
@@ -3714,6 +4347,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], { timingNotes: [NOTE], stretchOpen: false })}
         colors={COLORS}
         brand={BRAND}
@@ -3732,6 +4366,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], {
           stretchOpen: false,
           reopen: { offered: true, blocked: null },
@@ -3752,6 +4387,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], {
           stretchOpen: false,
           reopen: { offered: true, blocked },
@@ -3768,6 +4404,7 @@ describe('the stretch re-plan on the board', () => {
     const { rerender } = render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], { phase: 'plan' })}
         colors={COLORS}
         brand={BRAND}
@@ -3777,6 +4414,7 @@ describe('the stretch re-plan on the board', () => {
     rerender(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([stockSlot, second], { phase: 'plan', fetching: true })}
         colors={COLORS}
         brand={BRAND}
@@ -3791,6 +4429,7 @@ describe('the stretch re-plan on the board', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([busy, second])}
         colors={COLORS}
         brand={BRAND}

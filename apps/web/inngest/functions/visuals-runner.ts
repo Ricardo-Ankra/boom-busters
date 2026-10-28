@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   copyReusedShots,
   getProject,
   latestScriptParagraphSources,
@@ -128,7 +129,8 @@ export const visualsRunner = inngest.createFunction(
         // `load-cast-and-sets`: drafting the book is what seeds them.
         // The logo library (decision 268, Plan B): titles name the marks in the
         // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
-        const logos = await listLogos(db)
+        const { channelId } = await channelForProject(db, projectId)
+        const logos = await listLogos(db, channelId)
 
         await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
 

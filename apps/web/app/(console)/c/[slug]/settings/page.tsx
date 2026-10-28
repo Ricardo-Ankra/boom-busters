@@ -42,7 +42,7 @@ export default async function SettingsPage({
     getChannelSettings(db, channel.id),
     getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
-    listLogos(db),
+    listLogos(db, channel.id),
     searchParams,
   ])
 

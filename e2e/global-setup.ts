@@ -1039,7 +1039,7 @@ export default async function globalSetup(): Promise<void> {
     // turned up seeding this task's graphic slots. Every E2E-owned mark's
     // title ends "(E2E)" (every constant above does too); anything else here
     // is a stray from outside this suite.
-    for (const stray of (await listLogos(connection.db)).filter(
+    for (const stray of (await listLogos(connection.db, FIRST_CHANNEL_ID)).filter(
       (logo) => !logo.title?.endsWith('(E2E)'),
     )) {
       await removeLogo(connection.db, stray.id)
@@ -1047,7 +1047,7 @@ export default async function globalSetup(): Promise<void> {
 
     // Two marks (decision 268), on mock:// keys like the beds below: the tab
     // lists them, the watermark never draws them (mock storage has no bytes).
-    // No length guard: `insertLogo` upserts on `contentHash`, so re-running
+    // No length guard: `insertLogo` upserts on the channel's `contentHash`, so re-running
     // this every setup restores both titles even after a spec renamed one
     // and failed to revert it, the same guarantee `insertMusicBed` gets from
     // its own guard only by luck of the beds never being renamed. Seeded
@@ -1057,7 +1057,7 @@ export default async function globalSetup(): Promise<void> {
       [1, 'Stability AI (E2E)'],
       [2, 'Wirecard AG (E2E)'],
     ] as const) {
-      await insertLogo(connection.db, {
+      await insertLogo(connection.db, FIRST_CHANNEL_ID, {
         r2Key: `mock://logos/e2e-mark-${index}`,
         contentHash: `e2e-logo-${index}`,
         title,
@@ -1104,7 +1104,11 @@ export default async function globalSetup(): Promise<void> {
         ],
       })
       const fundingClaimId = planDossier.claims[0]!.id
-      const wirecardLogo = await findLogoByName(connection.db, 'Wirecard AG (E2E)')
+      const wirecardLogo = await findLogoByName(
+        connection.db,
+        FIRST_CHANNEL_ID,
+        'Wirecard AG (E2E)',
+      )
       const planScript = await createScriptVersion(connection.db, plan.id)
       const planChapter = await saveChapter(connection.db, {
         scriptId: planScript.id,

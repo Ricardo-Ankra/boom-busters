@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   latestScriptParagraphSources,
   listLogos,
@@ -288,11 +289,12 @@ export async function loadGraphicContextFrom(
 ): Promise<GraphicDesignContext> {
   const project = await getProject(database, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
+  const { channelId } = await channelForProject(database, projectId)
   const [sources, takes, claims, logos] = await Promise.all([
     latestScriptParagraphSources(database, projectId),
     listVoiceTakes(database, projectId),
     scriptableClaims(database, projectId),
-    listLogos(database),
+    listLogos(database, channelId),
   ])
   const chapter = sources.chapters.find((c) => c.id === chapterId)
   return {

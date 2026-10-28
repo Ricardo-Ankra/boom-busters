@@ -1,9 +1,11 @@
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 // @vitest-environment node
 
 import { createHash } from 'node:crypto'
 import {
   assets,
+  createChannel,
+  getChannelBySlug,
   getChannelSettings,
   listLogos,
   requireTestDatabase,
@@ -89,7 +91,7 @@ describeDb('logo actions', () => {
   })
 
   it('presigns a PUT for a raster mark under the logos key, and refuses SVG and AVIF here', async () => {
-    const created = await createLogoUploadAction({
+    const created = await createLogoUploadAction(FIRST_CHANNEL_ID, {
       fileType: 'image/png',
       fileSize: 1000,
       contentHash: HASH,
@@ -100,12 +102,16 @@ describeDb('logo actions', () => {
     // The browser converts these before asking; a request naming them is a
     // browser that skipped the conversion, and the server will not store them.
     for (const fileType of ['image/svg+xml', 'image/avif', 'image/gif']) {
-      const refused = await createLogoUploadAction({ fileType, fileSize: 1000, contentHash: HASH })
+      const refused = await createLogoUploadAction(FIRST_CHANNEL_ID, {
+        fileType,
+        fileSize: 1000,
+        contentHash: HASH,
+      })
       expect(refused.ok).toBe(false)
     }
     expect(
       (
-        await createLogoUploadAction({
+        await createLogoUploadAction(FIRST_CHANNEL_ID, {
           fileType: 'image/png',
           fileSize: 5 * 1024 * 1024,
           contentHash: HASH,
@@ -115,7 +121,7 @@ describeDb('logo actions', () => {
   })
 
   it('records the mark once the object landed, named, sized, and lists it', async () => {
-    const result = await finaliseLogoAction({
+    const result = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.png`,
       contentHash: HASH,
       title: ' Stability AI ',
@@ -123,7 +129,7 @@ describeDb('logo actions', () => {
       height: 400,
     })
     expect(result).toEqual({ ok: true })
-    const [logo] = await listLogos(db)
+    const [logo] = await listLogos(db, FIRST_CHANNEL_ID)
     expect(logo).toMatchObject({
       kind: 'logo',
       title: 'Stability AI',
@@ -135,7 +141,7 @@ describeDb('logo actions', () => {
 
   it('refuses an oversize object once it is in storage, and deletes it', async () => {
     storage.headSize = 5 * 1024 * 1024
-    const result = await finaliseLogoAction({
+    const result = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.png`,
       contentHash: HASH,
       title: 'Stability AI',
@@ -144,11 +150,11 @@ describeDb('logo actions', () => {
     })
     expect(result.error).toMatch(/4 MB/)
     expect(storage.deleted).toEqual([`boom-busters/logos/${HASH}.png`])
-    expect(await listLogos(db)).toEqual([])
+    expect(await listLogos(db, FIRST_CHANNEL_ID)).toEqual([])
   })
 
   it('refuses a finalise for a key this flow could not have issued, and an empty name', async () => {
-    const wrongKey = await finaliseLogoAction({
+    const wrongKey = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: 'boom-busters/music/x.mp3',
       contentHash: HASH,
       title: 'X',
@@ -156,7 +162,7 @@ describeDb('logo actions', () => {
       height: 1,
     })
     expect(wrongKey.ok).toBe(false)
-    const unnamed = await finaliseLogoAction({
+    const unnamed = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.png`,
       contentHash: HASH,
       title: '  ',
@@ -170,7 +176,7 @@ describeDb('logo actions', () => {
     // The check is equality against the three legal keys, not a prefix
     // test: a key with the right hash but an extra path segment must not
     // slip through as if it were the object this flow itself presigned.
-    const sneaky = await finaliseLogoAction({
+    const sneaky = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.x/anything.png`,
       contentHash: HASH,
       title: 'X',
@@ -193,14 +199,14 @@ describeDb('logo actions', () => {
         resolvedUrl: 'https://cdn.example/mark.png',
       },
     })
-    const result = await addLogoFromUrlAction({
+    const result = await addLogoFromUrlAction(FIRST_CHANNEL_ID, {
       url: 'https://cdn.example/mark.png',
       title: 'Wirecard AG',
     })
     expect(result).toEqual({ ok: true })
     const hash = createHash('sha256').update(bytes).digest('hex')
     expect(storage.put).toEqual([`boom-busters/logos/${hash}.png`])
-    const [logo] = await listLogos(db)
+    const [logo] = await listLogos(db, FIRST_CHANNEL_ID)
     expect(logo).toMatchObject({
       title: 'Wirecard AG',
       sourceUrl: 'https://cdn.example/mark.png',
@@ -220,34 +226,39 @@ describeDb('logo actions', () => {
         resolvedUrl: 'https://cdn.example/mark.png',
       },
     })
-    const result = await addLogoFromUrlAction({
+    const result = await addLogoFromUrlAction(FIRST_CHANNEL_ID, {
       url: 'https://cdn.example/mark.png',
       title: 'Wirecard AG',
     })
     expect(result).toEqual({ ok: true })
-    const [logo] = await listLogos(db)
+    const [logo] = await listLogos(db, FIRST_CHANNEL_ID)
     expect(logo).toMatchObject({ width: 301, height: 1 })
   })
 
   it('passes the fetcher refusal through in its own words', async () => {
     remote.fetchRemoteLogo.mockResolvedValue({ ok: false, error: 'That SVG could not be drawn.' })
-    const result = await addLogoFromUrlAction({ url: 'https://cdn.example/bad.svg', title: 'X' })
+    const result = await addLogoFromUrlAction(FIRST_CHANNEL_ID, {
+      url: 'https://cdn.example/bad.svg',
+      title: 'X',
+    })
     expect(result).toEqual({ ok: false, error: 'That SVG could not be drawn.' })
-    expect(await listLogos(db)).toEqual([])
+    expect(await listLogos(db, FIRST_CHANNEL_ID)).toEqual([])
   })
 
   it('renames, chooses the channel mark, refuses to remove it, then removes it once unchosen', async () => {
-    await finaliseLogoAction({
+    await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.png`,
       contentHash: HASH,
       title: 'Stability AI',
       width: 1200,
       height: 400,
     })
-    const [logo] = await listLogos(db)
+    const [logo] = await listLogos(db, FIRST_CHANNEL_ID)
 
-    expect(await renameLogoAction({ id: logo!.id, title: 'Stability' })).toEqual({ ok: true })
-    expect((await listLogos(db))[0]?.title).toBe('Stability')
+    expect(await renameLogoAction(FIRST_CHANNEL_ID, { id: logo!.id, title: 'Stability' })).toEqual({
+      ok: true,
+    })
+    expect((await listLogos(db, FIRST_CHANNEL_ID))[0]?.title).toBe('Stability')
 
     expect(await setChannelMarkAction(FIRST_CHANNEL_ID, logo!.id)).toEqual({ ok: true })
     expect((await getChannelSettings(db, FIRST_CHANNEL_ID)).brandKit.look.logoR2Key).toBe(
@@ -261,13 +272,13 @@ describeDb('logo actions', () => {
     expect(await setChannelMarkAction(FIRST_CHANNEL_ID, null)).toEqual({ ok: true })
     expect(await removeLogoAction(FIRST_CHANNEL_ID, logo!.id)).toEqual({ ok: true })
     expect(storage.deleted).toEqual([logo!.r2Key])
-    expect(await listLogos(db)).toEqual([])
+    expect(await listLogos(db, FIRST_CHANNEL_ID)).toEqual([])
   })
 
-  it('refuses to rename bytes already stored as another asset kind, on finalise and on add-from-address', async () => {
-    // insertLogo upserts on contentHash alone, which ignores kind: bytes
-    // already stored as an `image` asset would otherwise be silently
-    // renamed into the logo library and never listed there.
+  it('stores a mark beside shared bytes with the same hash and leaves the shared asset alone', async () => {
+    // A channel's marks have their own unique index, so bytes stored as a
+    // shared `image` asset never collide with a mark: the mark is added, the
+    // image keeps its name and key.
     await db.insert(assets).values({
       kind: 'image',
       r2Key: `boom-busters/stock/${HASH}.png`,
@@ -276,72 +287,112 @@ describeDb('logo actions', () => {
       title: 'A stock still',
     })
 
-    const finalised = await finaliseLogoAction({
+    const finalised = await finaliseLogoAction(FIRST_CHANNEL_ID, {
       key: `boom-busters/logos/${HASH}.png`,
       contentHash: HASH,
       title: 'Stability AI',
       width: 1200,
       height: 400,
     })
-    expect(finalised.ok).toBe(false)
-    expect(finalised.error).toMatch(/already stored as something other than a mark/i)
-    expect(await listLogos(db)).toEqual([])
-    const stillRow = (await db.select().from(assets)).find((row) => row.contentHash === HASH)
-    expect(stillRow).toMatchObject({
-      kind: 'image',
+    expect(finalised).toEqual({ ok: true })
+    expect((await listLogos(db, FIRST_CHANNEL_ID)).map((logo) => logo.title)).toEqual([
+      'Stability AI',
+    ])
+    const image = (await db.select().from(assets)).find((row) => row.kind === 'image')
+    expect(image).toMatchObject({
       title: 'A stock still',
       r2Key: `boom-busters/stock/${HASH}.png`,
+      channelId: null,
+    })
+  })
+
+  describe('two channels', () => {
+    async function secondChannelId(): Promise<string> {
+      const existing = await getChannelBySlug(db, 'second-test')
+      if (existing) return existing.id
+      return (
+        await createChannel(db, {
+          name: 'Second test channel',
+          handle: null,
+          slug: 'second-test',
+          settings: DEFAULT_SETTINGS,
+          bible: EMPTY_BIBLE,
+        })
+      ).id
+    }
+
+    const upload = (channelId: string, title: string) =>
+      finaliseLogoAction(channelId, {
+        key: `boom-busters/logos/${HASH}.png`,
+        contentHash: HASH,
+        title,
+        width: 1200,
+        height: 400,
+      })
+
+    it('keeps each channel library and channel mark to itself', async () => {
+      const B = await secondChannelId()
+      expect(await upload(FIRST_CHANNEL_ID, 'Stability AI')).toEqual({ ok: true })
+      expect(await upload(B, 'Stability B')).toEqual({ ok: true })
+
+      const [a] = await listLogos(db, FIRST_CHANNEL_ID)
+      const [b] = await listLogos(db, B)
+      expect(a?.title).toBe('Stability AI')
+      expect(b?.title).toBe('Stability B')
+      expect(a?.r2Key).toBe(b?.r2Key)
+
+      expect(await setChannelMarkAction(B, b!.id)).toEqual({ ok: true })
+      expect((await getChannelSettings(db, B)).brandKit.look.logoR2Key).toBe(b!.r2Key)
+      expect((await getChannelSettings(db, FIRST_CHANNEL_ID)).brandKit.look.logoR2Key).toBeNull()
     })
 
-    const urlBytes = Buffer.from('bytes already stored under another asset kind')
-    const urlHash = createHash('sha256').update(urlBytes).digest('hex')
-    remote.fetchRemoteLogo.mockResolvedValue({
-      ok: true,
-      logo: {
-        bytes: urlBytes,
-        mimeType: 'image/png',
-        width: 300,
-        height: 100,
-        resolvedUrl: 'https://cdn.example/mark.png',
-      },
+    it('refuses another channel mark, on choose, rename and remove', async () => {
+      const B = await secondChannelId()
+      await upload(FIRST_CHANNEL_ID, 'Stability AI')
+      const [a] = await listLogos(db, FIRST_CHANNEL_ID)
+      const gone = { ok: false, error: 'That mark is already gone.' }
+
+      expect(await setChannelMarkAction(B, a!.id)).toEqual(gone)
+      expect(await renameLogoAction(B, { id: a!.id, title: 'Hijacked' })).toEqual(gone)
+      expect(await removeLogoAction(B, a!.id)).toEqual(gone)
+      expect((await listLogos(db, FIRST_CHANNEL_ID))[0]?.title).toBe('Stability AI')
     })
-    await db.insert(assets).values({
-      kind: 'image',
-      r2Key: `boom-busters/stock/${urlHash}.png`,
-      contentHash: urlHash,
-      licence: 'stock',
-      title: 'A stock still',
-    })
-    const viaUrl = await addLogoFromUrlAction({
-      url: 'https://cdn.example/mark.png',
-      title: 'Wirecard AG',
-    })
-    expect(viaUrl.ok).toBe(false)
-    expect(viaUrl.error).toMatch(/already stored as something other than a mark/i)
-    expect(await listLogos(db)).toEqual([])
-    const urlStillRow = (await db.select().from(assets)).find((row) => row.contentHash === urlHash)
-    expect(urlStillRow).toMatchObject({
-      kind: 'image',
-      title: 'A stock still',
-      r2Key: `boom-busters/stock/${urlHash}.png`,
+
+    it('keeps the shared bytes while another channel still holds the same mark', async () => {
+      const B = await secondChannelId()
+      await upload(FIRST_CHANNEL_ID, 'Stability AI')
+      await upload(B, 'Stability B')
+      const [a] = await listLogos(db, FIRST_CHANNEL_ID)
+      const [b] = await listLogos(db, B)
+      // The earlier test left B's mark chosen; a chosen mark cannot be removed.
+      expect(await setChannelMarkAction(B, null)).toEqual({ ok: true })
+
+      expect(await removeLogoAction(FIRST_CHANNEL_ID, a!.id)).toEqual({ ok: true })
+      expect(storage.deleted).toEqual([])
+      expect(await removeLogoAction(B, b!.id)).toEqual({ ok: true })
+      expect(storage.deleted).toEqual([b!.r2Key])
     })
   })
 
   it('rejects when no session is signed in', async () => {
     authMock.auth.mockResolvedValueOnce(null)
-    await expect(renameLogoAction({ id: 'anything', title: 'X' })).rejects.toThrow('Not signed in')
+    await expect(
+      renameLogoAction(FIRST_CHANNEL_ID, { id: 'anything', title: 'X' }),
+    ).rejects.toThrow('Not signed in')
   })
 
   it('refuses an id that is not a ulid, on rename, remove and choosing the channel mark', async () => {
     const notAUlid = { ok: false, error: 'Unknown mark.' }
-    expect(await renameLogoAction({ id: 'not-a-ulid', title: 'X' })).toEqual(notAUlid)
+    expect(await renameLogoAction(FIRST_CHANNEL_ID, { id: 'not-a-ulid', title: 'X' })).toEqual(
+      notAUlid,
+    )
     expect(await removeLogoAction(FIRST_CHANNEL_ID, 'not-a-ulid')).toEqual(notAUlid)
     expect(await setChannelMarkAction(FIRST_CHANNEL_ID, 'not-a-ulid')).toEqual(notAUlid)
   })
 
   it('says where the bytes would go when storage is not configured', async () => {
     storage.configured = false
-    const created = await createLogoUploadAction({
+    const created = await createLogoUploadAction(FIRST_CHANNEL_ID, {
       fileType: 'image/png',
       fileSize: 10,
       contentHash: HASH,

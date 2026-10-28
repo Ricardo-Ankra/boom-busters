@@ -107,7 +107,7 @@ export function LogosTab({
     if (mark.size > LOGO_MAX_BYTES) return { ok: false, error: 'That mark is over the 4 MB limit.' }
 
     const contentHash = await fingerprint(mark)
-    const created = await createLogoUploadAction({
+    const created = await createLogoUploadAction(channelId, {
       fileType: mark.type,
       fileSize: mark.size,
       contentHash,
@@ -125,7 +125,7 @@ export function LogosTab({
       return { ok: false, error: `Storage refused the upload (${put.status}). Try again.` }
 
     const size = await readImageSize(mark)
-    const result = await finaliseLogoAction({
+    const result = await finaliseLogoAction(channelId, {
       key: created.key,
       contentHash,
       title,
@@ -218,7 +218,7 @@ export function LogosTab({
               disabled={busy || address.trim() === '' || !named}
               onClick={() =>
                 void run(async () => {
-                  const result = await addLogoFromUrlAction({ url: address, title })
+                  const result = await addLogoFromUrlAction(channelId, { url: address, title })
                   if (result.ok) {
                     setAddress('')
                     setTitle('')
@@ -348,7 +348,10 @@ function LogoRow({
           variant="outline"
           disabled={busy || name.trim() === '' || name.trim() === logo.title}
           onClick={() =>
-            void run(() => renameLogoAction({ id: logo.id, title: name }), 'Mark renamed')
+            void run(
+              () => renameLogoAction(channelId, { id: logo.id, title: name }),
+              'Mark renamed',
+            )
           }
         >
           Save name

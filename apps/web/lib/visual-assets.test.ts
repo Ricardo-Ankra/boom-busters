@@ -559,7 +559,7 @@ References attached: 1 photograph of Emad Mostaque.`
   })
 
   it('a graphic resolves at no cost when every logo has a mark, and waits as a placeholder otherwise', async () => {
-    const mark = await insertLogo(db, {
+    const mark = await insertLogo(db, FIRST_CHANNEL_ID, {
       r2Key: `boom-busters/logos/${FIXTURE_PROJECT_ID}.png`,
       contentHash: `logo-${FIXTURE_PROJECT_ID}`,
       title: 'Stability AI',

@@ -1454,8 +1454,10 @@ function GraphicLogoUploader({
   act: Act
 }) {
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const channelId = React.useContext(BoardChannelContext)
 
   const upload = async (picked: File): Promise<ActionResult> => {
+    if (channelId === null) return { ok: false, error: 'This board does not know its channel.' }
     const ready = await toUploadableLogo(picked)
     if (!ready.ok) return ready
     const file = ready.file
@@ -1466,7 +1468,7 @@ function GraphicLogoUploader({
       .map((byte) => byte.toString(16).padStart(2, '0'))
       .join('')
 
-    const created = await createLogoUploadAction({
+    const created = await createLogoUploadAction(channelId, {
       fileType: file.type,
       fileSize: file.size,
       contentHash,
@@ -1483,7 +1485,7 @@ function GraphicLogoUploader({
     }
 
     const size = await readImageSize(file)
-    const finalised = await finaliseLogoAction({
+    const finalised = await finaliseLogoAction(channelId, {
       key: created.key,
       contentHash,
       title: entity,
@@ -1614,12 +1616,24 @@ export interface SetPhotoGroup {
   }[]
 }
 
+/**
+ * The channel the board's project belongs to: a mark uploaded from a graphic
+ * card lands in that channel's logo library, and the card is too deep in the
+ * tree for the id to be passed down by hand.
+ */
+const BoardChannelContext = React.createContext<string | null>(null)
+
 /** One graphic plays at a time across the whole board (decision 289). */
-export function VisualBoard(props: React.ComponentProps<typeof VisualBoardContent>) {
+export function VisualBoard({
+  channelId,
+  ...props
+}: React.ComponentProps<typeof VisualBoardContent> & { channelId: string }) {
   return (
-    <GraphicPlaybackProvider>
-      <VisualBoardContent {...props} />
-    </GraphicPlaybackProvider>
+    <BoardChannelContext.Provider value={channelId}>
+      <GraphicPlaybackProvider>
+        <VisualBoardContent {...props} />
+      </GraphicPlaybackProvider>
+    </BoardChannelContext.Provider>
   )
 }
 

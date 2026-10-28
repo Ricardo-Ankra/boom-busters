@@ -895,7 +895,7 @@ export async function visualsReviewModel(
    * slot. `castWarnings` below reuses this same cast rather than loading it
    * again.
    */
-  const [cast, sets, { settings }] = await Promise.all([
+  const [cast, sets, { settings, channelId }] = await Promise.all([
     listCastMembers(db, projectId),
     listProjectSets(db, projectId),
     channelForProject(db, projectId),
@@ -948,7 +948,7 @@ export async function visualsReviewModel(
         parsed.data.code !== undefined,
     )
     if (anyCode) {
-      const library = await listLogos(db)
+      const library = await listLogos(db, channelId)
       Object.assign(graphicLogoMarks, codeLogoMarks(library))
       for (const logo of library) {
         if (graphicLogoMarks[logo.id] && graphicLogoUrls[logo.id] === undefined) {

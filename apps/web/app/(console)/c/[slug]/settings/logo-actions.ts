@@ -10,6 +10,7 @@
 
 import { createHash } from 'node:crypto'
 import {
+  assetObjectInUse,
   getChannelSettings,
   insertLogo,
   logoById,
@@ -44,11 +45,12 @@ async function requireOwner(): Promise<void> {
 
 const HEX_64 = /^[0-9a-f]{64}$/
 const MAX_TITLE = 80
+const UNKNOWN_CHANNEL: ActionResult = { ok: false, error: 'Unknown channel.' }
 
 /**
- * `insertLogo` upserts on `contentHash` alone, whose unique index ignores
- * `kind`: bytes already stored as another asset kind would otherwise be
- * renamed in place and never appear in `listLogos`.
+ * `insertLogo` upserts on a channel's own `(contentHash, channelId)` index,
+ * and updates only a conflicting row that is itself a logo; anything else
+ * comes back as null and is refused here.
  */
 const NOT_A_MARK: ActionResult = {
   ok: false,
@@ -76,12 +78,16 @@ function clampDimension(value: number): number {
  * them is a browser that skipped the conversion, and the server will not
  * store what the render's Chromium would execute or no model reads.
  */
-export async function createLogoUploadAction(input: {
-  fileType: string
-  fileSize: number
-  contentHash: string
-}): Promise<ActionResult & { url?: string; key?: string }> {
+export async function createLogoUploadAction(
+  channelId: string,
+  input: {
+    fileType: string
+    fileSize: number
+    contentHash: string
+  },
+): Promise<ActionResult & { url?: string; key?: string }> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
 
   const mime = LogoStoredMimeSchema.safeParse(input.fileType)
   if (!mime.success) {
@@ -107,14 +113,18 @@ export async function createLogoUploadAction(input: {
 }
 
 /** Step two: the object landed; record the mark under the entity's name. */
-export async function finaliseLogoAction(input: {
-  key: string
-  contentHash: string
-  title: string
-  width: number
-  height: number
-}): Promise<ActionResult> {
+export async function finaliseLogoAction(
+  channelId: string,
+  input: {
+    key: string
+    contentHash: string
+    title: string
+    width: number
+    height: number
+  },
+): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
 
   const title = cleanTitle(input.title)
   if (!title)
@@ -140,7 +150,7 @@ export async function finaliseLogoAction(input: {
     return { ok: false, error: 'That mark is over the 4 MB limit.' }
   }
 
-  const row = await insertLogo(db, {
+  const row = await insertLogo(db, channelId, {
     r2Key: input.key,
     contentHash: input.contentHash,
     title,
@@ -153,11 +163,15 @@ export async function finaliseLogoAction(input: {
 }
 
 /** A mark by its web address, fetched once and stored like an upload. */
-export async function addLogoFromUrlAction(input: {
-  url: string
-  title: string
-}): Promise<ActionResult> {
+export async function addLogoFromUrlAction(
+  channelId: string,
+  input: {
+    url: string
+    title: string
+  },
+): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
 
   const title = cleanTitle(input.title)
   if (!title)
@@ -173,7 +187,7 @@ export async function addLogoFromUrlAction(input: {
   const contentHash = createHash('sha256').update(bytes).digest('hex')
   const key = logoKey({ contentHash, ext: logoExtension(mimeType) })
   await putObject(key, bytes, mimeType)
-  const row = await insertLogo(db, {
+  const row = await insertLogo(db, channelId, {
     r2Key: key,
     contentHash,
     title,
@@ -186,15 +200,23 @@ export async function addLogoFromUrlAction(input: {
   return { ok: true }
 }
 
-export async function renameLogoAction(input: {
-  id: string
-  title: string
-}): Promise<ActionResult> {
+export async function renameLogoAction(
+  channelId: string,
+  input: {
+    id: string
+    title: string
+  },
+): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
   if (!UlidSchema.safeParse(input.id).success) return { ok: false, error: 'Unknown mark.' }
   const title = cleanTitle(input.title)
   if (!title)
     return { ok: false, error: 'Give the mark the name of the company or person it belongs to.' }
+  const existing = await logoById(db, input.id)
+  if (!existing || existing.channelId !== channelId) {
+    return { ok: false, error: 'That mark is already gone.' }
+  }
   const row = await renameLogo(db, input.id, title)
   if (!row) return { ok: false, error: 'That mark is already gone.' }
   refresh()
@@ -209,7 +231,9 @@ export async function removeLogoAction(channelId: string, id: string): Promise<A
 
   const settings = await getChannelSettings(db, channelId)
   const logo = await logoById(db, id)
-  if (!logo) return { ok: false, error: 'That mark is already gone.' }
+  if (!logo || logo.channelId !== channelId) {
+    return { ok: false, error: 'That mark is already gone.' }
+  }
   if (settings.brandKit.look.logoR2Key === logo.r2Key) {
     return {
       ok: false,
@@ -219,9 +243,10 @@ export async function removeLogoAction(channelId: string, id: string): Promise<A
 
   const row = await removeLogo(db, id)
   if (!row) return { ok: false, error: 'That mark is already gone.' }
-  // Best-effort: the row is authoritative and already gone.
+  // Best-effort: the row is authoritative and already gone. Another channel
+  // may hold the same bytes under the same key; those stay.
   try {
-    await deleteObject(row.r2Key)
+    if (!(await assetObjectInUse(db, row.r2Key))) await deleteObject(row.r2Key)
   } catch {
     // Orphaned bytes are a lifecycle-rule concern, not a correctness one.
   }
@@ -241,7 +266,9 @@ export async function setChannelMarkAction(
   if (id !== null) {
     if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown mark.' }
     const logo = await logoById(db, id)
-    if (!logo) return { ok: false, error: 'That mark is already gone.' }
+    if (!logo || logo.channelId !== channelId) {
+      return { ok: false, error: 'That mark is already gone.' }
+    }
     logoR2Key = logo.r2Key
   }
   const settings = await getChannelSettings(db, channelId)

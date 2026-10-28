@@ -294,7 +294,8 @@ export const assemblyRunner = inngest.createFunction(
       // it says which titles, so the whole library rides along. The first
       // mark stored under a title wins, in `listLogos` order.
       const logoLibrary = new Map<string, { r2Key: string; width: number; height: number }>()
-      for (const [title, asset] of codeLogoLibrary(await listLogos(db))) {
+      const { channelId } = await channelForProject(db, projectId)
+      for (const [title, asset] of codeLogoLibrary(await listLogos(db, channelId))) {
         logoLibrary.set(title, { r2Key: asset.r2Key, width: asset.width, height: asset.height })
       }
 
