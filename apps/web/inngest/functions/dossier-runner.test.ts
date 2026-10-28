@@ -329,10 +329,15 @@ describeDb('dossier-runner', () => {
     const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On B' })
 
     // The research pass is where the run reaches a model. Stored steps keep
-    // the real passes from calling out, so this one call stands in for them:
-    // it is made the way the passes make theirs, from the project id alone.
+    // the real passes from calling out, so this one call stands in for them,
+    // made exactly as `researchDossier` makes its own: through the completer
+    // the runner hands it (args[2].complete) or, when the runner hands none,
+    // the default it builds from the project id the runner passed (args[1]).
+    // Nothing here names channel B or its project, so a runner that wires the
+    // wrong project or completer reaches the wrong channel's route.
     researchDossier.mockImplementationOnce(async (...args: Parameters<typeof researchDossier>) => {
-      await completeForProject(otherProject.id)(
+      const complete = args[2]?.complete ?? completeForProject(args[1].projectId)
+      await complete(
         {
           task: 'research',
           system: 'Research.',
