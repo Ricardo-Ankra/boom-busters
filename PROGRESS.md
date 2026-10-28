@@ -4145,7 +4145,7 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 > One console, several YouTube channels. Design:
 > `docs/superpowers/specs/2026-10-27-multi-channel-design.md`; plan:
 > `docs/superpowers/plans/2026-10-27-multi-channel-stage-a.md`; branch
-> `multi-channel`; decisions 326 to 329. Stage B (the bible reaching the
+> `multi-channel`; decisions 327 to 330. Stage B (the bible reaching the
 > prompts, the AI draft of the bible, the free-text case category) is the
 > next plan.
 
@@ -4153,15 +4153,15 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 
 - [x] `channels`, `workspace` and `youtube_connections` tables, a
       `channel_id` on every row that belongs to one, and migration 0038
-      with the first channel's constant id (decision 326).
+      with the first channel's constant id (decision 327).
 - [x] Every list query, runner and action takes its channel; settings split
-      into the channel's and the workspace's (decision 326).
+      into the channel's and the workspace's (decision 327).
 - [x] `/c/<slug>` routes, the channel switcher with counts, the `/`
-      redirect, the workspace `/settings` (decision 327).
+      redirect, the workspace `/settings` (decision 328).
 - [x] One YouTube connection per channel, signed OAuth state, uploads
-      refused unless the connection is `ok` (decision 328).
+      refused unless the connection is `ok` (decision 329).
 - [x] The bible as structured fields, the Channel tab, the completeness
-      gate, create and archive (decision 329).
+      gate, create and archive (decision 330).
 - [x] e2e `channels.spec.ts`, a second fixture channel and the 390 px
       switcher and Channel tab passes; every package suite green.
 - [ ] Migration rehearsal on a Neon branch (runbook in the hand-over), then
@@ -8427,7 +8427,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      path for a timeline compiled without storage. Already rendered and
      published videos keep their captions until rendered again.
 
-326. **Channels, and the workspace split** (2026-10-28). The console now
+327. **Channels, and the workspace split** (2026-10-28). The console now
      runs several YouTube channels. A `channels` table holds each one's
      name, handle, slug, bible and settings, and a one-row `workspace`
      table holds what is shared: the model price overrides, the monthly
@@ -8455,7 +8455,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      migration integration test; the rehearsal on a Neon branch comes
      before production.
 
-327. **Channel resolution and the `/c/<slug>` routes** (2026-10-28). Code
+328. **Channel resolution and the `/c/<slug>` routes** (2026-10-28). Code
      finds its channel from data first and the URL second, never from a
      cookie. A server action or Inngest runner on a project resolves the
      channel from the project row, inside the step that needs it (a run
@@ -8477,7 +8477,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      3100 on the owner's machine can be held by another project's server
      that Playwright would otherwise reuse and test against.
 
-328. **One YouTube connection per channel** (2026-10-28). Each channel
+329. **One YouTube connection per channel** (2026-10-28). Each channel
      uploads to its own YouTube account, so the refresh token moved from
      the unique `youtube` row of `provider_credentials` to a
      `youtube_connections` row per channel, which also stores the YouTube
@@ -8508,7 +8508,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      pinned account can be replaced. A transient ping failure (5xx or 429)
      now records nothing and sends no notice.
 
-329. **The bible as structured fields, the gate, and archiving** (2026-10-28).
+330. **The bible as structured fields, the gate, and archiving** (2026-10-28).
      Stage A stores each channel's bible but does not yet feed it to the
      prompts. It is structured fields (subject, what a case is, how a
      subject is named, audience, narration and visual registers, title
