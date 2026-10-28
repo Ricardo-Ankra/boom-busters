@@ -7,6 +7,9 @@ import {
   getPublishRecord,
   insertShort,
   insertTimeline,
+  recordChannelYoutubeVerify,
+  saveChannelYoutubeConnection,
+  updatePublishRecord,
   publishRecords,
   requireTestDatabase,
   saveChapter,
@@ -14,11 +17,18 @@ import {
   seed,
   timelines,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
+import type * as YoutubeLib from '@/lib/youtube'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { generateDescription, generateTitles, savePublishDraft } from './publish-actions'
+import { env } from '@/lib/env'
+import {
+  generateDescription,
+  generateTitles,
+  reschedulePublish,
+  savePublishDraft,
+} from './publish-actions'
 
 /**
  * The Generate titles button (decision 293) against the test database: at
@@ -30,6 +40,15 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(async () => ({ user: { email: 'owner@example.com' } })),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const youtube = vi.hoisted(() => ({
+  movePublishAt: vi.fn(),
+  refreshAccessToken: vi.fn(),
+}))
+vi.mock('@/lib/youtube', async (importOriginal) => ({
+  ...(await importOriginal<typeof YoutubeLib>()),
+  movePublishAt: youtube.movePublishAt,
+  refreshAccessToken: youtube.refreshAccessToken,
+}))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 
@@ -248,5 +267,51 @@ describeDb('the search description (decision 303)', () => {
       hashtags: ['#Wirecard', '#AIDocumentary'],
       chapterGlosses: { [chapterId]: 'The audit that said no' },
     })
+  })
+})
+
+describeDb('reschedulePublish on an unverified connection', () => {
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(publishRecords)
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, {
+      status: 'scheduled',
+      youtubeVideoId: 'vid-1',
+      publishAt: new Date(Date.now() + 86_400_000),
+    })
+    await saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
+      refreshToken: '1//refresh',
+      encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+      youtubeChannelId: 'UC-first',
+      youtubeChannelTitle: 'First',
+    })
+    youtube.refreshAccessToken.mockResolvedValue({ accessToken: 'ya29.x' })
+    youtube.movePublishAt.mockResolvedValue({ ok: true })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  const later = () => new Date(Date.now() + 3 * 86_400_000).toISOString()
+
+  it('refuses, and never mints a token, when the connection is invalid', async () => {
+    await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+
+    const result = await reschedulePublish('master', FIXTURE_PROJECT_ID, later())
+
+    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/reconnecting/) })
+    expect(youtube.refreshAccessToken).not.toHaveBeenCalled()
+    expect(youtube.movePublishAt).not.toHaveBeenCalled()
+  })
+
+  it('moves the slot when the connection is ok', async () => {
+    await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
+
+    expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, later())).toEqual({ ok: true })
+    expect(youtube.movePublishAt).toHaveBeenCalledTimes(1)
   })
 })

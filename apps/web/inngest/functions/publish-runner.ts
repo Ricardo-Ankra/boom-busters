@@ -7,6 +7,7 @@ import {
   listCastMembers,
   listShotSlots,
   channelForProject,
+  channelYoutubeConnected,
   channelYoutubeToken,
   recordChannelYoutubeVerify,
   channelYoutubeReconnectNeeded,
@@ -56,6 +57,9 @@ import { events } from '../events'
  */
 
 const FUNCTION_ID = 'publish-runner'
+
+const RECONNECT_MESSAGE =
+  'The YouTube connection for this channel needs reconnecting. Open Settings, Connections.'
 
 /** Resumable uploads may crawl; the job hard-stops at 6 h (spec section 9). */
 const UPLOAD_TIMEOUT = '7h'
@@ -177,6 +181,11 @@ export const publishRunner = inngest.createFunction(
           env.SECRETS_ENCRYPTION_KEY,
         )
         if (!refreshToken) return refuse('YouTube is not connected — Settings → Connections.')
+        // A token on an unverified or invalid connection may belong to another
+        // YouTube account: never upload with it.
+        if (!(await channelYoutubeConnected(db, channel.channelId))) {
+          return refuse(RECONNECT_MESSAGE)
+        }
       }
 
       // The altered-content label (decision 252): any chosen generated still
@@ -316,6 +325,15 @@ export const publishRunner = inngest.createFunction(
         env.SECRETS_ENCRYPTION_KEY,
       )
       if (!refreshToken) throw new NonRetriableError('The YouTube connection vanished mid-run.')
+      if (!(await channelYoutubeConnected(db, channel.channelId))) {
+        // It went invalid after the preflight (a reconnect to another
+        // account, a dead ping): fail the claimed record rather than upload.
+        await updatePublishRecord(db, preflight.recordId, {
+          status: 'failed',
+          error: { message: RECONNECT_MESSAGE },
+        })
+        return { ok: false as const }
+      }
       try {
         const grant = await refreshAccessToken(refreshToken)
         return { ok: true as const, accessToken: grant.accessToken }

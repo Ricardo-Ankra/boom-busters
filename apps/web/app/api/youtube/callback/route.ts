@@ -87,6 +87,18 @@ export async function GET(request: Request): Promise<Response> {
     // ping against it, so a reconnect to a different account cannot replace
     // the id and then record `ok`.
     const stored = await channelYoutubeConnection(db, channel.id)
+    if (
+      ping.ok &&
+      stored?.youtubeChannelId &&
+      ping.channelId &&
+      stored.youtubeChannelId !== ping.channelId
+    ) {
+      // A different YouTube account answered. Nothing from this grant is
+      // stored: the previous token, id and title stay, so no upload can reach
+      // the wrong account, and the connection is marked invalid.
+      await recordChannelYoutubeVerify(db, channel.id, 'invalid', ping.channelId)
+      return back(origin, 'channel-changed', slug)
+    }
     await saveChannelYoutubeConnection(db, channel.id, {
       refreshToken: grant.refreshToken,
       encryptionKey: env.SECRETS_ENCRYPTION_KEY,
@@ -104,9 +116,6 @@ export async function GET(request: Request): Promise<Response> {
     if (!ping.ok) {
       console.error('[youtube] connected but the channel ping failed:', ping.error)
       return back(origin, 'no-channel', slug)
-    }
-    if (stored?.youtubeChannelId && ping.channelId && stored.youtubeChannelId !== ping.channelId) {
-      return back(origin, 'channel-changed', slug)
     }
   } catch (error) {
     console.error(

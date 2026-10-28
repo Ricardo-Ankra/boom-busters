@@ -293,6 +293,64 @@ describeDb('publish-runner', () => {
     )
 
     it(
+      'refuses with the reconnect message, and calls nothing, when the connection is invalid',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+        // A token is still stored (it may belong to the wrong YouTube account).
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+
+        const { result } = await engine.execute({
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+        })
+
+        expect(result).toMatchObject({ outcome: 'refused' })
+        expect((result as { reason: string }).reason).toContain('needs reconnecting')
+        expect(google.refreshAccessToken).not.toHaveBeenCalled()
+        expect(broker.submitMediaJob).not.toHaveBeenCalled()
+        const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+        expect(stored?.status).toBe('draft')
+      },
+    )
+
+    it(
+      'fails the claimed record instead of uploading when the connection went invalid after the preflight',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+
+        // Pre-flight ran against an ok connection; it then went invalid.
+        const { result } = await engine.execute({
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+          steps: [
+            {
+              id: 'claim',
+              handler: async () => {
+                await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'invalid')
+                return true
+              },
+            },
+          ],
+        })
+
+        expect(result).toMatchObject({ outcome: 'reconnect' })
+        expect(google.refreshAccessToken).not.toHaveBeenCalled()
+        expect(broker.submitMediaJob).not.toHaveBeenCalled()
+        const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+        expect(stored?.status).toBe('failed')
+        expect(stored?.error).toMatchObject({
+          message: expect.stringContaining('needs reconnecting'),
+        })
+      },
+    )
+
+    it(
       'a publish-now record uploads public, with no publishAt at all (decision 226)',
       { timeout: 120_000 },
       async () => {

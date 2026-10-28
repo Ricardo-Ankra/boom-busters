@@ -413,5 +413,53 @@ describeDb('analytics-runner (mock mode)', () => {
         expect(reconnect[0]!.href).toBe('/c/boom-busters/settings?tab=connections')
       },
     )
+
+    it(
+      'a ping naming another YouTube channel marks it invalid, says so once, and does no work for it',
+      { timeout: 60_000 },
+      async () => {
+        const second = await secondChannel()
+        await connect(second, 'UC-second')
+        liveMode()
+        google.refreshAccessToken.mockImplementation((token: string) =>
+          Promise.resolve({
+            accessToken: token === '1//refresh-UC-first' ? 'ya29.first' : 'ya29.second',
+          }),
+        )
+        // The first channel's grant now answers for a different YouTube channel.
+        google.pingChannel.mockImplementation((accessToken: string) =>
+          Promise.resolve({
+            ok: true,
+            channelId: accessToken === 'ya29.first' ? 'UC-someone-else' : 'UC-second',
+          }),
+        )
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect((result as { channels: { channelId: string; outcome: string }[] }).channels).toEqual(
+          [
+            { channelId: FIRST_CHANNEL_ID, outcome: 'needs-reconnect' },
+            expect.objectContaining({ channelId: second, outcome: 'ran' }),
+          ],
+        )
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('invalid')
+        expect((await channelYoutubeConnection(db, second))?.verifyStatus).toBe('ok')
+
+        const reconnect = notify.mock.calls
+          .map(([notification]) => notification as { kind: string; href: string })
+          .filter((notification) => notification.kind === 'reconnect-youtube')
+        expect(reconnect).toHaveLength(1)
+        expect(reconnect[0]!.href).toBe('/c/boom-busters/settings?tab=connections')
+
+        // No reconcile or snapshot work was done with the wrong account's token.
+        for (const call of [
+          ...analytics.fetchPrivacyStatuses.mock.calls,
+          ...analytics.fetchVideoAnalytics.mock.calls,
+        ]) {
+          expect(call[0]).not.toBe('ya29.first')
+        }
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeUndefined()
+      },
+    )
   })
 })

@@ -13,6 +13,7 @@ import {
   latestRender,
   latestScriptParagraphSources,
   channelForProject,
+  channelYoutubeConnected,
   channelYoutubeToken,
   recordChannelYoutubeVerify,
   scriptableClaims,
@@ -728,6 +729,15 @@ export async function reschedulePublish(
     const refreshToken = await channelYoutubeToken(db, record.channelId, env.SECRETS_ENCRYPTION_KEY)
     if (!refreshToken) {
       return { ok: false, error: 'YouTube is not connected — Settings → Connections.' }
+    }
+    // A token on an unverified or invalid connection may belong to another
+    // YouTube account: never move a slot with it.
+    if (!(await channelYoutubeConnected(db, record.channelId))) {
+      return {
+        ok: false,
+        error:
+          'The YouTube connection for this channel needs reconnecting. Open Settings, Connections.',
+      }
     }
 
     let accessToken: string

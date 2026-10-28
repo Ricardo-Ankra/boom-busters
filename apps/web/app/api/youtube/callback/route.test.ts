@@ -186,7 +186,7 @@ describe('GET /api/youtube/callback', () => {
     )
   })
 
-  it('a ping that returns a different YouTube channel keeps the stored id and records invalid', async () => {
+  it('a ping that returns a different YouTube channel saves nothing and records invalid', async () => {
     store.channelYoutubeConnection.mockResolvedValue({
       youtubeChannelId: 'UC-original',
       youtubeChannelTitle: 'Original',
@@ -194,14 +194,16 @@ describe('GET /api/youtube/callback', () => {
     const response = await GET(request({ code: '4/x', state: goodState() }))
 
     expect(redirectedTo(response)).toContain('youtube=channel-changed')
-    // The stored id is not replaced by the new account's id...
-    expect(store.saveChannelYoutubeConnection).toHaveBeenCalledWith(
+    // Nothing from the new grant is stored: the previous encrypted token, id
+    // and title stay exactly as they were.
+    expect(store.saveChannelYoutubeConnection).not.toHaveBeenCalled()
+    expect(store.recordChannelYoutubeVerify).toHaveBeenCalledTimes(1)
+    expect(store.recordChannelYoutubeVerify).toHaveBeenCalledWith(
       {},
       CHANNEL_ID,
-      expect.objectContaining({ youtubeChannelId: 'UC-original' }),
+      'invalid',
+      'UC-second',
     )
-    // ...and the verify sees the mismatch, which the store writes as invalid.
-    expect(store.recordChannelYoutubeVerify).toHaveBeenCalledWith({}, CHANNEL_ID, 'ok', 'UC-second')
   })
 
   it('a grant with no refresh token stores nothing and says so', async () => {

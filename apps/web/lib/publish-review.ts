@@ -5,7 +5,6 @@ import {
   getDossier,
   getProject,
   getRendersByIds,
-  getSettings,
   latestRender,
   latestScriptParagraphSources,
   latestSnapshotForVideo,
@@ -361,23 +360,22 @@ export async function publishModel(
   const project = await getProject(db, projectId)
   if (!project) return emptyPublishModel()
 
-  const [shorts, masterRender, timelineRow, scriptSources, dossier, settings, slotRows, cast] =
+  const channel = await channelForProject(db, projectId)
+  const settings = channel.settings
+  const [shorts, masterRender, timelineRow, scriptSources, dossier, slotRows, cast] =
     await Promise.all([
       listShorts(db, projectId),
       latestRender(db, projectId, 'master'),
       latestTimeline(db, projectId),
       latestScriptParagraphSources(db, projectId),
       getDossier(db, projectId),
-      getSettings(db),
       listShotSlots(db, projectId),
       listCastMembers(db, projectId),
     ])
 
   const [records, uploadsToday] = await Promise.all([
     listPublishRecords(db, { projectId, shortIds: shorts.map((short) => short.id) }),
-    channelForProject(db, projectId).then(({ channelId }) =>
-      countUploadsSince(db, channelId, quotaDayStartUtc(new Date())),
-    ),
+    countUploadsSince(db, channel.channelId, quotaDayStartUtc(new Date())),
   ])
   const recordFor = (targetType: 'master' | 'short', targetId: string) =>
     records.find((row) => row.targetType === targetType && row.targetId === targetId)

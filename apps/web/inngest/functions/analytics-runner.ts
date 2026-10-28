@@ -1,4 +1,5 @@
 import {
+  channelYoutubeConnected,
   channelYoutubeReconnectNeeded,
   channelYoutubeToken,
   connectedChannelIds,
@@ -188,7 +189,7 @@ export const analyticsRunner = inngest.createFunction(
       )
 
       if (token.mode === 'live') {
-        await step.run(`ping-channel-${channelId}`, async () => {
+        const pinged = await step.run(`ping-channel-${channelId}`, async () => {
           const ping = await pingChannel(token.accessToken)
           // Transition-only, as above: a ping that keeps failing is one
           // problem, not one email per day.
@@ -199,16 +200,26 @@ export const analyticsRunner = inngest.createFunction(
             ping.ok ? 'ok' : 'invalid',
             ping.ok ? ping.channelId : undefined,
           )
-          if (!ping.ok && !alreadyDead) {
+          // The store writes `invalid` for an `ok` that names another YouTube
+          // channel than the stored one, so read the verdict back: a swapped
+          // account is as dead as a revoked token.
+          const verified = ping.ok && (await channelYoutubeConnected(db, channelId))
+          if (!verified && !alreadyDead) {
             await notify({
               kind: 'reconnect-youtube',
               title: 'YouTube needs reconnecting',
-              body: `The daily channel ping failed: ${ping.error ?? 'unknown error'}`,
+              body: ping.ok
+                ? 'The YouTube channel behind this connection changed. Reconnect the right account.'
+                : `The daily channel ping failed: ${ping.error ?? 'unknown error'}`,
               href: channelHref(await slugOf(channelId), '/settings', { tab: 'connections' }),
             })
           }
-          return ping
+          return { ...ping, verified }
         })
+        if (!pinged.ok || pinged.verified === false) {
+          channelResults.push({ channelId, outcome: 'needs-reconnect' })
+          continue
+        }
       }
 
       if (token.mode === 'absent' || token.mode === 'dead') {
