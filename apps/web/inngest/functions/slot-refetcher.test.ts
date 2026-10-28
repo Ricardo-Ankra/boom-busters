@@ -14,7 +14,7 @@ import {
   setSlotResolution,
   shotSlots,
   truncateRunMirror,
-  updateSettings,
+  updateWorkspace,
   updateSlotBrief,
   upsertAssetByHash,
 } from '@boom-busters/db'
@@ -237,7 +237,7 @@ describeDb('slot-refetcher on a still: Regenerate adds, an edit replaces (decisi
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(shotSlots)

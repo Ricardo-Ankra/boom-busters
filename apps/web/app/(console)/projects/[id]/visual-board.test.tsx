@@ -753,6 +753,7 @@ describe('VisualBoard', () => {
     render(
       <VisualBoard
         projectId={PROJECT}
+        channelId={CHANNEL}
         model={model([unpriced, stockSlot])}
         colors={COLORS}
         brand={BRAND}
