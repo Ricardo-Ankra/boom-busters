@@ -352,7 +352,7 @@ ${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
   reads "never in handcuffs" as a request for handcuffs. Put its concrete
   nouns in "negativePrompt" instead.
-  ${STILL_GENERATIONS} variants are generated per prompt.
+  ${STILL_GENERATIONS === 1 ? 'One image is' : `${STILL_GENERATIONS} variants are`} generated per prompt.
 - "headline" puts a REAL news headline on screen, in the house clipping
   format. Plan one where the narration leans on what a publication reported:
   "the Financial Times reported", "the paper found", "when the story broke".

@@ -45,7 +45,7 @@ test.describe('the shot plan checkpoint', () => {
     // button. The price is still exactly the still's alone: a graphic and a
     // stock both fetch for free.
     await expect(
-      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.14' }),
+      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.07' }),
     ).toBeVisible()
     await expect(page.getByText('planned').first()).toBeVisible()
     // The plan bar owns approval; the generic gate bar would speak an event
@@ -185,7 +185,7 @@ test.describe('sets (decision 264)', () => {
  * Placed ahead of "per-slot model routing" below on purpose: that test
  * permanently re-routes the still to the pricier Gemini 3 Pro Image and
  * never puts it back, so a graphic test placed after it would price the
- * board at whatever that test last left the still on, not the seeded $0.14.
+ * board at whatever that test last left the still on, not the seeded $0.07.
  */
 test.describe('a graphic slot (decision 268, Plan B)', () => {
   test('a graphic card previews from the shared layout, chips its claims, and asks for a missing mark', async ({
@@ -208,7 +208,7 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
       waiting.getByRole('button', { name: 'Add logo for Acme Capital (E2E)' }),
     ).toBeVisible()
     await expect(waiting.getByText('logo: Acme Capital (E2E) (upload)')).toBeVisible()
-    // The PRICE is unchanged at $0.14 (the still is the only paid slot):
+    // The PRICE is unchanged at $0.07 (the still is the only paid slot):
     // "a graphic costs nothing to fetch" is true of the money. It is not
     // true of the slot count: the resolved graphic never counts (nothing is
     // owed), but the placeholder one still reads as "not resolved" the same
@@ -216,7 +216,7 @@ test.describe('a graphic slot (decision 268, Plan B)', () => {
     // touch it, even though the only real fix is the upload button above.
     // See the plan-checkpoint test in this file for the same count.
     await expect(
-      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.14' }),
+      page.getByRole('button', { name: 'Fetch visuals · 3 slots · est. $0.07' }),
     ).toBeVisible()
     await expectHitTargets(page)
   })

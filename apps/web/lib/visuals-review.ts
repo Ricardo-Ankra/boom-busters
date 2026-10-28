@@ -83,7 +83,12 @@ import { stillCatalogue, stillModelOptions } from './model-catalogue'
 import type { StillModelOption } from './model-catalogue'
 import { presignGet, storageConfigured } from './storage'
 import { sceneOf } from './still-prompt'
-import { routeForBrief, stillPromptFor, stillsEstimateUsd } from './visual-assets'
+import {
+  routeForBrief,
+  stillBriefPriceUsd,
+  stillPromptFor,
+  stillsEstimateUsd,
+} from './visual-assets'
 import {
   reuseView,
   sharedShotWarnings,
@@ -194,6 +199,12 @@ export interface SlotView {
   scene: string | null
   /** The full prompt the still would be sent with now, for the card's disclosure. */
   promptSent: string | null
+  /**
+   * What one Regenerate of this still will spend, in USD: its own route, its
+   * own references, priced by the function the Fetch estimate uses (decision
+   * 324). Null on every slot that is not a still.
+   */
+  stillEstimateUsd: number | null
   /** Top candidates, scored order, chosen first among equals. */
   candidates: SlotCandidate[]
   /** How many more were fetched than the strip shows. */
@@ -1040,6 +1051,17 @@ export async function visualsReviewModel(
       promptSent:
         parsed.success && parsed.data.type === 'still'
           ? stillPromptFor(parsed.data, cast, sets, settings.modelRouting, storedRoute, catalogue)
+          : null,
+      stillEstimateUsd:
+        parsed.success && parsed.data.type === 'still'
+          ? stillBriefPriceUsd(
+              parsed.data,
+              cast,
+              sets,
+              settings.modelRouting,
+              storedRoute,
+              catalogue,
+            )
           : null,
       candidates: ordered.slice(0, CANDIDATES_SHOWN),
       extraCandidates: Math.max(0, ordered.length - CANDIDATES_SHOWN),

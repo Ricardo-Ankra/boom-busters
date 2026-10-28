@@ -13,6 +13,7 @@ import {
   updateShort,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
+import { STILL_GENERATIONS } from '@boom-busters/schemas'
 import type { SlotCandidate, TeaserFetchesRecord } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
@@ -160,11 +161,12 @@ describeDb('teaser-shot-fetcher', () => {
       }),
     })
 
-    expect(result).toMatchObject({ outcome: 'generated', made: 2 })
+    // One image a press (decision 324); presses accumulate on the beat.
+    expect(result).toMatchObject({ outcome: 'generated', made: STILL_GENERATIONS })
     const stored = (await getShort(db, teaser.id))?.teaserFetches as TeaserFetchesRecord
     const beat = stored.beats[1]!
     expect(beat.state).toBeNull()
-    expect(beat.candidates).toHaveLength(2)
+    expect(beat.candidates).toHaveLength(STILL_GENERATIONS)
     // The candidate summary is only a 120-char slice of the prompt, so the
     // full prompt is asserted on the request the mock adapter actually
     // received. Decision 287: this route now goes through the assembler,
