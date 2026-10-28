@@ -17,6 +17,7 @@ import type { Database } from './client'
 import { channels, projects, workspace } from './schema'
 import type { ChannelRow } from './schema'
 import { mergeSettings, normaliseSettings } from './settings-merge'
+import { getWorkspace, updateWorkspace } from './workspace'
 
 /**
  * The channels the console produces for (multi-channel design, section 4).
@@ -181,6 +182,17 @@ export async function archiveChannel(db: Database, channelId: string): Promise<C
   return toChannel(row)
 }
 
+/** transitional, removed in Task 9 */
+async function withWorkspaceOverlay(db: Database, settings: Settings): Promise<Settings> {
+  const { settings: workspaceSettings } = await getWorkspace(db)
+  return {
+    ...settings,
+    modelPrices: workspaceSettings.modelPrices,
+    budgets: workspaceSettings.budgets,
+  }
+}
+
+/** The channel's settings, with the workspace's prices and budget laid over them (transitional, removed in Task 9). */
 export async function getChannelSettings(db: Database, channelId: string): Promise<Settings> {
   const [row] = await db
     .select({ settings: channels.settings })
@@ -188,7 +200,7 @@ export async function getChannelSettings(db: Database, channelId: string): Promi
     .where(eq(channels.id, channelId))
     .limit(1)
   if (!row) throw new ChannelNotFoundError(channelId)
-  return normaliseSettings(row.settings)
+  return withWorkspaceOverlay(db, normaliseSettings(row.settings))
 }
 
 /**
@@ -201,12 +213,29 @@ export async function updateChannelSettings(
   channelId: string,
   patch: SettingsPatch,
 ): Promise<Settings> {
-  const next = mergeSettings(await getChannelSettings(db, channelId), patch)
+  // Prices and budgets live in the workspace row (transitional routing,
+  // removed in Task 9); the channel row takes the rest.
+  const { modelPrices, budgets, ...channelPatch } = patch
+  const [row] = await db
+    .select({ settings: channels.settings })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .limit(1)
+  if (!row) throw new ChannelNotFoundError(channelId)
+  // The channel's merge is the one that can refuse a patch, and a refused
+  // patch must leave the workspace untouched too.
+  const next = mergeSettings(normaliseSettings(row.settings), channelPatch)
   await db
     .update(channels)
     .set({ settings: next, updatedAt: new Date() })
     .where(eq(channels.id, channelId))
-  return next
+  if (modelPrices !== undefined || budgets !== undefined) {
+    await updateWorkspace(db, {
+      ...(modelPrices === undefined ? {} : { modelPrices }),
+      ...(budgets === undefined ? {} : { budgets }),
+    })
+  }
+  return withWorkspaceOverlay(db, next)
 }
 
 /** The channel a project belongs to, with what a pipeline step reads from it. */
@@ -226,7 +255,7 @@ export async function channelForProject(
   return {
     channelId: channel.id,
     slug: channel.slug,
-    settings: channel.settings,
+    settings: await withWorkspaceOverlay(db, channel.settings),
     bible: channel.bible,
   }
 }

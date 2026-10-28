@@ -24,10 +24,9 @@ import {
 } from './channels'
 import { createDb } from './client'
 import { createProjectFromCase } from './projects'
-import { getSettings, updateSettings } from './queries'
 import { assets, cases, channels, projects, workspace, youtubeConnections } from './schema'
 import { requireTestDatabase } from './test-database'
-import { getWorkspace } from './workspace'
+import { getWorkspace, updateWorkspace } from './workspace'
 import {
   channelYoutubeConnection,
   channelYoutubeConnected,
@@ -157,20 +156,34 @@ suite('channels', () => {
     )
   })
 
-  it('getSettings wrapper merges workspace prices and budgets', async () => {
-    await ensureFirstChannel(db)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 7 }, tts: { voiceId: 'voice-1' } })
+  it('the workspace ceiling is what every channel reads, and a budget patch lands in the workspace', async () => {
+    const a = await createChannel(db, channelInput('alpha'))
+    const b = await createChannel(db, channelInput('beta'))
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 7 } })
 
-    expect((await getWorkspace(db)).settings.budgets.monthlyCeilingUsd).toBe(7)
-    expect((await getChannelSettings(db, FIRST_CHANNEL_ID)).tts.voiceId).toBe('voice-1')
-    const settings = await getSettings(db)
-    expect(settings.budgets.monthlyCeilingUsd).toBe(7)
-    expect(settings.tts.voiceId).toBe('voice-1')
+    expect((await getChannelSettings(db, a.id)).budgets.monthlyCeilingUsd).toBe(7)
+    expect((await getChannelSettings(db, b.id)).budgets.monthlyCeilingUsd).toBe(7)
+
+    const next = await updateChannelSettings(db, b.id, {
+      budgets: { monthlyCeilingUsd: 9 },
+      tts: { voiceId: 'voice-b' },
+    })
+    expect(next.budgets.monthlyCeilingUsd).toBe(9)
+    expect((await getWorkspace(db)).settings.budgets.monthlyCeilingUsd).toBe(9)
+    expect((await getChannelSettings(db, a.id)).budgets.monthlyCeilingUsd).toBe(9)
+    expect((await getChannelSettings(db, b.id)).tts.voiceId).toBe('voice-b')
+    expect((await getChannelSettings(db, a.id)).tts.voiceId).not.toBe('voice-b')
+
+    const [row] = await db.select().from(channels).where(eq(channels.id, b.id))
+    expect(row?.settings.budgets.monthlyCeilingUsd).toBe(DEFAULT_SETTINGS.budgets.monthlyCeilingUsd)
   })
 
-  it('getSettings wrapper creates the first channel on an empty database', async () => {
-    expect(await getSettings(db)).toEqual(DEFAULT_SETTINGS)
-    expect((await listChannels(db)).map((c) => c.id)).toEqual([FIRST_CHANNEL_ID])
+  it('channelForProject carries the workspace ceiling too', async () => {
+    const b = await createChannel(db, channelInput('beta'))
+    await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 7 } })
+    const kase = await createCase(db, { title: 'Enron', category: 'collapse', channelId: b.id })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'Enron' })
+    expect((await channelForProject(db, project.id)).settings.budgets.monthlyCeilingUsd).toBe(7)
   })
 
   it('the same logo hash on two channels is two rows; the same music hash twice is one', async () => {
