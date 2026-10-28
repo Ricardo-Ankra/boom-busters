@@ -1,9 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { AppRail } from './app-rail'
+import { AppRail, navFor } from './app-rail'
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/c/psychology/settings' }))
+
+describe('navFor', () => {
+  it('marks Projects current on a project page, which lives outside /c/<slug>', () => {
+    const items = navFor('psychology', '/projects/01HQ0000000000000000000PR1')
+    expect(items.filter((item) => item.active).map((item) => item.label)).toEqual(['Projects'])
+    expect(items.find((item) => item.label === 'Projects')?.href).toBe('/c/psychology/projects')
+  })
+})
 
 describe('AppRail', () => {
   it('links to every screen in the information architecture', () => {

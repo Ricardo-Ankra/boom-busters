@@ -59,7 +59,13 @@ const NAV_ITEMS: readonly { section: ChannelSection; label: string; icon: Lucide
 export function navFor(slug: string, pathname: string) {
   return NAV_ITEMS.map(({ section, label, icon }) => {
     const href = channelHref(slug, section)
-    const active = section === '' ? pathname === href : pathname.startsWith(href)
+    // A project page lives at /projects/<id>, outside the channel path; it
+    // belongs to the Projects section.
+    const active =
+      section === ''
+        ? pathname === href
+        : pathname.startsWith(href) ||
+          (section === '/projects' && pathname.startsWith('/projects/'))
     return { href, label, icon, active }
   })
 }

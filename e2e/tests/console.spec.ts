@@ -37,6 +37,15 @@ test.describe('dashboard', () => {
       'active',
     )
   })
+
+  test('an old bookmark forwards to the channel and keeps its query', async ({ page }) => {
+    await page.goto('/settings?tab=connections')
+    await expect(page).toHaveURL(/\/c\/boom-busters\/settings\?tab=connections$/)
+    await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+  })
 })
 
 test.describe('app shell', () => {
