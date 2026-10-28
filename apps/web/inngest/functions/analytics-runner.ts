@@ -137,7 +137,7 @@ export const analyticsRunner = inngest.createFunction(
       requestedChannel === undefined ? listed : listed.filter((id) => id === requestedChannel)
 
     type ChannelOutcome =
-      | { channelId: string; outcome: 'needs-reconnect' | 'not-connected' }
+      | { channelId: string; outcome: 'needs-reconnect' | 'not-connected' | 'ping-unavailable' }
       | {
           channelId: string
           outcome: 'ran'
@@ -191,6 +191,9 @@ export const analyticsRunner = inngest.createFunction(
       if (token.mode === 'live') {
         const pinged = await step.run(`ping-channel-${channelId}`, async () => {
           const ping = await pingChannel(token.accessToken)
+          // Google's side and passing (5xx, quota): the standing is unknown,
+          // not bad. Record nothing and send no notice; tomorrow's ping retries.
+          if (ping.retriable) return { ...ping, verified: false, unavailable: true }
           // Transition-only, as above: a ping that keeps failing is one
           // problem, not one email per day.
           const alreadyDead = (await channelYoutubeReconnectNeeded(db, channelId)).needed
@@ -216,6 +219,10 @@ export const analyticsRunner = inngest.createFunction(
           }
           return { ...ping, verified }
         })
+        if ('unavailable' in pinged && pinged.unavailable) {
+          channelResults.push({ channelId, outcome: 'ping-unavailable' })
+          continue
+        }
         if (!pinged.ok || pinged.verified === false) {
           channelResults.push({ channelId, outcome: 'needs-reconnect' })
           continue

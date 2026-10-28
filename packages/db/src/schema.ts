@@ -262,20 +262,30 @@ export const workspace = pgTable('workspace', {
  * what `channels.list mine=true` answered at connect time; a later verify
  * that answers a different id marks the connection invalid.
  */
-export const youtubeConnections = pgTable('youtube_connections', {
-  channelId: text('channel_id')
-    .primaryKey()
-    .references(() => channels.id, { onDelete: 'restrict' }),
-  /** AES-256-GCM, keyed by SECRETS_ENCRYPTION_KEY. Never leaves the server. */
-  encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
-  keyHint: text('key_hint').notNull(),
-  youtubeChannelId: text('youtube_channel_id'),
-  youtubeChannelTitle: text('youtube_channel_title'),
-  verifyStatus: verifyStatusEnum('verify_status').notNull().default('unchecked'),
-  lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-})
+export const youtubeConnections = pgTable(
+  'youtube_connections',
+  {
+    channelId: text('channel_id')
+      .primaryKey()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    /** AES-256-GCM, keyed by SECRETS_ENCRYPTION_KEY. Never leaves the server. */
+    encryptedRefreshToken: text('encrypted_refresh_token').notNull(),
+    keyHint: text('key_hint').notNull(),
+    youtubeChannelId: text('youtube_channel_id'),
+    youtubeChannelTitle: text('youtube_channel_title'),
+    verifyStatus: verifyStatusEnum('verify_status').notNull().default('unchecked'),
+    lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  // One YouTube account can back only one console channel, or an upload could
+  // land on the wrong account without anyone noticing.
+  (t) => [
+    uniqueIndex('youtube_connections_youtube_channel_id_key')
+      .on(t.youtubeChannelId)
+      .where(sql`${t.youtubeChannelId} is not null`),
+  ],
+)
 
 /** The owning channel, for the tables that belong to one. */
 const channelId = () => text('channel_id').references(() => channels.id, { onDelete: 'restrict' })

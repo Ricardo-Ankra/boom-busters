@@ -143,6 +143,20 @@ describe('pingChannel', () => {
     const ping = await pingChannel('ya29.access')
     expect(ping).toEqual({ ok: false, error: 'Access Not Configured.' })
   })
+
+  it.each([500, 503, 429])('a %i is a retriable failure', async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: 'try later' } }))
+    expect(await pingChannel('ya29.access')).toEqual({
+      ok: false,
+      error: 'try later',
+      retriable: true,
+    })
+  })
+
+  it.each([401, 403])('a %i is not retriable', async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse(status, { error: { message: 'no' } }))
+    expect((await pingChannel('ya29.access')).retriable).toBeUndefined()
+  })
 })
 
 describe('movePublishAt', () => {

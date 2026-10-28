@@ -1,8 +1,10 @@
 import {
   channelYoutubeConnection,
   getChannel,
+  isYoutubeChannelTakenError,
   recordChannelYoutubeVerify,
   saveChannelYoutubeConnection,
+  youtubeChannelHeldByOther,
 } from '@boom-busters/db'
 import { cookies } from 'next/headers'
 import { auth } from '@/auth'
@@ -102,6 +104,15 @@ export async function GET(request: Request): Promise<Response> {
       await recordChannelYoutubeVerify(db, channel.id, 'invalid', ping.channelId)
       return await back(origin, 'channel-changed', slug)
     }
+    // One YouTube account backs one console channel only. Another channel
+    // already holds this one: store nothing from the grant.
+    if (
+      ping.ok &&
+      ping.channelId &&
+      (await youtubeChannelHeldByOther(db, channel.id, ping.channelId))
+    ) {
+      return await back(origin, 'channel-taken', slug)
+    }
     await saveChannelYoutubeConnection(db, channel.id, {
       refreshToken: grant.refreshToken,
       encryptionKey: env.SECRETS_ENCRYPTION_KEY,
@@ -121,6 +132,8 @@ export async function GET(request: Request): Promise<Response> {
       return await back(origin, 'no-channel', slug)
     }
   } catch (error) {
+    // The unique index is the backstop for two connects racing past the check.
+    if (isYoutubeChannelTakenError(error)) return await back(origin, 'channel-taken', slug)
     console.error(
       '[youtube] storing the connection failed:',
       error instanceof Error ? error.message : 'unknown error',

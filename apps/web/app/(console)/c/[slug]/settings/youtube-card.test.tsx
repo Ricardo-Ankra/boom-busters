@@ -10,7 +10,9 @@ import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
  */
 
 const verifyYoutubeConnection = vi.fn()
+const disconnectYoutubeAction = vi.fn()
 vi.mock('./actions', () => ({
+  disconnectYoutubeAction: (...args: unknown[]) => disconnectYoutubeAction(...args),
   verifyYoutubeConnection: (...args: unknown[]) => verifyYoutubeConnection(...args),
 }))
 
@@ -20,6 +22,7 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 beforeEach(() => {
   vi.clearAllMocks()
   verifyYoutubeConnection.mockResolvedValue({ ok: true, channelTitle: 'Boom & Busters' })
+  disconnectYoutubeAction.mockResolvedValue({ ok: true })
 })
 
 function credential(status: YoutubeConnectionView['verifyStatus']): YoutubeConnectionView {
@@ -114,5 +117,54 @@ describe('YoutubeCard', () => {
     expect(screen.getByText('needs attention')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Verify' }))
     expect(screen.getByText(/reconnect to grant it again/i)).toBeInTheDocument()
+  })
+
+  it('Disconnect asks for a labelled confirm, then deletes the connection', async () => {
+    const user = userEvent.setup()
+    render(
+      <YoutubeCard
+        channelId="01J00000000000000000000002"
+        slug="second"
+        connection={credential('ok')}
+        envReady={true}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Yes, disconnect' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect' }))
+    expect(disconnectYoutubeAction).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Keep connected' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Yes, disconnect' }))
+    expect(disconnectYoutubeAction).toHaveBeenCalledWith('01J00000000000000000000002')
+    expect(toast).toHaveBeenCalledWith({ title: 'YouTube disconnected' })
+  })
+
+  it('Keep connected backs out without calling the action', async () => {
+    const user = userEvent.setup()
+    render(
+      <YoutubeCard
+        channelId="01J00000000000000000000002"
+        slug="second"
+        connection={credential('ok')}
+        envReady={true}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Disconnect' }))
+    await user.click(screen.getByRole('button', { name: 'Keep connected' }))
+    expect(disconnectYoutubeAction).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument()
+  })
+
+  it('an unconnected channel has no Disconnect', () => {
+    render(
+      <YoutubeCard
+        channelId="01J00000000000000000000002"
+        slug="second"
+        connection={undefined}
+        envReady={true}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).not.toBeInTheDocument()
   })
 })

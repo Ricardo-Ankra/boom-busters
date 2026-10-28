@@ -34,8 +34,11 @@ import {
   channelYoutubeReconnectNeeded,
   channelYoutubeToken,
   connectedChannelIds,
+  deleteChannelYoutubeConnection,
+  isYoutubeChannelTakenError,
   recordChannelYoutubeVerify,
   saveChannelYoutubeConnection,
+  youtubeChannelHeldByOther,
 } from './youtube-connections'
 
 /**
@@ -259,6 +262,50 @@ suite('channels', () => {
       expect(reconnect.needed).toBe(true)
       expect(reconnect.since).toBeInstanceOf(Date)
       expect((await channelYoutubeConnection(db, a.id))?.youtubeChannelId).toBe('UC-a')
+    })
+
+    it('the unique index refuses a second channel holding the same YouTube channel', async () => {
+      const a = await createChannel(db, channelInput('alpha'))
+      const b = await createChannel(db, channelInput('beta'))
+      const grant = (youtubeChannelId: string | null) => ({
+        refreshToken: 'refresh-x',
+        encryptionKey: KEY,
+        youtubeChannelId,
+        youtubeChannelTitle: null,
+      })
+      await saveChannelYoutubeConnection(db, a.id, grant('UC-same'))
+      expect(await youtubeChannelHeldByOther(db, b.id, 'UC-same')).toBe(true)
+      expect(await youtubeChannelHeldByOther(db, a.id, 'UC-same')).toBe(false)
+
+      const refused = await saveChannelYoutubeConnection(db, b.id, grant('UC-same')).catch(
+        (error: unknown) => error,
+      )
+      expect(isYoutubeChannelTakenError(refused)).toBe(true)
+      expect(await channelYoutubeConnection(db, b.id)).toBeUndefined()
+
+      // Unpinned connections do not collide with each other.
+      await saveChannelYoutubeConnection(db, b.id, grant(null))
+      const c = await createChannel(db, channelInput('gamma'))
+      await saveChannelYoutubeConnection(db, c.id, grant(null))
+    })
+
+    it('deleteChannelYoutubeConnection removes only that channel row', async () => {
+      const a = await createChannel(db, channelInput('alpha'))
+      const b = await createChannel(db, channelInput('beta'))
+      for (const [channel, id] of [
+        [a, 'UC-a'],
+        [b, 'UC-b'],
+      ] as const) {
+        await saveChannelYoutubeConnection(db, channel.id, {
+          refreshToken: 'refresh-x',
+          encryptionKey: KEY,
+          youtubeChannelId: id,
+          youtubeChannelTitle: null,
+        })
+      }
+      await deleteChannelYoutubeConnection(db, a.id)
+      expect(await channelYoutubeConnection(db, a.id)).toBeUndefined()
+      expect((await channelYoutubeConnection(db, b.id))?.youtubeChannelId).toBe('UC-b')
     })
 
     it('a verify fills a connection that has no YouTube channel id yet', async () => {

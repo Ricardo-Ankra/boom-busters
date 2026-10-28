@@ -25,6 +25,8 @@ const store = vi.hoisted(() => ({
   channelYoutubeConnection: vi.fn(),
   saveChannelYoutubeConnection: vi.fn(),
   recordChannelYoutubeVerify: vi.fn(),
+  youtubeChannelHeldByOther: vi.fn(),
+  isYoutubeChannelTakenError: vi.fn(),
 }))
 vi.mock('@boom-busters/db', () => store)
 
@@ -77,6 +79,8 @@ beforeEach(() => {
   jar.values.set('bb-youtube-oauth-state', NONCE)
   store.getChannel.mockResolvedValue({ id: CHANNEL_ID, slug: 'second', archivedAt: null })
   store.channelYoutubeConnection.mockResolvedValue(undefined)
+  store.youtubeChannelHeldByOther.mockResolvedValue(false)
+  store.isYoutubeChannelTakenError.mockReturnValue(false)
   google.exchangeCode.mockResolvedValue({
     accessToken: 'ya29.access',
     refreshToken: '1//refresh',
@@ -96,6 +100,24 @@ function expectNothingWritten(): void {
 }
 
 describe('GET /api/youtube/callback', () => {
+  it('refuses a YouTube channel another console channel already holds and stores nothing', async () => {
+    store.youtubeChannelHeldByOther.mockResolvedValue(true)
+    const response = await GET(request({ code: 'good', state: goodState() }))
+    expect(redirectedTo(response)).toContain(
+      '/c/second/settings?tab=connections&youtube=channel-taken',
+    )
+    expect(store.youtubeChannelHeldByOther).toHaveBeenCalledWith({}, CHANNEL_ID, 'UC-second')
+    expect(store.saveChannelYoutubeConnection).not.toHaveBeenCalled()
+    expect(store.recordChannelYoutubeVerify).not.toHaveBeenCalled()
+  })
+
+  it('maps a unique violation on save to channel-taken', async () => {
+    store.saveChannelYoutubeConnection.mockRejectedValueOnce(new Error('duplicate'))
+    store.isYoutubeChannelTakenError.mockReturnValue(true)
+    const response = await GET(request({ code: 'good', state: goodState() }))
+    expect(redirectedTo(response)).toContain('youtube=channel-taken')
+  })
+
   it('requires a session', async () => {
     session.value = null
     const response = await GET(request({ code: 'x', state: goodState() }))

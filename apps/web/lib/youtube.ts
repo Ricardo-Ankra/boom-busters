@@ -127,6 +127,11 @@ export interface ChannelPing {
   channelId?: string
   channelTitle?: string
   error?: string
+  /**
+   * The failure is Google's side and passing (5xx, 429): the connection's
+   * standing is unknown, not bad, so callers record nothing.
+   */
+  retriable?: boolean
 }
 
 /**
@@ -260,6 +265,7 @@ export async function pingChannel(accessToken: string): Promise<ChannelPing> {
     return {
       ok: false,
       error: payload.error?.message ?? `channels.list answered ${response.status}`,
+      ...(response.status >= 500 || response.status === 429 ? { retriable: true } : {}),
     }
   }
   const title = payload.items?.[0]?.snippet?.title

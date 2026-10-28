@@ -1,6 +1,6 @@
 'use server'
 
-import { updateChannelSettings } from '@boom-busters/db'
+import { deleteChannelYoutubeConnection, updateChannelSettings } from '@boom-busters/db'
 import { SettingsPatchSchema, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -84,6 +84,10 @@ export async function verifyYoutubeConnection(
   try {
     const grant = await refreshAccessToken(refreshToken)
     const ping = await pingChannel(grant.accessToken)
+    if (ping.retriable) {
+      // Google's side and passing: leave the standing as it was.
+      return { ok: false, error: 'Google had a temporary problem. Try Verify again shortly.' }
+    }
     await recordChannelYoutubeVerify(db, channelId, ping.ok ? 'ok' : 'invalid', ping.channelId)
     revalidatePath('/c/[slug]', 'layout')
     if (!ping.ok) return { ok: false, error: ping.error ?? 'The channel ping failed.' }
@@ -108,4 +112,28 @@ export async function verifyYoutubeConnection(
     }
     return { ok: false, error: 'Could not reach Google to verify the connection.' }
   }
+}
+
+/**
+ * Disconnect: delete this channel's YouTube connection, so a wrongly pinned
+ * account can be replaced. The next Connect pins whatever account is chosen.
+ * The refresh token is only forgotten here; revoking the app's access is done
+ * in the Google account's security settings.
+ */
+export async function disconnectYoutubeAction(channelId: string): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+
+  try {
+    await deleteChannelYoutubeConnection(db, channelId)
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Could not disconnect YouTube',
+    }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
 }

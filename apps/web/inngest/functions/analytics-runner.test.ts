@@ -438,6 +438,43 @@ describeDb('analytics-runner (mock mode)', () => {
     )
 
     it(
+      'a retriable ping failure leaves an ok connection ok, sends no notice and skips the channel',
+      { timeout: 60_000 },
+      async () => {
+        liveMode()
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
+        google.pingChannel.mockResolvedValue({ ok: false, error: 'Backend Error', retriable: true })
+
+        const { result } = await engine.execute({ events: refreshEvent() })
+
+        expect(result).toMatchObject({
+          channels: [{ channelId: FIRST_CHANNEL_ID, outcome: 'ping-unavailable' }],
+        })
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('ok')
+        expect(
+          notify.mock.calls.some(
+            ([notification]) => (notification as { kind: string }).kind === 'reconnect-youtube',
+          ),
+        ).toBe(false)
+        expect(await latestSnapshotForVideo(db, LIVE_VIDEO)).toBeUndefined()
+      },
+    )
+
+    it(
+      'an auth failure on the ping (401) still marks the connection invalid',
+      { timeout: 60_000 },
+      async () => {
+        liveMode()
+        await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
+        google.pingChannel.mockResolvedValue({ ok: false, error: 'Invalid Credentials' })
+
+        await engine.execute({ events: refreshEvent() })
+
+        expect((await channelYoutubeConnection(db, FIRST_CHANNEL_ID))?.verifyStatus).toBe('invalid')
+      },
+    )
+
+    it(
       'a ping naming another YouTube channel marks it invalid, says so once, and does no work for it',
       { timeout: 60_000 },
       async () => {

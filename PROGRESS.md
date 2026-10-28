@@ -8425,7 +8425,13 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      and the connection heals the next morning; a dead token stays
      "needs reconnect" and notifications fire only on a change of status,
      so there is no daily nag. With no slug in the callback's state the
-     redirect goes to the landing channel's Connections tab.
+     redirect goes to the landing channel's Connections tab. A YouTube
+     channel can be connected to only one console channel (the callback
+     refuses with `channel-taken`, backed by a partial unique index on
+     `youtube_connections.youtube_channel_id`), and a connection can be
+     disconnected from the YouTube card behind a confirm step, so a wrongly
+     pinned account can be replaced. A transient ping failure (5xx or 429)
+     now records nothing and sends no notice.
 
 329. **The bible as structured fields, the gate, and archiving** (2026-10-28).
      Stage A stores each channel's bible but does not yet feed it to the

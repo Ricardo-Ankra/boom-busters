@@ -1,4 +1,4 @@
-import { asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, ne } from 'drizzle-orm'
 import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint } from './crypto'
 import { channels, youtubeConnections } from './schema'
@@ -27,6 +27,52 @@ export async function channelYoutubeConnection(
     .where(eq(youtubeConnections.channelId, channelId))
     .limit(1)
   return row
+}
+
+/** Another channel's connection that already holds this YouTube channel id. */
+export async function youtubeChannelHeldByOther(
+  db: Database,
+  channelId: string,
+  youtubeChannelId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ channelId: youtubeConnections.channelId })
+    .from(youtubeConnections)
+    .where(
+      and(
+        eq(youtubeConnections.youtubeChannelId, youtubeChannelId),
+        ne(youtubeConnections.channelId, channelId),
+      ),
+    )
+    .limit(1)
+  return row !== undefined
+}
+
+/** Whether an error is the unique index refusing a second holder of a YouTube channel. */
+export function isYoutubeChannelTakenError(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 4 && current; depth += 1) {
+    const {
+      code,
+      constraint_name: constraint,
+      cause,
+    } = current as {
+      code?: string
+      constraint_name?: string
+      cause?: unknown
+    }
+    if (code === '23505' && (constraint ?? '').includes('youtube_connections')) return true
+    current = cause
+  }
+  return false
+}
+
+/** Remove a channel's connection, so the next Connect pins whatever account is chosen. */
+export async function deleteChannelYoutubeConnection(
+  db: Database,
+  channelId: string,
+): Promise<void> {
+  await db.delete(youtubeConnections).where(eq(youtubeConnections.channelId, channelId))
 }
 
 /** Store a fresh grant. It starts `unchecked` until a verify stamps it. */

@@ -5,7 +5,7 @@ import { Youtube } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
-import { verifyYoutubeConnection } from './actions'
+import { disconnectYoutubeAction, verifyYoutubeConnection } from './actions'
 
 /** What the card shows of one channel's connection; never key material. */
 export interface YoutubeConnectionView {
@@ -38,6 +38,8 @@ export function YoutubeCard({
 }) {
   const [verifying, setVerifying] = React.useState(false)
   const [needsReconnect, setNeedsReconnect] = React.useState(false)
+  const [confirming, setConfirming] = React.useState(false)
+  const [disconnecting, setDisconnecting] = React.useState(false)
   const { toast } = useToast()
 
   const connected = connection !== undefined
@@ -56,6 +58,18 @@ export function YoutubeCard({
       })
     } else {
       toast({ title: 'YouTube verification failed', description: result.error, variant: 'error' })
+    }
+  }
+
+  const disconnect = async () => {
+    setDisconnecting(true)
+    const result = await disconnectYoutubeAction(channelId)
+    setDisconnecting(false)
+    setConfirming(false)
+    if (result.ok) {
+      toast({ title: 'YouTube disconnected' })
+    } else {
+      toast({ title: 'Could not disconnect YouTube', description: result.error, variant: 'error' })
     }
   }
 
@@ -119,7 +133,28 @@ export function YoutubeCard({
               Verify
             </Button>
           ) : null}
+          {connected && !confirming ? (
+            <Button variant="outline" onClick={() => setConfirming(true)}>
+              Disconnect
+            </Button>
+          ) : null}
         </div>
+        {connected && confirming ? (
+          <div className="flex flex-col gap-2" role="group" aria-label="Confirm disconnect">
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Disconnect YouTube from the <span className="font-mono">{slug}</span> channel? Uploads
+              and analytics stop until you connect an account again.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="danger" busy={disconnecting} onClick={() => void disconnect()}>
+                Yes, disconnect
+              </Button>
+              <Button variant="outline" onClick={() => setConfirming(false)}>
+                Keep connected
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   )

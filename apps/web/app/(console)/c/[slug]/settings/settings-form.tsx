@@ -18,6 +18,7 @@ import { ExemplarsTab } from './exemplars-tab'
 import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
+import { YOUTUBE_OUTCOMES } from './youtube-outcome'
 import { useToast } from '@/components/ui/toast'
 import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { saveSettings } from './actions'
@@ -48,6 +49,7 @@ export function SettingsForm({
   channels = [],
   showNewChannel = false,
   youtubeEnvReady = false,
+  youtubeOutcome,
   initialTab = 'models',
   logos = [],
   channelMarkKey = null,
@@ -68,6 +70,8 @@ export function SettingsForm({
   showNewChannel?: boolean
   /** Whether the YouTube OAuth client env vars exist — server-resolved too. */
   youtubeEnvReady?: boolean
+  /** The `?youtube=` outcome the connect flow came back with. */
+  youtubeOutcome?: string
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
   initialTab?: string
   logos?: LogoView[]
@@ -230,6 +234,7 @@ export function SettingsForm({
               channelId={channelId}
               channelSlug={channelSlug}
               youtubeEnvReady={youtubeEnvReady}
+              youtubeOutcome={youtubeOutcome}
             />
           </Lock>
         </TabsContent>
@@ -480,14 +485,27 @@ function ConnectionsTab({
   channelId,
   channelSlug,
   youtubeEnvReady,
+  youtubeOutcome,
 }: {
   youtubeConnection: YoutubeConnectionView | undefined
   channelId: string
   channelSlug: string
   youtubeEnvReady: boolean
+  youtubeOutcome: string | undefined
 }) {
+  const outcome = youtubeOutcome ? YOUTUBE_OUTCOMES[youtubeOutcome] : undefined
   return (
     <div className="flex flex-col gap-3">
+      {outcome ? (
+        <p
+          role="status"
+          className={`text-[13px] ${
+            outcome.good ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'
+          }`}
+        >
+          {outcome.text}
+        </p>
+      ) : null}
       {/* OAuth, not a key paste. Each channel connects its own account. */}
       <YoutubeCard
         connection={youtubeConnection}

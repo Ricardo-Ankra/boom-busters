@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "youtube_connections_youtube_channel_id_key" ON "youtube_connections" USING btree ("youtube_channel_id") WHERE "youtube_connections"."youtube_channel_id" is not null;

@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { addCase, startProjectFromCase, suggestCases } from '../cases/actions'
-import { saveSettings } from './actions'
+import { disconnectYoutubeAction, saveSettings } from './actions'
 import { updateChannelAction } from './channel-actions'
 import {
   addLogoFromUrlAction,
@@ -93,6 +93,7 @@ describeDb('an archived channel is read-only', () => {
     ['suggestCases', () => suggestCases(channelId, { count: 3 })],
     ['startProjectFromCase', () => startProjectFromCase(caseId)],
     ['updateChannelAction', () => updateChannelAction(channelId, { name: 'Renamed' })],
+    ['disconnectYoutubeAction', () => disconnectYoutubeAction(channelId)],
     ['saveSettings', () => saveSettings(channelId, { tts: { voiceId: 'v' } })],
     [
       'createLogoUploadAction',

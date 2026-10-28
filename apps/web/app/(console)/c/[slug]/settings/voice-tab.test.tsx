@@ -29,6 +29,7 @@ const generateAuditions = vi.fn()
 
 vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
+  disconnectYoutubeAction: vi.fn(),
 }))
 
 vi.mock('./channel-actions', () => ({

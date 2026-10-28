@@ -120,6 +120,7 @@ export default async function SettingsPage({
         channels={liveChannels.map((entry) => ({ id: entry.id, name: entry.name }))}
         showNewChannel={params['new'] === '1'}
         youtubeEnvReady={hasEnvGroup('youtube')}
+        youtubeOutcome={typeof params['youtube'] === 'string' ? params['youtube'] : undefined}
         initialTab={tab}
         logos={logoViews}
         channelMarkKey={settings.brandKit.look.logoR2Key}
