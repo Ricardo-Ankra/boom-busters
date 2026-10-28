@@ -4140,6 +4140,33 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 (g) to (i)). Decision 253 (cast references) shipped on branch
 `cast-references`; migration 0022 applies on the production build.
 
+## Multiple channels, stage A (2026-10-28)
+
+> One console, several YouTube channels. Design:
+> `docs/superpowers/specs/2026-10-27-multi-channel-design.md`; plan:
+> `docs/superpowers/plans/2026-10-27-multi-channel-stage-a.md`; branch
+> `multi-channel`; decisions 326 to 329. Stage B (the bible reaching the
+> prompts, the AI draft of the bible, the free-text case category) is the
+> next plan.
+
+### Deliverables
+
+- [x] `channels`, `workspace` and `youtube_connections` tables, a
+      `channel_id` on every row that belongs to one, and migration 0037
+      with the first channel's constant id (decision 326).
+- [x] Every list query, runner and action takes its channel; settings split
+      into the channel's and the workspace's (decision 326).
+- [x] `/c/<slug>` routes, the channel switcher with counts, the `/`
+      redirect, the workspace `/settings` (decision 327).
+- [x] One YouTube connection per channel, signed OAuth state, uploads
+      refused unless the connection is `ok` (decision 328).
+- [x] The bible as structured fields, the Channel tab, the completeness
+      gate, create and archive (decision 329).
+- [x] e2e `channels.spec.ts`, a second fixture channel and the 390 px
+      switcher and Channel tab passes; every package suite green.
+- [ ] Migration rehearsal on a Neon branch (runbook in the hand-over), then
+      production; `PUT /api/inngest` after the deploy.
+
 ---
 
 # Decisions made
@@ -8322,3 +8349,107 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      master stays until a new one replaces it, and publishing still waits for
      its own request. One rule (`lib/visuals-reopen.ts`) serves the board's
      offer and the action's refusal. No migration, no new Inngest function.
+
+323. **Channels, and the workspace split** (2026-10-28). The console now
+     runs several YouTube channels. A `channels` table holds each one's
+     name, handle, slug, bible and settings, and a one-row `workspace`
+     table holds what is shared: the model price overrides, the monthly
+     budget ceiling with its approved overage, and the default channel.
+     Provider keys, the music library and the web caches stay workspace
+     wide; logos are per channel (the content hash is unique per channel,
+     so one logo uploaded to two channels is two rows and one R2 object).
+     Every row that belongs to a channel carries a `channel_id`: cases,
+     projects, publish records, analytics snapshots, logos, and the ledger
+     and run rows (nullable, null for workspace-level work such as the
+     analytics cron). The first channel has a constant id,
+     `FIRST_CHANNEL_ID` (`01BB0000000000000000000001`), and slug
+     `boom-busters`. Migration 0037 creates it from the old `settings` row
+     (or from defaults when none was ever written), backfills every
+     `channel_id` with that literal, moves `modelPrices` and `budgets` to
+     the workspace row, strips them from the channel's settings and drops
+     `settings`. It is the only channel ever created implicitly;
+     `ensureFirstChannel` serves `seed`, the `/` redirect and e2e setup.
+     The budget stays one ceiling for the workspace: the guard compares
+     the month's total over every ledger row, and the ledger attributes
+     spend per channel without capping it. The transitional
+     `getSettings`/`updateSettings` wrappers were scaffolding and are
+     gone, so the typechecker found every call site. Verified by the
+     migration integration test; the rehearsal on a Neon branch comes
+     before production.
+
+324. **Channel resolution and the `/c/<slug>` routes** (2026-10-28). Code
+     finds its channel from data first and the URL second, never from a
+     cookie. A server action or Inngest runner on a project resolves the
+     channel from the project row, inside the step that needs it (a run
+     parked before the deploy replays old step results, so a `channel_id`
+     read in an earlier step may not exist). A page or list-level action
+     takes the slug from the URL and passes `channelId` explicitly. The
+     only cookie is `last-channel`, read by the `/` redirect, which lands
+     on the last used or default channel. The dashboard and the list screens moved to
+     `/c/<slug>` (dashboard, projects, cases, calendar, costs, settings);
+     the project page stays at `/projects/<id>` because most links the app
+     sends are project links and must not change. Every non-project link
+     (first-run, reconnect, budget gate, the OAuth return) carries the
+     slug. The top bar's switcher lists every live channel with the count
+     waiting on the owner, keeps the section you are on, and ends in a New
+     channel button. The workspace `/settings` serves Connections, Prices
+     and Music; any other `tab` there forwards to the landing channel's
+     settings, so old bookmarks keep working. For local runs the e2e
+     config reads `E2E_PORT` (default 3100, which CI keeps), because port
+     3100 on the owner's machine can be held by another project's server
+     that Playwright would otherwise reuse and test against.
+
+325. **One YouTube connection per channel** (2026-10-28). Each channel
+     uploads to its own YouTube account, so the refresh token moved from
+     the unique `youtube` row of `provider_credentials` to a
+     `youtube_connections` row per channel, which also stores the YouTube
+     channel id and title that `channels.list mine=true` answered.
+     Decision 228's hole is closed: a later verify that answers a
+     different id marks the connection invalid. The Connect button starts
+     `/api/youtube/connect?channel=<id>`, which signs `{ channelId, nonce }`
+     into the OAuth `state` with `SECRETS_ENCRYPTION_KEY` and keeps the
+     nonce in the existing httpOnly cookie; the callback checks both and
+     writes that channel's row. One client and one redirect URI, as
+     before. A reconnect that names a different YouTube account than the
+     stored one keeps the old token, stores nothing from the new grant and
+     marks the connection invalid. Uploads are gated on status: the
+     publish runner's preflight and token steps and `reschedulePublish`
+     refuse unless the channel's connection is `ok`, because an upload to
+     the wrong account without the console noticing is the failure this
+     design exists to prevent. A transient ping failure (a 5xx, a quota
+     error) would therefore block uploads, so the daily analytics cron
+     re-pings every connection of a live channel whatever its last status,
+     and the connection heals the next morning; a dead token stays
+     "needs reconnect" and notifications fire only on a change of status,
+     so there is no daily nag. With no slug in the callback's state the
+     redirect goes to the landing channel's Connections tab.
+
+326. **The bible as structured fields, the gate, and archiving** (2026-10-28).
+     Stage A stores each channel's bible but does not yet feed it to the
+     prompts. It is structured fields (subject, what a case is, how a
+     subject is named, audience, narration and visual registers, title
+     style, an optional call to action, optional script and direction
+     rules, and at least two case categories), edited on the Channel tab,
+     which sits first in the settings tabs. The first channel's bible is
+     complete from the migration. Until a channel's bible is complete,
+     Suggest cases and New project are disabled with "Complete the channel
+     bible in Settings first", the server actions refuse with the same
+     words, and the first-run strip leads with "Write the channel bible".
+     New channel takes a name, handle and slug (prefilled from the name,
+     editable until saved) and starts from house defaults or a copy of
+     another channel's brand kit, voice, routing, render and publishing
+     settings, never its bible, logos or YouTube connection. Archiving
+     needs the typed slug and is refused while the channel has a live run,
+     any parked gate (budget or otherwise), a project awaiting review or a
+     scheduled publish; the analytics cron's null-channel rows do not count
+     against it. Archiving the default channel first moves the default to
+     the oldest other live channel, and the last live channel cannot be
+     archived, so `/` never lands on a read-only channel. An archived
+     channel still opens but is read-only: the server refuses writes with
+     "This channel is archived" and the Channel tab, settings form, case
+     library and dashboard render their write buttons disabled. Per-project
+     stage actions on an archived channel's projects stay writable, which
+     is harmless because the archive refuses while anything is parked.
+     Stage B is the next plan: the bible reaching the prompts, the AI
+     draft of the bible, and the case category as free text checked against
+     `caseCategories`.
