@@ -8341,3 +8341,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      skips the fetch pass (and the 0-of-0 failure tolerance, which voice
      still keeps) and opens the board as it stands. Anything owed waits for
      the owner's Fetch visuals.
+     The same decision lets Back to visuals reopen a visuals board that was
+     stopped or failed (stage visuals, phase board): Stop on a reopened run
+     otherwise left Restart stage as the only button, and that plans the
+     board again and buys every shot.

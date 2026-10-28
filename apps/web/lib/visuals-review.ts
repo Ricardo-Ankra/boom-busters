@@ -808,11 +808,15 @@ function slotReferences(
 
 /** Back to visuals as the board sees it (decision 322); the action re-checks. */
 function reopenView(
-  project: { stage: string } | undefined,
+  project: { stage: string; stageStatus: string } | undefined,
   options: { phase?: 'plan' | 'board' | null; liveRun?: boolean },
 ): VisualsReviewModel['reopen'] {
   if (!project) return { offered: false, blocked: null }
-  const state = { stage: project.stage, visualsPhase: options.phase ?? null }
+  const state = {
+    stage: project.stage,
+    stageStatus: project.stageStatus,
+    visualsPhase: options.phase ?? null,
+  }
   if (!reopenOffered(state)) return { offered: false, blocked: null }
   return { offered: true, blocked: reopenRefusal(state, options.liveRun ?? false) }
 }

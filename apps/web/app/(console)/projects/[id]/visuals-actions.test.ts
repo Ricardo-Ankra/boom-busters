@@ -1059,6 +1059,16 @@ describeDb('Back to visuals (decision 322)', () => {
     })
   })
 
+  it('reopens a visuals board that was stopped, without a re-plan (decision 323)', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'visuals', stageStatus: 'cancelled' })
+    expect(await reopenVisualsAction(FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(inngest.send.mock.calls[0]?.[0]).toMatchObject({
+      name: 'visuals/fetch.resume',
+      data: { projectId: FIXTURE_PROJECT_ID, reopen: true },
+    })
+    expect(await getShotSlot(db, slotId)).toBeDefined()
+  })
+
   it('puts everything back when Inngest cannot be reached', async () => {
     inngest.send.mockRejectedValueOnce(new Error('offline'))
     const result = await reopenVisualsAction(FIXTURE_PROJECT_ID)

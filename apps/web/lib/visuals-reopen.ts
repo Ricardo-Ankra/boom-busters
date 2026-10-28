@@ -4,6 +4,10 @@
  * still be fixed on the board (a stretch re-plan works only at the visuals
  * stage). The board's offer and the action's refusal read this one rule.
  *
+ * A visuals board that was stopped or failed reopens the same way (decision
+ * 323). Its only other way out is Restart stage, which plans the board again
+ * and buys every shot.
+ *
  * It never stops a run itself. A Stop's `project/cancelled` is reconciled by
  * a function that closes every live run on the project and marks it
  * cancelled; landing after the reopen it would wedge the new visuals run
@@ -12,30 +16,40 @@
 
 const LATER_STAGES: ReadonlySet<string> = new Set(['assembly', 'shorts', 'publish', 'done'])
 
+/** The visuals stage statuses a board is left in when nothing will move it on. */
+const STALLED: ReadonlySet<string> = new Set(['cancelled', 'failed'])
+
 interface ReopenProject {
   stage: string
+  stageStatus: string
   visualsPhase: 'plan' | 'board' | null
 }
 
-/** Whether the board shows Back to visuals at all: approved, and moved on from. */
+function stalledBoard(project: ReopenProject): boolean {
+  return project.stage === 'visuals' && STALLED.has(project.stageStatus)
+}
+
+/** Whether the board shows Back to visuals at all: a board, moved on from or stalled. */
 export function reopenOffered(project: ReopenProject): boolean {
-  return LATER_STAGES.has(project.stage) && project.visualsPhase === 'board'
+  return (
+    (LATER_STAGES.has(project.stage) || stalledBoard(project)) && project.visualsPhase === 'board'
+  )
 }
 
 /** Why the board cannot be reopened now, or null when it can. */
 export function reopenRefusal(project: ReopenProject, liveRun: boolean): string | null {
-  if (project.stage === 'visuals') return 'The board is already open.'
-  if (!LATER_STAGES.has(project.stage)) {
+  if (project.stage === 'visuals' && !stalledBoard(project)) return 'The board is already open.'
+  if (project.stage !== 'visuals' && !LATER_STAGES.has(project.stage)) {
     return 'This project has not reached the visuals board yet.'
   }
   if (project.visualsPhase !== 'board') {
     return 'There is no approved board to reopen. Re-run the visuals stage instead.'
   }
   if (liveRun) {
-    return (
-      'A later stage is still running or waiting for your review. Press Stop first, then ' +
-      'Back to visuals.'
-    )
+    return project.stage === 'visuals'
+      ? 'A visuals run is still going. Press Stop first, then Back to visuals.'
+      : 'A later stage is still running or waiting for your review. Press Stop first, then ' +
+          'Back to visuals.'
   }
   return null
 }
