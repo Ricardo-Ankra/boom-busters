@@ -233,6 +233,28 @@ describeDb('short-render-runner', () => {
         expect([uploaded.width, uploaded.height]).toEqual([1080, 1920])
         expect(uploaded.narration.map((segment) => segment.startMs)).toEqual([0, 6000])
         expect(uploaded.overlays[0]).toMatchObject({ kind: 'endCta' })
+        // Captioned by default, whatever the master says (decision 326).
+        expect(uploaded.captions.style).toBe('karaoke')
+      },
+    )
+
+    it(
+      'burns in the Short’s own captions setting, not the master’s (decision 326)',
+      { timeout: 120_000 },
+      async () => {
+        broker.submitRender.mockResolvedValue({
+          brokerRenderId: '01HQ0000000000000000000BR1',
+          remotionRenderId: 'rem-short',
+          estimatedCostUsd: 0.0033,
+        })
+        await updateShort(db, shortId, { captions: false })
+
+        await engine.executeStep('invoke-broker', { events: requestedEvent() })
+
+        const uploaded = JSON.parse(
+          (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
+        ) as Timeline
+        expect(uploaded.captions.style).toBe('none')
       },
     )
 

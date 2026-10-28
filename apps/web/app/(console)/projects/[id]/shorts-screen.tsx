@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import type { ShortCardModel } from '@/lib/shorts-review'
 import {
   requestShortRender,
+  setShortCaptions,
   setShortEnding,
   setShortRelatedLink,
   updateShortDetails,
@@ -375,6 +376,46 @@ function ShortCard({
               </Button>
             ),
           )}
+        </div>
+
+        {/* Burned-in captions (decision 326), the ending's twin: part of the
+            picture, so switching makes the current render a render of the
+            other setting. */}
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-[var(--color-text-secondary)]">Captions</span>
+          {([true, false] as const).map((on) => {
+            const label = on ? 'On' : 'Off'
+            const key = `captions-${label.toLowerCase()}`
+            const change = () =>
+              act(() => setShortCaptions(short.id, on), on ? 'Captions on' : 'Captions off', key)
+            return short.captions === on ? (
+              <Button key={key} variant="primary" disabled aria-label={`Captions ${label}`}>
+                {label}
+              </Button>
+            ) : short.render !== null && !failed ? (
+              <ConfirmButton
+                key={key}
+                label={label}
+                confirmLabel={on ? 'Turn captions on' : 'Turn captions off'}
+                consequence="The current render has the other captions setting and will need re-rendering."
+                confirmVariant="primary"
+                busy={pressed === key}
+                disabled={busy}
+                onConfirm={change}
+              />
+            ) : (
+              <Button
+                key={key}
+                variant="outline"
+                aria-label={`Captions ${label}`}
+                busy={pressed === key}
+                disabled={busy}
+                onClick={() => void change()}
+              >
+                {label}
+              </Button>
+            )
+          })}
         </div>
 
         {/* An excerpt the rebuilt master can no longer serve (decision 300):

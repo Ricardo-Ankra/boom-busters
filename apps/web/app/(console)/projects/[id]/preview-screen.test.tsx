@@ -40,9 +40,11 @@ vi.mock('../actions', () => ({
 
 const chooseMusicBed = vi.fn()
 const requestDraftRender = vi.fn()
+const setCaptions = vi.fn()
 vi.mock('./preview-actions', () => ({
   chooseMusicBed: (...args: unknown[]) => chooseMusicBed(...args),
   requestDraftRender: (...args: unknown[]) => requestDraftRender(...args),
+  setCaptions: (...args: unknown[]) => setCaptions(...args),
 }))
 
 const refresh = vi.fn()
@@ -57,6 +59,7 @@ beforeEach(() => {
   stopProject.mockResolvedValue({ ok: true })
   chooseMusicBed.mockResolvedValue({ ok: true })
   requestDraftRender.mockResolvedValue({ ok: true })
+  setCaptions.mockResolvedValue({ ok: true })
   vi.stubGlobal('fetch', vi.fn(pollFetch))
 })
 
@@ -169,11 +172,28 @@ describe('PreviewScreen', () => {
     expect(screen.getAllByText(/2\. The collapse/)).toHaveLength(2)
   })
 
-  it('toggles captions with a labelled button', async () => {
+  it('reads the captions setting off the timeline and stores the flip (decision 326)', async () => {
     const user = userEvent.setup()
     render(<PreviewScreen {...props()} />)
-    await user.click(screen.getByRole('button', { name: /Hide captions/ }))
-    expect(screen.getByRole('button', { name: /Show captions/ })).toBeInTheDocument()
+    const on = screen.getByRole('button', { name: /Captions on/ })
+    expect(on).toHaveAttribute('aria-pressed', 'true')
+    await user.click(on)
+    expect(setCaptions).toHaveBeenCalledWith(PROJECT, false)
+    expect(refresh).toHaveBeenCalled()
+  })
+
+  it('offers to turn captions on when the timeline has them off', async () => {
+    const user = userEvent.setup()
+    const timeline = materialisedTimeline()
+    render(
+      <PreviewScreen
+        {...props({ timeline: { ...timeline, captions: { ...timeline.captions, style: 'none' } } })}
+      />,
+    )
+    const off = screen.getByRole('button', { name: /Captions off/ })
+    expect(off).toHaveAttribute('aria-pressed', 'false')
+    await user.click(off)
+    expect(setCaptions).toHaveBeenCalledWith(PROJECT, true)
   })
 
   it('hands the player the materialised URLs directly — no buffer step', () => {

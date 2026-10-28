@@ -8,7 +8,7 @@ import {
   setTimelineKey,
 } from '@boom-busters/db'
 import { TimelineSchema, UlidSchema } from '@boom-busters/schemas'
-import { swapMusicBed } from '@boom-busters/timeline'
+import { captionsBurnedIn, swapMusicBed, withCaptions } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
@@ -74,6 +74,37 @@ export async function chooseMusicBed(
   const key = timelineKey(projectId, stored.version)
   if (storageConfigured()) {
     await putObject(key, Buffer.from(JSON.stringify(swapped)), 'application/json')
+  }
+  await setTimelineKey(db, stored.id, key)
+
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+/**
+ * The preview screen's captions button (decision 326): burn the captions
+ * into the long-form video or leave them out. Free, and stored as a NEW
+ * version exactly like a music swap, so the preview, the next draft and the
+ * master all draw the same choice and a draft of the old setting reads as
+ * stale.
+ */
+export async function setCaptions(projectId: string, on: boolean): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(projectId).success) return { ok: false, error: 'Unknown project' }
+
+  const row = await latestTimeline(db, projectId)
+  if (!row) {
+    return { ok: false, error: 'There is no compiled timeline yet — run the assembly stage.' }
+  }
+
+  const current = TimelineSchema.parse(row.json)
+  if (captionsBurnedIn(current) === on) return { ok: true }
+  const flipped = withCaptions(current, on)
+
+  const stored = await insertTimeline(db, { projectId, json: flipped, s3Key: '' })
+  const key = timelineKey(projectId, stored.version)
+  if (storageConfigured()) {
+    await putObject(key, Buffer.from(JSON.stringify(flipped)), 'application/json')
   }
   await setTimelineKey(db, stored.id, key)
 

@@ -50,8 +50,9 @@ test.describe('the preview screen', () => {
     await expect(page.getByRole('button', { name: /1\. The audit/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /2\. The collapse/ })).toBeVisible()
 
-    // Captions toggle is a visible labelled button.
-    await expect(page.getByRole('button', { name: 'Hide captions' })).toBeVisible()
+    // The captions setting is a visible labelled button reading the stored
+    // timeline (decision 326); the fixture timeline burns them in.
+    await expect(page.getByRole('button', { name: 'Captions on' })).toBeVisible()
 
     // No bed on the compiled timeline; the line says so instead of drawing.
     await expect(page.getByText(/No music bed on this timeline/)).toBeVisible()
@@ -127,5 +128,25 @@ test.describe('the preview screen', () => {
     await page.getByRole('button', { name: /Preview · v2/ }).click()
     await expect(page.getByText(/not previewable/)).toBeVisible()
     await expect(page.getByText('Current', { exact: true })).toBeVisible()
+  })
+
+  test('the captions button stores its setting as a new version (decision 326)', async ({
+    page,
+  }) => {
+    // Runs after the bed swap: it moves the fixture from v2 to v3.
+    await page.getByRole('button', { name: /Preview · v\d/ }).click()
+    await page.getByRole('button', { name: 'Captions on' }).click()
+    await expect(page.getByText(/Captions off for the renders/).first()).toBeVisible()
+
+    // Persisted on the timeline the renders read, so it survives a reload.
+    await expect(async () => {
+      await page.reload()
+      await expect(page.getByText(/Timeline v3/)).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 30_000 })
+    await page.getByRole('button', { name: /Preview · v3/ }).click()
+    await expect(page.getByRole('button', { name: 'Captions off' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 })

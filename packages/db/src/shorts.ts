@@ -83,6 +83,8 @@ export async function updateShort(
     title: string
     description: string
     ending: ShortRow['ending']
+    /** Burned-in captions on or off (decision 326). */
+    captions: boolean
     renderId: string | null
     relatedLinkChecked: boolean
     /** The teaser studio's edits and the rebuild runner's recut (decision 227). */

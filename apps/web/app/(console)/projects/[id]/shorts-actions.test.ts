@@ -18,7 +18,7 @@ import type { TeaserFetchesRecord } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { fetchTeaserShotOptions, requestShortRender } from './shorts-actions'
+import { fetchTeaserShotOptions, requestShortRender, setShortCaptions } from './shorts-actions'
 
 /**
  * The in-flight refusals (decision 234): a button pressed twice must spend
@@ -189,6 +189,28 @@ describeDb('shorts action guards (decision 234)', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('cut from an earlier script')
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('a captions switch stores the setting and drops the stale render (decision 326)', async () => {
+    const short = await insertTeaser()
+    expect(short.captions).toBe(true)
+    const render = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'short',
+      shortId: short.id,
+      costUsd: '0.05',
+    })
+    await updateRender(db, render.id, { status: 'done' })
+    await updateShort(db, short.id, { renderId: render.id })
+
+    expect(await setShortCaptions(short.id, false)).toEqual({ ok: true })
+
+    const stored = await getShort(db, short.id)
+    expect(stored?.captions).toBe(false)
+    expect(stored?.renderId).toBeNull()
+    // The render row stays: its cost was real.
+    expect(await db.select().from(renders)).toHaveLength(1)
   })
 
   it('allows a re-render once the render settled', async () => {

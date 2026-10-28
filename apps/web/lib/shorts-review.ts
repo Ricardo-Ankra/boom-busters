@@ -116,6 +116,8 @@ export interface ShortCardModel {
   title: string
   description: string
   ending: 'loop' | 'cta'
+  /** Burned-in captions (decision 326): the Short's own setting, on by default. */
+  captions: boolean
   relatedLinkChecked: boolean
   /** An excerpt slices the master; a teaser speaks its own narration. */
   kind: 'excerpt' | 'teaser'
@@ -354,6 +356,7 @@ export async function shortsModel(
       title: row.title,
       description: row.description,
       ending: row.ending,
+      captions: row.captions,
       relatedLinkChecked: row.relatedLinkChecked,
       kind: row.kind,
       chapterTitle: chapterTitles.get(row.segmentRef.chapterId) ?? null,

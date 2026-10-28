@@ -59,6 +59,12 @@ export interface ShortCompileInput {
   /** The shorts-style bed the caller picked from the music library. */
   music: { r2Key: string } | null
   ctaText?: string
+  /**
+   * The Short's own captions setting (decision 326), never the master's: a
+   * long-form video without burned-in captions still cuts captioned Shorts.
+   * Absent means on, the Shorts default.
+   */
+  captions?: boolean
 }
 
 /**
@@ -215,7 +221,7 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
     brand: master.brand,
     narration,
     music,
-    captions: { words, style: master.captions.style },
+    captions: { words, style: input.captions === false ? 'none' : 'karaoke' },
     slots,
     overlays,
   })
