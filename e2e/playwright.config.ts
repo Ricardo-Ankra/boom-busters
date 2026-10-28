@@ -2,7 +2,7 @@ import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
 import { e2eDatabaseUrl } from './database'
 
-const PORT = 3100
+const PORT = Number(process.env['E2E_PORT'] ?? 3100)
 // `localhost`, not `127.0.0.1`: Next's dev server blocks cross-origin
 // requests for its own chunks from any host it was not started on.
 const baseURL = `http://localhost:${PORT}`
@@ -48,7 +48,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'pnpm --filter @boom-busters/web dev --port 3100',
+    command: `pnpm --filter @boom-busters/web dev --port ${PORT}`,
     cwd: '..',
     // Probe /signin, not /: the root redirects, and the app is only really
     // ready once a page renders.
