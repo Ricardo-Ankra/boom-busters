@@ -170,6 +170,7 @@ describe('PublishScreen', () => {
     renderScreen()
     await user.click(screen.getByRole('button', { name: 'Refresh analytics now' }))
     expect(refreshAnalytics).toHaveBeenCalledTimes(1)
+    expect(refreshAnalytics).toHaveBeenCalledWith(expect.any(String))
   })
 
   it('schedules the selected item from the slot button, record-first ISO in hand', async () => {

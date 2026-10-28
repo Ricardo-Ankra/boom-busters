@@ -1,4 +1,3 @@
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { and, count, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, publishRecords, shorts } from './schema'
@@ -29,10 +28,27 @@ export async function ensurePublishRecord(
   targetType: PublishRecordRow['targetType'],
   targetId: string,
 ): Promise<PublishRecordRow> {
+  // The record belongs to the channel of its project: the master's own
+  // project, or the project a Short's card sits under.
+  const [owner] =
+    targetType === 'master'
+      ? await db
+          .select({ channelId: projects.channelId })
+          .from(projects)
+          .where(eq(projects.id, targetId))
+          .limit(1)
+      : await db
+          .select({ channelId: projects.channelId })
+          .from(shorts)
+          .innerJoin(projects, eq(projects.id, shorts.projectId))
+          .where(eq(shorts.id, targetId))
+          .limit(1)
+  if (!owner?.channelId)
+    throw new Error(`The ${targetType} ${targetId} has no project to publish for`)
+
   const [inserted] = await db
     .insert(publishRecords)
-    // Transitional: the first channel until Task 7 derives it from the target.
-    .values({ channelId: FIRST_CHANNEL_ID, targetType, targetId })
+    .values({ channelId: owner.channelId, targetType, targetId })
     .onConflictDoNothing()
     .returning()
   if (inserted) return inserted
@@ -142,18 +158,33 @@ export interface ScheduledPublishItem {
  * directly and Shorts join through their card. Records never slotted
  * (`publishAt` null) are drafts in progress and stay off the calendar.
  */
-export async function scheduledPublishItems(db: Database): Promise<ScheduledPublishItem[]> {
+export async function scheduledPublishItems(
+  db: Database,
+  channelId: string,
+): Promise<ScheduledPublishItem[]> {
   const masters = await db
     .select({ record: publishRecords, projectTitle: projects.title })
     .from(publishRecords)
     .innerJoin(projects, eq(projects.id, publishRecords.targetId))
-    .where(and(eq(publishRecords.targetType, 'master'), isNotNull(publishRecords.publishAt)))
+    .where(
+      and(
+        eq(publishRecords.channelId, channelId),
+        eq(publishRecords.targetType, 'master'),
+        isNotNull(publishRecords.publishAt),
+      ),
+    )
 
   const shortRows = await db
     .select({ record: publishRecords, projectId: shorts.projectId, label: shorts.title })
     .from(publishRecords)
     .innerJoin(shorts, eq(shorts.id, publishRecords.targetId))
-    .where(and(eq(publishRecords.targetType, 'short'), isNotNull(publishRecords.publishAt)))
+    .where(
+      and(
+        eq(publishRecords.channelId, channelId),
+        eq(publishRecords.targetType, 'short'),
+        isNotNull(publishRecords.publishAt),
+      ),
+    )
 
   const shortProjects =
     shortRows.length > 0
@@ -195,6 +226,7 @@ export async function scheduledPublishItems(db: Database): Promise<ScheduledPubl
  */
 export async function videoBackedRecords(
   db: Database,
+  channelId: string,
 ): Promise<
   Pick<
     PublishRecordRow,
@@ -211,17 +243,21 @@ export async function videoBackedRecords(
       publishAt: publishRecords.publishAt,
     })
     .from(publishRecords)
-    .where(isNotNull(publishRecords.youtubeVideoId))
+    .where(and(isNotNull(publishRecords.youtubeVideoId), eq(publishRecords.channelId, channelId)))
 }
 
 /**
  * Upload starts since a moment — the daily-budget question, asked with
  * `quotaDayStartUtc(now)` from schemas as the boundary.
  */
-export async function countUploadsSince(db: Database, since: Date): Promise<number> {
+export async function countUploadsSince(
+  db: Database,
+  channelId: string,
+  since: Date,
+): Promise<number> {
   const [row] = await db
     .select({ value: count() })
     .from(publishRecords)
-    .where(gte(publishRecords.uploadStartedAt, since))
+    .where(and(eq(publishRecords.channelId, channelId), gte(publishRecords.uploadStartedAt, since)))
   return row?.value ?? 0
 }

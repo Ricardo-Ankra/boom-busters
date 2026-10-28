@@ -2,15 +2,15 @@ import {
   countUploadsSince,
   getPublishRecord,
   getRender,
-  getSettings,
   getShort,
   latestRender,
   listCastMembers,
   listShotSlots,
-  recordVerifyResult,
+  channelForProject,
+  channelYoutubeToken,
+  recordChannelYoutubeVerify,
+  channelYoutubeReconnectNeeded,
   updatePublishRecord,
-  youtubeReconnectNeeded,
-  youtubeRefreshToken,
 } from '@boom-busters/db'
 import { beginUpload } from '@boom-busters/db'
 import {
@@ -132,6 +132,7 @@ export const publishRunner = inngest.createFunction(
         return { ok: false as const, refusal: null, skipped: record.status }
       }
 
+      const channel = await channelForProject(db, projectId)
       const refuse = async (message: string) => {
         await updatePublishRecord(db, record.id, { error: { message } })
         return { ok: false as const, refusal: message, skipped: null }
@@ -170,11 +171,14 @@ export const publishRunner = inngest.createFunction(
         if (!brokerConfigured() || !storageConfigured()) {
           return refuse('The render broker or R2 is not configured — uploads run in media-utils.')
         }
-        const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+        const refreshToken = await channelYoutubeToken(
+          db,
+          channel.channelId,
+          env.SECRETS_ENCRYPTION_KEY,
+        )
         if (!refreshToken) return refuse('YouTube is not connected — Settings → Connections.')
       }
 
-      const settings = await getSettings(db)
       // The altered-content label (decision 252): any chosen generated still
       // that depicts a real person. Shorts are cut from the same visuals.
       const containsSyntheticMedia =
@@ -202,7 +206,7 @@ export const publishRunner = inngest.createFunction(
         privacyStatus: record.privacyStatus,
         scheduledAhead,
         thumbKey: record.uploadedThumbKeys[0] ?? null,
-        dailyBudget: settings.publish.dailyUploadBudget,
+        dailyBudget: channel.settings.publish.dailyUploadBudget,
         containsSyntheticMedia,
       }
     })
@@ -218,7 +222,8 @@ export const publishRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
 
     const budget = await step.run('check-budget', async () => {
-      const started = await countUploadsSince(db, quotaDayStartUtc(new Date()))
+      const { channelId } = await channelForProject(db, projectId)
+      const started = await countUploadsSince(db, channelId, quotaDayStartUtc(new Date()))
       if (started < preflight.dailyBudget) return { ok: true as const, wakeAtIso: null }
       // Next Pacific quota day, plus slack for clock skew.
       const wakeAt = new Date(
@@ -240,7 +245,8 @@ export const publishRunner = inngest.createFunction(
       )
       await step.sleepUntil('wait-quota-day', new Date(budget.wakeAtIso))
       const retry = await step.run('recheck-budget', async () => {
-        const started = await countUploadsSince(db, quotaDayStartUtc(new Date()))
+        const { channelId } = await channelForProject(db, projectId)
+        const started = await countUploadsSince(db, channelId, quotaDayStartUtc(new Date()))
         return started < preflight.dailyBudget
       })
       if (!retry) {
@@ -303,7 +309,12 @@ export const publishRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
 
     const minted = await step.run('mint-token', async () => {
-      const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+      const channel = await channelForProject(db, projectId)
+      const refreshToken = await channelYoutubeToken(
+        db,
+        channel.channelId,
+        env.SECRETS_ENCRYPTION_KEY,
+      )
       if (!refreshToken) throw new NonRetriableError('The YouTube connection vanished mid-run.')
       try {
         const grant = await refreshAccessToken(refreshToken)
@@ -313,8 +324,8 @@ export const publishRunner = inngest.createFunction(
           // Transition-only, and the same kind the analytics cron uses: one
           // dead token is one problem, not one email per touchpoint
           // (decision 236). The failed record still names it either way.
-          const alreadyDead = (await youtubeReconnectNeeded(db)).needed
-          await recordVerifyResult(db, 'youtube', 'invalid')
+          const alreadyDead = (await channelYoutubeReconnectNeeded(db, channel.channelId)).needed
+          await recordChannelYoutubeVerify(db, channel.channelId, 'invalid')
           await updatePublishRecord(db, preflight.recordId, {
             status: 'failed',
             error: { message: describeYoutubeAction({ kind: 'reconnect' }) },
@@ -324,7 +335,7 @@ export const publishRunner = inngest.createFunction(
               kind: 'reconnect-youtube',
               title: 'YouTube needs reconnecting',
               body: 'The stored consent is no longer honoured. Reconnect in Settings → Connections.',
-              href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
+              href: channelHref(channel.slug, '/settings', { tab: 'connections' }),
             })
           }
           return { ok: false as const }
@@ -416,7 +427,10 @@ export const publishRunner = inngest.createFunction(
       }
 
       await step.run('upload-failed', async () => {
-        if (action.kind === 'reconnect') await recordVerifyResult(db, 'youtube', 'invalid')
+        const channel = await channelForProject(db, projectId)
+        if (action.kind === 'reconnect') {
+          await recordChannelYoutubeVerify(db, channel.channelId, 'invalid')
+        }
         await updatePublishRecord(db, preflight.recordId, {
           status: 'failed',
           error: { message: `${describeYoutubeAction(action)} (${message})` },
@@ -427,7 +441,7 @@ export const publishRunner = inngest.createFunction(
           body: describeYoutubeAction(action),
           href:
             action.kind === 'reconnect'
-              ? channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' })
+              ? channelHref(channel.slug, '/settings', { tab: 'connections' })
               : `/projects/${projectId}?stage=publish`,
         })
       })

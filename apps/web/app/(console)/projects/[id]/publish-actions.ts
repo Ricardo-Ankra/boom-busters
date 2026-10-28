@@ -12,11 +12,12 @@ import {
   hasLiveRun,
   latestRender,
   latestScriptParagraphSources,
-  recordVerifyResult,
+  channelForProject,
+  channelYoutubeToken,
+  recordChannelYoutubeVerify,
   scriptableClaims,
   setProjectStage,
   updatePublishRecord,
-  youtubeRefreshToken,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
@@ -724,7 +725,7 @@ export async function reschedulePublish(
   }
 
   if (!mockProvidersEnabled()) {
-    const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+    const refreshToken = await channelYoutubeToken(db, record.channelId, env.SECRETS_ENCRYPTION_KEY)
     if (!refreshToken) {
       return { ok: false, error: 'YouTube is not connected — Settings → Connections.' }
     }
@@ -734,7 +735,7 @@ export async function reschedulePublish(
       accessToken = (await refreshAccessToken(refreshToken)).accessToken
     } catch (error) {
       if (error instanceof YoutubeAuthError && error.needsReconnect) {
-        await recordVerifyResult(db, 'youtube', 'invalid')
+        await recordChannelYoutubeVerify(db, record.channelId, 'invalid')
         return {
           ok: false,
           error: 'YouTube no longer honours the stored consent — reconnect in Settings.',
@@ -764,10 +765,15 @@ export async function reschedulePublish(
  * and the only retry on offer was tomorrow). Free apart from YouTube API
  * quota, so no confirm step.
  */
-export async function refreshAnalytics(): Promise<ActionResult> {
+export async function refreshAnalytics(projectId: string): Promise<ActionResult> {
   await requireOwner()
+  const parsed = UlidSchema.safeParse(projectId)
+  if (!parsed.success) return { ok: false, error: 'Unknown project' }
   try {
-    await inngest.send(events.analyticsRefreshRequested.create({ requestedBy: 'publish-screen' }))
+    const { channelId } = await channelForProject(db, parsed.data)
+    await inngest.send(
+      events.analyticsRefreshRequested.create({ requestedBy: 'publish-screen', channelId }),
+    )
   } catch (error) {
     console.error('[analytics] could not request the refresh', error)
     return { ok: false, error: 'Could not reach Inngest to start the analytics pass.' }

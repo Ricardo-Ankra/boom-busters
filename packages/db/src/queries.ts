@@ -17,14 +17,6 @@ import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
 import { assets, cases, providerCredentials } from './schema'
 import { getWorkspace, updateWorkspace } from './workspace'
-import {
-  channelYoutubeConnected,
-  channelYoutubeReconnectNeeded,
-  channelYoutubeToken,
-  channelYoutubeConnection,
-  recordChannelYoutubeVerify,
-  saveChannelYoutubeConnection,
-} from './youtube-connections'
 
 // ---------------------------------------------------------------------------
 // Settings: the first channel's, with the workspace's prices and budget
@@ -82,12 +74,7 @@ export interface MaskedCredential {
   lastVerifiedAt: Date | null
 }
 
-/**
- * `youtube` is still a value of the provider enum, so the old names accept
- * it; it now means the first channel's connection (multi-channel design,
- * section 4.2), deleted with the wrappers in Task 7.
- */
-type CredentialProvider = MaskedCredential['provider'] | 'youtube'
+type CredentialProvider = MaskedCredential['provider']
 
 /**
  * Providers that exist in the database enum but no longer in the app.
@@ -123,25 +110,13 @@ export async function listCredentials(db: Database): Promise<MaskedCredential[]>
     }))
 }
 
-/**
- * Store a provider key. `youtube` is the first channel's connection now:
- * @deprecated transitional for `youtube`, deleted in Task 7
- */
+/** Store a provider key. YouTube is a per-channel connection, saved elsewhere. */
 export async function setCredential(
   db: Database,
   provider: CredentialProvider,
   apiKey: string,
   encryptionKey: string,
 ): Promise<void> {
-  if (provider === 'youtube') {
-    await ensureFirstChannel(db)
-    return saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
-      refreshToken: apiKey,
-      encryptionKey,
-      youtubeChannelId: null,
-      youtubeChannelTitle: null,
-    })
-  }
   const encrypted = encryptSecret(apiKey, encryptionKey)
   await db
     .insert(providerCredentials)
@@ -212,43 +187,6 @@ export async function countCases(db: Database, channelId: string): Promise<numbe
     .from(cases)
     .where(eq(cases.channelId, channelId))
   return row?.value ?? 0
-}
-
-/** @deprecated transitional, deleted in Task 7 */
-export async function youtubeRefreshToken(
-  db: Database,
-  encryptionKey: string,
-): Promise<string | undefined> {
-  return channelYoutubeToken(db, FIRST_CHANNEL_ID, encryptionKey)
-}
-
-/**
- * The first channel's connection in the masked shape the Settings YouTube
- * card reads; never key material.
- * @deprecated transitional, deleted in Task 7
- */
-export async function youtubeMaskedConnection(
-  db: Database,
-): Promise<Omit<MaskedCredential, 'provider'> | undefined> {
-  const row = await channelYoutubeConnection(db, FIRST_CHANNEL_ID)
-  if (!row) return undefined
-  return {
-    masked: maskKey(row.keyHint),
-    verifyStatus: row.verifyStatus,
-    lastVerifiedAt: row.lastVerifiedAt,
-  }
-}
-
-/** @deprecated transitional, deleted in Task 7 */
-export async function isYoutubeConnected(db: Database): Promise<boolean> {
-  return channelYoutubeConnected(db, FIRST_CHANNEL_ID)
-}
-
-/** @deprecated transitional, deleted in Task 7 */
-export async function youtubeReconnectNeeded(
-  db: Database,
-): Promise<{ needed: boolean; since: Date | null }> {
-  return channelYoutubeReconnectNeeded(db, FIRST_CHANNEL_ID)
 }
 
 /**
@@ -349,16 +287,12 @@ export async function visualCredentials(
   return keys
 }
 
-/**
- * Stamp the outcome of Settings -> Connections' Verify button. `youtube`
- * routes to the first channel's connection, transitionally until Task 7.
- */
+/** Stamp the outcome of Settings -> Connections' Verify button. */
 export async function recordVerifyResult(
   db: Database,
   provider: CredentialProvider,
   status: 'ok' | 'invalid',
 ): Promise<void> {
-  if (provider === 'youtube') return recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, status)
   await db
     .update(providerCredentials)
     .set({

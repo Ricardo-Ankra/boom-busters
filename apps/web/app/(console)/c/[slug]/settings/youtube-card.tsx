@@ -1,6 +1,5 @@
 'use client'
 
-import type { MaskedCredential } from '@boom-busters/db'
 import * as React from 'react'
 import { Youtube } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,18 +7,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/components/ui/toast'
 import { verifyYoutubeConnection } from './actions'
 
+/** What the card shows of one channel's connection; never key material. */
+export interface YoutubeConnectionView {
+  masked: string
+  verifyStatus: 'ok' | 'invalid' | 'unchecked'
+  lastVerifiedAt: Date | null
+  youtubeChannelTitle: string | null
+}
+
 /**
  * The YouTube connection card (build spec section 9): OAuth, not a key
- * paste. Connect/Reconnect walks the consent flow via `/api/youtube/connect`
+ * paste. Each channel has its own connection. Connect/Reconnect walks the
+ * consent flow via `/api/youtube/connect?channel=<id>`
  * (a plain link — the browser has to leave for Google either way); Verify
  * mints an access token from the stored refresh token and pings
  * `channels.list`, the same health check the daily ping runs.
  */
 export function YoutubeCard({
-  credential,
+  connection,
+  channelId,
+  slug,
   envReady,
 }: {
-  credential: Omit<MaskedCredential, 'provider'> | undefined
+  connection: YoutubeConnectionView | undefined
+  channelId: string
+  /** The channel's slug, named in the card so the owner sees whose account this is. */
+  slug: string
   /** Whether YOUTUBE_CLIENT_ID/SECRET exist — resolved server-side. */
   envReady: boolean
 }) {
@@ -27,12 +40,12 @@ export function YoutubeCard({
   const [needsReconnect, setNeedsReconnect] = React.useState(false)
   const { toast } = useToast()
 
-  const connected = credential !== undefined
-  const healthy = credential?.verifyStatus === 'ok'
+  const connected = connection !== undefined
+  const healthy = connection?.verifyStatus === 'ok'
 
   const verify = async () => {
     setVerifying(true)
-    const result = await verifyYoutubeConnection()
+    const result = await verifyYoutubeConnection(channelId)
     setVerifying(false)
     setNeedsReconnect(result.needsReconnect === true)
     if (result.ok) {
@@ -82,15 +95,23 @@ export function YoutubeCard({
             Google no longer honours the stored consent — reconnect to grant it again.
           </p>
         ) : null}
-        {credential?.lastVerifiedAt ? (
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          For the <span className="font-mono">{slug}</span> channel
+          {connection?.youtubeChannelTitle ? (
+            <> &middot; YouTube account &quot;{connection.youtubeChannelTitle}&quot;</>
+          ) : null}
+        </p>
+        {connection?.lastVerifiedAt ? (
           <p className="text-[12px] text-[var(--color-text-muted)]">
-            Last verified {new Date(credential.lastVerifiedAt).toLocaleString()}
+            Last verified {new Date(connection.lastVerifiedAt).toLocaleString()}
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
           {envReady ? (
             <Button asChild variant={connected ? 'outline' : 'primary'}>
-              <a href="/api/youtube/connect">{connected ? 'Reconnect' : 'Connect YouTube'}</a>
+              <a href={`/api/youtube/connect?channel=${channelId}`}>
+                {connected ? 'Reconnect' : 'Connect YouTube'}
+              </a>
             </Button>
           ) : null}
           {connected ? (

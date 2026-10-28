@@ -400,12 +400,13 @@ export async function deleteMusicBedAction(id: string): Promise<ActionResult> {
  * `invalid_grant` means the refresh token is dead (consent revoked) and
  * only reconnecting helps; the chip says so.
  */
-export async function verifyYoutubeConnection(): Promise<
-  ActionResult & { channelTitle?: string; needsReconnect?: boolean }
-> {
+export async function verifyYoutubeConnection(
+  channelId: string,
+): Promise<ActionResult & { channelTitle?: string; needsReconnect?: boolean }> {
   await requireOwner()
 
-  const { youtubeRefreshToken } = await import('@boom-busters/db')
+  const { channelYoutubeConnected, channelYoutubeToken, recordChannelYoutubeVerify } =
+    await import('@boom-busters/db')
   const { pingChannel, refreshAccessToken, YoutubeAuthError, youtubeConfigured } =
     await import('@/lib/youtube')
 
@@ -416,7 +417,7 @@ export async function verifyYoutubeConnection(): Promise<
     }
   }
 
-  const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
+  const refreshToken = await channelYoutubeToken(db, channelId, env.SECRETS_ENCRYPTION_KEY)
   if (!refreshToken) {
     return { ok: false, error: 'YouTube is not connected yet.' }
   }
@@ -424,12 +425,20 @@ export async function verifyYoutubeConnection(): Promise<
   try {
     const grant = await refreshAccessToken(refreshToken)
     const ping = await pingChannel(grant.accessToken)
-    await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
+    await recordChannelYoutubeVerify(db, channelId, ping.ok ? 'ok' : 'invalid', ping.channelId)
     revalidatePath('/c/[slug]', 'layout')
     if (!ping.ok) return { ok: false, error: ping.error ?? 'The channel ping failed.' }
+    if (!(await channelYoutubeConnected(db, channelId))) {
+      // The store writes `invalid` when the ping names another YouTube channel.
+      return {
+        ok: false,
+        needsReconnect: true,
+        error: 'The connected YouTube channel changed - reconnect the right account.',
+      }
+    }
     return { ok: true, ...(ping.channelTitle ? { channelTitle: ping.channelTitle } : {}) }
   } catch (error) {
-    await recordVerifyResult(db, 'youtube', 'invalid')
+    await recordChannelYoutubeVerify(db, channelId, 'invalid')
     revalidatePath('/c/[slug]', 'layout')
     if (error instanceof YoutubeAuthError && error.needsReconnect) {
       return {

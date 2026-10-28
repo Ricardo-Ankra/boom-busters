@@ -3,9 +3,11 @@ import {
   listCredentials,
   listLogos,
   listMusicBeds,
-  youtubeMaskedConnection,
+  maskKey,
+  channelYoutubeConnection,
 } from '@boom-busters/db'
 import { hasEnvGroup } from '@boom-busters/schemas'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
 import { exemplarViews } from '@/lib/exemplar-views'
@@ -30,14 +32,18 @@ const TABS = [
 type SettingsTab = (typeof TABS)[number]
 
 export default async function SettingsPage({
+  params: routeParams,
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
+  params: Promise<{ slug: string }>
 }) {
-  const [settings, credentials, youtubeConnection, beds, logos, params] = await Promise.all([
+  const { slug } = await routeParams
+  const channel = await channelFromSlug(slug)
+  const [settings, credentials, connectionRow, beds, logos, params] = await Promise.all([
     getSettings(db),
     listCredentials(db),
-    youtubeMaskedConnection(db),
+    channelYoutubeConnection(db, channel.id),
     listMusicBeds(db),
     listLogos(db),
     searchParams,
@@ -46,6 +52,15 @@ export default async function SettingsPage({
   // The dropdowns' options: the cached live lists merged with the catalogue
   // and priced with the owner's overrides (decision 288). Needs the settings,
   // so it runs after the batch above.
+  const youtubeConnection = connectionRow
+    ? {
+        masked: maskKey(connectionRow.keyHint),
+        verifyStatus: connectionRow.verifyStatus,
+        lastVerifiedAt: connectionRow.lastVerifiedAt,
+        youtubeChannelTitle: connectionRow.youtubeChannelTitle,
+      }
+    : undefined
+
   const modelOptions = await loadModelOptions(settings)
 
   const logoViews = await Promise.all(
@@ -83,6 +98,8 @@ export default async function SettingsPage({
         initialSettings={settings}
         credentials={credentials}
         youtubeConnection={youtubeConnection}
+        channelId={channel.id}
+        channelSlug={channel.slug}
         mockProviders={mockProvidersEnabled()}
         youtubeEnvReady={hasEnvGroup('youtube')}
         initialTab={tab}

@@ -81,6 +81,8 @@ function renderModelsTab(
 ) {
   return render(
     <SettingsForm
+      channelId="01J00000000000000000000001"
+      channelSlug="first"
       initialSettings={settings}
       credentials={[]}
       mockProviders

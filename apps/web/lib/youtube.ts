@@ -124,6 +124,7 @@ export function refreshAccessToken(refreshToken: string): Promise<TokenGrant> {
 
 export interface ChannelPing {
   ok: boolean
+  channelId?: string
   channelTitle?: string
   error?: string
 }
@@ -245,13 +246,13 @@ export async function videoProcessed(accessToken: string, videoId: string): Prom
  * read there is — `channels.list mine=true`, 1 quota unit.
  */
 export async function pingChannel(accessToken: string): Promise<ChannelPing> {
-  const params = new URLSearchParams({ part: 'snippet', mine: 'true' })
+  const params = new URLSearchParams({ part: 'id,snippet', mine: 'true' })
   const response = await fetch(`${CHANNELS_ENDPOINT}?${params.toString()}`, {
     headers: { authorization: `Bearer ${accessToken}` },
   })
 
   const payload = (await response.json().catch(() => ({}))) as {
-    items?: { snippet?: { title?: string } }[]
+    items?: { id?: string; snippet?: { title?: string } }[]
     error?: { message?: string }
   }
 
@@ -265,5 +266,5 @@ export async function pingChannel(accessToken: string): Promise<ChannelPing> {
   if (!title) {
     return { ok: false, error: 'The Google account has no YouTube channel.' }
   }
-  return { ok: true, channelTitle: title }
+  return { ok: true, channelId: payload.items?.[0]?.id, channelTitle: title }
 }

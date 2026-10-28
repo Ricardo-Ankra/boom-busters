@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   countUploadsSince,
   getArticleSources,
   getDossier,
@@ -374,7 +375,9 @@ export async function publishModel(
 
   const [records, uploadsToday] = await Promise.all([
     listPublishRecords(db, { projectId, shortIds: shorts.map((short) => short.id) }),
-    countUploadsSince(db, quotaDayStartUtc(new Date())),
+    channelForProject(db, projectId).then(({ channelId }) =>
+      countUploadsSince(db, channelId, quotaDayStartUtc(new Date())),
+    ),
   ])
   const recordFor = (targetType: 'master' | 'short', targetId: string) =>
     records.find((row) => row.targetType === targetType && row.targetId === targetId)

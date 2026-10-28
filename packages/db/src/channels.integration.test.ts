@@ -24,14 +24,7 @@ import {
 } from './channels'
 import { createDb } from './client'
 import { createProjectFromCase } from './projects'
-import {
-  getSettings,
-  listCredentials,
-  recordVerifyResult,
-  setCredential,
-  updateSettings,
-  youtubeMaskedConnection,
-} from './queries'
+import { getSettings, updateSettings } from './queries'
 import { assets, cases, channels, projects, workspace, youtubeConnections } from './schema'
 import { requireTestDatabase } from './test-database'
 import { getWorkspace } from './workspace'
@@ -284,26 +277,6 @@ suite('channels', () => {
       await archiveChannel(db, b.id)
 
       expect(await connectedChannelIds(db)).toEqual([a.id])
-    })
-
-    it('the old youtube names route to the first channel', async () => {
-      await setCredential(db, 'youtube', 'refresh-first-9876', KEY)
-
-      expect(await channelYoutubeToken(db, FIRST_CHANNEL_ID, KEY)).toBe('refresh-first-9876')
-      expect(await channelYoutubeConnection(db, FIRST_CHANNEL_ID)).toMatchObject({
-        keyHint: '9876',
-        verifyStatus: 'unchecked',
-        youtubeChannelId: null,
-      })
-      expect(await youtubeMaskedConnection(db)).toEqual({
-        masked: '••••9876',
-        verifyStatus: 'unchecked',
-        lastVerifiedAt: null,
-      })
-
-      await recordVerifyResult(db, 'youtube', 'ok')
-      expect(await channelYoutubeConnected(db, FIRST_CHANNEL_ID)).toBe(true)
-      expect((await listCredentials(db)).map((c) => c.provider)).not.toContain('youtube')
     })
   })
 })

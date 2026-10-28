@@ -9,7 +9,8 @@ import {
   renders,
   requireTestDatabase,
   seed,
-  setCredential,
+  recordChannelYoutubeVerify,
+  saveChannelYoutubeConnection,
   shorts,
   truncateRunMirror,
   updateRender,
@@ -252,7 +253,13 @@ describeDb('publish-runner', () => {
   describe('live path', () => {
     beforeEach(async () => {
       providers.mock = false
-      await setCredential(db, 'youtube', '1//refresh-token', env.SECRETS_ENCRYPTION_KEY)
+      await saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
+        refreshToken: '1//refresh-token',
+        encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+        youtubeChannelId: 'UC-first',
+        youtubeChannelTitle: 'First',
+      })
+      await recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, 'ok', 'UC-first')
     })
 
     it(

@@ -1,16 +1,18 @@
 import {
-  recordVerifyResult,
+  channelYoutubeReconnectNeeded,
+  channelYoutubeToken,
+  connectedChannelIds,
+  getChannel,
+  recordChannelYoutubeVerify,
   scheduledPublishItems,
   snapshotsSince,
   updatePublishRecord,
   upsertAnalyticsSnapshot,
   videoBackedRecords,
-  youtubeReconnectNeeded,
-  youtubeRefreshToken,
 } from '@boom-busters/db'
 import { buildDigestRequest, mockDigest, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
-import { BudgetExceededError, FIRST_CHANNEL_SLUG } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_SLUG, parseEventData } from '@boom-busters/schemas'
 import { answerOrStop, callForText, type AnswerComplete } from '@/lib/answer'
 import { channelHref } from '@/lib/channel-href'
 import { db } from '@/lib/db'
@@ -31,11 +33,14 @@ import { events } from '../events'
  * system, daily at 06:00 UTC, plus `analytics/refresh.requested` so the
  * owner has a button and the tests have a trigger.
  *
- * Four jobs, in order:
+ * It loops the channels with a verified YouTube connection (archived ones
+ * left out; a refresh request that names a channel runs only that one) and
+ * does four jobs for each, in order:
  *
  * 1. **The health ping** (decision 171): `channels.list` with a token minted
- *    from the stored refresh token. A dead refresh token stamps the
- *    credential invalid, which is what raises the "Reconnect YouTube" card.
+ *    from the channel's stored refresh token. A dead refresh token stamps
+ *    that channel's connection invalid, which is what raises its "Reconnect
+ *    YouTube" card, and the pass moves on to the next channel.
  * 2. **Scheduled → live reconciliation**: while `apiAuditPassed` is off the
  *    human flips videos public in Studio and tells nobody, so `videos.list
  *    part=status` is how records learn they went live.
@@ -92,6 +97,11 @@ export async function writeDigestWith(
   )
 }
 
+/** The slug a channel's notifications link into; the first channel's when it cannot be read. */
+async function slugOf(channelId: string): Promise<string> {
+  return (await getChannel(db, channelId).catch(() => null))?.slug ?? FIRST_CHANNEL_SLUG
+}
+
 export const analyticsRunner = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -102,228 +112,275 @@ export const analyticsRunner = inngest.createFunction(
     // A cron that dies silently just stops appearing, and nobody notices
     // missing analytics for weeks (decision 236). Every failure path says so.
     onFailure: async ({ event }) => {
+      // A run belongs to no single channel, so the costs page of the first
+      // listed one stands in; the first channel's when none is connected.
+      const [first] = await connectedChannelIds(db).catch(() => [] as string[])
+      const slug = first ? await slugOf(first) : FIRST_CHANNEL_SLUG
       await notify({
         kind: 'run-failed',
         title: 'The analytics refresh failed',
         body: String(event.data.error?.message ?? 'Unknown error'),
-        href: channelHref(FIRST_CHANNEL_SLUG, '/costs'),
+        href: channelHref(slug, '/costs'),
       })
     },
     triggers: [{ cron: ANALYTICS_CRON }, events.analyticsRefreshRequested],
   },
-  async ({ step }) => {
-    // -----------------------------------------------------------------------
-    // 1. Token + health ping
-    // -----------------------------------------------------------------------
+  async ({ event, step }) => {
+    const requestedChannel =
+      event.name === events.analyticsRefreshRequested.name
+        ? parseEventData('analytics/refresh.requested', event.data).channelId
+        : undefined
 
-    const token = await step.run('mint-access-token', async (): Promise<TokenState> => {
-      if (mockProvidersEnabled()) return { mode: 'mock' }
-      if (!youtubeConfigured()) return { mode: 'absent' }
-      const refreshToken = await youtubeRefreshToken(db, env.SECRETS_ENCRYPTION_KEY)
-      if (!refreshToken) return { mode: 'absent' }
+    const listed = await step.run('list-channels', () => connectedChannelIds(db))
+    const channelIds =
+      requestedChannel === undefined ? listed : listed.filter((id) => id === requestedChannel)
 
-      try {
-        const grant = await refreshAccessToken(refreshToken)
-        return { mode: 'live', accessToken: grant.accessToken }
-      } catch (error) {
-        if (error instanceof YoutubeAuthError && error.needsReconnect) {
-          // The one failure a retry can never fix — stamp it and say so. Said
-          // ONCE: this is a daily cron, and until someone reconnects, every
-          // morning re-finds the same dead token. Only the transition to
-          // invalid notifies (decision 236); the Needs-you card carries the
-          // standing state.
-          const alreadyDead = (await youtubeReconnectNeeded(db)).needed
-          await recordVerifyResult(db, 'youtube', 'invalid')
-          if (!alreadyDead) {
+    type ChannelOutcome =
+      | { channelId: string; outcome: 'needs-reconnect' | 'not-connected' }
+      | {
+          channelId: string
+          outcome: 'ran'
+          reconciled: number
+          snapshots: number
+          digestSent: boolean
+        }
+
+    const channelResults: ChannelOutcome[] = []
+
+    for (const channelId of channelIds) {
+      // ---------------------------------------------------------------------
+      // 1. Token + health ping
+      // ---------------------------------------------------------------------
+
+      const token = await step.run(
+        `mint-access-token-${channelId}`,
+        async (): Promise<TokenState> => {
+          if (mockProvidersEnabled()) return { mode: 'mock' }
+          if (!youtubeConfigured()) return { mode: 'absent' }
+          const refreshToken = await channelYoutubeToken(db, channelId, env.SECRETS_ENCRYPTION_KEY)
+          if (!refreshToken) return { mode: 'absent' }
+
+          try {
+            const grant = await refreshAccessToken(refreshToken)
+            return { mode: 'live', accessToken: grant.accessToken }
+          } catch (error) {
+            if (error instanceof YoutubeAuthError && error.needsReconnect) {
+              // The one failure a retry can never fix — stamp it and say so.
+              // Said ONCE: this is a daily cron, and until someone reconnects,
+              // every morning re-finds the same dead token. Only the
+              // transition to invalid notifies (decision 236); the Needs-you
+              // card carries the standing state.
+              const alreadyDead = (await channelYoutubeReconnectNeeded(db, channelId)).needed
+              await recordChannelYoutubeVerify(db, channelId, 'invalid')
+              if (!alreadyDead) {
+                await notify({
+                  kind: 'reconnect-youtube',
+                  title: 'YouTube needs reconnecting',
+                  body: 'The stored refresh token was refused. Uploads and analytics stop until you reconnect.',
+                  href: channelHref(await slugOf(channelId), '/settings', { tab: 'connections' }),
+                })
+              }
+              return { mode: 'dead' }
+            }
+            throw error
+          }
+        },
+      )
+
+      if (token.mode === 'live') {
+        await step.run(`ping-channel-${channelId}`, async () => {
+          const ping = await pingChannel(token.accessToken)
+          // Transition-only, as above: a ping that keeps failing is one
+          // problem, not one email per day.
+          const alreadyDead = (await channelYoutubeReconnectNeeded(db, channelId)).needed
+          await recordChannelYoutubeVerify(
+            db,
+            channelId,
+            ping.ok ? 'ok' : 'invalid',
+            ping.ok ? ping.channelId : undefined,
+          )
+          if (!ping.ok && !alreadyDead) {
             await notify({
               kind: 'reconnect-youtube',
               title: 'YouTube needs reconnecting',
-              body: 'The stored refresh token was refused. Uploads and analytics stop until you reconnect.',
-              href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
+              body: `The daily channel ping failed: ${ping.error ?? 'unknown error'}`,
+              href: channelHref(await slugOf(channelId), '/settings', { tab: 'connections' }),
             })
           }
-          return { mode: 'dead' }
-        }
-        throw error
+          return ping
+        })
       }
-    })
 
-    if (token.mode === 'live') {
-      await step.run('ping-channel', async () => {
-        const ping = await pingChannel(token.accessToken)
-        // Transition-only, as above: a ping that keeps failing is one problem,
-        // not one email per day.
-        const alreadyDead = (await youtubeReconnectNeeded(db)).needed
-        await recordVerifyResult(db, 'youtube', ping.ok ? 'ok' : 'invalid')
-        if (!ping.ok && !alreadyDead) {
-          await notify({
-            kind: 'reconnect-youtube',
-            title: 'YouTube needs reconnecting',
-            body: `The daily channel ping failed: ${ping.error ?? 'unknown error'}`,
-            href: channelHref(FIRST_CHANNEL_SLUG, '/settings', { tab: 'connections' }),
-          })
+      if (token.mode === 'absent' || token.mode === 'dead') {
+        channelResults.push({
+          channelId,
+          outcome: token.mode === 'dead' ? 'needs-reconnect' : 'not-connected',
+        })
+        continue
+      }
+
+      // ---------------------------------------------------------------------
+      // 2. Scheduled → live reconciliation
+      // ---------------------------------------------------------------------
+
+      const reconciled = await step.run(`reconcile-live-${channelId}`, async () => {
+        const records = await videoBackedRecords(db, channelId)
+        const pending = records.filter(
+          (record) => record.status === 'scheduled' || record.status === 'uploaded',
+        )
+        if (pending.length === 0) return 0
+
+        let flipped = 0
+        if (token.mode === 'mock') {
+          // Deterministic stand-in: a slot in the past means the video went out.
+          const now = Date.now()
+          for (const record of pending) {
+            if (record.publishAt && record.publishAt.getTime() <= now) {
+              await updatePublishRecord(db, record.id, { status: 'live' })
+              flipped += 1
+            }
+          }
+          return flipped
         }
-        return ping
-      })
-    }
 
-    if (token.mode === 'absent' || token.mode === 'dead') {
-      return { outcome: token.mode === 'dead' ? 'needs-reconnect' : 'not-connected' } as const
-    }
-
-    // -----------------------------------------------------------------------
-    // 2. Scheduled → live reconciliation
-    // -----------------------------------------------------------------------
-
-    const reconciled = await step.run('reconcile-live', async () => {
-      const records = await videoBackedRecords(db)
-      const pending = records.filter(
-        (record) => record.status === 'scheduled' || record.status === 'uploaded',
-      )
-      if (pending.length === 0) return 0
-
-      let flipped = 0
-      if (token.mode === 'mock') {
-        // Deterministic stand-in: a slot in the past means the video went out.
-        const now = Date.now()
+        const statuses = await fetchPrivacyStatuses(
+          token.accessToken,
+          pending.map((record) => record.youtubeVideoId!),
+        )
         for (const record of pending) {
-          if (record.publishAt && record.publishAt.getTime() <= now) {
+          if (statuses.get(record.youtubeVideoId!) === 'public') {
             await updatePublishRecord(db, record.id, { status: 'live' })
             flipped += 1
           }
         }
         return flipped
-      }
+      })
 
-      const statuses = await fetchPrivacyStatuses(
-        token.accessToken,
-        pending.map((record) => record.youtubeVideoId!),
-      )
-      for (const record of pending) {
-        if (statuses.get(record.youtubeVideoId!) === 'public') {
-          await updatePublishRecord(db, record.id, { status: 'live' })
-          flipped += 1
-        }
-      }
-      return flipped
-    })
+      // ---------------------------------------------------------------------
+      // 3. Snapshots, one step per video — a video that errors retries alone
+      // ---------------------------------------------------------------------
 
-    // -----------------------------------------------------------------------
-    // 3. Snapshots, one step per video — a video that errors retries alone
-    // -----------------------------------------------------------------------
+      const live = await step.run(`list-live-videos-${channelId}`, async () => {
+        const records = await videoBackedRecords(db, channelId)
+        return records
+          .filter((record) => record.status === 'live')
+          .map((record) => record.youtubeVideoId!)
+      })
 
-    const live = await step.run('list-live-videos', async () => {
-      const records = await videoBackedRecords(db)
-      return records
-        .filter((record) => record.status === 'live')
-        .map((record) => record.youtubeVideoId!)
-    })
-
-    for (const videoId of live) {
-      await step.run(`snapshot-${videoId}`, async () => {
-        const analytics =
-          token.mode === 'mock'
-            ? mockVideoAnalytics(videoId)
-            : await fetchVideoAnalytics(token.accessToken, videoId)
-        await upsertAnalyticsSnapshot(db, {
-          videoId,
-          date: utcToday(new Date()),
-          retentionCurve: analytics.retentionCurve,
-          ctrBySource: analytics.viewsBySource,
-          views: analytics.views,
-          avgViewDurationSec: analytics.avgViewDurationSec,
-          // Needs the monetary scope the app never requested — see
-          // lib/youtube-analytics.ts. Null beats a guess.
-          rpm: null,
+      for (const videoId of live) {
+        await step.run(`snapshot-${channelId}-${videoId}`, async () => {
+          const analytics =
+            token.mode === 'mock'
+              ? mockVideoAnalytics(videoId)
+              : await fetchVideoAnalytics(token.accessToken, videoId)
+          await upsertAnalyticsSnapshot(db, {
+            channelId,
+            videoId,
+            date: utcToday(new Date()),
+            retentionCurve: analytics.retentionCurve,
+            ctrBySource: analytics.viewsBySource,
+            views: analytics.views,
+            avgViewDurationSec: analytics.avgViewDurationSec,
+            // Needs the monetary scope the app never requested — see
+            // lib/youtube-analytics.ts. Null beats a guess.
+            rpm: null,
+          })
         })
+      }
+
+      // ---------------------------------------------------------------------
+      // 4. The Monday digest
+      // ---------------------------------------------------------------------
+
+      const digestSent = await step.run(`weekly-digest-${channelId}`, async () => {
+        const now = new Date()
+        if (now.getUTCDay() !== 1) return false
+
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        const [snapshots, labelled] = await Promise.all([
+          snapshotsSince(db, channelId, weekAgo),
+          scheduledPublishItems(db, channelId),
+        ])
+        if (snapshots.length === 0) return false
+
+        const labelOf = new Map(
+          labelled
+            .filter((item) => item.youtubeVideoId !== null)
+            .map((item) => [item.youtubeVideoId!, { label: item.label, type: item.targetType }]),
+        )
+
+        const byVideo = new Map<string, typeof snapshots>()
+        for (const snapshot of snapshots) {
+          const list = byVideo.get(snapshot.videoId) ?? []
+          list.push(snapshot)
+          byVideo.set(snapshot.videoId, list)
+        }
+
+        const lines: DigestLine[] = [...byVideo.entries()].map(([videoId, rows]) => {
+          const first = rows[0]!
+          const last = rows[rows.length - 1]!
+          const sources = last.ctrBySource ?? {}
+          const topSource = Object.entries(sources).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+          const named = labelOf.get(videoId)
+          return {
+            label: named?.label ?? videoId,
+            targetType: named?.type ?? 'master',
+            views: last.views,
+            viewsDelta:
+              last.views !== null && first.views !== null && rows.length > 1
+                ? last.views - first.views
+                : null,
+            avgViewDurationSec: last.avgViewDurationSec,
+            topSource,
+            worstDropPct: worstRetentionDrop(last.retentionCurve),
+          }
+        })
+
+        const weekOf = now.toISOString().slice(0, 10)
+        let body: string
+        if (mockProvidersEnabled()) {
+          body = mockDigest({ weekOf, lines })
+        } else {
+          try {
+            // Not a project's spend, so no project on the ledger row; a retry
+            // still carries its label to the Costs screen (decision 292).
+            body = await writeDigestWith(
+              (request, call) => callLlm(request, call === 'answer' ? {} : { purpose: call }),
+              { weekOf, lines },
+            )
+          } catch (error) {
+            // A digest is never worth a budget gate: the numbers keep landing
+            // in snapshots, and next Monday tries again.
+            if (error instanceof BudgetExceededError) {
+              console.warn('[analytics] digest skipped — over budget')
+              return false
+            }
+            throw error
+          }
+        }
+
+        const channel = await getChannel(db, channelId)
+        await notify({
+          kind: 'weekly-digest',
+          title: `Weekly digest · ${channel.name} · ${weekOf}`,
+          body,
+          href: channelHref(channel.slug),
+        })
+        return true
+      })
+
+      channelResults.push({
+        channelId,
+        outcome: 'ran',
+        reconciled,
+        snapshots: live.length,
+        digestSent,
       })
     }
 
-    // -----------------------------------------------------------------------
-    // 4. The Monday digest
-    // -----------------------------------------------------------------------
-
-    const digestSent = await step.run('weekly-digest', async () => {
-      const now = new Date()
-      if (now.getUTCDay() !== 1) return false
-
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      const [snapshots, labelled] = await Promise.all([
-        snapshotsSince(db, weekAgo),
-        scheduledPublishItems(db),
-      ])
-      if (snapshots.length === 0) return false
-
-      const labelOf = new Map(
-        labelled
-          .filter((item) => item.youtubeVideoId !== null)
-          .map((item) => [item.youtubeVideoId!, { label: item.label, type: item.targetType }]),
-      )
-
-      const byVideo = new Map<string, typeof snapshots>()
-      for (const snapshot of snapshots) {
-        const list = byVideo.get(snapshot.videoId) ?? []
-        list.push(snapshot)
-        byVideo.set(snapshot.videoId, list)
-      }
-
-      const lines: DigestLine[] = [...byVideo.entries()].map(([videoId, rows]) => {
-        const first = rows[0]!
-        const last = rows[rows.length - 1]!
-        const sources = last.ctrBySource ?? {}
-        const topSource = Object.entries(sources).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
-        const named = labelOf.get(videoId)
-        return {
-          label: named?.label ?? videoId,
-          targetType: named?.type ?? 'master',
-          views: last.views,
-          viewsDelta:
-            last.views !== null && first.views !== null && rows.length > 1
-              ? last.views - first.views
-              : null,
-          avgViewDurationSec: last.avgViewDurationSec,
-          topSource,
-          worstDropPct: worstRetentionDrop(last.retentionCurve),
-        }
-      })
-
-      const weekOf = now.toISOString().slice(0, 10)
-      let body: string
-      if (mockProvidersEnabled()) {
-        body = mockDigest({ weekOf, lines })
-      } else {
-        try {
-          // Not a project's spend, so no project on the ledger row; a retry
-          // still carries its label to the Costs screen (decision 292).
-          body = await writeDigestWith(
-            (request, call) => callLlm(request, call === 'answer' ? {} : { purpose: call }),
-            { weekOf, lines },
-          )
-        } catch (error) {
-          // A digest is never worth a budget gate: the numbers keep landing
-          // in snapshots, and next Monday tries again.
-          if (error instanceof BudgetExceededError) {
-            console.warn('[analytics] digest skipped — over budget')
-            return false
-          }
-          throw error
-        }
-      }
-
-      await notify({
-        kind: 'weekly-digest',
-        title: `Weekly digest · ${weekOf}`,
-        body,
-        href: channelHref(FIRST_CHANNEL_SLUG),
-      })
-      return true
-    })
-
     return {
-      outcome: 'ran' as const,
-      reconciled,
-      snapshots: live.length,
-      digestSent,
+      outcome: channelResults.length === 0 ? ('no-channels' as const) : ('ran' as const),
+      channels: channelResults,
     }
   },
 )

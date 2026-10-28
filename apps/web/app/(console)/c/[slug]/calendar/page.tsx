@@ -2,6 +2,7 @@ import { getSettings, scheduledPublishItems } from '@boom-busters/db'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { channelHref } from '@/lib/channel-href'
+import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import {
   buildWeek,
@@ -40,10 +41,10 @@ export default async function CalendarPage({
   params: Promise<{ slug: string }>
   searchParams: Promise<{ week?: string }>
 }) {
-  const [{ slug }, { week }, records, settings] = await Promise.all([
-    params,
-    searchParams,
-    scheduledPublishItems(db),
+  const [{ slug }, { week }] = await Promise.all([params, searchParams])
+  const channel = await channelFromSlug(slug)
+  const [records, settings] = await Promise.all([
+    scheduledPublishItems(db, channel.id),
     getSettings(db),
   ])
 

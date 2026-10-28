@@ -72,6 +72,8 @@ describe('the daily upload budget (decision 302)', () => {
     settings.publish.dailyUploadBudget = 4
     render(
       <SettingsForm
+        channelId="01J00000000000000000000001"
+        channelSlug="first"
         initialSettings={settings}
         credentials={[]}
         mockProviders

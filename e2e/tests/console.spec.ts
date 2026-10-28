@@ -21,11 +21,14 @@ test.describe('dashboard', () => {
     await expect(page.getByRole('link', { name: 'Review' }).first()).toBeVisible()
   })
 
-  test('names setup that belongs to later milestones without blocking anything', async ({
-    page,
-  }) => {
+  test('a connected YouTube leaves nothing waiting on a later milestone', async ({ page }) => {
+    // Global setup connects the first channel to a mock YouTube account, and
+    // "Connect YouTube" was the only checklist item the strip held back for a
+    // later milestone (it used to read "Coming with later milestones").
     await page.goto(channelPath(''))
-    await expect(page.getByText(/Coming with later milestones/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+    await expect(page.getByText(/Coming with later milestones/)).toBeHidden()
+    await expect(page.getByText('Connect YouTube')).toBeHidden()
   })
 
   test('a settings deep link lands on the tab it names', async ({ page }) => {

@@ -23,7 +23,7 @@ import { LogosTab, type LogoView } from './logos-tab'
 import { ExemplarsTab } from './exemplars-tab'
 import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
-import { YoutubeCard } from './youtube-card'
+import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
 import { useToast } from '@/components/ui/toast'
 import { saveProviderKey, saveSettings, verifyProviderKey } from './actions'
 
@@ -77,6 +77,8 @@ export function SettingsForm({
   initialSettings,
   credentials,
   youtubeConnection,
+  channelId,
+  channelSlug,
   mockProviders,
   youtubeEnvReady = false,
   initialTab = 'models',
@@ -89,8 +91,10 @@ export function SettingsForm({
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
-  /** The first channel's YouTube connection, masked. Transitional until Task 7. */
-  youtubeConnection?: Omit<MaskedCredential, 'provider'>
+  /** This channel's YouTube connection, masked. */
+  youtubeConnection?: YoutubeConnectionView
+  channelId: string
+  channelSlug: string
   /** Resolved on the server: `process.env` is not readable from the client. */
   mockProviders: boolean
   /** Whether the YouTube OAuth client env vars exist — server-resolved too. */
@@ -184,6 +188,8 @@ export function SettingsForm({
         <ConnectionsTab
           credentials={credentials}
           youtubeConnection={youtubeConnection}
+          channelId={channelId}
+          channelSlug={channelSlug}
           mockProviders={mockProviders}
           youtubeEnvReady={youtubeEnvReady}
         />
@@ -423,11 +429,15 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 function ConnectionsTab({
   credentials,
   youtubeConnection,
+  channelId,
+  channelSlug,
   mockProviders,
   youtubeEnvReady,
 }: {
   credentials: MaskedCredential[]
-  youtubeConnection: Omit<MaskedCredential, 'provider'> | undefined
+  youtubeConnection: YoutubeConnectionView | undefined
+  channelId: string
+  channelSlug: string
   mockProviders: boolean
   youtubeEnvReady: boolean
 }) {
@@ -462,7 +472,12 @@ function ConnectionsTab({
 
       {/* OAuth, not a key paste — its own card, above the key grid. */}
       {/* OAuth, not a key paste — its own card, above the key grid. */}
-      <YoutubeCard credential={youtubeConnection} envReady={youtubeEnvReady} />
+      <YoutubeCard
+        connection={youtubeConnection}
+        envReady={youtubeEnvReady}
+        channelId={channelId}
+        slug={channelSlug}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {CREDENTIAL_PROVIDERS.map((provider) => (

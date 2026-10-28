@@ -117,15 +117,16 @@ describe('refreshAccessToken', () => {
 describe('pingChannel', () => {
   it('answers with the channel title on success', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(200, { items: [{ snippet: { title: 'Boom & Busters' } }] }),
+      jsonResponse(200, { items: [{ id: 'UC-first', snippet: { title: 'Boom & Busters' } }] }),
     )
 
     expect(await pingChannel('ya29.access')).toEqual({
       ok: true,
+      channelId: 'UC-first',
       channelTitle: 'Boom & Busters',
     })
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toContain('part=snippet')
+    expect(url).toContain('part=id%2Csnippet')
     expect(url).toContain('mine=true')
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer ya29.access')
   })

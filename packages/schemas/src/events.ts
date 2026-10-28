@@ -338,12 +338,14 @@ export const DemoRequestedSchema = z.object({
 
 /**
  * Run the analytics pass NOW rather than at the next 06:00 UTC cron tick
- * (M8). Carries nothing: the pass reads everything it needs from the
+ * (M8). Carries at most a channel: the pass reads everything else it needs from the
  * database. Exists so the owner has a button and the tests have a trigger —
  * the cron stays the only *schedule*.
  */
 export const AnalyticsRefreshRequestedSchema = z.object({
   requestedBy: z.string().min(1).optional(),
+  /** Limits the pass to one channel; absent means every connected channel. */
+  channelId: UlidSchema.optional(),
 })
 
 // ---------------------------------------------------------------------------

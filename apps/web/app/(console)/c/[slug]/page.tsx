@@ -3,12 +3,12 @@ import {
   countMusicBeds,
   getSettings,
   globalPulse,
-  isYoutubeConnected,
+  channelYoutubeConnected,
+  channelYoutubeReconnectNeeded,
   listActiveRuns,
   listFailedRuns,
   listOpenBudgetGates,
   listProjectsAwaitingReview,
-  youtubeReconnectNeeded,
 } from '@boom-busters/db'
 import { CheckCircle2, Circle } from 'lucide-react'
 import type { Route } from 'next'
@@ -37,7 +37,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   const channel = await channelFromSlug(slug)
   const [settings, youtubeConnected, musicBedCount, caseCount] = await Promise.all([
     getSettings(db),
-    isYoutubeConnected(db),
+    channelYoutubeConnected(db, channel.id),
     countMusicBeds(db),
     countCases(db, channel.id),
   ])
@@ -53,7 +53,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
       listFailedRuns(db, channel.id),
       listActiveRuns(db, channel.id),
       globalPulse(db, channel.id),
-      youtubeReconnectNeeded(db),
+      channelYoutubeReconnectNeeded(db, channel.id),
     ])
 
   const cards = buildNeedsYouCards({

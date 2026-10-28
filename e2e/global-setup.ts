@@ -177,10 +177,12 @@ export default async function globalSetup(): Promise<void> {
     deleteProjectsExcept,
     getSettings,
     ensureFirstChannel,
+    recordChannelYoutubeVerify,
+    saveChannelYoutubeConnection,
     updateSettings,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
-  const { takeIdempotencyKey } = await import('@boom-busters/schemas')
+  const { FIRST_CHANNEL_ID, takeIdempotencyKey } = await import('@boom-busters/schemas')
 
   const connection = createDb(url, { max: 2 })
   try {
@@ -188,6 +190,17 @@ export default async function globalSetup(): Promise<void> {
     // Every console address now lives under /c/<slug>; the first channel
     // (boom-busters) must exist before the first request names it.
     await ensureFirstChannel(connection.db)
+    // The first channel is connected to a mock YouTube account, so the
+    // console reads as set up. MOCK_PROVIDERS keeps YouTube itself unreachable.
+    const encryptionKey = process.env['SECRETS_ENCRYPTION_KEY']
+    if (!encryptionKey) throw new Error('SECRETS_ENCRYPTION_KEY is not set for the E2E suite.')
+    await saveChannelYoutubeConnection(connection.db, FIRST_CHANNEL_ID, {
+      refreshToken: 'mock-refresh',
+      encryptionKey,
+      youtubeChannelId: 'UC-mock-first',
+      youtubeChannelTitle: 'Boom & Busters (mock)',
+    })
+    await recordChannelYoutubeVerify(connection.db, FIRST_CHANNEL_ID, 'ok', 'UC-mock-first')
     // Rows the previous run's tests created, before re-seeding leaves them
     // beside the fixture and every exact assertion starts matching twice.
     await deleteCasesExcept(connection.db, [FIXTURE_CASE_ID])
