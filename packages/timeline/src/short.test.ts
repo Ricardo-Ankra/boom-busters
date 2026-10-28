@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { timelineDurationMs } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { withCaptions } from './caption-style'
 import { compileTimeline } from './compile'
 import { goldenInput } from './compile.test'
 import {
@@ -80,6 +81,22 @@ describe('compileShortTimeline', () => {
       masterWords.map((word) => word.startMs - 11_000),
     )
     expect(short.captions.words[0]!.startMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('takes its captions from the Short, never from the master (decision 326)', () => {
+    const base = {
+      master: withCaptions(goldenMaster(), false),
+      segmentRef: { chapterId: CHAPTER_ONE, fromParagraph: 0, toParagraph: 1 },
+      ending: 'loop' as const,
+      music: null,
+    }
+    // Absent is on: a master without burned-in captions still cuts captioned Shorts.
+    expect(compileShortTimeline(base).captions.style).toBe('karaoke')
+    expect(compileShortTimeline({ ...base, captions: true }).captions.style).toBe('karaoke')
+    const off = compileShortTimeline({ ...base, master: goldenMaster(), captions: false })
+    expect(off.captions.style).toBe('none')
+    // The words stay, so switching the Short back on needs nothing re-cut.
+    expect(off.captions.words.length).toBeGreaterThan(0)
   })
 
   it('clips a straddling slot and trims a clipped video into its source', () => {
