@@ -21,7 +21,9 @@ import {
   channelYoutubeConnected,
   channelYoutubeReconnectNeeded,
   channelYoutubeToken,
+  channelYoutubeConnection,
   recordChannelYoutubeVerify,
+  saveChannelYoutubeConnection,
 } from './youtube-connections'
 
 // ---------------------------------------------------------------------------
@@ -121,13 +123,25 @@ export async function listCredentials(db: Database): Promise<MaskedCredential[]>
     }))
 }
 
+/**
+ * Store a provider key. `youtube` is the first channel's connection now:
+ * @deprecated transitional for `youtube`, deleted in Task 7
+ */
 export async function setCredential(
   db: Database,
   provider: CredentialProvider,
   apiKey: string,
   encryptionKey: string,
 ): Promise<void> {
-  if (provider === 'youtube') throw new Error('youtube is a channel connection')
+  if (provider === 'youtube') {
+    await ensureFirstChannel(db)
+    return saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
+      refreshToken: apiKey,
+      encryptionKey,
+      youtubeChannelId: null,
+      youtubeChannelTitle: null,
+    })
+  }
   const encrypted = encryptSecret(apiKey, encryptionKey)
   await db
     .insert(providerCredentials)
@@ -203,6 +217,23 @@ export async function youtubeRefreshToken(
   encryptionKey: string,
 ): Promise<string | undefined> {
   return channelYoutubeToken(db, FIRST_CHANNEL_ID, encryptionKey)
+}
+
+/**
+ * The first channel's connection in the masked shape the Settings YouTube
+ * card reads; never key material.
+ * @deprecated transitional, deleted in Task 7
+ */
+export async function youtubeMaskedConnection(
+  db: Database,
+): Promise<Omit<MaskedCredential, 'provider'> | undefined> {
+  const row = await channelYoutubeConnection(db, FIRST_CHANNEL_ID)
+  if (!row) return undefined
+  return {
+    masked: maskKey(row.keyHint),
+    verifyStatus: row.verifyStatus,
+    lastVerifiedAt: row.lastVerifiedAt,
+  }
 }
 
 /** @deprecated transitional, deleted in Task 7 */

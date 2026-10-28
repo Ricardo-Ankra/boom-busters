@@ -29,6 +29,7 @@ import {
   recordVerifyResult,
   setCredential,
   updateSettings,
+  youtubeMaskedConnection,
 } from './queries'
 import { assets, cases, channels, projects, workspace, youtubeConnections } from './schema'
 import { requireTestDatabase } from './test-database'
@@ -283,17 +284,20 @@ suite('channels', () => {
     })
 
     it('the old youtube names route to the first channel', async () => {
-      await ensureFirstChannel(db)
-      await expect(setCredential(db, 'youtube', 'token', KEY)).rejects.toThrow(
-        'youtube is a channel connection',
-      )
+      await setCredential(db, 'youtube', 'refresh-first-9876', KEY)
 
-      await saveChannelYoutubeConnection(db, FIRST_CHANNEL_ID, {
-        refreshToken: 'refresh-first',
-        encryptionKey: KEY,
+      expect(await channelYoutubeToken(db, FIRST_CHANNEL_ID, KEY)).toBe('refresh-first-9876')
+      expect(await channelYoutubeConnection(db, FIRST_CHANNEL_ID)).toMatchObject({
+        keyHint: '9876',
+        verifyStatus: 'unchecked',
         youtubeChannelId: null,
-        youtubeChannelTitle: null,
       })
+      expect(await youtubeMaskedConnection(db)).toEqual({
+        masked: '••••9876',
+        verifyStatus: 'unchecked',
+        lastVerifiedAt: null,
+      })
+
       await recordVerifyResult(db, 'youtube', 'ok')
       expect(await channelYoutubeConnected(db, FIRST_CHANNEL_ID)).toBe(true)
       expect((await listCredentials(db)).map((c) => c.provider)).not.toContain('youtube')

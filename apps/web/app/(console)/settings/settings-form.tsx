@@ -76,6 +76,7 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
 export function SettingsForm({
   initialSettings,
   credentials,
+  youtubeConnection,
   mockProviders,
   youtubeEnvReady = false,
   initialTab = 'models',
@@ -88,6 +89,8 @@ export function SettingsForm({
 }: {
   initialSettings: Settings
   credentials: MaskedCredential[]
+  /** The first channel's YouTube connection, masked. Transitional until Task 7. */
+  youtubeConnection?: Omit<MaskedCredential, 'provider'>
   /** Resolved on the server: `process.env` is not readable from the client. */
   mockProviders: boolean
   /** Whether the YouTube OAuth client env vars exist — server-resolved too. */
@@ -180,6 +183,7 @@ export function SettingsForm({
       <TabsContent value="connections">
         <ConnectionsTab
           credentials={credentials}
+          youtubeConnection={youtubeConnection}
           mockProviders={mockProviders}
           youtubeEnvReady={youtubeEnvReady}
         />
@@ -418,10 +422,12 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 
 function ConnectionsTab({
   credentials,
+  youtubeConnection,
   mockProviders,
   youtubeEnvReady,
 }: {
   credentials: MaskedCredential[]
+  youtubeConnection: Omit<MaskedCredential, 'provider'> | undefined
   mockProviders: boolean
   youtubeEnvReady: boolean
 }) {
@@ -455,9 +461,8 @@ function ConnectionsTab({
       </p>
 
       {/* OAuth, not a key paste — its own card, above the key grid. */}
-      {/* Transitional: youtube left the credential list (a channel connection now);
-          Task 7 passes the channel's own connection here. */}
-      <YoutubeCard credential={undefined} envReady={youtubeEnvReady} />
+      {/* OAuth, not a key paste — its own card, above the key grid. */}
+      <YoutubeCard credential={youtubeConnection} envReady={youtubeEnvReady} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {CREDENTIAL_PROVIDERS.map((provider) => (

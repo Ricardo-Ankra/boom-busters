@@ -1,4 +1,10 @@
-import { getSettings, listCredentials, listLogos, listMusicBeds } from '@boom-busters/db'
+import {
+  getSettings,
+  listCredentials,
+  listLogos,
+  listMusicBeds,
+  youtubeMaskedConnection,
+} from '@boom-busters/db'
 import { hasEnvGroup } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
@@ -28,9 +34,10 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const [settings, credentials, beds, logos, params] = await Promise.all([
+  const [settings, credentials, youtubeConnection, beds, logos, params] = await Promise.all([
     getSettings(db),
     listCredentials(db),
+    youtubeMaskedConnection(db),
     listMusicBeds(db),
     listLogos(db),
     searchParams,
@@ -75,6 +82,7 @@ export default async function SettingsPage({
       <SettingsForm
         initialSettings={settings}
         credentials={credentials}
+        youtubeConnection={youtubeConnection}
         mockProviders={mockProvidersEnabled()}
         youtubeEnvReady={hasEnvGroup('youtube')}
         initialTab={tab}
