@@ -184,9 +184,8 @@ export default async function globalSetup(): Promise<void> {
     updateWorkspace,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
-  const { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID, takeIdempotencyKey } = await import(
-    '@boom-busters/schemas'
-  )
+  const { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID, takeIdempotencyKey } =
+    await import('@boom-busters/schemas')
 
   const connection = createDb(url, { max: 2 })
   try {
