@@ -1,4 +1,4 @@
-import { getSettings } from '@boom-busters/db'
+import { getChannelSettings } from '@boom-busters/db'
 import {
   listLedger,
   monthOtherChannelsUsd,
@@ -39,7 +39,7 @@ export default async function CostsPage({
   const now = new Date()
 
   const [settings, byProvider, byProject, total, otherChannelsUsd, ledger] = await Promise.all([
-    getSettings(db),
+    getChannelSettings(db, channel.id),
     monthSpendByProvider(db, now, channel.id),
     monthSpendByProject(db, now, channel.id),
     // The ceiling is one workspace number, so the meter reads the workspace total.
@@ -110,7 +110,7 @@ export default async function CostsPage({
             </div>
           </div>
 
-          <CeilingEditor ceilingUsd={settings.budgets.monthlyCeilingUsd} />
+          <CeilingEditor channelId={channel.id} ceilingUsd={settings.budgets.monthlyCeilingUsd} />
         </CardContent>
       </Card>
 

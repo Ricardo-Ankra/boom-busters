@@ -21,10 +21,10 @@ import {
   shotSlots,
   truncateRunMirror,
   updateProjectSet,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { mockDirectorsBook } from '@boom-busters/providers'
-import { DirectorsBookSchema, newId } from '@boom-busters/schemas'
+import { DirectorsBookSchema, newId, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -94,7 +94,7 @@ describeDb('visuals-runner (mock mode)', () => {
     // Settings are a global singleton, not scoped to this test's project:
     // the route-stamping tests below repoint `modelRouting` and must put it
     // back, or a later file inherits a routing no still model answers to.
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
         stillsLikeness: null,
@@ -304,7 +304,7 @@ describeDb('visuals-runner (mock mode)', () => {
 
   it('derives the likeness route for a still of a photographed person, storing none', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
         stillsLikeness: { provider: 'fal', model: 'fal-ai/flux/dev' },
@@ -367,7 +367,7 @@ describeDb('visuals-runner (mock mode)', () => {
 
   it('leaves every planned slot without a route of its own', async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
         stillsLikeness: { provider: 'fal', model: 'fal-ai/flux/dev' },

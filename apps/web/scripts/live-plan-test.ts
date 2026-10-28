@@ -5,7 +5,7 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import {
   createDb,
   getProject,
-  getSettings,
+  channelForProject,
   latestScriptParagraphSources,
   listCastMembers,
   listLogos,
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   try {
     const project = await getProject(db, args.project)
     if (!project) throw new Error(`No project ${args.project}.`)
-    const settings = await getSettings(db)
+    const { settings } = await channelForProject(db, args.project)
     const cast = await listCastMembers(db, args.project)
     const sets = await listProjectSets(db, args.project)
     // The runner sends the logo library too (visuals-runner.ts); without it

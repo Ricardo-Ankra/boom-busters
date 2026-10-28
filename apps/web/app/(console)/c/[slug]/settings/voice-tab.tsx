@@ -42,6 +42,7 @@ const DEFAULT_SAMPLE =
   'probably did not exist. The auditors had signed the accounts for years.'
 
 interface TabProps {
+  channelId: string
   settings: Settings
   saving: boolean
   commit: (patch: SettingsPatch, optimistic: Settings) => Promise<void>
@@ -167,7 +168,7 @@ interface Heard {
   error?: string
 }
 
-function AuditionPanel({ settings, commit }: TabProps) {
+function AuditionPanel({ channelId, settings, commit }: TabProps) {
   const [sample, setSample] = React.useState(DEFAULT_SAMPLE)
   const [catalogue, setCatalogue] = React.useState<
     { provider: TtsProvider; voices: KnownVoice[]; error?: string }[] | null
@@ -241,7 +242,7 @@ function AuditionPanel({ settings, commit }: TabProps) {
     }
 
     setLoading(id)
-    const result = await generateAuditions(sample, [{ provider, voiceId: voice.id }])
+    const result = await generateAuditions(channelId, sample, [{ provider, voiceId: voice.id }])
     setLoading(null)
 
     if (!result.ok) {
@@ -459,7 +460,7 @@ function ChosenVoice({ settings, saving, commit }: TabProps) {
 // Pronunciation
 // ---------------------------------------------------------------------------
 
-function PhonemeHints({ settings, saving, commit }: TabProps) {
+function PhonemeHints({ channelId, settings, saving, commit }: TabProps) {
   const [term, setTerm] = React.useState('')
   const [hint, setHint] = React.useState('')
   const [checking, setChecking] = React.useState(false)
@@ -488,7 +489,7 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
     if (term.trim() === '' || hint.trim() === '') return
 
     setChecking(true)
-    const result = await checkPronunciation(term, hint)
+    const result = await checkPronunciation(channelId, term, hint)
     setChecking(false)
     setCheck(result)
 
@@ -613,12 +614,12 @@ function PhonemeHints({ settings, saving, commit }: TabProps) {
  * *chooses* a voice below two panels describing one you had not chosen yet, and
  * asked you to write pronunciation hints for a narrator that did not exist.
  */
-export function VoiceTab({ settings, saving, commit }: TabProps) {
+export function VoiceTab({ channelId, settings, saving, commit }: TabProps) {
   return (
     <div className="flex flex-col gap-3">
-      <AuditionPanel settings={settings} saving={saving} commit={commit} />
-      <ChosenVoice settings={settings} saving={saving} commit={commit} />
-      <PhonemeHints settings={settings} saving={saving} commit={commit} />
+      <AuditionPanel channelId={channelId} settings={settings} saving={saving} commit={commit} />
+      <ChosenVoice channelId={channelId} settings={settings} saving={saving} commit={commit} />
+      <PhonemeHints channelId={channelId} settings={settings} saving={saving} commit={commit} />
     </div>
   )
 }

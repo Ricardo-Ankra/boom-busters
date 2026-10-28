@@ -19,9 +19,14 @@ import {
   shorts,
   timelines,
   truncateRunMirror,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, noticesFor, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  noticesFor,
+  resolveBrandKit,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine, mockCtx } from '@inngest/test'
@@ -119,7 +124,9 @@ describeDb('shorts-runner', () => {
     // Seeding only creates the settings row; it never resets it. A test that
     // chooses a voice must not leak a teaser into every later test, so each
     // run starts voiceless and the teaser tests opt in.
-    await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      tts: { provider: 'elevenlabs', voiceId: '' },
+    })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(notices)
@@ -318,7 +325,7 @@ describeDb('shorts-runner', () => {
     async () => {
       // Production shape, 2026-09-08: the excerpts predate the teaser
       // feature, so the re-entry guard must not lock the teaser out forever.
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
         budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       })
@@ -431,7 +438,7 @@ describeDb('shorts-runner', () => {
       // setCredential rather than the env import: another suite may have left
       // a row encrypted under a different key, and the import skips existing
       // rows, leaving one this process cannot decrypt.
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
         // The synthesis reserves against the monthly ceiling before calling
         // the (mock) vendor; the default ceiling refuses it.
@@ -517,7 +524,7 @@ describeDb('shorts-runner', () => {
     'says why on the Teaser place when the cut is skipped (decision 294)',
     { timeout: 120_000 },
     async () => {
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
         budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
       })

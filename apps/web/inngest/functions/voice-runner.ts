@@ -3,7 +3,7 @@ import {
   claimTake,
   mockVoiceTakeKey,
   getProject,
-  getSettings,
+  channelForProject,
   latestScriptParagraphSources,
   listVoiceTakes,
   setProjectStage,
@@ -106,7 +106,7 @@ export const voiceRunner = inngest.createFunction(
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
       const { provider, voiceId } = settings.tts
 
       if (voiceId.trim() === '') {
@@ -186,13 +186,17 @@ export const voiceRunner = inngest.createFunction(
             if (claimed.kind === 'existing') return { ok: true, reused: true }
 
             try {
-              const narration = await synthesise({
-                text: job.text,
-                // The synthesis's own identity, not the paragraph's: a retake
-                // is a different purchase of the same paragraph.
-                idempotencyKey: `${job.idempotencyKey}#${claimed.take.takeNumber}`,
-                projectId,
-              })
+              const { settings } = await channelForProject(db, projectId)
+              const narration = await synthesise(
+                {
+                  text: job.text,
+                  // The synthesis's own identity, not the paragraph's: a retake
+                  // is a different purchase of the same paragraph.
+                  idempotencyKey: `${job.idempotencyKey}#${claimed.take.takeNumber}`,
+                  projectId,
+                },
+                settings,
+              )
 
               const key =
                 takeStorage() === 'r2'

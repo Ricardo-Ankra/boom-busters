@@ -206,8 +206,10 @@ const SuggestInputSchema = z.object({
  * `callLlm` with no project to attribute the spend to, as before, and the
  * retry labelled in the ledger as `completeForProject` labels it.
  */
-const completeForLibrary: AnswerComplete = (request, call) =>
-  callLlm(request, call === 'answer' ? {} : { purpose: call })
+const completeForLibrary =
+  (channelId: string): AnswerComplete =>
+  (request, call) =>
+    callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) })
 
 /**
  * `Suggest cases` — proposals land as `idea` rows for triage, never as
@@ -237,7 +239,7 @@ export async function suggestCases(channelId: string, input: unknown): Promise<S
             ...(parsed.data.steer ? { steer: parsed.data.steer } : {}),
           }),
           parse: (text, note) => parseSuggestedCases(text, count, note),
-          complete: completeForLibrary,
+          complete: completeForLibrary(channelId),
         })
     if (!answer.ok) return { ok: false, error: answer.issue }
     const suggestions = answer.value

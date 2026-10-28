@@ -20,6 +20,7 @@ import { SettingsForm } from './settings-form'
  * is to own the state.
  */
 
+const CHANNEL = '01J00000000000000000000001'
 const saveSettings = vi.fn()
 const listAuditionVoices = vi.fn()
 const cachedAuditions = vi.fn()
@@ -106,7 +107,7 @@ function card(label: string): HTMLElement {
 async function openVoiceTab(): Promise<void> {
   render(
     <SettingsForm
-      channelId="01J00000000000000000000001"
+      channelId={CHANNEL}
       channelSlug="first"
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       credentials={[]}
@@ -126,7 +127,7 @@ describe('choosing a narrator', () => {
 
     expect(within(card('Achird')).getByText('Narrator')).toBeTruthy()
     expect(within(card('Achird')).queryByRole('button', { name: /use as narrator/i })).toBeNull()
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith(CHANNEL, {
       tts: { provider: 'elevenlabs', voiceId: ACHIRD },
     })
   })
@@ -174,7 +175,7 @@ describe('delivery stability', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Robust' }))
 
-    expect(saveSettings).toHaveBeenCalledWith({ tts: { stability: 'robust' } })
+    expect(saveSettings).toHaveBeenCalledWith(CHANNEL, { tts: { stability: 'robust' } })
     expect(screen.getByRole('button', { name: 'Robust' })).toHaveAttribute('aria-pressed', 'true')
   })
 

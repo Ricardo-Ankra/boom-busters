@@ -10,12 +10,12 @@
 
 import { createHash } from 'node:crypto'
 import {
-  getSettings,
+  getChannelSettings,
   insertLogo,
   logoById,
   removeLogo,
   renameLogo,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import {
   LOGO_MAX_BYTES,
@@ -202,11 +202,12 @@ export async function renameLogoAction(input: {
 }
 
 /** Remove a mark. The channel mark is refused: the watermark would point at nothing. */
-export async function removeLogoAction(id: string): Promise<ActionResult> {
+export async function removeLogoAction(channelId: string, id: string): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
   if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown mark.' }
 
-  const settings = await getSettings(db)
+  const settings = await getChannelSettings(db, channelId)
   const logo = await logoById(db, id)
   if (!logo) return { ok: false, error: 'That mark is already gone.' }
   if (settings.brandKit.look.logoR2Key === logo.r2Key) {
@@ -229,8 +230,12 @@ export async function removeLogoAction(id: string): Promise<ActionResult> {
 }
 
 /** The mark the watermark draws, or none for the typographic wordmark. */
-export async function setChannelMarkAction(id: string | null): Promise<ActionResult> {
+export async function setChannelMarkAction(
+  channelId: string,
+  id: string | null,
+): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
 
   let logoR2Key: string | null = null
   if (id !== null) {
@@ -239,8 +244,10 @@ export async function setChannelMarkAction(id: string | null): Promise<ActionRes
     if (!logo) return { ok: false, error: 'That mark is already gone.' }
     logoR2Key = logo.r2Key
   }
-  const settings = await getSettings(db)
-  await updateSettings(db, { brandKit: { look: { ...settings.brandKit.look, logoR2Key } } })
+  const settings = await getChannelSettings(db, channelId)
+  await updateChannelSettings(db, channelId, {
+    brandKit: { look: { ...settings.brandKit.look, logoR2Key } },
+  })
   refresh()
   return { ok: true }
 }

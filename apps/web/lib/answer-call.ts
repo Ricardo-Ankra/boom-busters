@@ -1,4 +1,6 @@
+import { channelForProject } from '@boom-busters/db'
 import type { AnswerComplete } from '@/lib/answer'
+import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 
 /**
@@ -16,6 +18,12 @@ export function completeForProject(
   projectId: string,
   firstCall: { estimateOutputTokens?: number } = {},
 ): AnswerComplete {
-  return (request, call) =>
-    callLlm(request, { projectId, ...(call === 'answer' ? firstCall : { purpose: call }) })
+  return async (request, call) => {
+    const { channelId } = await channelForProject(db, projectId)
+    return callLlm(request, {
+      projectId,
+      channelId,
+      ...(call === 'answer' ? firstCall : { purpose: call }),
+    })
+  }
 }

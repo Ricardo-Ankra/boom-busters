@@ -1,4 +1,4 @@
-import { getSettings, listActiveRuns, listActivity, listChannels } from '@boom-busters/db'
+import { getWorkspace, listActiveRuns, listActivity, listChannels } from '@boom-busters/db'
 import type { Channel } from '@boom-busters/db'
 import { monthTotalUsd } from '@boom-busters/cost'
 import { effectiveCeilingUsd } from '@boom-busters/schemas'
@@ -12,13 +12,13 @@ import { db } from './db'
  * (`/c/[slug]` and `/projects/[id]`) load it, so the two render one shell.
  */
 export async function loadShellData(channel: Channel) {
-  const [monthSpendUsd, activeRuns, activity, settings, all] = await Promise.all([
+  const [monthSpendUsd, activeRuns, activity, workspace, all] = await Promise.all([
     // Global: the one ceiling is a workspace total.
     monthTotalUsd(db, new Date()),
     listActiveRuns(db, channel.id),
     listActivity(db, { channelId: channel.id, limit: 60 }),
-    // Transitional: the workspace budgets ride on this wrapper until Task 9.
-    getSettings(db),
+    // The one ceiling lives on the workspace row.
+    getWorkspace(db),
     listChannels(db),
   ])
 
@@ -41,7 +41,7 @@ export async function loadShellData(channel: Channel) {
     },
     channels,
     monthSpendUsd,
-    ceilingUsd: effectiveCeilingUsd(settings.budgets, new Date()),
+    ceilingUsd: effectiveCeilingUsd(workspace.settings.budgets, new Date()),
     activeRuns,
     activity,
   }

@@ -126,7 +126,7 @@ export function SettingsForm({
       setSettings(optimistic)
       setSaving(true)
 
-      const result = await saveSettings(patch)
+      const result = await saveSettings(channelId, patch)
 
       setSaving(false)
       if (!result.ok) {
@@ -136,7 +136,7 @@ export function SettingsForm({
         toast({ title: 'Saved' })
       }
     },
-    [settings, toast],
+    [settings, toast, channelId],
   )
 
   return (
@@ -161,7 +161,7 @@ export function SettingsForm({
       </TabsContent>
 
       <TabsContent value="voice">
-        <VoiceTab settings={settings} saving={saving} commit={commit} />
+        <VoiceTab channelId={channelId} settings={settings} saving={saving} commit={commit} />
       </TabsContent>
 
       <TabsContent value="music">
@@ -170,6 +170,7 @@ export function SettingsForm({
 
       <TabsContent value="logos">
         <LogosTab
+          channelId={channelId}
           logos={logos}
           channelMarkKey={channelMarkKey}
           brandBackground={settings.brandKit.colors.background}

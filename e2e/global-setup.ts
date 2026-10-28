@@ -175,11 +175,12 @@ export default async function globalSetup(): Promise<void> {
     timelines,
     deleteCasesExcept,
     deleteProjectsExcept,
-    getSettings,
+    getChannelSettings,
     ensureFirstChannel,
     recordChannelYoutubeVerify,
     saveChannelYoutubeConnection,
-    updateSettings,
+    updateChannelSettings,
+    updateWorkspace,
   } = await import('@boom-busters/db')
   const { truncateLedger } = await import('@boom-busters/cost')
   const { FIRST_CHANNEL_ID, takeIdempotencyKey } = await import('@boom-busters/schemas')
@@ -1337,10 +1338,13 @@ export default async function globalSetup(): Promise<void> {
     // Read before the reset: the merge replaces `brandKit.look` wholesale
     // (decision 268), so clearing `logoR2Key` below must carry the rest of
     // the current look forward rather than dropping it back to defaults.
-    const settingsBeforeReset = await getSettings(connection.db)
+    const settingsBeforeReset = await getChannelSettings(connection.db, FIRST_CHANNEL_ID)
 
-    await updateSettings(connection.db, {
+    // The one monthly ceiling is the workspace's, not the channel's.
+    await updateWorkspace(connection.db, {
       budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
+    })
+    await updateChannelSettings(connection.db, FIRST_CHANNEL_ID, {
       // Own the image routing: the plan checkpoint quotes a price per still,
       // and a settings row left by a unit-test run would otherwise decide
       // which model that is. The shipped default (decision 264).
@@ -1387,7 +1391,7 @@ export default async function globalSetup(): Promise<void> {
      */
     {
       const { compileTimeline } = await import('@boom-busters/timeline')
-      const { getSettings, insertRender, insertTimeline, setTimelineKey, updateRender } =
+      const { getChannelSettings, insertRender, insertTimeline, setTimelineKey, updateRender } =
         await import('@boom-busters/db')
       const { resolveBrandKit } = await import('@boom-busters/schemas')
 
@@ -1479,7 +1483,7 @@ export default async function globalSetup(): Promise<void> {
       }
 
       const timeline = compileTimeline({
-        brand: resolveBrandKit(await getSettings(connection.db)),
+        brand: resolveBrandKit(await getChannelSettings(connection.db, FIRST_CHANNEL_ID)),
         paragraphs,
         slots: [
           {
@@ -1611,7 +1615,7 @@ export default async function globalSetup(): Promise<void> {
     {
       const { compileTimeline } = await import('@boom-busters/timeline')
       const {
-        getSettings,
+        getChannelSettings,
         insertRender,
         insertShort,
         insertTimeline,
@@ -1715,7 +1719,7 @@ export default async function globalSetup(): Promise<void> {
       }
 
       const publishTimeline = compileTimeline({
-        brand: resolveBrandKit(await getSettings(connection.db)),
+        brand: resolveBrandKit(await getChannelSettings(connection.db, FIRST_CHANNEL_ID)),
         paragraphs,
         slots,
         music: null,

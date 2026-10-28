@@ -20,7 +20,13 @@ import { useToast } from '@/components/ui/toast'
  * It writes through `saveSettings`, the same validated action the Settings
  * screen uses: two write paths to one row is how they drift.
  */
-export function CeilingEditor({ ceilingUsd }: { ceilingUsd: number }) {
+export function CeilingEditor({
+  channelId,
+  ceilingUsd,
+}: {
+  channelId: string
+  ceilingUsd: number
+}) {
   const router = useRouter()
   const { toast } = useToast()
   const [draft, setDraft] = React.useState(String(ceilingUsd))
@@ -33,7 +39,7 @@ export function CeilingEditor({ ceilingUsd }: { ceilingUsd: number }) {
   async function save(): Promise<void> {
     setBusy(true)
     try {
-      const result = await saveSettings({ budgets: { monthlyCeilingUsd: parsed } })
+      const result = await saveSettings(channelId, { budgets: { monthlyCeilingUsd: parsed } })
       if (result.ok) {
         toast({
           title: `Ceiling set to $${parsed.toFixed(2)}/month`,

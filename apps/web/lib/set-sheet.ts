@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
-import { getSettings, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
+import { channelForProject, upsertAssetByHash, visualCredentials } from '@boom-busters/db'
 import { ValidationError } from '@boom-busters/schemas'
 import type { ProjectSet, SetPlateDirection, SlotCandidate } from '@boom-busters/schemas'
 import { imageGenModel, imageGenPrice, mockProvidersEnabled } from '@boom-busters/providers'
@@ -72,7 +72,7 @@ async function sheetBytes(url: string): Promise<{ sheet: Buffer; sheetType: stri
 export async function buildSetSheet(
   set: ProjectSet,
 ): Promise<{ candidates: SlotCandidate[]; views: SetPlateDirection[] }> {
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, set.projectId)
   const route = settings.modelRouting.setSheet
   const provider = route.provider
   const catalogue = await stillCatalogue(settings)
@@ -147,6 +147,7 @@ export async function buildSetSheet(
         )
         return { result: generated, actualUsd: generated.estimatedCostUsd }
       },
+      { settings },
     )
     ;({ sheet, sheetType } = await sheetBytes(result.images[0]!.url))
   }

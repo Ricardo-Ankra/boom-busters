@@ -1,67 +1,9 @@
-import {
-  ChannelNotFoundError,
-  FIRST_CHANNEL_ID,
-  PROVIDER_ENV_SEEDS,
-  TTS_CREDENTIAL_PROVIDER,
-} from '@boom-busters/schemas'
-import type {
-  LlmProvider,
-  Provider,
-  Settings,
-  SettingsPatch,
-  TtsProvider,
-} from '@boom-busters/schemas'
+import { PROVIDER_ENV_SEEDS, TTS_CREDENTIAL_PROVIDER } from '@boom-busters/schemas'
+import type { LlmProvider, Provider, TtsProvider } from '@boom-busters/schemas'
 import { count, eq, inArray } from 'drizzle-orm'
-import { ensureFirstChannel, getChannelSettings, updateChannelSettings } from './channels'
 import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
 import { assets, cases, providerCredentials } from './schema'
-import { getWorkspace, updateWorkspace } from './workspace'
-
-// ---------------------------------------------------------------------------
-// Settings: the first channel's, with the workspace's prices and budget
-// ---------------------------------------------------------------------------
-
-/**
- * The first channel's settings, creating the channel on first access as the
- * settings row used to be, so no caller of the old name grows a "not
- * configured yet" branch.
- */
-async function firstChannelSettings(db: Database): Promise<Settings> {
-  try {
-    return await getChannelSettings(db, FIRST_CHANNEL_ID)
-  } catch (error) {
-    if (!(error instanceof ChannelNotFoundError)) throw error
-    return (await ensureFirstChannel(db)).settings
-  }
-}
-
-/** @deprecated transitional, deleted in Task 8 */
-export async function getSettings(db: Database): Promise<Settings> {
-  const channelSettings = await firstChannelSettings(db)
-  const { settings: workspaceSettings } = await getWorkspace(db)
-  return {
-    ...channelSettings,
-    modelPrices: workspaceSettings.modelPrices,
-    budgets: workspaceSettings.budgets,
-  }
-}
-
-/** @deprecated transitional, deleted in Task 8 */
-export async function updateSettings(db: Database, patch: SettingsPatch): Promise<Settings> {
-  const { modelPrices, budgets, ...channelPatch } = patch
-  // The channel first: its merge is the one that can refuse a patch, and a
-  // refused patch must leave the workspace untouched too.
-  await firstChannelSettings(db)
-  await updateChannelSettings(db, FIRST_CHANNEL_ID, channelPatch)
-  if (modelPrices !== undefined || budgets !== undefined) {
-    await updateWorkspace(db, {
-      ...(modelPrices === undefined ? {} : { modelPrices }),
-      ...(budgets === undefined ? {} : { budgets }),
-    })
-  }
-  return getSettings(db)
-}
 
 // ---------------------------------------------------------------------------
 // Provider credentials

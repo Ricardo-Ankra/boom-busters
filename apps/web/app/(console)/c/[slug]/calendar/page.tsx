@@ -1,4 +1,4 @@
-import { getSettings, scheduledPublishItems } from '@boom-busters/db'
+import { getChannelSettings, scheduledPublishItems } from '@boom-busters/db'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { channelHref } from '@/lib/channel-href'
@@ -45,7 +45,7 @@ export default async function CalendarPage({
   const channel = await channelFromSlug(slug)
   const [records, settings] = await Promise.all([
     scheduledPublishItems(db, channel.id),
-    getSettings(db),
+    getChannelSettings(db, channel.id),
   ])
 
   const now = new Date()

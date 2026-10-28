@@ -58,10 +58,12 @@ async function fingerprint(file: File): Promise<string> {
 }
 
 export function LogosTab({
+  channelId,
   logos,
   channelMarkKey,
   brandBackground,
 }: {
+  channelId: string
   logos: LogoView[]
   channelMarkKey: string | null
   /** Spec 6.3: a mark is shown on the brand ground, not the console's own. */
@@ -245,7 +247,10 @@ export function LogosTab({
               variant="outline"
               disabled={busy}
               onClick={() =>
-                void run(() => setChannelMarkAction(null), 'The corner carries the wordmark')
+                void run(
+                  () => setChannelMarkAction(channelId, null),
+                  'The corner carries the wordmark',
+                )
               }
             >
               Use no mark
@@ -260,6 +265,7 @@ export function LogosTab({
               {logos.map((logo) => (
                 <LogoRow
                   key={logo.id}
+                  channelId={channelId}
                   logo={logo}
                   isChannelMark={logo.r2Key === channelMarkKey}
                   busy={busy}
@@ -276,12 +282,14 @@ export function LogosTab({
 }
 
 function LogoRow({
+  channelId,
   logo,
   isChannelMark,
   busy,
   run,
   brandBackground,
 }: {
+  channelId: string
   logo: LogoView
   isChannelMark: boolean
   busy: boolean
@@ -319,7 +327,10 @@ function LogoRow({
             variant="ghost"
             disabled={busy}
             onClick={() =>
-              void run(() => setChannelMarkAction(logo.id), `${logo.title} is the channel mark`)
+              void run(
+                () => setChannelMarkAction(channelId, logo.id),
+                `${logo.title} is the channel mark`,
+              )
             }
           >
             Use {logo.title} as channel mark
@@ -348,7 +359,7 @@ function LogoRow({
           confirmLabel="Remove mark"
           consequence={`${logo.title} leaves the library; graphics that use it will ask for it again.`}
           disabled={busy}
-          onConfirm={() => run(() => removeLogoAction(logo.id), 'Mark removed')}
+          onConfirm={() => run(() => removeLogoAction(channelId, logo.id), 'Mark removed')}
         />
       </div>
     </li>

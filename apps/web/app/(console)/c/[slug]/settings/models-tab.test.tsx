@@ -107,7 +107,7 @@ describe('routing the set sheet generator (decision 275)', () => {
 
     await userEvent.selectOptions(select, 'gemini-3.1-flash-image')
 
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { setSheet: { provider: 'google', model: 'gemini-3.1-flash-image' } },
     })
   })
@@ -127,7 +127,7 @@ describe('routing the set sheet generator (decision 275)', () => {
     await userEvent.selectOptions(provider, 'fal')
 
     const first = options.image.fal.find((o) => o.selectable && o.status !== 'needs-price')!
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { setSheet: { provider: 'fal', model: first.id } },
     })
 
@@ -160,7 +160,7 @@ describe('live model lists (decision 288)', () => {
     ).toBeGreaterThan(0)
 
     await userEvent.selectOptions(select, 'claude-opus-mock-9')
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { research: { provider: 'anthropic', model: 'claude-opus-mock-9' } },
     })
     expect(
@@ -183,7 +183,7 @@ describe('live model lists (decision 288)', () => {
     await userEvent.type(screen.getByLabelText('Output, $ per million tokens'), '30')
     await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
 
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { research: { provider: 'anthropic', model: 'claude-mock-unpriced' } },
       modelPrices: {
         llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
@@ -221,7 +221,7 @@ describe('live model lists (decision 288)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
 
     expect(saveSettings).toHaveBeenCalledTimes(1)
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelPrices: {
         llm: { 'anthropic:claude-mock-unpriced': { inputPerMTok: 7, outputPerMTok: 30 } },
         image: {},
@@ -316,7 +316,7 @@ describe('live image models (decision 288)', () => {
     renderModelsTab()
     const select = screen.getByRole('combobox', { name: 'Still images model' })
     await userEvent.selectOptions(select, 'gemini-9-flash-image')
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { stills: { provider: 'google', model: 'gemini-9-flash-image' } },
     })
     expect(
@@ -420,7 +420,7 @@ describe('live image models (decision 288)', () => {
 
     await userEvent.type(fourK, '0.3')
     await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelPrices: {
         llm: {},
         image: {
@@ -464,7 +464,7 @@ describe('pricing image models (decision 288)', () => {
     await userEvent.type(screen.getByLabelText('4K price per image ($, optional)'), '0.2')
     await userEvent.click(screen.getByRole('button', { name: 'Save price and use' }))
 
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelRouting: { stills: { provider: 'google', model: 'imagen-mock' } },
       modelPrices: {
         llm: {},
@@ -503,7 +503,7 @@ describe('pricing image models (decision 288)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
 
     expect(saveSettings).toHaveBeenCalledTimes(1)
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelPrices: { llm: {}, image: { 'fal:fal-ai/unpriced': { pricePerImage: 0.03 } } },
     })
   })
@@ -568,7 +568,7 @@ describe('Models tab follow-ups (decision 288)', () => {
     await userEvent.type(input, '4')
     await userEvent.click(screen.getByRole('button', { name: 'Save price' }))
 
-    expect(saveSettings).toHaveBeenCalledWith({
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       modelPrices: {
         llm: {
           'anthropic:claude-opus-mock-9': {
@@ -593,7 +593,9 @@ describe('Models tab follow-ups (decision 288)', () => {
     renderModelsTab(modelOptions(prices), settings)
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear price' }))
-    expect(saveSettings).toHaveBeenCalledWith({ modelPrices: { llm: {}, image: {} } })
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+      modelPrices: { llm: {}, image: {} },
+    })
   })
 
   it('shows a saved route no list holds any more as itself, not as unlisted', () => {

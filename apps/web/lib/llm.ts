@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { estimateLlmUsd, withCost } from '@boom-busters/cost'
-import { getSettings, llmCredentials, recordRunEvent } from '@boom-busters/db'
+import { getChannelSettings, llmCredentials, recordRunEvent } from '@boom-busters/db'
 import { findModel, llmAdapters, resolveLlmModel, route } from '@boom-busters/providers'
 import type { Downgrade, LLMTaskRequest, RoutedResult } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
@@ -15,7 +15,7 @@ import { env } from '@/lib/env'
  * Three things have to happen around every call and none of them are optional,
  * so they are bound together here rather than left to each caller to remember:
  *
- *  1. **Routing** comes from the settings row, read fresh on every call.
+ *  1. **Routing** comes from the channel's settings, read fresh on every call.
  *  2. **The budget guard** wraps it, so a call that would cross a monthly cap
  *     raises `BudgetExceededError` *before* the provider is contacted, and the
  *     ledger settles on the real token usage afterwards.
@@ -54,9 +54,12 @@ function promptTokens(request: LLMTaskRequest): number {
 
 export async function callLlm(
   request: LLMTaskRequest,
-  options: CallOptions = {},
+  options: CallOptions & {
+    /** The channel whose routing and fallback chain this call follows, and that the spend is booked to. */
+    channelId: string
+  },
 ): Promise<RoutedResult> {
-  const settings = await getSettings(db)
+  const settings = await getChannelSettings(db, options.channelId)
   const credentials = await llmCredentials(db, env.SECRETS_ENCRYPTION_KEY)
   const choice = settings.modelRouting[request.task]
 
@@ -84,6 +87,7 @@ export async function callLlm(
     {
       provider: choice.provider,
       operation: `llm.${request.task}`,
+      channelId: options.channelId,
       ...(options.projectId ? { projectId: options.projectId } : {}),
       // Priced against the model settings asked for. A fallback may answer
       // instead, and it is always cheaper than the tier above it, so the

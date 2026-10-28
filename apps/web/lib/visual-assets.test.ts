@@ -4,7 +4,7 @@ import {
   FIXTURE_PROJECT_ID,
   deleteCastMember,
   deleteProjectSet,
-  getSettings,
+  getChannelSettings,
   insertCastMember,
   insertLogo,
   insertProjectSet,
@@ -18,11 +18,11 @@ import {
   socialPosts,
   setSetPlates,
   updateProjectSet,
-  updateSettings,
+  updateChannelSettings,
   upsertAssetByHash,
 } from '@boom-busters/db'
 import { mockImageGen } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, newId, STILL_GENERATIONS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type {
   CastMember,
   GraphicBrief,
@@ -127,7 +127,7 @@ describeDb('generateStillCandidates with the cast', () => {
     // shared test database by one of the runner suites that asserts the
     // budget gate, would fail this file on whatever ran first. Own the
     // setting rather than inherit it.
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 100 } })
     for (const member of await listCastMembers(db, FIXTURE_PROJECT_ID)) {
       await deleteCastMember(db, member.id)
     }
@@ -199,7 +199,7 @@ describeDb('generateStillCandidates with the cast', () => {
 
     const cast = await listCastMembers(db, FIXTURE_PROJECT_ID)
     const sets = await listProjectSets(db, FIXTURE_PROJECT_ID)
-    const settings = await getSettings(db)
+    const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
     const catalogue = await modelCatalogue.stillCatalogue(settings)
     const preview = stillPromptFor(still, cast, sets, settings.modelRouting, null, catalogue)
 
@@ -275,7 +275,7 @@ describeDb('generateStillCandidates with the cast', () => {
     try {
       // Own the route: settings persist in the shared test database, and the
       // spy is on the adapter this route resolves to.
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         modelRouting: {
           stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
           stillsLikeness: null,
@@ -316,7 +316,7 @@ describeDb('generateStillCandidates with the cast', () => {
    */
   describe('routing a still by whether it shows the cast', () => {
     beforeEach(async () => {
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         modelRouting: {
           stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
           stillsLikeness: { provider: 'google', model: 'gemini-3-pro-image' },
@@ -325,7 +325,7 @@ describeDb('generateStillCandidates with the cast', () => {
     })
 
     afterEach(async () => {
-      await updateSettings(db, { modelRouting: { stillsLikeness: null } })
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, { modelRouting: { stillsLikeness: null } })
     })
 
     it('sends a still of a photographed cast member to the likeness route', async () => {
@@ -387,7 +387,7 @@ describeDb('generateStillCandidates with the cast', () => {
     const plain: StillBrief = { ...still, depicts: [] }
 
     beforeEach(async () => {
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         modelRouting: {
           stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
           stillsLikeness: { provider: 'google', model: 'gemini-3-pro-image' },
@@ -396,7 +396,7 @@ describeDb('generateStillCandidates with the cast', () => {
     })
 
     afterEach(async () => {
-      await updateSettings(db, { modelRouting: { stillsLikeness: null } })
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, { modelRouting: { stillsLikeness: null } })
     })
 
     it('prices each brief on its own route, not all of them on the dearest', async () => {
@@ -474,7 +474,7 @@ describeDb('generateStillCandidates with the cast', () => {
     // Stated explicitly rather than left to the settings default, so this
     // test still means "no split" once the default model changes underneath
     // it (decision 264).
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
         stillsLikeness: null,
@@ -850,7 +850,7 @@ References attached: 1 photograph of Emad Mostaque.`
 
   describe('a still that names a set', () => {
     beforeEach(async () => {
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         modelRouting: {
           stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
           stillsLikeness: null,
@@ -1002,7 +1002,7 @@ References attached: 1 photograph of Emad Mostaque.`
      * plate AND a prompt that never named the room, and nothing failed.
      */
     it('carries the plate on gemini-2.5-flash-image too, which once dropped it', async () => {
-      await updateSettings(db, {
+      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
         modelRouting: {
           stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
           stillsLikeness: null,
@@ -1230,7 +1230,7 @@ describe('referenceBudgets', () => {
 
 describeDb('the route stored on a slot wins', () => {
   it('generates on the stored route, not the derived one', async () => {
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
     })
     await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID, {
@@ -1244,7 +1244,7 @@ describeDb('the route stored on a slot wins', () => {
     // The five production fetch paths all call `resolveSlotBrief`, never the
     // generator directly, so a route that stops at this boundary makes the
     // board's model select decorative (decision 264).
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
     })
     const resolution = await resolveSlotBrief({
@@ -1260,7 +1260,7 @@ describeDb('the route stored on a slot wins', () => {
     // The stored route is a different object with the same provider and
     // model; comparing identity named the likeness setting in the
     // missing-key message for a still that was never on it.
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'google', model: 'gemini-3.1-flash-image' },
         stillsLikeness: null,
@@ -1280,7 +1280,7 @@ describeDb('the route stored on a slot wins', () => {
   })
 
   it('prices a slot on its stored route', async () => {
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { stills: { provider: 'fal', model: 'fal-ai/flux-2' }, stillsLikeness: null },
     })
     const stored = { provider: 'google' as const, model: 'gemini-3-pro-image' }
@@ -1307,13 +1307,13 @@ describeDb('the route stored on a slot wins', () => {
       ],
       new Date(),
     )
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: {
         stills: { provider: 'fal', model: 'fal-ai/mock-flux' },
         stillsLikeness: null,
       },
     })
-    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.02 * STILL_GENERATIONS)
+    expect(await stillSlotEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.02 * STILL_GENERATIONS)
     await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID)
     expect(await lastLedgerModel()).toBe('fal-ai/mock-flux')
     // The ledger reserves exactly what the button quoted (decision 288 follow-up).
@@ -1325,7 +1325,9 @@ describeDb('the route stored on a slot wins', () => {
     // Spec section 9: a saved model the provider stops listing is labelled,
     // not removed, and a run still tries it. It used to fall back silently.
     await replaceCatalogue(db, 'google', [], new Date())
-    await updateSettings(db, { modelRouting: DEFAULT_SETTINGS.modelRouting })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      modelRouting: DEFAULT_SETTINGS.modelRouting,
+    })
     await generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID, {
       provider: 'google',
       model: 'gemini-8-flash-image',
@@ -1338,25 +1340,27 @@ describeDb('a live-only route the cache no longer holds (decision 288)', () => {
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     await seed(db)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 100 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 100 } })
     // A refresh that stopped returning every live-only Google model.
     await replaceCatalogue(db, 'google', [], new Date())
   })
 
   afterEach(async () => {
     vi.unstubAllEnvs()
-    await updateSettings(db, { modelRouting: DEFAULT_SETTINGS.modelRouting })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      modelRouting: DEFAULT_SETTINGS.modelRouting,
+    })
   })
 
   it('still prices a Gemini model its family resolves from settings alone', async () => {
     const route = { provider: 'google' as const, model: 'gemini-9-flash-image' }
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { stills: route, stillsLikeness: route, setSheet: route },
     })
     // Gemini 3.1 Flash Image's price: $0.07 per image, $0.16 at 4K.
-    expect(await stillSlotEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
-    expect(await plateEstimateUsd()).toBeCloseTo(0.07 * STILL_GENERATIONS)
-    expect(await setSheetEstimateUsd()).toBeCloseTo(0.16)
+    expect(await stillSlotEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await plateEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.07 * STILL_GENERATIONS)
+    expect(await setSheetEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.16)
     expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBeCloseTo(
       0.07 * STILL_GENERATIONS,
     )
@@ -1372,24 +1376,24 @@ describeDb('a live-only route the cache no longer holds (decision 288)', () => {
    * text-to-image price.
    */
   it('prices a fal set sheet at the reference endpoint its model hands the plate to', async () => {
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux/dev' } },
     })
-    expect(await setSheetEstimateUsd()).toBeCloseTo(0.04)
-    await updateSettings(db, {
+    expect(await setSheetEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.04)
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { setSheet: { provider: 'fal', model: 'fal-ai/flux-2' } },
     })
-    expect(await setSheetEstimateUsd()).toBeCloseTo(0.03)
+    expect(await setSheetEstimateUsd(FIRST_CHANNEL_ID)).toBeCloseTo(0.03)
   })
 
   it('prices a route nothing resolves at $0 rather than taking the page down, and refuses to spend on it', async () => {
     const route = { provider: 'google' as const, model: 'gemini-unknown-image' }
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       modelRouting: { stills: route, stillsLikeness: null, setSheet: route },
     })
-    expect(await stillSlotEstimateUsd()).toBe(0)
-    expect(await plateEstimateUsd()).toBe(0)
-    expect(await setSheetEstimateUsd()).toBe(0)
+    expect(await stillSlotEstimateUsd(FIRST_CHANNEL_ID)).toBe(0)
+    expect(await plateEstimateUsd(FIRST_CHANNEL_ID)).toBe(0)
+    expect(await setSheetEstimateUsd(FIRST_CHANNEL_ID)).toBe(0)
     expect(await stillsEstimateUsd([{ ...still, depicts: [] }], FIXTURE_PROJECT_ID)).toBe(0)
     await expect(
       generateStillCandidates({ ...still, depicts: [] }, FIXTURE_PROJECT_ID),

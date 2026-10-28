@@ -92,6 +92,7 @@ describe('the Photographic look card (decision 287)', () => {
     await user.selectOptions(grade, 'strong')
 
     expect(saveSettings).toHaveBeenCalledWith(
+      '01J00000000000000000000001',
       expect.objectContaining({
         brandKit: expect.objectContaining({
           look: expect.objectContaining({ gradePreset: 'strong' }),

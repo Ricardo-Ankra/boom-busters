@@ -7,6 +7,7 @@ import {
   saveChapter,
   seed,
 } from '@boom-busters/db'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ANSWER_CUT_OFF } from '@/lib/answer'
 import { db } from '@/lib/db'
@@ -61,9 +62,13 @@ describeDb('regenerateSection (decision 293)', () => {
     ).toEqual({ ok: true, proposal: 'By June, nobody could say where the money had gone.' })
 
     const [first, second] = callLlm.mock.calls
-    expect(first![1]).toEqual({ projectId: FIXTURE_PROJECT_ID })
+    expect(first![1]).toEqual({ projectId: FIXTURE_PROJECT_ID, channelId: FIRST_CHANNEL_ID })
     expect(second![0].maxTokens).toBe(first![0].maxTokens * 2)
-    expect(second![1]).toEqual({ projectId: FIXTURE_PROJECT_ID, purpose: 'retry: cut off' })
+    expect(second![1]).toEqual({
+      projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
+      purpose: 'retry: cut off',
+    })
   })
 
   it('returns the reason for the toast after a second cut-off', async () => {

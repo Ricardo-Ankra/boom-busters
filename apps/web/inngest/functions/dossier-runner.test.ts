@@ -1,6 +1,12 @@
 // @vitest-environment node
 
+import { listLedger } from '@boom-busters/cost'
 import {
+  createCase,
+  createChannel,
+  createProjectFromCase,
+  setCredential,
+  updateChannelSettings,
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -12,11 +18,13 @@ import {
   truncateRunMirror,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
+import { env } from '@/lib/env'
 import { notify } from '@/lib/notify'
 import type * as Research from '../lib/dossier-research'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -44,8 +52,10 @@ vi.mock('@boom-busters/db', async (importOriginal) => ({
 }))
 // The real passes, watched: what case the runner hands them is under test.
 const researchDossier = vi.hoisted(() => vi.fn())
+const researchActual = vi.hoisted(() => vi.fn())
 vi.mock('../lib/dossier-research', async (importOriginal) => {
   const original = await importOriginal<typeof Research>()
+  researchActual.mockImplementation(original.researchDossier)
   researchDossier.mockImplementation(original.researchDossier)
   return { ...original, researchDossier }
 })
@@ -294,11 +304,53 @@ describeDb('dossier-runner', () => {
     ])
   })
 
-  it('completes a run whose memoised load-case has no channelId, mirrored under the project channel', async () => {
+  it('completes a run whose memoised load-case has no channelId, resolving the project channel B for its settings and mirror', async () => {
     // A run parked before channels existed replays a load-case that names none;
-    // everything after it must work from the project alone.
+    // every later step must work from the project alone, on its own channel.
+    const other = await createChannel(db, {
+      name: 'Dossier channel B',
+      handle: null,
+      slug: `dossier-${Math.random().toString(36).slice(2, 8)}`,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        modelRouting: {
+          ...DEFAULT_SETTINGS.modelRouting,
+          research: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+        },
+      },
+      bible: EMPTY_BIBLE,
+    })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      modelRouting: { research: { provider: 'anthropic', model: 'claude-sonnet-5' } },
+      budgets: { monthlyCeilingUsd: 100 },
+    })
+    await setCredential(db, 'anthropic', 'sk-ant-api03-test-key-0000', env.SECRETS_ENCRYPTION_KEY)
+    const otherCase = await createCase(db, { channelId: other.id, title: 'B', category: 'con' })
+    const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On B' })
+
+    // The research pass is where the run reaches a model. Stored steps keep
+    // the real passes from calling out, so this one call stands in for them:
+    // it is made the way the passes make theirs, from the project id alone.
+    researchDossier.mockImplementationOnce(async (...args: Parameters<typeof researchDossier>) => {
+      await completeForProject(otherProject.id)(
+        {
+          task: 'research',
+          system: 'Research.',
+          messages: [{ role: 'user', content: 'Hello' }],
+          maxTokens: 50,
+        },
+        'answer',
+      )
+      return researchActual(...args)
+    })
+
     const { ctx } = await engine.executeStep('await-dossier-gate', {
-      events: created(),
+      events: [
+        {
+          name: 'project/created',
+          data: { projectId: otherProject.id, caseId: otherCase.id },
+        },
+      ],
       steps: [
         { id: 'load-case', handler: () => ({ ...CASE, competitorLinks: [] }) },
         ...stored().filter((entry) => entry.id !== 'load-case'),
@@ -310,7 +362,12 @@ describeDb('dossier-runner', () => {
     expect(saveDossier).toHaveBeenCalledTimes(1)
 
     const [run] = await listRuns(db)
-    expect(run?.channelId).toBe(FIRST_CHANNEL_ID)
+    expect(run?.channelId).toBe(other.id)
+
+    // Channel B routes research to Haiku, the first channel to Sonnet: the
+    // ledger row proves the call read B's settings, not the first channel's.
+    const [entry] = await listLedger(db, { projectId: otherProject.id, limit: 1 })
+    expect(entry?.meta['model']).toBe('claude-haiku-4-5-20251001')
   })
 
   it('saves research replayed from before the notices, with no notice and no crash', async () => {

@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getLatestScript,
   getProject,
   listCastMembers,
@@ -315,14 +316,14 @@ export async function planChapterSlots(input: {
   } else {
     // The first ask and the brief repair are the ledger's plain rows; the
     // automatic timing repair ('stretch') and the retries are named on theirs.
-    const planned = await planChapterWith(
-      (request, purpose) =>
-        callLlm(request, {
-          projectId: input.projectId,
-          ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
-        }),
-      input,
-    )
+    const planned = await planChapterWith(async (request, purpose) => {
+      const { channelId } = await channelForProject(db, input.projectId)
+      return callLlm(request, {
+        projectId: input.projectId,
+        channelId,
+        ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
+      })
+    }, input)
     if (!planned) return { rows: [], rejected: 0 }
     dropped = planned.malformed
     slots = planned.slots

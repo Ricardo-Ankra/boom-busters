@@ -17,13 +17,14 @@ import {
   shorts,
   timelines,
   truncateRunMirror,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
   noticesFor,
   resolveBrandKit,
   teaserTextHash,
+  FIRST_CHANNEL_ID,
 } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
@@ -122,7 +123,7 @@ const STORED_SCRIPT = {
 }
 
 async function chooseVoice(): Promise<void> {
-  await updateSettings(db, {
+  await updateChannelSettings(db, FIRST_CHANNEL_ID, {
     tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
     budgets: { monthlyCeilingUsd: 100, approvedOverage: null },
   })
@@ -153,7 +154,9 @@ describeDb('teaser-rebuild-runner', () => {
     callLlm.mockReset()
     await seed(db)
     // Seeding never resets settings; start voiceless so each test opts in.
-    await updateSettings(db, { tts: { provider: 'elevenlabs', voiceId: '' } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      tts: { provider: 'elevenlabs', voiceId: '' },
+    })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(notices)

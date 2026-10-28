@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LogosTab } from './logos-tab'
 import type { LogoView } from './logos-tab'
 
+const CH = '01J00000000000000000000001'
+
 const actions = vi.hoisted(() => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
@@ -73,7 +75,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('LogosTab', () => {
   it('lists every mark by name, with a preview or a note that mock storage has none', () => {
-    render(<LogosTab logos={LOGOS} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={LOGOS} channelMarkKey={null} />)
     const list = screen.getByRole('list', { name: 'Logo library' })
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
     expect(within(list).getByRole('img', { name: 'Stability AI' })).toHaveAttribute(
@@ -84,22 +86,24 @@ describe('LogosTab', () => {
   })
 
   it('shows the tile on the brand ground when one is given, the console ground otherwise', () => {
-    render(<LogosTab logos={LOGOS} channelMarkKey={null} brandBackground="#101820" />)
+    render(
+      <LogosTab channelId={CH} logos={LOGOS} channelMarkKey={null} brandBackground="#101820" />,
+    )
     const tile = screen.getByRole('img', { name: 'Stability AI' }).parentElement
     expect(tile).toHaveStyle({ backgroundColor: '#101820' })
   })
 
   it('marks the channel mark and offers the others as candidates', async () => {
-    render(<LogosTab logos={LOGOS} channelMarkKey="boom-busters/logos/aaa.png" />)
+    render(<LogosTab channelId={CH} logos={LOGOS} channelMarkKey="boom-busters/logos/aaa.png" />)
     expect(screen.getByText('Channel mark')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Use Wirecard AG as channel mark' }))
-    expect(actions.setChannelMarkAction).toHaveBeenCalledWith('01J000000000000000000000L2')
+    expect(actions.setChannelMarkAction).toHaveBeenCalledWith(CH, '01J000000000000000000000L2')
     await userEvent.click(screen.getByRole('button', { name: 'Use no mark' }))
-    expect(actions.setChannelMarkAction).toHaveBeenCalledWith(null)
+    expect(actions.setChannelMarkAction).toHaveBeenCalledWith(CH, null)
   })
 
   it('uploads browser to R2: convert, presign, PUT, then finalise with the name and size', async () => {
-    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={[]} channelMarkKey={null} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     expect(input).toHaveAttribute('accept', expect.stringContaining('image/svg+xml'))
 
@@ -138,7 +142,7 @@ describe('LogosTab', () => {
 
   it('names the status in the error toast when storage refuses the PUT, and does not finalise', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403 })
-    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={[]} channelMarkKey={null} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
 
     await userEvent.type(screen.getByLabelText('Name'), 'Stability AI')
@@ -163,7 +167,7 @@ describe('LogosTab', () => {
     // `createLogoUploadAction` resolving `ok: true` with no `url`/`key` is
     // not a success the browser can act on: nothing was presigned to PUT to.
     actions.createLogoUploadAction.mockResolvedValue({ ok: true })
-    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={[]} channelMarkKey={null} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
 
     await userEvent.type(screen.getByLabelText('Name'), 'Stability AI')
@@ -187,7 +191,7 @@ describe('LogosTab', () => {
   })
 
   it('pre-fills the name from the file and warns that a JPEG has no transparency', async () => {
-    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={[]} channelMarkKey={null} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     await userEvent.upload(input, new File(['x'], 'wirecard-ag.jpg', { type: 'image/jpeg' }))
     expect(screen.getByLabelText('Name')).toHaveValue('Wirecard Ag')
@@ -195,7 +199,7 @@ describe('LogosTab', () => {
   })
 
   it('adds a mark by address with its name', async () => {
-    render(<LogosTab logos={[]} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={[]} channelMarkKey={null} />)
     await userEvent.type(screen.getByLabelText('Name'), 'Wirecard AG')
     await userEvent.type(
       screen.getByLabelText('Or paste an image address'),
@@ -209,7 +213,7 @@ describe('LogosTab', () => {
   })
 
   it('renames in place and removes behind a confirm that names the consequence', async () => {
-    render(<LogosTab logos={LOGOS} channelMarkKey={null} />)
+    render(<LogosTab channelId={CH} logos={LOGOS} channelMarkKey={null} />)
     const row = screen.getByRole('listitem', { name: 'Stability AI' })
     const name = within(row).getByLabelText('Rename Stability AI')
     await userEvent.clear(name)
@@ -219,12 +223,12 @@ describe('LogosTab', () => {
 
     await userEvent.click(within(row).getByRole('button', { name: 'Remove' }))
     await userEvent.click(within(row).getByRole('button', { name: 'Remove mark' }))
-    expect(actions.removeLogoAction).toHaveBeenCalledWith(LOGOS[0]!.id)
+    expect(actions.removeLogoAction).toHaveBeenCalledWith(CH, LOGOS[0]!.id)
   })
 
   it('shows the action error when a removal is refused', async () => {
     actions.removeLogoAction.mockResolvedValue({ ok: false, error: 'This is the channel mark.' })
-    render(<LogosTab logos={LOGOS} channelMarkKey="boom-busters/logos/aaa.png" />)
+    render(<LogosTab channelId={CH} logos={LOGOS} channelMarkKey="boom-busters/logos/aaa.png" />)
     const row = screen.getByRole('listitem', { name: 'Stability AI' })
     await userEvent.click(within(row).getByRole('button', { name: 'Remove' }))
     await userEvent.click(within(row).getByRole('button', { name: 'Remove mark' }))

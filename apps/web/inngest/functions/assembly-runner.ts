@@ -1,7 +1,7 @@
 import {
   getAsset,
   getProject,
-  getSettings,
+  channelForProject,
   getSocialPosts,
   insertTimeline,
   latestScriptParagraphSources,
@@ -119,7 +119,7 @@ export const assemblyRunner = inngest.createFunction(
         if (asset) assets.push([id, asset])
       }
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
       const beds = await listMusicBeds(db)
 
       return {

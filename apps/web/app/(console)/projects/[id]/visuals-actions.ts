@@ -7,7 +7,7 @@ import {
   getClaim,
   getProject,
   getProjectSet,
-  getSettings,
+  channelForProject,
   getShotSlot,
   getSocialPost,
   hasLiveRun,
@@ -361,7 +361,7 @@ export async function setSlotRouteAction(
 
   if (parsedRoute) {
     try {
-      const catalogue = await stillCatalogue(await getSettings(db))
+      const catalogue = await stillCatalogue((await channelForProject(db, projectId)).settings)
       imageGenModel(catalogue[parsedRoute.provider], parsedRoute.model)
     } catch (error) {
       return {

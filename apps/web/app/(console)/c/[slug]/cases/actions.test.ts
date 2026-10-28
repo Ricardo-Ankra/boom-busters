@@ -72,8 +72,11 @@ describe('suggestCases on the answer helper (decision 293)', () => {
       mocked: false,
     })
     expect(callLlm).toHaveBeenCalledTimes(2)
-    expect(callLlm.mock.calls[0]![1]).toEqual({})
-    expect(callLlm.mock.calls[1]![1]).toEqual({ purpose: 'retry: refused' })
+    expect(callLlm.mock.calls[0]![1]).toEqual({ channelId: CHANNEL_ID })
+    expect(callLlm.mock.calls[1]![1]).toEqual({
+      channelId: CHANNEL_ID,
+      purpose: 'retry: refused',
+    })
     expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toMatch(
       /^Your previous answer was refused: The model returned no JSON for case suggestions/,
     )

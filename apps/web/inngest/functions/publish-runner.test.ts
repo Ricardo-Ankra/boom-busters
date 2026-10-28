@@ -14,7 +14,7 @@ import {
   shorts,
   truncateRunMirror,
   updateRender,
-  updateSettings,
+  updateChannelSettings,
   updateShort,
 } from '@boom-busters/db'
 import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
@@ -138,7 +138,7 @@ describeDb('publish-runner', () => {
     await db.delete(publishRecords)
     await db.delete(renders)
     await db.delete(shorts)
-    await updateSettings(db, { publish: { dailyUploadBudget: 4 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { publish: { dailyUploadBudget: 4 } })
   })
 
   it(
@@ -226,7 +226,7 @@ describeDb('publish-runner', () => {
   })
 
   it('the spent daily budget defers instead of uploading', { timeout: 120_000 }, async () => {
-    await updateSettings(db, { publish: { dailyUploadBudget: 1 } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, { publish: { dailyUploadBudget: 1 } })
     await doneMasterRender()
     // One upload already started in this quota day.
     await draftRecord('short', '01HQ00000000000000000000T9', {

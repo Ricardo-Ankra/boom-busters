@@ -1,5 +1,5 @@
 import {
-  getSettings,
+  getChannelSettings,
   listCredentials,
   listLogos,
   listMusicBeds,
@@ -41,7 +41,7 @@ export default async function SettingsPage({
   const { slug } = await routeParams
   const channel = await channelFromSlug(slug)
   const [settings, credentials, connectionRow, beds, logos, params] = await Promise.all([
-    getSettings(db),
+    getChannelSettings(db, channel.id),
     listCredentials(db),
     channelYoutubeConnection(db, channel.id),
     listMusicBeds(db),

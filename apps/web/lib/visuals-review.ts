@@ -7,11 +7,11 @@ import {
   suggestExcerpt,
 } from '@boom-busters/compositions/social'
 import {
+  channelForProject,
   getArticleSources,
   getAsset,
   getClaims,
   getProject,
-  getSettings,
   getSocialPosts,
   latestScriptParagraphSources,
   listCastMembers,
@@ -894,10 +894,10 @@ export async function visualsReviewModel(
    * slot. `castWarnings` below reuses this same cast rather than loading it
    * again.
    */
-  const [cast, sets, settings] = await Promise.all([
+  const [cast, sets, { settings }] = await Promise.all([
     listCastMembers(db, projectId),
     listProjectSets(db, projectId),
-    getSettings(db),
+    channelForProject(db, projectId),
   ])
   // Every slot's stored route too, so a slot on a model the lists have
   // since dropped shows and prices as itself (decision 288 follow-up).

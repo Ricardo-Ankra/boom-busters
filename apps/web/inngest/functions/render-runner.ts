@@ -1,7 +1,7 @@
 import {
   failInFlightRenders,
   getProject,
-  getSettings,
+  channelForProject,
   insertRender,
   latestTimeline,
   setProjectStage,
@@ -123,7 +123,7 @@ export const renderRunner = inngest.createFunction(
         costUsd: String(estimate),
       })
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
       return {
         renderId: render.id,
         timelineId: timelineRow.id,
@@ -253,7 +253,7 @@ export const renderRunner = inngest.createFunction(
             estimateUsd: setup.estimate,
             meta: { renderId: setup.renderId, timelineVersion: setup.timelineVersion },
           },
-          await getSettings(db),
+          (await channelForProject(db, projectId)).settings,
           new Date(),
         )
       } catch (error) {

@@ -8,7 +8,7 @@ import {
   recordVerifyResult,
   setCredential,
   ttsCredential,
-  updateSettings,
+  updateChannelSettings,
   visualCredentials,
 } from '@boom-busters/db'
 import {
@@ -51,8 +51,9 @@ async function requireOwner(): Promise<void> {
   if (!session?.user?.email) throw new Error('Not signed in')
 }
 
-export async function saveSettings(patch: unknown): Promise<ActionResult> {
+export async function saveSettings(channelId: string, patch: unknown): Promise<ActionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
 
   // Validate at the edge, not just at the database (spec section 2: Zod
   // everywhere, at API edges).
@@ -66,7 +67,7 @@ export async function saveSettings(patch: unknown): Promise<ActionResult> {
   }
 
   try {
-    await updateSettings(db, parsed.data)
+    await updateChannelSettings(db, channelId, parsed.data)
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not save settings' }
   }

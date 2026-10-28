@@ -3,7 +3,6 @@ import {
   listDossierDocumentSummaries,
   getLatestScript,
   getProject,
-  getSettings,
   hasLiveRun,
   latestRender,
   listActivity,
@@ -114,6 +113,9 @@ export default async function ProjectPage({
   const viewed = views.find((view) => view.stage === viewing)
   const wants = (stage: ProjectStage): boolean => viewing === stage || project.stage === stage
 
+  // The project's channel: its settings and the estimates priced against them.
+  const channel = await channelForProjectOrNotFound(project.id)
+
   // The cast (decision 253) is on screen from the script stage onward, in
   // every phase: the faces outlive the Direction card that names them.
   const showCast = project.stage !== 'dossier'
@@ -139,8 +141,8 @@ export default async function ProjectPage({
           restorableSetNames(db, project.id, book.data.locations),
         ])
       : [[], []]
-  const plateEstimate = showCast ? await plateEstimateUsd() : 0
-  const sheetEstimate = showCast ? await setSheetEstimateUsd() : 0
+  const plateEstimate = showCast ? await plateEstimateUsd(channel.channelId) : 0
+  const sheetEstimate = showCast ? await setSheetEstimateUsd(channel.channelId) : 0
   // Another view carries the set's plates, so it is priced as the still it
   // is, on whichever route a still of that set would take (decision 273).
   const viewEstimates: Record<string, number> = {}
@@ -187,7 +189,7 @@ export default async function ProjectPage({
     notices,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
-    channelForProjectOrNotFound(id).then(({ channelId }) => listOpenBudgetGates(db, channelId)),
+    listOpenBudgetGates(db, channel.channelId),
     wants('dossier') ? getDossier(db, id) : Promise.resolve(undefined),
     wants('dossier') ? listDossierDocumentSummaries(db, id) : Promise.resolve([]),
     wants('script') ? getLatestScript(db, id) : Promise.resolve(undefined),
@@ -196,7 +198,7 @@ export default async function ProjectPage({
     wants('visuals')
       ? visualsReviewModel(db, id, { phase: project.visualsPhase, liveRun })
       : Promise.resolve(emptyVisualsModel()),
-    getSettings(db),
+    Promise.resolve(channel.settings),
     // The preview model also loads while the project SITS at assembly but
     // another stage is on screen: the header's Stop needs to know whether a
     // master render is in flight, whatever you happen to be looking at.
@@ -559,6 +561,7 @@ export default async function ProjectPage({
         <VoiceReview projectId={project.id} model={voice} />
       ) : showScript ? (
         <ScriptStudio
+          channelId={channel.channelId}
           projectId={project.id}
           chapters={script.chapters}
           targetRuntimeMin={project.targetRuntimeMin}

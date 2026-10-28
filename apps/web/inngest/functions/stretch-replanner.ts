@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   hasLiveRun,
   listShotSlots,
@@ -168,11 +169,14 @@ export const stretchReplanner = inngest.createFunction(
                     ? '{"briefs": []}'
                     : JSON.stringify(mockStretchPlan({ pieces: cut.stretch.pieces })),
               })
-          : (request, purpose) =>
-              callLlm(request, {
+          : async (request, purpose) => {
+              const { channelId } = await channelForProject(db, projectId)
+              return callLlm(request, {
                 projectId,
+                channelId,
                 ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
               })
+            }
         try {
           return await planStretchWith(complete, {
             caseTitle: setup.caseTitle,

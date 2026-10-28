@@ -1,4 +1,4 @@
-import { costLedger, getSettings } from '@boom-busters/db'
+import { costLedger } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import { BudgetExceededError, effectiveCeilingUsd, spentUsd } from '@boom-busters/schemas'
 import type { Settings } from '@boom-busters/schemas'
@@ -70,18 +70,21 @@ export interface CostSpec {
 export interface WithCostOptions {
   /** Injected so tests can pin a month boundary. */
   now?: Date
-  /** Pass when the caller already loaded settings; saves a query per step. */
-  settings?: Settings
+  /**
+   * The settings the ceiling is read from. Required: there is no "the"
+   * settings any more, so the caller names the channel it loaded them for.
+   */
+  settings: Settings
 }
 
 export async function withCost<T>(
   db: Database,
   spec: CostSpec,
   fn: () => Promise<Costed<T>>,
-  options: WithCostOptions = {},
+  options: WithCostOptions,
 ): Promise<T> {
   const now = options.now ?? new Date()
-  const settings = options.settings ?? (await getSettings(db))
+  const { settings } = options
 
   const ledgerId = await reserve(db, spec, settings, now)
 

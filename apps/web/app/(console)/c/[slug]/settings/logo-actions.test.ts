@@ -1,13 +1,14 @@
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 // @vitest-environment node
 
 import { createHash } from 'node:crypto'
 import {
   assets,
-  getSettings,
+  getChannelSettings,
   listLogos,
   requireTestDatabase,
   seed,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -74,7 +75,7 @@ describeDb('logo actions', () => {
     // non-logo row a "wrong asset kind" test plants), so clear the table
     // wholesale rather than leaving other kinds to leak between runs.
     await db.delete(assets)
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       brandKit: {
         look: {
           logoR2Key: null,
@@ -248,15 +249,17 @@ describeDb('logo actions', () => {
     expect(await renameLogoAction({ id: logo!.id, title: 'Stability' })).toEqual({ ok: true })
     expect((await listLogos(db))[0]?.title).toBe('Stability')
 
-    expect(await setChannelMarkAction(logo!.id)).toEqual({ ok: true })
-    expect((await getSettings(db)).brandKit.look.logoR2Key).toBe(logo!.r2Key)
+    expect(await setChannelMarkAction(FIRST_CHANNEL_ID, logo!.id)).toEqual({ ok: true })
+    expect((await getChannelSettings(db, FIRST_CHANNEL_ID)).brandKit.look.logoR2Key).toBe(
+      logo!.r2Key,
+    )
 
-    const refused = await removeLogoAction(logo!.id)
+    const refused = await removeLogoAction(FIRST_CHANNEL_ID, logo!.id)
     expect(refused.ok).toBe(false)
     expect(refused.error).toMatch(/channel mark/i)
 
-    expect(await setChannelMarkAction(null)).toEqual({ ok: true })
-    expect(await removeLogoAction(logo!.id)).toEqual({ ok: true })
+    expect(await setChannelMarkAction(FIRST_CHANNEL_ID, null)).toEqual({ ok: true })
+    expect(await removeLogoAction(FIRST_CHANNEL_ID, logo!.id)).toEqual({ ok: true })
     expect(storage.deleted).toEqual([logo!.r2Key])
     expect(await listLogos(db)).toEqual([])
   })
@@ -332,8 +335,8 @@ describeDb('logo actions', () => {
   it('refuses an id that is not a ulid, on rename, remove and choosing the channel mark', async () => {
     const notAUlid = { ok: false, error: 'Unknown mark.' }
     expect(await renameLogoAction({ id: 'not-a-ulid', title: 'X' })).toEqual(notAUlid)
-    expect(await removeLogoAction('not-a-ulid')).toEqual(notAUlid)
-    expect(await setChannelMarkAction('not-a-ulid')).toEqual(notAUlid)
+    expect(await removeLogoAction(FIRST_CHANNEL_ID, 'not-a-ulid')).toEqual(notAUlid)
+    expect(await setChannelMarkAction(FIRST_CHANNEL_ID, 'not-a-ulid')).toEqual(notAUlid)
   })
 
   it('says where the bytes would go when storage is not configured', async () => {

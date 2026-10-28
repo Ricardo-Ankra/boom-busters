@@ -7,7 +7,6 @@ import {
   getProject,
   getPublishRecord,
   getRender,
-  getSettings,
   getShort,
   hasLiveRun,
   latestRender,
@@ -672,7 +671,7 @@ export async function publishNow(targetType: string, targetId: string): Promise<
   const projectId = await projectIdOf(type, targetId)
   if (!projectId) return { ok: false, error: 'Unknown target' }
 
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, projectId)
   const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'
   // `publishAt` records the intended public moment — now. The runner sees a
   // moment that is not ahead and omits it from the upload job.

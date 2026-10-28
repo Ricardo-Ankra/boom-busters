@@ -5,7 +5,7 @@ import {
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getProject,
-  getSettings,
+  getChannelSettings,
   getVoiceTake,
   listOpenBudgetGates,
   listProjectNotices,
@@ -17,7 +17,7 @@ import {
   seed,
   setProjectStage,
   truncateRunMirror,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
 import {
@@ -85,7 +85,7 @@ describeDb('gate helpers', () => {
     await truncateLedger(db)
     forgetRunRows()
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'running' })
-    await updateSettings(db, {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
       budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
     })
   })
@@ -211,6 +211,16 @@ describeDb('gate helpers', () => {
       })
     })
 
+    it('resolves the channel before it writes, so a lookup failure leaves no half-open gate', async () => {
+      notify.mockClear()
+      const ctx = { ...context(), projectId: '01J00000000000000000000NOP' }
+
+      await expect(openBudgetGate(ctx, budgetGateData(error))).rejects.toThrow()
+
+      expect(await listRuns(db)).toEqual([])
+      expect(notify).not.toHaveBeenCalled()
+    })
+
     it('closes when the overage is approved, and stops being a gate', async () => {
       const ctx = context()
       await openBudgetGate(ctx, budgetGateData(error))
@@ -226,13 +236,13 @@ describeDb('gate helpers', () => {
 
   describe('grantOverage', () => {
     it('raises the ceiling the guard reads, for this month only', async () => {
-      const settingsBefore = await getSettings(db)
+      const settingsBefore = await getChannelSettings(db, FIRST_CHANNEL_ID)
       const before = await budgetStatus(db, settingsBefore, { estimateUsd: 40 })
       expect(before.wouldRefuse).toBe(true)
 
-      await grantOverage(25)
+      await grantOverage(FIRST_CHANNEL_ID, 25)
 
-      const settingsAfter = await getSettings(db)
+      const settingsAfter = await getChannelSettings(db, FIRST_CHANNEL_ID)
       expect(settingsAfter.budgets.approvedOverage).toMatchObject({
         month: monthKey(new Date()),
         usd: 25,
@@ -244,16 +254,16 @@ describeDb('gate helpers', () => {
     })
 
     it('stamps when it was approved, because a raised ceiling is an audit trail', async () => {
-      await grantOverage(5)
-      const settings = await getSettings(db)
+      await grantOverage(FIRST_CHANNEL_ID, 5)
+      const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
       expect(settings.budgets.approvedOverage?.approvedAt).toBeTruthy()
     })
 
     it('does not apply to a different month', async () => {
       const march = new Date('2026-03-15T00:00:00.000Z')
-      await grantOverage(25, march)
+      await grantOverage(FIRST_CHANNEL_ID, 25, march)
 
-      const settings = await getSettings(db)
+      const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
       const august = await budgetStatus(db, settings, {
         now: new Date('2026-08-15T00:00:00.000Z'),
       })

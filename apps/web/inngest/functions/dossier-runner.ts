@@ -1,4 +1,10 @@
-import { getCase, getProject, saveDossier, setProjectStage } from '@boom-busters/db'
+import {
+  channelForProject,
+  getCase,
+  getProject,
+  saveDossier,
+  setProjectStage,
+} from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import { parseEventData, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
@@ -258,7 +264,10 @@ async function waitOutBudgetGate(
   const decision = parseEventData('budget/approved', approved.data)
 
   await step.run(`apply-overage-${round}`, async () => {
-    await grantOverage(decision.additionalUsd)
+    await grantOverage(
+      (await channelForProject(db, ctx.projectId)).channelId,
+      decision.additionalUsd,
+    )
     await closeBudgetGate(
       ctx,
       `Overage of $${decision.additionalUsd.toFixed(2)} approved for ${decision.provider}`,

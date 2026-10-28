@@ -356,7 +356,8 @@ export const analyticsRunner = inngest.createFunction(
             // Not a project's spend, so no project on the ledger row; a retry
             // still carries its label to the Costs screen (decision 292).
             body = await writeDigestWith(
-              (request, call) => callLlm(request, call === 'answer' ? {} : { purpose: call }),
+              (request, call) =>
+                callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) }),
               { weekOf, lines },
             )
           } catch (error) {

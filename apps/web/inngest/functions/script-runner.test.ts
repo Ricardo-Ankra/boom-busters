@@ -47,7 +47,8 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
-const PROJECT = '01J0000000000000000000000P'
+// A real project: the call resolves its channel from the project, as every runner does.
+const PROJECT = FIXTURE_PROJECT_ID
 const SCRIPT_NOTICES = { projectId: PROJECT, subject: 'script', subjectId: null }
 
 const chapters = [
@@ -65,8 +66,9 @@ const candidate = {
   hookRationale: 'The auditor said no.',
 }
 
-describe('markShortsStep (decision 293)', () => {
-  beforeEach(() => {
+describeDb('markShortsStep (decision 293)', () => {
+  beforeEach(async () => {
+    await seed(db)
     callLlm.mockReset()
     recordRepairs.mockReset()
     recordStop.mockReset()

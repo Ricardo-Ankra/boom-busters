@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { estimateTtsUsd, withCost } from '@boom-busters/cost'
-import { getSettings, ttsCredential } from '@boom-busters/db'
+import { ttsCredential } from '@boom-busters/db'
 import {
   encodeWav,
   ttsAdapter,
@@ -90,11 +90,7 @@ export async function requireTtsKey(provider: TtsProvider): Promise<string> {
   return key
 }
 
-export async function synthesise(
-  input: SynthesisInput,
-  settingsOverride?: Settings,
-): Promise<Narration> {
-  const settings = settingsOverride ?? (await getSettings(db))
+export async function synthesise(input: SynthesisInput, settings: Settings): Promise<Narration> {
   const voice = settings.tts
 
   const provider = input.voiceOverride?.provider ?? voice.provider

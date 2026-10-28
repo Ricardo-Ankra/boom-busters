@@ -15,10 +15,10 @@ import {
   timelines,
   truncateRunMirror,
   updateRender,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, resolveBrandKit, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { updateShort } from '@boom-busters/db'
@@ -118,7 +118,9 @@ describeDb('short-render-runner', () => {
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
+    })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'shorts',
       stageStatus: 'awaiting_review',
@@ -240,7 +242,7 @@ describeDb('short-render-runner', () => {
       'over budget fails this card only — the stage and siblings stand',
       { timeout: 120_000 },
       async () => {
-        await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+        await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 0 } })
 
         await engine.executeStep('short-over-budget', { events: requestedEvent() })
 

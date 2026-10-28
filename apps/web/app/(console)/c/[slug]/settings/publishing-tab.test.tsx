@@ -88,6 +88,7 @@ describe('the daily upload budget (decision 302)', () => {
     await user.selectOptions(budget, '6')
 
     expect(saveSettings).toHaveBeenCalledWith(
+      '01J00000000000000000000001',
       expect.objectContaining({
         publish: expect.objectContaining({ dailyUploadBudget: 6 }),
       }),

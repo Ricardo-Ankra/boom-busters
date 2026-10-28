@@ -1,6 +1,11 @@
-import { DEFAULT_SETTINGS, DEFAULT_WORKSPACE_SETTINGS } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { getChannelSettings } from './channels'
 import { createDb, type Database } from './client'
 import { decryptSecret } from './crypto'
 import {
@@ -12,7 +17,6 @@ import {
 } from './fixtures'
 import {
   countMusicBeds,
-  getSettings,
   hasCredential,
   importProviderEnvSeeds,
   listCredentials,
@@ -68,11 +72,14 @@ describeDb('database integration', () => {
     await connection.sql.end({ timeout: 5 })
   })
 
-  describe('getSettings', () => {
+  describe('getChannelSettings', () => {
     it('reads the seeded first channel merged with the workspace', async () => {
       await seed(db)
 
-      expect(await getSettings(db)).toEqual({ ...DEFAULT_SETTINGS, ...DEFAULT_WORKSPACE_SETTINGS })
+      expect(await getChannelSettings(db, FIRST_CHANNEL_ID)).toEqual({
+        ...DEFAULT_SETTINGS,
+        ...DEFAULT_WORKSPACE_SETTINGS,
+      })
       expect(await db.select().from(channels)).toHaveLength(1)
     })
   })

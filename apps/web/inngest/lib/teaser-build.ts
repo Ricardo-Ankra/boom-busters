@@ -1,4 +1,4 @@
-import { getLatestScript, getProject, MOCK_KEY_PREFIX } from '@boom-busters/db'
+import { channelForProject, getLatestScript, getProject, MOCK_KEY_PREFIX } from '@boom-busters/db'
 import {
   buildTeaserRequest,
   mockProvidersEnabled,
@@ -128,11 +128,15 @@ export async function voiceTeaserBeat(input: {
 }): Promise<TeaserVoiceResult> {
   const { projectId, scriptVersion, index, paragraph } = input
   try {
-    const narration = await synthesise({
-      text: paragraph.text,
-      idempotencyKey: teaserBeatIdempotencyKey(projectId, scriptVersion, index, paragraph.text),
-      projectId,
-    })
+    const { settings } = await channelForProject(db, projectId)
+    const narration = await synthesise(
+      {
+        text: paragraph.text,
+        idempotencyKey: teaserBeatIdempotencyKey(projectId, scriptVersion, index, paragraph.text),
+        projectId,
+      },
+      settings,
+    )
     const r2Key =
       takeStorage() === 'r2'
         ? (

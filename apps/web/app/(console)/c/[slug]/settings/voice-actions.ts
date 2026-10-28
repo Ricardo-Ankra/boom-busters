@@ -2,15 +2,20 @@
 
 import {
   findAudition,
-  getSettings,
+  getChannelSettings,
   listAuditions,
   saveAudition,
   ttsCredential,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { ttsAdapter } from '@boom-busters/providers'
 import type { KnownVoice } from '@boom-busters/providers'
-import { TTS_PROVIDERS, TtsProviderSchema, ttsProviderFromCredential } from '@boom-busters/schemas'
+import {
+  TTS_PROVIDERS,
+  TtsProviderSchema,
+  UlidSchema,
+  ttsProviderFromCredential,
+} from '@boom-busters/schemas'
 import type { Provider, TtsProvider } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -98,10 +103,12 @@ export async function listAuditionVoices(): Promise<
  * voices a week apart is otherwise two more sets of auditions.
  */
 export async function generateAuditions(
+  channelId: string,
   sample: string,
   choices: { provider: string; voiceId: string }[],
 ): Promise<AuditionResult> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
 
   const text = sample.trim()
   if (text === '') return { ok: false, error: 'Paste a paragraph for the voices to read.' }
@@ -117,7 +124,7 @@ export async function generateAuditions(
     return { ok: false, error: `Up to ${MAX_AUDITIONS} voices at a time.` }
   }
 
-  const settings = await getSettings(db)
+  const settings = await getChannelSettings(db, channelId)
   const hash = sampleHash(text)
 
   const auditions = await Promise.all(
@@ -240,10 +247,12 @@ export async function generateAuditions(
  * contain the term.
  */
 export async function addPronunciation(
+  channelId: string,
   term: string,
   hint: string,
 ): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
 
   const cleanTerm = term.trim()
   const cleanHint = hint.trim()
@@ -251,8 +260,8 @@ export async function addPronunciation(
     return { ok: false, error: 'Both a term and a pronunciation are needed.' }
   }
 
-  const settings = await getSettings(db)
-  await updateSettings(db, {
+  const settings = await getChannelSettings(db, channelId)
+  await updateChannelSettings(db, channelId, {
     tts: {
       phonemeHints: [
         ...settings.tts.phonemeHints.filter(
@@ -264,7 +273,7 @@ export async function addPronunciation(
   })
   revalidatePath('/c/[slug]', 'layout')
 
-  return checkPronunciation(cleanTerm, cleanHint)
+  return checkPronunciation(channelId, cleanTerm, cleanHint)
 }
 
 /**
@@ -280,16 +289,18 @@ export async function addPronunciation(
  * which also lets you *hear* the respelling before trusting it.
  */
 export async function checkPronunciation(
+  channelId: string,
   term: string,
   hint: string,
 ): Promise<{ ok: boolean; error?: string; applied?: boolean }> {
   await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel.' }
 
   if (term.trim() === '' || hint.trim() === '') {
     return { ok: false, error: 'Both a term and a pronunciation are needed.' }
   }
 
-  const settings = await getSettings(db)
+  const settings = await getChannelSettings(db, channelId)
   const provider = settings.tts.provider
   const voiceId = settings.tts.voiceId
 

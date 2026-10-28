@@ -3,8 +3,9 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import { round4, withCost } from '@boom-busters/cost'
 import {
+  channelForProject,
   getAsset,
-  getSettings,
+  getChannelSettings,
   listCastMembers,
   listProjectSets,
   logoById,
@@ -143,7 +144,7 @@ export async function stillsEstimateUsd(
         entry.brief.type === 'still',
     )
   if (stills.length === 0) return 0
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, projectId)
   const routing = settings.modelRouting
   const catalogue = await stillCatalogue(settings, routes ?? [])
   const cast = await listCastMembers(db, projectId)
@@ -404,15 +405,15 @@ export async function requireVisualKeys(types: ReadonlySet<ShotBrief['type']>): 
  * Settings says that is (decision 265). The Set card quotes this on its
  * Generate a plate button, the way the Fetch button quotes its own price.
  */
-export async function plateEstimateUsd(): Promise<number> {
-  const settings = await getSettings(db)
+export async function plateEstimateUsd(channelId: string): Promise<number> {
+  const settings = await getChannelSettings(db, channelId)
   const catalogue = await stillCatalogue(settings)
   return round4(routePriceUsd(catalogue, settings.modelRouting.stills, STILL_GENERATIONS))
 }
 
 /** What "Build the set" will spend: one 4K image on the set-sheet route (decision 275). */
-export async function setSheetEstimateUsd(): Promise<number> {
-  const settings = await getSettings(db)
+export async function setSheetEstimateUsd(channelId: string): Promise<number> {
+  const settings = await getChannelSettings(db, channelId)
   const catalogue = await stillCatalogue(settings)
   const route = settings.modelRouting.setSheet
   if (!adapterOffers(route, catalogue)) return 0
@@ -422,8 +423,8 @@ export async function setSheetEstimateUsd(): Promise<number> {
   return round4(billed ? billed.pricePerImage : routePriceUsd(catalogue, route, 1, '4K'))
 }
 
-export async function stillSlotEstimateUsd(): Promise<number> {
-  const settings = await getSettings(db)
+export async function stillSlotEstimateUsd(channelId: string): Promise<number> {
+  const settings = await getChannelSettings(db, channelId)
   const catalogue = await stillCatalogue(settings)
   const routing = settings.modelRouting
   const routes = [routing.stills, ...(routing.stillsLikeness ? [routing.stillsLikeness] : [])]
@@ -534,7 +535,7 @@ export async function generateStillCandidates(
   // The camera reaches the prompt whether or not the set has a plate yet: the
   // inventory alone still says what the camera sees (decision 275).
   const namedSet = brief.set ? setForBrief(brief.set, projectSets) : null
-  const settings = await getSettings(db)
+  const { settings } = await channelForProject(db, projectId)
   const routing = settings.modelRouting
   const catalogue = await stillCatalogue(settings, [stored])
   const derived = routeForBrief(brief, projectCast, projectSets, routing)
@@ -635,6 +636,7 @@ export async function generateStillCandidates(
       )
       return { result: generated, actualUsd: generated.estimatedCostUsd }
     },
+    { settings },
   )
   const referenced = cast.names.length > 0 ? { references: cast.names } : {}
 
@@ -832,7 +834,7 @@ export async function resolveSlotBrief(input: {
       // the card with no excerpt chosen, or an excerpt that does not fit is
       // a placeholder, never an unresolvable throw.
       const post = await postForUrl(brief.postUrl)
-      const brand = resolveBrandKit(await getSettings(db))
+      const brand = resolveBrandKit((await channelForProject(db, projectId)).settings)
       // An attached image takes room from the text only when its asset row
       // still exists, the rule the board and the assembly already apply.
       const hasMedia =

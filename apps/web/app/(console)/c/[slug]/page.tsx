@@ -1,7 +1,7 @@
 import {
   countCases,
   countMusicBeds,
-  getSettings,
+  getChannelSettings,
   globalPulse,
   channelYoutubeConnected,
   channelYoutubeReconnectNeeded,
@@ -36,7 +36,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
   const { slug } = await params
   const channel = await channelFromSlug(slug)
   const [settings, youtubeConnected, musicBedCount, caseCount] = await Promise.all([
-    getSettings(db),
+    getChannelSettings(db, channel.id),
     channelYoutubeConnected(db, channel.id),
     countMusicBeds(db),
     countCases(db, channel.id),

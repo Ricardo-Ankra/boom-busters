@@ -5,7 +5,7 @@ import {
   recordRunEvent,
   setProjectStage,
   setRunStatus,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
 import { monthKey } from '@boom-busters/schemas'
@@ -164,6 +164,9 @@ export async function openBudgetGate(
   ctx: GateContext,
   gate: Record<string, unknown>,
 ): Promise<void> {
+  // Resolved before anything is written: a lookup that fails after the run
+  // is parked would leave it at the gate with no notice sent.
+  const { slug } = await channelForProject(db, ctx.projectId)
   const runId = await runRowId(ctx)
 
   await recordRunEvent(db, {
@@ -180,7 +183,7 @@ export async function openBudgetGate(
     body:
       `${String(gate['provider'])} needs $${Number(gate['estimateUsd']).toFixed(4)} ` +
       `against a $${Number(gate['budgetUsd']).toFixed(2)} cap.`,
-    href: channelHref((await channelForProject(db, ctx.projectId)).slug, '/costs'),
+    href: channelHref(slug, '/costs'),
   })
 }
 
@@ -200,8 +203,13 @@ export async function closeBudgetGate(ctx: GateContext, message: string): Promis
  * held in the run, so the cap the guard reads and the cap the Costs screen
  * shows are the same number — and so it expires with the month.
  */
-export async function grantOverage(additionalUsd: number, now: Date = new Date()): Promise<void> {
-  await updateSettings(db, {
+export async function grantOverage(
+  channelId: string,
+  additionalUsd: number,
+  now: Date = new Date(),
+): Promise<void> {
+  // The project's channel until Task 9 writes the workspace row directly.
+  await updateChannelSettings(db, channelId, {
     budgets: {
       approvedOverage: {
         month: monthKey(now),

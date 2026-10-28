@@ -111,9 +111,17 @@ describeDb('generateTitles (decision 293)', () => {
     expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
 
     const [first, second] = callLlm.mock.calls
-    expect(first![1]).toEqual({ projectId: FIXTURE_PROJECT_ID, estimateOutputTokens: 500 })
+    expect(first![1]).toEqual({
+      projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
+      estimateOutputTokens: 500,
+    })
     expect(second![0].maxTokens).toBe(first![0].maxTokens * 2)
-    expect(second![1]).toEqual({ projectId: FIXTURE_PROJECT_ID, purpose: 'retry: cut off' })
+    expect(second![1]).toEqual({
+      projectId: FIXTURE_PROJECT_ID,
+      channelId: FIRST_CHANNEL_ID,
+      purpose: 'retry: cut off',
+    })
     expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.metadata).toMatchObject({
       titleOptions: [
         'The audit that said no to the money',

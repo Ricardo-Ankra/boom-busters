@@ -11,7 +11,7 @@ import {
   setProjectStage,
   timelines,
   truncateRunMirror,
-  updateSettings,
+  updateChannelSettings,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
@@ -131,7 +131,9 @@ describeDb('draft-runner', () => {
     forgetRunRows()
     await db.delete(renders)
     await db.delete(timelines)
-    await updateSettings(db, { budgets: { monthlyCeilingUsd: 30, approvedOverage: null } })
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      budgets: { monthlyCeilingUsd: 30, approvedOverage: null },
+    })
     await setProjectStage(db, FIXTURE_PROJECT_ID, {
       stage: 'assembly',
       stageStatus: 'awaiting_review',
@@ -208,7 +210,7 @@ describeDb('draft-runner', () => {
       'refuses over budget on its own row only — the project never fails',
       { timeout: 120_000 },
       async () => {
-        await updateSettings(db, { budgets: { monthlyCeilingUsd: 0 } })
+        await updateChannelSettings(db, FIRST_CHANNEL_ID, { budgets: { monthlyCeilingUsd: 0 } })
 
         await engine.executeStep('draft-over-budget', { events: requestedEvent() })
 

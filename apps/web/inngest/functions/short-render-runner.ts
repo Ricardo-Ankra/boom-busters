@@ -2,7 +2,7 @@ import {
   failInFlightRenders,
   getRender,
   getShort,
-  getSettings,
+  channelForProject,
   insertRender,
   latestRender,
   latestTimeline,
@@ -172,7 +172,7 @@ export const shortRenderRunner = inngest.createFunction(
         await putObject(timelineS3Key, Buffer.from(JSON.stringify(timeline)), 'application/json')
       }
 
-      const settings = await getSettings(db)
+      const { settings } = await channelForProject(db, projectId)
       return {
         renderId: render.id,
         timelineVersion: timelineRow.version,
@@ -237,7 +237,7 @@ export const shortRenderRunner = inngest.createFunction(
             estimateUsd: setup.estimate,
             meta: { renderId: setup.renderId, shortId, timelineVersion: setup.timelineVersion },
           },
-          await getSettings(db),
+          (await channelForProject(db, projectId)).settings,
           new Date(),
         )
       } catch (error) {
