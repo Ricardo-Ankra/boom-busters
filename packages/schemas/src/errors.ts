@@ -134,6 +134,30 @@ export class BudgetExceededError extends PipelineError {
   }
 }
 
+/**
+ * A channel id that names no channel. Only the first channel is ever created
+ * implicitly; any other missing id is a bug or a stale link, and retrying
+ * cannot conjure the row.
+ */
+export class ChannelNotFoundError extends PipelineError {
+  readonly channelId: string
+
+  constructor(channelId: string) {
+    super(`channel ${channelId} does not exist`)
+    this.channelId = channelId
+  }
+}
+
+/** The slug belongs to another channel, archived ones included: slugs are never reused. */
+export class ChannelSlugTakenError extends PipelineError {
+  readonly slug: string
+
+  constructor(slug: string, options: PipelineErrorOptions = {}) {
+    super(`the slug ${slug} is taken`, options)
+    this.slug = slug
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Classification
 // ---------------------------------------------------------------------------

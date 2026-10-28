@@ -1,5 +1,6 @@
 import {
-  DEFAULT_SETTINGS,
+  ChannelNotFoundError,
+  FIRST_CHANNEL_ID,
   PROVIDER_ENV_SEEDS,
   TTS_CREDENTIAL_PROVIDER,
 } from '@boom-busters/schemas'
@@ -10,51 +11,62 @@ import type {
   SettingsPatch,
   TtsProvider,
 } from '@boom-busters/schemas'
-import { and, count, eq, inArray } from 'drizzle-orm'
+import { count, eq, inArray } from 'drizzle-orm'
+import { ensureFirstChannel, getChannelSettings, updateChannelSettings } from './channels'
 import type { Database } from './client'
 import { decryptSecret, encryptSecret, keyHint, maskKey } from './crypto'
-import { assets, cases, providerCredentials, settings as settingsTable } from './schema'
-import { mergeSettings, normaliseSettings } from './settings-merge'
-
-const SETTINGS_ID = 'singleton' as const
+import { assets, cases, providerCredentials } from './schema'
+import { getWorkspace, updateWorkspace } from './workspace'
+import {
+  channelYoutubeConnected,
+  channelYoutubeReconnectNeeded,
+  channelYoutubeToken,
+  recordChannelYoutubeVerify,
+} from './youtube-connections'
 
 // ---------------------------------------------------------------------------
-// Settings
+// Settings: the first channel's, with the workspace's prices and budget
 // ---------------------------------------------------------------------------
 
 /**
- * Read the single settings row, creating it from defaults on first access.
- * Every caller therefore gets a complete, valid `Settings` — there is no
- * "settings not configured yet" branch to handle at the call site.
+ * The first channel's settings, creating the channel on first access as the
+ * settings row used to be, so no caller of the old name grows a "not
+ * configured yet" branch.
  */
-export async function getSettings(db: Database): Promise<Settings> {
-  const [row] = await db.select().from(settingsTable).where(eq(settingsTable.id, SETTINGS_ID))
-  if (row) return normaliseSettings(row.value)
-
-  await db
-    .insert(settingsTable)
-    .values({ id: SETTINGS_ID, value: DEFAULT_SETTINGS })
-    .onConflictDoNothing()
-
-  const [created] = await db.select().from(settingsTable).where(eq(settingsTable.id, SETTINGS_ID))
-  return normaliseSettings(created?.value ?? DEFAULT_SETTINGS)
+async function firstChannelSettings(db: Database): Promise<Settings> {
+  try {
+    return await getChannelSettings(db, FIRST_CHANNEL_ID)
+  } catch (error) {
+    if (!(error instanceof ChannelNotFoundError)) throw error
+    return (await ensureFirstChannel(db)).settings
+  }
 }
 
-/**
- * Apply a validated patch. Read-merge-write rather than a JSONB merge in SQL,
- * so the result passes `SettingsSchema` before it is stored — a settings row
- * that fails validation would break every consumer downstream.
- */
+/** @deprecated transitional, deleted in Task 8 */
+export async function getSettings(db: Database): Promise<Settings> {
+  const channelSettings = await firstChannelSettings(db)
+  const { settings: workspaceSettings } = await getWorkspace(db)
+  return {
+    ...channelSettings,
+    modelPrices: workspaceSettings.modelPrices,
+    budgets: workspaceSettings.budgets,
+  }
+}
+
+/** @deprecated transitional, deleted in Task 8 */
 export async function updateSettings(db: Database, patch: SettingsPatch): Promise<Settings> {
-  const current = await getSettings(db)
-  const next = mergeSettings(current, patch)
-
-  await db
-    .insert(settingsTable)
-    .values({ id: SETTINGS_ID, value: next })
-    .onConflictDoUpdate({ target: settingsTable.id, set: { value: next, updatedAt: new Date() } })
-
-  return next
+  const { modelPrices, budgets, ...channelPatch } = patch
+  // The channel first: its merge is the one that can refuse a patch, and a
+  // refused patch must leave the workspace untouched too.
+  await firstChannelSettings(db)
+  await updateChannelSettings(db, FIRST_CHANNEL_ID, channelPatch)
+  if (modelPrices !== undefined || budgets !== undefined) {
+    await updateWorkspace(db, {
+      ...(modelPrices === undefined ? {} : { modelPrices }),
+      ...(budgets === undefined ? {} : { budgets }),
+    })
+  }
+  return getSettings(db)
 }
 
 // ---------------------------------------------------------------------------
@@ -62,20 +74,28 @@ export async function updateSettings(db: Database, patch: SettingsPatch): Promis
 // ---------------------------------------------------------------------------
 
 export interface MaskedCredential {
-  provider: Provider | 'youtube' | 'remotion'
+  provider: Provider | 'remotion'
   masked: string
   verifyStatus: 'ok' | 'invalid' | 'unchecked'
   lastVerifiedAt: Date | null
 }
 
 /**
+ * `youtube` is still a value of the provider enum, so the old names accept
+ * it; it now means the first channel's connection (multi-channel design,
+ * section 4.2), deleted with the wrappers in Task 7.
+ */
+type CredentialProvider = MaskedCredential['provider'] | 'youtube'
+
+/**
  * Providers that exist in the database enum but no longer in the app.
  * Postgres cannot drop an enum value without rebuilding the type, so a
  * credential row saved for a retired vendor may still exist; it is filtered
  * on read rather than deleted, because a stored secret should outlive a
- * product decision that might yet be reversed.
+ * product decision that might yet be reversed. `youtube` is here because it
+ * is a per-channel connection now, never a workspace credential.
  */
-const RETIRED_PROVIDERS = new Set<string>(['google-cloud-tts'])
+const RETIRED_PROVIDERS = new Set<string>(['google-cloud-tts', 'youtube'])
 
 /** Never returns key material — only what Settings -> Connections may display. */
 export async function listCredentials(db: Database): Promise<MaskedCredential[]> {
@@ -103,10 +123,11 @@ export async function listCredentials(db: Database): Promise<MaskedCredential[]>
 
 export async function setCredential(
   db: Database,
-  provider: MaskedCredential['provider'],
+  provider: CredentialProvider,
   apiKey: string,
   encryptionKey: string,
 ): Promise<void> {
+  if (provider === 'youtube') throw new Error('youtube is a channel connection')
   const encrypted = encryptSecret(apiKey, encryptionKey)
   await db
     .insert(providerCredentials)
@@ -128,10 +149,7 @@ export async function setCredential(
     })
 }
 
-export async function hasCredential(
-  db: Database,
-  provider: MaskedCredential['provider'],
-): Promise<boolean> {
+export async function hasCredential(db: Database, provider: CredentialProvider): Promise<boolean> {
   const [row] = await db
     .select({ id: providerCredentials.id })
     .from(providerCredentials)
@@ -179,61 +197,24 @@ export async function countCases(db: Database): Promise<number> {
   return row?.value ?? 0
 }
 
-/**
- * The decrypted YouTube refresh token, on `llmCredentials`' terms:
- * server-side only, absent rather than thrown when it cannot be decrypted.
- * Only the web app ever reads it — media-utils gets short-lived access
- * tokens minted FROM it, never the token itself (spec section 9).
- */
+/** @deprecated transitional, deleted in Task 7 */
 export async function youtubeRefreshToken(
   db: Database,
   encryptionKey: string,
 ): Promise<string | undefined> {
-  const [row] = await db
-    .select({ encryptedKey: providerCredentials.encryptedKey })
-    .from(providerCredentials)
-    .where(eq(providerCredentials.provider, 'youtube'))
-    .limit(1)
-
-  if (!row) return undefined
-  try {
-    return decryptSecret(row.encryptedKey, encryptionKey)
-  } catch {
-    return undefined
-  }
+  return channelYoutubeToken(db, FIRST_CHANNEL_ID, encryptionKey)
 }
 
+/** @deprecated transitional, deleted in Task 7 */
 export async function isYoutubeConnected(db: Database): Promise<boolean> {
-  const [row] = await db
-    .select({ id: providerCredentials.id })
-    .from(providerCredentials)
-    .where(
-      and(eq(providerCredentials.provider, 'youtube'), eq(providerCredentials.verifyStatus, 'ok')),
-    )
-  return row !== undefined
+  return channelYoutubeConnected(db, FIRST_CHANNEL_ID)
 }
 
-/**
- * Whether the YouTube connection is known-dead (M8): a stored credential
- * whose last verify — connect-time or the daily ping — came back invalid.
- * Drives the "Reconnect YouTube" Needs-you card; `lastVerifiedAt` gives the
- * card its age.
- */
+/** @deprecated transitional, deleted in Task 7 */
 export async function youtubeReconnectNeeded(
   db: Database,
 ): Promise<{ needed: boolean; since: Date | null }> {
-  const [row] = await db
-    // `updatedAt`, not `lastVerifiedAt`: the invalid stamp NULLS the verify
-    // time, and the card's age is "since the stamp", which is this write.
-    .select({ since: providerCredentials.updatedAt })
-    .from(providerCredentials)
-    .where(
-      and(
-        eq(providerCredentials.provider, 'youtube'),
-        eq(providerCredentials.verifyStatus, 'invalid'),
-      ),
-    )
-  return { needed: row !== undefined, since: row?.since ?? null }
+  return channelYoutubeReconnectNeeded(db, FIRST_CHANNEL_ID)
 }
 
 /**
@@ -334,12 +315,16 @@ export async function visualCredentials(
   return keys
 }
 
-/** Stamp the outcome of Settings -> Connections' Verify button. */
+/**
+ * Stamp the outcome of Settings -> Connections' Verify button. `youtube`
+ * routes to the first channel's connection, transitionally until Task 7.
+ */
 export async function recordVerifyResult(
   db: Database,
-  provider: MaskedCredential['provider'],
+  provider: CredentialProvider,
   status: 'ok' | 'invalid',
 ): Promise<void> {
+  if (provider === 'youtube') return recordChannelYoutubeVerify(db, FIRST_CHANNEL_ID, status)
   await db
     .update(providerCredentials)
     .set({

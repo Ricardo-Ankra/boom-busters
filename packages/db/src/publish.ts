@@ -1,3 +1,4 @@
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { and, count, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, publishRecords, shorts } from './schema'
@@ -30,7 +31,8 @@ export async function ensurePublishRecord(
 ): Promise<PublishRecordRow> {
   const [inserted] = await db
     .insert(publishRecords)
-    .values({ targetType, targetId })
+    // Transitional: the first channel until Task 7 derives it from the target.
+    .values({ channelId: FIRST_CHANNEL_ID, targetType, targetId })
     .onConflictDoNothing()
     .returning()
   if (inserted) return inserted

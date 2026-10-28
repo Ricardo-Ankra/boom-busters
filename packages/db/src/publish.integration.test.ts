@@ -1,5 +1,7 @@
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import {
@@ -28,6 +30,7 @@ suite('publish bookkeeping', () => {
   beforeEach(async () => {
     await db.execute(dsql`truncate table ${cases} restart identity cascade`)
     await db.execute(dsql`truncate table ${publishRecords} restart identity cascade`)
+    await ensureFirstChannel(db)
     await db.insert(cases).values(fixtureCase)
     await db.insert(projects).values(fixtureProject)
   })
@@ -37,22 +40,30 @@ suite('publish bookkeeping', () => {
   })
 
   it('one record per target — the unique index refuses a second', async () => {
-    await db.insert(publishRecords).values({ targetType: 'master', targetId: FIXTURE_PROJECT_ID })
+    await db
+      .insert(publishRecords)
+      .values({ channelId: FIRST_CHANNEL_ID, targetType: 'master', targetId: FIXTURE_PROJECT_ID })
     // Drizzle wraps the pg error, so assert the behaviour: it rejects, and
     // exactly one master record exists afterwards.
     await expect(
-      db.insert(publishRecords).values({ targetType: 'master', targetId: FIXTURE_PROJECT_ID }),
+      db.insert(publishRecords).values({
+        channelId: FIRST_CHANNEL_ID,
+        targetType: 'master',
+        targetId: FIXTURE_PROJECT_ID,
+      }),
     ).rejects.toThrow()
     const rows = await db.select().from(publishRecords)
     expect(rows.filter((row) => row.targetType === 'master')).toHaveLength(1)
     // The same project as a SHORT target is a different thing and fine.
-    await db.insert(publishRecords).values({ targetType: 'short', targetId: FIXTURE_PROJECT_ID })
+    await db
+      .insert(publishRecords)
+      .values({ channelId: FIRST_CHANNEL_ID, targetType: 'short', targetId: FIXTURE_PROJECT_ID })
   })
 
   it('beginUpload claims a draft exactly once and stamps the start', async () => {
     const [record] = await db
       .insert(publishRecords)
-      .values({ targetType: 'master', targetId: FIXTURE_PROJECT_ID })
+      .values({ channelId: FIRST_CHANNEL_ID, targetType: 'master', targetId: FIXTURE_PROJECT_ID })
       .returning()
 
     const first = await beginUpload(db, record!.id)
@@ -101,6 +112,7 @@ suite('publish bookkeeping', () => {
 
   it('scheduledPublishItems joins every slotted target back to its project', async () => {
     await db.insert(publishRecords).values({
+      channelId: FIRST_CHANNEL_ID,
       targetType: 'master',
       targetId: FIXTURE_PROJECT_ID,
       status: 'scheduled',
@@ -113,6 +125,7 @@ suite('publish bookkeeping', () => {
       .values({ projectId: FIXTURE_PROJECT_ID, title: 'The nine-day collapse', segmentRef })
       .returning()
     await db.insert(publishRecords).values({
+      channelId: FIRST_CHANNEL_ID,
       targetType: 'short',
       targetId: slotted!.id,
       status: 'live',
@@ -162,6 +175,7 @@ suite('publish bookkeeping', () => {
     ]
     for (const value of values) {
       await db.insert(publishRecords).values({
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'short',
         targetId: value.targetId,
         status: value.status,

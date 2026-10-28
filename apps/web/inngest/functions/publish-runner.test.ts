@@ -16,6 +16,7 @@ import {
   updateSettings,
   updateShort,
 } from '@boom-busters/db'
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -100,6 +101,7 @@ describeDb('publish-runner', () => {
     const [row] = await db
       .insert(publishRecords)
       .values({
+        channelId: FIRST_CHANNEL_ID,
         targetType,
         targetId,
         // A moment genuinely ahead: a hardcoded date rotted into the past

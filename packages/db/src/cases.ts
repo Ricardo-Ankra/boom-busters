@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { ensureFirstChannel } from './channels'
 import type { Database } from './client'
 import { cases, projects } from './schema'
 import type { CaseCategory, CaseRow, CaseStatus } from './schema'
@@ -100,6 +101,8 @@ export async function getCase(db: Database, id: string): Promise<CaseSummary | u
 }
 
 export interface CaseInput {
+  /** Transitional: absent means the first channel. Task 5 makes it required. */
+  channelId?: string
   title: string
   category: CaseCategory
   angle?: string | null
@@ -113,9 +116,11 @@ export interface CaseInput {
 }
 
 export async function createCase(db: Database, input: CaseInput): Promise<CaseRow> {
+  const channelId = input.channelId ?? (await ensureFirstChannel(db)).id
   const [row] = await db
     .insert(cases)
     .values({
+      channelId,
       title: input.title,
       category: input.category,
       angle: input.angle ?? null,

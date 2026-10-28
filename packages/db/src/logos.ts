@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { logoForEntity } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { assets } from './schema'
@@ -35,7 +35,7 @@ export async function logoById(db: Database, id: string): Promise<AssetRow | nul
 /**
  * Upsert a mark by content hash. Returns the stored row, or `null` when the
  * hash collides with an asset stored under another kind: the unique index
- * is on `content_hash` alone, so without a conditional update the statement
+ * among shared rows is on `content_hash` alone, so without a conditional update the statement
  * would rename and resize a row that is not a logo. Null means the bytes
  * already belong to another kind of asset; nothing was touched.
  */
@@ -67,6 +67,8 @@ export async function insertLogo(
     })
     .onConflictDoUpdate({
       target: assets.contentHash,
+      // Transitional: a mark is stored shared until Task 10 gives it a channel.
+      targetWhere: sql`channel_id is null`,
       // The bytes already exist under their hash key; a re-upload is the
       // owner renaming the mark, so the name wins. The key stays. Only when
       // the conflicting row is itself a logo: `setWhere` keeps a collision

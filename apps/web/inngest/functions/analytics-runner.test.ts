@@ -13,7 +13,7 @@ import {
 } from '@boom-busters/db'
 import { buildDigestRequest } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -129,6 +129,7 @@ describeDb('analytics-runner (mock mode)', () => {
 
     await db.insert(publishRecords).values([
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'master',
         targetId: FIXTURE_PROJECT_ID,
         youtubeVideoId: LIVE_VIDEO,
@@ -136,6 +137,7 @@ describeDb('analytics-runner (mock mode)', () => {
         publishAt: new Date('2026-08-20T15:00:00Z'),
       },
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'short',
         targetId: '01HQ00000000000000000000S1',
         youtubeVideoId: SCHEDULED_VIDEO,
@@ -144,6 +146,7 @@ describeDb('analytics-runner (mock mode)', () => {
         publishAt: new Date('2026-08-21T09:00:00Z'),
       },
       {
+        channelId: FIRST_CHANNEL_ID,
         targetType: 'short',
         targetId: '01HQ00000000000000000000S2',
         status: 'draft',

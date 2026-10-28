@@ -518,6 +518,7 @@ export const WorkspaceSettingsPatchSchema = z.object({
   modelPrices: ModelPricesSchema.optional(),
   budgets: BudgetsPatchSchema.optional(),
 })
+export type WorkspaceSettingsPatch = z.infer<typeof WorkspaceSettingsPatchSchema>
 
 /** `YYYY-MM` in UTC — the bucket both the ledger and the caps are keyed by. */
 export function monthKey(when: Date): string {

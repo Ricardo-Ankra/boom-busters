@@ -1,3 +1,4 @@
+import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { desc, eq, gte, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { analyticsSnapshots } from './schema'
@@ -36,6 +37,8 @@ export async function upsertAnalyticsSnapshot(
   input: AnalyticsSnapshotInput,
 ): Promise<void> {
   const values = {
+    // Transitional: the first channel until Task 7 adds `channelId` to the input.
+    channelId: FIRST_CHANNEL_ID,
     videoId: input.videoId,
     date: input.date,
     retentionCurve: input.retentionCurve ?? null,

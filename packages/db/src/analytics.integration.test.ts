@@ -5,6 +5,7 @@ import {
   truncateAnalytics,
   upsertAnalyticsSnapshot,
 } from './analytics'
+import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { requireTestDatabase } from './test-database'
 
@@ -23,6 +24,7 @@ suite('analytics snapshots', () => {
 
   beforeEach(async () => {
     await truncateAnalytics(db)
+    await ensureFirstChannel(db)
   })
 
   afterAll(async () => {

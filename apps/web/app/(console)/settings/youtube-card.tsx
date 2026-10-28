@@ -19,7 +19,7 @@ export function YoutubeCard({
   credential,
   envReady,
 }: {
-  credential: MaskedCredential | undefined
+  credential: Omit<MaskedCredential, 'provider'> | undefined
   /** Whether YOUTUBE_CLIENT_ID/SECRET exist — resolved server-side. */
   envReady: boolean
 }) {

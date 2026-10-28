@@ -2,10 +2,17 @@ import {
   DEFAULT_SETTINGS,
   LLM_TASKS,
   SettingsSchema,
+  WorkspaceSettingsSchema,
   canonicalModelId,
   canonicalStillModelId,
 } from '@boom-busters/schemas'
-import type { ModelRouting, Settings, SettingsPatch } from '@boom-busters/schemas'
+import type {
+  ModelRouting,
+  Settings,
+  SettingsPatch,
+  WorkspaceSettings,
+  WorkspaceSettingsPatch,
+} from '@boom-busters/schemas'
 
 /**
  * Apply a patch to the settings row.
@@ -57,6 +64,17 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
   }
 
   return SettingsSchema.parse(merged)
+}
+
+/** The workspace row's merge, on the same terms: prices replaced whole, the budget as above. */
+export function mergeWorkspaceSettings(
+  current: WorkspaceSettings,
+  patch: WorkspaceSettingsPatch,
+): WorkspaceSettings {
+  return WorkspaceSettingsSchema.parse({
+    modelPrices: patch.modelPrices ?? current.modelPrices,
+    budgets: mergeBudgets(current.budgets, patch.budgets),
+  })
 }
 
 /**

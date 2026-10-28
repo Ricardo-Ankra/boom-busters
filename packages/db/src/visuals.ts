@@ -733,6 +733,8 @@ export async function upsertAssetByHash(db: Database, input: UpsertAssetInput): 
     })
     .onConflictDoUpdate({
       target: assets.contentHash,
+      // Stills, stock and plates are shared by every channel: the shared-row hash index.
+      targetWhere: sql`channel_id is null`,
       // The bytes are identical by definition; the metadata may have improved.
       set: {
         licence: input.licence,

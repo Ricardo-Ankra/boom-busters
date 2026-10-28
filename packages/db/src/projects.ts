@@ -431,6 +431,8 @@ export async function createProjectFromCase(
   const [row] = await db
     .insert(projects)
     .values({
+      // A project always belongs to its case's channel.
+      channelId: sql<string>`(select ${cases.channelId} from ${cases} where ${cases.id} = ${input.caseId})`,
       caseId: input.caseId,
       title: input.title,
       stage: 'dossier',

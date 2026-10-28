@@ -455,7 +455,9 @@ function ConnectionsTab({
       </p>
 
       {/* OAuth, not a key paste — its own card, above the key grid. */}
-      <YoutubeCard credential={byProvider.get('youtube')} envReady={youtubeEnvReady} />
+      {/* Transitional: youtube left the credential list (a channel connection now);
+          Task 7 passes the channel's own connection here. */}
+      <YoutubeCard credential={undefined} envReady={youtubeEnvReady} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {CREDENTIAL_PROVIDERS.map((provider) => (

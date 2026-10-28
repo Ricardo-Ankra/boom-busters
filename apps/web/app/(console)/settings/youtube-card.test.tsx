@@ -23,9 +23,8 @@ beforeEach(() => {
   verifyYoutubeConnection.mockResolvedValue({ ok: true, channelTitle: 'Boom & Busters' })
 })
 
-function credential(status: MaskedCredential['verifyStatus']): MaskedCredential {
+function credential(status: MaskedCredential['verifyStatus']): Omit<MaskedCredential, 'provider'> {
   return {
-    provider: 'youtube',
     masked: '…resh',
     verifyStatus: status,
     lastVerifiedAt: status === 'ok' ? new Date('2026-08-22T10:00:00Z') : null,
