@@ -4,6 +4,8 @@ import {
   BrandKitTokensSchema,
   DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  WorkspaceSettingsSchema,
   LLM_TASKS,
   ModelPricesSchema,
   ModelRoutingSchema,
@@ -394,5 +396,13 @@ describe('the graphics route (decision 289)', () => {
     const { graphics: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
     const parsed = ModelRoutingSchema.parse(stored)
     expect(parsed.graphics).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' })
+  })
+})
+
+describe('WorkspaceSettingsSchema', () => {
+  it('parses an empty object to the defaults', () => {
+    const parsed = WorkspaceSettingsSchema.parse({})
+    expect(parsed).toEqual(DEFAULT_WORKSPACE_SETTINGS)
+    expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
   })
 })

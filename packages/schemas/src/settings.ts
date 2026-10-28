@@ -499,6 +499,26 @@ export const BudgetsPatchSchema = z.object({
   approvedOverage: BudgetOverageSchema.nullable().optional(),
 })
 
+/**
+ * Settings that belong to the whole workspace rather than one channel: model
+ * price overrides and the monthly budget.
+ */
+export const WorkspaceSettingsSchema = z.object({
+  modelPrices: ModelPricesSchema.default({ llm: {}, image: {} }),
+  budgets: BudgetsSchema.default({ monthlyCeilingUsd: 100 }),
+})
+export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>
+
+export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
+  modelPrices: { llm: {}, image: {} },
+  budgets: { monthlyCeilingUsd: 100 },
+}
+
+export const WorkspaceSettingsPatchSchema = z.object({
+  modelPrices: ModelPricesSchema.optional(),
+  budgets: BudgetsPatchSchema.optional(),
+})
+
 /** `YYYY-MM` in UTC — the bucket both the ledger and the caps are keyed by. */
 export function monthKey(when: Date): string {
   return `${when.getUTCFullYear()}-${String(when.getUTCMonth() + 1).padStart(2, '0')}`
