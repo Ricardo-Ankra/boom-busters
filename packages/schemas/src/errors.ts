@@ -148,6 +148,16 @@ export class ChannelNotFoundError extends PipelineError {
   }
 }
 
+/** A project id that names no project: a stale link or a bug, never worth a retry. */
+export class ProjectNotFoundError extends PipelineError {
+  readonly projectId: string
+
+  constructor(projectId: string) {
+    super(`project ${projectId} does not exist`)
+    this.projectId = projectId
+  }
+}
+
 /** The slug belongs to another channel, archived ones included: slugs are never reused. */
 export class ChannelSlugTakenError extends PipelineError {
   readonly slug: string

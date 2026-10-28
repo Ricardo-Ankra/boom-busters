@@ -2,14 +2,17 @@
 
 import {
   archiveChannel,
+  channelForProject,
   createChannel,
   ensureFirstChannel,
+  getChannel,
   requireTestDatabase,
 } from '@boom-busters/db'
+import type * as DbModule from '@boom-busters/db'
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_SLUG } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { channelFromSlug, landingSlug } from './channel-context'
+import { channelForProjectOrNotFound, channelFromSlug, landingSlug } from './channel-context'
 
 /**
  * The server-side channel resolvers against the test database, with the
@@ -24,6 +27,17 @@ const jar = vi.hoisted(() => ({
   },
 }))
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve(jar) }))
+
+// Real implementations by default; a test can make one reject once to prove a
+// database failure is not mistaken for "not found".
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof DbModule>()
+  return {
+    ...actual,
+    channelForProject: vi.fn(actual.channelForProject),
+    getChannel: vi.fn(actual.getChannel),
+  }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -62,6 +76,25 @@ describeDb('channel context', () => {
     expect((error as { digest?: string }).digest).toMatch(
       /^NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/,
     )
+  })
+
+  it('channelForProjectOrNotFound raises not-found for a missing project and rethrows any other failure', async () => {
+    const missing = await channelForProjectOrNotFound('01BB0000000000000000000009').catch(
+      (e: unknown) => e,
+    )
+    expect((missing as { digest?: string }).digest).toMatch(
+      /^NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/,
+    )
+
+    const outage = new Error('connection terminated')
+    vi.mocked(channelForProject).mockRejectedValueOnce(outage)
+    await expect(channelForProjectOrNotFound('01BB0000000000000000000009')).rejects.toBe(outage)
+  })
+
+  it('landingSlug rethrows a database failure instead of falling through to the write path', async () => {
+    const outage = new Error('connection terminated')
+    vi.mocked(getChannel).mockRejectedValueOnce(outage)
+    await expect(landingSlug()).rejects.toBe(outage)
   })
 
   it('landingSlug returns the cookie slug when it names a live channel', async () => {

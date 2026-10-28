@@ -6,6 +6,7 @@ import {
   getWorkspace,
   type Channel,
 } from '@boom-busters/db'
+import { ChannelNotFoundError, ProjectNotFoundError } from '@boom-busters/schemas'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import 'server-only'
@@ -23,8 +24,9 @@ export async function channelFromSlug(slug: string): Promise<Channel> {
 export async function channelForProjectOrNotFound(projectId: string) {
   try {
     return await channelForProject(db, projectId)
-  } catch {
-    notFound()
+  } catch (error) {
+    if (error instanceof ProjectNotFoundError) notFound()
+    throw error
   }
 }
 
@@ -43,8 +45,10 @@ export async function landingSlug(): Promise<string> {
   if (defaultChannelId) {
     try {
       return (await getChannel(db, defaultChannelId)).slug
-    } catch {
-      // A default that names no row falls through to the first channel.
+    } catch (error) {
+      // Only a default that names no row falls through to the first channel;
+      // a database failure must not reach the write path below.
+      if (!(error instanceof ChannelNotFoundError)) throw error
     }
   }
   return (await ensureFirstChannel(db)).slug

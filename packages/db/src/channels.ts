@@ -9,6 +9,7 @@ import {
   FIRST_CHANNEL_ID,
   FIRST_CHANNEL_NAME,
   FIRST_CHANNEL_SLUG,
+  ProjectNotFoundError,
 } from '@boom-busters/schemas'
 import type { ChannelBible, Settings, SettingsPatch } from '@boom-busters/schemas'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
@@ -219,7 +220,7 @@ export async function channelForProject(
     .innerJoin(channels, eq(channels.id, projects.channelId))
     .where(eq(projects.id, projectId))
     .limit(1)
-  if (!row) throw new Error(`project ${projectId} does not exist`)
+  if (!row) throw new ProjectNotFoundError(projectId)
 
   const channel = toChannel(row.channel)
   return {

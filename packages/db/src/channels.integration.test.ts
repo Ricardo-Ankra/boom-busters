@@ -5,6 +5,7 @@ import {
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   FIRST_CHANNEL_SLUG,
+  ProjectNotFoundError,
 } from '@boom-busters/schemas'
 import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -158,7 +159,9 @@ suite('channels', () => {
   })
 
   it('channelForProject throws for a missing project', async () => {
-    await expect(channelForProject(db, '01BB0000000000000000000009')).rejects.toThrow()
+    await expect(channelForProject(db, '01BB0000000000000000000009')).rejects.toBeInstanceOf(
+      ProjectNotFoundError,
+    )
   })
 
   it('getSettings wrapper merges workspace prices and budgets', async () => {
