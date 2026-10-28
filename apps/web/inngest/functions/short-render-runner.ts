@@ -135,6 +135,8 @@ export const shortRenderRunner = inngest.createFunction(
           segmentRef: short.segmentRef,
           ending: short.ending,
           music: pickShortsBed(beds, master.brand.music.shortsStyle),
+          // The Short's own setting (decision 326), never the master's.
+          captions: short.captions,
         })
       } catch (error) {
         // A compile refusal is about the rows as they are; retrying buys nothing.

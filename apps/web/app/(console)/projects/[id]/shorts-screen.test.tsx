@@ -23,6 +23,7 @@ vi.mock('../actions', () => ({
 
 const updateShortDetails = vi.fn()
 const setShortEnding = vi.fn()
+const setShortCaptions = vi.fn()
 const setShortRelatedLink = vi.fn()
 const requestShortRender = vi.fn()
 const saveTeaserScript = vi.fn()
@@ -35,6 +36,7 @@ const pickFetchedTeaserShot = vi.fn()
 vi.mock('./shorts-actions', () => ({
   updateShortDetails: (...args: unknown[]) => updateShortDetails(...args),
   setShortEnding: (...args: unknown[]) => setShortEnding(...args),
+  setShortCaptions: (...args: unknown[]) => setShortCaptions(...args),
   setShortRelatedLink: (...args: unknown[]) => setShortRelatedLink(...args),
   requestShortRender: (...args: unknown[]) => requestShortRender(...args),
   saveTeaserScript: (...args: unknown[]) => saveTeaserScript(...args),
@@ -84,6 +86,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   updateShortDetails.mockResolvedValue({ ok: true })
   setShortEnding.mockResolvedValue({ ok: true })
+  setShortCaptions.mockResolvedValue({ ok: true })
   setShortRelatedLink.mockResolvedValue({ ok: true })
   requestShortRender.mockResolvedValue({ ok: true })
   saveTeaserScript.mockResolvedValue({ ok: true })
@@ -104,6 +107,7 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     title: 'EY refused to sign the accounts.',
     description: '',
     ending: 'cta',
+    captions: true,
     relatedLinkChecked: false,
     kind: 'excerpt',
     chapterTitle: 'The audit',
@@ -272,6 +276,38 @@ describe('ShortsScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Switch to loop' }))
     expect(setShortEnding).toHaveBeenCalledWith('01HQ00000000000000000000S1', 'loop')
+  })
+
+  it('an unrendered card turns its captions off without ceremony (decision 326)', async () => {
+    const user = userEvent.setup()
+    renderScreen([card({ render: null })])
+
+    expect(screen.getByRole('button', { name: 'Captions On' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Captions Off' }))
+    expect(setShortCaptions).toHaveBeenCalledWith('01HQ00000000000000000000S1', false)
+  })
+
+  it('a rendered card warns that switching captions stales the render', async () => {
+    const user = userEvent.setup()
+    renderScreen([
+      card({
+        captions: false,
+        render: {
+          id: '01HQ00000000000000000000R1',
+          status: 'done',
+          progressPct: 100,
+          costUsd: '0.0117',
+          error: null,
+        },
+      }),
+    ])
+
+    await user.click(screen.getByRole('button', { name: 'On' }))
+    expect(setShortCaptions).not.toHaveBeenCalled()
+    expect(screen.getByText(/other captions setting/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Turn captions on' }))
+    expect(setShortCaptions).toHaveBeenCalledWith('01HQ00000000000000000000S1', true)
   })
 
   it('an in-flight render shows progress and hides the render button', () => {

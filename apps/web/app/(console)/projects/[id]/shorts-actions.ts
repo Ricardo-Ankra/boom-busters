@@ -115,6 +115,22 @@ export async function setShortEnding(
   return { ok: true }
 }
 
+/**
+ * Burned-in captions on or off for one Short (decision 326). Captions are
+ * part of the picture, so the rule is the ending's: the last render is of
+ * the other setting, its pointer is nulled, and the card offers Render.
+ */
+export async function setShortCaptions(shortId: string, on: boolean): Promise<ActionResult> {
+  await requireOwner()
+  const short = await loadShort(shortId)
+  if (!short) return { ok: false, error: 'Unknown Short' }
+  if (short.captions === on) return { ok: true }
+
+  await updateShort(db, shortId, { captions: on, renderId: null })
+  revalidatePath(`/projects/${short.projectId}`)
+  return { ok: true }
+}
+
 export async function setShortRelatedLink(
   shortId: string,
   checked: boolean,
