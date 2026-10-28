@@ -954,6 +954,12 @@ export const shorts = pgTable(
       .notNull()
       .$type<{ chapterId: string; fromParagraph: number; toParagraph: number }>(),
     ending: shortEndingEnum('ending').notNull().default('cta'),
+    /**
+     * Whether this Short burns its captions in (decision 326). The Short's
+     * own setting, never the master's: the long-form default is off, a
+     * Short's is on.
+     */
+    captions: boolean('captions').notNull().default(true),
     renderId: text('render_id'),
     /** "Set related video link in Studio" must be ticked before scheduling. */
     relatedLinkChecked: boolean('related_link_checked').notNull().default(false),
