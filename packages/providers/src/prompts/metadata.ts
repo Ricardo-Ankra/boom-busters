@@ -8,7 +8,7 @@ import {
 } from '@boom-busters/schemas'
 import type { BibleInUse } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { fillSlots, literalBibleText, noun } from './bible'
+import { exampleEntriesBlock, fillSlots, literalBibleText, noun } from './bible'
 import { parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField } from './repair'
 import type { Note } from './repair'
@@ -109,7 +109,7 @@ ${
   input.target === 'short'
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
     : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
-}`,
+}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
       input.bible,
     ),
     messages: clip

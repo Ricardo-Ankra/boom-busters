@@ -27,6 +27,7 @@ import {
   tensionContract,
   tensionFromOutline,
 } from './script'
+import type { BibleInUse } from '@boom-busters/schemas'
 import type { ScriptClaim } from './script'
 import type { Note, Repair } from './repair'
 
@@ -1079,5 +1080,60 @@ describe("a channel's own rules in the script prompts", () => {
       claims: [],
     })
     expect(system).not.toContain("This channel's rules")
+  })
+})
+
+describe("the channel's drafted hooks and openings", () => {
+  const drafted: BibleInUse = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: {
+      ...FIRST_CHANNEL_IN_USE.bible,
+      hooks: [
+        { text: 'The vault was empty.', note: 'opens on the loss', drawnFrom: [] },
+        { text: 'Nobody checked. [[example:x]]', note: '', drawnFrom: [] },
+      ],
+      openings: [{ text: 'Line one.\nLine two.', note: 'cold open', drawnFrom: [] }],
+    },
+  }
+
+  it('appends them after the existing opening rules in the outline prompt', () => {
+    const { system } = buildOutlineRequest({
+      bible: drafted,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 18,
+    })
+    expect(system).toContain('- The vault was empty. (opens on the loss)')
+    expect(system).toContain('- Nobody checked. [[example:x]]')
+    expect(system).toContain('- Line one.\n  Line two. (cold open)')
+    const rulesEnd = system.indexOf('narrates only the claims it\nowns.')
+    const hooks = system.indexOf("The channel's own hooks")
+    const openings = system.indexOf("The channel's own openings")
+    expect(rulesEnd).toBeGreaterThan(-1)
+    expect(hooks).toBeGreaterThan(rulesEnd)
+    expect(openings).toBeGreaterThan(hooks)
+  })
+
+  it('shows them to the opening chapter only', () => {
+    const base = { bible: drafted, caseTitle: 'Enron', outline, previousChapters: [], claims }
+    expect(buildChapterRequest({ ...base, chapterIndex: 0 }).system).toContain(
+      '- The vault was empty. (opens on the loss)',
+    )
+    expect(buildChapterRequest({ ...base, chapterIndex: 1 }).system).not.toContain(
+      'The vault was empty.',
+    )
+  })
+
+  it('adds nothing for a channel that has none', () => {
+    const { system } = buildOutlineRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 18,
+    })
+    expect(system).not.toContain("The channel's own hooks")
+    expect(system).not.toContain("The channel's own openings")
   })
 })

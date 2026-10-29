@@ -89,3 +89,22 @@ export function channelRulesBlock(bible: ChannelBible, stage: 'script' | 'direct
   if (pieces.length === 0) return ''
   return `\n\n## This channel's rules\n\n${pieces.join('\n')}`
 }
+
+/**
+ * One of the channel's drafted lists (hooks, openings, titles) as a headed
+ * block of `- ` lines, appended after a prompt's existing rules; empty when
+ * the list is, so a channel without them changes nothing. The text and the
+ * note are the owner's, so they come back already through `literalBibleText`.
+ */
+export function exampleEntriesBlock(
+  heading: string,
+  entries: readonly { text: string; note: string }[],
+): string {
+  if (entries.length === 0) return ''
+  const lines = entries.map((entry) => {
+    const text = entry.text.trim().replaceAll('\n', '\n  ')
+    const note = entry.note.trim()
+    return literalBibleText(`- ${text}${note ? ` (${note})` : ''}`)
+  })
+  return `\n\n## ${heading}\n\n${lines.join('\n')}`
+}

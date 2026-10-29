@@ -16,6 +16,7 @@ import {
   parseTitleOptions,
   TITLE_OPTION_COUNT,
 } from './metadata'
+import type { BibleInUse } from '@boom-busters/schemas'
 import type { Note, Repair } from './repair'
 import type { ScriptClaim } from './script'
 
@@ -405,5 +406,39 @@ describe('metadata prompts read the channel bible', () => {
     })
     expect(request.system).toContain('Plain [[example:nope]] words —')
     expect(request.system).toContain('titles for Odd [[if:x]] Name,')
+  })
+})
+
+describe("buildTitlesRequest with the channel's drafted titles", () => {
+  const input = {
+    channelName: 'Boom & Busters',
+    caseTitle: 'Wirecard',
+    hook: 'Hook.',
+    target: 'master' as const,
+    workingTitle: 'Wirecard',
+  }
+  const drafted = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: {
+      ...FIRST_CHANNEL_IN_USE.bible,
+      titles: [
+        { text: 'The Vault Was Empty', note: 'states the loss', drawnFrom: [] },
+        { text: 'Who Checked? [[example:x]]', note: '', drawnFrom: [] },
+      ],
+    },
+  }
+
+  it('lists them after the existing rules, text verbatim', () => {
+    const { system } = buildTitlesRequest({ ...input, bible: drafted })
+    expect(system).toContain('- The Vault Was Empty (states the loss)')
+    expect(system).toContain('- Who Checked? [[example:x]]')
+    expect(system.indexOf("The channel's own titles")).toBeGreaterThan(
+      system.indexOf('the stakes must be in the first half.'),
+    )
+  })
+
+  it('adds nothing when the channel has none', () => {
+    const { system } = buildTitlesRequest({ ...input, bible: FIRST_CHANNEL_IN_USE })
+    expect(system).not.toContain("The channel's own titles")
   })
 })

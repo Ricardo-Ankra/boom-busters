@@ -29,7 +29,7 @@ import type {
   TeaserScript,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { channelRulesBlock, fillSlots, literalBibleText, noun } from './bible'
+import { channelRulesBlock, exampleEntriesBlock, fillSlots, literalBibleText, noun } from './bible'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
@@ -162,6 +162,14 @@ ${literalBibleText(bible.hedgingRules)}`
 const scriptRules = (inUse: BibleInUse): string =>
   literalBibleText(channelRulesBlock(inUse.bible, 'script'))
 
+/** The channel's drafted hooks and openings, for the opening chapter's rules; empty when it has none. */
+const openingExamples = (inUse: BibleInUse): string =>
+  exampleEntriesBlock("The channel's own hooks, for the opening's first lines", inUse.bible.hooks) +
+  exampleEntriesBlock(
+    "The channel's own openings, for how the opening sets up a case",
+    inUse.bible.openings,
+  )
+
 // ---------------------------------------------------------------------------
 // Outline
 // ---------------------------------------------------------------------------
@@ -235,7 +243,7 @@ The opening chapter is a glimpse of the consequence in a few sentences, most
 of its detail withheld. The opening chapter owns none of the claims of the
 moment it glimpses: the chapter where the chronology returns to that moment
 owns them, opens with one line of callback, and narrates only the claims it
-owns.`,
+owns.${openingExamples(input.bible)}`,
       input.bible,
     ),
     messages: [
@@ -510,7 +518,7 @@ bullet points, no lists — the words are read aloud exactly as written, and
 the bracketed narration tags the house style describes are the one thing in
 the text that is direction rather than words. Place them inline as you draft.
 
-Target about ${chapter.targetWords} words.`,
+Target about ${chapter.targetWords} words.${input.chapterIndex === 0 ? openingExamples(input.bible) : ''}`,
       input.bible,
     ),
     messages: [
