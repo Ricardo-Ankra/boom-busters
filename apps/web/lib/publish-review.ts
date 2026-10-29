@@ -65,6 +65,11 @@ export interface PublishItemModel {
   targetId: string
   /** The working title: the project's for the master, the card's for a Short. */
   label: string
+  /**
+   * Which kind of Short this is (decision 225), so its card can tell the
+   * teaser from the excerpts. Null for the master.
+   */
+  shortKind: 'excerpt' | 'teaser' | null
   durationMs: number | null
   /** Everything the runner would refuse on, said before the button exists. */
   notReadyReason: string | null
@@ -432,6 +437,7 @@ export async function publishModel(
       targetType: 'master',
       targetId: projectId,
       label: project.title,
+      shortKind: null,
       durationMs: masterDurationMs,
       notReadyReason:
         masterRender?.status === 'done' && masterRender.outputS3Key
@@ -458,6 +464,7 @@ export async function publishModel(
       targetType: 'short',
       targetId: short.id,
       label: short.title,
+      shortKind: short.kind,
       durationMs: null,
       notReadyReason,
       relatedLinkChecked: short.relatedLinkChecked,

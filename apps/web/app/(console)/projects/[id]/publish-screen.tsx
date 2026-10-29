@@ -94,6 +94,16 @@ function keyOf(item: PublishItemModel): string {
   return `${item.targetType}:${item.targetId}`
 }
 
+/**
+ * What the card's tag calls the item. The teaser and the excerpts are all
+ * Shorts to YouTube, but they are different videos to schedule: the teaser
+ * has its own narration, an excerpt is a slice of the full video.
+ */
+function kindLabel(item: PublishItemModel): string {
+  if (item.targetType === 'master') return 'Full video'
+  return item.shortKind === 'teaser' ? 'Teaser short' : 'Excerpt short'
+}
+
 function slotKindFor(item: PublishItemModel): 'longform' | 'short' {
   return item.targetType === 'master' ? 'longform' : 'short'
 }
@@ -230,8 +240,15 @@ export function PublishScreen({
             >
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-[14px]">
-                  <span className="rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] uppercase">
-                    {item.targetType === 'master' ? 'Full video' : 'Short'}
+                  <span
+                    className={
+                      'shrink-0 rounded-[4px] border px-1.5 py-0.5 text-[10px] uppercase ' +
+                      (item.shortKind === 'teaser'
+                        ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
+                        : 'border-[var(--color-border)] text-[var(--color-text-muted)]')
+                    }
+                  >
+                    {kindLabel(item)}
                   </span>
                   <span className="truncate">{item.record?.title ?? item.label}</span>
                   <span className="ml-auto">
@@ -715,7 +732,7 @@ function ItemEditor({
     <Card>
       <CardHeader>
         <CardTitle className="text-[14px]">
-          {item.targetType === 'master' ? 'Full video' : 'Short'}: {item.label}
+          {kindLabel(item)}: {item.label}
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-2">

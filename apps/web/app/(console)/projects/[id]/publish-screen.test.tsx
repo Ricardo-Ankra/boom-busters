@@ -88,6 +88,7 @@ function masterItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel
     targetType: 'master',
     targetId: PROJECT,
     label: 'Wirecard: The 1.9 Billion Euro Lie',
+    shortKind: null,
     durationMs: 900_000,
     notReadyReason: null,
     syntheticLikenesses: [],
@@ -102,6 +103,7 @@ function shortItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel 
     targetType: 'short',
     targetId: SHORT,
     label: 'EY refused to sign the accounts.',
+    shortKind: 'excerpt',
     durationMs: null,
     notReadyReason: null,
     syntheticLikenesses: [],
@@ -200,6 +202,23 @@ describe('PublishScreen', () => {
     for (const button of screen.getAllByRole('button', { name: 'Schedule here' })) {
       expect(button).toBeInTheDocument()
     }
+  })
+
+  it('each card says which video it is: the full video, the teaser, an excerpt', () => {
+    renderScreen({
+      items: [
+        masterItem(),
+        shortItem({
+          targetId: '01HQ00000000000000000TEASER',
+          label: 'How Wirecard hid 1.9 billion',
+          shortKind: 'teaser',
+        }),
+        shortItem(),
+      ],
+    })
+    expect(screen.getByText('Full video')).toBeInTheDocument()
+    expect(screen.getByText('Teaser short')).toBeInTheDocument()
+    expect(screen.getByText('Excerpt short')).toBeInTheDocument()
   })
 
   it('an unready item gets its reason, not a schedule button', () => {

@@ -127,7 +127,7 @@ test.describe('the publish flow', () => {
     // the first "Edit metadata" button belongs to the first Short card.
     await page.getByRole('button', { name: 'Edit metadata' }).first().click()
     await expect(
-      page.getByText('Short: The auditors said yes for eighteen years (E2E)'),
+      page.getByText('Excerpt short: The auditors said yes for eighteen years (E2E)'),
     ).toBeVisible()
 
     // Its slots are the Short ones; the long-form cells say why they refuse.
