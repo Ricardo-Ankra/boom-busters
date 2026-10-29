@@ -208,9 +208,14 @@ export default async function globalSetup(): Promise<void> {
     // bible. channels.spec.ts fills its Channel tab (still incomplete until the tab sets the new fields) and also creates
     // and archives a third, so both are dropped and re-created every run.
     // Their dependants (the cases the spec adds) go first: the channel foreign
-    // keys restrict.
+    // keys restrict. So do the bible versions: a project holds its version, and
+    // the channel and its versions point at each other, so the pointer is
+    // cleared before the versions go.
     for (const slug of ['e2e-second', 'third-channel']) {
+      await connection.sql`delete from projects where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`update channels set current_bible_id = null where slug = ${slug}`
+      await connection.sql`delete from channel_bibles where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from youtube_connections where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from channels where slug = ${slug}`
     }
