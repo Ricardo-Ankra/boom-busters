@@ -18,7 +18,7 @@ import {
   saveBibleVersion,
 } from './bibles'
 import { createCase } from './cases'
-import { createChannel } from './channels'
+import { channelForProject, createChannel, getChannel } from './channels'
 import { createDb } from './client'
 import { createProjectFromCase, moveProjectBible } from './projects'
 import {
@@ -184,5 +184,17 @@ suite('bible drafts', () => {
     const read = await currentBible(db, channelId)
     expect(read.bible).toEqual(v1.bible)
     expect(await bibleVersionById(db, v1.id)).toEqual(v1)
+  })
+
+  it('reads a channel and a project freeze whose version carries a retired key', async () => {
+    const v1 = await currentBible(db, channelId)
+    const kase = await createCase(db, { channelId, title: 'T', category: 'collapse' })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'T' })
+    await sql`update channel_bibles set bible = bible || '{"retiredKey": "x"}'::jsonb where id = ${v1.id}`
+    const channel = await getChannel(db, channelId)
+    expect(channel.bible).toEqual(v1.bible)
+    expect(channel.bible).not.toHaveProperty('retiredKey')
+    const frozen = await channelForProject(db, project.id)
+    expect(frozen.bible).toEqual(v1.bible)
   })
 })

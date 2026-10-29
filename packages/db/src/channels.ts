@@ -1,5 +1,5 @@
 import {
-  ChannelBibleSchema,
+  ChannelBibleReadSchema,
   ChannelNotFoundError,
   ChannelSlugTakenError,
   DEFAULT_SETTINGS,
@@ -59,7 +59,7 @@ function toChannel({ channel: row, version }: ChannelWithBible): Channel {
     slug: row.slug,
     name: row.name,
     handle: row.handle,
-    bible: ChannelBibleSchema.parse(version.bible),
+    bible: ChannelBibleReadSchema.parse(version.bible),
     slotIds: version.slotIds,
     bibleId: version.id,
     bibleVersion: version.version,
