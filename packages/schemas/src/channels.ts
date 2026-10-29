@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { EXAMPLE_SLOT_IDS, type BibleInUse } from './bible-slots'
+import { FIRST_CHANNEL_EXAMPLES } from './first-channel-examples'
 import { UlidSchema } from './ids'
 import { PUBLISH_DISCLAIMER } from './publish'
 
@@ -40,7 +41,7 @@ export function slugFromName(name: string): string {
  * Every field defaults to empty so a new channel starts as a blank form.
  */
 /** A slot id: kebab-case with at least one dash, as `script-opening-line`. */
-const SLOT_ID_PATTERN = /^[a-z]+(-[a-z0-9]+)+$/
+export const SLOT_ID_PATTERN = /^[a-z]+(?:-[a-z0-9]+)+$/
 
 /** One drafted hook, opening or title, with the videos it was drawn from. */
 export const BibleExampleEntrySchema = z.object({
@@ -197,7 +198,7 @@ export const FIRST_CHANNEL_BIBLE: ChannelBible = {
   sentence of its own saying that nothing was proven, that no court has
   found, or that this is an interpretation. The one exception is the film's
   single such sentence, where a chapter's constraints ask for it.`,
-  examples: {},
+  examples: FIRST_CHANNEL_EXAMPLES,
   hooks: [],
   openings: [],
   titles: [],

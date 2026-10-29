@@ -1,3 +1,4 @@
+import { SLOT_ID_PATTERN } from '@boom-busters/schemas'
 import type { BibleInUse, ChannelBible } from '@boom-busters/schemas'
 
 export class BibleSlotMissingError extends Error {
@@ -10,10 +11,11 @@ export class BibleSlotMissingError extends Error {
   }
 }
 
-// Mirrors SLOT_ID_PATTERN in packages/schemas (channels.ts), without the anchors.
-const IF_BLOCK = /\[\[if:([a-z]+(?:-[a-z0-9]+)+)\]\]([\s\S]*?)\[\[\/if\]\]/g
-const EXAMPLE_MARKER = /\[\[example:([a-z]+(?:-[a-z0-9]+)+)\]\]/g
-const ANY_MARKER = /\[\[(?:example|if):([a-z]+(?:-[a-z0-9]+)+)\]\]/g
+// The slot id pattern without its anchors, so the markers and the schema agree on what an id is.
+const SLOT_ID = SLOT_ID_PATTERN.source.slice(1, -1)
+const IF_BLOCK = new RegExp(`\\[\\[if:(${SLOT_ID})\\]\\]([\\s\\S]*?)\\[\\[\\/if\\]\\]`, 'g')
+const EXAMPLE_MARKER = new RegExp(`\\[\\[example:(${SLOT_ID})\\]\\]`, 'g')
+const ANY_MARKER = new RegExp(`\\[\\[(?:example|if):(${SLOT_ID})\\]\\]`, 'g')
 const MARKER_START = /\[\[\/?(?:if|example)/
 
 /** Fails closed: any marker-looking text that is not a well-formed marker or pair throws. */
