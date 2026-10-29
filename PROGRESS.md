@@ -4167,6 +4167,57 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 - [ ] Migration rehearsal on a Neon branch (runbook in the hand-over), then
       production; `PUT /api/inngest` after the deploy.
 
+## Channel bible, the lift (2026-10-29)
+
+> The bible reaches the prompts. Design:
+> `docs/superpowers/specs/2026-10-28-channel-bible-design.md`; plan:
+> `docs/superpowers/plans/2026-10-28-channel-bible-lift.md`; branch
+> `bible-lift`; decisions 332 to 335. Boom & Busters' prompts are
+> byte-identical to before: the lift fixtures under
+> `packages/providers/src/prompts/lift/__fixtures__` have not changed since
+> the baseline commit `0aa81fc` (the shot list fixtures were re-captured
+> there for master's one-image wording, decision 324).
+
+### Deliverables
+
+- [x] Task 1: the bible's full shape, sections and slot registry (schemas).
+- [x] Task 2: lift fixtures and cases captured before any prompt moved.
+- [x] Task 3: slot filling, `[[example:<id>]]` and `[[if:<id>]]`, failing
+      closed on stray or malformed markers.
+- [x] Task 4: the Boom & Busters examples and the registry, lifted verbatim
+      (decision 332).
+- [x] Task 5: append-only bible versions, the project freeze, the gate on
+      the frozen version (decision 333).
+- [x] Task 6: the script prompts read the bible.
+- [x] Task 7: the dossier, research and subject prompts read the bible.
+- [x] Task 8: direction, the shot list and the slot passes read the bible.
+- [x] Task 9: graphics, titles, descriptions and the digest read the bible.
+- [x] Task 10: disclaimer, CTA, audition line and wordmark come from the
+      channel (decision 334).
+- [x] Task 11: categories come from the bible, Suggest cases kept for the
+      first channel (decision 335).
+- [x] Task 12: every e2e spec file, the fixture proof, every package suite.
+- [ ] Owner actions after merge, not run by this branch (below).
+
+### Owner actions at deploy
+
+1. Migration numbers: this branch adds 0039 (`channel_bibles`) and 0040
+   (`case_category_text`). Compare `packages/db/drizzle/meta/_journal.json`
+   with master's at merge time; if another branch took either number,
+   regenerate this branch's as the next free one (drizzle skips a migration
+   stamped older than the last applied).
+2. Before migrating production, read the production first channel's
+   `channels.bible` read-only and compare it with stage A's stored shape
+   (`FIRST_CHANNEL_BIBLE_AT_0037` in
+   `packages/db/src/migration-0038.test.ts`). If the owner has edited it,
+   stop and ask: 0039 replaces it with `FIRST_CHANNEL_BIBLE` as version 1.
+3. `pnpm db:migrate` on a Neon branch first. Check the row counts: every
+   project has a `bible_id`, and the first channel has version 1, complete.
+   Then production.
+4. `deploy:stacks boom-busters-broker` (the timeline schema gained
+   `identity`) and `deploy:remotion` (EndCta and Watermark changed).
+5. `PUT /api/inngest` after the Vercel deploy.
+
 ---
 
 # Decisions made
@@ -8537,3 +8588,73 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Stage B is the next plan: the bible reaching the prompts, the AI
      draft of the bible, and the case category as free text checked against
      `caseCategories`.
+
+331. **The bible's full shape, and the example slots** (2026-10-29, owner).
+     Stage A's fields grow into the whole bible: subject, what a case is,
+     subject kind and noun (singular and plural), audience, narration
+     register, voice do's and don'ts, hedging rules, visual register,
+     hooks, openings and titles with their provenance, language, country,
+     keyword context, channel tags, title style, CTA line, disclaimer,
+     YouTube category, audition line, case categories, and free script and
+     direction rules in Markdown. The schema is strict and refuses an
+     unknown key. Craft that cannot be a plain field lives in `examples`,
+     keyed by slot id; a prompt marks the place with
+     `[[example:<slot-id>]]` (and `[[if:<slot-id>]] ... [[/if]]`, built and
+     tested but used by no lift slot). Slot ids are kebab-case and prefixed
+     by their source (`script-`, `direction-`, `shotlist-`, `graphics-`,
+     `dossier-`, `metadata-`, `subject-`, `digest-`). The inventory found
+     46 slots, six over the spec's ceiling of 40 (`script-read-aloud-numbers`,
+     `script-hedge-kind`, `direction-era-objects`, `direction-emotion-body`,
+     `direction-recreated-scenes`, `dossier-status-subject`). The owner
+     raised `MAX_EXAMPLE_SLOTS` from 40 to 46 on 2026-10-29 and all 46 are
+     built, so spec 4.2's ceiling is superseded for the lift. Two graphics
+     phrases (`graphics.ts` "$4bn" / "4 billion dollars", and "never
+     audited" / "allegedly") stay as shared wording at the ceiling rather
+     than becoming slots. Boom & Busters' own text fills every slot
+     verbatim, and a bible is complete only when it fills every slot and
+     the required fields. Owner text is never read as markers: every bible
+     value interpolated into a prompt goes through `literalBibleText`, and a
+     channel's own rules are appended after the slots are filled.
+
+332. **Bible versions are append-only, and a project freezes one**
+     (2026-10-29). `channels.bible` is replaced by
+     `channels.current_bible_id`, pointing into a new `channel_bibles` table
+     (migration 0039). Saving the Channel tab inserts a new version; no row
+     is updated or deleted. A project takes the channel's current version as
+     its `bible_id` when it is created and keeps it, so editing a bible
+     never changes a film already in progress, and a new project uses the
+     then-current version. Case-level work (Suggest cases, the digest) reads
+     the current version. The gate of decision 330 runs on the frozen
+     version for a project and on the current one for a channel. The first
+     channel's version 1 is the full `FIRST_CHANNEL_BIBLE`, which replaces
+     whatever stage A stored. Bibles are read inside the Inngest step that
+     builds the prompt, via `channelForProject`, never from an earlier
+     step's memoised output, so a run parked before a deploy cannot replay a
+     stale bible.
+
+333. **Fixed strings and the wordmark come from the channel** (2026-10-29).
+     The disclaimer, the CTA and the audition line come from the project's
+     frozen bible (the current one where there is no project). The channel
+     name and handle come from the `channels` row, not the bible, and are
+     snapshotted into the timeline as `identity`, so a render keeps the
+     wordmark it was built with. `resolveBrandKit(settings, channel?)` still
+     serves the compositions' fixture, which carries no identity. This is a
+     timeline schema change: `boom-busters-broker` needs `deploy:stacks` and
+     the compositions (EndCta, Watermark) need `deploy:remotion`. Two paths
+     (`visuals-review` and `visual-assets`) resolve a brand kit without
+     identity because nothing on them draws the wordmark today.
+
+334. **Categories are data; Suggest cases is the first channel's**
+     (2026-10-29). `cases.category` stops being an enum (migration 0040:
+     text with a non-empty check, the `case_category` type dropped; the five
+     existing keys stay valid and no row changes). A channel's bible lists
+     its own categories (at least two); the Add case select and the row
+     labels read them, a key not in the bible shows as its raw key, and
+     adding or editing a case with a category outside the bible is refused.
+     Suggest cases scores against named-case lists that are Boom & Busters'
+     own, so it is kept for the first channel only: it is absent on every
+     other channel and its action refuses there. `cases.ts` in the schemas
+     package is not parameterised. Sorting the library by category is now
+     alphabetical by key (collapse, con, empire, meltdown, turnaround)
+     rather than enum order. The AI draft of the bible and free-text
+     category checking remain for the next plan.
