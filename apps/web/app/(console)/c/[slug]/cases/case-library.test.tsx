@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
-import { FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
+import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
@@ -72,6 +72,7 @@ describe('CaseLibrary notices (decision 293)', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({}), kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })]}
         sort="priority"
         notices={[trimmed]}
@@ -94,6 +95,7 @@ describe('CaseLibrary notices (decision 293)', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({})]}
         sort="priority"
         notices={[trimmed]}
@@ -114,6 +116,7 @@ describe('CaseLibrary notices (decision 293)', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({ projectCount: 2 })]}
         sort="priority"
       />,
@@ -137,7 +140,15 @@ describe('CaseLibrary notices (decision 293)', () => {
       mocked: false,
       notice: dropped,
     })
-    render(<CaseLibrary slug="psychology" channelId={CHANNEL_ID} cases={[]} sort="priority" />)
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[]}
+        sort="priority"
+      />,
+    )
 
     await userEvent.click(screen.getByRole('button', { name: 'Suggest cases' }))
     await userEvent.click(screen.getByRole('button', { name: 'Get suggestions' }))
@@ -153,7 +164,15 @@ describe('CaseLibrary notices (decision 293)', () => {
 
 describe('the case form: subject, people and source links', () => {
   async function openAddForm() {
-    render(<CaseLibrary slug="psychology" channelId={CHANNEL_ID} cases={[]} sort="priority" />)
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[]}
+        sort="priority"
+      />,
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
   }
 
@@ -196,6 +215,7 @@ describe('the case form: subject, people and source links', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[
           kase({
             status: 'shortlisted',
@@ -231,6 +251,7 @@ describe('CaseLibrary with an incomplete channel bible', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({ status: 'shortlisted' })]}
         sort="priority"
         bibleComplete={false}
@@ -253,6 +274,7 @@ describe('CaseLibrary with an incomplete channel bible', () => {
       <CaseLibrary
         slug="psychology"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({ status: 'shortlisted' })]}
         sort="priority"
       />,
@@ -269,6 +291,7 @@ describe('CaseLibrary for an archived channel', () => {
       <CaseLibrary
         slug="old"
         channelId={CHANNEL_ID}
+        categories={CATEGORIES}
         cases={[kase({ status: 'shortlisted' })]}
         sort="priority"
         archived
@@ -279,5 +302,71 @@ describe('CaseLibrary for an archived channel', () => {
     expect(screen.getByRole('button', { name: /Add case/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('This channel is archived')
+  })
+})
+
+const CATEGORIES = FIRST_CHANNEL_BIBLE.caseCategories
+const SECOND_CHANNEL_ID = '01J0000000000000000000000S'
+const PSYCHOLOGY_CATEGORIES = [
+  { key: 'experiment', label: 'Experiment' },
+  { key: 'bias', label: 'Bias' },
+]
+
+describe('categories come from the channel bible', () => {
+  it("lists the bible's categories in the add form, labelled", async () => {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={SECOND_CHANNEL_ID}
+        categories={PSYCHOLOGY_CATEGORIES}
+        cases={[]}
+        sort="priority"
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
+    const options = within(screen.getByLabelText('Category')).getAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual(['Experiment', 'Bias'])
+    expect(screen.getByLabelText('Category')).toHaveValue('experiment')
+  })
+
+  it('renders a case whose key the bible no longer lists, as the key', () => {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={SECOND_CHANNEL_ID}
+        categories={PSYCHOLOGY_CATEGORIES}
+        cases={[kase({ category: 'collapse', status: 'shortlisted' })]}
+        sort="priority"
+      />,
+    )
+    const row = screen.getByText('Wirecard').closest('li')!
+    expect(row).toHaveTextContent('collapse')
+  })
+
+  it('has no Suggest cases button on a channel other than the first', () => {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={SECOND_CHANNEL_ID}
+        categories={PSYCHOLOGY_CATEGORIES}
+        cases={[]}
+        sort="priority"
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Suggest cases' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add case' })).toBeInTheDocument()
+  })
+
+  it('keeps Suggest cases on the first channel', () => {
+    render(
+      <CaseLibrary
+        slug="boom-busters"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[]}
+        sort="priority"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Suggest cases' })).toBeInTheDocument()
   })
 })

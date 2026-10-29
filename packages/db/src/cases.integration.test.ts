@@ -53,6 +53,20 @@ suite('cases', () => {
     })
   }
 
+  describe('category is text', () => {
+    it("stores a key from another channel's bible and reads it back", async () => {
+      await createCase(db, { channelId: otherChannelId, title: 'Milgram', category: 'obedience' })
+
+      expect((await listCases(db, otherChannelId)).map((row) => row.category)).toEqual([
+        'obedience',
+      ])
+    })
+
+    it('refuses an empty category at the database', async () => {
+      await expect(createCase(db, { channelId, title: 'Nothing', category: '' })).rejects.toThrow()
+    })
+  })
+
   describe('two channels', () => {
     it('listCases never returns the other channel case', async () => {
       await createCase(db, { channelId, title: 'Alpha case', category: 'con' })

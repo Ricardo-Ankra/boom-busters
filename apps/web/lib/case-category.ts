@@ -1,18 +1,20 @@
+import type { ChannelBible } from '@boom-busters/schemas'
+
 /**
- * The case category as a word, not an enum value (decision 245).
+ * The case category as the channel's bible words it (decision 245, and the
+ * channel bible lift). `con` and `collapse` are stored lower-case; the bible's
+ * `caseCategories` gives each key its label.
  *
- * `con`, `collapse` and friends are stored lower-case and were shown that way
- * in a monospace chip on the dashboard, the Projects list and every project
- * header, which read as an identifier rather than as what the video is about.
+ * A key the bible no longer lists (the owner edited the list after cases were
+ * made) shows as the key itself, never as nothing and never as an error.
  */
-const LABELS: Record<string, string> = {
-  collapse: 'Collapse',
-  con: 'Con',
-  meltdown: 'Meltdown',
-  turnaround: 'Turnaround',
-  empire: 'Empire',
+type CategorySource = Pick<ChannelBible, 'caseCategories'>
+
+export function caseCategoryLabel(bible: CategorySource, key: string): string {
+  return bible.caseCategories.find((category) => category.key === key)?.label ?? key
 }
 
-export function caseCategoryLabel(category: string): string {
-  return LABELS[category] ?? category.charAt(0).toUpperCase() + category.slice(1)
+/** The keys the channel's bible lists, in its order. */
+export function caseCategoryKeys(bible: CategorySource): string[] {
+  return bible.caseCategories.map((category) => category.key)
 }

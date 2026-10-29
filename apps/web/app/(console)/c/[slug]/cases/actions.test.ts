@@ -294,3 +294,69 @@ describe('the channel bible gate and an unknown channel', () => {
     expect(store.createCase).not.toHaveBeenCalled()
   })
 })
+
+describe('case categories come from the channel bible', () => {
+  const SECOND_ID = '01BB0000000000000000000002'
+  const psychology = {
+    ...FIRST_CHANNEL_BIBLE,
+    caseCategories: [{ key: 'experiment', label: 'Experiment' }],
+  }
+  const form = { title: 'Milgram', priorityScore: 50, subject: 'Milgram' }
+
+  beforeEach(() => {
+    store.createCase.mockReset().mockResolvedValue({ id: 'x' })
+    store.updateCase.mockReset().mockResolvedValue({ id: 'x' })
+    store.channelForCase.mockReset()
+    callLlm.mockReset()
+    store.createSuggestedCases.mockReset()
+    findChannel
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+  })
+
+  it('addCase refuses a key the bible does not list, and inserts nothing', async () => {
+    expect(await addCase(CHANNEL_ID, { ...form, category: 'heist' })).toEqual({
+      ok: false,
+      error: "That category is not in this channel's bible",
+    })
+    expect(store.createCase).not.toHaveBeenCalled()
+  })
+
+  it('addCase passes each of the first channel five keys', async () => {
+    for (const key of ['collapse', 'con', 'meltdown', 'turnaround', 'empire']) {
+      expect(await addCase(CHANNEL_ID, { ...form, category: key })).toEqual({ ok: true })
+    }
+    expect(store.createCase).toHaveBeenCalledTimes(5)
+  })
+
+  it("addCase checks the channel's own bible, not Boom & Busters'", async () => {
+    findChannel.mockResolvedValue({ id: SECOND_ID, bible: psychology, archivedAt: null })
+    expect(await addCase(SECOND_ID, { ...form, category: 'collapse' })).toMatchObject({
+      ok: false,
+      error: "That category is not in this channel's bible",
+    })
+    expect(await addCase(SECOND_ID, { ...form, category: 'experiment' })).toEqual({ ok: true })
+  })
+
+  it('editCase refuses a key the bible does not list, and updates nothing', async () => {
+    store.channelForCase.mockResolvedValue({ id: SECOND_ID, bible: psychology, archivedAt: null })
+    expect(await editCase('01J00000000000000000000C01', { category: 'collapse' })).toEqual({
+      ok: false,
+      error: "That category is not in this channel's bible",
+    })
+    expect(store.updateCase).not.toHaveBeenCalled()
+    expect(await editCase('01J00000000000000000000C01', { category: 'experiment' })).toEqual({
+      ok: true,
+    })
+  })
+
+  it('suggestCases refuses on any channel but the first, before any model call', async () => {
+    findChannel.mockResolvedValue({ id: SECOND_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    expect(await suggestCases(SECOND_ID, { count: 3 })).toEqual({
+      ok: false,
+      error: 'Suggest cases is only available on the first channel',
+    })
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(store.createSuggestedCases).not.toHaveBeenCalled()
+  })
+})

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
-import type { CaseCategory, CaseRow, CaseStatus } from './schema'
+import type { CaseRow, CaseStatus } from './schema'
 
 /**
  * Case Library queries (build spec section 11.3).
@@ -22,7 +22,7 @@ export type CaseSort = (typeof CASE_SORTS)[number]
 export interface CaseSummary {
   id: string
   title: string
-  category: CaseCategory
+  category: string
   angle: string | null
   demandNotes: string | null
   competitorLinks: { url: string; note?: string }[]
@@ -105,7 +105,7 @@ export async function getCase(db: Database, id: string): Promise<CaseSummary | u
 export interface CaseInput {
   channelId: string
   title: string
-  category: CaseCategory
+  category: string
   angle?: string | null
   demandNotes?: string | null
   competitorLinks?: { url: string; note?: string }[]

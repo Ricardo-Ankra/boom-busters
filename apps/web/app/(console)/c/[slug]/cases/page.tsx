@@ -44,6 +44,7 @@ export default async function CasesPage({
     <CaseLibrary
       slug={slug}
       channelId={channel.id}
+      categories={channel.bible.caseCategories}
       cases={cases}
       sort={active}
       notices={notices}

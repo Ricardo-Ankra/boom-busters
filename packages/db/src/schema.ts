@@ -16,6 +16,7 @@ import type {
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -65,17 +66,6 @@ const usd = (name: string) => numeric(name, { precision: 12, scale: 4 })
 // Enums
 // ---------------------------------------------------------------------------
 
-/**
- * `turnaround` and `empire` support the phased scope broadening. No code
- * treats any category specially (spec section 5).
- */
-export const caseCategoryEnum = pgEnum('case_category', [
-  'collapse',
-  'con',
-  'meltdown',
-  'turnaround',
-  'empire',
-])
 export const caseStatusEnum = pgEnum('case_status', [
   'idea',
   'shortlisted',
@@ -389,7 +379,8 @@ export const cases = pgTable(
     id: id(),
     channelId: channelId().notNull(),
     title: text('title').notNull(),
-    category: caseCategoryEnum('category').notNull(),
+    // Text validated against the channel's bible (`caseCategories`), not an enum.
+    category: text('category').notNull(),
     angle: text('angle'),
     demandNotes: text('demand_notes'),
     competitorLinks: jsonb('competitor_links')
@@ -414,6 +405,7 @@ export const cases = pgTable(
     index('cases_status_idx').on(t.status),
     index('cases_priority_idx').on(t.priorityScore),
     index('cases_channel_idx').on(t.channelId),
+    check('cases_category_not_empty', sql`${t.category} <> ''`),
   ],
 )
 
@@ -1530,11 +1522,9 @@ export type NewSocialPost = typeof socialPosts.$inferInsert
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]
-export type CaseCategory = (typeof caseCategoryEnum.enumValues)[number]
 export type CaseStatus = (typeof caseStatusEnum.enumValues)[number]
 export type ClaimConfidence = (typeof claimConfidenceEnum.enumValues)[number]
 export type ClaimSourceType = (typeof sourceTypeEnum.enumValues)[number]
 
-export const CASE_CATEGORIES = caseCategoryEnum.enumValues
 export const CLAIM_CONFIDENCES = claimConfidenceEnum.enumValues
 export const CLAIM_SOURCE_TYPES = sourceTypeEnum.enumValues

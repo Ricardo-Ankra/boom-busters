@@ -13,7 +13,7 @@ import {
   setProjectStage,
   updateCase,
 } from '@boom-busters/db'
-import type { CaseCategory, CaseStatus } from '@boom-busters/db'
+import type { CaseStatus } from '@boom-busters/db'
 import {
   buildSuggestCasesRequest,
   describeRepairs,
@@ -28,8 +28,8 @@ import {
   CASE_SOURCE_LINKS_MAX,
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
-  CaseCategorySchema,
   EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_ID,
   UlidSchema,
   isBibleComplete,
   serialiseError,
@@ -45,6 +45,7 @@ import { callForAnswer } from '@/lib/answer'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import type { Answer, AnswerComplete } from '@/lib/answer'
+import { caseCategoryKeys } from '@/lib/case-category'
 import { callLlm } from '@/lib/llm'
 import { recordRepairs } from '@/lib/notices'
 
@@ -67,7 +68,8 @@ async function requireOwner(): Promise<void> {
 
 const CaseFormSchema = z.object({
   title: z.string().trim().min(3, 'Give the case a title of at least 3 characters').max(200),
-  category: CaseCategorySchema,
+  // Checked against the channel's bible in the action: the schema cannot know it.
+  category: z.string().trim().min(1, 'Pick a category'),
   angle: z.string().trim().max(2000).optional(),
   demandNotes: z.string().trim().max(2000).optional(),
   priorityScore: z.number().int().min(0).max(100),
@@ -96,16 +98,22 @@ const CaseFormSchema = z.object({
     .default([]),
 })
 
+const CATEGORY_NOT_IN_BIBLE = "That category is not in this channel's bible"
+
 export async function addCase(channelId: string, input: unknown): Promise<ActionResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
   // A well-formed id that names no channel would otherwise surface a foreign-key error.
-  const refusal = writeRefusalFor(await findChannel(channelId))
-  if (refusal) return refusal
+  const channel = await findChannel(channelId)
+  const refusal = writeRefusalFor(channel)
+  if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
 
   const parsed = CaseFormSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'That case is not valid' }
+  }
+  if (!caseCategoryKeys(channel.bible).includes(parsed.data.category)) {
+    return { ok: false, error: CATEGORY_NOT_IN_BIBLE }
   }
 
   await createCase(db, {
@@ -133,6 +141,13 @@ export async function editCase(id: string, input: unknown): Promise<ActionResult
     .safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'That change is not valid' }
+  }
+  if (parsed.data.category !== undefined) {
+    const channel = await channelForCase(db, id)
+    if (!channel) return { ok: false, error: 'That case no longer exists' }
+    if (!caseCategoryKeys(channel.bible).includes(parsed.data.category)) {
+      return { ok: false, error: CATEGORY_NOT_IN_BIBLE }
+    }
   }
 
   const updated = await updateCase(db, id, parsed.data)
@@ -232,6 +247,10 @@ export async function suggestCases(channelId: string, input: unknown): Promise<S
   const channel = await findChannel(channelId)
   const refusal = writeRefusalFor(channel)
   if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
+  // The prompt names Boom & Busters' five categories and nothing else (spec section 8, call 10).
+  if (channelId !== FIRST_CHANNEL_ID) {
+    return { ok: false, error: 'Suggest cases is only available on the first channel' }
+  }
   if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
     return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
@@ -262,7 +281,7 @@ export async function suggestCases(channelId: string, input: unknown): Promise<S
       channelId,
       suggestions.map((suggestion) => ({
         title: suggestion.title,
-        category: suggestion.category as CaseCategory,
+        category: suggestion.category,
         angle: suggestion.angle,
         demandNotes: suggestion.demandNotes ?? null,
         competitorLinks: suggestion.competitorLinks ?? [],

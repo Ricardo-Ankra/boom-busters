@@ -77,12 +77,12 @@ test.describe('channels', () => {
     ).toContainText('Write the channel bible')
   })
 
-  test('an incomplete bible stops Suggest cases, and filling the Channel tab does not yet free it', async ({
+  test('Suggest cases is absent on a second channel, and an incomplete bible still shows its banner', async ({
     page,
   }) => {
     await signIn(page)
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
 
     await page.goto(channelPath('/settings?tab=channel', SECOND_SLUG))
@@ -110,7 +110,7 @@ test.describe('channels', () => {
     await expect(page.getByText('Saved').first()).toBeVisible()
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
   })
 

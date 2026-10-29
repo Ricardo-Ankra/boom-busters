@@ -65,6 +65,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ slug
 
   const cards = buildNeedsYouCards({
     slug,
+    bible: channel.bible,
     awaitingReview,
     budgetGates,
     failedRuns,

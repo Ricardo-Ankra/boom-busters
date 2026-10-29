@@ -1,7 +1,7 @@
 'use client'
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
-import { noticesFor } from '@boom-busters/schemas'
+import { FIRST_CHANNEL_ID, noticesFor } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
 import { Check, Pencil, Plus, Sparkles, X } from 'lucide-react'
 import Link from 'next/link'
@@ -15,6 +15,7 @@ import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
+import { caseCategoryLabel } from '@/lib/case-category'
 import { channelHref } from '@/lib/channel-href'
 import {
   acceptCase,
@@ -42,7 +43,13 @@ import {
  * suggestion moves down into the backlog; a dismissed one disappears.
  */
 
-const CATEGORIES = ['collapse', 'con', 'meltdown', 'turnaround', 'empire'] as const
+/** The channel's bible categories, for the rows and the add form below. */
+const CategoriesContext = React.createContext<readonly CaseCategoryOption[]>([])
+
+interface CaseCategoryOption {
+  key: string
+  label: string
+}
 
 const STATUS_LABELS: Record<string, string> = {
   idea: 'Suggested',
@@ -62,6 +69,7 @@ const SORT_LABELS: Record<CaseSort, string> = {
 export function CaseLibrary({
   slug,
   channelId,
+  categories,
   cases,
   sort,
   notices = [],
@@ -72,6 +80,8 @@ export function CaseLibrary({
   slug: string
   /** The channel the cases belong to; new and suggested cases land in it. */
   channelId: string
+  /** The channel bible's case categories (key and label). */
+  categories: readonly CaseCategoryOption[]
   cases: CaseSummary[]
   sort: CaseSort
   /** The cases' open notices (decision 293); each row shows its own. */
@@ -107,86 +117,97 @@ export function CaseLibrary({
   const backlog = cases.filter((item) => item.status !== 'idea')
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[20px] font-semibold">Case Library</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <SuggestButton channelId={channelId} blocked={blockedReason} />
-          <AddCaseButton channelId={channelId} run={run} disabled={archived} />
-        </div>
-      </header>
+    <CategoriesContext.Provider value={categories}>
+      <div className="flex flex-col gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-[20px] font-semibold">Case Library</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Its prompt is Boom & Busters' own, so no other channel gets the button. */}
+            {channelId === FIRST_CHANNEL_ID ? (
+              <SuggestButton channelId={channelId} blocked={blockedReason} />
+            ) : null}
+            <AddCaseButton channelId={channelId} run={run} disabled={archived} />
+          </div>
+        </header>
 
-      {blockedReason === null ? null : (
-        <p
-          role="status"
-          className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
-        >
-          <span>{blockedReason}.</span>
-          {archived ? null : (
-            <Button asChild variant="outline">
-              <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
-                Open the Channel tab
-              </Link>
-            </Button>
-          )}
-        </p>
-      )}
-
-      {suggestions.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-[15px] font-medium">
-            Suggested — {suggestions.length} waiting on you
-          </h2>
-          <p className="text-[13px] text-[var(--color-text-secondary)]">
-            Nothing here is in the backlog yet. Accept what is worth making; dismiss the rest.
+        {blockedReason === null ? null : (
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
+          >
+            <span>{blockedReason}.</span>
+            {archived ? null : (
+              <Button asChild variant="outline">
+                <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
+                  Open the Channel tab
+                </Link>
+              </Button>
+            )}
           </p>
-          <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-warning)]/40">
-            {suggestions.map((item) => (
-              <li key={item.id}>
-                <SuggestionRow
-                  item={item}
-                  run={run}
-                  notices={noticesFor(notices, 'case', item.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-[15px] font-medium">Backlog</h2>
-          <SortControls slug={slug} active={sort} />
-        </div>
-
-        {backlog.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-              <p className="text-[15px]">No cases yet.</p>
-              <p className="text-[13px] text-[var(--color-text-muted)]">
-                Use <span className="font-medium">Suggest cases</span> to get proposals, or add one
-                yourself.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
-            {backlog.map((item) => (
-              <li key={item.id}>
-                <BacklogRow
-                  slug={slug}
-                  blocked={blockedReason}
-                  item={item}
-                  run={run}
-                  notices={noticesFor(notices, 'case', item.id)}
-                />
-              </li>
-            ))}
-          </ul>
         )}
-      </section>
-    </div>
+
+        {suggestions.length > 0 ? (
+          <section className="flex flex-col gap-2">
+            <h2 className="text-[15px] font-medium">
+              Suggested — {suggestions.length} waiting on you
+            </h2>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Nothing here is in the backlog yet. Accept what is worth making; dismiss the rest.
+            </p>
+            <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-warning)]/40">
+              {suggestions.map((item) => (
+                <li key={item.id}>
+                  <SuggestionRow
+                    item={item}
+                    run={run}
+                    notices={noticesFor(notices, 'case', item.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <section className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[15px] font-medium">Backlog</h2>
+            <SortControls slug={slug} active={sort} />
+          </div>
+
+          {backlog.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+                <p className="text-[15px]">No cases yet.</p>
+                <p className="text-[13px] text-[var(--color-text-muted)]">
+                  {channelId === FIRST_CHANNEL_ID ? (
+                    <>
+                      Use <span className="font-medium">Suggest cases</span> to get proposals, or
+                      add one yourself.
+                    </>
+                  ) : (
+                    'Add one yourself.'
+                  )}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
+              {backlog.map((item) => (
+                <li key={item.id}>
+                  <BacklogRow
+                    slug={slug}
+                    blocked={blockedReason}
+                    item={item}
+                    run={run}
+                    notices={noticesFor(notices, 'case', item.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </CategoriesContext.Provider>
   )
 }
 
@@ -211,12 +232,14 @@ function SortControls({ slug, active }: { slug: string; active: CaseSort }) {
 }
 
 function CaseFacts({ item }: { item: CaseSummary }) {
+  const categories = React.useContext(CategoriesContext)
   return (
     <div className="min-w-0 flex-1">
       <p className="truncate text-[15px] font-medium">{item.title}</p>
       <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-        <span className="capitalize">{item.category}</span> · {STATUS_LABELS[item.status]} ·
-        priority <span className="font-mono">{item.priorityScore}</span>
+        <span>{caseCategoryLabel({ caseCategories: [...categories] }, item.category)}</span> ·{' '}
+        {STATUS_LABELS[item.status]} · priority{' '}
+        <span className="font-mono">{item.priorityScore}</span>
         {item.projectCount > 0 ? ` · ${item.projectCount} project(s)` : ''}
       </p>
       {item.angle ? (
@@ -591,7 +614,8 @@ function AddCaseButton({
 }) {
   const [open, setOpen] = React.useState(false)
   const [title, setTitle] = React.useState('')
-  const [category, setCategory] = React.useState<string>('collapse')
+  const categories = React.useContext(CategoriesContext)
+  const [category, setCategory] = React.useState<string>(categories[0]?.key ?? '')
   const [angle, setAngle] = React.useState('')
   // Subject follows the title until the owner types in it themselves.
   const [subject, setSubject] = React.useState('')
@@ -637,9 +661,9 @@ function AddCaseButton({
           onChange={(event) => setCategory(event.target.value)}
           className="w-40"
         >
-          {CATEGORIES.map((value) => (
-            <option key={value} value={value}>
-              {value}
+          {categories.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
             </option>
           ))}
         </Select>
