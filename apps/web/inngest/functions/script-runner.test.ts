@@ -228,6 +228,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
   })
 
   afterEach(async () => {
+    vi.unstubAllEnvs()
     // The fixture's own stage, for the suites after this one.
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
   })
@@ -269,6 +270,22 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       expect.objectContaining({ id: 'alleged', sourceType: 'major_outlet', adjudicated: false }),
       expect.objectContaining({ id: 'none', adjudicated: false }),
     ])
+  })
+
+  it("builds a chapter request from the project's bible although no earlier step carried one", async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({ text: 'A whole chapter.' })
+
+    // The steps a run parked before the bible existed would replay: none has a bible field.
+    const { result } = await engine.executeStep('draft-chapter-0', {
+      events: approved(),
+      steps: throughSelfCheck().slice(0, 3),
+    })
+
+    expect(result).toMatchObject({ ok: true, contentMd: 'A whole chapter.' })
+    const sent = callLlm.mock.calls[0]![0] as { system: string }
+    expect(sent.system).toContain('a documentary channel about\ncorporate collapses, frauds')
   })
 
   it('parks the run when the marking is over budget, as the other steps do', async () => {

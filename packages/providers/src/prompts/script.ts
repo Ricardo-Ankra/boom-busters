@@ -20,6 +20,8 @@ import {
   splitSentences,
 } from '@boom-busters/schemas'
 import type {
+  BibleInUse,
+  ChannelBible,
   Outline,
   OutlineChapter,
   SelfCheck,
@@ -27,6 +29,7 @@ import type {
   TeaserScript,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { channelRulesBlock, fillSlots, noun } from './bible'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
@@ -98,11 +101,12 @@ export function claimList(claims: readonly ScriptClaim[]): string {
  * ("alleged", "reportedly") are mandatory here, not filler — a humanizer
  * that deleted them would walk defamation into a script.
  */
-const HOUSE_STYLE = `You write narration for a documentary channel about
-corporate collapses, frauds and meltdowns. The subjects are real companies and
+export function houseStyle(bible: ChannelBible): string {
+  return `You write narration for a documentary channel about
+[[example:script-channel-subject]]. The subjects are real ${noun(bible, 'plural')} and
 living people.
 
-Voice: plain, specific, unhurried. No rhetorical questions, no "buckle up", no
+Voice: ${bible.narrationRegister}. No rhetorical questions, no "buckle up", no
 addressing the audience as "guys". Let the facts carry it.
 
 Sound like a person, not a language model:
@@ -114,13 +118,12 @@ Sound like a person, not a language model:
 - Vary sentence length hard. Put a fragment — five words or fewer — near
   every long sentence. Never three same-length sentences in a row: metronomic
   pacing is the loudest tell there is once it is read aloud.
-- One canonical name per person or company, then pronouns. Never "the
-  payments giant", "the embattled firm", "the Munich-based company" — elegant
+- One canonical name per person or ${noun(bible, 'singular')}, then pronouns. Never [[example:script-elegant-variation]] — elegant
   variation is a tell, and it makes a listener work out who you mean.
 - Make contrasts asymmetric. Never "not just X, it's Y", never a neatly
   balanced pair, never a drumbeat of exactly three parallel items.
 - Cut empty hedges: "generally", "arguably", "in many cases", "some would
-  say". Say the thing. The legal hedges in the hard rules below are the
+  say". Say the thing. The [[example:script-hedge-kind]] in the hard rules below are the
   opposite of empty and are never cut.
 - No summing-up anywhere. A chapter ends on its last fact, not on a
   restatement or a moral, and no paragraph in its middle restates what the
@@ -150,24 +153,20 @@ text-to-speech narrator, and punctuation is its pacing:
   where they earn their keep — the default register is even and unforced,
   and a script that gasps at everything gasps at nothing.
 - Numbers, dates and abbreviations are read exactly as written: write
-  "1.9 billion euros", not "€1.9B"; "the S and P 500" is wrong, "the S&P 500"
-  is read correctly.
+  [[example:script-read-aloud-numbers]].
 
-The hard rules:
-- Assert nothing the claim list does not support.
-- Where a claim is NOT adjudicated, write "alleged", "reportedly", "according
-  to" — never state it as established fact.
-- Never invent figures, dates, quotes or names.
-- Legal care is inline: "alleged", "reportedly", "according to". Never a
-  sentence of its own saying that nothing was proven, that no court has
-  found, or that this is an interpretation. The one exception is the film's
-  single such sentence, where a chapter's constraints ask for it.`
+${bible.hedgingRules}`
+}
+
+/** This channel's script rules for the system prompt; empty for a channel with none. */
+const scriptRules = (inUse: BibleInUse): string => channelRulesBlock(inUse.bible, 'script')
 
 // ---------------------------------------------------------------------------
 // Outline
 // ---------------------------------------------------------------------------
 
 export function buildOutlineRequest(input: {
+  bible: BibleInUse
   caseTitle: string
   dossierMd: string
   claims: readonly ScriptClaim[]
@@ -178,9 +177,10 @@ export function buildOutlineRequest(input: {
 
   return {
     task: 'scripting',
-    system: `${HOUSE_STYLE}
+    system: fillSlots(
+      `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
@@ -200,7 +200,7 @@ The plan, per chapter:
   the app drops the second listing. A chapter may still refer in a few words
   to a claim another chapter owns.
 - "storyline": which of the film's "storylines" this chapter advances. Name
-  two to four storylines for the film (the money, the credit, the courts). A
+  two to four storylines for the film ([[example:script-storyline-examples]]). A
   chapter advances one and may touch the others in a few words; a storyline
   left untouched for two chapters returns in the next.
 - "reveals": the fact an earlier chapter withheld that this chapter reveals,
@@ -223,7 +223,7 @@ larger or more personal than the last.
 
 "close" is how the film ends, written as the final chapter's last paragraphs:
 - "answer": the central question answered in plain words, as this channel's
-  reading of the record, hedged where the law needs it.
+  reading of the record, [[example:script-close-hedge]].
 - "echo": one image, number or phrase from the opening chapter that the
   ending returns to, so the film closes the loop it opened.
 - "openThread": the one thing still unresolved, which is the last line.
@@ -235,6 +235,8 @@ of its detail withheld. The opening chapter owns none of the claims of the
 moment it glimpses: the chapter where the chronology returns to that moment
 owns them, opens with one line of callback, and narrates only the claims it
 owns.`,
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
@@ -453,19 +455,27 @@ export function ownershipBrief(
  * nothing about what had been said; it restated the ending and re-explained
  * the rest. A chapter is one voice take, so the words are exactly as stored.
  */
-function scriptSoFar(previous: readonly { title: string; contentMd: string }[]): string {
+function scriptSoFar(
+  previous: readonly { title: string; contentMd: string }[],
+  bible: BibleInUse,
+): string {
   if (previous.length === 0) return 'This is the opening chapter.'
   const text = previous
     .map((chapter, index) => `## ${index + 1}. ${chapter.title}\n\n${chapter.contentMd}`)
     .join('\n\n')
   return (
     `The script so far. The listener has just heard every word of it:\n\n${text}\n\n` +
-    'Your first sentence moves the story forward. Never restate or paraphrase the ending ' +
-    'above, and never re-introduce a person, a company or a figure it already introduced.'
+    // Only the instruction is filled: the chapters above are narration, never a template.
+    fillSlots(
+      'Your first sentence moves the story forward. Never restate or paraphrase the ending ' +
+        'above, and never re-introduce a person, [[example:script-subject-with-article]] or a figure it already introduced.',
+      bible,
+    )
   )
 }
 
 export function buildChapterRequest(input: {
+  bible: BibleInUse
   caseTitle: string
   outline: Outline
   chapterIndex: number
@@ -489,9 +499,10 @@ export function buildChapterRequest(input: {
 
   return {
     task: 'scripting',
-    system: `${HOUSE_STYLE}
+    system: fillSlots(
+      `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 Write ONE chapter of narration as plain prose paragraphs. No headings, no
 bullet points, no lists — the words are read aloud exactly as written, and
@@ -499,13 +510,15 @@ the bracketed narration tags the house style describes are the one thing in
 the text that is direction rather than words. Place them inline as you draft.
 
 Target about ${chapter.targetWords} words.`,
+      input.bible,
+    ),
     messages: [
       // Stable across every chapter of the script, so it is the cacheable
       // prefix: the claim list is the largest part of this prompt and it does
       // not change between chapters.
       { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
       { role: 'user', content: `${storylines}Full outline:\n${outlineSummary}` },
-      { role: 'user', content: scriptSoFar(input.previousChapters) },
+      { role: 'user', content: scriptSoFar(input.previousChapters, input.bible) },
       ...(ownership ? [{ role: 'user' as const, content: ownership }] : []),
       ...(contract ? [{ role: 'user' as const, content: contract }] : []),
       { role: 'user', content: `Write "${chapter.title}". It must: ${chapter.beat}` },
@@ -521,13 +534,15 @@ Target about ${chapter.targetWords} words.`,
 // ---------------------------------------------------------------------------
 
 export function buildSelfCheckRequest(input: {
+  bible: BibleInUse
   chapterTitle: string
   contentMd: string
   claims: readonly ScriptClaim[]
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: `You are checking documentary narration against the claim list it
+    system: fillSlots(
+      `You are checking documentary narration against the claim list it
 was written from. You are not rewriting it.
 
 The text may contain bracketed narration tags — [pause], [long pause],
@@ -546,7 +561,9 @@ Quote the sentence EXACTLY as it appears, including its punctuation — it is
 matched back to the text character for character.
 
 {"warnings": [{"kind": string, "sentence": string, "message": string}],
- "refs": [{"claimId": string, "sentence": string}]}`,
+ "refs": [{"claimId": string, "sentence": string}]}${scriptRules(input.bible)}`,
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
       { role: 'user', content: `Chapter "${input.chapterTitle}":\n\n${input.contentMd}` },
@@ -575,6 +592,7 @@ export interface ShortsTension {
 }
 
 export function buildShortsRequest(input: {
+  bible: BibleInUse
   chapters: readonly { index: number; title: string; contentMd: string }[]
   /** From the stored outline; absent for scripts written before it was kept. */
   tension?: ShortsTension
@@ -597,7 +615,8 @@ export function buildShortsRequest(input: {
 
   return {
     task: 'metadata',
-    system: `Pick 4 segments from this script that would work as vertical
+    system: fillSlots(
+      `Pick 4 segments from this script that would work as vertical
 Shorts. A segment is 20-50 seconds of narration, roughly 50 to 125 words.
 
 Each segment is a TEASER, not a summary. It funnels a scroller into the
@@ -619,7 +638,9 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
 
 Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "startSentence" and
 "endSentence" at most ${SHORTS_SENTENCE_MAX} characters each; "hookRationale" at most
-${SHORTS_HOOK_MAX} characters.`,
+${SHORTS_HOOK_MAX} characters.${scriptRules(input.bible)}`,
+      input.bible,
+    ),
     messages: [
       {
         role: 'user',
@@ -710,6 +731,7 @@ export function parseShortsCandidates(text: string, note: Note = ignoreRepairs):
 // ---------------------------------------------------------------------------
 
 export function buildTeaserRequest(input: {
+  bible: BibleInUse
   caseTitle: string
   chapters: readonly { index: number; title: string; contentMd: string }[]
   tension?: ShortsTension
@@ -727,7 +749,8 @@ export function buildTeaserRequest(input: {
 
   return {
     task: 'scripting',
-    system: `Write a 25-40 second teaser narration (60-110 words total) for a
+    system: fillSlots(
+      `Write a 25-40 second teaser narration (60-110 words total) for a
 vertical Short that funnels viewers into the full video.
 
 Structure, one paragraph per beat:
@@ -749,7 +772,9 @@ ${TEASER_PARAGRAPHS_MIN} to ${TEASER_PARAGRAPHS_MAX} paragraphs, each ${TEASER_P
 chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
 
 Return exactly:
-{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}`,
+{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}${scriptRules(input.bible)}`,
+      input.bible,
+    ),
     messages: [
       {
         role: 'user',
@@ -949,6 +974,7 @@ export function mockShortsCandidates(
  * exactly the work the diff view exists to avoid.
  */
 export function buildRegenerateRequest(input: {
+  bible: BibleInUse
   chapterTitle: string
   contentMd: string
   selection: string
@@ -957,9 +983,10 @@ export function buildRegenerateRequest(input: {
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: `${HOUSE_STYLE}
+    system: fillSlots(
+      `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 You are rewriting ONE passage of an existing chapter.
 
@@ -968,6 +995,8 @@ around it, no explanation, no markdown fences. It is spliced back into the
 chapter exactly as you return it.
 
 Keep roughly the same length unless the instruction says otherwise.`,
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
       {

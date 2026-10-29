@@ -2,20 +2,19 @@
 
 These rules shape the outline and every chapter draft. They sit BELOW the
 hard rules: nothing here ever licenses a fact the claim list does not
-support, and the legal hedges are never sacrificed for drama. A tease that
+support, and the [[example:script-hedge-kind]] are never sacrificed for drama. A tease that
 invents is worse than a flat script.
 
 ## Stakes before context
 
 - Open the film at, or moments from, the point of highest consequence, then
-  rewind to how it began. The viewer must feel the size of the collapse
+  rewind to how it began. The viewer must feel [[example:script-opening-collapse]]
   before being asked to learn how the machine worked.
 - Everywhere in the script: say what was at risk, or what was lost, before
   explaining mechanics. Context is earned by stakes, never the other way
   round. If a paragraph explains how something worked and the viewer does
   not yet know why it matters, the paragraph is in the wrong place.
-- Stakes are concrete: named people, real money, dates. "Thirty thousand
-  pensions", never "significant sums".
+- Stakes are concrete: named people, real money, dates. [[example:script-concrete-figure]].
 - The cold open is a glimpse, not the chapter: a few sentences of
   consequence, most of the detail withheld. When the chronology reaches
   that moment again, one line of callback and then only new material.
@@ -27,7 +26,7 @@ invents is worse than a flat script.
   chapter narrates it in full, once, with its attribution. Any other chapter
   refers to it in a few words at most: no figure, no date and no attribution
   repeated.
-- The listener remembers. A person, a company, a paper or a figure is
+- The listener remembers. A person, [[example:script-subject-with-article]], a paper or a figure is
   introduced once; afterwards it gets its name and nothing else.
 
 ## The question engine
@@ -38,7 +37,7 @@ invents is worse than a flat script.
   answer it. A chapter answers its predecessor's question, never its own.
 - Questions are implicit, raised by sequencing and withheld facts, never
   asked aloud. The house style bans rhetorical questions to the audience,
-  and that ban holds. "The auditors signed. The money was not there." raises
+  and that ban holds. [[example:script-implicit-question]] raises
   its question without asking anything.
 
 ## Withholding
@@ -50,8 +49,7 @@ invents is worse than a flat script.
   what is behind it.
 - A withheld fact is revealed in exactly one chapter, named in the outline
   as that chapter's reveal, and never revealed again.
-- Foreshadow only with claim-supported facts. "That signature would be the
-  last one EY ever gave them" is legitimate if the claims support it;
+- Foreshadow only with claim-supported facts. [[example:script-foreshadow]] is legitimate if the claims support it;
   inventing a shadow to point at is not.
 - Dramatic irony is cheap and powerful: tell the viewer a claim-supported
   fact the people in the story did not know at the time, or withhold from
@@ -63,8 +61,7 @@ invents is worse than a flat script.
   chapter's. A planned chapter that does not raise the stakes is not a
   chapter; fold it into a neighbour at outline time.
 - The film sags in its middle. The chapter sitting at 40 to 60 per cent of the runtime
-  turns hardest: a reversal, or the stakes reaching people who are not
-  investors.
+  turns hardest: a reversal, or [[example:script-middle-turn]].
 - A chapter ends on a turn: a reversal, a door closing, a fact that
   destabilises what the viewer thought they knew. The final sentence should
   make the next chapter's question feel inevitable. Never end a chapter on
@@ -75,7 +72,7 @@ invents is worse than a flat script.
 
 - The final chapter ends on the close, its last paragraphs, in this order:
   the central question answered in plain words as this channel's reading
-  of the record, hedged where the law needs it; an echo of the opening,
+  of the record, [[example:script-close-hedge]]; an echo of the opening,
   one image, number or phrase the film returns to so the loop it opened is
   closed; and the open thread, the one thing still unresolved, as the last
   line.
@@ -90,9 +87,4 @@ invents is worse than a flat script.
   chapter and not in its middle.
 - Never open a chapter by restating the previous chapter's ending. The
   listener has just heard it. The first sentence moves the story forward.
-- Legal care is carried by the inline hedges: reportedly, according to,
-  alleged. Never narrate the caveat as a sentence of its own: no "no court
-  has found", no "that is an interpretation", no "the record shows the order
-  of events and nothing more". Once in the whole film, where a listener would
-  otherwise infer guilt, the outline's constraints may ask for one plain
-  sentence that nothing has been proven.
+- [[example:script-legal-care]].

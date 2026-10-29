@@ -62,6 +62,13 @@ const lift = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftC
   bibleAware: false,
 })
 
+/** A case whose builder reads the bible: the psychology test holds it to a second channel. */
+const liftAware = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftCase => ({
+  name,
+  build,
+  bibleAware: true,
+})
+
 // ---------------------------------------------------------------------------
 // Shared inputs
 // ---------------------------------------------------------------------------
@@ -535,24 +542,27 @@ const shotListCases: LiftCase[] = [
 // ---------------------------------------------------------------------------
 
 const scriptCases: LiftCase[] = [
-  lift('script-outline', () =>
+  liftAware('script-outline', (bible) =>
     buildOutlineRequest({
+      bible,
       caseTitle: 'Wirecard',
       dossierMd: '# Wirecard\n\nA payments company that reported money it did not have.',
       claims: CLAIMS,
       targetRuntimeMin: 12,
     }),
   ),
-  lift('script-outline-no-claims', () =>
+  liftAware('script-outline-no-claims', (bible) =>
     buildOutlineRequest({
+      bible,
       caseTitle: 'Wirecard',
       dossierMd: '# Wirecard\n\nA payments company that reported money it did not have.',
       claims: [],
       targetRuntimeMin: 8,
     }),
   ),
-  lift('script-chapter-first', () =>
+  liftAware('script-chapter-first', (bible) =>
     buildChapterRequest({
+      bible,
       caseTitle: 'Wirecard',
       outline: OUTLINE,
       chapterIndex: 0,
@@ -560,8 +570,9 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS,
     }),
   ),
-  lift('script-chapter-middle', () =>
+  liftAware('script-chapter-middle', (bible) =>
     buildChapterRequest({
+      bible,
       caseTitle: 'Wirecard',
       outline: OUTLINE,
       chapterIndex: 1,
@@ -569,8 +580,9 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS_FOUR,
     }),
   ),
-  lift('script-chapter-last', () =>
+  liftAware('script-chapter-last', (bible) =>
     buildChapterRequest({
+      bible,
       caseTitle: 'Wirecard',
       outline: OUTLINE,
       chapterIndex: 2,
@@ -579,8 +591,9 @@ const scriptCases: LiftCase[] = [
     }),
   ),
   // An outline planned before storylines, tension fields and claim homes.
-  lift('script-chapter-bare-outline', () =>
+  liftAware('script-chapter-bare-outline', (bible) =>
     buildChapterRequest({
+      bible,
       caseTitle: 'Wirecard',
       outline: OUTLINE_BARE,
       chapterIndex: 1,
@@ -597,8 +610,9 @@ const scriptCases: LiftCase[] = [
       ['empty-close', {}],
     ] as const
   ).map(([suffix, close]) =>
-    lift(`script-chapter-${suffix}`, () =>
+    liftAware(`script-chapter-${suffix}`, (bible) =>
       buildChapterRequest({
+        bible,
         caseTitle: 'Wirecard',
         outline: { ...OUTLINE, close },
         chapterIndex: 2,
@@ -607,23 +621,26 @@ const scriptCases: LiftCase[] = [
       }),
     ),
   ),
-  lift('script-self-check', () =>
+  lift('script-self-check', (bible) =>
     buildSelfCheckRequest({
+      bible,
       chapterTitle: 'The glass box',
       contentMd: CHAPTER_ONE.contentMd,
       claims: CLAIMS,
     }),
   ),
-  lift('script-shorts', () =>
+  lift('script-shorts', (bible) =>
     buildShortsRequest({
+      bible,
       chapters: [
         { index: 0, ...CHAPTER_ONE },
         { index: 1, ...CHAPTER_TWO },
       ],
     }),
   ),
-  lift('script-shorts-tension', () =>
+  lift('script-shorts-tension', (bible) =>
     buildShortsRequest({
+      bible,
       chapters: [
         { index: 0, ...CHAPTER_ONE },
         { index: 1, ...CHAPTER_TWO },
@@ -639,8 +656,9 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-shorts-tension-no-question', () =>
+  lift('script-shorts-tension-no-question', (bible) =>
     buildShortsRequest({
+      bible,
       chapters: [
         { index: 0, ...CHAPTER_ONE },
         { index: 1, ...CHAPTER_TWO },
@@ -650,8 +668,9 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-shorts-tension-empty', () =>
+  lift('script-shorts-tension-empty', (bible) =>
     buildShortsRequest({
+      bible,
       chapters: [
         { index: 0, ...CHAPTER_ONE },
         { index: 1, ...CHAPTER_TWO },
@@ -659,8 +678,9 @@ const scriptCases: LiftCase[] = [
       tension: { chapters: [{ index: 0 }, { index: 1 }] },
     }),
   ),
-  lift('script-teaser', () =>
+  lift('script-teaser', (bible) =>
     buildTeaserRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapters: [
         { index: 0, ...CHAPTER_ONE },
@@ -668,8 +688,9 @@ const scriptCases: LiftCase[] = [
       ],
     }),
   ),
-  lift('script-teaser-tension', () =>
+  lift('script-teaser-tension', (bible) =>
     buildTeaserRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapters: [
         { index: 0, ...CHAPTER_ONE },
@@ -682,8 +703,9 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-teaser-tension-no-question', () =>
+  lift('script-teaser-tension-no-question', (bible) =>
     buildTeaserRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapters: [
         { index: 0, ...CHAPTER_ONE },
@@ -694,8 +716,9 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-teaser-tension-empty', () =>
+  lift('script-teaser-tension-empty', (bible) =>
     buildTeaserRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapters: [
         { index: 0, ...CHAPTER_ONE },
@@ -704,8 +727,9 @@ const scriptCases: LiftCase[] = [
       tension: { chapters: [{ index: 0 }, { index: 1 }] },
     }),
   ),
-  lift('script-regenerate', () =>
+  liftAware('script-regenerate', (bible) =>
     buildRegenerateRequest({
+      bible,
       chapterTitle: 'The glass box',
       contentMd: CHAPTER_ONE.contentMd,
       selection: 'It could not find the money.',

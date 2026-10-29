@@ -73,6 +73,7 @@ export async function writeTeaserScript(
     const project = await getProject(db, projectId)
     const answer = await callForAnswer({
       request: buildTeaserRequest({
+        bible: await channelForProject(db, projectId),
         caseTitle: project?.title ?? '',
         chapters: chapterSources,
         ...(tension ? { tension } : {}),
