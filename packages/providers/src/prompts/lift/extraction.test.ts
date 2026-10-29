@@ -19,12 +19,18 @@ const normalise = (text: string) => text.replace(/\r\n/g, '\n')
 const readPromptFile = (name: string) => normalise(readFileSync(join(here, '..', name), 'utf8'))
 
 /**
- * Every composed request the Task 2 fixtures captured: the system prompt and
- * each message. A slot whose text spans a `${...}` interpolation in its
- * source (the graphics worked examples) is not a run of the raw file, but it
- * is a run of the prompt the model is sent.
+ * Slots whose text spans a `${...}` interpolation in their source, so it is
+ * not a run of the raw file but is a run of the prompt the model is sent. Only
+ * these may be proved from a fixture, and only from the fixtures of the
+ * builder that owns them (the graphics cases).
  */
-const fixtureText = readdirSync(join(here, '__fixtures__'))
+const COMPOSED_ONLY: Record<string, string> = {
+  'graphics-worked-beat': 'graphics-',
+  'graphics-worked-chart': 'graphics-',
+}
+
+/** Every composed request the Task 2 fixtures captured: file name, system prompt and messages. */
+const fixtures = readdirSync(join(here, '__fixtures__'))
   .filter((file) => file.endsWith('.json'))
   .map((file) => {
     const request = JSON.parse(
@@ -33,12 +39,13 @@ const fixtureText = readdirSync(join(here, '__fixtures__'))
       system?: string
       messages?: { content: unknown }[]
     }
-    return [
+    const text = [
       request.system ?? '',
       ...(request.messages ?? []).map((m) =>
         typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       ),
     ].join('\n')
+    return { file, text }
   })
 
 describe('the slot registry', () => {
@@ -46,11 +53,16 @@ describe('the slot registry', () => {
     const source = readPromptFile(slot.source)
     const text = FIRST_CHANNEL_BIBLE.examples[slot.id]!
     expect(text).toBeDefined()
-    expect(
-      source.includes(text) ||
-        fixtureText.some((composed) => composed.includes(text)) ||
-        markersIn(source).includes(slot.id),
-    ).toBe(true)
+    if (markersIn(source).includes(slot.id)) {
+      // Swapped for its marker: the byte proof now lives in the lift fixtures.
+      expect(source.includes(text)).toBe(false)
+    } else if (slot.id in COMPOSED_ONLY) {
+      expect(source.includes(text)).toBe(false)
+      const prefix = COMPOSED_ONLY[slot.id]!
+      expect(fixtures.some((x) => x.file.startsWith(prefix) && x.text.includes(text))).toBe(true)
+    } else {
+      expect(source.includes(text)).toBe(true)
+    }
     expect(text.length).toBeLessThanOrEqual(slot.maxLength)
   })
 

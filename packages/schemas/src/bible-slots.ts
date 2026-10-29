@@ -97,7 +97,7 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
     id: 'script-legal-care',
     source: 'script-craft.md',
     teaches:
-      'How caution is carried inline, which caveat sentences are never written, and the one plain sentence the film may spend.',
+      'How caution is carried inline, which caveat sentences are never written, and the one plain sentence the film may spend. Keep the clause "Never narrate the caveat as a sentence of its own:" word for word; it is the craft rule between the two example runs.',
     kind: 'passage',
     maxLength: 1000,
   },
@@ -164,7 +164,7 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
     id: 'direction-worked-example',
     source: 'direction-craft.md',
     teaches:
-      'A right prompt for a photographed person, and the physical description that is the mistake.',
+      'A right prompt for a photographed person, and the physical description that is the mistake, each in quotes. Keep the words " is right; adding " between them; the sentence that follows ("after it is the mistake") is craft.',
     kind: 'worked',
     maxLength: 500,
   },
@@ -180,9 +180,9 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
     id: 'direction-guardrail-rule',
     source: 'direction-craft.md',
     teaches:
-      "How a principal's guardrail line is written, what it never fences off, why it is never pasted into a prompt, and how its nouns become the negative prompt.",
+      'The example guardrail line, the ordinary settings it never fences a person from, the example phrase an image model would misread, and the example negative-prompt nouns, from the first example to the last. The sentences between the examples ("The guardrail governs what the planner writes; it is never pasted into the image prompt. Image models read negation as suggestion, so") are craft: keep them word for word.',
     kind: 'passage',
-    maxLength: 1200,
+    maxLength: 900,
   },
   {
     id: 'direction-preflight-settings',
@@ -246,7 +246,7 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
   {
     id: 'shotlist-map-route-example',
     source: 'retype.ts',
-    teaches: 'Two kinds of movement between places for which a map route is true.',
+    teaches: 'Two real routes a story of this kind moves along between places, as a comma list.',
     kind: 'line',
     maxLength: 120,
   },

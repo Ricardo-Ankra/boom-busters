@@ -66,11 +66,11 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
     'direction-background-people': 'volunteers',
     'direction-identity-example': 'Ana Ruiz, lead researcher at\n  the Hollis Lab',
     'direction-worked-example':
-      '"Ana Ruiz, lead researcher at the Hollis Lab, sitting at a desk" is right; adding "woman in her 40s, short grey hair, round glasses" after it is the mistake',
+      '"Ana Ruiz, lead researcher at the Hollis Lab, sitting at a desk" is right; adding "woman in her 40s, short grey hair, round glasses"',
     'direction-never-acts':
       'no\n  data being altered, no hidden camera, no coaching whisper, no locked door',
     'direction-guardrail-rule':
-      'The director\'s book writes one guardrail line per principal, and it\n  lists only the defamation and mockery exclusions specific to that person\n  ("never altering data or coaching a volunteer; never in a locked\n  room; never mocked"). It never fences a person away from ordinary\n  settings such as desks, papers, laboratories or lecture halls. The guardrail\n  governs what the planner writes; it is never pasted into the image\n  prompt. Image models read negation as suggestion, so "never in a\n  locked room" in a prompt invites a locked room. Its concrete nouns may become\n  the negative prompt ("no clipboard, no locked door, no hidden camera"); its sentences\n  are never quoted.',
+      'never altering data or coaching a volunteer; never in a locked\n  room; never mocked"). It never fences a person away from ordinary\n  settings such as desks, papers, laboratories or lecture halls. The guardrail\n  governs what the planner writes; it is never pasted into the image\n  prompt. Image models read negation as suggestion, so "never in a\n  locked room" in a prompt invites a locked room. Its concrete nouns may become\n  the negative prompt ("no clipboard, no locked door, no hidden camera',
     'direction-preflight-settings': 'a desk, a\n  paper, a laboratory or a seminar',
     'direction-premise': 'a landmark experiment',
     'direction-motif-generic': 'any landmark experiment',
@@ -81,7 +81,8 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
     'shotlist-two-units': 'a sample size in thousands against an\neffect size in decimals',
     'shotlist-headline-cue': '"the journal reported", "the paper found", "when the study came out"',
     'shotlist-guardrail-negation': '"never in a locked room" as a request for a locked room',
-    'shotlist-map-route-example': 'a study travelling, lab moves',
+    'shotlist-map-route-example':
+      "a volunteer's journey from home to the lab, a lab's moves between universities",
     'direction-default-guardrail':
       'never altering data or coaching a volunteer; never in a locked room',
     'direction-cast-settings': 'desks, papers, laboratories or\n  seminars',
@@ -99,7 +100,7 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
       '"1,900 volunteers", not "1.9K"; "the I Q test" is wrong, "the IQ test"\n  is read correctly',
     'script-hedge-kind': 'evidence hedges',
     'direction-era-objects':
-      'CRT monitors, a reel-to-reel recorder, a landline phone, paper questionnaires',
+      'reel-to-reel tape recorders, a one-way mirror, punch cards, paper questionnaires',
     'direction-emotion-body':
       '"a\n  nervous volunteer"; "a volunteer, shoulders hunched, both hands flat on the\n  table"',
     'direction-recreated-scenes':

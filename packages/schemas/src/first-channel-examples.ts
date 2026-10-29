@@ -29,10 +29,10 @@ export const FIRST_CHANNEL_EXAMPLES: Record<string, string> = {
   'direction-background-people': 'investors',
   'direction-identity-example': 'Emad Mostaque, founder of\n  Stability AI',
   'direction-worked-example':
-    '"Emad Mostaque, founder of Stability AI, sitting at a desk" is right; adding "male in his 40s, short dark hair, closely cropped beard" after it is the mistake',
+    '"Emad Mostaque, founder of Stability AI, sitting at a desk" is right; adding "male in his 40s, short dark hair, closely cropped beard"',
   'direction-never-acts': 'no\n  cash changing hands, no shredder, no handcuffs, no whispered deal',
   'direction-guardrail-rule':
-    'The director\'s book writes one guardrail line per principal, and it\n  lists only the defamation and mockery exclusions specific to that person\n  ("never handling cash or signing an invented contract; never in\n  handcuffs; never mocked"). It never fences a person away from ordinary\n  settings such as desks, documents, boardrooms or meetings. The guardrail\n  governs what the planner writes; it is never pasted into the image\n  prompt. Image models read negation as suggestion, so "never in\n  handcuffs" in a prompt invites handcuffs. Its concrete nouns may become\n  the negative prompt ("no gavel, no handcuffs, no cash"); its sentences\n  are never quoted.',
+    'never handling cash or signing an invented contract; never in\n  handcuffs; never mocked"). It never fences a person away from ordinary\n  settings such as desks, documents, boardrooms or meetings. The guardrail\n  governs what the planner writes; it is never pasted into the image\n  prompt. Image models read negation as suggestion, so "never in\n  handcuffs" in a prompt invites handcuffs. Its concrete nouns may become\n  the negative prompt ("no gavel, no handcuffs, no cash',
   'direction-preflight-settings': 'a desk, a\n  document, a boardroom or a meeting',
   'direction-premise': 'a corporate collapse',
   'direction-motif-generic': 'any corporate collapse',
