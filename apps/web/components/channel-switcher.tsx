@@ -99,7 +99,10 @@ export function ChannelSwitcher({
         ) : (
           <>
             <span
-              className={cn('truncate', variant === 'rail' ? 'min-w-0 flex-1 text-left' : 'max-w-[16ch]')}
+              className={cn(
+                'truncate',
+                variant === 'rail' ? 'min-w-0 flex-1 text-left' : 'max-w-[16ch]',
+              )}
             >
               {currentName}
             </span>
