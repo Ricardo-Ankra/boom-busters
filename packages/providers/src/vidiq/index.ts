@@ -4,6 +4,7 @@ import type { VidiqClient } from './client'
 import { mockVidiqClient } from './mock'
 
 export * from './client'
+export * from './costs'
 export * from './mock'
 export * from './plan'
 export * from './shapes'

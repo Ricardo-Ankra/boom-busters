@@ -13,13 +13,13 @@ import {
   visualCredentials,
 } from '@boom-busters/db'
 import {
-  createVidiqClient,
   falImageGen,
   llmAdapters,
   mockProvidersEnabled,
   stockAdapter,
   ttsAdapter,
 } from '@boom-busters/providers'
+import { createVidiqClient } from '@boom-busters/providers/vidiq'
 import {
   LlmProviderSchema,
   MUSIC_ATTRIBUTION_MAX_CHARS,

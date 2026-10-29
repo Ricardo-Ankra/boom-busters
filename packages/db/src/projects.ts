@@ -494,7 +494,10 @@ export async function moveProjectBible(
   if (!version || version.channelId !== project.channelId) {
     throw new Error('bible version belongs to another channel')
   }
-  await db.update(projects).set({ bibleId, updatedAt: new Date() }).where(eq(projects.id, projectId))
+  await db
+    .update(projects)
+    .set({ bibleId, updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
 }
 
 /**

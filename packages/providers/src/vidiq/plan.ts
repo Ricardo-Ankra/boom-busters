@@ -1,4 +1,5 @@
 import type { BibleDraftInputs } from '@boom-busters/schemas'
+import { VIDIQ_CREDIT_COST } from './costs'
 import type { VidiqTranscript } from './shapes'
 
 /** How many opening transcripts a research run buys. */
@@ -103,10 +104,14 @@ export function planResearch(
   }
 }
 
-/** Five credits a call: each channel, one batched video lookup, the outliers, and the transcripts. */
+/** What each call costs: each channel, one batched video lookup, the outliers, and the transcripts. */
 export function estimateResearchCredits(plan: ResearchPlan): number {
-  const calls = plan.channels.length + (plan.videoIds.length > 0 ? 1 : 0) + 1 + TRANSCRIPT_CAP
-  return 5 * calls
+  return (
+    plan.channels.length * VIDIQ_CREDIT_COST.channelVideos +
+    (plan.videoIds.length > 0 ? VIDIQ_CREDIT_COST.getVideosByIds : 0) +
+    VIDIQ_CREDIT_COST.outliers +
+    TRANSCRIPT_CAP * VIDIQ_CREDIT_COST.videoTranscript
+  )
 }
 
 const NO_TIMINGS_CHARS = 900

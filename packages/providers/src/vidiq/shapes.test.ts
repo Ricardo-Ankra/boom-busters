@@ -16,7 +16,14 @@ import {
 describe('the VidIQ parsers', () => {
   it('reads outliers out of the markdown answer', () => {
     const videos = parseOutliers(outliers)
-    expect(videos).toHaveLength(5)
+    expect(videos.map((v) => v.videoId)).toEqual([
+      'TZIC1sL9XTk',
+      'JH89RGzulEE',
+      'In8GehBC25c',
+      '_-fSkbERuYI',
+      '_d1ntT462Ac',
+    ])
+    expect(videos[1]?.channelId).toBe('UCWXh6rJ5ZyiXA1F40_sPwyA')
     expect(videos[0]).toEqual({
       videoId: 'TZIC1sL9XTk',
       title: 'How GM Destroyed Itself — A Complete History of Stupidity',
@@ -45,6 +52,17 @@ describe('the VidIQ parsers', () => {
         breakoutScore: null,
       },
     ])
+  })
+
+  it('reads a breakout score with a thousands comma', () => {
+    const answer = [
+      '### 1. T',
+      '- **Performance:** 1.2M views · 1,050x breakout',
+      '- **Video:** videoId `abcdefghijk`',
+    ].join('\n')
+    expect(parseOutliers({ answer })[0]).toEqual(
+      expect.objectContaining({ views: 1200000, breakoutScore: 1050 }),
+    )
   })
 
   it('takes the channel from channelTitle and keeps null scores', () => {

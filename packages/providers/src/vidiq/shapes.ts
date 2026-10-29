@@ -140,7 +140,7 @@ export function parseOutliers(raw: unknown): VidiqVideo[] {
       channelId: matchOf(channelLine, /channelId `([^`]+)`/)?.[1] ?? null,
       views: views?.[1] ? abbreviated(views[1], views[2]) : null,
       publishedAt: matchOf(block, /published (\d{4}-\d{2}-\d{2})/)?.[1] ?? null,
-      breakoutScore: breakout?.[1] ? num(Number(breakout[1])) : null,
+      breakoutScore: breakout?.[1] ? num(Number(breakout[1].replace(/,/g, ''))) : null,
     })
   }
   return videos

@@ -38,6 +38,8 @@ const vidiqMock = vi.hoisted(() => ({
 vi.mock('@boom-busters/providers', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   mockProvidersEnabled: () => false,
+}))
+vi.mock('@boom-busters/providers/vidiq', () => ({
   createVidiqClient: vidiqMock.createVidiqClient,
 }))
 

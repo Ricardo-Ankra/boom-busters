@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { clientOver } from './client'
 import type { VidiqCaller, VidiqClient } from './client'
 import balance from './fixtures/balance.json'
+import { KEYWORD_RESEARCH_MARKDOWN } from './fixtures/keyword-research'
 import channelVideos from './fixtures/channel_videos.json'
 import getVideosByIds from './fixtures/get_videos_by_ids.json'
 import outliers from './fixtures/outliers.json'
@@ -22,13 +22,9 @@ const JSON_FIXTURES: Partial<Record<VidiqTool, unknown>> = {
   vidiq_score_title: scoreTitle,
 }
 
-function keywordMarkdown(): string {
-  return readFileSync(new URL('./fixtures/keyword_research.md', import.meta.url), 'utf8')
-}
-
 const serve: VidiqCaller = async (tool): Promise<VidiqRawResult> => {
   if (tool === 'vidiq_keyword_research') {
-    return { content: [{ type: 'text', text: keywordMarkdown() }] }
+    return { content: [{ type: 'text', text: KEYWORD_RESEARCH_MARKDOWN }] }
   }
   return { structuredContent: JSON_FIXTURES[tool] }
 }

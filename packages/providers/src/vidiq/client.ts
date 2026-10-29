@@ -12,6 +12,7 @@ import {
   parseVideoDetails,
   parseVidiqResult,
 } from './shapes'
+import { VIDIQ_CREDIT_COST } from './costs'
 import type {
   VidiqBalance,
   VidiqCall,
@@ -24,17 +25,6 @@ import type {
 } from './shapes'
 
 export { VidiqError } from './shapes'
-
-/** The tools' documented costs, 2026-10-29. A response's own `_credits.used` wins. */
-export const VIDIQ_CREDIT_COST = {
-  balance: 0,
-  channelVideos: 5,
-  outliers: 5,
-  getVideosByIds: 5,
-  videoTranscript: 5,
-  keywordResearch: 5,
-  scoreTitle: 5,
-} as const
 
 export const VIDIQ_ENDPOINT = 'https://mcp.vidiq.com/mcp'
 
@@ -121,25 +111,34 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
  * connected on the first call. Read-only tools only.
  */
 export function createVidiqClient(apiKey: string, options?: { endpoint?: string }): VidiqClient {
-  const client = new Client({ name: 'boom-busters', version: '0.1.0' })
-  const transport = new StreamableHTTPClientTransport(
-    new URL(options?.endpoint ?? VIDIQ_ENDPOINT),
-    {
-      requestInit: { headers: { Authorization: `Bearer ${apiKey}` } },
-    },
-  )
-  let connecting: Promise<void> | null = null
+  const endpoint = new URL(options?.endpoint ?? VIDIQ_ENDPOINT)
+  let client: Client | null = null
+  let connecting: Promise<Client> | null = null
+
+  // A fresh Client and transport per attempt: a transport that failed to
+  // start cannot be started again.
+  async function connect(): Promise<Client> {
+    const next = new Client({ name: 'boom-busters', version: '0.1.0' })
+    await next.connect(
+      new StreamableHTTPClientTransport(endpoint, {
+        requestInit: { headers: { Authorization: `Bearer ${apiKey}` } },
+      }),
+    )
+    client = next
+    return next
+  }
 
   const call: VidiqCaller = async (tool, args) => {
-    connecting ??= client.connect(transport)
+    connecting ??= connect()
+    let connected: Client
     try {
-      await connecting
+      connected = await connecting
     } catch (error) {
       connecting = null
       throw new VidiqError(tool, error instanceof Error ? error.message : String(error))
     }
     try {
-      return (await client.callTool({ name: tool, arguments: args })) as VidiqRawResult
+      return (await connected.callTool({ name: tool, arguments: args })) as VidiqRawResult
     } catch (error) {
       if (error instanceof VidiqError) throw error
       throw new VidiqError(tool, error instanceof Error ? error.message : String(error))
@@ -147,7 +146,9 @@ export function createVidiqClient(apiKey: string, options?: { endpoint?: string 
   }
 
   return clientOver(call, async () => {
-    if (connecting) await client.close()
+    const open = client
+    client = null
     connecting = null
+    if (open) await open.close()
   })
 }
