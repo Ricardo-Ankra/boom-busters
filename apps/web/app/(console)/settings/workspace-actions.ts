@@ -9,9 +9,11 @@ import {
   setMusicBedDuration,
   ttsCredential,
   updateWorkspace,
+  vidiqCredential,
   visualCredentials,
 } from '@boom-busters/db'
 import {
+  createVidiqClient,
   falImageGen,
   llmAdapters,
   mockProvidersEnabled,
@@ -148,8 +150,23 @@ async function verifiableKey(
     return { verify, apiKey: keys[provider] }
   }
 
-  // `vidiq` falls through to unverifiable for now: Task 4 adds the check
-  // beside its client.
+  // VidIQ verifies through its free balance call: a wrong key is refused there
+  // and nothing is spent. The client opens a connection, so it is closed after.
+  if (provider === 'vidiq') {
+    return {
+      verify: async (apiKey) => {
+        if (mockProvidersEnabled()) return
+        const client = createVidiqClient(apiKey)
+        try {
+          await client.balance()
+        } finally {
+          await client.close()
+        }
+      },
+      apiKey: await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY),
+    }
+  }
+
   return undefined
 }
 
