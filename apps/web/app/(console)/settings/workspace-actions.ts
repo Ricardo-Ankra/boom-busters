@@ -148,6 +148,8 @@ async function verifiableKey(
     return { verify, apiKey: keys[provider] }
   }
 
+  // `vidiq` falls through to unverifiable for now: Task 4 adds the check
+  // beside its client.
   return undefined
 }
 

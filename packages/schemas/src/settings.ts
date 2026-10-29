@@ -23,6 +23,8 @@ export const PROVIDERS = [
   'pixabay',
   'fal',
   'hosted-alignment',
+  /** YouTube research for a channel's bible (read-only). Not an LLM provider. */
+  'vidiq',
 ] as const
 export const ProviderSchema = z.enum(PROVIDERS)
 export type Provider = z.infer<typeof ProviderSchema>
@@ -506,6 +508,17 @@ export const BudgetsPatchSchema = z.object({
 })
 export type BudgetsPatch = z.infer<typeof BudgetsPatchSchema>
 
+export const DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP = 1000
+
+export const VidiqSettingsSchema = z.object({
+  monthlyCreditCap: z.number().int().min(0).max(100000).catch(DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP),
+})
+export type VidiqSettings = z.infer<typeof VidiqSettingsSchema>
+
+export const VidiqSettingsPatchSchema = z.object({
+  monthlyCreditCap: z.number().int().min(0).max(100000).optional(),
+})
+
 /**
  * Settings that belong to the whole workspace rather than one channel: model
  * price overrides and the monthly budget.
@@ -513,6 +526,12 @@ export type BudgetsPatch = z.infer<typeof BudgetsPatchSchema>
 export const WorkspaceSettingsSchema = z.object({
   modelPrices: ModelPricesSchema.default({ llm: {}, image: {} }),
   budgets: BudgetsSchema.default({ monthlyCeilingUsd: 100 }),
+  /**
+   * VidIQ bills in credits, not dollars, so its cap is its own number. `.catch`
+   * on both levels so a stored row that predates it, or holds a bad value,
+   * still parses.
+   */
+  vidiq: VidiqSettingsSchema.catch({ monthlyCreditCap: DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP }),
 })
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>
 
@@ -521,12 +540,14 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   // The sum of the old per-provider defaults was $60/month; $100 leaves the
   // same order of magnitude with headroom for a real production month.
   budgets: { monthlyCeilingUsd: 100 },
+  vidiq: { monthlyCreditCap: DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP },
 }
 
 export const WorkspaceSettingsPatchSchema = z
   .object({
     modelPrices: ModelPricesSchema.optional(),
     budgets: BudgetsPatchSchema.optional(),
+    vidiq: VidiqSettingsPatchSchema.optional(),
     // Strict, so a channel key sent here is refused rather than dropped.
   })
   .strict()

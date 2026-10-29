@@ -6,6 +6,9 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
   WorkspaceSettingsSchema,
+  WorkspaceSettingsPatchSchema,
+  LLM_PROVIDERS,
+  PROVIDERS,
   LLM_TASKS,
   ModelPricesSchema,
   ModelRoutingSchema,
@@ -428,5 +431,34 @@ describe('WorkspaceSettingsSchema', () => {
     const parsed = WorkspaceSettingsSchema.parse({})
     expect(parsed).toEqual(DEFAULT_WORKSPACE_SETTINGS)
     expect(parsed.budgets.monthlyCeilingUsd).toBe(100)
+  })
+
+  it('gives a stored workspace without a VidIQ section a cap of 1000 credits', () => {
+    const older: Record<string, unknown> = { ...DEFAULT_WORKSPACE_SETTINGS }
+    delete older['vidiq']
+    expect(WorkspaceSettingsSchema.parse(older).vidiq).toEqual({ monthlyCreditCap: 1000 })
+  })
+
+  it('catches a bad stored cap back to 1000 rather than failing the parse', () => {
+    const parsed = WorkspaceSettingsSchema.parse({ vidiq: { monthlyCreditCap: -5 } })
+    expect(parsed.vidiq.monthlyCreditCap).toBe(1000)
+  })
+
+  it('keeps vidiq a credential provider but not an LLM provider', () => {
+    expect(PROVIDERS).toContain('vidiq')
+    expect(LLM_PROVIDERS).not.toContain('vidiq' as never)
+  })
+
+  it('accepts a VidIQ cap patch from 0 to 100000 and refuses the rest', () => {
+    for (const ok of [0, 500, 100000]) {
+      expect(
+        WorkspaceSettingsPatchSchema.safeParse({ vidiq: { monthlyCreditCap: ok } }).success,
+      ).toBe(true)
+    }
+    for (const bad of [-1, 100001, 2.5]) {
+      expect(
+        WorkspaceSettingsPatchSchema.safeParse({ vidiq: { monthlyCreditCap: bad } }).success,
+      ).toBe(false)
+    }
   })
 })

@@ -195,6 +195,29 @@ export async function ttsCredential(
 }
 
 /**
+ * The decrypted VidIQ key, read on the same terms as `ttsCredential`: server
+ * side only, and a key that cannot be decrypted reads as missing.
+ */
+export async function vidiqCredential(
+  db: Database,
+  encryptionKey: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ encryptedKey: providerCredentials.encryptedKey })
+    .from(providerCredentials)
+    .where(eq(providerCredentials.provider, 'vidiq'))
+    .limit(1)
+
+  if (!row) return undefined
+
+  try {
+    return decryptSecret(row.encryptedKey, encryptionKey)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * The keyed visual-asset providers — Wikimedia Commons needs none. `google`
  * is here because Gemini's image model is the default still generator: the
  * same key the LLM adapters use, read on the visuals stage's terms.

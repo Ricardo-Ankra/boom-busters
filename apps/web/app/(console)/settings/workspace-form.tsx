@@ -48,6 +48,9 @@ const PROVIDER_PURPOSE: Record<Provider, string> = {
   fal:
     'Alternative still generator (FLUX, ~$0.03 per image), used only when ' +
     'no Google key is stored',
+  vidiq:
+    'YouTube research for the channel bible: niche, outliers and keywords, read-only. ' +
+    'Spends VidIQ credits, not dollars',
   // The "nothing reads this" note matters: a card that silently swallows a
   // key reads as wired; saying so is the difference between a store and a
   // trap. ElevenLabs ships word timings with the narration, so this fallback
@@ -117,7 +120,11 @@ export function WorkspaceForm({
       </TabsList>
 
       <TabsContent value="connections">
-        <ConnectionsTab credentials={credentials} mockProviders={mockProviders} />
+        <ConnectionsTab
+          credentials={credentials}
+          mockProviders={mockProviders}
+          vidiqCap={settings.vidiq.monthlyCreditCap}
+        />
       </TabsContent>
 
       <TabsContent value="prices">
@@ -141,9 +148,11 @@ export function WorkspaceForm({
 function ConnectionsTab({
   credentials,
   mockProviders,
+  vidiqCap,
 }: {
   credentials: MaskedCredential[]
   mockProviders: boolean
+  vidiqCap: number
 }) {
   const byProvider = new Map(credentials.map((credential) => [credential.provider, credential]))
 
@@ -185,6 +194,7 @@ function ConnectionsTab({
             key={provider}
             provider={provider}
             credential={byProvider.get(provider)}
+            extra={provider === 'vidiq' ? <VidiqCapField saved={vidiqCap} /> : null}
           />
         ))}
       </div>
@@ -212,9 +222,12 @@ function statusColour(status: string | undefined): string {
 function ConnectionCard({
   provider,
   credential,
+  extra = null,
 }: {
   provider: Provider
   credential: MaskedCredential | undefined
+  /** Settings that sit with this provider's key, such as VidIQ's credit cap. */
+  extra?: React.ReactNode
 }) {
   const [value, setValue] = React.useState('')
   const [saving, setSaving] = React.useState(false)
@@ -295,6 +308,55 @@ function ConnectionCard({
           </Button>
         ) : null}
       </CardContent>
+      {extra}
     </Card>
+  )
+}
+
+/** VidIQ bills in credits; this is the ceiling the research calls stop before crossing. */
+function VidiqCapField({ saved }: { saved: number }) {
+  const [value, setValue] = React.useState(String(saved))
+  const [saving, setSaving] = React.useState(false)
+  const { toast } = useToast()
+
+  const parsed = Number(value)
+  const valid = value.trim() !== '' && Number.isInteger(parsed) && parsed >= 0 && parsed <= 100000
+
+  const submit = async () => {
+    setSaving(true)
+    const result = await saveWorkspaceSettings({ vidiq: { monthlyCreditCap: parsed } })
+    setSaving(false)
+
+    if (result.ok) toast({ title: 'VidIQ cap saved' })
+    else toast({ title: 'Could not save', description: result.error, variant: 'error' })
+  }
+
+  return (
+    <CardContent className="flex flex-col gap-1 pt-0">
+      <label
+        htmlFor="vidiq-credit-cap"
+        className="text-[13px] font-medium text-[var(--color-text-secondary)]"
+      >
+        Monthly VidIQ credit cap
+      </label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="vidiq-credit-cap"
+          type="number"
+          min={0}
+          max={100000}
+          step={1}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={saving}
+        />
+        <Button variant="outline" busy={saving} disabled={!valid} onClick={submit}>
+          Save cap
+        </Button>
+      </div>
+      <p className="text-[12px] text-[var(--color-text-muted)]">
+        Bible research and topic research stop before crossing it.
+      </p>
+    </CardContent>
   )
 }
