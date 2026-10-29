@@ -288,6 +288,13 @@
       "when": 1793264349673,
       "tag": "0040_case_category_text",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793301762061,
+      "tag": "0041_bible_drafts_vidiq",
+      "breakpoints": true
     }
   ]
 }

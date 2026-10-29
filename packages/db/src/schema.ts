@@ -6,7 +6,12 @@ import {
   newId,
 } from '@boom-busters/schemas'
 import type {
+  BibleDraftInputs,
+  BibleDraftJob,
+  BibleResearchDigest,
+  BibleSectionStatus,
   ChannelBible,
+  TooCloseFlags,
   GroundedResearch,
   Series,
   Settings,
@@ -197,6 +202,7 @@ export const providerEnum = pgEnum('provider', [
   'hosted-alignment',
   'youtube',
   'remotion',
+  'vidiq',
 ])
 export const verifyStatusEnum = pgEnum('verify_status', ['ok', 'invalid', 'unchecked'])
 
@@ -258,6 +264,51 @@ export const channelBibles = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('channel_bibles_channel_version_key').on(t.channelId, t.version)],
+)
+
+/**
+ * A channel's working bible draft (bible drafting design): what the owner has
+ * drafted but not yet saved as a version. One per channel, keyed by it, and
+ * based on the version it was opened from. Every write goes through
+ * `writeBibleDraft`, which locks this row.
+ */
+export const bibleDrafts = pgTable('bible_drafts', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id, { onDelete: 'cascade' }),
+  baseBibleId: text('base_bible_id')
+    .notNull()
+    .references(() => channelBibles.id),
+  bible: jsonb('bible').notNull().$type<ChannelBible>(),
+  statuses: jsonb('statuses').notNull().$type<Record<string, BibleSectionStatus>>(),
+  tooClose: jsonb('too_close').notNull().$type<TooCloseFlags>(),
+  errors: jsonb('errors').notNull().$type<Record<string, string>>(),
+  inputs: jsonb('inputs').$type<BibleDraftInputs | null>(),
+  research: jsonb('research').$type<BibleResearchDigest | null>(),
+  job: jsonb('job').$type<BibleDraftJob | null>(),
+  updatedAt: updatedAt(),
+})
+
+/**
+ * VidIQ credits spent, one row per call, workspace-wide (the monthly cap is
+ * the owner's, not a channel's). The project link goes null with the project;
+ * the spend stays.
+ */
+export const vidiqCredits = pgTable(
+  'vidiq_credits',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    purpose: text('purpose').notNull(),
+    tool: text('tool').notNull(),
+    args: jsonb('args').notNull().$type<Record<string, unknown>>(),
+    credits: integer('credits').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('vidiq_credits_occurred_idx').on(t.occurredAt)],
 )
 
 /**
@@ -1485,6 +1536,7 @@ export const socialPosts = pgTable('social_posts', {
 
 export type ChannelRow = typeof channels.$inferSelect
 export type BibleVersionRow = typeof channelBibles.$inferSelect
+export type BibleDraftRow = typeof bibleDrafts.$inferSelect
 export type WorkspaceRow = typeof workspace.$inferSelect
 export type YoutubeConnectionRow = typeof youtubeConnections.$inferSelect
 export type CaseRow = typeof cases.$inferSelect
