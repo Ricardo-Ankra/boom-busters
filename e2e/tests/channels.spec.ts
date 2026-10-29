@@ -14,10 +14,10 @@ const SECOND_CASE_TITLE = 'A case that belongs to the second channel (E2E)'
 const NEW_ACCENT = '#12ab34'
 
 async function openSwitcher(page: Page): Promise<void> {
-  // The switcher is the top bar's first button: it is labelled with the
-  // current channel's name, which differs per channel, so find it by its
-  // popup rather than by name.
-  await page.locator('header button[aria-haspopup="true"]').click()
+  // The switcher heads the rail on a desktop (the top bar's copy is for
+  // phones). It is labelled with the current channel's name, which differs
+  // per channel, so find it by its popup rather than by name.
+  await page.locator('nav[aria-label="Primary"] button[aria-haspopup="true"]').click()
 }
 
 async function monthMeter(page: Page): Promise<string> {

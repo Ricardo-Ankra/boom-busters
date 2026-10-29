@@ -33,9 +33,13 @@ export function TopBar({
 }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
-      {/* min-w-0 + flex-1 so the trail truncates instead of painting under
-          the controls at 390px (decision 244). */}
-      <RouteChannelSwitcher current={current} channels={channels} />
+      {/* The switcher lives in the rail header; the rail is hidden below md,
+          so phones keep this copy. min-w-0 + flex-1 on the trail so it
+          truncates instead of painting under the controls at 390px
+          (decision 244). */}
+      <div className="md:hidden">
+        <RouteChannelSwitcher current={current} channels={channels} variant="bar" />
+      </div>
       <div className="min-w-0 flex-1">
         <Breadcrumb slug={current} />
       </div>

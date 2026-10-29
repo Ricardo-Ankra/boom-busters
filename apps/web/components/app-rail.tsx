@@ -15,6 +15,8 @@ import type { Route } from 'next'
 import Link, { useLinkStatus } from 'next/link'
 import { usePathname } from 'next/navigation'
 import * as React from 'react'
+import { RouteChannelSwitcher } from '@/components/channel-switcher'
+import type { SwitcherEntry } from '@/components/channel-switcher'
 import { channelHref } from '@/lib/channel-href'
 import type { ChannelSection } from '@/lib/channel-href'
 import { cn } from '@/lib/cn'
@@ -72,7 +74,7 @@ export function navFor(slug: string, pathname: string) {
   })
 }
 
-export function AppRail({ slug, name }: { slug: string; name: string }) {
+export function AppRail({ slug, channels }: { slug: string; channels: SwitcherEntry[] }) {
   const pathname = usePathname()
   const [expanded, setExpanded] = React.useState(true)
 
@@ -84,10 +86,14 @@ export function AppRail({ slug, name }: { slug: string; name: string }) {
         expanded ? 'w-56' : 'w-16',
       )}
     >
-      <div className="mb-2 flex h-10 items-center px-2">
-        {expanded ? (
-          <span className="truncate text-[14px] font-semibold tracking-tight">{name}</span>
-        ) : null}
+      {/* The rail header is the Channel switcher: the name you are working in
+          is the control that changes it. Collapsed, it keeps the initials. */}
+      <div className="mb-2 flex h-10 items-center">
+        <RouteChannelSwitcher
+          current={slug}
+          channels={channels}
+          variant={expanded ? 'rail' : 'compact'}
+        />
       </div>
 
       {navFor(slug, pathname).map(({ href, label, icon: Icon, active }) => {

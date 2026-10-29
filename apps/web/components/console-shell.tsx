@@ -6,8 +6,9 @@ import { MobileNav } from '@/components/mobile-nav'
 import { TopBar } from '@/components/top-bar'
 
 /**
- * The console shell (build spec section 11.2) for one channel: rail, top bar
- * with the Channel switcher, and the mobile bar. Pipeline screens use the full
+ * The console shell (build spec section 11.2) for one channel: rail headed by
+ * the Channel switcher, top bar (which carries the switcher on phones, where
+ * the rail is hidden), and the mobile bar. Pipeline screens use the full
  * width; only settings and text screens take a max width, applied per screen.
  *
  * The top bar's two live readouts are queried by the layouts that render this
@@ -34,7 +35,7 @@ export function ConsoleShell({
   return (
     <div className="flex h-dvh overflow-hidden bg-[var(--color-background)]">
       <div className="hidden md:flex">
-        <AppRail slug={channel.slug} name={channel.name} />
+        <AppRail slug={channel.slug} channels={channels} />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">

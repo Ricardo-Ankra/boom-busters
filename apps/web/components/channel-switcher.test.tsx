@@ -1,13 +1,37 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { ChannelSwitcher } from './channel-switcher'
+import { ChannelSwitcher, channelInitials } from './channel-switcher'
 import type { SwitcherEntry } from './channel-switcher'
 
 const channels: SwitcherEntry[] = [
   { id: '01A', slug: 'boom-busters', name: 'Boom-Busters', needsYou: 0 },
   { id: '01B', slug: 'psychology', name: 'Psychology', needsYou: 3 },
 ]
+
+describe('ChannelSwitcher compact variant', () => {
+  it('shows the initials and keeps the full channel name for assistive technology', () => {
+    render(
+      <ChannelSwitcher
+        current="boom-busters"
+        channels={[{ id: '01A', slug: 'boom-busters', name: 'Boom & Busters', needsYou: 0 }]}
+        section=""
+        variant="compact"
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /Boom & Busters/ })
+    expect(trigger).toHaveTextContent('BB')
+    expect(trigger.className).toContain('h-10')
+  })
+})
+
+describe('channelInitials', () => {
+  it('takes the first letter of the first two words, skipping symbols', () => {
+    expect(channelInitials('Boom & Busters')).toBe('BB')
+    expect(channelInitials('Psychology')).toBe('P')
+    expect(channelInitials('the mind lab')).toBe('TM')
+  })
+})
 
 describe('ChannelSwitcher', () => {
   it('is a labelled button with the 40px hit target, closed until pressed', () => {

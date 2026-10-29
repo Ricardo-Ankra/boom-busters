@@ -45,6 +45,7 @@ test.describe('390px', () => {
     await signIn(page)
     await page.goto(channelPath(''))
 
+    // On a phone the rail is hidden, so the switcher is the top bar's copy.
     await page.locator('header button[aria-haspopup="true"]').click()
     await expect(page.getByRole('list', { name: 'Channels' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'New channel' })).toBeVisible()

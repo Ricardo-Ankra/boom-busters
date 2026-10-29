@@ -57,10 +57,19 @@ describe('ConsoleShell', () => {
     )
   })
 
-  it('puts the Channel switcher in the top bar, labelled with the current channel', () => {
+  it('puts the Channel switcher at the top of the rail, labelled with the current channel', () => {
     renderShell()
-    const switcher = screen.getByRole('button', { name: /Psychology/ })
+    const rail = screen.getAllByRole('navigation', { name: 'Primary' })[0]!
+    const switcher = within(rail).getByRole('button', { name: /Psychology/ })
     expect(switcher.className).toContain('h-10')
+    expect(switcher).toHaveAttribute('aria-haspopup', 'true')
+  })
+
+  it('keeps a copy of the switcher in the top bar for phones only, where the rail is hidden', () => {
+    renderShell()
+    const header = screen.getByRole('banner')
+    const switcher = within(header).getByRole('button', { name: /Psychology/ })
+    expect(switcher.closest('.md\\:hidden')).not.toBeNull()
   })
 
   it('renders the page inside main', () => {
