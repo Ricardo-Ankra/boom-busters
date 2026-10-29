@@ -16,7 +16,6 @@ import {
   parseTitleOptions,
   TITLE_OPTION_COUNT,
 } from './metadata'
-import type { BibleInUse } from '@boom-busters/schemas'
 import type { Note, Repair } from './repair'
 import type { ScriptClaim } from './script'
 
