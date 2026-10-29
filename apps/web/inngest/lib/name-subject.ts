@@ -1,4 +1,4 @@
-import { updateCase } from '@boom-busters/db'
+import { channelForProject, currentBible, updateCase } from '@boom-busters/db'
 import type { CaseRow, Database } from '@boom-busters/db'
 import { buildNameSubjectRequest, mockNameSubject, parseNameSubject } from '@boom-busters/providers'
 import type { NamedSubject } from '@boom-busters/providers'
@@ -16,11 +16,16 @@ import type { AnswerComplete } from '@/lib/answer'
  * plain message (Inngest would retry it blind, four more times, to be refused
  * four more times), and an answer that is still unusable after the helper's
  * retry stops it too, through `answerOrStop`.
+ *
+ * The prompt reads the channel bible: the project's frozen one when the call
+ * belongs to a project (`projectId`), the channel's current one when a case is
+ * named on its own. Either is read here, where the request is built.
  */
 export async function nameSubjectIfMissing(
   db: Database,
-  caseRow: Pick<CaseRow, 'id' | 'title' | 'angle' | 'category' | 'subject' | 'people'>,
-  deps: { complete: AnswerComplete; mocked: boolean },
+  caseRow: Pick<CaseRow, 'id' | 'title' | 'angle' | 'category' | 'subject' | 'people'> &
+    Partial<Pick<CaseRow, 'channelId'>>,
+  deps: { complete: AnswerComplete; mocked: boolean; projectId?: string },
 ): Promise<NamedSubject> {
   if (caseRow.subject) return { subject: caseRow.subject, people: caseRow.people }
 
@@ -29,9 +34,16 @@ export async function nameSubjectIfMissing(
     named = mockNameSubject(caseRow.title)
   } else {
     try {
+      if (!deps.projectId && !caseRow.channelId) {
+        throw new Error('Naming a subject needs a project or the case row with its channel')
+      }
+      const bible = deps.projectId
+        ? await channelForProject(db, deps.projectId)
+        : await currentBible(db, caseRow.channelId!)
       named = answerOrStop(
         await callForAnswer({
           request: buildNameSubjectRequest({
+            bible,
             title: caseRow.title,
             angle: caseRow.angle,
             category: caseRow.category,

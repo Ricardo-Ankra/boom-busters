@@ -2,12 +2,15 @@
 
 import {
   createCase,
+  createChannel,
+  createProjectFromCase,
   deleteCase,
   getCase,
   requireTestDatabase,
   ensureFirstChannel,
+  saveBibleVersion,
 } from '@boom-busters/db'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import { BudgetExceededError, DEFAULT_SETTINGS, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -73,6 +76,58 @@ describeDb('nameSubjectIfMissing', () => {
     })
     expect(named.subject.length).toBeLessThanOrEqual(120)
     expect((await getCase(db, row.id))?.subject).toBe(named.subject)
+  })
+
+  describe('which bible the prompt reads', () => {
+    async function channelWithTwoVersions() {
+      const channel = await createChannel(db, {
+        name: 'Two versions',
+        handle: null,
+        slug: `two-versions-${Math.random().toString(36).slice(2, 8)}`,
+        settings: DEFAULT_SETTINGS,
+        bible: { ...FIRST_CHANNEL_BIBLE, subject: 'the frozen subject' },
+      })
+      const row = await createCase(db, {
+        channelId: channel.id,
+        title: `Namesubjecttest ${Date.now()} ${Math.random().toString(36).slice(2)}`,
+        category: 'collapse',
+      })
+      made.push(row.id)
+      const project = await createProjectFromCase(db, { caseId: row.id, title: 'On it' })
+      // The channel moves on after the project froze version 1.
+      await saveBibleVersion(
+        db,
+        channel.id,
+        { ...FIRST_CHANNEL_BIBLE, subject: 'the current subject' },
+        'Edited in Settings',
+      )
+      return { row, project }
+    }
+
+    const systemOf = async (
+      row: Awaited<ReturnType<typeof bare>>,
+      extra: { projectId?: string } = {},
+    ) => {
+      const complete = vi.fn<AnswerComplete>(async () => ({
+        text: JSON.stringify({ subject: 'Wirecard', people: [] }),
+      }))
+      await nameSubjectIfMissing(db, row, { complete, mocked: false, ...extra })
+      return complete.mock.calls[0]![0].system
+    }
+
+    it("reads the project's frozen bible when the case belongs to a project", async () => {
+      const { row, project } = await channelWithTwoVersions()
+      const system = await systemOf(row, { projectId: project.id })
+      expect(system).toContain('the frozen subject')
+      expect(system).not.toContain('the current subject')
+    })
+
+    it("reads the channel's current bible when there is no project", async () => {
+      const { row } = await channelWithTwoVersions()
+      const system = await systemOf(row)
+      expect(system).toContain('the current subject')
+      expect(system).not.toContain('the frozen subject')
+    })
   })
 
   it('names from the title in mock mode without calling the model', async () => {

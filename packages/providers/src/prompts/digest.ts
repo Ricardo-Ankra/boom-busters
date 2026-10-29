@@ -1,3 +1,5 @@
+import type { BibleInUse } from '@boom-busters/schemas'
+import { fillSlots } from './bible'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -23,6 +25,8 @@ export interface DigestLine {
 }
 
 export function buildDigestRequest(input: {
+  /** The channel's current bible: a digest belongs to the channel, not to a project. */
+  bible: BibleInUse
   weekOf: string
   lines: readonly DigestLine[]
 }): LLMTaskRequest {
@@ -43,12 +47,15 @@ export function buildDigestRequest(input: {
 
   return {
     task: 'digest',
-    system: `You write the Monday production digest for a one-person YouTube
-channel about corporate collapses. You are given this week's numbers,
+    system: fillSlots(
+      `You write the Monday production digest for a one-person YouTube
+channel about [[example:digest-channel-subject]]. You are given this week's numbers,
 already computed. Write the body of a short plain-text email: 3 to 6
 sentences, then the numbers back as a compact list. Name what changed and
 the single most useful thing to look at. Never invent a number that is not
 in the list; never soften a decline. No markdown, no greeting, no sign-off.`,
+      input.bible,
+    ),
     messages: [{ role: 'user', content: `Week of ${input.weekOf}:\n\n${table}` }],
     maxTokens: outputBudget(700),
   }

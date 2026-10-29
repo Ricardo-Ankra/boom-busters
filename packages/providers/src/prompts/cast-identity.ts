@@ -1,5 +1,7 @@
 import { CAST_GUARDRAIL_MAX, CAST_IDENTITY_MAX, ValidationError } from '@boom-busters/schemas'
+import type { BibleInUse } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { fillSlots } from './bible'
 import { BANNED_PROMPT_WORDS } from './direction-craft'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs, trimField } from './repair'
@@ -20,16 +22,25 @@ import type { LLMTaskRequest, MsgImage } from '../llm/types'
  * vision and runs once per person.
  */
 
-/** The bible's standard exclusions, offered as the guardrail's starting text. */
-export const DEFAULT_GUARDRAIL =
-  'never handling cash or signing an invented contract; never in handcuffs; ' +
-  'never mocked, caricatured or shown in humiliation'
+/**
+ * The bible's standard exclusions, offered as the guardrail's starting text:
+ * the channel's own first clause, then the exclusions every channel keeps.
+ */
+const DEFAULT_GUARDRAIL_TEMPLATE =
+  '[[example:direction-default-guardrail]]; ' + 'never mocked, caricatured or shown in humiliation'
+
+/** The guardrail a member starts from, for this channel. */
+export function defaultGuardrail(bible: BibleInUse): string {
+  return fillSlots(DEFAULT_GUARDRAIL_TEMPLATE, bible)
+}
 
 /** How a notice names each field on the member's card (decision 293). */
 export const IDENTITY_LABEL = 'the identity'
 export const GUARDRAIL_LABEL = 'the guardrail'
 
 export function buildCastIdentityRequest(input: {
+  /** The bible of the channel the cast member's project belongs to. */
+  bible: BibleInUse
   name: string
   role: string
   photos: readonly MsgImage[]
@@ -41,7 +52,8 @@ export function buildCastIdentityRequest(input: {
   }
   return {
     task: 'direction',
-    system: `You describe a real person from photographs so that an image model can
+    system: fillSlots(
+      `You describe a real person from photographs so that an image model can
 render their likeness. Write what a photographer would note and nothing else.
 
 Return JSON: {"identityString": string, "guardrail": string}
@@ -57,12 +69,13 @@ Rules:
   frame does not contain.
 - No banned words: ${BANNED_PROMPT_WORDS.join(', ')}.
 - "guardrail" is one line listing only defamation and mockery exclusions for
-  this person. Start from: "${DEFAULT_GUARDRAIL}". Add nothing that keeps
-  them away from ordinary settings such as desks, documents, boardrooms or
-  meetings.
+  this person. Start from: "${DEFAULT_GUARDRAIL_TEMPLATE}". Add nothing that keeps
+  them away from ordinary settings such as [[example:direction-cast-settings]].
 
 Limits (the app checks them): "identityString" at most ${CAST_IDENTITY_MAX} characters;
 "guardrail" at most ${CAST_GUARDRAIL_MAX} characters.`,
+      input.bible,
+    ),
     messages: [
       {
         role: 'user',
@@ -89,6 +102,7 @@ const IdentitySchema = z.object({
 export function parseCastIdentity(
   text: string,
   note: Note = ignoreRepairs,
+  bible: BibleInUse,
 ): { identityString: string; guardrail: string } {
   const raw = parseJsonCompletion(text, z.looseObject({}), 'cast identity')
   const parsed = IdentitySchema.safeParse({
@@ -106,12 +120,12 @@ export function parseCastIdentity(
     guardrail:
       parsed.data.guardrail && parsed.data.guardrail.length > 0
         ? parsed.data.guardrail
-        : DEFAULT_GUARDRAIL,
+        : defaultGuardrail(bible),
   }
 }
 
 /** Deterministic stand-in for mock-provider mode; no photograph is read. */
-export function mockCastIdentity(input: { name: string; role: string }): {
+export function mockCastIdentity(input: { bible: BibleInUse; name: string; role: string }): {
   identityString: string
   guardrail: string
 } {
@@ -119,6 +133,6 @@ export function mockCastIdentity(input: { name: string; role: string }): {
     identityString:
       `[mock] ${input.name}, ${input.role}: oval face, short dark hair, clean-shaven, ` +
       'no glasses, forties, medium build, dark suit and open-collar shirt',
-    guardrail: DEFAULT_GUARDRAIL,
+    guardrail: defaultGuardrail(input.bible),
   }
 }

@@ -14,6 +14,7 @@ import {
   setProjectStage,
   getChannel,
   getWorkspace,
+  listBibleVersions,
   listChannels,
   recordRunEvent,
   requireTestDatabase,
@@ -226,6 +227,29 @@ describeDb('channel actions', () => {
       })
       expect(bad.ok).toBe(false)
       expect((await getChannel(db, channel.id)).bible.subject).toBe('psychology experiments')
+    })
+
+    it('makes every bible save a version: created, then two edits', async () => {
+      const channel = await makeChannel()
+      expect(channel.bibleVersion).toBe(1)
+
+      const first = { ...FIRST_CHANNEL_BIBLE, subject: 'psychology experiments' }
+      const second = { ...FIRST_CHANNEL_BIBLE, subject: 'shipwrecks' }
+      expect(await updateChannelAction(channel.id, { bible: first })).toEqual({ ok: true })
+      expect(await updateChannelAction(channel.id, { bible: second })).toEqual({ ok: true })
+
+      const saved = await getChannel(db, channel.id)
+      expect(saved.bibleVersion).toBe(3)
+      expect(saved.bible.subject).toBe('shipwrecks')
+      const versions = (await listBibleVersions(db, channel.id)).map(({ version, note }) => ({
+        version,
+        note,
+      }))
+      expect(versions).toEqual([
+        { version: 1, note: 'Created' },
+        { version: 2, note: 'Edited in Settings' },
+        { version: 3, note: 'Edited in Settings' },
+      ])
     })
 
     it('says so for a well-formed id that names no channel', async () => {

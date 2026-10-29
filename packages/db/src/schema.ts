@@ -16,6 +16,7 @@ import type {
 import { relations, sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -65,17 +66,6 @@ const usd = (name: string) => numeric(name, { precision: 12, scale: 4 })
 // Enums
 // ---------------------------------------------------------------------------
 
-/**
- * `turnaround` and `empire` support the phased scope broadening. No code
- * treats any category specially (spec section 5).
- */
-export const caseCategoryEnum = pgEnum('case_category', [
-  'collapse',
-  'con',
-  'meltdown',
-  'turnaround',
-  'empire',
-])
 export const caseStatusEnum = pgEnum('case_status', [
   'idea',
   'shortlisted',
@@ -235,13 +225,40 @@ export const channels = pgTable('channels', {
   slug: text('slug').notNull().unique('channels_slug_key'),
   name: text('name').notNull(),
   handle: text('handle'),
-  bible: jsonb('bible').notNull().$type<ChannelBible>(),
+  /**
+   * The channel's current bible version. Null only inside `createChannel`'s
+   * transaction: the keys are circular, so SQL cannot require it.
+   */
+  currentBibleId: text('current_bible_id').references((): AnyPgColumn => channelBibles.id),
   /** The channel's `Settings`: voice, brand kit, model routing, render, publish. */
   settings: jsonb('settings').notNull().$type<Settings>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
+
+/**
+ * A channel's bible, append-only: every save is a new version, and a project
+ * freezes the one it started with (bible design, section 4.5). `slotIds` is
+ * the example slots the prompts used when this version was saved, so a later
+ * change to the registry never makes an old version look complete.
+ */
+export const channelBibles = pgTable(
+  'channel_bibles',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    version: integer('version').notNull(),
+    bible: jsonb('bible').notNull().$type<ChannelBible>(),
+    slotIds: text('slot_ids').array().notNull().$type<string[]>(),
+    complete: boolean('complete').notNull(),
+    note: text('note').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('channel_bibles_channel_version_key').on(t.channelId, t.version)],
+)
 
 /**
  * Exactly one row: what belongs to the owner rather than to a channel, the
@@ -362,7 +379,8 @@ export const cases = pgTable(
     id: id(),
     channelId: channelId().notNull(),
     title: text('title').notNull(),
-    category: caseCategoryEnum('category').notNull(),
+    // Text validated against the channel's bible (`caseCategories`), not an enum.
+    category: text('category').notNull(),
     angle: text('angle'),
     demandNotes: text('demand_notes'),
     competitorLinks: jsonb('competitor_links')
@@ -387,6 +405,7 @@ export const cases = pgTable(
     index('cases_status_idx').on(t.status),
     index('cases_priority_idx').on(t.priorityScore),
     index('cases_channel_idx').on(t.channelId),
+    check('cases_category_not_empty', sql`${t.category} <> ''`),
   ],
 )
 
@@ -396,6 +415,10 @@ export const projects = pgTable(
     id: id(),
     /** Always the case's channel. */
     channelId: channelId().notNull(),
+    /** The bible version the project started with; editing the bible never moves it. */
+    bibleId: text('bible_id')
+      .notNull()
+      .references(() => channelBibles.id, { onDelete: 'restrict' }),
     caseId: text('case_id')
       .notNull()
       .references(() => cases.id, { onDelete: 'restrict' }),
@@ -1461,6 +1484,7 @@ export const socialPosts = pgTable('social_posts', {
 // ---------------------------------------------------------------------------
 
 export type ChannelRow = typeof channels.$inferSelect
+export type BibleVersionRow = typeof channelBibles.$inferSelect
 export type WorkspaceRow = typeof workspace.$inferSelect
 export type YoutubeConnectionRow = typeof youtubeConnections.$inferSelect
 export type CaseRow = typeof cases.$inferSelect
@@ -1498,11 +1522,9 @@ export type NewSocialPost = typeof socialPosts.$inferInsert
 export type ProjectStage = (typeof projectStageEnum.enumValues)[number]
 export type StageStatus = (typeof stageStatusEnum.enumValues)[number]
 export type RunStatus = (typeof runStatusEnum.enumValues)[number]
-export type CaseCategory = (typeof caseCategoryEnum.enumValues)[number]
 export type CaseStatus = (typeof caseStatusEnum.enumValues)[number]
 export type ClaimConfidence = (typeof claimConfidenceEnum.enumValues)[number]
 export type ClaimSourceType = (typeof sourceTypeEnum.enumValues)[number]
 
-export const CASE_CATEGORIES = caseCategoryEnum.enumValues
 export const CLAIM_CONFIDENCES = claimConfidenceEnum.enumValues
 export const CLAIM_SOURCE_TYPES = sourceTypeEnum.enumValues

@@ -1,4 +1,5 @@
 import type { FailedRun, OpenBudgetGate, ProjectSummary } from '@boom-busters/db'
+import type { ChannelBible } from '@boom-busters/schemas'
 import { AlertCircle, DollarSign, Flag, Youtube } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -32,6 +33,8 @@ export interface NeedsYouCard {
 export function buildNeedsYouCards(input: {
   /** The channel whose queue this is; list links point into it. */
   slug: string
+  /** The channel's bible: it words each project's case category. */
+  bible: Pick<ChannelBible, 'caseCategories'>
   awaitingReview: ProjectSummary[]
   budgetGates: OpenBudgetGate[]
   failedRuns: FailedRun[]
@@ -63,7 +66,7 @@ export function buildNeedsYouCards(input: {
       title: project.title,
       context:
         `${SEGMENT_LABELS[project.stage]} ready for review · ` +
-        `${caseCategoryLabel(project.caseCategory)} · ${project.targetRuntimeMin} min target`,
+        `${caseCategoryLabel(input.bible, project.caseCategory)} · ${project.targetRuntimeMin} min target`,
       href: `/projects/${project.id}` as Route,
       buttonLabel: 'Review',
       at: project.updatedAt,

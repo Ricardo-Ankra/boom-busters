@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { LLMTaskRequest } from '@boom-busters/providers'
-import { BudgetExceededError, ValidationError } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_IN_USE, ValidationError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { planChapterWith } from './plan-chapter'
 
@@ -17,6 +17,7 @@ const paragraphs = [
   },
 ]
 const input = {
+  bible: FIRST_CHANNEL_IN_USE,
   caseTitle: 'Case',
   chapter,
   paragraphs: paragraphs as never,

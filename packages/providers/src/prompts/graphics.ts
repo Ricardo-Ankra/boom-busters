@@ -6,8 +6,14 @@ import {
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { ChartSeries, PlannedGraphicCode } from '@boom-busters/schemas'
+import type {
+  BibleInUse,
+  ChannelBible,
+  ChartSeries,
+  PlannedGraphicCode,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
+import { fillSlots, literalBibleText, noun } from './bible'
 import { GRAPHIC_CODE_FIXTURE_SOURCE } from './graphic-code-fixture'
 import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
@@ -46,6 +52,8 @@ export type CurrentDesign = Pick<PlannedGraphicCode, 'source' | 'title'> & {
 }
 
 export interface GraphicDesignInput {
+  /** The channel bible the project froze. */
+  bible: BibleInUse
   caseTitle: string
   /** The film's claims in prompt order: positions are the numbers cited. */
   claims: readonly ScriptClaim[]
@@ -75,253 +83,9 @@ export interface GraphicDesignInput {
   rejection?: string
 }
 
-/**
- * The prompt's first worked example, a text-only beat. Exported so a test
- * can run it through the web app's checks: an example that crashes or crops
- * teaches the model to be refused. Its helper is a plain function called
- * directly, as the prompt tells the model to write it. It is written on the
- * tokens (decision 301) and shows the one spring of a beat, the hero preset
- * on the figure.
- */
-export const GRAPHIC_EXAMPLE_TYPE = `// Kinetic type: the line builds word by word as it is spoken, the figure
-// springs in on "1.9 billion" with the hero preset (one small overshoot, once
-// in the beat), "never existed" strikes it through, and the finished frame
-// holds to the end.
-// Every length and every curve is a token; positions follow the narration.
-const LINE_UNTIL_MS = 2400
-const FIGURE_AT_MS = 2600
-const CLOSING_AT_MS = 4400
-const STRIKE_AT_MS = 5000
-
-// A helper, called directly: an arrival, 0 to 1 over motion.ms.enter from atMs, held at 1.
-function arrive(frame, fps, atMs) {
-  return Remotion.interpolate(
-    frame, [motion.frames(atMs, fps), motion.frames(atMs + motion.ms.enter, fps)], [0, 1],
-    { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
-  )
-}
-
-// A helper, called directly: one word of the line, rising in as it is spoken.
-function wordSpan(word, frame, fps, unit) {
-  const enter = arrive(frame, fps, word.atMs)
-  const rise = 'translateY(' + (1 - enter) * motion.px.rise * unit + 'px)'
-  return (
-    <span
-      key={word.atMs}
-      style={{ display: 'inline-block', marginRight: '0.25em', opacity: enter, transform: rise }}
-    >
-      {word.text}
-    </span>
-  )
-}
-
-function Graphic(props) {
-  const frame = Remotion.useCurrentFrame()
-  const { width, height, fps } = Remotion.useVideoConfig()
-  const { colors, fonts } = props.brand
-  const inset = props.safeArea
-  const portrait = height > width
-  const unit = Math.min(width, height) / 1080
-
-  // The words said before the figure, each entering as it is spoken.
-  const line = props.words.filter((word) => word.atMs < LINE_UNTIL_MS)
-  // The hero figure: the one spring of the beat. It rises into place and scales up from
-  // motion.scale.enter; the hero preset's one overshoot shows on the rise, a few pixels
-  // past the mark and back, not on the scale, where it would not be seen.
-  // It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.
-  const pop = Remotion.spring({
-    frame, fps, delay: motion.frames(FIGURE_AT_MS, fps), config: motion.spring.hero,
-  })
-  const closing = arrive(frame, fps, CLOSING_AT_MS)
-  // The strike is the figure's payoff, so it takes the emphasis curve.
-  // It draws across over motion.ms.draw.
-  const strike = Remotion.interpolate(
-    frame, [motion.frames(STRIKE_AT_MS, fps), motion.frames(STRIKE_AT_MS + motion.ms.draw, fps)], [0, 1],
-    { easing: motion.ease.emphasis, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
-  )
-
-  return (
-    <Remotion.AbsoluteFill
-      style={{
-        paddingTop: inset.top, paddingRight: inset.right,
-        paddingBottom: inset.bottom, paddingLeft: inset.left,
-        justifyContent: 'center', gap: 28 * unit,
-        alignItems: portrait ? 'center' : 'flex-start', textAlign: portrait ? 'center' : 'left',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: fonts.heading, fontSize: 72 * unit, lineHeight: 1.15,
-          color: colors.textPrimary, maxWidth: portrait ? '100%' : '70%',
-        }}
-      >
-        {line.map((word) => wordSpan(word, frame, fps, unit))}
-      </div>
-      <div
-        style={{
-          position: 'relative', fontFamily: fonts.numbers, fontSize: 220 * unit, lineHeight: 1,
-          color: colors.accent, opacity: Math.min(1, pop),
-          transform: 'translateY(' + (1 - pop) * 2 * motion.px.rise * unit + 'px) scale('
-            + (motion.scale.enter + (1 - motion.scale.enter) * pop) + ')',
-          transformOrigin: portrait ? 'center' : 'left center',
-        }}
-      >
-        €1.9bn
-        <div
-          style={{
-            position: 'absolute', left: 0, top: '52%', height: 14 * unit,
-            width: strike * 100 + '%', backgroundColor: colors.semantic.collapse,
-          }}
-        />
-      </div>
-      <div
-        style={{
-          fontFamily: fonts.title, fontSize: 56 * unit, color: colors.semantic.collapse,
-          opacity: closing, transform: 'translateY(' + (1 - closing) * motion.px.rise * unit + 'px)',
-        }}
-      >
-        It had never existed.
-      </div>
-    </Remotion.AbsoluteFill>
-  )
-}`
-
-/** The second worked example's data, as the slot message would carry it. */
-export const GRAPHIC_EXAMPLE_CHART_DATA = {
-  series: [
-    {
-      label: 'Trustee cash reported',
-      unit: '€bn',
-      points: [
-        { x: '2016', y: 0.3 },
-        { x: '2017', y: 0.6 },
-        { x: '2018', y: 1.1 },
-        { x: '2019', y: 1.9 },
-      ],
-    },
-  ],
-  takeaway: 'The cash grew every year',
-  annotations: [{ atX: '2019', text: 'Never found' }],
-}
-
-/** The prompt's second worked example, a chart. Exported for the same reason as the first. */
-export const GRAPHIC_EXAMPLE_CHART = `// A chart from props.data: the title and its subtitle stagger in, one bar
-// per point draws on as its year is spoken, the annotation lands on its bar
-// after the last one has grown, and the finished chart holds to the end.
-// Every length and every curve is a token; positions follow the narration.
-
-// When the narration names a point: the first word that starts with its label.
-function spokenAt(point, index, words) {
-  const said = words.find((word) => word.text.indexOf(point.x) === 0)
-  return said ? said.atMs : motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)
-}
-
-// A helper, called directly: 0 to 1 over lengthMs from atMs on the arrival curve, held at 1.
-function arrive(frame, fps, atMs, lengthMs) {
-  return Remotion.interpolate(
-    frame, [motion.frames(atMs, fps), motion.frames(atMs + lengthMs, fps)], [0, 1],
-    { easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
-  )
-}
-
-// A helper, called directly: one bar with its value and, on the last, its note.
-function bar(frame, fps, spec) {
-  const { colors, fonts } = spec.brand
-  const unit = spec.unit
-  const grow = arrive(frame, fps, spec.atMs, motion.ms.draw)
-  const noted = arrive(frame, fps, spec.noteAtMs, motion.ms.enter)
-  const column = { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }
-  return (
-    <div key={spec.point.x} style={{ ...column, justifyContent: 'flex-end' }}>
-      {spec.note ? (
-        <div
-          style={{
-            fontFamily: fonts.title, fontSize: 34 * unit, marginBottom: 10 * unit,
-            color: colors.semantic.collapse, opacity: noted,
-            transform: 'translateY(' + (1 - noted) * motion.px.rise * unit + 'px)',
-          }}
-        >
-          {spec.note}
-        </div>
-      ) : null}
-      <div
-        style={{
-          fontFamily: fonts.numbers, fontSize: 40 * unit, marginBottom: 10 * unit,
-          color: spec.color, opacity: grow,
-        }}
-      >
-        {String(spec.point.y)}
-      </div>
-      <div
-        style={{
-          width: '60%', height: spec.share * grow * spec.plot,
-          borderRadius: 6 * unit, backgroundColor: spec.color,
-        }}
-      />
-      <div style={{ fontFamily: fonts.body, fontSize: 30 * unit, color: colors.textSecondary }}>
-        {spec.point.x}
-      </div>
-    </div>
-  )
-}
-
-function Graphic(props) {
-  const frame = Remotion.useCurrentFrame()
-  const { width, height, fps } = Remotion.useVideoConfig()
-  const { colors, fonts } = props.brand
-  const inset = props.safeArea
-  const portrait = height > width
-  const unit = Math.min(width, height) / 1080
-  const series = props.data.series[0]
-  const top = Math.max(...series.points.map((point) => point.y))
-  const lands = series.points.map((point, index) => spokenAt(point, index, props.words))
-  const last = series.points.length - 1
-  const note = (props.data.annotations || [])[0]
-  // The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.
-  const titleIn = arrive(frame, fps, 0, motion.ms.enter)
-  const subtitleIn = arrive(frame - motion.stagger(1, fps), fps, 0, motion.ms.enter)
-  const align = portrait ? 'center' : 'left'
-
-  return (
-    <Remotion.AbsoluteFill
-      style={{
-        paddingTop: inset.top, paddingRight: inset.right,
-        paddingBottom: inset.bottom, paddingLeft: inset.left,
-        justifyContent: 'center', gap: 24 * unit,
-      }}
-    >
-      <div
-        style={{
-          fontFamily: fonts.heading, fontSize: 60 * unit, lineHeight: 1.1,
-          color: colors.textPrimary, opacity: titleIn, textAlign: align,
-        }}
-      >
-        {props.data.takeaway}
-      </div>
-      <div
-        style={{
-          fontFamily: fonts.body, fontSize: 28 * unit, color: colors.textSecondary,
-          opacity: subtitleIn, textAlign: align,
-        }}
-      >
-        {series.label + ', ' + series.unit}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16 * unit }}>
-        {series.points.map((point, index) =>
-          bar(frame, fps, {
-            brand: props.brand, unit: unit, point: point,
-            share: point.y / top, plot: (portrait ? 0.32 : 0.34) * height, atMs: lands[index],
-            color: index === last ? colors.accent : Remotion.withAlpha(colors.textSecondary, 0.55),
-            note: note && note.atX === point.x ? note.text : null,
-            noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap,
-          }),
-        )}
-      </div>
-    </Remotion.AbsoluteFill>
-  )
-}`
-
-const SYSTEM = `You write ONE motion graphic for a documentary about a corporate collapse, as a React
+const systemTemplate = (
+  bible: ChannelBible,
+): string => `You write ONE motion graphic for a documentary about [[example:direction-premise]], as a React
 component. The narration is recorded; your graphic plays over it in the 16:9 film and in
 the 9:16 Short, and it lands the beat the narrator is speaking.
 
@@ -418,7 +182,7 @@ The rules. Each one is checked, and a graphic that breaks one is refused:
    values are not checked while they keep moving, so land a count on the claim's figure.
    Words on screen say only what the narration or the cited claims say. Never add a
    fact, a judgement, a qualifier or a source note of your own ("never audited", "widely
-   cited", "allegedly"): this is a film about real companies and real people, and no
+   cited", "allegedly"): this is a film about real ${literalBibleText(noun(bible, 'plural'))} and real people, and no
    check reads your words, only your numbers.
 2. Brand. Colours come from props.brand.colors only, with Remotion.withAlpha for opacity;
    type comes from props.brand.fonts. The house paints the background behind your
@@ -454,7 +218,7 @@ Craft:
 - Colour carries meaning: semantic.collapse for loss and failure, semantic.recovery for
   gain, accent or captionHighlight for the one thing to look at, chartSeries to tell
   compared things apart, textPrimary and textSecondary for words.
-- A logo earns its place when the company or person is the subject, not because they
+- A logo earns its place when the ${literalBibleText(noun(bible, 'singular'))} or person is the subject, not because they
   are mentioned.
 - A chart draws every point of props.data, labels each value as its claim states it, and
   says its takeaway.
@@ -488,24 +252,9 @@ and every length are judged on the board, not checked:
 
 ${REMOTION_RULES}
 
-Example 1, a text-only beat. The slot is 7.5 s; its words are "The" 0.0 s, "auditors"
-0.3 s, "could" 0.9 s, "not" 1.2 s, "find" 1.5 s, "1.9" 2.6 s, "billion" 3.0 s, "euros."
-3.4 s, "It" 4.4 s, "had" 4.6 s, "never" 5.0 s, "existed." 5.4 s. Claim 2 reads "Wirecard
-reported €1.9 billion in trustee accounts that auditors could not confirm existed." The
-answer is {"title": "The missing €1.9bn", "facts": [{"text": "€1.9bn", "claim": 2}],
-"source": this component as a JSON string}:
+[[example:graphics-worked-beat]]
 
-${GRAPHIC_EXAMPLE_TYPE}
-
-Example 2, a chart slot. The slot is 7.2 s; "2016" is said at 1.0 s, "2017" at 2.0 s,
-"2018" at 3.0 s and "2019" at 4.2 s. Its data is
-${JSON.stringify(GRAPHIC_EXAMPLE_CHART_DATA)}
-Claims 5 to 8 hold the four years' figures. The answer is {"title": "Trustee cash, year
-by year", "facts": [{"text": "2019", "claim": 8}, {"text": "1.9", "claim": 8}], "source":
-this component as a JSON string}. The facts cite the point the story lands on; the other
-points' digits come off props.data and need no entry:
-
-${GRAPHIC_EXAMPLE_CHART}`
+[[example:graphics-worked-chart]]`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
@@ -533,7 +282,7 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 
   return {
     task: 'graphics',
-    system: SYSTEM,
+    system: fillSlots(systemTemplate(input.bible.bible), input.bible),
     messages: [
       { role: 'user', content: film },
       { role: 'user', content: slot },

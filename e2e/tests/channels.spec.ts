@@ -77,10 +77,12 @@ test.describe('channels', () => {
     ).toContainText('Write the channel bible')
   })
 
-  test('an incomplete bible stops Suggest cases, and completing it frees it', async ({ page }) => {
+  test('Suggest cases is absent on a second channel, and an incomplete bible still shows its banner', async ({
+    page,
+  }) => {
     await signIn(page)
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
 
     await page.goto(channelPath('/settings?tab=channel', SECOND_SLUG))
@@ -101,12 +103,15 @@ test.describe('channels', () => {
       await page.getByLabel(`Category ${index} key`).fill(`category-${index}`)
       await page.getByLabel(`Category ${index} label`).fill(`Category ${index}`)
     }
-    await expect(page.getByText('Bible complete')).toBeVisible()
+    // The bible's full shape needs fields the Channel tab cannot set yet, so
+    // filling every field it does have leaves the bible incomplete.
+    await expect(page.getByText('Bible incomplete')).toBeVisible()
     await page.getByRole('button', { name: 'Save bible' }).click()
     await expect(page.getByText('Saved').first()).toBeVisible()
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
+    await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
   })
 
   test('the brand kit belongs to the channel', async ({ page }) => {

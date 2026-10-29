@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   listShotSlots,
   releaseVisualsJob,
@@ -193,7 +194,10 @@ export const visualsReplanner = inngest.createFunction(
           )
           if (mine.length === 0) continue
           const fixed = await step.run(`repair-${index}`, async () => {
+            // Read here, inside the step, once for the request and its repair.
+            const bible = await channelForProject(db, projectId)
             const request = chapterShotListRequest({
+              bible,
               caseTitle: setup.caseTitle,
               chapter: { id: chapter.id, title: chapter.title, number: index + 1 },
               paragraphs: setup.paragraphs,
@@ -207,6 +211,7 @@ export const visualsReplanner = inngest.createFunction(
             try {
               const outcome = await rewriteStoredBriefs({
                 projectId,
+                bible,
                 request,
                 targets: mine.map((target) => ({
                   id: stored[briefs[target.slotIndex]!.row]!.id,

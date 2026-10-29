@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { PlannedGraphicCodeSchema, ValidationError } from '@boom-busters/schemas'
+import {
+  EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_IN_USE,
+  PlannedGraphicCodeSchema,
+  ValidationError,
+} from '@boom-busters/schemas'
+import {
+  GRAPHIC_EXAMPLE_CHART,
+  GRAPHIC_EXAMPLE_CHART_DATA,
+  GRAPHIC_EXAMPLE_TYPE,
+} from './lift/graphic-examples'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildGraphicRequest,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
   GRAPHIC_CODE_FIXTURE_SOURCE,
-  GRAPHIC_EXAMPLE_CHART,
-  GRAPHIC_EXAMPLE_CHART_DATA,
-  GRAPHIC_EXAMPLE_TYPE,
   mockGraphicCode,
   parseGraphicCode,
   wordsInSlot,
@@ -33,6 +41,7 @@ const CLAIMS = [
 ]
 
 const input = (over: Partial<GraphicDesignInput> = {}): GraphicDesignInput => ({
+  bible: FIRST_CHANNEL_IN_USE,
   caseTitle: 'The Acme collapse',
   claims: CLAIMS,
   logos: ['Acme'],
@@ -329,6 +338,29 @@ describe('the designer prompt (decision 295)', () => {
 
   it('writes no dash a reader would see', () => {
     expect(system).not.toMatch(/[\u2013\u2014]/)
+  })
+})
+
+describe('the designer prompt reads the channel bible', () => {
+  const other = buildGraphicRequest(
+    input({ bible: { bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS } }),
+  ).system
+
+  it("swaps the premise, the nouns and the worked examples for the channel's own", () => {
+    expect(other).toContain(
+      `a documentary about ${PSYCHOLOGY_TEST_BIBLE.examples['direction-premise']!}, as a React`,
+    )
+    expect(other).toContain('a film about real ideas and real people')
+    expect(other).toContain('A logo earns its place when the idea or person is the subject')
+    expect(other).toContain(PSYCHOLOGY_TEST_BIBLE.examples['graphics-worked-beat']!)
+    expect(other).toContain(PSYCHOLOGY_TEST_BIBLE.examples['graphics-worked-chart']!)
+    expect(other).not.toContain('Wirecard')
+  })
+
+  it("derives the exported examples from the first channel's slots", () => {
+    expect(GRAPHIC_EXAMPLE_TYPE.startsWith('// Kinetic type:')).toBe(true)
+    expect(GRAPHIC_EXAMPLE_CHART.startsWith('// A chart from props.data:')).toBe(true)
+    expect(GRAPHIC_EXAMPLE_CHART_DATA.series[0]!.points).toHaveLength(4)
   })
 })
 

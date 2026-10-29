@@ -19,9 +19,10 @@ export async function needsYouCount(db: Database, channelId: string): Promise<nu
     listFailedRuns(db, channelId),
     channelYoutubeReconnectNeeded(db, channelId),
   ])
-  // Only the length is used, so the links' address does not matter.
+  // Only the length is used, so neither the links' address nor the category words matter.
   return buildNeedsYouCards({
     slug: '',
+    bible: { caseCategories: [] },
     awaitingReview,
     budgetGates,
     failedRuns,

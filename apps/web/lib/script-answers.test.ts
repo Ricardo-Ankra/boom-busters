@@ -6,17 +6,23 @@ import {
   mockSelfCheck,
   mockShortsCandidates,
 } from '@boom-busters/providers'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { draftChapterWith, draftOutlineWith, markShortsWith, selfCheckWith } from './script-answers'
 
 const outlineInput = {
+  bible: FIRST_CHANNEL_IN_USE,
   caseTitle: 'Case',
   dossierMd: 'The dossier.',
   claims: [],
   targetRuntimeMin: 10,
 }
-const chapter = { chapterTitle: 'The audit', contentMd: 'The money was gone.', claims: [] }
+const chapter = {
+  bible: FIRST_CHANNEL_IN_USE,
+  chapterTitle: 'The audit',
+  contentMd: 'The money was gone.',
+  claims: [],
+}
 const chapters = [{ index: 0, title: 'The audit', contentMd: 'The money was gone. Nobody asked.' }]
 
 describe('the script answers (decision 292)', () => {
@@ -84,13 +90,13 @@ describe('the script answers (decision 292)', () => {
     const good = vi
       .fn()
       .mockResolvedValue({ text: JSON.stringify({ candidates: mockShortsCandidates(chapters) }) })
-    expect(await markShortsWith(good, { chapters })).toEqual({
+    expect(await markShortsWith(good, { bible: FIRST_CHANNEL_IN_USE, chapters })).toEqual({
       candidates: mockShortsCandidates(chapters),
       repairs: [],
     })
 
     const bad = vi.fn().mockResolvedValue({ text: 'not json at all' })
-    await expect(markShortsWith(bad, { chapters })).rejects.toThrow(
+    await expect(markShortsWith(bad, { bible: FIRST_CHANNEL_IN_USE, chapters })).rejects.toThrow(
       /^The Shorts segments could not be marked: /,
     )
     expect(bad).toHaveBeenCalledTimes(2)
@@ -103,7 +109,7 @@ describe('the script answers (decision 292)', () => {
       text: JSON.stringify({ candidates: [{ ...first, hookRationale: long }] }),
     })
 
-    const marked = await markShortsWith(complete, { chapters })
+    const marked = await markShortsWith(complete, { bible: FIRST_CHANNEL_IN_USE, chapters })
 
     expect(marked.candidates).toHaveLength(1)
     expect(marked.candidates[0]!.startSentence).toBe(first!.startSentence)
@@ -114,6 +120,7 @@ describe('the script answers (decision 292)', () => {
 
 describe('the chapter draft (decision 293)', () => {
   const chapterInput = {
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Case',
     outline: mockOutline(10),
     chapterIndex: 1,

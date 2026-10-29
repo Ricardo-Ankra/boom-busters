@@ -1,5 +1,6 @@
 import { listProjects } from '@boom-busters/db'
 import type { ProjectSummary } from '@boom-busters/db'
+import type { ChannelBible } from '@boom-busters/schemas'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { MiniPipelineRail } from '@/components/pipeline-rail'
@@ -47,7 +48,7 @@ export default async function ProjectsPage({ params }: { params: Promise<{ slug:
         <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
           {projects.map((project) => (
             <li key={project.id}>
-              <ProjectRow project={project} />
+              <ProjectRow project={project} bible={channel.bible} />
             </li>
           ))}
         </ul>
@@ -56,7 +57,7 @@ export default async function ProjectsPage({ params }: { params: Promise<{ slug:
   )
 }
 
-function ProjectRow({ project }: { project: ProjectSummary }) {
+function ProjectRow({ project, bible }: { project: ProjectSummary; bible: ChannelBible }) {
   const action = primaryAction(project)
 
   return (
@@ -64,7 +65,7 @@ function ProjectRow({ project }: { project: ProjectSummary }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium">{project.title}</p>
         <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
-          <Badge>{caseCategoryLabel(project.caseCategory)}</Badge>{' '}
+          <Badge>{caseCategoryLabel(bible, project.caseCategory)}</Badge>{' '}
           <span className="capitalize">{project.stage}</span> · {statusLabel(project.stageStatus)}{' '}
           {ageVerb(project.stageStatus)} {relativeAge(project.updatedAt)}
         </p>

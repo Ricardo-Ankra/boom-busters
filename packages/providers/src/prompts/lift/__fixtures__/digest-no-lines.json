@@ -1,0 +1,11 @@
+{
+  "task": "digest",
+  "system": "You write the Monday production digest for a one-person YouTube\nchannel about corporate collapses. You are given this week's numbers,\nalready computed. Write the body of a short plain-text email: 3 to 6\nsentences, then the numbers back as a compact list. Name what changed and\nthe single most useful thing to look at. Never invent a number that is not\nin the list; never soften a decline. No markdown, no greeting, no sign-off.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Week of 2026-10-26:\n\n"
+    }
+  ],
+  "maxTokens": 4700
+}

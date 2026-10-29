@@ -5,7 +5,9 @@ import {
   CaseSuggestionSchema,
   ValidationError,
 } from '@boom-busters/schemas'
+import type { BibleInUse, ChannelBible } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { fillSlots, literalBibleText } from './bible'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField } from './repair'
 import type { Note } from './repair'
@@ -19,13 +21,14 @@ import type { LLMTaskRequest } from '../llm/types'
  * suggestion prompt, in the same words.
  */
 
-const SYSTEM = `You name the subject of a case study for a YouTube channel about
-corporate collapses, frauds, meltdowns and turnarounds. You are given the
+const system = (bible: ChannelBible): string =>
+  `You name the subject of a case study for a YouTube channel about
+${literalBibleText(bible.subject)}. You are given the
 case's working title, its category and its angle.
 
 Rules:
-- Only real, documented events. Never invent a company, a person or a figure.
-- \`subject\` is the company's common name as Wikipedia titles it, nothing else; \`people\` are the main people, at most ${CASE_PEOPLE_MAX}, full names.
+- Only real, documented events. Never invent [[example:script-subject-with-article]], a person or a figure.
+- \`subject\` is ${literalBibleText(bible.subjectKind)}, nothing else; \`people\` are the main people, at most ${CASE_PEOPLE_MAX}, full names.
 
 Limit (the app checks it): subject ${CASE_SUBJECT_MIN} to ${CASE_SUBJECT_MAX} characters.
 
@@ -33,6 +36,7 @@ Answer with JSON only, no prose around it:
 {"subject": string, "people": [string]}`
 
 export function buildNameSubjectRequest(input: {
+  bible: BibleInUse
   title: string
   angle: string | null
   category: string
@@ -40,7 +44,7 @@ export function buildNameSubjectRequest(input: {
   const angle = input.angle?.trim() ? `\nAngle: ${input.angle.trim()}` : ''
   return {
     task: 'digest',
-    system: SYSTEM,
+    system: fillSlots(system(input.bible.bible), input.bible),
     messages: [
       {
         role: 'user',

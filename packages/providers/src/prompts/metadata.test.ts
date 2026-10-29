@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CHAPTER_GLOSS_MAX, ValidationError } from '@boom-busters/schemas'
+import {
+  CHAPTER_GLOSS_MAX,
+  EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_IN_USE,
+  ValidationError,
+} from '@boom-busters/schemas'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildDescriptionRequest,
   buildTitlesRequest,
@@ -22,6 +28,8 @@ const CLAIM: ScriptClaim = {
 
 describe('buildTitlesRequest', () => {
   const request = buildTitlesRequest({
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
     caseTitle: 'Wirecard',
     hook: 'On a June morning in 2020, 1.9 billion euros stopped existing.',
     target: 'master',
@@ -41,6 +49,8 @@ describe('buildTitlesRequest', () => {
 
   it('tells the model when the titles are for a Short', () => {
     const short = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
       caseTitle: 'Wirecard',
       hook: 'hook',
       target: 'short',
@@ -58,6 +68,8 @@ describe('buildTitlesRequest', () => {
  */
 describe('buildTitlesRequest grounding (decision 303)', () => {
   const grounded = buildTitlesRequest({
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
     caseTitle: 'Stability AI: The Startup That Burned $270M in 18 Months',
     hook: 'March 2024. Emad Mostaque resigned.',
     target: 'master',
@@ -87,6 +99,8 @@ describe('buildTitlesRequest grounding (decision 303)', () => {
 
 describe('buildDescriptionRequest (decision 303)', () => {
   const request = buildDescriptionRequest({
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
     target: 'master',
     claims: [CLAIM],
     centralQuestion: 'What was Stability AI giving away, and what did it keep?',
@@ -121,6 +135,8 @@ describe('buildDescriptionRequest (decision 303)', () => {
 
   it('asks a Short for a few sentences and no chapter glosses', () => {
     const short = buildDescriptionRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
       target: 'short',
       claims: [CLAIM],
       chapters: [],
@@ -140,6 +156,8 @@ describe('buildDescriptionRequest (decision 303)', () => {
    */
   it("writes a Short from what it says, with the film's question left out", () => {
     const short = buildDescriptionRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
       target: 'short',
       claims: [CLAIM],
       centralQuestion: 'What was Stability AI giving away, and what did it keep?',
@@ -158,6 +176,8 @@ describe('buildDescriptionRequest (decision 303)', () => {
 
 describe('buildTitlesRequest for a Short (decision 303)', () => {
   const clip = buildTitlesRequest({
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
     caseTitle: 'Stability AI',
     hook: 'March 2024. Emad Mostaque resigned.',
     target: 'short',
@@ -178,6 +198,8 @@ describe('buildTitlesRequest for a Short (decision 303)', () => {
 
   it('keeps the film framing for a Short whose narration could not be read', () => {
     const unread = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
       caseTitle: 'Stability AI',
       hook: 'March 2024. Emad Mostaque resigned.',
       target: 'short',
@@ -330,5 +352,92 @@ describe('mockTitleOptions', () => {
       expect(title.startsWith('[mock]')).toBe(true)
       expect(title.length).toBeLessThanOrEqual(100)
     }
+  })
+})
+
+describe('metadata prompts read the channel bible', () => {
+  const psychology = { bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS }
+  const titles = buildTitlesRequest({
+    bible: psychology,
+    channelName: 'Mind Matters',
+    caseTitle: 'The Stanford prison experiment',
+    hook: 'In August 1971, a basement became a prison.',
+    target: 'master',
+    workingTitle: 'The Stanford prison experiment',
+  })
+  const description = buildDescriptionRequest({
+    bible: psychology,
+    channelName: 'Mind Matters',
+    target: 'master',
+    claims: [CLAIM],
+    chapters: [],
+  })
+
+  it('names the channel from its row and the style from the bible', () => {
+    expect(titles.system).toContain('You write YouTube titles for Mind Matters, a documentary')
+    expect(titles.system).toContain(`${PSYCHOLOGY_TEST_BIBLE.titleStyle} —`)
+    expect(titles.system).toContain('Name the idea or person;')
+    expect(description.system).toContain('YouTube descriptions for Mind Matters, a documentary')
+    expect(titles.system).not.toContain('Boom & Busters')
+    expect(description.system).not.toContain('Boom & Busters')
+  })
+
+  it("takes each slot from the channel's own examples", () => {
+    expect(titles.system).toContain(PSYCHOLOGY_TEST_BIBLE.examples['metadata-title-mechanisms']!)
+    expect(description.system).toContain(
+      PSYCHOLOGY_TEST_BIBLE.examples['metadata-description-opening']!,
+    )
+    expect(description.system).toContain(PSYCHOLOGY_TEST_BIBLE.examples['metadata-tag-kinds']!)
+  })
+
+  it('sends owner-typed text exactly as typed, even when it looks like a marker', () => {
+    const typed = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: { ...FIRST_CHANNEL_IN_USE.bible, titleStyle: 'Plain [[example:nope]] words' },
+    }
+    const request = buildTitlesRequest({
+      bible: typed,
+      channelName: 'Odd [[if:x]] Name',
+      caseTitle: 'Wirecard',
+      hook: 'Hook.',
+      target: 'master',
+      workingTitle: 'Wirecard',
+    })
+    expect(request.system).toContain('Plain [[example:nope]] words —')
+    expect(request.system).toContain('titles for Odd [[if:x]] Name,')
+  })
+})
+
+describe("buildTitlesRequest with the channel's drafted titles", () => {
+  const input = {
+    channelName: 'Boom & Busters',
+    caseTitle: 'Wirecard',
+    hook: 'Hook.',
+    target: 'master' as const,
+    workingTitle: 'Wirecard',
+  }
+  const drafted = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: {
+      ...FIRST_CHANNEL_IN_USE.bible,
+      titles: [
+        { text: 'The Vault Was Empty', note: 'states the loss', drawnFrom: [] },
+        { text: 'Who Checked? [[example:x]]', note: '', drawnFrom: [] },
+      ],
+    },
+  }
+
+  it('lists them after the existing rules, text verbatim', () => {
+    const { system } = buildTitlesRequest({ ...input, bible: drafted })
+    expect(system).toContain('- The Vault Was Empty (states the loss)')
+    expect(system).toContain('- Who Checked? [[example:x]]')
+    expect(system.indexOf("The channel's own titles")).toBeGreaterThan(
+      system.indexOf('the stakes must be in the first half.'),
+    )
+  })
+
+  it('adds nothing when the channel has none', () => {
+    const { system } = buildTitlesRequest({ ...input, bible: FIRST_CHANNEL_IN_USE })
+    expect(system).not.toContain("The channel's own titles")
   })
 })

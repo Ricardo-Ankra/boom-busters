@@ -125,6 +125,7 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     hook: 'On a June morning in 2020, 1.9 billion euros stopped existing.',
     scriptVersion: 4,
     musicAttribution: null,
+    disclaimer: PUBLISH_DISCLAIMER,
     // Friday 15:00 UTC long-form, Saturday 16:00 UTC Short — the defaults.
     slots: [
       { kind: 'longform', weekday: 5, timeUtc: '15:00' },
@@ -238,6 +239,12 @@ describe('PublishScreen', () => {
     expect(preview.textContent).toContain('5:12 The hole')
     expect(preview.textContent).toContain('Sources:')
     expect(preview.textContent).toContain('https://example.com/ft-report')
+  })
+
+  it("previews the channel's own disclaimer, not Boom & Busters'", () => {
+    renderScreen({ disclaimer: 'This is education, not advice.' })
+    const preview = screen.getByText(/This is education, not advice\./)
+    expect(preview.textContent).not.toContain(PUBLISH_DISCLAIMER.slice(0, 40))
   })
 
   it('a Short composes without chapter stamps — they mean nothing there', () => {

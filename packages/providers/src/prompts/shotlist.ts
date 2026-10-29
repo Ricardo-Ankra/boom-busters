@@ -12,6 +12,7 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type {
+  BibleInUse,
   DirectorsBook,
   PlannedBrief,
   PlannedSlot,
@@ -19,7 +20,8 @@ import type {
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
-import { DIRECTION_CRAFT } from './direction-craft'
+import { fillSlots, literalBibleText } from './bible'
+import { directionCraft, directionRules } from './direction-craft-text'
 import { MIN_SHOT_RULE } from './min-shot-rule'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
@@ -132,8 +134,17 @@ export function referencesPrefix(
   )
 }
 
-/** The three kinds of people a still may show, and how each is written (decision 253). */
-export const PEOPLE_RULES = `  People come in three kinds and they never mix:
+/**
+ * The three kinds of people a still may show, and how each is written
+ * (decision 253). Which unnamed people a channel's films carry is the
+ * channel's own, so the rules are a function of the bible; the result goes
+ * into a prompt whose own `fillSlots` leaves the owner's text as typed.
+ */
+export function peopleRules(inUse: BibleInUse): string {
+  return literalBibleText(fillSlots(PEOPLE_RULES_TEMPLATE, inUse))
+}
+
+const PEOPLE_RULES_TEMPLATE = `  People come in three kinds and they never mix:
   (a) A name in "Photographed" above. Name them by full name and role and
       write NO physical description of them whatever: no age, build, height,
       hair, beard, glasses, skin or face. The photograph is the likeness.
@@ -142,7 +153,7 @@ export const PEOPLE_RULES = `  People come in three kinds and they never mix:
   (b) A named person NOT in that list. Write their identity string from the
       book as one sentence; it already begins with their full name and role.
       List them in "depicts" by name alone.
-  (c) Anyone unnamed: investors, employees, staff, an aide, a driver, a
+  (c) Anyone unnamed: [[example:direction-background-people]], employees, staff, an aide, a driver, a
       crowd. No name and no identity string; the bible's People section says
       how they are written.
 `
@@ -229,8 +240,7 @@ Chart kind, chosen by what the data IS, not by habit:
 Never answer with a bar because it is the safe choice. If the producer names a
 kind, use it.
 
-Two measures that are not in the same unit (a valuation in billions against a
-margin in percent) need "axis": "left" on one series and "right" on the other.
+Two measures that are not in the same unit ([[example:shotlist-two-units]]) need "axis": "left" on one series and "right" on the other.
 On one scale the smaller series flattens onto the floor and is labelled in the
 other's unit, which is a chart that lies.
 - {"type": "map", "coversText", "description", "motion", "transition",
@@ -248,6 +258,8 @@ other's unit, which is a chart that lies.
 }
 
 export function buildShotListRequest(input: {
+  /** The channel bible the project froze: the house look and the channel's own rules. */
+  bible: BibleInUse
   caseTitle: string
   chapterTitle: string
   /** 1-based position in the script; names the Director's Book entry to follow. */
@@ -307,12 +319,13 @@ export function buildShotListRequest(input: {
 
   return {
     task: 'shotlist',
-    system: `You are planning the visuals for one chapter of a documentary about
-a corporate collapse. The narration is already recorded; your slots are what is
+    system: fillSlots(
+      `You are planning the visuals for one chapter of a documentary about
+[[example:direction-premise]]. The narration is already recorded; your slots are what is
 on screen while it plays. The bible below is the house's fixed direction; the
 Director's Book in the first message is this film's.
 
-${DIRECTION_CRAFT}
+${directionCraft(input.bible.bible)}${directionRules(input.bible)}
 
 Return JSON: {"slots": [...]}
 
@@ -348,14 +361,14 @@ ${MIN_SHOT_RULE}
   bible's "What a still prompt must contain" says: prose, subject first, the
   detail the sentence names, the light of the moment, then lens and camera height
   (a still that names a set is the exception: its lens and camera height go in "camera" instead).
-${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
+${peopleRules(input.bible)}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   it decides what you plan, not what the image model reads, and a model
-  reads "never in handcuffs" as a request for handcuffs. Put its concrete
+  reads [[example:shotlist-guardrail-negation]]. Put its concrete
   nouns in "negativePrompt" instead.
   ${STILL_GENERATIONS === 1 ? 'One image is' : `${STILL_GENERATIONS} variants are`} generated per prompt.
 - "headline" puts a REAL news headline on screen, in the house clipping
   format. Plan one where the narration leans on what a publication reported:
-  "the Financial Times reported", "the paper found", "when the story broke".
+  [[example:shotlist-headline-cue]].
   "sourceRef" is the NUMBER of the claim whose article it shows, and that
   claim must be marked NEWS ARTICLE in the list above; anything else has no
   article behind it to quote. You write NO part of the card: not the outlet,
@@ -371,6 +384,8 @@ ${PEOPLE_RULES}${sets.length > 0 ? SET_RULES : ''}  Never quote the guardrail:
   for the narrator, not content; never plan a visual around one and never quote
   one in "coversText".
 ${HERO_SLOTS_ENABLED ? '' : '- Never emit type "hero". It is disabled.\n'}`,
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: prefix },
       {
@@ -453,7 +468,15 @@ export interface ShotRepairTarget {
 export function buildShotRepairRequest(
   base: LLMTaskRequest,
   targets: readonly ShotRepairTarget[],
-  options: { allowStockToStill: boolean },
+  options: {
+    allowStockToStill: boolean
+    /**
+     * The bible the plan was built under. No text here is the channel's (the rules
+     * above travel in `base.system`), but every builder takes one, so the
+     * psychology sweep covers this one too.
+     */
+    bible: BibleInUse
+  },
 ): LLMTaskRequest {
   const listing = targets
     .map(

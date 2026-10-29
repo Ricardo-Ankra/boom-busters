@@ -1,6 +1,7 @@
 import { CandidateScoresSchema } from '@boom-busters/schemas'
 import type {
   ArchivalBrief,
+  BibleInUse,
   CandidateScores,
   SlotCandidate,
   StockBrief,
@@ -59,6 +60,11 @@ function candidateLine(candidate: SlotCandidate, index: number): string {
 }
 
 export function buildScoringRequest(input: {
+  /**
+   * The bible in use. No text here is the channel's, but every builder takes one,
+   * so the psychology sweep covers this one too.
+   */
+  bible: BibleInUse
   brief: ScorableBrief
   candidates: readonly SlotCandidate[]
 }): LLMTaskRequest {

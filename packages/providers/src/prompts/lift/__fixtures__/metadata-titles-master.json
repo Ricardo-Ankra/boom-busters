@@ -1,0 +1,19 @@
+{
+  "task": "metadata",
+  "system": "You write YouTube titles for Boom & Busters, a documentary channel\nabout corporate collapses, cons and meltdowns. Sober, specific, curiosity-driven —\nnever clickbait that the video cannot pay off, never ALL CAPS, no emoji.\n\nReturn JSON: {\"titles\": [\"...\", ...]} — exactly 8 strings.\n\nRules:\n- Every figure, date and name in a title must appear in the claim list below.\n  The case and working title are an early pitch and may carry figures the\n  research did not support; never repeat a figure from them that the claims\n  do not carry.\n- A claim marked NOT adjudicated is an allegation: a title may frame it as an\n  allegation or a question, never state it as fact about a named person.\n- Each title is at most 100 characters and at least 20.\n- Name the company or person; a title that could sit on any video is a bad title.\n- Vary the mechanism across the set: a question, a number, a timeline\n  (\"Nine days\"), a contradiction, a consequence. No two titles may share\n  their first three words.\n- These are for the full documentary: they can breathe, but the stakes must be in the first half.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Case: Wirecard\nWorking title: How Wirecard Lost 1.9 Billion Euros\n\nOpening hook:\nOn the nineteenth of June, a company worth billions admitted it could not find the money."
+    },
+    {
+      "role": "user",
+      "content": "The film's question: How did 1.9 billion euros never exist?"
+    },
+    {
+      "role": "user",
+      "content": "Claims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NOT adjudicated — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — ADJUDICATED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — NOT adjudicated — UNVERIFIED (X POST)"
+    }
+  ],
+  "maxTokens": 5000
+}

@@ -68,6 +68,7 @@ export async function planStretchWith(
   const base = chapterShotListRequest(input)
   if (!base) return { ok: false, issue: NO_NARRATION }
   const request = buildStretchRequest(base, {
+    bible: input.bible,
     pieces: input.stretch.pieces,
     opening: input.stretch.opening,
     before: input.before,
@@ -116,6 +117,7 @@ export async function planStretchWith(
     slots: answer.value.slots,
     chapterNumber: input.chapter.number,
     context: chapterFindingContext(input),
+    bible: input.bible,
   })
   if (slots === answer.value.slots) return { ok: true, ...answer.value }
   const repaired = convert(input, slots)

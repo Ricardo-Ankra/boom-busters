@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { buildChapterRequest } from './script'
 import { SCRIPT_CRAFT } from './script-craft'
 
 describe('SCRIPT_CRAFT', () => {
@@ -18,7 +20,17 @@ describe('SCRIPT_CRAFT', () => {
 
   it('never overrides the hard rules, in its own words', () => {
     expect(SCRIPT_CRAFT).toContain('claim list does not')
-    expect(SCRIPT_CRAFT).toContain('legal hedges are never sacrificed')
+    // The hedge kind is a slot now: the first channel's text lands in what is sent.
+    const { system } = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Case',
+      outline: { chapters: [{ title: 'One', beat: 'x'.repeat(30), targetWords: 300 }] },
+      chapterIndex: 0,
+      previousChapters: [],
+      claims: [],
+    })
+    expect(system).toContain('legal hedges are never sacrificed')
+    expect(SCRIPT_CRAFT).toContain('[[example:script-hedge-kind]] are never sacrificed')
   })
 
   /**

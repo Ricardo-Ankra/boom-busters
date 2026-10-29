@@ -239,7 +239,7 @@ export function LogosTab({
             <CardTitle>Marks</CardTitle>
             <CardDescription>
               The channel mark is drawn in the corner of every film. Without one, the corner carries
-              the Boom &amp; Busters wordmark.
+              the channel&apos;s name as a wordmark.
             </CardDescription>
           </div>
           {channelMarkKey !== null ? (

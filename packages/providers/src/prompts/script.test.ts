@@ -1,4 +1,5 @@
 import {
+  FIRST_CHANNEL_IN_USE,
   OutlineSchema,
   SHORTS_HOOK_MAX,
   TEASER_PARAGRAPH_MAX,
@@ -26,6 +27,7 @@ import {
   tensionContract,
   tensionFromOutline,
 } from './script'
+import type { BibleInUse } from '@boom-busters/schemas'
 import type { ScriptClaim } from './script'
 import type { Note, Repair } from './repair'
 
@@ -80,6 +82,7 @@ const outline = OutlineSchema.parse({
 
 describe('buildOutlineRequest', () => {
   const request = buildOutlineRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Enron',
     dossierMd: '# Enron',
     claims,
@@ -219,6 +222,7 @@ describe('tensionContract', () => {
 
 describe('buildChapterRequest', () => {
   const request = buildChapterRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Enron',
     outline,
     chapterIndex: 1,
@@ -243,6 +247,7 @@ describe('buildChapterRequest', () => {
 
   it('says it is the opening chapter when nothing is drafted yet', () => {
     const first = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Enron',
       outline,
       chapterIndex: 0,
@@ -294,6 +299,7 @@ describe('buildChapterRequest', () => {
     })
     expect(ownershipBrief(bare, 1)).toBe('')
     const without = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Enron',
       outline: bare,
       chapterIndex: 1,
@@ -391,6 +397,7 @@ describe('buildChapterRequest', () => {
     // The outline sets each chapter's beat; a beat written for the eye
     // produces chapters written for the eye.
     const outlineRequest = buildOutlineRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Enron',
       dossierMd: '# Dossier',
       claims,
@@ -422,6 +429,7 @@ describe('buildChapterRequest', () => {
       ],
     })
     const withoutContract = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Enron',
       outline: bare,
       chapterIndex: 0,
@@ -435,6 +443,7 @@ describe('buildChapterRequest', () => {
 
   it('gives the regenerate pass the same craft rules', () => {
     const regenerate = buildRegenerateRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       chapterTitle: 'The turn',
       contentMd: 'Some narration. More narration.',
       selection: 'More narration.',
@@ -447,6 +456,7 @@ describe('buildChapterRequest', () => {
 
 describe('buildSelfCheckRequest', () => {
   const request = buildSelfCheckRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     chapterTitle: 'The turn',
     contentMd: 'Some narration.',
     claims,
@@ -639,6 +649,7 @@ describe('parseOutline and parseShortsCandidates', () => {
 describe('buildShortsRequest', () => {
   it('asks for teaser segments that end before a reveal, not summaries', () => {
     const request = buildShortsRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
     })
     expect(request.system).toMatch(/TEASER, not a summary/)
@@ -649,6 +660,7 @@ describe('buildShortsRequest', () => {
 
   it('threads the tension fields into the message when the outline carries them', () => {
     const request = buildShortsRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
       tension: {
         centralQuestion: 'How did 1.9 billion euros never exist?',
@@ -668,6 +680,7 @@ describe('buildShortsRequest', () => {
 
   it('degrades to text-only for a script whose outline was never kept', () => {
     const request = buildShortsRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
     })
     expect(request.messages[0]!.content).not.toContain('withholds')
@@ -827,7 +840,11 @@ describe('the teaser (decision 293)', () => {
   }
 
   it('states every limit in the prompt', () => {
-    const { system } = buildTeaserRequest({ caseTitle: 'Wirecard', chapters })
+    const { system } = buildTeaserRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Wirecard',
+      chapters,
+    })
     expect(system.replace(/\s+/g, ' ')).toContain(
       'Limits (the app checks them): title 3 to 90 characters; 2 to 5 paragraphs, each 10 to ' +
         '400 characters; chapterIndex is the number of a chapter below, 0 to 1.',
@@ -907,6 +924,7 @@ describe('the Shorts marking limits (decision 293)', () => {
 
   it('states every limit in the prompt', () => {
     const rules = buildShortsRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       chapters: [{ index: 0, title: 'One', contentMd: 'Text.' }],
     }).system.replace(/\s+/g, ' ')
     expect(rules).toContain(
@@ -978,5 +996,144 @@ describe('the Shorts marking limits (decision 293)', () => {
         JSON.stringify({ candidates: [candidate({ hookRationale: 'short' })] }),
       ),
     ).toThrow(ValidationError)
+  })
+})
+
+describe("a channel's own rules in the script prompts", () => {
+  const rules = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: {
+      ...FIRST_CHANNEL_IN_USE.bible,
+      voiceDos: ['Name the researcher before the result.'],
+      scriptRulesMd: 'Never call a finding settled.',
+    },
+  }
+  const outline = OutlineSchema.parse({
+    chapters: [
+      { title: 'One', beat: 'x'.repeat(30), targetWords: 300 },
+      { title: 'Two', beat: 'y'.repeat(30), targetWords: 300 },
+    ],
+  })
+
+  it('appends them straight after the craft text in the chapter prompt', () => {
+    const { system } = buildChapterRequest({
+      bible: rules,
+      caseTitle: 'Case',
+      outline,
+      chapterIndex: 0,
+      previousChapters: [],
+      claims: [],
+    })
+    expect(system).toContain(
+      "## This channel's rules\n\n- Do: Name the researcher before the result.\nNever call a finding settled.",
+    )
+    expect(system.indexOf("This channel's rules")).toBeGreaterThan(system.indexOf('## The close'))
+    expect(system.indexOf("This channel's rules")).toBeLessThan(system.indexOf('Write ONE chapter'))
+  })
+
+  it('never reads marker-looking text in them as a marker', () => {
+    const literal = 'Keep [[example:script-x]] and [[if:script-x]] as typed.'
+    const typed = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: { ...FIRST_CHANNEL_IN_USE.bible, scriptRulesMd: literal },
+    }
+    const { system } = buildChapterRequest({
+      bible: typed,
+      caseTitle: 'Case',
+      outline,
+      chapterIndex: 0,
+      previousChapters: [],
+      claims: [],
+    })
+    expect(system).toContain(literal)
+  })
+
+  it('keeps marker-looking text in the bible fields as typed', () => {
+    const literal = 'Never write [[example:script-x]] or [[/if]].'
+    const typed = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: {
+        ...FIRST_CHANNEL_IN_USE.bible,
+        hedgingRules: `The hard rules:\n- ${literal}`,
+        narrationRegister: 'plain [[if:script-x]]',
+        subjectNoun: { singular: 'idea [[x', plural: 'ideas [[y' },
+      },
+    }
+    const { system } = buildOutlineRequest({
+      bible: typed,
+      caseTitle: 'Case',
+      dossierMd: 'd',
+      claims,
+      targetRuntimeMin: 10,
+    })
+    expect(system).toContain(literal)
+    expect(system).toContain('Voice: plain [[if:script-x]].')
+    expect(system).toContain('real ideas [[y and')
+    expect(system).toContain('per person or idea [[x,')
+  })
+
+  it('sends none for a channel that has none', () => {
+    const { system } = buildSelfCheckRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      chapterTitle: 'x',
+      contentMd: 'y',
+      claims: [],
+    })
+    expect(system).not.toContain("This channel's rules")
+  })
+})
+
+describe("the channel's drafted hooks and openings", () => {
+  const drafted: BibleInUse = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: {
+      ...FIRST_CHANNEL_IN_USE.bible,
+      hooks: [
+        { text: 'The vault was empty.', note: 'opens on the loss', drawnFrom: [] },
+        { text: 'Nobody checked. [[example:x]]', note: '', drawnFrom: [] },
+      ],
+      openings: [{ text: 'Line one.\nLine two.', note: 'cold open', drawnFrom: [] }],
+    },
+  }
+
+  it('appends them after the existing opening rules in the outline prompt', () => {
+    const { system } = buildOutlineRequest({
+      bible: drafted,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 18,
+    })
+    expect(system).toContain('- The vault was empty. (opens on the loss)')
+    expect(system).toContain('- Nobody checked. [[example:x]]')
+    expect(system).toContain('- Line one.\n  Line two. (cold open)')
+    const rulesEnd = system.indexOf('narrates only the claims it\nowns.')
+    const hooks = system.indexOf("The channel's own hooks")
+    const openings = system.indexOf("The channel's own openings")
+    expect(rulesEnd).toBeGreaterThan(-1)
+    expect(hooks).toBeGreaterThan(rulesEnd)
+    expect(openings).toBeGreaterThan(hooks)
+  })
+
+  it('shows them to the opening chapter only', () => {
+    const base = { bible: drafted, caseTitle: 'Enron', outline, previousChapters: [], claims }
+    expect(buildChapterRequest({ ...base, chapterIndex: 0 }).system).toContain(
+      '- The vault was empty. (opens on the loss)',
+    )
+    expect(buildChapterRequest({ ...base, chapterIndex: 1 }).system).not.toContain(
+      'The vault was empty.',
+    )
+  })
+
+  it('adds nothing for a channel that has none', () => {
+    const { system } = buildOutlineRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 18,
+    })
+    expect(system).not.toContain("The channel's own hooks")
+    expect(system).not.toContain("The channel's own openings")
   })
 })

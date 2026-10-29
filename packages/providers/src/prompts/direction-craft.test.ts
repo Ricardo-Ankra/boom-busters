@@ -1,13 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { fillSlots, markersIn } from './bible'
 import {
   BANNED_PROMPT_WORDS,
   DIRECTION_CRAFT,
   stripBannedWords,
   withoutBannedWords,
 } from './direction-craft'
+import { directionCraft, registerBullet } from './direction-craft-text'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
+
+// The craft as the first channel is sent it: its register and its example slots filled in.
+const FIRST_CRAFT = fillSlots(directionCraft(FIRST_CHANNEL_BIBLE), FIRST_CHANNEL_IN_USE)
 
 describe('DIRECTION_CRAFT', () => {
   it('is byte-identical to direction-craft.md, the human-editable source', () => {
@@ -22,15 +29,18 @@ describe('DIRECTION_CRAFT', () => {
 
   it('sits below the hard rules, in its own words', () => {
     expect(DIRECTION_CRAFT).toContain('claim list does not')
-    expect(DIRECTION_CRAFT).toContain('legal hedges')
+    // The hedge kind is a slot: the first channel's text lands in what is sent.
+    expect(DIRECTION_CRAFT).toContain('[[example:script-hedge-kind]] are never sacrificed')
+    expect(FIRST_CRAFT).toContain('legal hedges are never sacrificed')
   })
 
   it('names the people guardrail and the banned words', () => {
     expect(DIRECTION_CRAFT).toContain('shown by likeness, and the')
     expect(DIRECTION_CRAFT).toContain('a specific act the claims do not establish')
-    expect(DIRECTION_CRAFT).toContain('never fences a person away from ordinary')
+    // Slot text: asserted on the craft as the first channel is sent it.
+    expect(FIRST_CRAFT).toContain('never fences a person away from ordinary')
     expect(DIRECTION_CRAFT).toContain('No guardrail text appears')
-    expect(DIRECTION_CRAFT).toContain("A real company's own marks belong in frame")
+    expect(FIRST_CRAFT).toContain("A real company's own marks belong in frame")
     expect(DIRECTION_CRAFT).toContain('a generated wordmark is a wrong one')
     expect(DIRECTION_CRAFT).toContain('set by the compositor, never by the image model')
     expect(DIRECTION_CRAFT).toContain('by name alone, no role after it')
@@ -167,11 +177,12 @@ describe('DIRECTION_CRAFT', () => {
   })
 
   it('stages people in place rather than symbols, and drops the motif floor (decision 271)', () => {
-    expect(DIRECTION_CRAFT).toContain('The people, in the rooms where it happened')
+    // The register is the channel's, so this one is asserted on the craft as the first channel is sent it.
+    expect(FIRST_CRAFT).toContain('The people, in the rooms where it happened')
     expect(DIRECTION_CRAFT).not.toContain('Rooms after the people have left')
     expect(DIRECTION_CRAFT).not.toContain('never the face')
     expect(DIRECTION_CRAFT).toContain('An abstract sentence is staged, not symbolised.')
-    expect(DIRECTION_CRAFT).toContain('the principals at the boardroom table')
+    expect(FIRST_CRAFT).toContain('the principals at the boardroom table')
     expect(DIRECTION_CRAFT).not.toContain('each chapter shows at least one of them')
     expect(DIRECTION_CRAFT).not.toContain('Every chapter shows at least one motif')
     expect(DIRECTION_CRAFT).not.toContain('may stand in for the third fact')
@@ -226,5 +237,60 @@ describe('withoutBannedWords', () => {
     expect(withoutBannedWords(stock)).toBe(stock)
     const clean = { type: 'still', prompt: 'A boardroom' }
     expect(withoutBannedWords(clean)).toBe(clean)
+  })
+})
+
+describe('the channel register in the craft (the channel bible lift)', () => {
+  // The Register bullet exactly as direction-craft.md printed it before the register moved into the bible.
+  const FIRST_REGISTER_BULLET = `- Register: the Netflix money documentary. Dark, patient, photographic
+  realism. The people, in the rooms where it happened: principals at the
+  table, in the corridor, at the podium, re-created with a reconstruction's
+  restraint. Empty rooms, documents and objects are punctuation between
+  them, not the film.
+`
+
+  it("wraps the first channel's one-line register into the bullet it replaced, byte for byte", () => {
+    expect(registerBullet(FIRST_CHANNEL_BIBLE.visualRegister)).toBe(FIRST_REGISTER_BULLET)
+    expect(FIRST_CRAFT).toContain(`## The house look\n\n${FIRST_REGISTER_BULLET}- Restraint`)
+  })
+
+  it('wraps at 75 characters with a two-space indent, whatever the register', () => {
+    const bullet = registerBullet('word '.repeat(60))
+    const lines = bullet.trimEnd().split('\n')
+    expect(lines.length).toBeGreaterThan(2)
+    expect(lines[0]!.startsWith('- Register: word')).toBe(true)
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(75)
+    for (const line of lines.slice(1)) expect(line.startsWith('  word')).toBe(true)
+  })
+
+  it("puts a second channel's register in and none of the first's", () => {
+    const craft = fillSlots(directionCraft(PSYCHOLOGY_TEST_BIBLE), {
+      bible: PSYCHOLOGY_TEST_BIBLE,
+      slotIds: [],
+    })
+    expect(craft).toContain(registerBullet(PSYCHOLOGY_TEST_BIBLE.visualRegister))
+    expect(craft).not.toContain('Netflix')
+    expect(craft).not.toContain('{{visualRegister}}')
+  })
+
+  it('drops the bullet of a channel that has no register', () => {
+    const craft = directionCraft({ ...FIRST_CHANNEL_BIBLE, visualRegister: '  ' })
+    expect(craft).not.toContain('- Register:')
+    expect(craft).not.toContain('{{visualRegister}}')
+    expect(craft).toContain('## The house look\n\n- Restraint over spectacle')
+  })
+
+  it('sends a register that looks like a marker as typed, never filled', () => {
+    const craft = fillSlots(
+      directionCraft({ ...FIRST_CHANNEL_BIBLE, visualRegister: 'quiet [[example:no-such-slot]]' }),
+      FIRST_CHANNEL_IN_USE,
+    )
+    expect(craft).toContain('- Register: quiet [[example:no-such-slot]]')
+  })
+
+  it('swaps channel text only for slots the first channel holds', () => {
+    for (const id of markersIn(DIRECTION_CRAFT)) {
+      expect(FIRST_CHANNEL_BIBLE.examples[id], id).toBeDefined()
+    }
   })
 })

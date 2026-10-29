@@ -1,7 +1,7 @@
 import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
 import type { DirectorsBook, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { cases, costLedger, dossiers, projects, scripts } from './schema'
+import { cases, channelBibles, channels, costLedger, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
 
 /**
@@ -426,16 +426,39 @@ export function nextStage(stage: ProjectStage): ProjectStage | null {
  * `targetRuntimeMin` is a project-level decision rather than a case-level one:
  * the same case can be a 12-minute telling or a 25-minute one, and the script
  * runner's outline is built against it.
+ *
+ * The project freezes the channel's current bible version, so editing the
+ * bible later never changes a film midway. `bibleId` names a specific version
+ * instead, and must belong to the case's channel.
  */
 export async function createProjectFromCase(
   db: Database,
-  input: { caseId: string; title: string; targetRuntimeMin?: number },
+  input: { caseId: string; title: string; targetRuntimeMin?: number; bibleId?: string },
 ): Promise<ProjectRow> {
+  if (input.bibleId !== undefined) {
+    const [kase] = await db
+      .select({ channelId: cases.channelId })
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .limit(1)
+    const [version] = await db
+      .select({ channelId: channelBibles.channelId })
+      .from(channelBibles)
+      .where(eq(channelBibles.id, input.bibleId))
+      .limit(1)
+    if (!kase || !version || kase.channelId !== version.channelId) {
+      throw new Error('bible version belongs to another channel')
+    }
+  }
+
   const [row] = await db
     .insert(projects)
     .values({
       // A project always belongs to its case's channel.
       channelId: sql<string>`(select ${cases.channelId} from ${cases} where ${cases.id} = ${input.caseId})`,
+      bibleId:
+        input.bibleId ??
+        sql<string>`(select ${channels.currentBibleId} from ${channels} join ${cases} on ${cases.channelId} = ${channels.id} where ${cases.id} = ${input.caseId})`,
       caseId: input.caseId,
       title: input.title,
       stage: 'dossier',

@@ -19,6 +19,7 @@ import {
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import type * as Db from '@boom-busters/db'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { updateShort } from '@boom-busters/db'
@@ -61,6 +62,21 @@ const providers = vi.hoisted(() => ({ mock: true }))
 vi.mock('@boom-busters/providers', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return { ...actual, mockProvidersEnabled: () => providers.mock }
+})
+
+/** Lets one test give the project's frozen bible another call to action. */
+const bibleOverride = vi.hoisted(() => ({ ctaLine: null as string | null }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof Db
+  return {
+    ...actual,
+    channelForProject: async (...args: Parameters<typeof actual.channelForProject>) => {
+      const channel = await actual.channelForProject(...args)
+      return bibleOverride.ctaLine === null
+        ? channel
+        : { ...channel, bible: { ...channel.bible, ctaLine: bibleOverride.ctaLine } }
+    },
+  }
 })
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -111,6 +127,7 @@ describeDb('short-render-runner', () => {
     broker.configured = false
     storage.configured = false
     providers.mock = true
+    bibleOverride.ctaLine = null
     await seed(db)
     await truncateRunMirror(db)
     await truncateLedger(db)
@@ -235,6 +252,36 @@ describeDb('short-render-runner', () => {
         expect(uploaded.overlays[0]).toMatchObject({ kind: 'endCta' })
         // Captioned by default, whatever the master says (decision 326).
         expect(uploaded.captions.style).toBe('karaoke')
+      },
+    )
+
+    it(
+      'ends on the channel’s own call to action, from its frozen bible',
+      { timeout: 120_000 },
+      async () => {
+        broker.submitRender.mockResolvedValue({
+          brokerRenderId: '01HQ0000000000000000000BR1',
+          remotionRenderId: 'rem-short',
+          estimatedCostUsd: 0.0033,
+        })
+        const cta = (buffer: Buffer): string | undefined => {
+          const overlay = (JSON.parse(buffer.toString()) as Timeline).overlays.find(
+            (o) => o.kind === 'endCta',
+          )
+          return (overlay?.props as { text?: string } | undefined)?.text
+        }
+
+        await engine.executeStep('invoke-broker', { events: requestedEvent() })
+        expect(cta(storage.putObject.mock.calls[0]?.[1] as Buffer)).toBe(
+          'The full story is on the channel',
+        )
+
+        bibleOverride.ctaLine = 'Watch the whole file on the channel'
+        storage.putObject.mockClear()
+        await engine.executeStep('invoke-broker', { events: requestedEvent() })
+        expect(cta(storage.putObject.mock.calls[0]?.[1] as Buffer)).toBe(
+          'Watch the whole file on the channel',
+        )
       },
     )
 

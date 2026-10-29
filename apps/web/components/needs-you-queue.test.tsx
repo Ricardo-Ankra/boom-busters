@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react'
+import type { ProjectSummary } from '@boom-busters/db'
+import { FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildNeedsYouCards, NeedsYouQueue } from './needs-you-queue'
 
@@ -8,7 +10,13 @@ import { buildNeedsYouCards, NeedsYouQueue } from './needs-you-queue'
  */
 
 describe('the Reconnect YouTube card', () => {
-  const empty = { slug: 'psychology', awaitingReview: [], budgetGates: [], failedRuns: [] }
+  const empty = {
+    slug: 'psychology',
+    bible: FIRST_CHANNEL_BIBLE,
+    awaitingReview: [],
+    budgetGates: [],
+    failedRuns: [],
+  }
 
   it('appears only when the connection is known-dead', () => {
     expect(buildNeedsYouCards(empty)).toHaveLength(0)
@@ -44,5 +52,35 @@ describe('the Reconnect YouTube card', () => {
       'href',
       '/c/psychology/settings?tab=connections',
     )
+  })
+})
+
+describe('a review card and the case category', () => {
+  const project = {
+    id: '01J0000000000000000000000P',
+    title: 'Wirecard',
+    stage: 'script',
+    caseCategory: 'con',
+    targetRuntimeMin: 15,
+    updatedAt: new Date('2026-10-09T10:00:00Z'),
+  } as ProjectSummary
+  const base = {
+    slug: 'psychology',
+    budgetGates: [],
+    failedRuns: [],
+    awaitingReview: [project],
+  }
+
+  it("words the category as the channel's bible does", () => {
+    const [card] = buildNeedsYouCards({ ...base, bible: FIRST_CHANNEL_BIBLE })
+    expect(card!.context).toContain('· Con ·')
+  })
+
+  it('shows the key itself when the bible no longer lists it, without error', () => {
+    const [card] = buildNeedsYouCards({
+      ...base,
+      bible: { caseCategories: [{ key: 'bias', label: 'Bias' }] },
+    })
+    expect(card!.context).toContain('· con ·')
   })
 })

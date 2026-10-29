@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BudgetExceededError,
   ChartBriefSchema,
+  FIRST_CHANNEL_IN_USE,
   GraphicBriefSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -30,7 +31,7 @@ vi.mock('@boom-busters/db', async (importOriginal) => ({
     channelId: '01J00000000000000000000CH1',
     slug: 'first',
     settings: {},
-    bible: {},
+    ...(await import('@boom-busters/schemas')).FIRST_CHANNEL_IN_USE,
   }),
 }))
 let mock = false
@@ -550,7 +551,7 @@ describe('designGraphicWith (the model call is injected)', () => {
       }),
     )
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
-    await designGraphicWith(complete, CONTEXT, SLOT)
+    await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
     const slot = (complete.mock.calls[0]![0].messages as { content: string }[])[1]!.content
     if (expected) {
       expect(slot).toContain(`A passing design of this technique (${expected.technique}:`)
@@ -579,7 +580,12 @@ describe('designGraphicWith (the model call is injected)', () => {
       }),
     ).toBe('bar-chart')
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
-    await designGraphicWith(complete, CONTEXT, { ...SLOT, brief: empty })
+    await designGraphicWith(
+      complete,
+      CONTEXT,
+      { ...SLOT, brief: empty },
+      { bible: FIRST_CHANNEL_IN_USE },
+    )
     expect(complete).toHaveBeenCalled()
   })
 
@@ -603,7 +609,9 @@ describe('designGraphicWith (the model call is injected)', () => {
         .fn()
         .mockResolvedValueOnce({ text: JSON.stringify(BROKEN) })
         .mockResolvedValueOnce(answer('$4bn'))
-      const result = await designGraphicWith(complete, CONTEXT, SLOT)
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+      })
       expect(result.ok).toBe(true)
       expect(complete).toHaveBeenCalledTimes(2)
 
@@ -626,7 +634,10 @@ describe('designGraphicWith (the model call is injected)', () => {
         .mockResolvedValueOnce({ text: JSON.stringify(BROKEN) })
         .mockResolvedValueOnce(answer('$4bn'))
       const guidance = 'Make the number bigger.'
-      const result = await designGraphicWith(complete, CONTEXT, SLOT, { guidance })
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        guidance,
+      })
       expect(result.ok).toBe(true)
       expect(complete).toHaveBeenCalledTimes(2)
       for (const call of [0, 1]) {
@@ -644,8 +655,12 @@ describe('designGraphicWith (the model call is injected)', () => {
     runtimeFault = new Error("the designer's dry run cannot load remotion on this host: nope")
     try {
       const complete = vi.fn().mockResolvedValue(answer('$4bn'))
-      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(NonRetriableError)
-      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(/load remotion/)
+      await expect(
+        designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE }),
+      ).rejects.toThrow(NonRetriableError)
+      await expect(
+        designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE }),
+      ).rejects.toThrow(/load remotion/)
       expect(complete).not.toHaveBeenCalled()
     } finally {
       runtimeFault = null
@@ -658,10 +673,12 @@ describe('designGraphicWith (the model call is injected)', () => {
     )
     try {
       const complete = vi.fn().mockResolvedValue(answer('$4bn'))
-      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(NonRetriableError)
-      await expect(designGraphicWith(complete, CONTEXT, SLOT)).rejects.toThrow(
-        /cannot compile code on this host/,
-      )
+      await expect(
+        designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE }),
+      ).rejects.toThrow(NonRetriableError)
+      await expect(
+        designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE }),
+      ).rejects.toThrow(/cannot compile code on this host/)
       expect(complete).not.toHaveBeenCalled()
     } finally {
       compilerFault = null
@@ -670,7 +687,7 @@ describe('designGraphicWith (the model call is injected)', () => {
 
   it('designs through the function it is given, handing it the request and a signal, and never touches callLlm', async () => {
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
-    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    const result = await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
     expect(result).toMatchObject({ ok: true, code: { facts: [{ claimId: A }] } })
     expect(complete).toHaveBeenCalledTimes(1)
     const [request, options] = complete.mock.calls[0]!
@@ -686,7 +703,7 @@ describe('designGraphicWith (the model call is injected)', () => {
       .fn()
       .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
       .mockResolvedValueOnce(answer('$5bn'))
-    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    const result = await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
     expect(result.ok).toBe(false)
     expect(complete).toHaveBeenCalledTimes(2)
     expect(complete.mock.calls[1]![0].maxTokens).toBe(complete.mock.calls[0]![0].maxTokens * 2)
@@ -698,7 +715,7 @@ describe('designGraphicWith (the model call is injected)', () => {
       .fn()
       .mockResolvedValueOnce(answer('$5bn'))
       .mockResolvedValueOnce(answer('$4bn'))
-    const result = await designGraphicWith(complete, CONTEXT, SLOT)
+    const result = await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
     expect(result.ok).toBe(true)
     expect(complete.mock.calls[1]![0].messages.at(-1).content).toContain(issueOf(planned('$5bn')))
     expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: refused' })

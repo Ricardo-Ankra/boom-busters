@@ -6,7 +6,9 @@ import {
   stripNarrationMarkup,
   ValidationError,
 } from '@boom-busters/schemas'
+import type { BibleInUse } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { exampleEntriesBlock, fillSlots, literalBibleText, noun } from './bible'
 import { parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField } from './repair'
 import type { Note } from './repair'
@@ -46,6 +48,10 @@ function spokenExcerpt(text: string): string {
 }
 
 export function buildTitlesRequest(input: {
+  /** The channel bible the project froze. */
+  bible: BibleInUse
+  /** The channel's name, from its row: the name is not part of the bible. */
+  channelName: string
   caseTitle: string
   /** The hook the title has to live up to — the script's opening paragraph. */
   hook: string
@@ -73,8 +79,9 @@ export function buildTitlesRequest(input: {
 
   return {
     task: 'metadata',
-    system: `You write YouTube titles for Boom & Busters, a documentary channel
-about corporate collapses, cons and meltdowns. Sober, specific, curiosity-driven —
+    system: fillSlots(
+      `You write YouTube titles for ${literalBibleText(input.channelName)}, a documentary channel
+about [[example:metadata-channel-subject]]. ${literalBibleText(input.bible.bible.titleStyle)} —
 never clickbait that the video cannot pay off, never ALL CAPS, no emoji.
 
 ${shape}
@@ -95,15 +102,16 @@ Rules:
 - A claim marked NOT adjudicated is an allegation: a title may frame it as an
   allegation or a question, never state it as fact about a named person.
 - Each title is at most ${TITLE_MAX_CHARS} characters and at least 20.
-- Name the company or person; a title that could sit on any video is a bad title.
-- Vary the mechanism across the set: a question, a number, a timeline
-  ("Nine days"), a contradiction, a consequence. No two titles may share
+- Name the ${literalBibleText(noun(input.bible.bible, 'singular'))} or person; a title that could sit on any video is a bad title.
+- Vary the mechanism across the set: [[example:metadata-title-mechanisms]]. No two titles may share
   their first three words.
 ${
   input.target === 'short'
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
     : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
-}`,
+}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
+      input.bible,
+    ),
     messages: clip
       ? [
           {
@@ -161,6 +169,10 @@ export interface DescriptionAnswer {
  * sent: it is where an unsourced figure lives.
  */
 export function buildDescriptionRequest(input: {
+  /** The channel bible the project froze. */
+  bible: BibleInUse
+  /** The channel's name, from its row: the name is not part of the bible. */
+  channelName: string
   target: 'master' | 'short'
   claims: readonly ScriptClaim[]
   centralQuestion?: string
@@ -174,8 +186,9 @@ export function buildDescriptionRequest(input: {
 
   return {
     task: 'metadata',
-    system: `You write YouTube descriptions for Boom & Busters, a documentary
-channel about corporate collapses, cons and meltdowns. The description is read
+    system: fillSlots(
+      `You write YouTube descriptions for ${literalBibleText(input.channelName)}, a documentary
+channel about [[example:metadata-channel-subject]]. The description is read
 by search and by people deciding whether to watch, so it says plainly who and
 what the film is about, in the words people search for.
 
@@ -186,26 +199,26 @@ Rules:
   adjudicated, write "alleged", "reportedly" or "according to". Never invent
   figures, dates, quotes or names.
 - ${
-      input.target === 'master'
-        ? `"body" is two short paragraphs. The first sentence names the company, its
-  best-known product and what happened, with the figures that matter. The
+        input.target === 'master'
+          ? `"body" is two short paragraphs. The first sentence names [[example:metadata-description-opening]], with the figures that matter. The
   second paragraph says what the film covers, in the order it covers it.`
-        : `"body" is two or three sentences for a vertical Short, about what this
-  Short says rather than the whole case: the first sentence names the company
+          : `"body" is two or three sentences for a vertical Short, about what this
+  Short says rather than the whole case: the first sentence names the ${literalBibleText(noun(input.bible.bible, 'singular'))}
   and the moment, fact or question the Short shows. The last sentence says the
   full documentary is on the channel. The claim list covers the whole film and
   is only for checking facts.`
-    }
+      }
 - No "in this video", no channel talk, no emoji, no ALL CAPS, no em dashes.
 - "chapterGlosses": exactly ${glossCount} strings, one per chapter in order, each
   at most ${CHAPTER_GLOSS_MAX} characters, saying plainly what the chapter is
   about (a name, an event, a date) rather than repeating its title.
-- "hashtags": exactly ${HASHTAGS_MAX}, each one word with no spaces, the company
+- "hashtags": exactly ${HASHTAGS_MAX}, each one word with no spaces, the ${literalBibleText(noun(input.bible.bible, 'singular'))}
   first${clip ? ', then what this Short is about' : ''}.
-- "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: the
-  company, the product, the people, the events, the topic${
-    clip ? ', leading with the ones this Short names' : ''
-  }.`,
+- "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: [[example:metadata-tag-kinds]]${
+        clip ? ', leading with the ones this Short names' : ''
+      }.`,
+      input.bible,
+    ),
     messages: clip
       ? [
           // The Short first and the claims after, as a check: led by the

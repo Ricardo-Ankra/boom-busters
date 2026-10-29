@@ -158,6 +158,8 @@ export const stretchReplanner = inngest.createFunction(
       const chapterTitle = setup.chapters[chapterAt]?.title ?? ''
 
       const planned = await step.run('plan', async () => {
+        // Read here, inside the step, once for every request it builds.
+        const bible = await channelForProject(db, projectId)
         // Mock mode answers with the mock stretch plan, through the same
         // parse and checks a model's answer goes through; the brief repair
         // gets an empty answer and keeps the slots.
@@ -169,16 +171,15 @@ export const stretchReplanner = inngest.createFunction(
                     ? '{"briefs": []}'
                     : JSON.stringify(mockStretchPlan({ pieces: cut.stretch.pieces })),
               })
-          : async (request, purpose) => {
-              const { channelId } = await channelForProject(db, projectId)
-              return callLlm(request, {
+          : (request, purpose) =>
+              callLlm(request, {
                 projectId,
-                channelId,
+                channelId: bible.channelId,
                 ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
               })
-            }
         try {
           return await planStretchWith(complete, {
+            bible,
             caseTitle: setup.caseTitle,
             chapter: { id: chapterId, title: chapterTitle, number: chapterAt + 1 },
             paragraphs: setup.paragraphs,

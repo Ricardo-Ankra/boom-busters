@@ -12,7 +12,7 @@ import {
   vendoredPath,
 } from '@boom-busters/providers'
 import type { ExemplarEntry, LLMTaskRequest } from '@boom-busters/providers'
-import { ValidationError } from '@boom-busters/schemas'
+import { FIRST_CHANNEL_IN_USE, ValidationError } from '@boom-busters/schemas'
 import { callForAnswer } from '@/lib/answer'
 import {
   exemplarBrief,
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
       const context = exemplarContext(entry)
       const brief = exemplarBrief(entry, context)
       const words = entry.slot.words.map((word) => ({ text: word.text, atMs: word.atMs }))
-      const input = exemplarInput(entry, vendoredText)
+      const input = exemplarInput(entry, vendoredText, FIRST_CHANNEL_IN_USE)
       let calls = 0
       try {
         const answer = await callForAnswer({

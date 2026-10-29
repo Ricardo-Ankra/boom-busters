@@ -1,10 +1,12 @@
 import { buildModelOptions, mockListedModels } from '@boom-busters/providers'
-import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { type ChannelView } from './channel-tab'
 import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 import { SettingsForm } from './settings-form'
+import { DEFAULT_SAMPLE } from './voice-tab'
 
 /**
  * Choosing a narrator, through the whole screen rather than the panel alone.
@@ -110,12 +112,12 @@ function card(label: string): HTMLElement {
   return listItem
 }
 
-async function openVoiceTab(): Promise<void> {
+async function openVoiceTab(channel: ChannelView = FIXTURE_CHANNEL_VIEW): Promise<void> {
   render(
     <SettingsForm
       channelId={CHANNEL}
       channelSlug="first"
-      channel={FIXTURE_CHANNEL_VIEW}
+      channel={channel}
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       modelOptions={modelOptions()}
     />,
@@ -171,6 +173,27 @@ describe('choosing a narrator', () => {
 
     // Add is free; Play is the only button on the card that spends.
     expect(generateAuditions).not.toHaveBeenCalled()
+  })
+})
+
+describe('the audition sample', () => {
+  const sample = () => screen.getByLabelText<HTMLTextAreaElement>('Sample paragraph').value
+
+  it('is the first channel’s own audition line, kept as the fallback constant', () => {
+    expect(FIRST_CHANNEL_BIBLE.auditionLine).toBe(DEFAULT_SAMPLE)
+  })
+
+  it('reads the line from the channel’s bible', async () => {
+    await openVoiceTab({
+      ...FIXTURE_CHANNEL_VIEW,
+      bible: { ...FIXTURE_CHANNEL_VIEW.bible, auditionLine: 'A line for another channel.' },
+    })
+    expect(sample()).toBe('A line for another channel.')
+  })
+
+  it('falls back to the default when the bible leaves it blank', async () => {
+    await openVoiceTab()
+    expect(sample()).toBe(DEFAULT_SAMPLE)
   })
 })
 

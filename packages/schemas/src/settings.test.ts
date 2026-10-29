@@ -184,6 +184,17 @@ describe('resolveBrandKit', () => {
     expect(kit.voice).toEqual(settings.tts)
     expect(kit.colors).toEqual(settings.brandKit.colors)
   })
+
+  it('carries no identity unless given a channel, so older timelines render as before', () => {
+    expect(resolveBrandKit(DEFAULT_SETTINGS).identity).toBeUndefined()
+    expect('identity' in resolveBrandKit(DEFAULT_SETTINGS)).toBe(false)
+    const kit = resolveBrandKit(DEFAULT_SETTINGS, { name: 'Other Channel', handle: '@other' })
+    expect(kit.identity).toEqual({ name: 'Other Channel', handle: '@other' })
+    expect(BrandKitTokensSchema.parse(kit).identity).toEqual({
+      name: 'Other Channel',
+      handle: '@other',
+    })
+  })
 })
 
 describe('the brand snapshot and the channel mark (decision 268)', () => {

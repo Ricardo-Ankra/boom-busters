@@ -3,6 +3,7 @@ import {
   DOSSIER_CLAIMS_PER_PASS,
   DOSSIER_QUOTE_MAX,
   DOSSIER_QUOTE_MIN_FOLDED,
+  FIRST_CHANNEL_IN_USE,
   DOSSIER_STATUS_MAX,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -64,10 +65,10 @@ const claimsPart = { index: 1, of: 2, from: 1, to: 12 }
 const answersPart = { index: 1, of: 1, from: 1, to: 1 }
 
 const requests = () => [
-  buildBriefRequest(caseContext, corpus),
-  buildScenesRequest(caseContext, corpus, brief),
-  buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart),
-  buildAnswersRequest(caseContext, corpus, brief, scenes, answersPart),
+  buildBriefRequest(caseContext, corpus, FIRST_CHANNEL_IN_USE),
+  buildScenesRequest(caseContext, corpus, brief, FIRST_CHANNEL_IN_USE),
+  buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart, FIRST_CHANNEL_IN_USE),
+  buildAnswersRequest(caseContext, corpus, brief, scenes, answersPart, FIRST_CHANNEL_IN_USE),
 ]
 
 /** A pass's own instructions, line breaks folded so a pinned sentence can wrap in the source. */
@@ -76,7 +77,14 @@ const asked = (request: LLMTaskRequest) =>
 
 describe('the research prompts', () => {
   it('puts the corpus in the first user message and marks it cacheable', () => {
-    const request = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
+    const request = buildClaimsRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      claimsPart,
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(request.messages[0]?.content).toContain('[D1] reporting')
     expect(request.cacheablePrefixMessages).toBe(1)
   })
@@ -113,10 +121,10 @@ describe('the research prompts', () => {
       'Audience notes: Viewers ask what happened to Holmes.' +
       `\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`
     const passes = [
-      buildBriefRequest(named, corpus),
-      buildScenesRequest(named, corpus, brief),
-      buildClaimsRequest(named, corpus, brief, scenes, claimsPart),
-      buildAnswersRequest(named, corpus, brief, scenes, answersPart),
+      buildBriefRequest(named, corpus, FIRST_CHANNEL_IN_USE),
+      buildScenesRequest(named, corpus, brief, FIRST_CHANNEL_IN_USE),
+      buildClaimsRequest(named, corpus, brief, scenes, claimsPart, FIRST_CHANNEL_IN_USE),
+      buildAnswersRequest(named, corpus, brief, scenes, answersPart, FIRST_CHANNEL_IN_USE),
     ]
     for (const request of passes) {
       expect(request.messages[0]).toEqual({ role: 'user', content: header })
@@ -124,12 +132,16 @@ describe('the research prompts', () => {
   })
 
   it('leaves out an empty subject and an empty people list', () => {
-    const request = buildBriefRequest({ ...caseContext, subject: ' ', people: [] }, corpus)
+    const request = buildBriefRequest(
+      { ...caseContext, subject: ' ', people: [] },
+      corpus,
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(request.messages[0]?.content.startsWith('Working title: Enron\n')).toBe(true)
   })
 
   it('asks the brief where things stand now, dated from the newest document on the outcome', () => {
-    const brief_ = asked(buildBriefRequest(caseContext, corpus))
+    const brief_ = asked(buildBriefRequest(caseContext, corpus, FIRST_CHANNEL_IN_USE))
     expect(brief_).toContain('"currentStatus": {"asOf": string, "text": string} | null')
     expect(brief_).toContain(
       '`currentStatus` is where things stand now, dated from the newest document that speaks ' +
@@ -159,7 +171,7 @@ describe('the research prompts', () => {
   })
 
   it('feeds the later passes the brief and the scenes', () => {
-    const scenesRequest = buildScenesRequest(caseContext, corpus, brief)
+    const scenesRequest = buildScenesRequest(caseContext, corpus, brief, FIRST_CHANNEL_IN_USE)
     expect(JSON.stringify(scenesRequest.messages.slice(1))).toContain('Jeffrey Skilling')
     for (const request of requests().slice(2)) {
       expect(JSON.stringify(request.messages.slice(1))).toContain(
@@ -169,14 +181,14 @@ describe('the research prompts', () => {
   })
 
   it('asks the brief for what each person wanted and for told-already beats from video only', () => {
-    const brief_ = asked(buildBriefRequest(caseContext, corpus))
+    const brief_ = asked(buildBriefRequest(caseContext, corpus, FIRST_CHANNEL_IN_USE))
     expect(brief_).toContain('"wanted"')
     expect(brief_).toContain('"toldAlready"')
     expect(brief_).toMatch(/ONLY from documents of kind `video`/)
   })
 
   it('asks the scenes pass for moments in the story, not a legal chronology', () => {
-    const scenes_ = asked(buildScenesRequest(caseContext, corpus, brief))
+    const scenes_ = asked(buildScenesRequest(caseContext, corpus, brief, FIRST_CHANNEL_IN_USE))
     expect(scenes_).toMatch(/what was said or done/)
     expect(scenes_).toMatch(/why it matters to the arc/)
     expect(scenes_).toMatch(/not a legal chronology/)
@@ -185,8 +197,12 @@ describe('the research prompts', () => {
   it('asks every quoting pass for a quote long enough for the check to find', () => {
     const findable = `a full clause of at least ${DOSSIER_QUOTE_MIN_FOLDED} letters and digits`
     for (const request of requests()) expect(asked(request)).toContain(findable)
-    expect(asked(buildScenesRequest(caseContext, corpus, brief))).toContain('shortest span')
-    expect(asked(buildBriefRequest(caseContext, corpus))).toContain('shortest span')
+    expect(asked(buildScenesRequest(caseContext, corpus, brief, FIRST_CHANNEL_IN_USE))).toContain(
+      'shortest span',
+    )
+    expect(asked(buildBriefRequest(caseContext, corpus, FIRST_CHANNEL_IN_USE))).toContain(
+      'shortest span',
+    )
   })
 
   it('pins the quote, legal status and figure rules in the claims and answers passes', () => {
@@ -214,26 +230,42 @@ describe('the research prompts', () => {
   })
 
   it('asks the claims pass for at most a pass worth of claims', () => {
-    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart))).toContain(
-      `Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims;`,
-    )
+    expect(
+      asked(
+        buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart, FIRST_CHANNEL_IN_USE),
+      ),
+    ).toContain(`Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims;`)
   })
 
   it('puts the open questions to the answers pass, verbatim and numbered', () => {
     // Numbered because the number is the join key (decision 203).
-    const request = buildAnswersRequest(caseContext, corpus, brief, scenes, answersPart)
+    const request = buildAnswersRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      answersPart,
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(request.messages.at(-1)?.content).toContain('1. What did the board know in 1999?')
     expect(asked(request)).toMatch(/`index` is the question's number/)
     expect(asked(request)).toMatch(/set `answer` to null/)
   })
 
   it('tells a claims part which documents its claims start from, leaving the prefix alone', () => {
-    const part2 = buildClaimsRequest(caseContext, corpus, brief, scenes, {
-      index: 2,
-      of: 2,
-      from: 13,
-      to: 25,
-    })
+    const part2 = buildClaimsRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      {
+        index: 2,
+        of: 2,
+        from: 13,
+        to: 25,
+      },
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(asked(part2)).toContain(
       'This is part 2 of 2: extract claims whose FIRST support is one of documents [D13] to ' +
         '[D25]. A later support may cite any document. The other part covers the rest. ' +
@@ -243,7 +275,14 @@ describe('the research prompts', () => {
     expect(asked(part2).indexOf('This is part 2 of 2')).toBeLessThan(
       asked(part2).indexOf('{"claims"'),
     )
-    const part1 = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
+    const part1 = buildClaimsRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      claimsPart,
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(asked(part1)).toContain('documents [D1] to [D12]')
     expect(part2.system).toBe(part1.system)
     expect(part2.messages.slice(0, -1)).toEqual(part1.messages.slice(0, -1))
@@ -254,24 +293,38 @@ describe('the research prompts', () => {
       ...brief,
       openQuestions: Array.from({ length: 12 }, (_, at) => `Open question number ${at + 1}?`),
     }
-    const part2 = buildAnswersRequest(caseContext, corpus, twelve, scenes, {
-      index: 2,
-      of: 2,
-      from: 7,
-      to: 12,
-    })
+    const part2 = buildAnswersRequest(
+      caseContext,
+      corpus,
+      twelve,
+      scenes,
+      {
+        index: 2,
+        of: 2,
+        from: 7,
+        to: 12,
+      },
+      FIRST_CHANNEL_IN_USE,
+    )
     const text = part2.messages.at(-1)?.content ?? ''
     expect(text).toContain('The open questions:\n7. Open question number 7?\n')
     expect(text).toContain('12. Open question number 12?')
     expect(text).not.toContain('6. Open question number 6?')
     expect(text).not.toContain('1. Open question number 1?')
     expect(asked(part2)).toContain('This is part 2 of 2; answer only the questions listed.')
-    const part1 = buildAnswersRequest(caseContext, corpus, twelve, scenes, {
-      index: 1,
-      of: 2,
-      from: 1,
-      to: 6,
-    })
+    const part1 = buildAnswersRequest(
+      caseContext,
+      corpus,
+      twelve,
+      scenes,
+      {
+        index: 1,
+        of: 2,
+        from: 1,
+        to: 6,
+      },
+      FIRST_CHANNEL_IN_USE,
+    )
     expect(part1.messages.at(-1)?.content).toMatch(/1\. Open question number 1\?[\s\S]*6\. Open/)
     expect(part1.messages.at(-1)?.content).not.toContain('7. Open question number 7?')
     expect(part2.messages.slice(0, -1)).toEqual(part1.messages.slice(0, -1))
@@ -279,10 +332,17 @@ describe('the research prompts', () => {
 
   it('says nothing about parts when a pass runs as one, since there is no other part', () => {
     const one = { index: 1, of: 1, from: 1, to: 1 }
-    expect(asked(buildClaimsRequest(caseContext, corpus, brief, scenes, one))).not.toContain(
-      'This is part',
+    expect(
+      asked(buildClaimsRequest(caseContext, corpus, brief, scenes, one, FIRST_CHANNEL_IN_USE)),
+    ).not.toContain('This is part')
+    const answers = buildAnswersRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      one,
+      FIRST_CHANNEL_IN_USE,
     )
-    const answers = buildAnswersRequest(caseContext, corpus, brief, scenes, one)
     expect(asked(answers)).not.toContain('This is part')
     expect(answers.messages.at(-1)?.content).toContain(
       'The open questions:\n1. What did the board know in 1999?',
@@ -292,7 +352,14 @@ describe('the research prompts', () => {
 
 describe('withNote', () => {
   it('withNote appends to the last user message only', () => {
-    const request = buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart)
+    const request = buildClaimsRequest(
+      caseContext,
+      corpus,
+      brief,
+      scenes,
+      claimsPart,
+      FIRST_CHANNEL_IN_USE,
+    )
     const noted = withNote(request, 'More on the auditors.')
 
     expect(noted.messages.at(-1)?.content).toBe(

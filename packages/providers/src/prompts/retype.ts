@@ -7,8 +7,15 @@ import {
   resolvePlannedBrief,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { LogoIndex, PlanningClaim, ShotBrief, ShotSlotType } from '@boom-busters/schemas'
+import type {
+  BibleInUse,
+  LogoIndex,
+  PlanningClaim,
+  ShotBrief,
+  ShotSlotType,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
+import { fillSlots } from './bible'
 import { claimList, type ScriptClaim } from './script'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField } from './repair'
@@ -32,6 +39,8 @@ import type { LLMTaskRequest } from '../llm/types'
  */
 
 export interface RetypeInput {
+  /** The channel bible the project froze: its worked examples for charts and maps. */
+  bible: BibleInUse
   caseTitle: string
   brief: ShotBrief
   targetType: Extract<ShotSlotType, 'chart' | 'map' | 'graphic'>
@@ -74,8 +83,7 @@ Chart kind, chosen by what the data IS, not by habit:
 Never answer with a bar because it is the safe choice. If the producer names a
 kind, use it.
 
-Two measures that are not in the same unit (a valuation in billions against a
-margin in percent) need "axis": "left" on one series and "right" on the other.
+Two measures that are not in the same unit ([[example:shotlist-two-units]]) need "axis": "left" on one series and "right" on the other.
 On one scale the smaller series flattens onto the floor and is labelled in the
 other's unit, which is a chart that lies.
 
@@ -91,22 +99,23 @@ slot's subject, do not make a chart — refuse instead.`
 
 Map rules: locations are the real places this slot's narration concerns,
 with real coordinates. "route" is true only when the story MOVES between
-them in order (money flows, HQ hops).`
+them in order ([[example:shotlist-map-route-example]]).`
         : `${GRAPHIC_INTENT_SHAPE}
 
 ${GRAPHIC_INTENT_RULES}`
 
   return {
     task: 'shotlist',
-    system: `You are re-planning ONE visual slot of a documentary. ${
-      input.brief.type === input.targetType
-        ? `The producer has rejected the current ${input.targetType} and wants a DIFFERENT
+    system: fillSlots(
+      `You are re-planning ONE visual slot of a documentary. ${
+        input.brief.type === input.targetType
+          ? `The producer has rejected the current ${input.targetType} and wants a DIFFERENT
 one for the same story beat. Do not restate the current brief in other words:
 it was rejected, so a paraphrase of it is not an answer.`
-        : `The slot
+          : `The slot
 currently has a brief of type "${input.brief.type}"; the producer wants the
 same story beat expressed as type "${input.targetType}" instead.`
-    }
+      }
 
 Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this
 beat cannot honestly be a ${input.targetType}.
@@ -122,6 +131,8 @@ ${target}
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
 "speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
 "transition" is "cut" or "dissolve".`,
+      input.bible,
+    ),
     messages: [
       {
         role: 'user',

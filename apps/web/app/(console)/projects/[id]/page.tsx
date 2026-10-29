@@ -339,7 +339,7 @@ export default async function ProjectPage({
         <div className="min-w-0">
           <h1 className="text-[20px] font-semibold">{project.title}</h1>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
-            {caseCategoryLabel(project.caseCategory)} · {project.caseTitle} ·{' '}
+            {caseCategoryLabel(channel.bible, project.caseCategory)} · {project.caseTitle} ·{' '}
             {project.targetRuntimeMin} min target
           </p>
         </div>

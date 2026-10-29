@@ -37,7 +37,8 @@ import {
  * spec's §11.3 lock was built and then taken back out.
  */
 
-const DEFAULT_SAMPLE =
+/** The fallback when a channel's bible leaves its audition line blank. */
+export const DEFAULT_SAMPLE =
   'In June 2020, Wirecard admitted that roughly two billion euros of cash on its balance sheet ' +
   'probably did not exist. The auditors had signed the accounts for years.'
 
@@ -168,8 +169,13 @@ interface Heard {
   error?: string
 }
 
-function AuditionPanel({ channelId, settings, commit }: TabProps) {
-  const [sample, setSample] = React.useState(DEFAULT_SAMPLE)
+function AuditionPanel({
+  channelId,
+  settings,
+  commit,
+  auditionLine,
+}: TabProps & { auditionLine: string }) {
+  const [sample, setSample] = React.useState(auditionLine.trim() || DEFAULT_SAMPLE)
   const [catalogue, setCatalogue] = React.useState<
     { provider: TtsProvider; voices: KnownVoice[]; error?: string }[] | null
   >(null)
@@ -614,10 +620,25 @@ function PhonemeHints({ channelId, settings, saving, commit }: TabProps) {
  * *chooses* a voice below two panels describing one you had not chosen yet, and
  * asked you to write pronunciation hints for a narrator that did not exist.
  */
-export function VoiceTab({ channelId, settings, saving, commit }: TabProps) {
+export function VoiceTab({
+  channelId,
+  settings,
+  saving,
+  commit,
+  auditionLine,
+}: TabProps & {
+  /** The channel's current bible line to audition voices on; blank means the default. */
+  auditionLine: string
+}) {
   return (
     <div className="flex flex-col gap-3">
-      <AuditionPanel channelId={channelId} settings={settings} saving={saving} commit={commit} />
+      <AuditionPanel
+        channelId={channelId}
+        settings={settings}
+        saving={saving}
+        commit={commit}
+        auditionLine={auditionLine}
+      />
       <ChosenVoice channelId={channelId} settings={settings} saving={saving} commit={commit} />
       <PhonemeHints channelId={channelId} settings={settings} saving={saving} commit={commit} />
     </div>

@@ -1,5 +1,6 @@
 import {
   bumpDossierRevisions,
+  channelForProject,
   getCase,
   getDossier,
   getProject,
@@ -172,6 +173,7 @@ export const dossierReviser = inngest.createFunction(
       const named = await nameSubjectIfMissing(db, source, {
         complete: completeForProject(projectId),
         mocked: mockProvidersEnabled(),
+        projectId,
       })
 
       const round = await bumpDossierRevisions(db, projectId)
@@ -256,16 +258,20 @@ export const dossierReviser = inngest.createFunction(
       return { projectId, outcome: 'no-corpus' as const }
     }
 
-    const research = await researchDossier(steps, {
-      projectId,
-      // Every pass opens on the subject and people the gather searched with.
-      caseContext: { ...context.caseContext, subject: named.subject, people: named.people },
-      round: context.round,
-      note,
-      entity,
-      documents,
-      corpus,
-    })
+    const research = await researchDossier(
+      steps,
+      {
+        projectId,
+        // Every pass opens on the subject and people the gather searched with.
+        caseContext: { ...context.caseContext, subject: named.subject, people: named.people },
+        round: context.round,
+        note,
+        entity,
+        documents,
+        corpus,
+      },
+      { bible: () => channelForProject(db, projectId) },
+    )
 
     const overBudget = research.budgetGate
     if (overBudget) {

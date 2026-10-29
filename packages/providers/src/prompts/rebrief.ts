@@ -4,13 +4,14 @@ import {
   ShotBriefSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { DirectorsBook, ShotBrief } from '@boom-busters/schemas'
+import type { BibleInUse, DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { DIRECTION_CRAFT } from './direction-craft'
+import { fillSlots } from './bible'
+import { directionCraft } from './direction-craft-text'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs } from './repair'
 import type { Note } from './repair'
-import { fieldRule, PEOPLE_RULES, referencesPrefix, SCENE_ONLY_PROMPT, SET_RULES } from './shotlist'
+import { fieldRule, peopleRules, referencesPrefix, SCENE_ONLY_PROMPT, SET_RULES } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -36,6 +37,8 @@ import type { LLMTaskRequest } from '../llm/types'
 export type RebriefableBrief = Extract<ShotBrief, { type: 'stock' | 'archival' | 'still' }>
 
 export interface RebriefInput {
+  /** The channel bible the project froze: the house look and the channel's own people. */
+  bible: BibleInUse
   caseTitle: string
   brief: RebriefableBrief
   /** What the producer is picturing. Absent means "just give me another". */
@@ -70,7 +73,7 @@ be specific enough that they know a correct result when they see one.`,
  * 276): a redraft may put a photographed person in one of the film's sets
  * exactly as the plan does.
  */
-function stillShape(hasSets: boolean): string {
+function stillShape(hasSets: boolean, bible: BibleInUse): string {
   const setFields = hasSets
     ? `,
    "set"?: the exact name of one set listed in the first message, alone,
@@ -90,7 +93,7 @@ Keep ${kept} from the current brief while the new idea still shows those
 people${hasSets ? ' in that room' : ''}. When the producer's steer names a person or a room from
 the lists in the first message, the new brief shows them: ${steered}.
 
-${fieldRule(hasSets)}${PEOPLE_RULES}${hasSets ? SET_RULES : ''}`
+${fieldRule(hasSets)}${peopleRules(bible)}${hasSets ? SET_RULES : ''}`
 }
 
 export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
@@ -118,7 +121,8 @@ export function buildRebriefRequest(input: RebriefInput): LLMTaskRequest {
 
   return {
     task: 'shotlist',
-    system: `You are re-planning ONE visual slot of a documentary. The producer has
+    system: fillSlots(
+      `You are re-planning ONE visual slot of a documentary. The producer has
 rejected the current idea and wants a DIFFERENT one for the same moment of
 narration.
 
@@ -132,10 +136,10 @@ Do not restate the current idea in other words. It was rejected, so a
 paraphrase of it is not an answer. If the producer has given a steer below,
 follow it, and keep every craft rule that does not conflict with it.
 
-${DIRECTION_CRAFT}
+${directionCraft(input.bible.bible)}
 
 The target shape:
-${input.brief.type === 'still' ? stillShape(sets.length > 0) : TARGET_SHAPE[input.brief.type]}
+${input.brief.type === 'still' ? stillShape(sets.length > 0, input.bible) : TARGET_SHAPE[input.brief.type]}
 
 "motion" is {"kind": "static"} or {"kind": "kenburns", "direction": "in"|"out",
 "speed": "slow"|"medium"|"fast"}. Never "pan": the renderer cannot do one.
@@ -143,6 +147,8 @@ ${input.brief.type === 'still' ? stillShape(sets.length > 0) : TARGET_SHAPE[inpu
 
 Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this beat
 honestly has no other image worth cutting to.`,
+      input.bible,
+    ),
     messages,
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(1200),

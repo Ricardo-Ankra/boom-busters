@@ -8,7 +8,7 @@ import type {
   Technique,
 } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
-import type { ChartBrief, DesignableBrief, GraphicBrief } from '@boom-busters/schemas'
+import type { BibleInUse, ChartBrief, DesignableBrief, GraphicBrief } from '@boom-busters/schemas'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { optionalText, readRawFlags } from '@/lib/live-set-args'
 
@@ -168,10 +168,15 @@ export function exemplarBrief(
 }
 
 /** The designer's input for a translation: the synthetic slot, the steer with the template, and no exemplar. */
-export function exemplarInput(entry: ExemplarEntry, vendoredText: string): GraphicDesignInput {
+export function exemplarInput(
+  entry: ExemplarEntry,
+  vendoredText: string,
+  bible: BibleInUse,
+): GraphicDesignInput {
   const context = exemplarContext(entry)
   const coversText = entry.slot.words.map((word) => word.text).join(' ')
   return {
+    bible,
     caseTitle: context.caseTitle,
     claims: context.claims,
     logos: context.logos.map((logo) => logo.title),

@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MANIFEST } from '@boom-busters/providers'
+import { FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import {
   designHeader,
   exemplarBrief,
@@ -112,7 +113,7 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
   })
 
   it('builds the designer input with the steer and the template in a four-backtick fence, and no exemplar', () => {
-    const input = exemplarInput(stat, 'const x = `tpl`\n```\n')
+    const input = exemplarInput(stat, 'const x = `tpl`\n```\n', FIRST_CHANNEL_IN_USE)
     expect(input.caseTitle).toBe('Exemplar')
     expect(input.words).toEqual(
       stat.slot.words.map((word) => ({ text: word.text, offsetMs: word.atMs })),
@@ -125,7 +126,7 @@ describe('exemplar translation, the pure parts (decision 305)', () => {
     expect(input.exemplar).toBeUndefined()
     expect(input.current).toBeUndefined()
     expect(input.data).toBeUndefined()
-    expect(exemplarInput(bar, 't').data).toEqual(bar.slot.data)
+    expect(exemplarInput(bar, 't', FIRST_CHANNEL_IN_USE).data).toEqual(bar.slot.data)
   })
 
   it('renders the registry in sorted order, as one import per design', () => {

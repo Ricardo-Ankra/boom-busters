@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { FIRST_CHANNEL_BIBLE } from './channels'
 import {
   composeDescription,
   DESCRIPTION_MAX_CHARS,
@@ -8,6 +9,10 @@ import {
   sourceLabel,
   splitHashtags,
 } from './publish'
+
+/** Boom & Busters' disclaimer, the value every existing case expects. */
+const compose = (input: Omit<Parameters<typeof composeDescription>[0], 'disclaimer'>) =>
+  composeDescription({ ...input, disclaimer: PUBLISH_DISCLAIMER })
 
 describe('formatTimestamp', () => {
   it('renders minutes:seconds under an hour and h:mm:ss over it', () => {
@@ -24,6 +29,25 @@ describe('formatTimestamp', () => {
 })
 
 describe('composeDescription', () => {
+  it("ends with the channel's own disclaimer, and Boom & Busters' is unchanged", () => {
+    const first = compose({ body: 'Body.', chapters: [], sources: [] })
+    const viaBible = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [],
+      disclaimer: FIRST_CHANNEL_BIBLE.disclaimer,
+    })
+    expect(viaBible).toEqual(first)
+
+    const other = composeDescription({
+      body: 'Body.',
+      chapters: [],
+      sources: [],
+      disclaimer: 'Educational content, not financial advice.',
+    })
+    expect(other.description).toBe('Body.\n\nEducational content, not financial advice.')
+  })
+
   const chapters = [
     { title: 'The rise', startMs: 0 },
     { title: 'The hole', startMs: 312_400 },
@@ -31,7 +55,7 @@ describe('composeDescription', () => {
   ]
 
   it('stacks body, chapters, sources and the disclaimer in order', () => {
-    const { description, droppedSources } = composeDescription({
+    const { description, droppedSources } = compose({
       body: 'On a June morning, 1.9 billion euros stopped existing.',
       chapters,
       sources: ['https://example.com/ft-report', 'https://example.com/filing'],
@@ -46,7 +70,7 @@ describe('composeDescription', () => {
   })
 
   it('forces the first chapter stamp to 0:00 whatever the timeline says', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: [{ title: 'Cold open', startMs: 1_800 }, ...chapters.slice(1)],
       sources: [],
@@ -55,7 +79,7 @@ describe('composeDescription', () => {
   })
 
   it('omits the chapter block below three chapters — YouTube ignores them', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: chapters.slice(0, 2),
       sources: [],
@@ -64,7 +88,7 @@ describe('composeDescription', () => {
   })
 
   it('omits the source block when there are none, and never the disclaimer', () => {
-    const { description } = composeDescription({ body: 'Body.', chapters: [], sources: [] })
+    const { description } = compose({ body: 'Body.', chapters: [], sources: [] })
     expect(description).not.toContain('Sources:')
     expect(description.endsWith(PUBLISH_DISCLAIMER)).toBe(true)
   })
@@ -74,7 +98,7 @@ describe('composeDescription', () => {
       { length: 60 },
       (_, i) => `https://example.com/${'a'.repeat(90)}/${i}`,
     )
-    const { description, droppedSources } = composeDescription({
+    const { description, droppedSources } = compose({
       body: 'Body.',
       chapters,
       sources,
@@ -91,7 +115,7 @@ describe('composeDescription', () => {
   it('publishes the music attribution as its own block, between chapters and sources', () => {
     // Decision 207: the licence rides with every upload that uses the track,
     // so a Content ID claim is answered by the video's own description.
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters,
       sources: ['https://example.com/filing'],
@@ -104,9 +128,9 @@ describe('composeDescription', () => {
   })
 
   it('omits the music block when there is no bed or no text — never an empty heading', () => {
-    const bare = composeDescription({ body: 'Body.', chapters: [], sources: [] })
+    const bare = compose({ body: 'Body.', chapters: [], sources: [] })
     expect(bare.description).not.toContain('Music:')
-    const blank = composeDescription({
+    const blank = compose({
       body: 'Body.',
       chapters: [],
       sources: [],
@@ -120,7 +144,7 @@ describe('composeDescription', () => {
       { length: 60 },
       (_, i) => `https://example.com/${'a'.repeat(90)}/${i}`,
     )
-    const { description, droppedSources } = composeDescription({
+    const { description, droppedSources } = compose({
       body: 'Body.',
       chapters,
       sources,
@@ -146,7 +170,7 @@ describe('composeDescription for search (decision 303)', () => {
   ]
 
   it('glosses a chapter line when it has one, and leaves a bare title alone', () => {
-    const { description } = composeDescription({ body: 'Body.', chapters, sources: [] })
+    const { description } = compose({ body: 'Body.', chapters, sources: [] })
     expect(description).toContain(
       'Chapters:\n0:00 Stepping Down: Emad Mostaque resigns as CEO, March 2024\n' +
         '0:45 The Borrowed Engine\n5:11 Exhibit A: Getty Images and the artists sue',
@@ -154,7 +178,7 @@ describe('composeDescription for search (decision 303)', () => {
   })
 
   it('labels a source line when it has a label, and keeps a bare URL as it was', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: [],
       sources: [
@@ -170,7 +194,7 @@ describe('composeDescription for search (decision 303)', () => {
   })
 
   it('puts the hashtags on their own line before the disclaimer, three at most, each one word', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: [],
       sources: ['https://example.com/filing'],
@@ -182,7 +206,7 @@ describe('composeDescription for search (decision 303)', () => {
   })
 
   it('keeps a gloss on its chapter line, whatever whitespace it carries', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: [
         { title: 'One', startMs: 0, gloss: 'A gloss\nthat wrapped' },
@@ -195,7 +219,7 @@ describe('composeDescription for search (decision 303)', () => {
   })
 
   it('omits the hashtag line when there are none', () => {
-    const { description } = composeDescription({
+    const { description } = compose({
       body: 'Body.',
       chapters: [],
       sources: [],

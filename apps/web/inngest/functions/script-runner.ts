@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   countWarnings,
   createScriptVersion,
   getDossier,
@@ -105,14 +106,18 @@ function stopReason(message: string): string {
  */
 export async function markShortsStep(
   projectId: string,
-  input: Parameters<typeof markShortsWith>[1],
+  input: Omit<Parameters<typeof markShortsWith>[1], 'bible'>,
   /** The outline's repairs (decision 296), kept on the strip beside the marking's. */
   priorRepairs: readonly Repair[] = [],
 ): Promise<MarkedShorts> {
   const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
   let marked: Awaited<ReturnType<typeof markShortsWith>>
   try {
-    marked = await markShortsWith(completeForProject(projectId), input)
+    // The bible is read here, inside the step, as every request-building step does.
+    marked = await markShortsWith(completeForProject(projectId), {
+      ...input,
+      bible: await channelForProject(db, projectId),
+    })
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
     console.error('[script-runner] Shorts marking failed', serialiseError(error))
@@ -216,7 +221,11 @@ export const scriptRunner = inngest.createFunction(
       > => {
         if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin), repairs: [] }
         try {
+          // Read here, in the step that builds the request, never from an
+          // earlier step's memoised output: a run parked before the bible
+          // existed replays those without it.
           const drafted = await draftOutlineWith(completeForProject(projectId), {
+            bible: await channelForProject(db, projectId),
             caseTitle: setup.caseTitle,
             dossierMd: setup.dossierMd,
             claims: setup.claims,
@@ -274,6 +283,7 @@ export const scriptRunner = inngest.createFunction(
                   estimateOutputTokens: Math.round(chapter.targetWords * 1.6),
                 }),
                 {
+                  bible: await channelForProject(db, projectId),
                   caseTitle: setup.caseTitle,
                   outline,
                   chapterIndex: index,
@@ -331,6 +341,7 @@ export const scriptRunner = inngest.createFunction(
         const check = mocked
           ? mockSelfCheck(chapter.contentMd)
           : await selfCheckWith(completeForProject(projectId), {
+              bible: await channelForProject(db, projectId),
               chapterTitle: chapter.title,
               contentMd: chapter.contentMd,
               claims: setup.claims,

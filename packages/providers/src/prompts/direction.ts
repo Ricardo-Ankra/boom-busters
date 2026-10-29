@@ -6,9 +6,10 @@ import {
   DirectorsBookSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { DirectorsBook } from '@boom-busters/schemas'
+import type { BibleInUse, DirectorsBook } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { DIRECTION_CRAFT } from './direction-craft'
+import { fillSlots } from './bible'
+import { directionCraft, directionRules } from './direction-craft-text'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField } from './repair'
 import type { Note } from './repair'
@@ -65,6 +66,8 @@ Limits (the app checks them): every text value at most ${BOOK_TEXT_MAX} characte
 ${BOOK_LIST_MAX} principals and ${BOOK_LIST_MAX} locations; one chapter entry per chapter, numbered as given.`
 
 export function buildDirectorsBookRequest(input: {
+  /** The channel bible the project froze: the house look and the channel's own rules. */
+  bible: BibleInUse
   caseTitle: string
   centralQuestion?: string | undefined
   chapters: readonly DirectionChapterInput[]
@@ -96,12 +99,13 @@ export function buildDirectorsBookRequest(input: {
 
   return {
     task: 'direction',
-    system: `You are the director of a documentary about a corporate collapse, writing
+    system: fillSlots(
+      `You are the director of a documentary about [[example:direction-premise]], writing
 the film's visual book before a single shot is planned. The narration is
 recorded. Your book decides what varies for THIS film; the bible below decides
 everything that does not.
 
-${DIRECTION_CRAFT}
+${directionCraft(input.bible.bible)}${directionRules(input.bible)}
 
 ${BOOK_SHAPE}
 
@@ -117,15 +121,9 @@ Rules for the book:
   image model reads when it has no photograph, so a job title and a jacket
   are not enough. Never a generic description that could be anyone.
 - "guardrail" lists only that person's defamation and mockery exclusions:
-  specific acts the claims do not establish (handling cash, signing an
-  invented contract, handcuffs), plus caricature, malice, humiliation. It
-  never keeps them away from desks, documents, boardrooms, meetings,
-  interviews or podiums; re-created scenes in ordinary settings are the
+  [[example:direction-guardrail-book]]; re-created scenes in ordinary settings are the
   point of the film.
-- "neverShow" is for this story's factual honesty: fabricated documents
-  presented as real filings, generated images passed off as real
-  photographs, a figure sourced to a filing that does not exist, an invented
-  crime. It is not a list of settings the principals may not appear in.
+- "neverShow" is for this story's factual honesty: [[example:direction-never-show-examples]]. It is not a list of settings the principals may not appear in.
 - Era locks name objects, not adjectives.
 - Era locks constrain what a frame may contain; they are never the subject
   of a frame.
@@ -134,7 +132,7 @@ Rules for the book:
   building, a specific document type, a specific vehicle), each able to sit
   in the background of a frame whose subject is something else. They are
   never the house look's own furniture (empty chairs, screens, glass,
-  corridors), which every film already has. A motif that could belong to any corporate collapse is chosen again.
+  corridors), which every film already has. A motif that could belong to [[example:direction-motif-generic]] is chosen again.
 - The anchor object is one object the film returns to; it is never one of
   the motifs, and it is never the story's subject. The three motifs are
   three different objects, sharing no head noun with each other or with the
@@ -153,6 +151,8 @@ Rules for the book:
   that exact name, depiction "likeness", and the identity string copied
   verbatim where one is given. Add principals the cast does not cover when
   the claims name them; never drop a cast member.`,
+      input.bible,
+    ),
     messages: [
       // The claim list is the cacheable prefix, like every script prompt.
       {

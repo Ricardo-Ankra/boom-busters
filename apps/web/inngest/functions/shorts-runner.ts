@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   deleteShorts,
   getLatestScript,
   getProject,
@@ -165,6 +166,7 @@ export const shortsRunner = inngest.createFunction(
       } else {
         try {
           const marked = await markShortsWith(completeForProject(projectId), {
+            bible: await channelForProject(db, projectId),
             chapters: chapterSources,
             ...(tension ? { tension } : {}),
           })

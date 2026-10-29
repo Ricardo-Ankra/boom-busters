@@ -2,6 +2,7 @@
 
 import {
   blockingClaims,
+  channelForProject,
   editChapter,
   getChapter,
   getLatestScript,
@@ -252,6 +253,7 @@ export async function regenerateSection(
     // asked once more at double it, so half a passage never reaches the diff.
     const answer = await callForText({
       request: buildRegenerateRequest({
+        bible: await channelForProject(db, projectId),
         chapterTitle: chapter.title,
         contentMd: chapter.contentMd,
         selection,
