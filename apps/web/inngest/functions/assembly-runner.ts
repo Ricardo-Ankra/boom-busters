@@ -120,14 +120,14 @@ export const assemblyRunner = inngest.createFunction(
         if (asset) assets.push([id, asset])
       }
 
-      const { settings } = await channelForProject(db, projectId)
+      const { settings, name, handle } = await channelForProject(db, projectId)
       const beds = await listMusicBeds(db)
 
       return {
         plan,
         slots,
         assets,
-        brand: resolveBrandKit(settings),
+        brand: resolveBrandKit(settings, { name, handle }),
         music: pickMusicBed(beds),
       }
     })

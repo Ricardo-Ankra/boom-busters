@@ -448,6 +448,12 @@ export type BrandKitStored = z.infer<typeof BrandKitStoredSchema>
 export const BrandKitTokensSchema = BrandKitStoredSchema.extend({
   voice: VoiceConfigSchema,
   look: BrandLookSchema.extend({ logoUrl: z.string().min(1).optional() }),
+  /**
+   * The channel's name and handle, for the wordmark the compositions draw.
+   * Optional on purpose: a timeline compiled before this field renders the
+   * Boom & Busters wordmark exactly as it did.
+   */
+  identity: z.object({ name: z.string(), handle: z.string().nullable() }).optional(),
 })
 export type BrandKitTokens = z.infer<typeof BrandKitTokensSchema>
 
@@ -746,10 +752,14 @@ export const DEFAULT_SETTINGS: Settings = {
  * The Brand Kit as consumed by compositions: stored tokens plus the narration
  * voice projected in from `settings.tts` (see `VoiceConfigSchema`).
  */
-export function resolveBrandKit(settings: Settings): BrandKitTokens {
+export function resolveBrandKit(
+  settings: Settings,
+  channel?: { name: string; handle: string | null },
+): BrandKitTokens {
   return {
     ...settings.brandKit,
     look: { ...settings.brandKit.look, gradePreset: settings.brandKit.look.gradePreset ?? 'muted' },
     voice: settings.tts,
+    ...(channel ? { identity: { name: channel.name, handle: channel.handle } } : {}),
   }
 }

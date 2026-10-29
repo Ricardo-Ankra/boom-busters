@@ -24,7 +24,7 @@ function cornerStyle(
 
 /**
  * The channel mark when the brand kit names one and the materialiser
- * resolved it (decision 268); otherwise the typographic "Boom & Busters"
+ * resolved it (decision 268); otherwise the typographic channel name ("Boom & Busters" for a snapshot that predates `brand.identity`)
  * wordmark, which is what every film carried before there was a logo
  * library. The fallback is deliberate: a broken image in every frame would
  * be worse than clean type.
@@ -64,7 +64,7 @@ export function Watermark({ brand }: { brand: BrandKitTokens }) {
         textTransform: 'uppercase',
       }}
     >
-      Boom &amp; Busters
+      {brand.identity?.name ?? 'Boom & Busters'}
     </div>
   )
 }

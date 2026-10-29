@@ -145,6 +145,8 @@ export interface PublishModel {
    * library row carries no text.
    */
   musicAttribution: string | null
+  /** The channel's disclaimer, from the bible the project froze; the last block of the description. */
+  disclaimer: string
   slots: ScheduleSlot[]
   apiAuditPassed: boolean
   dailyUploadBudget: number
@@ -163,6 +165,7 @@ export function emptyPublishModel(): PublishModel {
     hook: '',
     scriptVersion: 0,
     musicAttribution: null,
+    disclaimer: '',
     slots: [],
     apiAuditPassed: false,
     dailyUploadBudget: 0,
@@ -295,13 +298,16 @@ export async function descriptionIngredients(
   sources: DescriptionSource[]
   hook: string
   musicAttribution: string | null
+  /** The channel's disclaimer, from the project's frozen bible. */
+  disclaimer: string
   /** The latest script's version, which a saved opening is measured against. */
   scriptVersion: number
 }> {
-  const [timelineRow, scriptSources, dossier] = await Promise.all([
+  const [timelineRow, scriptSources, dossier, channel] = await Promise.all([
     latestTimeline(db, projectId),
     latestScriptParagraphSources(db, projectId),
     getDossier(db, projectId),
+    channelForProject(db, projectId),
   ])
   const master = timelineRow ? TimelineSchema.parse(timelineRow.json) : null
   const claims = dossier?.claims ?? []
@@ -313,6 +319,7 @@ export async function descriptionIngredients(
       articles: await articlesFor(db, claims),
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
+    disclaimer: channel.bible.disclaimer,
     scriptVersion: scriptSources.scriptVersion,
   }
 }
@@ -484,6 +491,7 @@ export async function publishModel(
     hook,
     scriptVersion: scriptSources.scriptVersion,
     musicAttribution,
+    disclaimer: channel.bible.disclaimer,
     slots: settings.publish.defaultScheduleSlots,
     apiAuditPassed: settings.publish.apiAuditPassed,
     dailyUploadBudget: settings.publish.dailyUploadBudget,

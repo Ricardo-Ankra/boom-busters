@@ -58,7 +58,7 @@ export function EndCta({ text, brand }: { text: string; brand: BrandKitTokens })
             marginTop: 8 * scale,
           }}
         >
-          Boom &amp; Busters
+          {brand.identity?.name ?? 'Boom & Busters'}
         </div>
       </div>
     </AbsoluteFill>

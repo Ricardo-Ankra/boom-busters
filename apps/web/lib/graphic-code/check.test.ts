@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { ChartBrief, GraphicBrief, PlannedGraphicCode } from '@boom-busters/schemas'
+import { GRAPHIC_CODE_FIXTURE_SOURCE } from '@boom-busters/providers'
 import {
-  GRAPHIC_CODE_FIXTURE_SOURCE,
   GRAPHIC_EXAMPLE_CHART,
   GRAPHIC_EXAMPLE_CHART_DATA,
   GRAPHIC_EXAMPLE_TYPE,
-} from '@boom-busters/providers'
+} from '@boom-busters/providers/test-helpers'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { graphicCodeIssue } from './check'

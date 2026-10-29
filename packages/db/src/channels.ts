@@ -277,6 +277,7 @@ export async function channelForProject(
 ): Promise<{
   channelId: string
   name: string
+  handle: string | null
   slug: string
   settings: Settings
   bible: ChannelBible
@@ -297,6 +298,7 @@ export async function channelForProject(
   return {
     channelId: channel.id,
     name: channel.name,
+    handle: channel.handle,
     slug: channel.slug,
     settings: channel.settings,
     bible: channel.bible,

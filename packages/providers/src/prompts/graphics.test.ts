@@ -5,15 +5,17 @@ import {
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
+import {
+  GRAPHIC_EXAMPLE_CHART,
+  GRAPHIC_EXAMPLE_CHART_DATA,
+  GRAPHIC_EXAMPLE_TYPE,
+} from './lift/graphic-examples'
 import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildGraphicRequest,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
   GRAPHIC_CODE_FIXTURE_SOURCE,
-  GRAPHIC_EXAMPLE_CHART,
-  GRAPHIC_EXAMPLE_CHART_DATA,
-  GRAPHIC_EXAMPLE_TYPE,
   mockGraphicCode,
   parseGraphicCode,
   wordsInSlot,

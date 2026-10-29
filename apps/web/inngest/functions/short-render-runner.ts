@@ -24,7 +24,12 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
-import { compileShortTimeline, segmentInMaster, STALE_EXCERPT } from '@boom-busters/timeline'
+import {
+  compileShortTimeline,
+  DEFAULT_CTA_TEXT,
+  segmentInMaster,
+  STALE_EXCERPT,
+} from '@boom-busters/timeline'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -129,12 +134,16 @@ export const shortRenderRunner = inngest.createFunction(
       if (short.kind === 'excerpt' && !segmentInMaster(master, short.segmentRef)) {
         throw new NonRetriableError(STALE_EXCERPT)
       }
+      // The frozen bible's call to action, read here and not carried from an
+      // earlier step; a blank line keeps the house default.
+      const { bible, settings } = await channelForProject(db, projectId)
       let timeline: Timeline
       try {
         timeline = compileShortTimeline({
           master,
           segmentRef: short.segmentRef,
           ending: short.ending,
+          ctaText: bible.ctaLine || DEFAULT_CTA_TEXT,
           music: pickShortsBed(beds, master.brand.music.shortsStyle),
           // The Short's own setting (decision 326), never the master's.
           captions: short.captions,
@@ -175,7 +184,6 @@ export const shortRenderRunner = inngest.createFunction(
         await putObject(timelineS3Key, Buffer.from(JSON.stringify(timeline)), 'application/json')
       }
 
-      const { settings } = await channelForProject(db, projectId)
       return {
         renderId: render.id,
         timelineVersion: timelineRow.version,

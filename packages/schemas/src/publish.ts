@@ -158,6 +158,8 @@ export interface ComposeDescriptionInput {
    * the bed carries no text.
    */
   musicAttribution?: string | null
+  /** The channel's disclaimer, from its bible; `PUBLISH_DISCLAIMER` is Boom & Busters'. */
+  disclaimer: string
 }
 
 export interface ComposedDescription {
@@ -210,7 +212,7 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
   const build = (sources: readonly (string | DescriptionSource)[]): string => {
     const sourceBlock =
       sources.length > 0 ? ['Sources:'].concat(sources.map(sourceLine)).join('\n') : null
-    return [body, chapterBlock, musicBlock, sourceBlock, hashtagBlock, PUBLISH_DISCLAIMER]
+    return [body, chapterBlock, musicBlock, sourceBlock, hashtagBlock, input.disclaimer]
       .filter((block): block is string => block !== null && block !== '')
       .join('\n\n')
   }

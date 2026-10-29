@@ -192,7 +192,13 @@ export function SettingsForm({
         <TabsContent value="voice">
           <Lock archived={channel.archived}>
             {' '}
-            <VoiceTab channelId={channelId} settings={settings} saving={saving} commit={commit} />
+            <VoiceTab
+              channelId={channelId}
+              settings={settings}
+              saving={saving}
+              commit={commit}
+              auditionLine={channel.bible.auditionLine}
+            />
           </Lock>
         </TabsContent>
 

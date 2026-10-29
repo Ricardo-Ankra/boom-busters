@@ -653,6 +653,7 @@ function ItemEditor({
     sources: model.sources,
     musicAttribution: model.musicAttribution,
     hashtags: splitHashtags(hashtags),
+    disclaimer: model.disclaimer,
   })
 
   const dirty =

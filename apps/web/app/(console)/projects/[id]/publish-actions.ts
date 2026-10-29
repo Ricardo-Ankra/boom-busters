@@ -599,6 +599,7 @@ async function requestUpload(
     // The bed plays under Shorts too — the licence rides on every upload.
     musicAttribution: ingredients.musicAttribution,
     hashtags: draft.success ? draft.data.hashtags : [],
+    disclaimer: ingredients.disclaimer,
   })
 
   const metadata = PublishMetadataSchema.safeParse({
