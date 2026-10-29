@@ -14,12 +14,18 @@ import {
   listRunEvents,
   listRuns,
   requireTestDatabase,
+  saveBibleVersion,
   seed,
   setProjectStage,
   truncateRunMirror,
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
-import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_BIBLE,
+  FIRST_CHANNEL_ID,
+} from '@boom-busters/schemas'
 import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -389,6 +395,37 @@ describeDb('dossier-runner', () => {
     researchDossier.mockClear()
 
     // No stored steps: load-case runs for real, and is where the gate sits.
+    const run = (await engine.execute({
+      events: [
+        {
+          name: 'project/created',
+          data: { projectId: otherProject.id, caseId: otherCase.id },
+        },
+      ],
+    })) as { error?: { name: string; message: string } }
+
+    expect(run.error).toMatchObject({
+      name: 'NonRetriableError',
+      message: expect.stringContaining('channel bible incomplete'),
+    })
+    expect(researchDossier).not.toHaveBeenCalled()
+    expect(await listLedger(db, { projectId: otherProject.id, limit: 1 })).toEqual([])
+  })
+
+  it('judges the bible the project froze: completing the channel later does not unblock it', async () => {
+    const other = await createChannel(db, {
+      name: 'Frozen bible',
+      handle: null,
+      slug: `frozen-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const otherCase = await createCase(db, { channelId: other.id, title: 'B', category: 'con' })
+    const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On B' })
+    // The channel is completed after the project started; the project keeps version 1.
+    await saveBibleVersion(db, other.id, FIRST_CHANNEL_BIBLE, 'Edited in Settings')
+    researchDossier.mockClear()
+
     const run = (await engine.execute({
       events: [
         {

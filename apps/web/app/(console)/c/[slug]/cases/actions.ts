@@ -29,6 +29,7 @@ import {
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
   CaseCategorySchema,
+  EXAMPLE_SLOT_IDS,
   UlidSchema,
   isBibleComplete,
   serialiseError,
@@ -231,7 +232,8 @@ export async function suggestCases(channelId: string, input: unknown): Promise<S
   const channel = await findChannel(channelId)
   const refusal = writeRefusalFor(channel)
   if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
-  if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
+  if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
+    return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const parsed = SuggestInputSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
@@ -336,7 +338,8 @@ export async function startProjectFromCase(
   if (!channel) return { ok: false, error: 'That case no longer exists' }
   const refusal = writeRefusalFor(channel)
   if (refusal) return refusal
-  if (!isBibleComplete(channel.bible)) return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
+  if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
+    return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
   const runtime = z
     .number()

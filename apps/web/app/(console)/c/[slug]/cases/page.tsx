@@ -1,6 +1,6 @@
 import { listCaseNotices, listCases } from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
-import { isBibleComplete } from '@boom-busters/schemas'
+import { EXAMPLE_SLOT_IDS, isBibleComplete } from '@boom-busters/schemas'
 import { CaseLibrary } from './case-library'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
@@ -47,7 +47,7 @@ export default async function CasesPage({
       cases={cases}
       sort={active}
       notices={notices}
-      bibleComplete={isBibleComplete(channel.bible)}
+      bibleComplete={isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS)}
       archived={channel.archivedAt !== null}
     />
   )

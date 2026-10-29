@@ -2,6 +2,7 @@ import { EMPTY_BIBLE, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { missingBibleFields } from '@/lib/bible-fields'
 import { ChannelTab } from './channel-tab'
 
 const archiveChannelAction = vi.fn()
@@ -45,7 +46,11 @@ function renderTab(over: Partial<React.ComponentProps<typeof ChannelTab>> = {}) 
 describe('ChannelTab', () => {
   it('counts what keeps an empty bible incomplete, and says complete for a full one', () => {
     const { unmount } = renderTab()
-    expect(screen.getByText('Bible incomplete: 13 fields')).toBeInTheDocument()
+    // The 13 text fields and categories plus every empty example slot.
+    expect(missingBibleFields(EMPTY_BIBLE).length).toBeGreaterThan(13)
+    expect(
+      screen.getByText(`Bible incomplete: ${missingBibleFields(EMPTY_BIBLE).length} missing`),
+    ).toBeInTheDocument()
     unmount()
 
     renderTab({ channel: { ...CHANNEL, bible: FIRST_CHANNEL_BIBLE } })

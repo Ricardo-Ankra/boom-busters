@@ -161,9 +161,7 @@ function BibleCard({
               : 'text-[13px] text-[var(--color-warning)]'
           }
         >
-          {missing.length === 0
-            ? 'Bible complete'
-            : `Bible incomplete: ${missing.length} field${missing.length === 1 ? '' : 's'}`}
+          {missing.length === 0 ? 'Bible complete' : `Bible incomplete: ${missing.length} missing`}
         </p>
 
         {BIBLE_TEXT_FIELDS.map((field) => (
