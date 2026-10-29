@@ -29,7 +29,7 @@ import type {
   TeaserScript,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { channelRulesBlock, fillSlots, noun } from './bible'
+import { channelRulesBlock, fillSlots, literalBibleText, noun } from './bible'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
@@ -103,10 +103,10 @@ export function claimList(claims: readonly ScriptClaim[]): string {
  */
 export function houseStyle(bible: ChannelBible): string {
   return `You write narration for a documentary channel about
-[[example:script-channel-subject]]. The subjects are real ${noun(bible, 'plural')} and
+[[example:script-channel-subject]]. The subjects are real ${literalBibleText(noun(bible, 'plural'))} and
 living people.
 
-Voice: ${bible.narrationRegister}. No rhetorical questions, no "buckle up", no
+Voice: ${literalBibleText(bible.narrationRegister)}. No rhetorical questions, no "buckle up", no
 addressing the audience as "guys". Let the facts carry it.
 
 Sound like a person, not a language model:
@@ -118,7 +118,7 @@ Sound like a person, not a language model:
 - Vary sentence length hard. Put a fragment — five words or fewer — near
   every long sentence. Never three same-length sentences in a row: metronomic
   pacing is the loudest tell there is once it is read aloud.
-- One canonical name per person or ${noun(bible, 'singular')}, then pronouns. Never [[example:script-elegant-variation]] — elegant
+- One canonical name per person or ${literalBibleText(noun(bible, 'singular'))}, then pronouns. Never [[example:script-elegant-variation]] — elegant
   variation is a tell, and it makes a listener work out who you mean.
 - Make contrasts asymmetric. Never "not just X, it's Y", never a neatly
   balanced pair, never a drumbeat of exactly three parallel items.
@@ -155,20 +155,12 @@ text-to-speech narrator, and punctuation is its pacing:
 - Numbers, dates and abbreviations are read exactly as written: write
   [[example:script-read-aloud-numbers]].
 
-${bible.hedgingRules}`
+${literalBibleText(bible.hedgingRules)}`
 }
 
-/** Where a system prompt takes the channel's own rules; swapped in after the slots are filled. */
-const RULES_AT = '\u0000script-rules\u0000'
-
-/**
- * Fills the prompt's markers, then puts the channel's own rules at `RULES_AT`
- * (nothing for a channel with none). The rules are owner-typed text and never
- * pass through `fillSlots`, so a marker-looking string in them stays literal.
- */
-function fillSystem(text: string, inUse: BibleInUse): string {
-  return fillSlots(text, inUse).replace(RULES_AT, () => channelRulesBlock(inUse.bible, 'script'))
-}
+/** The channel's own script rules, protected so `fillSlots` leaves their text as typed. */
+const scriptRules = (inUse: BibleInUse): string =>
+  literalBibleText(channelRulesBlock(inUse.bible, 'script'))
 
 // ---------------------------------------------------------------------------
 // Outline
@@ -186,10 +178,10 @@ export function buildOutlineRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSystem(
+    system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${RULES_AT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
@@ -508,10 +500,10 @@ export function buildChapterRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSystem(
+    system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${RULES_AT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 Write ONE chapter of narration as plain prose paragraphs. No headings, no
 bullet points, no lists — the words are read aloud exactly as written, and
@@ -550,7 +542,7 @@ export function buildSelfCheckRequest(input: {
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: fillSystem(
+    system: fillSlots(
       `You are checking documentary narration against the claim list it
 was written from. You are not rewriting it.
 
@@ -570,7 +562,7 @@ Quote the sentence EXACTLY as it appears, including its punctuation — it is
 matched back to the text character for character.
 
 {"warnings": [{"kind": string, "sentence": string, "message": string}],
- "refs": [{"claimId": string, "sentence": string}]}${RULES_AT}`,
+ "refs": [{"claimId": string, "sentence": string}]}${scriptRules(input.bible)}`,
       input.bible,
     ),
     messages: [
@@ -624,7 +616,7 @@ export function buildShortsRequest(input: {
 
   return {
     task: 'metadata',
-    system: fillSystem(
+    system: fillSlots(
       `Pick 4 segments from this script that would work as vertical
 Shorts. A segment is 20-50 seconds of narration, roughly 50 to 125 words.
 
@@ -647,7 +639,7 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
 
 Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "startSentence" and
 "endSentence" at most ${SHORTS_SENTENCE_MAX} characters each; "hookRationale" at most
-${SHORTS_HOOK_MAX} characters.${RULES_AT}`,
+${SHORTS_HOOK_MAX} characters.${scriptRules(input.bible)}`,
       input.bible,
     ),
     messages: [
@@ -758,7 +750,7 @@ export function buildTeaserRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSystem(
+    system: fillSlots(
       `Write a 25-40 second teaser narration (60-110 words total) for a
 vertical Short that funnels viewers into the full video.
 
@@ -781,7 +773,7 @@ ${TEASER_PARAGRAPHS_MIN} to ${TEASER_PARAGRAPHS_MAX} paragraphs, each ${TEASER_P
 chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
 
 Return exactly:
-{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}${RULES_AT}`,
+{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}${scriptRules(input.bible)}`,
       input.bible,
     ),
     messages: [
@@ -992,10 +984,10 @@ export function buildRegenerateRequest(input: {
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: fillSystem(
+    system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${RULES_AT}
+${SCRIPT_CRAFT}${scriptRules(input.bible)}
 
 You are rewriting ONE passage of an existing chapter.
 

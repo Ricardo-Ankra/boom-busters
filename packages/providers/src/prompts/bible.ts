@@ -32,6 +32,19 @@ function assertWellFormed(text: string): void {
   }
 }
 
+// Two private-use characters: cannot occur in craft text, and stand in for `[[` while a prompt is filled.
+const LITERAL_OPEN = ''
+
+/**
+ * Protects owner-typed bible text (a field value, the channel's rules) from
+ * `fillSlots`: every `[[` becomes a sentinel that is no marker, and `fillSlots`
+ * puts `[[` back as its last step, so the sent text is exactly what was typed.
+ * Wrap every bible field a prompt interpolates before `fillSlots` runs.
+ */
+export function literalBibleText(text: string): string {
+  return text.replaceAll('[[', LITERAL_OPEN)
+}
+
 /**
  * Resolves a prompt's bible markers. `[[if:id]]...[[/if]]` blocks go first, then
  * each `[[example:id]]` is replaced in one pass by a replacer function, so the
@@ -42,11 +55,12 @@ export function fillSlots(text: string, inUse: BibleInUse): string {
   const kept = text.replace(IF_BLOCK, (_match, id: string, inner: string) => {
     return inUse.slotIds.includes(id) ? inner : ''
   })
-  return kept.replace(EXAMPLE_MARKER, (_match, id: string) => {
+  const filled = kept.replace(EXAMPLE_MARKER, (_match, id: string) => {
     const example = inUse.bible.examples[id]
     if (example === undefined) throw new BibleSlotMissingError(id)
     return example
   })
+  return filled.replaceAll(LITERAL_OPEN, '[[')
 }
 
 /** Slot ids of every example and if marker, in order of first appearance. */

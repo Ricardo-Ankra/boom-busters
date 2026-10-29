@@ -1047,6 +1047,30 @@ describe("a channel's own rules in the script prompts", () => {
     expect(system).toContain(literal)
   })
 
+  it('keeps marker-looking text in the bible fields as typed', () => {
+    const literal = 'Never write [[example:script-x]] or [[/if]].'
+    const typed = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: {
+        ...FIRST_CHANNEL_IN_USE.bible,
+        hedgingRules: `The hard rules:\n- ${literal}`,
+        narrationRegister: 'plain [[if:script-x]]',
+        subjectNoun: { singular: 'idea [[x', plural: 'ideas [[y' },
+      },
+    }
+    const { system } = buildOutlineRequest({
+      bible: typed,
+      caseTitle: 'Case',
+      dossierMd: 'd',
+      claims,
+      targetRuntimeMin: 10,
+    })
+    expect(system).toContain(literal)
+    expect(system).toContain('Voice: plain [[if:script-x]].')
+    expect(system).toContain('real ideas [[y and')
+    expect(system).toContain('per person or idea [[x,')
+  })
+
   it('sends none for a channel that has none', () => {
     const { system } = buildSelfCheckRequest({
       bible: FIRST_CHANNEL_IN_USE,

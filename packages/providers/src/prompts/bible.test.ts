@@ -1,6 +1,13 @@
 import { FIRST_CHANNEL_BIBLE, type BibleInUse, type ChannelBible } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { BibleSlotMissingError, channelRulesBlock, fillSlots, markersIn, noun } from './bible'
+import {
+  BibleSlotMissingError,
+  channelRulesBlock,
+  fillSlots,
+  literalBibleText,
+  markersIn,
+  noun,
+} from './bible'
 
 function inUse(examples: Record<string, string>, slotIds: string[] = []): BibleInUse {
   return { bible: { ...FIRST_CHANNEL_BIBLE, examples }, slotIds }
@@ -109,5 +116,17 @@ describe('channelRulesBlock', () => {
     expect(
       channelRulesBlock({ ...base, voiceDos: ['x'], directionRulesMd: ' ' }, 'direction'),
     ).toBe('')
+  })
+})
+
+describe('literalBibleText', () => {
+  it('round-trips through fillSlots byte for byte, markers and all', () => {
+    const typed = 'Keep [[example:script-x]], [[if:script-x]]y[[/if]], [[[ and [[ as typed.'
+    const out = fillSlots(`A ${literalBibleText(typed)} B [[example:a-b]]`, inUse({ 'a-b': 'MID' }))
+    expect(out).toBe(`A ${typed} B MID`)
+  })
+
+  it('leaves text with no double bracket unchanged', () => {
+    expect(literalBibleText('plain [one] text')).toBe('plain [one] text')
   })
 })
