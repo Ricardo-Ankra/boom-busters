@@ -8589,7 +8589,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      draft of the bible, and the case category as free text checked against
      `caseCategories`.
 
-331. **The bible's full shape, and the example slots** (2026-10-29, owner).
+<!-- Decision 331 is on master (the Channel switcher heads the rail). This comment keeps Prettier from renumbering 332 onwards; drop it at merge. -->
+
+332. **The bible's full shape, and the example slots** (2026-10-29, owner).
      Stage A's fields grow into the whole bible: subject, what a case is,
      subject kind and noun (singular and plural), audience, narration
      register, voice do's and don'ts, hedging rules, visual register,
@@ -8616,7 +8618,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      value interpolated into a prompt goes through `literalBibleText`, and a
      channel's own rules are appended after the slots are filled.
 
-332. **Bible versions are append-only, and a project freezes one**
+333. **Bible versions are append-only, and a project freezes one**
      (2026-10-29). `channels.bible` is replaced by
      `channels.current_bible_id`, pointing into a new `channel_bibles` table
      (migration 0039). Saving the Channel tab inserts a new version; no row
@@ -8632,7 +8634,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      step's memoised output, so a run parked before a deploy cannot replay a
      stale bible.
 
-333. **Fixed strings and the wordmark come from the channel** (2026-10-29).
+334. **Fixed strings and the wordmark come from the channel** (2026-10-29).
      The disclaimer, the CTA and the audition line come from the project's
      frozen bible (the current one where there is no project). The channel
      name and handle come from the `channels` row, not the bible, and are
@@ -8644,7 +8646,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      (`visuals-review` and `visual-assets`) resolve a brand kit without
      identity because nothing on them draws the wordmark today.
 
-334. **Categories are data; Suggest cases is the first channel's**
+335. **Categories are data; Suggest cases is the first channel's**
      (2026-10-29). `cases.category` stops being an enum (migration 0040:
      text with a non-empty check, the `case_category` type dropped; the five
      existing keys stay valid and no row changes). A channel's bible lists
