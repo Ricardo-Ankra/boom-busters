@@ -266,8 +266,12 @@ export async function generateDescription(
     answer = mockDescription(chapters.length)
   } else {
     try {
+      // The project's frozen bible, read here where the request is built.
+      const frozen = await channelForProject(db, projectId)
       const written = await callForAnswer({
         request: buildDescriptionRequest({
+          bible: frozen,
+          channelName: frozen.name,
           target: type,
           claims: grounding.claims,
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
@@ -377,11 +381,15 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           )
         : undefined
     try {
+      // The project's frozen bible, read here where the request is built.
+      const frozen = await channelForProject(db, projectId)
       // At most two calls (decision 293): a cut-off is asked once more at
       // double the budget, a refusal once more with its reason. An unusable
       // title is still dropped by the parser, as ordinary filtering.
       const answer = await callForAnswer({
         request: buildTitlesRequest({
+          bible: frozen,
+          channelName: frozen.name,
           caseTitle: project.caseTitle,
           hook: hook || project.title,
           target: type,

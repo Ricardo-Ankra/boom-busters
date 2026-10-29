@@ -49,3 +49,9 @@ describe.each(LIFT_CASES.filter((c) => c.bibleAware))('$name for a psychology ch
     }
   })
 })
+
+describe('the lift is complete', () => {
+  it('every case in LIFT_CASES reads the bible', () => {
+    expect(LIFT_CASES.filter((c) => !c.bibleAware).map((c) => c.name)).toEqual([])
+  })
+})

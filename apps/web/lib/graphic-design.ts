@@ -65,14 +65,19 @@ export async function designGraphic(
       : { ok: false, issue: checked.issue }
   }
 
+  // Read here, inside the step that designs, so the bible is the project's frozen one and never
+  // an earlier step's memoised copy.
+  const inUse = await channelForProject(db, context.projectId)
   return designGraphicWith(
-    async (request, callOptions) => {
-      const { channelId } = await channelForProject(db, context.projectId)
-      return callLlm(request, { projectId: context.projectId, channelId, ...callOptions })
-    },
+    (request, callOptions) =>
+      callLlm(request, {
+        projectId: context.projectId,
+        channelId: inUse.channelId,
+        ...callOptions,
+      }),
     context,
     slot,
-    options,
+    { ...options, bible: inUse },
   )
 }
 

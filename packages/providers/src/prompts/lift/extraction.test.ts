@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -18,36 +18,6 @@ const normalise = (text: string) => text.replace(/\r\n/g, '\n')
 /** A prompt file as it stands, line endings normalised. */
 const readPromptFile = (name: string) => normalise(readFileSync(join(here, '..', name), 'utf8'))
 
-/**
- * Slots whose text spans a `${...}` interpolation in their source, so it is
- * not a run of the raw file but is a run of the prompt the model is sent. Only
- * these may be proved from a fixture, and only from the fixtures of the
- * builder that owns them (the graphics cases).
- */
-const COMPOSED_ONLY: Record<string, string> = {
-  'graphics-worked-beat': 'graphics-',
-  'graphics-worked-chart': 'graphics-',
-}
-
-/** Every composed request the Task 2 fixtures captured: file name, system prompt and messages. */
-const fixtures = readdirSync(join(here, '__fixtures__'))
-  .filter((file) => file.endsWith('.json'))
-  .map((file) => {
-    const request = JSON.parse(
-      normalise(readFileSync(join(here, '__fixtures__', file), 'utf8')),
-    ) as {
-      system?: string
-      messages?: { content: unknown }[]
-    }
-    const text = [
-      request.system ?? '',
-      ...(request.messages ?? []).map((m) =>
-        typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      ),
-    ].join('\n')
-    return { file, text }
-  })
-
 describe('the slot registry', () => {
   it.each(EXAMPLE_SLOTS)('$id is cut verbatim from its source', (slot) => {
     const source = readPromptFile(slot.source)
@@ -56,10 +26,6 @@ describe('the slot registry', () => {
     if (markersIn(source).includes(slot.id)) {
       // Swapped for its marker: the byte proof now lives in the lift fixtures.
       expect(source.includes(text)).toBe(false)
-    } else if (slot.id in COMPOSED_ONLY) {
-      expect(source.includes(text)).toBe(false)
-      const prefix = COMPOSED_ONLY[slot.id]!
-      expect(fixtures.some((x) => x.file.startsWith(prefix) && x.text.includes(text))).toBe(true)
     } else {
       expect(source.includes(text)).toBe(true)
     }

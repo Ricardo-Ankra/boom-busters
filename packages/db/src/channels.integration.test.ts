@@ -150,7 +150,12 @@ suite('channels', () => {
 
     expect(project.channelId).toBe(b.id)
     const resolved = await channelForProject(db, project.id)
-    expect(resolved).toMatchObject({ channelId: b.id, slug: 'beta', bible: EMPTY_BIBLE })
+    expect(resolved).toMatchObject({
+      channelId: b.id,
+      name: b.name,
+      slug: 'beta',
+      bible: EMPTY_BIBLE,
+    })
     expect(resolved.settings).toEqual(DEFAULT_SETTINGS)
   })
 

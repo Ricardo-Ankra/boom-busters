@@ -24,6 +24,7 @@ import {
   DEFAULT_SETTINGS,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
+  FIRST_CHANNEL_IN_USE,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { InngestTestEngine } from '@inngest/test'
@@ -138,7 +139,7 @@ describe('writeDigestWith (decision 293)', () => {
       worstDropPct: 40,
     },
   ]
-  const input = { weekOf: '2026-08-31', lines }
+  const input = { bible: FIRST_CHANNEL_IN_USE, weekOf: '2026-08-31', lines }
   const budget = buildDigestRequest(input).maxTokens
 
   it('asks once more at double the budget when the digest is cut off, and sends none of the half', async () => {

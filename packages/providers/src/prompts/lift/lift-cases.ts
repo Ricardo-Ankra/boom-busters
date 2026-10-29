@@ -10,6 +10,7 @@ import type {
   StockBrief,
   StillBrief,
 } from '@boom-busters/schemas'
+import { FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { exemplarFor, exemplars } from '../../exemplars/index'
 import type { LLMTaskRequest } from '../../llm/types'
 import { buildCastIdentityRequest } from '../cast-identity'
@@ -45,9 +46,9 @@ import { buildNameSubjectRequest } from '../subject'
 /**
  * Every prompt builder the channel bible lift touches, called with fixed
  * literal inputs, so what each one sends today is captured once and any later
- * change to it shows as a fixture diff. `build` takes the bible and ignores it
- * for now; the lift tasks pass it through and set `bibleAware` as each builder
- * learns to read it. `buildSuggestCasesRequest` and `buildScoreNamedCasesRequest`
+ * change to it shows as a fixture diff. `build` takes the bible, which every
+ * builder now reads (`bibleAware`, asserted by the psychology test).
+ * `buildSuggestCasesRequest` and `buildScoreNamedCasesRequest`
  * are left out: the Suggest cases are not parameterised by the bible.
  */
 export interface LiftCase {
@@ -62,12 +63,6 @@ export interface LiftCase {
   inputText?: readonly string[]
 }
 
-const lift = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftCase => ({
-  name,
-  build,
-  bibleAware: false,
-})
-
 /** A case whose builder reads the bible: the psychology test holds it to a second channel. */
 const liftAware = (
   name: string,
@@ -79,6 +74,13 @@ const liftAware = (
   bibleAware: true,
   inputText,
 })
+
+/**
+ * The channel's name is a `channels` row column, not bible text: the first
+ * channel's cases pass its own name, the psychology run an imagined one.
+ */
+const channelNameFor = (inUse: BibleInUse): string =>
+  inUse.bible.subject === FIRST_CHANNEL_BIBLE.subject ? 'Boom & Busters' : 'Mind Matters'
 
 // ---------------------------------------------------------------------------
 // Shared inputs
@@ -324,8 +326,10 @@ const CHAPTERS_META = [
 ]
 
 const metadataCases: LiftCase[] = [
-  lift('metadata-titles-master', () =>
+  liftAware('metadata-titles-master', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
@@ -334,16 +338,20 @@ const metadataCases: LiftCase[] = [
       centralQuestion: 'How did 1.9 billion euros never exist?',
     }),
   ),
-  lift('metadata-titles-master-bare', () =>
+  liftAware('metadata-titles-master-bare', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
       workingTitle: 'How Wirecard Lost 1.9 Billion Euros',
     }),
   ),
-  lift('metadata-titles-short', () =>
+  liftAware('metadata-titles-short', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -352,8 +360,10 @@ const metadataCases: LiftCase[] = [
       centralQuestion: 'How did 1.9 billion euros never exist?',
     }),
   ),
-  lift('metadata-titles-short-clip', () =>
+  liftAware('metadata-titles-short-clip', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -363,8 +373,10 @@ const metadataCases: LiftCase[] = [
       shortText: SHORT_TEXT,
     }),
   ),
-  lift('metadata-titles-short-clip-long', () =>
+  liftAware('metadata-titles-short-clip-long', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -373,8 +385,10 @@ const metadataCases: LiftCase[] = [
     }),
   ),
   // A shortText on a master is ignored: the clip is for a Short only.
-  lift('metadata-titles-master-ignores-short-text', () =>
+  liftAware('metadata-titles-master-ignores-short-text', (bible) =>
     buildTitlesRequest({
+      bible,
+      channelName: channelNameFor(bible),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
@@ -383,33 +397,57 @@ const metadataCases: LiftCase[] = [
       shortText: SHORT_TEXT,
     }),
   ),
-  lift('metadata-description-master', () =>
+  liftAware('metadata-description-master', (bible) =>
     buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
       target: 'master',
       claims: CLAIMS,
       centralQuestion: 'How did 1.9 billion euros never exist?',
       chapters: CHAPTERS_META,
     }),
   ),
-  lift('metadata-description-master-bare', () =>
-    buildDescriptionRequest({ target: 'master', claims: CLAIMS, chapters: [] }),
-  ),
-  lift('metadata-description-master-question-only', () =>
+  liftAware('metadata-description-master-bare', (bible) =>
     buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
+      target: 'master',
+      claims: CLAIMS,
+      chapters: [],
+    }),
+  ),
+  liftAware('metadata-description-master-question-only', (bible) =>
+    buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
       target: 'master',
       claims: CLAIMS,
       centralQuestion: 'How did 1.9 billion euros never exist?',
       chapters: [],
     }),
   ),
-  lift('metadata-description-master-chapters-only', () =>
-    buildDescriptionRequest({ target: 'master', claims: CLAIMS, chapters: CHAPTERS_META }),
-  ),
-  lift('metadata-description-short', () =>
-    buildDescriptionRequest({ target: 'short', claims: CLAIMS, chapters: [] }),
-  ),
-  lift('metadata-description-short-clip', () =>
+  liftAware('metadata-description-master-chapters-only', (bible) =>
     buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
+      target: 'master',
+      claims: CLAIMS,
+      chapters: CHAPTERS_META,
+    }),
+  ),
+  liftAware('metadata-description-short', (bible) =>
+    buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
+      target: 'short',
+      claims: CLAIMS,
+      chapters: [],
+    }),
+  ),
+  liftAware('metadata-description-short-clip', (bible) =>
+    buildDescriptionRequest({
+      bible,
+      channelName: channelNameFor(bible),
       target: 'short',
       claims: CLAIMS,
       chapters: [],
@@ -939,7 +977,11 @@ const directionCases: LiftCase[] = [
 // Graphics
 // ---------------------------------------------------------------------------
 
-const graphicInput = (over: Partial<GraphicDesignInput> = {}): GraphicDesignInput => ({
+const graphicInput = (
+  bible: BibleInUse,
+  over: Partial<GraphicDesignInput> = {},
+): GraphicDesignInput => ({
+  bible,
   caseTitle: 'Wirecard',
   claims: CLAIMS_FOUR,
   logos: ['Wirecard AG'],
@@ -976,16 +1018,18 @@ const CHART_DATA: NonNullable<GraphicDesignInput['data']> = {
 }
 
 const graphicsCases: LiftCase[] = [
-  lift('graphics-graphic-minimal', () =>
-    buildGraphicRequest(graphicInput({ logos: [], intentRefs: [] })),
+  liftAware('graphics-graphic-minimal', (bible) =>
+    buildGraphicRequest(graphicInput(bible, { logos: [], intentRefs: [] })),
   ),
-  lift('graphics-graphic-logos-estimated-words', () =>
-    buildGraphicRequest(graphicInput({ logos: ['Wirecard AG', ' '], wordsEstimated: true })),
+  liftAware('graphics-graphic-logos-estimated-words', (bible) =>
+    buildGraphicRequest(graphicInput(bible, { logos: ['Wirecard AG', ' '], wordsEstimated: true })),
   ),
-  lift('graphics-chart-data', () => buildGraphicRequest(graphicInput({ data: CHART_DATA }))),
-  lift('graphics-redesign', () =>
+  liftAware('graphics-chart-data', (bible) =>
+    buildGraphicRequest(graphicInput(bible, { data: CHART_DATA })),
+  ),
+  liftAware('graphics-redesign', (bible) =>
     buildGraphicRequest(
-      graphicInput({
+      graphicInput(bible, {
         current: {
           title: 'The fall',
           source: 'function Graphic(props) {\n  return null\n}',
@@ -995,26 +1039,26 @@ const graphicsCases: LiftCase[] = [
       }),
     ),
   ),
-  lift('graphics-redesign-pre-token', () =>
+  liftAware('graphics-redesign-pre-token', (bible) =>
     buildGraphicRequest(
-      graphicInput({
+      graphicInput(bible, {
         current: { title: 'The fall', source: 'function Graphic(props) {\n  return null\n}' },
       }),
     ),
   ),
-  lift('graphics-retry-after-refusal', () =>
+  liftAware('graphics-retry-after-refusal', (bible) =>
     buildGraphicRequest(
-      graphicInput({ rejection: 'the source used Easing, which the scan refuses' }),
+      graphicInput(bible, { rejection: 'the source used Easing, which the scan refuses' }),
     ),
   ),
   // One case per stored exemplar: the slot message carries the technique's
   // own design, chart techniques with their data.
   ...exemplars().map((entry) =>
-    lift(`graphics-exemplar-${entry.technique}`, () => {
+    liftAware(`graphics-exemplar-${entry.technique}`, (bible) => {
       const exemplar = exemplarFor(entry.technique)
       if (!exemplar) throw new Error(`No stored design for ${entry.technique}`)
       return buildGraphicRequest(
-        graphicInput({
+        graphicInput(bible, {
           durationMs: entry.slot.durationMs,
           words: entry.slot.words.map((word) => ({ text: word.text, offsetMs: word.atMs })),
           intent: entry.slot.intent,
@@ -1236,8 +1280,12 @@ const otherCases: LiftCase[] = [
     },
     [ARCHIVAL.mustShow],
   ),
-  lift('digest-full', () => buildDigestRequest({ weekOf: '2026-10-26', lines: DIGEST_LINES })),
-  lift('digest-no-lines', () => buildDigestRequest({ weekOf: '2026-10-26', lines: [] })),
+  liftAware('digest-full', (bible) =>
+    buildDigestRequest({ bible, weekOf: '2026-10-26', lines: DIGEST_LINES }),
+  ),
+  liftAware('digest-no-lines', (bible) =>
+    buildDigestRequest({ bible, weekOf: '2026-10-26', lines: [] }),
+  ),
 ]
 
 export const LIFT_CASES: readonly LiftCase[] = [

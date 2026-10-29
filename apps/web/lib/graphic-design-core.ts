@@ -19,7 +19,13 @@ import {
   type ScriptClaim,
 } from '@boom-busters/providers'
 import { BudgetExceededError, graphicIntentOf, ValidationError } from '@boom-busters/schemas'
-import type { ChartBrief, DesignableBrief, GraphicCode, LogoIndex } from '@boom-busters/schemas'
+import type {
+  BibleInUse,
+  ChartBrief,
+  DesignableBrief,
+  GraphicCode,
+  LogoIndex,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
@@ -173,7 +179,7 @@ export async function designGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { guidance?: string; redesign?: boolean } = {},
+  options: { bible: BibleInUse; guidance?: string; redesign?: boolean },
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
   // compile with esbuild's native binary. A host that cannot do either is
@@ -212,6 +218,7 @@ export async function designGraphicWith(
   )
 
   const base: GraphicDesignInput = {
+    bible: options.bible,
     caseTitle: context.caseTitle,
     claims: context.claims,
     logos: context.logos.map((logo) => logo.title),

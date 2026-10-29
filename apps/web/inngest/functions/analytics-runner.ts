@@ -3,6 +3,7 @@ import {
   channelYoutubeReconnectNeeded,
   channelYoutubeToken,
   connectedChannelIds,
+  currentBible,
   getChannel,
   recordChannelYoutubeVerify,
   scheduledPublishItems,
@@ -365,7 +366,7 @@ export const analyticsRunner = inngest.createFunction(
             body = await writeDigestWith(
               (request, call) =>
                 callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) }),
-              { weekOf, lines },
+              { bible: await currentBible(db, channelId), weekOf, lines },
             )
           } catch (error) {
             // A digest is never worth a budget gate: the numbers keep landing
