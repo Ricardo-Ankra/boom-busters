@@ -175,9 +175,8 @@ describe('PreviewScreen', () => {
   it('reads the captions setting off the timeline and stores the flip (decision 326)', async () => {
     const user = userEvent.setup()
     render(<PreviewScreen {...props()} />)
-    const on = screen.getByRole('button', { name: /Captions on/ })
-    expect(on).toHaveAttribute('aria-pressed', 'true')
-    await user.click(on)
+    expect(screen.getByRole('button', { name: 'Captions On' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Captions Off' }))
     expect(setCaptions).toHaveBeenCalledWith(PROJECT, false)
     expect(refresh).toHaveBeenCalled()
   })
@@ -190,9 +189,8 @@ describe('PreviewScreen', () => {
         {...props({ timeline: { ...timeline, captions: { ...timeline.captions, style: 'none' } } })}
       />,
     )
-    const off = screen.getByRole('button', { name: /Captions off/ })
-    expect(off).toHaveAttribute('aria-pressed', 'false')
-    await user.click(off)
+    expect(screen.getByRole('button', { name: 'Captions Off' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Captions On' }))
     expect(setCaptions).toHaveBeenCalledWith(PROJECT, true)
   })
 
@@ -381,6 +379,8 @@ describe('PreviewScreen', () => {
     // The master is the default stage, and its QC state rides on its tab.
     expect(screen.getByRole('button', { name: /Master · QC passed/ })).toBeInTheDocument()
     expect(screen.getByText(/Fetching the file/)).toBeInTheDocument()
+    // The captions setting sits in the sidebar, so it is there on this tab too.
+    expect(screen.getByRole('button', { name: 'Captions Off' })).toBeEnabled()
 
     // The draft tab swaps the stage to the cheap real file.
     await user.click(screen.getByRole('button', { name: /Draft · v2/ }))

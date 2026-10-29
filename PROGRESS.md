@@ -8426,6 +8426,10 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      next draft or master render uploads it before invoking, the existing
      path for a timeline compiled without storage. Already rendered and
      published videos keep their captions until rendered again.
+     On 2026-10-29, at the owner's request, the long-form button moved
+     out of the preview-only strip into its own Captions card in the
+     sidebar, under the music bed, as an On/Off pair matching the Shorts
+     cards. It now shows on the Preview, Draft and Master tabs alike.
 
 327. **Channels, and the workspace split** (2026-10-28). The console now
      runs several YouTube channels. A `channels` table holds each one's
