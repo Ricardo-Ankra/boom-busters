@@ -17,10 +17,10 @@ import { useAction } from './project-controls'
 
 /**
  * Preview & render — Gate 5a (build spec section 11.3). Full-width
- * `@remotion/player` of the compiled timeline with chapter markers, the
- * captions button (a stored setting the renders draw, decision 326) and the
+ * `@remotion/player` of the compiled timeline with chapter markers and the
  * music-duck gain line; beside it the stats, the
- * music picker (a swap recompiles the timeline — cheap and free), and two
+ * music picker (a swap recompiles the timeline — cheap and free), the
+ * captions setting (decision 326, a free recompile the same way), and two
  * render choices side by side: a half-resolution draft (~a quarter of the
  * price, a real file to check before committing) and "Render master",
  * which IS the gate approval — section 7.6 starts the render-runner on
@@ -319,33 +319,13 @@ export function PreviewScreen({
           <>
             <GainLine music={timeline.music} durationMs={durationMs} />
 
-            <div className="flex flex-wrap items-center gap-2">
-              {/* A stored setting, not a preview filter (decision 326): the
-                  draft and the master burn in what this says. */}
-              <Button
-                variant="outline"
-                aria-pressed={captionsOn}
-                busy={runner.pressed === 'captions'}
-                disabled={runner.busy}
-                onClick={() =>
-                  void runner.act(
-                    () => setCaptions(projectId, !captionsOn),
-                    captionsOn ? 'Captions off for the renders' : 'Captions on for the renders',
-                    'captions',
-                  )
-                }
-              >
-                <Captions aria-hidden />
-                {captionsOn ? 'Captions on' : 'Captions off'}
-              </Button>
-              {droppedTotal > 0 ? (
-                <p className="text-[13px] text-[var(--color-warning)]">
-                  {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
-                  {dropped.music ? ' (including the music bed)' : ''} — storage is not configured,
-                  so their bytes cannot be fetched. The render resolves them for real.
-                </p>
-              ) : null}
-            </div>
+            {droppedTotal > 0 ? (
+              <p className="text-[13px] text-[var(--color-warning)]">
+                {droppedTotal} item{droppedTotal === 1 ? ' is' : 's are'} not previewable here
+                {dropped.music ? ' (including the music bed)' : ''} — storage is not configured, so
+                their bytes cannot be fetched. The render resolves them for real.
+              </p>
+            ) : null}
           </>
         ) : null}
 
@@ -385,6 +365,8 @@ export function PreviewScreen({
           currentBedKey={currentBedKey}
           runner={runner}
         />
+
+        <CaptionsCard projectId={projectId} captionsOn={captionsOn} runner={runner} />
 
         <RenderActionsCard
           projectId={projectId}
@@ -582,6 +564,69 @@ function MusicPicker({
             ) : null}
           </>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Burned-in captions for the long-form video (decision 326): a stored
+ * setting, not a preview filter, so it lives in the sidebar beside the
+ * other render decisions and shows on every tab. The On/Off pair matches
+ * the Shorts cards. A switch is free: it saves a new timeline version the
+ * next draft and master draw; files already rendered keep their captions.
+ */
+function CaptionsCard({
+  projectId,
+  captionsOn,
+  runner,
+}: {
+  projectId: string
+  captionsOn: boolean
+  runner: ReturnType<typeof useAction>
+}) {
+  const { act, busy, pressed } = runner
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-[14px]">
+          <Captions aria-hidden className="h-4 w-4" />
+          Captions
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          Burned into the draft and the master. Switching is free and saves a new timeline version;
+          files already rendered keep their captions.
+        </p>
+        <div className="flex items-center gap-2">
+          {([true, false] as const).map((on) => {
+            const label = on ? 'On' : 'Off'
+            const key = `captions-${label.toLowerCase()}`
+            return captionsOn === on ? (
+              <Button key={key} variant="primary" disabled aria-label={`Captions ${label}`}>
+                {label}
+              </Button>
+            ) : (
+              <Button
+                key={key}
+                variant="outline"
+                aria-label={`Captions ${label}`}
+                busy={pressed === key}
+                disabled={busy}
+                onClick={() =>
+                  void act(
+                    () => setCaptions(projectId, on),
+                    on ? 'Captions on for the renders' : 'Captions off for the renders',
+                    key,
+                  )
+                }
+              >
+                {label}
+              </Button>
+            )
+          })}
+        </div>
       </CardContent>
     </Card>
   )
