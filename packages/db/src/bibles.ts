@@ -1,4 +1,9 @@
-import { ChannelNotFoundError, EXAMPLE_SLOT_IDS, isBibleComplete } from '@boom-busters/schemas'
+import {
+  ChannelBibleSchema,
+  ChannelNotFoundError,
+  EXAMPLE_SLOT_IDS,
+  isBibleComplete,
+} from '@boom-busters/schemas'
 import type { ChannelBible } from '@boom-busters/schemas'
 import { asc, eq, sql } from 'drizzle-orm'
 import type { Database } from './client'
@@ -76,6 +81,16 @@ export async function saveBibleVersion(
   return db.transaction((tx) => appendBibleVersion(tx, channelId, bible, note))
 }
 
+/**
+ * A stored version with its bible parsed, so a version saved before a key was
+ * added (stage A stored eleven) comes back with the schema's defaults, as
+ * `toChannel` already gives the project freeze.
+ */
+const parsed = (row: BibleVersionRow): BibleVersionRow => ({
+  ...row,
+  bible: ChannelBibleSchema.parse(row.bible),
+})
+
 /** The version the channel's current pointer names. A channel without one is a broken row. */
 export async function currentBible(db: Database, channelId: string): Promise<BibleVersionRow> {
   const [row] = await db
@@ -84,7 +99,7 @@ export async function currentBible(db: Database, channelId: string): Promise<Bib
     .innerJoin(channelBibles, eq(channelBibles.id, channels.currentBibleId))
     .where(eq(channels.id, channelId))
     .limit(1)
-  if (row) return row.version
+  if (row) return parsed(row.version)
 
   const [channel] = await db
     .select({ id: channels.id })
@@ -100,15 +115,16 @@ export async function listBibleVersions(
   db: Database,
   channelId: string,
 ): Promise<BibleVersionRow[]> {
-  return db
+  const rows = await db
     .select()
     .from(channelBibles)
     .where(eq(channelBibles.channelId, channelId))
     .orderBy(asc(channelBibles.version))
+  return rows.map(parsed)
 }
 
 export async function bibleVersionById(db: Database, id: string): Promise<BibleVersionRow> {
   const [row] = await db.select().from(channelBibles).where(eq(channelBibles.id, id)).limit(1)
   if (!row) throw new Error(`bible version ${id} not found`)
-  return row
+  return parsed(row)
 }

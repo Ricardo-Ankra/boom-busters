@@ -8,7 +8,7 @@ import {
 } from '@boom-busters/schemas'
 import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { bibleVersionById, currentBible, saveBibleVersion } from './bibles'
+import { bibleVersionById, currentBible, listBibleVersions, saveBibleVersion } from './bibles'
 import { createCase } from './cases'
 import { channelForProject, createChannel, ensureFirstChannel, getChannel } from './channels'
 import { createDb } from './client'
@@ -144,6 +144,45 @@ suite('bible versions', () => {
       bible: FIRST_CHANNEL_BIBLE,
     })
     expect(again).toMatchObject({ bibleId: FIRST_CHANNEL_BIBLE_ID, bibleVersion: 1 })
+  })
+
+  it('a version stored with only the eleven stage A keys is parsed with defaults on every read', async () => {
+    const channel = await createChannel(db, channelInput('stage-a'))
+    const stageA = {
+      subject: 'corporate collapses',
+      whatACaseIs: 'A good case has a paper trail.',
+      subjectKind: 'the common name',
+      audience: 'adults',
+      narrationRegister: 'plain',
+      visualRegister: 'dark',
+      titleStyle: 'sober',
+      ctaLine: 'The full story is on the channel',
+      caseCategories: [{ key: 'collapse', label: 'Collapse' }],
+      scriptRulesMd: '',
+      directionRulesMd: '',
+    }
+    const [row] = await db
+      .insert(channelBibles)
+      .values({
+        channelId: channel.id,
+        version: 2,
+        bible: stageA as never,
+        slotIds: [],
+        complete: false,
+        note: 'Stage A',
+      })
+      .returning()
+    await db.update(channels).set({ currentBibleId: row!.id }).where(eq(channels.id, channel.id))
+
+    const current = await currentBible(db, channel.id)
+    const byId = await bibleVersionById(db, row!.id)
+    const listed = (await listBibleVersions(db, channel.id)).find((v) => v.id === row!.id)
+
+    for (const version of [current, byId, listed!]) {
+      expect(version.bible.examples).toEqual({})
+      expect(version.bible.subject).toBe('corporate collapses')
+      expect(version.bible.subjectNoun).toEqual(EMPTY_BIBLE.subjectNoun)
+    }
   })
 
   it('a save for an unknown channel throws and writes nothing', async () => {
