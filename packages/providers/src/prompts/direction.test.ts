@@ -1,4 +1,4 @@
-import { BOOK_TEXT_MAX } from '@boom-busters/schemas'
+import { BOOK_TEXT_MAX, EXAMPLE_SLOT_IDS, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildDirectorsBookRequest,
@@ -6,6 +6,8 @@ import {
   parseDirectorsBook,
   repairDirectorsBook,
 } from './direction'
+import { registerBullet } from './direction-craft-text'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import { describeRepairs } from './repair'
 import type { Note, Repair } from './repair'
 import type { ScriptClaim } from './script'
@@ -34,6 +36,7 @@ const CHAPTERS = [
 
 describe('buildDirectorsBookRequest', () => {
   const request = buildDirectorsBookRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     centralQuestion: 'How did two billion euros never exist?',
     chapters: CHAPTERS,
@@ -87,6 +90,7 @@ describe('buildDirectorsBookRequest', () => {
 
   it('gives a longer film a bigger answer budget: one chapter entry per chapter', () => {
     const eight = buildDirectorsBookRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       chapters: Array.from({ length: 8 }, (_, index) => ({
         title: `Chapter ${index + 1}`,
@@ -107,6 +111,7 @@ describe('buildDirectorsBookRequest with a cast (decision 253)', () => {
     },
   ]
   const request = buildDirectorsBookRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Stability AI',
     chapters: CHAPTERS,
     claims: CLAIMS,
@@ -122,6 +127,7 @@ describe('buildDirectorsBookRequest with a cast (decision 253)', () => {
 
   it('says nothing about a cast when there is none', () => {
     const bare = buildDirectorsBookRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'x',
       chapters: CHAPTERS,
       claims: CLAIMS,
@@ -172,6 +178,7 @@ describe('mockDirectorsBook', () => {
 
 describe('the book cannot converge on one symbol (decision 271)', () => {
   const request = buildDirectorsBookRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Stability AI',
     chapters: [{ title: 'The exit', paragraphs: ['He is gone.'] }],
     claims: [],
@@ -199,6 +206,7 @@ describe("the book's limits (decision 292)", () => {
 
   it('states every limit in the prompt', () => {
     const rules = buildDirectorsBookRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'x',
       chapters: [{ title: 'The audit', paragraphs: ['A paragraph.'] }],
       claims: [],
@@ -366,5 +374,38 @@ describe("the book's repairs, in the owner's words (decision 293)", () => {
       accent: answer.palette.accent,
       temperature: answer.palette.temperature,
     })
+  })
+})
+
+describe('buildDirectorsBookRequest for a second channel (the channel bible lift)', () => {
+  const inUse = { bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS }
+  const build = (bible = inUse) =>
+    buildDirectorsBookRequest({ bible, caseTitle: 'Stanford', chapters: CHAPTERS, claims: CLAIMS })
+
+  it("reads the channel's premise, register and guardrail wording", () => {
+    const { system } = build()
+    expect(system).toContain(
+      `a documentary about ${PSYCHOLOGY_TEST_BIBLE.examples['direction-premise']}, writing`,
+    )
+    expect(system).toContain(registerBullet(PSYCHOLOGY_TEST_BIBLE.visualRegister))
+    expect(system).toContain(PSYCHOLOGY_TEST_BIBLE.examples['direction-guardrail-book']!)
+    expect(system).not.toContain('Netflix')
+    expect(system).not.toContain('corporate collapse')
+  })
+
+  it('appends no rules block for a channel with no direction rules', () => {
+    expect(build().system).not.toContain("This channel's rules")
+  })
+
+  it("appends the channel's own direction rules after the craft, exactly as typed", () => {
+    const rules = 'Shoot every interview on a plain grey wall. [[example:direction-premise]] stays.'
+    const { system } = build({
+      ...inUse,
+      bible: { ...PSYCHOLOGY_TEST_BIBLE, directionRulesMd: rules },
+    })
+    const at = system.indexOf("## This channel's rules")
+    expect(at).toBeGreaterThan(system.indexOf('Shot rules adapted in part from'))
+    expect(system.slice(at)).toContain(`\n\n${rules}`)
+    expect(system.indexOf('Limits (the app checks them)')).toBeGreaterThan(at)
   })
 })

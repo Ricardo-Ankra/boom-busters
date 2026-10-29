@@ -1,4 +1,4 @@
-import { MIN_SHOT_SECONDS, ShotListOutputSchema } from '@boom-busters/schemas'
+import { MIN_SHOT_SECONDS, ShotListOutputSchema, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildShotListRequest } from './shotlist'
 import { buildStretchRequest, MIN_SHOT_RULE, mockStretchPlan } from './stretch'
@@ -7,6 +7,7 @@ import { MAX_OUTPUT_TOKENS } from '../llm/types'
 
 const base = {
   ...buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     paragraphs: [{ index: 0, text: 'Other tallies went higher. In 2021, it rose.', seconds: 9 }],
@@ -16,6 +17,7 @@ const base = {
 }
 
 const input: StretchRequestInput = {
+  bible: FIRST_CHANNEL_IN_USE,
   pieces: [
     { paragraphIndex: 0, text: 'Other tallies went higher. In 2021, it rose.', seconds: 9 },
     { paragraphIndex: 1, text: 'Then it fell.', seconds: 3.4 },

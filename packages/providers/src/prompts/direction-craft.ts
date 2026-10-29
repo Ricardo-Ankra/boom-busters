@@ -11,17 +11,13 @@ export const DIRECTION_CRAFT = `# Direction craft: how the film looks
 
 These rules shape the director's book and every shot brief. They sit BELOW
 the hard rules: nothing here ever licenses an image the claim list does not
-support, and the legal hedges are never sacrificed for a stronger picture.
+support, and the [[example:script-hedge-kind]] are never sacrificed for a stronger picture.
 A beautiful frame that implies a fact the claims do not hold is worse than a
 plain one.
 
 ## The house look
 
-- Register: the Netflix money documentary. Dark, patient, photographic
-  realism. The people, in the rooms where it happened: principals at the
-  table, in the corridor, at the podium, re-created with a reconstruction's
-  restraint. Empty rooms, documents and objects are punctuation between
-  them, not the film.
+- {{visualRegister}}
 - Restraint over spectacle. The story is the drama; the picture holds still
   and lets it land. One idea per frame.
 - Light carries the mood. Faces are allowed, and where the cast is
@@ -33,7 +29,7 @@ plain one.
   A prompt never names a grade, grain, film stock or colour code.
   The book's palette temperature reaches the picture through the light you choose.
 - Era is a lock, not a flavour. Period-correct objects are named
-  specifically: CRT monitors, a fax machine, a flip phone, paper ledgers.
+  specifically: [[example:direction-era-objects]].
   Never write "old fashioned"; write the object.
 
 ## Shot grammar for a film made of stills
@@ -46,8 +42,7 @@ plain one.
   or that place.
 - An abstract sentence is staged, not symbolised. Pressure, doubt, a
   disagreement, a judgment: show the people it concerns, in the place it
-  happened. "Financial pressure on the business and disagreements inside
-  the boardroom" is the principals at the boardroom table, mid-argument,
+  happened. [[example:direction-abstract-example]],
   never an object standing in for them. Only a sentence with no person and
   no place in it reaches for the director's book, and then for the
   chapter's location first and a motif last.
@@ -97,7 +92,7 @@ plain one.
 ## What a still prompt must contain
 
 - One photographable moment. Not a montage, not a concept, not "the fall
-  of a company". A room, a time of day, a light source, what is happening.
+  of [[example:script-subject-with-article]]". A room, a time of day, a light source, what is happening.
 - The frame holds what the sentence needs, and a set holds what its room
   holds. Nothing is added to make a frame look lived in: the house
   photograph already asks for real use and wear.
@@ -131,15 +126,10 @@ plain one.
   prompt.
 - Banned words, because they render nothing: cinematic, stunning,
   dramatic lighting, high quality, masterpiece, epic, beautiful, moody,
-  professional, ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine, hyperrealistic, photorealistic. Banned too: an emotion named without a body. Not "a
-  worried executive"; "an executive, jaw set, both hands flat on the
-  desk".
+  professional, ultra-detailed, 8k, 4k, 3d render, cgi, octane, unreal engine, hyperrealistic, photorealistic. Banned too: an emotion named without a body. Not [[example:direction-emotion-body]].
 - The negative prompt names at most five concrete things that would be wrong in this frame for this film's era and story.
   Never a category, and never something the scene itself shows: a frame with a laptop never avoids screens.
-- A real company's own marks belong in frame when the film is about that
-  company: the sign above the door, the badge on a laptop lid, the lanyard
-  on the desk. Name the company and let the shot hold what is really
-  there. Never ask for a mark the frame must render as legible letters,
+- [[example:direction-subject-marks]] Never ask for a mark the frame must render as legible letters,
   because a generated wordmark is a wrong one and a wrong one reads as a
   forgery. The same goes for any words the viewer is meant to read: a
   document can be dense with type, but the sentence it carries is never
@@ -192,22 +182,18 @@ line or a Brand Kit anchor into a prompt.
   likeness must look like the actual person. "likeness" is the default
   depiction for every principal; the producer alone downgrades someone to
   "archival-only", never the model. "anonymous" is for people the claims
-  do not name: staff, customers, unnamed investors.
+  do not name: staff, customers, unnamed [[example:direction-background-people]].
 - A prompt that shows a real person gives the identity string, which
-  begins with their full name and role ("Emad Mostaque, founder of
-  Stability AI"): a photographic description of that person as press
+  begins with their full name and role ("[[example:direction-identity-example]]"): a photographic description of that person as press
   photographs of the period show them (age, hair, beard, glasses, build,
   dress), so the image model can match the real face. Never a generic "a
   man in his 40s" standing in for a named person.
-- Re-created scenes are allowed and expected: a principal at a desk with
-  papers, in a boardroom, in a corridor, at a podium, in a car, in an
-  interview, reading a phone. The film says on screen and in its
+- Re-created scenes are allowed and expected: [[example:direction-recreated-scenes]]. The film says on screen and in its
   description that re-creations are illustrative, so a scene does not need
   to have been photographed to be shown. It needs to be consistent with
   the claims.
 - The line that is never crossed is defamation or mockery. Never show a
-  named person committing a specific act the claims do not establish: no
-  cash changing hands, no shredder, no handcuffs, no whispered deal. No
+  named person committing a specific act the claims do not establish: [[example:direction-never-acts]]. No
   exaggeration of features, no ageing or deforming, no expression of
   malice, guilt or stupidity, no caricature, no costume that mocks, no
   sexual, violent or degrading context, no invented quote in the frame.
@@ -217,22 +203,16 @@ line or a Brand Kit anchor into a prompt.
   not made sinister.
 - The director's book writes one guardrail line per principal, and it
   lists only the defamation and mockery exclusions specific to that person
-  ("never handling cash or signing an invented contract; never in
-  handcuffs; never mocked"). It never fences a person away from ordinary
-  settings such as desks, documents, boardrooms or meetings. The guardrail
-  governs what the planner writes; it is never pasted into the image
-  prompt. Image models read negation as suggestion, so "never in
-  handcuffs" in a prompt invites handcuffs. Its concrete nouns may become
-  the negative prompt ("no gavel, no handcuffs, no cash"); its sentences
+  ("[[example:direction-guardrail-rule]]"); its sentences
   are never quoted.
 - When the cast holds photographs of a person, the still is generated from
   them: the prompt names the person by full name and role, and the photos travel with the request; the code tells the model which photograph is theirs.
-  The prompt varies clothing, place, light and posture freely. It carries NO physical description of them at all: no age, build, height, hair, beard, glasses, skin or face. The photograph settles every one of those, and a written description can only argue with it. "Emad Mostaque, founder of Stability AI, sitting at a desk" is right; adding "male in his 40s, short dark hair, closely cropped beard" after it is the mistake.
+  The prompt varies clothing, place, light and posture freely. It carries NO physical description of them at all: no age, build, height, hair, beard, glasses, skin or face. The photograph settles every one of those, and a written description can only argue with it. [[example:direction-worked-example]] after it is the mistake.
 - A person is photographed in the room, never pasted onto it: seated in a
   chair or standing on the floor, at true scale for the furniture around
   them, lit by the room's own light, with whatever stands between them and
   the camera in front of them.
-- Anonymous figures (depiction "anonymous") and extras (investors,
+- Anonymous figures (depiction "anonymous") and extras ([[example:direction-background-people]],
   employees, staff, a crowd) are described by role, age range, build and clothing, with natural, realistic faces, visible and in focus.
   Their faces resemble no real or public person, and never a named one.
   A face is never blurred, smeared, hidden or turned away as a device.
@@ -260,8 +240,7 @@ line or a Brand Kit anchor into a prompt.
   string only where no photograph of them exists; a photographed person's
   prompt carries no physical description of them at all.
   No guardrail text appears in any prompt.
-- No guardrail or never-show line keeps a principal away from a desk, a
-  document, a boardroom or a meeting; they exclude only what would defame
+- No guardrail or never-show line keeps a principal away from [[example:direction-preflight-settings]]; they exclude only what would defame
   or mock.
 - No pan.
 

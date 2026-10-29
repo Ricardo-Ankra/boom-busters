@@ -1,5 +1,5 @@
 import { splitSentences } from '@boom-busters/schemas'
-import type { PlannedSlot } from '@boom-busters/schemas'
+import type { BibleInUse, PlannedSlot } from '@boom-busters/schemas'
 import { MIN_SHOT_RULE } from './min-shot-rule'
 import { mockStockBrief, shotListAnswerTokens } from './shotlist'
 import { outputBudget } from '../llm/types'
@@ -17,6 +17,12 @@ export interface StretchRequestInput {
   note?: string
   /** Why the app is re-planning it unasked (automatic repair, the stretch re-plan design). */
   reason?: string
+  /**
+   * The bible the chapter's plan was built under. No text here is the channel's
+   * (the rules travel in `base.system`), but every builder takes one, so the
+   * psychology sweep covers this one too.
+   */
+  bible: BibleInUse
 }
 
 /**

@@ -1,5 +1,12 @@
-import { MIN_SHOT_SECONDS, ShotListOutputSchema } from '@boom-busters/schemas'
+import {
+  EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_IN_USE,
+  MIN_SHOT_SECONDS,
+  ShotListOutputSchema,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { registerBullet } from './direction-craft-text'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildShotListRequest,
   buildShotRepairRequest,
@@ -51,6 +58,7 @@ const STILL_BRIEF = {
 
 function baseRequest() {
   return {
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
@@ -60,6 +68,7 @@ function baseRequest() {
 
 describe('buildShotListRequest', () => {
   const request = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
@@ -93,6 +102,7 @@ describe('buildShotListRequest', () => {
 
 describe('the headline shot (decision 257)', () => {
   const request = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
@@ -172,6 +182,7 @@ describe('the headline shot (decision 257)', () => {
 
 describe('the social shot (decision 284)', () => {
   const request = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     paragraphs: PARAGRAPHS,
@@ -640,6 +651,7 @@ describe('mockShotList', () => {
 describe('buildShotListRequest with direction (decision 252)', () => {
   const direction = mockDirectorsBook({ caseTitle: 'Wirecard', chapterCount: 2 })
   const request = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     chapterNumber: 2,
@@ -679,6 +691,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
    */
   describe('a photographed person carries no written description', () => {
     const withPhotos = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Stability AI',
       chapterTitle: 'The Missing Billions',
       chapterNumber: 2,
@@ -777,6 +790,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
       seconds: 10,
     }))
     const long = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       chapterTitle: 'x',
       paragraphs: longChapter,
@@ -790,6 +804,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
   it('still works with no book, for re-runs of projects planned before it', () => {
     const bare = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       chapterTitle: 'x',
       paragraphs: PARAGRAPHS,
@@ -830,6 +845,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
   describe('the film knows its sets', () => {
     const withSets = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Stability AI',
       chapterTitle: 'The Missing Billions',
       chapterNumber: 2,
@@ -840,6 +856,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
     })
 
     const withLayout = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Stability AI',
       chapterTitle: 'The Missing Billions',
       chapterNumber: 2,
@@ -992,6 +1009,7 @@ describe('buildShotListRequest with direction (decision 252)', () => {
 
 describe('the sentence, staging and era-lock rules live once, in the bible (decision 287)', () => {
   const request = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     chapterTitle: 'The Missing Billions',
     chapterNumber: 2,
@@ -1031,6 +1049,7 @@ describe("restoring the planner's own field rule (decision 287 follow-up, task 1
 
   it('states the field rule first, with the set clause, when the film has sets', () => {
     const withSets = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Stability AI',
       chapterTitle: 'The Missing Billions',
       chapterNumber: 2,
@@ -1053,6 +1072,7 @@ describe("restoring the planner's own field rule (decision 287 follow-up, task 1
 
   it('drops the set clause when the film has no sets', () => {
     const noSets = buildShotListRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       chapterTitle: 'The Missing Billions',
       paragraphs: PARAGRAPHS,
@@ -1068,6 +1088,7 @@ describe("restoring the planner's own field rule (decision 287 follow-up, task 1
 
 describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
   const base = buildShotListRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Stability AI',
     chapterTitle: 'The exit',
     paragraphs: [{ index: 0, text: 'Mostaque told the investors.', seconds: 9 }],
@@ -1097,7 +1118,7 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     const repair = buildShotRepairRequest(
       base,
       [{ brief: still, problems: ['Emad Mostaque is named here and photographed'] }],
-      { allowStockToStill: false },
+      { allowStockToStill: false, bible: FIRST_CHANNEL_IN_USE },
     )
     expect(repair.system).toBe(base.system)
     expect(repair.cacheablePrefixMessages).toBe(base.cacheablePrefixMessages)
@@ -1112,6 +1133,7 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
   it('lets the Fix button turn stock into a still, and says so', () => {
     const repair = buildShotRepairRequest(base, [{ brief: stock, problems: ['p'] }], {
       allowStockToStill: true,
+      bible: FIRST_CHANNEL_IN_USE,
     })
     expect(repair.messages.at(-1)?.content).toContain('may become a "still"')
   })
@@ -1127,9 +1149,9 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
       ],
     })
     expect(
-      parseShotRepairAnswers(answer, originals, { allowStockToStill: false }).map((a) =>
-        'kept' in a ? a.kept : 'used',
-      ),
+      parseShotRepairAnswers(answer, originals, {
+        allowStockToStill: false,
+      }).map((a) => ('kept' in a ? a.kept : 'used')),
     ).toEqual([
       'the answer changed the sentence it covers',
       'the answer was not a valid brief',
@@ -1142,7 +1164,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     const answer = JSON.stringify({
       briefs: [{ paragraphIndex: 0, seconds: 9, brief: { ...still, prompt: 'New.' } }],
     })
-    expect(parseShotRepair(answer, [still], { allowStockToStill: false })[0]).toMatchObject({
+    expect(
+      parseShotRepair(answer, [still], {
+        allowStockToStill: false,
+      })[0],
+    ).toMatchObject({
       prompt: 'New.',
     })
   })
@@ -1157,7 +1183,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
         { ...curly, coversText: '"It\'s over" - Mostaque told the investors.', prompt: 'New.' },
       ],
     })
-    expect(parseShotRepair(answer, [curly], { allowStockToStill: false })[0]).toMatchObject({
+    expect(
+      parseShotRepair(answer, [curly], {
+        allowStockToStill: false,
+      })[0],
+    ).toMatchObject({
       prompt: 'New.',
       coversText: curly.coversText,
     })
@@ -1167,7 +1197,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     const rewritten = JSON.stringify({
       briefs: [{ ...still, coversText: 'rewritten', prompt: 'Emad Mostaque at the table.' }],
     })
-    expect(parseShotRepair(rewritten, [still], { allowStockToStill: false })).toEqual([null])
+    expect(
+      parseShotRepair(rewritten, [still], {
+        allowStockToStill: false,
+      }),
+    ).toEqual([null])
     const respaced = JSON.stringify({
       briefs: [
         {
@@ -1177,7 +1211,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
         },
       ],
     })
-    expect(parseShotRepair(respaced, [still], { allowStockToStill: false })[0]).toMatchObject({
+    expect(
+      parseShotRepair(respaced, [still], {
+        allowStockToStill: false,
+      })[0],
+    ).toMatchObject({
       type: 'still',
       prompt: 'Emad Mostaque at the table.',
       coversText: 'Mostaque told the investors.',
@@ -1188,10 +1226,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     const second = { ...still, coversText: 'The money was gone.' }
     // The model skipped brief 1: its first answer is brief 2's.
     const reply = JSON.stringify({ briefs: [second] })
-    expect(parseShotRepair(reply, [still, second], { allowStockToStill: false })).toEqual([
-      null,
-      null,
-    ])
+    expect(
+      parseShotRepair(reply, [still, second], {
+        allowStockToStill: false,
+      }),
+    ).toEqual([null, null])
   })
 
   it('refuses stock to still for a slot not cleared to become one, even when the call allows it', () => {
@@ -1203,7 +1242,11 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
     const reply = JSON.stringify({ briefs: [still] })
     const cleared = { ...stock, mayBecomeStill: true }
     expect(parseShotRepair(reply, [cleared], { allowStockToStill: false })).toEqual([null])
-    expect(parseShotRepair(reply, [cleared], { allowStockToStill: true })[0]).toMatchObject({
+    expect(
+      parseShotRepair(reply, [cleared], {
+        allowStockToStill: true,
+      })[0],
+    ).toMatchObject({
       type: 'still',
     })
     // Only stock may change, and only into a still.
@@ -1213,15 +1256,62 @@ describe('buildShotRepairRequest and parseShotRepair (decision 271)', () => {
 
   it('keeps the original where a reply is missing or malformed, and ignores extras', () => {
     const short = JSON.stringify({ briefs: [{ type: 'still' }] })
-    expect(parseShotRepair(short, [still, still], { allowStockToStill: false })).toEqual([
-      null,
-      null,
-    ])
+    expect(
+      parseShotRepair(short, [still, still], {
+        allowStockToStill: false,
+      }),
+    ).toEqual([null, null])
     const extra = JSON.stringify({ briefs: [still, still, still] })
     expect(parseShotRepair(extra, [still], { allowStockToStill: false })).toHaveLength(1)
   })
 
   it('throws on an answer that is not JSON, for the caller to handle', () => {
-    expect(() => parseShotRepair('no json here', [still], { allowStockToStill: false })).toThrow()
+    expect(() =>
+      parseShotRepair('no json here', [still], {
+        allowStockToStill: false,
+      }),
+    ).toThrow()
+  })
+})
+
+describe('the shot list for a second channel (the channel bible lift)', () => {
+  const inUse = { bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS }
+
+  it("reads the channel's own premise, unnamed people, cues and units", () => {
+    const { system } = buildShotListRequest({ ...baseRequest(), bible: inUse })
+    const examples = PSYCHOLOGY_TEST_BIBLE.examples
+    expect(system).toContain(`a documentary about\n${examples['direction-premise']}.`)
+    expect(system).toContain(`(c) Anyone unnamed: ${examples['direction-background-people']},`)
+    expect(system).toContain(`(${examples['shotlist-two-units']}) need "axis"`)
+    expect(system).toContain(examples['shotlist-headline-cue']!)
+    expect(system).toContain(`reads ${examples['shotlist-guardrail-negation']}.`)
+    expect(system).toContain(registerBullet(PSYCHOLOGY_TEST_BIBLE.visualRegister))
+  })
+
+  it("appends the channel's direction rules after the craft text, as typed", () => {
+    const rules = 'Hold every wide shot for six seconds. [[example:direction-premise]] stays.'
+    const { system } = buildShotListRequest({
+      ...baseRequest(),
+      bible: { ...inUse, bible: { ...PSYCHOLOGY_TEST_BIBLE, directionRulesMd: rules } },
+    })
+    const at = system.indexOf("## This channel's rules")
+    expect(at).toBeGreaterThan(system.indexOf('Shot rules adapted in part from'))
+    expect(system.slice(at)).toContain(`\n\n${rules}`)
+    expect(system.indexOf('Return JSON: {"slots"')).toBeGreaterThan(at)
+  })
+
+  it('holds an owner example that looks like a marker as typed, in the people rules too', () => {
+    const typed = 'staff [[example:direction-premise]]'
+    const { system } = buildShotListRequest({
+      ...baseRequest(),
+      bible: {
+        ...inUse,
+        bible: {
+          ...PSYCHOLOGY_TEST_BIBLE,
+          examples: { ...PSYCHOLOGY_TEST_BIBLE.examples, 'direction-background-people': typed },
+        },
+      },
+    })
+    expect(system).toContain(`(c) Anyone unnamed: ${typed},`)
   })
 })

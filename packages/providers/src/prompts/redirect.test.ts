@@ -1,3 +1,4 @@
+import { FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
@@ -16,6 +17,7 @@ const brief: StillBrief = {
 
 describe('buildRedirectRequest', () => {
   const request = buildRedirectRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     brief,
     reason: 'google: SAFETY',

@@ -1,4 +1,5 @@
 import {
+  channelForProject,
   getProject,
   getShotSlot,
   releaseSlotJob,
@@ -98,6 +99,8 @@ export const slotRedirector = inngest.createFunction(
             ? { ok: true, value: mockRedirectedBrief(original), calls: 1 }
             : await callForAnswer({
                 request: buildRedirectRequest({
+                  // Read here, inside the step that builds the request.
+                  bible: await channelForProject(db, projectId),
                   caseTitle: project.title,
                   brief: original,
                   reason,

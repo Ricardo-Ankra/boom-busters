@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  channelForProject,
   dismissCastMember,
   getCastMember,
   getProject,
@@ -415,18 +416,21 @@ async function describeFromPhotos(member: CastMember): Promise<void> {
   }
   let written: { identityString: string; guardrail: string }
   let repairs: Repair[] = []
+  // Read here, in the action that builds the request: the guardrail it starts from is the channel's.
+  const bible = await channelForProject(db, member.projectId)
   if (mockProvidersEnabled()) {
-    written = mockCastIdentity({ name: member.name, role: member.role })
+    written = mockCastIdentity({ bible, name: member.name, role: member.role })
   } else {
     // At most two calls, the second told what was wrong (decision 293). A
     // stop is thrown as the parser's refusal always was, so the toast says why.
     const answer = await callForAnswer({
       request: buildCastIdentityRequest({
+        bible,
         name: member.name,
         role: member.role,
         photos: await loadPhotos(member),
       }),
-      parse: parseCastIdentity,
+      parse: (text, note) => parseCastIdentity(text, note, bible),
       complete: completeForProject(member.projectId),
     })
     if (!answer.ok) throw new ValidationError(answer.issue, { field: 'identityString' })

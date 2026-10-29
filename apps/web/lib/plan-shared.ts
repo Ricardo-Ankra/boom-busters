@@ -7,7 +7,13 @@ import {
 } from '@boom-busters/providers'
 import type { LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
 import { craftFindings, findingContext, repairTargets } from '@boom-busters/schemas'
-import type { DirectorsBook, FindingContext, LogoIndex, PlannedSlot } from '@boom-busters/schemas'
+import type {
+  BibleInUse,
+  DirectorsBook,
+  FindingContext,
+  LogoIndex,
+  PlannedSlot,
+} from '@boom-busters/schemas'
 import { promptParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
@@ -29,6 +35,11 @@ export type CompleteFn = (
 ) => Promise<{ text: string; truncated?: boolean }>
 
 export interface PlanChapterInput {
+  /**
+   * The project's frozen channel bible. The caller reads it with
+   * `channelForProject` inside the step that plans, once for the chapter.
+   */
+  bible: BibleInUse
   caseTitle: string
   chapter: { id: string; title: string; number: number }
   paragraphs: readonly TimedParagraph[]
@@ -48,6 +59,7 @@ export function chapterShotListRequest(input: PlanChapterInput): LLMTaskRequest 
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return null
   return buildShotListRequest({
+    bible: input.bible,
     caseTitle: input.caseTitle,
     chapterTitle: input.chapter.title,
     chapterNumber: input.chapter.number,
@@ -101,6 +113,7 @@ export async function repairPlannedChapter(
     slots: PlannedSlot[]
     chapterNumber: number
     context: FindingContext
+    bible: BibleInUse
   },
 ): Promise<PlannedSlot[]> {
   const findings = craftFindings(
@@ -118,7 +131,7 @@ export async function repairPlannedChapter(
           brief: originals[at],
           problems: target.findings.map((finding) => finding.message),
         })),
-        { allowStockToStill: false },
+        { allowStockToStill: false, bible: input.bible },
       ),
       'repair',
     )

@@ -185,6 +185,7 @@ async function main(): Promise<void> {
           }
         },
         {
+          bible: await channelForProject(db, args.project),
           caseTitle: project.title,
           chapter: { id: chapter.id, title: chapter.title, number: args.chapter + 1 },
           paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),

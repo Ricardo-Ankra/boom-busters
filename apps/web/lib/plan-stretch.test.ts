@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
-import { BudgetExceededError } from '@boom-busters/schemas'
+import { BudgetExceededError, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { cutStretch, type StretchRow } from '@/inngest/lib/stretch'
 import type { TimedParagraph } from '@/inngest/lib/shot-list'
 import { timingFindings } from '@/inngest/lib/timing-findings'
@@ -76,6 +76,7 @@ const cut = cutStretch({ chapterRows: [A, B, C], selectedIds: [A.id, B.id], para
 if (!cut.ok) throw new Error('fixture')
 
 const input: PlanStretchInput = {
+  bible: FIRST_CHANNEL_IN_USE,
   caseTitle: 'Theranos',
   chapter: { id: 'c1', title: 'The fall', number: 1 },
   paragraphs,

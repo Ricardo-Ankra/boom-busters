@@ -196,7 +196,9 @@ export const slotRebriefer = inngest.createFunction(
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B), which the
           // re-type prompt lists for every target.
-          const { channelId } = await channelForProject(db, projectId)
+          // Read here, inside the step that builds the request.
+          const bible = await channelForProject(db, projectId)
+          const { channelId } = bible
           const logos = (await listLogos(db, channelId)).map((row) => ({
             id: row.id,
             title: row.title ?? '',
@@ -218,6 +220,7 @@ export const slotRebriefer = inngest.createFunction(
               }
             : await callForAnswer({
                 request: buildRetypeRequest({
+                  bible,
                   caseTitle: project.title,
                   brief,
                   targetType: brief.type,
@@ -244,6 +247,8 @@ export const slotRebriefer = inngest.createFunction(
             ? { ok: true, value: mockRebriefedBrief(brief, guidance), calls: 1 }
             : await callForAnswer({
                 request: buildRebriefRequest({
+                  // Read here, inside the step that builds the request.
+                  bible: await channelForProject(db, projectId),
                   caseTitle: project.title,
                   brief,
                   ...(guidance === undefined ? {} : { guidance }),

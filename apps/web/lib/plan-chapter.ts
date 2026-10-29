@@ -136,6 +136,7 @@ export async function planChapterWith(
     slots: parsed.slots.map((slot) => ({ ...slot, brief: withoutBannedWords(slot.brief) })),
     chapterNumber: input.chapter.number,
     context: chapterFindingContext(input),
+    bible: input.bible,
   })
   return {
     slots: await repairChapterTiming(complete, input, slots),

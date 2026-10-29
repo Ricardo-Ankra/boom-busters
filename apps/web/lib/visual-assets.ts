@@ -753,7 +753,12 @@ export async function scoreSlotCandidates(
 
   if (mockProvidersEnabled()) return applyScores(candidates, mockScores(candidates))
   const answer = await callForAnswer({
-    request: buildScoringRequest({ brief, candidates }),
+    // Read here, in the call that builds the request (one scoring call per slot).
+    request: buildScoringRequest({
+      bible: await channelForProject(db, projectId),
+      brief,
+      candidates,
+    }),
     parse: parseScores,
     complete: completeForProject(projectId),
   })

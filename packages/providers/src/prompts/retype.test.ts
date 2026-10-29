@@ -3,6 +3,7 @@ import {
   GRAPHIC_INTENT_MAX,
   ShotBriefSchema,
   ValidationError,
+  FIRST_CHANNEL_IN_USE,
 } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -52,6 +53,7 @@ describe('buildRetypeRequest', () => {
       reveal: 'none' as const,
     }
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: chart as unknown as ShotBrief,
       targetType: 'chart',
@@ -66,6 +68,7 @@ describe('buildRetypeRequest', () => {
 
   it('leaves the steer out entirely when there is none', () => {
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'chart',
@@ -76,6 +79,7 @@ describe('buildRetypeRequest', () => {
 
   it('carries the current brief, the claims and the target rules', () => {
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'chart',
@@ -92,6 +96,7 @@ describe('buildRetypeRequest', () => {
 
   it('asks for a graphic intent, by the same rules as the shot list, and lists the held marks', () => {
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'graphic',
@@ -113,6 +118,7 @@ describe('buildRetypeRequest', () => {
 
   it('offers no "pan": the renderer cannot do one', () => {
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'chart',
@@ -316,6 +322,7 @@ describe('the retype limits (decision 293)', () => {
 
   it("states the graphic's and the map's limits in the prompt", () => {
     const forGraphic = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'graphic',
@@ -325,6 +332,7 @@ describe('the retype limits (decision 293)', () => {
     expect(forGraphic).toContain('"intent" is at most 300 characters')
 
     const forMap = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: still,
       targetType: 'map',

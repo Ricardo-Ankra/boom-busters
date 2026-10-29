@@ -17,9 +17,13 @@ describe.each(LIFT_CASES.filter((c) => c.bibleAware))('$name for a psychology ch
     // The dossier's grading of what a court or regulator found stays for every
     // channel (spec section 2; project 3 gives a psychology channel its
     // "replicated or contested"). That one sentence is the only exemption.
-    const lower = system
-      .replace('what a court or regulator FOUND from what was ALLEGED or reported', '')
-      .toLowerCase()
+    let own = system.replace(
+      'what a court or regulator FOUND from what was ALLEGED or reported',
+      '',
+    )
+    // What the case's own input puts in the prompt is the caller's data, not the builder's.
+    for (const text of c.inputText ?? []) own = own.replace(text, '')
+    const lower = own.toLowerCase()
     expect(FINANCE_WORDS.filter((word) => lower.includes(word))).toEqual([])
   })
 
@@ -35,6 +39,10 @@ describe.each(LIFT_CASES.filter((c) => c.bibleAware))('$name for a psychology ch
     }
     if (first.includes(FIRST_CHANNEL_BIBLE.examples['dossier-channel-subject']!)) {
       expect(system).toContain(PSYCHOLOGY_TEST_BIBLE.examples['dossier-channel-subject']!)
+    }
+    // The direction and shot-list prompts open on what the documentary is about.
+    if (first.includes(FIRST_CHANNEL_BIBLE.examples['direction-premise']!)) {
+      expect(system).toContain(PSYCHOLOGY_TEST_BIBLE.examples['direction-premise']!)
     }
     if (first.includes(FIRST_CHANNEL_BIBLE.subject)) {
       expect(system).toContain(PSYCHOLOGY_TEST_BIBLE.subject)

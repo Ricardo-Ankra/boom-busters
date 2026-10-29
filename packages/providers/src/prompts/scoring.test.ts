@@ -1,4 +1,4 @@
-import { applyScores } from '@boom-busters/schemas'
+import { applyScores, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import type { SlotCandidate, StockBrief, ArchivalBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildScoringRequest, mockScores, parseScores } from './scoring'
@@ -36,14 +36,22 @@ const STOCK_BRIEF: StockBrief = {
 
 describe('buildScoringRequest', () => {
   it('batches every candidate into one shotlist-task call', () => {
-    const request = buildScoringRequest({ brief: STOCK_BRIEF, candidates: CANDIDATES })
+    const request = buildScoringRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      brief: STOCK_BRIEF,
+      candidates: CANDIDATES,
+    })
     expect(request.task).toBe('shotlist')
     expect(request.messages[1]?.content).toContain('(id: a1)')
     expect(request.messages[1]?.content).toContain('(id: b2)')
   })
 
   it('turns rejection criteria into hard score caps', () => {
-    const request = buildScoringRequest({ brief: STOCK_BRIEF, candidates: CANDIDATES })
+    const request = buildScoringRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      brief: STOCK_BRIEF,
+      candidates: CANDIDATES,
+    })
     expect(request.system).toContain('AT MOST 20')
     expect(request.system).toContain('no modern laptops')
   })
@@ -59,13 +67,21 @@ describe('buildScoringRequest', () => {
       mustShow: 'the Aschheim headquarters building',
       eraRange: '2015-2020',
     }
-    const request = buildScoringRequest({ brief: archival, candidates: CANDIDATES })
+    const request = buildScoringRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      brief: archival,
+      candidates: CANDIDATES,
+    })
     expect(request.system).toContain('MUST show: the Aschheim headquarters building')
     expect(request.system).toContain('Acceptable era: 2015-2020')
   })
 
   it('says when a candidate had no description, rather than omitting it', () => {
-    const request = buildScoringRequest({ brief: STOCK_BRIEF, candidates: CANDIDATES })
+    const request = buildScoringRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      brief: STOCK_BRIEF,
+      candidates: CANDIDATES,
+    })
     expect(request.messages[1]?.content).toContain('(no description from the source)')
   })
 })

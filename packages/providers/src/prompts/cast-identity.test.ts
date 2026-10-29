@@ -1,17 +1,32 @@
-import { CAST_GUARDRAIL_MAX, CAST_IDENTITY_MAX, ValidationError } from '@boom-busters/schemas'
+import {
+  CAST_GUARDRAIL_MAX,
+  CAST_IDENTITY_MAX,
+  EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_IN_USE,
+  ValidationError,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildCastIdentityRequest,
-  DEFAULT_GUARDRAIL,
+  defaultGuardrail,
   mockCastIdentity,
   parseCastIdentity,
 } from './cast-identity'
+import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import type { Note, Repair } from './repair'
 
 const photo = { mimeType: 'image/jpeg' as const, data: 'QUJD' }
 
+// Boom & Busters' own starting guardrail, as it was sent before the bible held it.
+const DEFAULT_GUARDRAIL =
+  'never handling cash or signing an invented contract; never in handcuffs; ' +
+  'never mocked, caricatured or shown in humiliation'
+
+const parse = (text: string, note?: Note) => parseCastIdentity(text, note, FIRST_CHANNEL_IN_USE)
+
 describe('buildCastIdentityRequest', () => {
   const request = buildCastIdentityRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     name: 'Emad Mostaque',
     role: 'Founder and former CEO, Stability AI',
     photos: [photo],
@@ -48,15 +63,15 @@ describe('buildCastIdentityRequest', () => {
   })
 
   it('refuses to describe nobody: photographs are the point', () => {
-    expect(() => buildCastIdentityRequest({ name: 'x', role: 'y', photos: [] })).toThrow(
-      ValidationError,
-    )
+    expect(() =>
+      buildCastIdentityRequest({ bible: FIRST_CHANNEL_IN_USE, name: 'x', role: 'y', photos: [] }),
+    ).toThrow(ValidationError)
   })
 })
 
 describe('parseCastIdentity', () => {
   it('parses a fenced answer', () => {
-    const parsed = parseCastIdentity(
+    const parsed = parse(
       '```json\n{"identityString": "Emad Mostaque, founder: oval face, short dark hair", "guardrail": "never mocked"}\n```',
     )
     expect(parsed.identityString).toBe('Emad Mostaque, founder: oval face, short dark hair')
@@ -64,14 +79,12 @@ describe('parseCastIdentity', () => {
   })
 
   it('falls back to the default guardrail when the model leaves it empty', () => {
-    expect(parseCastIdentity('{"identityString": "x face", "guardrail": ""}').guardrail).toBe(
-      DEFAULT_GUARDRAIL,
-    )
-    expect(parseCastIdentity('{"identityString": "x face"}').guardrail).toBe(DEFAULT_GUARDRAIL)
+    expect(parse('{"identityString": "x face", "guardrail": ""}').guardrail).toBe(DEFAULT_GUARDRAIL)
+    expect(parse('{"identityString": "x face"}').guardrail).toBe(DEFAULT_GUARDRAIL)
   })
 
   it('refuses an answer with no identity string', () => {
-    expect(() => parseCastIdentity('{"guardrail": "x"}')).toThrow(ValidationError)
+    expect(() => parse('{"guardrail": "x"}')).toThrow(ValidationError)
   })
 })
 
@@ -88,10 +101,7 @@ describe('parseCastIdentity repairs (decision 293)', () => {
     const { notes, note } = collect()
     const long =
       'Emad Mostaque, founder: ' + 'oval face, short dark hair, close-cropped beard, '.repeat(15)
-    const parsed = parseCastIdentity(
-      JSON.stringify({ identityString: long, guardrail: 'never mocked' }),
-      note,
-    )
+    const parsed = parse(JSON.stringify({ identityString: long, guardrail: 'never mocked' }), note)
     expect(parsed.identityString.length).toBeLessThanOrEqual(CAST_IDENTITY_MAX)
     expect(long.startsWith(parsed.identityString)).toBe(true)
     expect(parsed.guardrail).toBe('never mocked')
@@ -101,7 +111,7 @@ describe('parseCastIdentity repairs (decision 293)', () => {
   it('trims a guardrail over its limit', () => {
     const { notes, note } = collect()
     const guardrail = 'never mocked; never in handcuffs; '.repeat(25)
-    const parsed = parseCastIdentity(
+    const parsed = parse(
       JSON.stringify({ identityString: 'Emad Mostaque, founder: oval face', guardrail }),
       note,
     )
@@ -112,16 +122,53 @@ describe('parseCastIdentity repairs (decision 293)', () => {
 
   it('notes nothing for an answer within its limits', () => {
     const { notes, note } = collect()
-    parseCastIdentity('{"identityString": "x face", "guardrail": "never mocked"}', note)
+    parse('{"identityString": "x face", "guardrail": "never mocked"}', note)
     expect(notes).toEqual([])
   })
 })
 
 describe('mockCastIdentity', () => {
   it('is deterministic and names the person', () => {
-    const a = mockCastIdentity({ name: 'Emad Mostaque', role: 'Founder' })
-    expect(a).toEqual(mockCastIdentity({ name: 'Emad Mostaque', role: 'Founder' }))
+    const a = mockCastIdentity({
+      bible: FIRST_CHANNEL_IN_USE,
+      name: 'Emad Mostaque',
+      role: 'Founder',
+    })
+    expect(a).toEqual(
+      mockCastIdentity({ bible: FIRST_CHANNEL_IN_USE, name: 'Emad Mostaque', role: 'Founder' }),
+    )
     expect(a.identityString).toContain('[mock] Emad Mostaque, Founder')
     expect(a.guardrail).toBe(DEFAULT_GUARDRAIL)
+  })
+})
+
+describe('the cast prompts for a second channel (the channel bible lift)', () => {
+  const second = { bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS }
+
+  it("starts the guardrail from the channel's own first clause and keeps the shared one", () => {
+    const guardrail = defaultGuardrail(second)
+    expect(guardrail).toBe(
+      `${PSYCHOLOGY_TEST_BIBLE.examples['direction-default-guardrail']}; ` +
+        'never mocked, caricatured or shown in humiliation',
+    )
+    expect(guardrail).not.toContain('handcuffs')
+    expect(mockCastIdentity({ bible: second, name: 'A', role: 'B' }).guardrail).toBe(guardrail)
+    expect(parseCastIdentity('{"identityString": "x face"}', undefined, second).guardrail).toBe(
+      guardrail,
+    )
+  })
+
+  it('sends that guardrail and its own settings in the prompt', () => {
+    const { system } = buildCastIdentityRequest({
+      bible: second,
+      name: 'A',
+      role: 'B',
+      photos: [photo],
+    })
+    expect(system).toContain(`Start from: "${defaultGuardrail(second)}"`)
+    expect(system).toContain(
+      `ordinary settings such as ${PSYCHOLOGY_TEST_BIBLE.examples['direction-cast-settings']}.`,
+    )
+    expect(system).not.toContain('boardrooms')
   })
 })

@@ -1,10 +1,10 @@
-import { AnswerDeclined, ShotBriefSchema } from '@boom-busters/schemas'
+import { AnswerDeclined, ShotBriefSchema, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockDirectorsBook } from './direction'
 import { buildRebriefRequest, mockRebriefedBrief, parseRebriefedBrief } from './rebrief'
 import { buildRetypeRequest } from './retype'
-import { PEOPLE_RULES, SCENE_ONLY_PROMPT } from './shotlist'
+import { peopleRules, SCENE_ONLY_PROMPT } from './shotlist'
 
 const stock: ShotBrief = {
   type: 'stock',
@@ -18,6 +18,7 @@ const stock: ShotBrief = {
 
 describe('buildRebriefRequest', () => {
   const request = buildRebriefRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Wirecard',
     brief: stock,
     guidance: 'Something with people in it, not another empty room.',
@@ -44,7 +45,12 @@ describe('buildRebriefRequest', () => {
   })
 
   it('still asks without a steer, because "give me another" is an instruction', () => {
-    const bare = buildRebriefRequest({ caseTitle: 'Wirecard', brief: stock, direction: null })
+    const bare = buildRebriefRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Wirecard',
+      brief: stock,
+      direction: null,
+    })
     expect(bare.system).toContain('DIFFERENT')
     expect(bare.messages.some((message) => message.content.includes('producer'))).toBe(false)
   })
@@ -80,6 +86,7 @@ describe('buildRebriefRequest for a still', () => {
     ],
   }
   const request = buildRebriefRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     caseTitle: 'Stability AI',
     brief: still,
     guidance: 'Emad Mostaque in the Stability AI Boardroom',
@@ -99,7 +106,7 @@ describe('buildRebriefRequest for a still', () => {
     expect(request.system).toContain('"depicts"?:')
     expect(request.system).toContain('"set"?: the exact name of one set')
     expect(request.system).toContain('"camera"?:')
-    expect(request.system).toContain(PEOPLE_RULES)
+    expect(request.system).toContain(peopleRules(FIRST_CHANNEL_IN_USE))
     expect(request.system).toContain(
       'Sets: when the sentence puts us in one of the rooms listed above',
     )
@@ -116,6 +123,7 @@ describe('buildRebriefRequest for a still', () => {
 
   it('offers no set when the film holds none', () => {
     const plain = buildRebriefRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Stability AI',
       brief: still,
       direction: null,
@@ -128,6 +136,7 @@ describe('buildRebriefRequest for a still', () => {
 
   it('keeps the cast and sets out of a stock redraft', () => {
     const stockRequest = buildRebriefRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: stock,
       direction: null,
@@ -200,6 +209,7 @@ describe('parseRebriefedBrief', () => {
 describe('the chart-kind rules (decision 259)', () => {
   it('tells the re-brief path what each kind is for, and how to split two units', () => {
     const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
       caseTitle: 'Wirecard',
       brief: stock,
       targetType: 'chart',

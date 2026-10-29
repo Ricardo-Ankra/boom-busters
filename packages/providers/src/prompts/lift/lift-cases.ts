@@ -54,6 +54,12 @@ export interface LiftCase {
   name: string
   build: (bible: BibleInUse) => LLMTaskRequest
   bibleAware: boolean
+  /**
+   * Text the case's own input puts into the system prompt (a brief's own
+   * words). It is the caller's data, not the builder's wording, so the
+   * psychology sweep does not hold it against a second channel.
+   */
+  inputText?: readonly string[]
 }
 
 const lift = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftCase => ({
@@ -63,10 +69,15 @@ const lift = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftC
 })
 
 /** A case whose builder reads the bible: the psychology test holds it to a second channel. */
-const liftAware = (name: string, build: (bible: BibleInUse) => LLMTaskRequest): LiftCase => ({
+const liftAware = (
+  name: string,
+  build: (bible: BibleInUse) => LLMTaskRequest,
+  inputText: readonly string[] = [],
+): LiftCase => ({
   name,
   build,
   bibleAware: true,
+  inputText,
 })
 
 // ---------------------------------------------------------------------------
@@ -411,8 +422,9 @@ const metadataCases: LiftCase[] = [
 // Shot list, repair and stretch
 // ---------------------------------------------------------------------------
 
-const shotListMinimal = () =>
+const shotListMinimal = (bible: BibleInUse) =>
   buildShotListRequest({
+    bible,
     caseTitle: 'Wirecard',
     chapterTitle: 'The glass box',
     paragraphs: PARAGRAPHS,
@@ -420,17 +432,19 @@ const shotListMinimal = () =>
   })
 
 const shotListCases: LiftCase[] = [
-  lift('shotlist-no-sets-minimal', shotListMinimal),
-  lift('shotlist-no-sets-empty-claims', () =>
+  liftAware('shotlist-no-sets-minimal', shotListMinimal),
+  liftAware('shotlist-no-sets-empty-claims', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       paragraphs: PARAGRAPHS,
       claims: [],
     }),
   ),
-  lift('shotlist-no-sets-full', () =>
+  liftAware('shotlist-no-sets-full', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       chapterNumber: 1,
@@ -441,8 +455,9 @@ const shotListCases: LiftCase[] = [
       logos: ['Wirecard AG', ' '],
     }),
   ),
-  lift('shotlist-direction-without-chapter-number', () =>
+  liftAware('shotlist-direction-without-chapter-number', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       paragraphs: PARAGRAPHS,
@@ -450,8 +465,9 @@ const shotListCases: LiftCase[] = [
       direction: BOOK,
     }),
   ),
-  lift('shotlist-sets', () =>
+  liftAware('shotlist-sets', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       chapterNumber: 2,
@@ -463,8 +479,9 @@ const shotListCases: LiftCase[] = [
       logos: ['Wirecard AG'],
     }),
   ),
-  lift('shotlist-sets-only', () =>
+  liftAware('shotlist-sets-only', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       paragraphs: PARAGRAPHS,
@@ -472,8 +489,9 @@ const shotListCases: LiftCase[] = [
       sets: SETS,
     }),
   ),
-  lift('shotlist-photographed-only', () =>
+  liftAware('shotlist-photographed-only', (bible) =>
     buildShotListRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapterTitle: 'The glass box',
       paragraphs: PARAGRAPHS,
@@ -481,21 +499,21 @@ const shotListCases: LiftCase[] = [
       photographed: ['Markus Braun'],
     }),
   ),
-  lift('shot-repair-single', () =>
+  liftAware('shot-repair-single', (bible) =>
     buildShotRepairRequest(
-      shotListMinimal(),
+      shotListMinimal(bible),
       [
         {
           brief: STILL,
           problems: ['It names a person but lists no one in "depicts".'],
         },
       ],
-      { allowStockToStill: false },
+      { allowStockToStill: false, bible },
     ),
   ),
-  lift('shot-repair-plural-stock-to-still', () =>
+  liftAware('shot-repair-plural-stock-to-still', (bible) =>
     buildShotRepairRequest(
-      shotListMinimal(),
+      shotListMinimal(bible),
       [
         { brief: STOCK, problems: ['It names a set, so it should be a still.'] },
         {
@@ -503,13 +521,14 @@ const shotListCases: LiftCase[] = [
           problems: ['The prompt places the camera.', 'The prompt describes the room.'],
         },
       ],
-      { allowStockToStill: true },
+      { allowStockToStill: true, bible },
     ),
   ),
-  lift('stretch-minimal', () =>
+  liftAware('stretch-minimal', (bible) =>
     buildStretchRequest(
-      { ...shotListMinimal(), cacheablePrefixMessages: 1 },
+      { ...shotListMinimal(bible), cacheablePrefixMessages: 1 },
       {
+        bible,
         pieces: [{ paragraphIndex: 1, text: 'Nine days later it was insolvent.', seconds: 3.6 }],
         opening: 'Nine days later',
         before: null,
@@ -518,10 +537,11 @@ const shotListCases: LiftCase[] = [
       },
     ),
   ),
-  lift('stretch-full', () =>
+  liftAware('stretch-full', (bible) =>
     buildStretchRequest(
-      { ...shotListMinimal(), cacheablePrefixMessages: 1 },
+      { ...shotListMinimal(bible), cacheablePrefixMessages: 1 },
       {
+        bible,
         pieces: [
           { paragraphIndex: 0, text: PARAGRAPHS[0]!.text, seconds: 9.4 },
           { paragraphIndex: 1, text: PARAGRAPHS[1]!.text, seconds: 3.6 },
@@ -744,8 +764,9 @@ const scriptCases: LiftCase[] = [
 // ---------------------------------------------------------------------------
 
 const directionCases: LiftCase[] = [
-  lift('direction-book-minimal', () =>
+  liftAware('direction-book-minimal', (bible) =>
     buildDirectorsBookRequest({
+      bible,
       caseTitle: 'Wirecard',
       chapters: [
         { title: 'The glass box', paragraphs: ['A company that looked solid.'] },
@@ -754,8 +775,9 @@ const directionCases: LiftCase[] = [
       claims: CLAIMS,
     }),
   ),
-  lift('direction-book-full', () =>
+  liftAware('direction-book-full', (bible) =>
     buildDirectorsBookRequest({
+      bible,
       caseTitle: 'Wirecard',
       centralQuestion: 'How did 1.9 billion euros never exist?',
       chapters: [
@@ -787,16 +809,18 @@ const directionCases: LiftCase[] = [
       ],
     }),
   ),
-  lift('redirect-with-direction', () =>
+  liftAware('redirect-with-direction', (bible) =>
     buildRedirectRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       reason: 'google: SAFETY',
       direction: BOOK,
     }),
   ),
-  lift('redirect-no-direction', () =>
+  liftAware('redirect-no-direction', (bible) =>
     buildRedirectRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       reason: 'google: SAFETY',
@@ -804,8 +828,9 @@ const directionCases: LiftCase[] = [
     }),
   ),
   // Sets and photographed names are read for a still only: a stock brief ignores them.
-  lift('rebrief-stock', () =>
+  liftAware('rebrief-stock', (bible) =>
     buildRebriefRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STOCK,
       guidance: 'Something less empty, more people.',
@@ -814,14 +839,15 @@ const directionCases: LiftCase[] = [
       sets: SETS,
     }),
   ),
-  lift('rebrief-archival', () =>
-    buildRebriefRequest({ caseTitle: 'Wirecard', brief: ARCHIVAL, direction: null }),
+  liftAware('rebrief-archival', (bible) =>
+    buildRebriefRequest({ bible, caseTitle: 'Wirecard', brief: ARCHIVAL, direction: null }),
   ),
-  lift('rebrief-still-minimal', () =>
-    buildRebriefRequest({ caseTitle: 'Wirecard', brief: STILL, direction: null }),
+  liftAware('rebrief-still-minimal', (bible) =>
+    buildRebriefRequest({ bible, caseTitle: 'Wirecard', brief: STILL, direction: null }),
   ),
-  lift('rebrief-still-no-sets', () =>
+  liftAware('rebrief-still-no-sets', (bible) =>
     buildRebriefRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       guidance: 'Markus Braun walking out of the building.',
@@ -829,8 +855,9 @@ const directionCases: LiftCase[] = [
       photographed: ['Markus Braun'],
     }),
   ),
-  lift('rebrief-still-sets', () =>
+  liftAware('rebrief-still-sets', (bible) =>
     buildRebriefRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       guidance: 'Markus Braun in the boardroom.',
@@ -839,16 +866,18 @@ const directionCases: LiftCase[] = [
       sets: SETS,
     }),
   ),
-  lift('retype-chart-from-still', () =>
+  liftAware('retype-chart-from-still', (bible) =>
     buildRetypeRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       targetType: 'chart',
       claims: CLAIMS_FOUR,
     }),
   ),
-  lift('retype-chart-different', () =>
+  liftAware('retype-chart-different', (bible) =>
     buildRetypeRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: CHART,
       targetType: 'chart',
@@ -856,24 +885,27 @@ const directionCases: LiftCase[] = [
       guidance: 'Show the whole decade, not just the collapse.',
     }),
   ),
-  lift('retype-map-from-still', () =>
+  liftAware('retype-map-from-still', (bible) =>
     buildRetypeRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       targetType: 'map',
       claims: CLAIMS,
     }),
   ),
-  lift('retype-graphic-from-still', () =>
+  liftAware('retype-graphic-from-still', (bible) =>
     buildRetypeRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       targetType: 'graphic',
       claims: CLAIMS,
     }),
   ),
-  lift('retype-graphic-logos-steer', () =>
+  liftAware('retype-graphic-logos-steer', (bible) =>
     buildRetypeRequest({
+      bible,
       caseTitle: 'Wirecard',
       brief: STILL,
       targetType: 'graphic',
@@ -882,15 +914,17 @@ const directionCases: LiftCase[] = [
       guidance: 'A timeline of the nine days.',
     }),
   ),
-  lift('cast-identity-one-photo', () =>
+  liftAware('cast-identity-one-photo', (bible) =>
     buildCastIdentityRequest({
+      bible,
       name: 'Markus Braun',
       role: 'chief executive of Wirecard',
       photos: [{ mimeType: 'image/jpeg', data: 'QUJD' }],
     }),
   ),
-  lift('cast-identity-two-photos', () =>
+  liftAware('cast-identity-two-photos', (bible) =>
     buildCastIdentityRequest({
+      bible,
       name: 'Markus Braun',
       role: 'chief executive of Wirecard',
       photos: [
@@ -1178,19 +1212,30 @@ const otherCases: LiftCase[] = [
   liftAware('subject-name-blank-angle', (bible) =>
     buildNameSubjectRequest({ bible, title: 'Enron', angle: '   ', category: 'collapse' }),
   ),
-  lift('scoring-stock-criteria', () =>
-    buildScoringRequest({ brief: STOCK, candidates: CANDIDATES }),
+  liftAware('scoring-stock-criteria', (bible) =>
+    buildScoringRequest({ bible, brief: STOCK, candidates: CANDIDATES }),
   ),
-  lift('scoring-stock-no-criteria', () =>
-    buildScoringRequest({ brief: { ...STOCK, rejectionCriteria: [] }, candidates: CANDIDATES }),
+  liftAware('scoring-stock-no-criteria', (bible) =>
+    buildScoringRequest({
+      bible,
+      brief: { ...STOCK, rejectionCriteria: [] },
+      candidates: CANDIDATES,
+    }),
   ),
-  lift('scoring-archival-era', () =>
-    buildScoringRequest({ brief: ARCHIVAL, candidates: CANDIDATES }),
+  // The archival brief's own "mustShow" is printed in the system prompt.
+  liftAware(
+    'scoring-archival-era',
+    (bible) => buildScoringRequest({ bible, brief: ARCHIVAL, candidates: CANDIDATES }),
+    [ARCHIVAL.mustShow],
   ),
-  lift('scoring-archival-no-era', () => {
-    const { eraRange: _eraRange, ...rest } = ARCHIVAL
-    return buildScoringRequest({ brief: rest, candidates: CANDIDATES.slice(0, 1) })
-  }),
+  liftAware(
+    'scoring-archival-no-era',
+    (bible) => {
+      const { eraRange: _eraRange, ...rest } = ARCHIVAL
+      return buildScoringRequest({ bible, brief: rest, candidates: CANDIDATES.slice(0, 1) })
+    },
+    [ARCHIVAL.mustShow],
+  ),
   lift('digest-full', () => buildDigestRequest({ weekOf: '2026-10-26', lines: DIGEST_LINES })),
   lift('digest-no-lines', () => buildDigestRequest({ weekOf: '2026-10-26', lines: [] })),
 ]

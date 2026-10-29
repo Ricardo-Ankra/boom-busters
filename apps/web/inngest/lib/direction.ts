@@ -40,6 +40,7 @@ import {
   ShotBriefSchema,
 } from '@boom-busters/schemas'
 import type {
+  BibleInUse,
   CraftFinding,
   DirectorsBook,
   LogoIndex,
@@ -228,7 +229,11 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
     // a cut-off is asked once more at double the budget, a refusal once more
     // with its reason; then the stage stops with the reason, never a blind retry.
     const answer = await callForAnswer({
-      request: buildDirectorsBookRequest(inputs),
+      // Read here, inside the step that drafts, never from an earlier step's output.
+      request: buildDirectorsBookRequest({
+        ...inputs,
+        bible: await channelForProject(db, projectId),
+      }),
       parse: (text, note) => parseDirectorsBook(text, inputs.chapters.length, note),
       complete: completeForProject(projectId),
     })
@@ -316,14 +321,17 @@ export async function planChapterSlots(input: {
   } else {
     // The first ask and the brief repair are the ledger's plain rows; the
     // automatic timing repair ('stretch') and the retries are named on theirs.
-    const planned = await planChapterWith(async (request, purpose) => {
-      const { channelId } = await channelForProject(db, input.projectId)
-      return callLlm(request, {
-        projectId: input.projectId,
-        channelId,
-        ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
-      })
-    }, input)
+    // One read for the chapter: every request this step builds shares it.
+    const bible = await channelForProject(db, input.projectId)
+    const planned = await planChapterWith(
+      (request, purpose) =>
+        callLlm(request, {
+          projectId: input.projectId,
+          channelId: bible.channelId,
+          ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
+        }),
+      { ...input, bible },
+    )
     if (!planned) return { rows: [], rejected: 0 }
     dropped = planned.malformed
     slots = planned.slots
@@ -359,6 +367,8 @@ export async function planChapterSlots(input: {
  */
 export async function rewriteStoredBriefs(input: {
   projectId: string
+  /** The project's frozen bible, read by the caller inside the step that builds `request`. */
+  bible: BibleInUse
   request: LLMTaskRequest
   targets: readonly {
     id: string
@@ -380,7 +390,7 @@ export async function rewriteStoredBriefs(input: {
     request: buildShotRepairRequest(
       input.request,
       input.targets.map((target) => ({ brief: target.brief, problems: target.problems })),
-      { allowStockToStill: true },
+      { allowStockToStill: true, bible: input.bible },
     ),
     parse: (text) => parseShotRepairAnswers(text, originals, { allowStockToStill: true }),
     complete: completeForProject(input.projectId),
