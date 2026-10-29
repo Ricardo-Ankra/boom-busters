@@ -1030,6 +1030,23 @@ describe("a channel's own rules in the script prompts", () => {
     expect(system.indexOf("This channel's rules")).toBeLessThan(system.indexOf('Write ONE chapter'))
   })
 
+  it('never reads marker-looking text in them as a marker', () => {
+    const literal = 'Keep [[example:script-x]] and [[if:script-x]] as typed.'
+    const typed = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: { ...FIRST_CHANNEL_IN_USE.bible, scriptRulesMd: literal },
+    }
+    const { system } = buildChapterRequest({
+      bible: typed,
+      caseTitle: 'Case',
+      outline,
+      chapterIndex: 0,
+      previousChapters: [],
+      claims: [],
+    })
+    expect(system).toContain(literal)
+  })
+
   it('sends none for a channel that has none', () => {
     const { system } = buildSelfCheckRequest({
       bible: FIRST_CHANNEL_IN_USE,

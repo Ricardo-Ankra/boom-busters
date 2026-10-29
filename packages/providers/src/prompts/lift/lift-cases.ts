@@ -621,7 +621,7 @@ const scriptCases: LiftCase[] = [
       }),
     ),
   ),
-  lift('script-self-check', (bible) =>
+  liftAware('script-self-check', (bible) =>
     buildSelfCheckRequest({
       bible,
       chapterTitle: 'The glass box',
@@ -629,7 +629,7 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS,
     }),
   ),
-  lift('script-shorts', (bible) =>
+  liftAware('script-shorts', (bible) =>
     buildShortsRequest({
       bible,
       chapters: [
@@ -638,7 +638,7 @@ const scriptCases: LiftCase[] = [
       ],
     }),
   ),
-  lift('script-shorts-tension', (bible) =>
+  liftAware('script-shorts-tension', (bible) =>
     buildShortsRequest({
       bible,
       chapters: [
@@ -656,7 +656,7 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-shorts-tension-no-question', (bible) =>
+  liftAware('script-shorts-tension-no-question', (bible) =>
     buildShortsRequest({
       bible,
       chapters: [
@@ -668,7 +668,7 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-shorts-tension-empty', (bible) =>
+  liftAware('script-shorts-tension-empty', (bible) =>
     buildShortsRequest({
       bible,
       chapters: [
@@ -678,7 +678,7 @@ const scriptCases: LiftCase[] = [
       tension: { chapters: [{ index: 0 }, { index: 1 }] },
     }),
   ),
-  lift('script-teaser', (bible) =>
+  liftAware('script-teaser', (bible) =>
     buildTeaserRequest({
       bible,
       caseTitle: 'Wirecard',
@@ -688,7 +688,7 @@ const scriptCases: LiftCase[] = [
       ],
     }),
   ),
-  lift('script-teaser-tension', (bible) =>
+  liftAware('script-teaser-tension', (bible) =>
     buildTeaserRequest({
       bible,
       caseTitle: 'Wirecard',
@@ -703,7 +703,7 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-teaser-tension-no-question', (bible) =>
+  liftAware('script-teaser-tension-no-question', (bible) =>
     buildTeaserRequest({
       bible,
       caseTitle: 'Wirecard',
@@ -716,7 +716,7 @@ const scriptCases: LiftCase[] = [
       },
     }),
   ),
-  lift('script-teaser-tension-empty', (bible) =>
+  liftAware('script-teaser-tension-empty', (bible) =>
     buildTeaserRequest({
       bible,
       caseTitle: 'Wirecard',

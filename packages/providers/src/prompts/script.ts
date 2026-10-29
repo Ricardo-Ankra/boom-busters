@@ -158,8 +158,17 @@ text-to-speech narrator, and punctuation is its pacing:
 ${bible.hedgingRules}`
 }
 
-/** This channel's script rules for the system prompt; empty for a channel with none. */
-const scriptRules = (inUse: BibleInUse): string => channelRulesBlock(inUse.bible, 'script')
+/** Where a system prompt takes the channel's own rules; swapped in after the slots are filled. */
+const RULES_AT = '\u0000script-rules\u0000'
+
+/**
+ * Fills the prompt's markers, then puts the channel's own rules at `RULES_AT`
+ * (nothing for a channel with none). The rules are owner-typed text and never
+ * pass through `fillSlots`, so a marker-looking string in them stays literal.
+ */
+function fillSystem(text: string, inUse: BibleInUse): string {
+  return fillSlots(text, inUse).replace(RULES_AT, () => channelRulesBlock(inUse.bible, 'script'))
+}
 
 // ---------------------------------------------------------------------------
 // Outline
@@ -177,10 +186,10 @@ export function buildOutlineRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSlots(
+    system: fillSystem(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${SCRIPT_CRAFT}${RULES_AT}
 
 Produce a chapter plan totalling about ${targetWords} words:
 {"centralQuestion": string,
@@ -499,10 +508,10 @@ export function buildChapterRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSlots(
+    system: fillSystem(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${SCRIPT_CRAFT}${RULES_AT}
 
 Write ONE chapter of narration as plain prose paragraphs. No headings, no
 bullet points, no lists — the words are read aloud exactly as written, and
@@ -541,7 +550,7 @@ export function buildSelfCheckRequest(input: {
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: fillSlots(
+    system: fillSystem(
       `You are checking documentary narration against the claim list it
 was written from. You are not rewriting it.
 
@@ -561,7 +570,7 @@ Quote the sentence EXACTLY as it appears, including its punctuation — it is
 matched back to the text character for character.
 
 {"warnings": [{"kind": string, "sentence": string, "message": string}],
- "refs": [{"claimId": string, "sentence": string}]}${scriptRules(input.bible)}`,
+ "refs": [{"claimId": string, "sentence": string}]}${RULES_AT}`,
       input.bible,
     ),
     messages: [
@@ -615,7 +624,7 @@ export function buildShortsRequest(input: {
 
   return {
     task: 'metadata',
-    system: fillSlots(
+    system: fillSystem(
       `Pick 4 segments from this script that would work as vertical
 Shorts. A segment is 20-50 seconds of narration, roughly 50 to 125 words.
 
@@ -638,7 +647,7 @@ Quote the first and last sentence of each segment EXACTLY as they appear.
 
 Limits (the app checks them): at most ${SHORTS_CANDIDATES_MAX} candidates; "startSentence" and
 "endSentence" at most ${SHORTS_SENTENCE_MAX} characters each; "hookRationale" at most
-${SHORTS_HOOK_MAX} characters.${scriptRules(input.bible)}`,
+${SHORTS_HOOK_MAX} characters.${RULES_AT}`,
       input.bible,
     ),
     messages: [
@@ -749,7 +758,7 @@ export function buildTeaserRequest(input: {
 
   return {
     task: 'scripting',
-    system: fillSlots(
+    system: fillSystem(
       `Write a 25-40 second teaser narration (60-110 words total) for a
 vertical Short that funnels viewers into the full video.
 
@@ -772,7 +781,7 @@ ${TEASER_PARAGRAPHS_MIN} to ${TEASER_PARAGRAPHS_MAX} paragraphs, each ${TEASER_P
 chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
 
 Return exactly:
-{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}${scriptRules(input.bible)}`,
+{"title": string, "paragraphs": [{"text": string, "chapterIndex": number}]}${RULES_AT}`,
       input.bible,
     ),
     messages: [
@@ -983,10 +992,10 @@ export function buildRegenerateRequest(input: {
 }): LLMTaskRequest {
   return {
     task: 'editing',
-    system: fillSlots(
+    system: fillSystem(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${SCRIPT_CRAFT}${RULES_AT}
 
 You are rewriting ONE passage of an existing chapter.
 
