@@ -274,6 +274,13 @@
       "when": 1793216557962,
       "tag": "0038_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793257199989,
+      "tag": "0039_channel_bibles",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,9 @@
-import { DOCUMENT_TIERS, FIRST_CHANNEL_ID, fixtureId } from '@boom-busters/schemas'
+import {
+  DOCUMENT_TIERS,
+  FIRST_CHANNEL_BIBLE_ID,
+  FIRST_CHANNEL_ID,
+  fixtureId,
+} from '@boom-busters/schemas'
 import type { NewCase, NewProject, NewResearchDocument } from './schema'
 
 /**
@@ -37,6 +42,7 @@ export const fixtureCase: NewCase = {
 export const fixtureProject: NewProject = {
   id: FIXTURE_PROJECT_ID,
   channelId: FIRST_CHANNEL_ID,
+  bibleId: FIRST_CHANNEL_BIBLE_ID,
   caseId: FIXTURE_CASE_ID,
   title: 'Wirecard: The €1.9 Billion That Never Existed',
   stage: 'dossier',

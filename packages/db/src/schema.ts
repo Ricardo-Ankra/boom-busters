@@ -235,13 +235,40 @@ export const channels = pgTable('channels', {
   slug: text('slug').notNull().unique('channels_slug_key'),
   name: text('name').notNull(),
   handle: text('handle'),
-  bible: jsonb('bible').notNull().$type<ChannelBible>(),
+  /**
+   * The channel's current bible version. Null only inside `createChannel`'s
+   * transaction: the keys are circular, so SQL cannot require it.
+   */
+  currentBibleId: text('current_bible_id').references((): AnyPgColumn => channelBibles.id),
   /** The channel's `Settings`: voice, brand kit, model routing, render, publish. */
   settings: jsonb('settings').notNull().$type<Settings>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
+
+/**
+ * A channel's bible, append-only: every save is a new version, and a project
+ * freezes the one it started with (bible design, section 4.5). `slotIds` is
+ * the example slots the prompts used when this version was saved, so a later
+ * change to the registry never makes an old version look complete.
+ */
+export const channelBibles = pgTable(
+  'channel_bibles',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    version: integer('version').notNull(),
+    bible: jsonb('bible').notNull().$type<ChannelBible>(),
+    slotIds: text('slot_ids').array().notNull().$type<string[]>(),
+    complete: boolean('complete').notNull(),
+    note: text('note').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('channel_bibles_channel_version_key').on(t.channelId, t.version)],
+)
 
 /**
  * Exactly one row: what belongs to the owner rather than to a channel, the
@@ -396,6 +423,10 @@ export const projects = pgTable(
     id: id(),
     /** Always the case's channel. */
     channelId: channelId().notNull(),
+    /** The bible version the project started with; editing the bible never moves it. */
+    bibleId: text('bible_id')
+      .notNull()
+      .references(() => channelBibles.id, { onDelete: 'restrict' }),
     caseId: text('case_id')
       .notNull()
       .references(() => cases.id, { onDelete: 'restrict' }),
@@ -1461,6 +1492,7 @@ export const socialPosts = pgTable('social_posts', {
 // ---------------------------------------------------------------------------
 
 export type ChannelRow = typeof channels.$inferSelect
+export type BibleVersionRow = typeof channelBibles.$inferSelect
 export type WorkspaceRow = typeof workspace.$inferSelect
 export type YoutubeConnectionRow = typeof youtubeConnections.$inferSelect
 export type CaseRow = typeof cases.$inferSelect

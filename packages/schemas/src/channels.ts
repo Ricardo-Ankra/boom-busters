@@ -162,6 +162,8 @@ export function isBibleComplete(
 }
 
 export const FIRST_CHANNEL_ID = '01BB0000000000000000000001'
+/** The first channel's version 1, fixed so the migration and `ensureFirstChannel` agree on it. */
+export const FIRST_CHANNEL_BIBLE_ID = '01BB0000000000000000000002'
 export const FIRST_CHANNEL_SLUG = 'boom-busters'
 export const FIRST_CHANNEL_NAME = 'Boom & Busters'
 export const FIRST_CHANNEL_HANDLE = '@BoomAndBusters'
