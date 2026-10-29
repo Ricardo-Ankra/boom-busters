@@ -8541,3 +8541,16 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      Stage B is the next plan: the bible reaching the prompts, the AI
      draft of the bible, and the case category as free text checked against
      `caseCategories`.
+
+331. **The Channel switcher heads the rail** (2026-10-29). Stage A put the
+     switcher in the top bar and the channel's name, as plain text, in the
+     rail header, so the name showed twice and the control sat away from
+     the place a workspace switcher is looked for. The rail header is now
+     the switcher: a full-width 40 px button labelled with the channel's
+     name that opens the same list. A collapsed rail shows the channel's
+     initials on the button ("Boom & Busters" reads BB) with the full name
+     kept for assistive technology, and the list opens beside the rail.
+     The rail is hidden below md, so the top bar keeps a copy of the
+     button on phones only; the breadcrumb now leads the top bar on a
+     desktop. The rail no longer takes the channel's name as a prop: the
+     switcher reads it from the channel list.

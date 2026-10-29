@@ -160,7 +160,8 @@ Goals:
   a **Channel** tab holds the bible, with a **Draft with AI** button that
   writes a first version from a few lines the owner types, for the owner
   to edit and save.
-- Switch between channels from the top bar; every screen reads as that
+- Switch between channels from the rail header (the top bar on a phone);
+  every screen reads as that
   channel's screen; nothing from another channel leaks into a list, a
   calendar, a cost meter, a prompt or a render.
 - The existing channel, its rows, its storage keys, its parked runs and
@@ -361,11 +362,14 @@ the OAuth return) are prefixed per 4.3. Old bookmarks to the five list
 routes redirect to the default channel's equivalent.
 
 The console layout gets the channel from the segment or from the project
-and renders: the channel's name in the rail header (the app name moves to
-the sign-in and privacy pages), the rail links prefixed, the cost meter
-for that channel, and a **Channel** button in the top bar that opens a
-list of channels with each one's open Needs-you count and a **New
-channel** button at the foot. Choosing a channel goes to the same screen
+and renders: the rail links prefixed, the cost meter, and a **Channel**
+button as the rail header, labelled with the channel's name (the app name
+moves to the sign-in and privacy pages), that opens a list of channels
+with each one's open Needs-you count and a **New channel** button at the
+foot. Collapsed, the rail shows the channel's initials on the same button.
+The rail is hidden on a phone, so the top bar carries the same button
+there only (decision 331, 2026-10-29; the first build put it in the top
+bar on every screen size). Choosing a channel goes to the same screen
 in that channel, or to its dashboard from a project page. Buttons,
 labelled, 40 px, no shortcut (spec section 11.1).
 
