@@ -106,6 +106,12 @@ export const ChannelBibleSchema = z
   .strict()
 export type ChannelBible = z.infer<typeof ChannelBibleSchema>
 
+/**
+ * Strict on write, strip on read: a stored version may carry a key the schema
+ * has since dropped, and reading it must still work. Writes keep the strict one.
+ */
+export const ChannelBibleReadSchema = z.object(ChannelBibleSchema.shape)
+
 export const EMPTY_BIBLE: ChannelBible = ChannelBibleSchema.parse({})
 
 export type BibleSection =

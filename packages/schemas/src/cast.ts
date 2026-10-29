@@ -44,6 +44,9 @@ export type CastPhoto = z.infer<typeof CastPhotoSchema>
 export const CAST_IDENTITY_MAX = 600
 export const CAST_GUARDRAIL_MAX = 600
 
+/** The exclusions every channel's default guardrail ends with, after its own first clause. */
+export const DEFAULT_GUARDRAIL_SUFFIX = '; never mocked, caricatured or shown in humiliation'
+
 export const CastMemberSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),

@@ -1,0 +1,27 @@
+import { describe, expect, test } from 'vitest'
+import { overlapWords, tooCloseTo } from './bible-overlap'
+
+describe('tooCloseTo', () => {
+  test('an eight-word run is too close, seven is not', () => {
+    const src = [
+      { label: 'v1', text: 'Nobody at the bank asked where the money had gone that year' },
+    ]
+    expect(tooCloseTo('so nobody at the bank asked where the money went', src)).toEqual({
+      source: 'v1',
+      run: 'nobody at the bank asked where the money',
+    })
+    expect(tooCloseTo('nobody at the bank asked where the cash', src)).toBeNull()
+  })
+
+  test('punctuation and case do not hide a copy', () => {
+    expect(
+      tooCloseTo('NOBODY, at the bank — asked where the “money” had', [
+        { label: 'v', text: "nobody at the bank asked where the 'money' had" },
+      ]),
+    ).not.toBeNull()
+  })
+
+  test('words are normalised the same way on both sides', () => {
+    expect(overlapWords('It’s “Fine”, isn’t it?')).toEqual(["it's", 'fine', "isn't", 'it'])
+  })
+})
