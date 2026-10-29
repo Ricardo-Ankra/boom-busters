@@ -1050,40 +1050,70 @@ const DOSSIER_SCENES: Scene[] = [
 ]
 
 const dossierCases: LiftCase[] = [
-  lift('dossier-brief-bare', () => buildBriefRequest(CASE_BARE, CORPUS)),
-  lift('dossier-brief-full-case', () => buildBriefRequest(CASE_FULL, CORPUS)),
-  lift('dossier-scenes', () => buildScenesRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF)),
-  lift('dossier-claims-single-part', () =>
-    buildClaimsRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, DOSSIER_SCENES, {
-      index: 1,
-      of: 1,
-      from: 1,
-      to: 24,
-    }),
+  liftAware('dossier-brief-bare', (bible) => buildBriefRequest(CASE_BARE, CORPUS, bible)),
+  liftAware('dossier-brief-full-case', (bible) => buildBriefRequest(CASE_FULL, CORPUS, bible)),
+  liftAware('dossier-scenes', (bible) =>
+    buildScenesRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, bible),
   ),
-  lift('dossier-claims-part', () =>
-    buildClaimsRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, DOSSIER_SCENES, {
-      index: 2,
-      of: 2,
-      from: 13,
-      to: 24,
-    }),
+  liftAware('dossier-claims-single-part', (bible) =>
+    buildClaimsRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      {
+        index: 1,
+        of: 1,
+        from: 1,
+        to: 24,
+      },
+      bible,
+    ),
   ),
-  lift('dossier-answers-single-part', () =>
-    buildAnswersRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, DOSSIER_SCENES, {
-      index: 1,
-      of: 1,
-      from: 1,
-      to: 3,
-    }),
+  liftAware('dossier-claims-part', (bible) =>
+    buildClaimsRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      {
+        index: 2,
+        of: 2,
+        from: 13,
+        to: 24,
+      },
+      bible,
+    ),
   ),
-  lift('dossier-answers-part', () =>
-    buildAnswersRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, DOSSIER_SCENES, {
-      index: 2,
-      of: 2,
-      from: 3,
-      to: 3,
-    }),
+  liftAware('dossier-answers-single-part', (bible) =>
+    buildAnswersRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      {
+        index: 1,
+        of: 1,
+        from: 1,
+        to: 3,
+      },
+      bible,
+    ),
+  ),
+  liftAware('dossier-answers-part', (bible) =>
+    buildAnswersRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      {
+        index: 2,
+        of: 2,
+        from: 3,
+        to: 3,
+      },
+      bible,
+    ),
   ),
 ]
 
@@ -1134,18 +1164,19 @@ const DIGEST_LINES: DigestLine[] = [
 ]
 
 const otherCases: LiftCase[] = [
-  lift('subject-name-with-angle', () =>
+  liftAware('subject-name-with-angle', (bible) =>
     buildNameSubjectRequest({
+      bible,
       title: 'Wirecard and the missing billion',
       angle: 'The auditor sign-offs are the story.',
       category: 'con',
     }),
   ),
-  lift('subject-name-no-angle', () =>
-    buildNameSubjectRequest({ title: 'Enron', angle: null, category: 'collapse' }),
+  liftAware('subject-name-no-angle', (bible) =>
+    buildNameSubjectRequest({ bible, title: 'Enron', angle: null, category: 'collapse' }),
   ),
-  lift('subject-name-blank-angle', () =>
-    buildNameSubjectRequest({ title: 'Enron', angle: '   ', category: 'collapse' }),
+  liftAware('subject-name-blank-angle', (bible) =>
+    buildNameSubjectRequest({ bible, title: 'Enron', angle: '   ', category: 'collapse' }),
   ),
   lift('scoring-stock-criteria', () =>
     buildScoringRequest({ brief: STOCK, candidates: CANDIDATES }),

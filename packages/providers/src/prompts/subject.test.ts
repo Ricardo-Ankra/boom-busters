@@ -1,10 +1,16 @@
-import { CASE_PEOPLE_MAX, CASE_SUBJECT_MAX, ValidationError } from '@boom-busters/schemas'
+import {
+  CASE_PEOPLE_MAX,
+  CASE_SUBJECT_MAX,
+  FIRST_CHANNEL_IN_USE,
+  ValidationError,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildNameSubjectRequest, mockNameSubject, parseNameSubject } from './subject'
 import type { Repair } from './repair'
 
 describe('buildNameSubjectRequest', () => {
   const request = buildNameSubjectRequest({
+    bible: FIRST_CHANNEL_IN_USE,
     title: 'Wirecard and the missing billion',
     angle: 'The auditor sign-offs are the story.',
     category: 'con',
@@ -23,7 +29,12 @@ describe('buildNameSubjectRequest', () => {
   })
 
   it('leaves out an angle the case does not have', () => {
-    const bare = buildNameSubjectRequest({ title: 'Enron', angle: null, category: 'collapse' })
+    const bare = buildNameSubjectRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      title: 'Enron',
+      angle: null,
+      category: 'collapse',
+    })
     expect(bare.messages[0]?.content).not.toContain('Angle')
   })
 })

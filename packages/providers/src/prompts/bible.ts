@@ -33,7 +33,7 @@ function assertWellFormed(text: string): void {
 }
 
 // Two private-use characters: cannot occur in craft text, and stand in for `[[` while a prompt is filled.
-const LITERAL_OPEN = ''
+const LITERAL_OPEN = '\uE000\uE000'
 
 /**
  * Protects owner-typed bible text (a field value, the channel's rules) from

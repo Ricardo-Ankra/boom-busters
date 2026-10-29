@@ -117,6 +117,7 @@ export const dossierRunner = inngest.createFunction(
       const named = await nameSubjectIfMissing(db, source, {
         complete: completeForProject(projectId),
         mocked: mockProvidersEnabled(),
+        projectId,
       })
 
       return {
@@ -177,14 +178,18 @@ export const dossierRunner = inngest.createFunction(
       return { projectId, outcome: 'no-corpus' as const }
     }
     const researchRound = (round: number) =>
-      researchDossier(steps, {
-        projectId,
-        caseContext,
-        round,
-        entity: gathered.entity,
-        documents,
-        corpus,
-      })
+      researchDossier(
+        steps,
+        {
+          projectId,
+          caseContext,
+          round,
+          entity: gathered.entity,
+          documents,
+          corpus,
+        },
+        { bible: () => channelForProject(db, projectId) },
+      )
 
     // Research, parking on the budget gate for as many rounds as the human is
     // willing to fund. A cap is a decision to be asked about, not a failure.

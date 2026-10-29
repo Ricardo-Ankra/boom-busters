@@ -10,7 +10,11 @@ import {
   ensureFirstChannel,
 } from '@boom-busters/db'
 import type { CorpusDocument, LLMTaskRequest } from '@boom-busters/providers'
-import { BudgetExceededError, DOSSIER_DOCUMENT_TOKENS } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DOSSIER_DOCUMENT_TOKENS,
+  FIRST_CHANNEL_IN_USE,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnswerComplete } from '@/lib/answer'
@@ -19,7 +23,7 @@ import {
   gateSummary,
   loadCorpus,
   replayedCase,
-  researchDossier,
+  researchDossier as research,
   splitRange,
   unfetchedClaims,
 } from './dossier-research'
@@ -32,6 +36,13 @@ import { inlineSteps, type Steps } from './steps'
  * database but for the corpus loader's own suite: the passes write nothing;
  * the save steps do, and the runner's and reviser's tests cover them.
  */
+
+/** The research as the stage runs it, reading the first channel's bible in each step. */
+const researchDossier = (
+  steps: Steps,
+  given: Parameters<typeof research>[1],
+  deps: Partial<Parameters<typeof research>[2]> = {},
+) => research(steps, given, { bible: async () => FIRST_CHANNEL_IN_USE, ...deps })
 
 const replaying = (stored: Record<string, unknown>): Steps => ({
   run: async <T>(id: string) => stored[id] as T,
@@ -234,6 +245,32 @@ describe('researchDossier over the corpus', () => {
       expect(opening).toMatch(
         /^Subject: Wirecard \(company\)\nPeople: Markus Braun\nWorking title: Wirecard: the billions that were never there\nCategory: con\n/,
       )
+    }
+  })
+
+  it('reads the bible inside each pass, and prompts with the bible it reads', async () => {
+    const other = {
+      ...FIRST_CHANNEL_IN_USE,
+      bible: {
+        ...FIRST_CHANNEL_IN_USE.bible,
+        subjectNoun: { singular: 'idea', plural: 'ideas' },
+      },
+    }
+    const reads = vi.fn(async () => other)
+    const requests: LLMTaskRequest[] = []
+    const complete: AnswerComplete = async (request) => {
+      requests.push(request)
+      return { text: fixtureFor(request) }
+    }
+
+    await researchDossier(inlineSteps, input, { complete, mocked: false, bible: reads })
+
+    // Brief, scenes, two claims parts and two answers parts: one read each.
+    expect(reads).toHaveBeenCalledTimes(6)
+    expect(requests).toHaveLength(6)
+    for (const request of requests) {
+      expect(request.system).toContain('Real ideas and living people')
+      expect(request.messages[0]!.content).toContain('Subject: Wirecard (idea)')
     }
   })
 

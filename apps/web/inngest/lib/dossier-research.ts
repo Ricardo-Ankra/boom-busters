@@ -29,6 +29,7 @@ import {
 } from '@boom-busters/providers'
 import type { CorpusDocument, LLMTaskRequest, PassPart, Repair } from '@boom-busters/providers'
 import type {
+  BibleInUse,
   CaseBrief,
   GroundedClaim,
   GroundedResearch,
@@ -192,7 +193,12 @@ export async function researchDossier(
     documents: readonly CorpusDocument[]
     corpus: CorpusCounts
   },
-  deps: { complete?: AnswerComplete; mocked?: boolean } = {},
+  deps: {
+    complete?: AnswerComplete
+    mocked?: boolean
+    /** The project's frozen bible, read inside each step that builds a request, never carried between steps. */
+    bible: () => Promise<BibleInUse>
+  },
 ): Promise<ResearchResult> {
   const { caseContext, round, note, documents } = input
   const mocked = deps.mocked ?? mockProvidersEnabled()
@@ -211,9 +217,9 @@ export async function researchDossier(
     async (): Promise<Guarded<CaseBrief> & { split?: boolean }> => {
       const result: Guarded<CaseBrief> = mocked
         ? { ok: true, value: mockBrief(caseContext) }
-        : await guarded('The research brief could not be written', () =>
+        : await guarded('The research brief could not be written', async () =>
             callForAnswer({
-              request: noted(buildBriefRequest(caseContext, corpus)),
+              request: noted(buildBriefRequest(caseContext, corpus, await deps.bible())),
               parse: parseBrief,
               complete,
             }),
@@ -236,9 +242,9 @@ export async function researchDossier(
     `research-scenes-${round}`,
     async (): Promise<Guarded<Scene[]>> => {
       if (mocked) return { ok: true, value: mockScenes() }
-      return guarded('The scenes could not be written', () =>
+      return guarded('The scenes could not be written', async () =>
         callForAnswer({
-          request: noted(buildScenesRequest(caseContext, corpus, brief.value)),
+          request: noted(buildScenesRequest(caseContext, corpus, brief.value, await deps.bible())),
           parse: parseScenes,
           complete,
         }),
@@ -253,9 +259,18 @@ export async function researchDossier(
     steps.run(stepId('claims', part), async (): Promise<Guarded<ResearchClaim[]>> => {
       // The mock claims cite every mock document, so the first part has them all.
       if (mocked) return { ok: true, value: part.index === 1 ? mockClaims() : [] }
-      return guarded('The claims could not be extracted', () =>
+      return guarded('The claims could not be extracted', async () =>
         callForAnswer({
-          request: noted(buildClaimsRequest(caseContext, corpus, brief.value, scenes.value, part)),
+          request: noted(
+            buildClaimsRequest(
+              caseContext,
+              corpus,
+              brief.value,
+              scenes.value,
+              part,
+              await deps.bible(),
+            ),
+          ),
           parse: parseClaims,
           complete,
         }),
@@ -298,9 +313,18 @@ export async function researchDossier(
           },
         }
       }
-      return guarded('The open questions could not be answered', () =>
+      return guarded('The open questions could not be answered', async () =>
         callForAnswer({
-          request: noted(buildAnswersRequest(caseContext, corpus, brief.value, scenes.value, part)),
+          request: noted(
+            buildAnswersRequest(
+              caseContext,
+              corpus,
+              brief.value,
+              scenes.value,
+              part,
+              await deps.bible(),
+            ),
+          ),
           parse: parseAnswers,
           complete,
         }),

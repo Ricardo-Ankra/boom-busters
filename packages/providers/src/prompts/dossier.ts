@@ -30,8 +30,16 @@ import {
   ToldAlreadySchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { CaseBrief, ResearchAnswers, ResearchClaim, Scene } from '@boom-busters/schemas'
+import type {
+  BibleInUse,
+  CaseBrief,
+  ChannelBible,
+  ResearchAnswers,
+  ResearchClaim,
+  Scene,
+} from '@boom-busters/schemas'
 import { z } from 'zod'
+import { fillSlots, literalBibleText, noun } from './bible'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
@@ -56,10 +64,11 @@ import type { LLMTaskRequest, Msg } from '../llm/types'
  * not re-run and re-charge the brief.
  */
 
-const HOUSE_RULES = `You research corporate collapses, frauds and comebacks for a documentary
+function houseRules(bible: ChannelBible): string {
+  return `You research [[example:dossier-channel-subject]] for a documentary
 channel with commentary. You work as the story researcher: you look for the
 scenes, the people and what they wanted, the numbers that draw the arc, and
-what earlier videos already told. Real companies and living people are the
+what earlier videos already told. Real ${literalBibleText(noun(bible, 'plural'))} and living people are the
 subject, so:
 
 - Write only what the documents in front of you say. A fact you remember but cannot quote from a document is an open question, not a claim.
@@ -73,6 +82,7 @@ subject, so:
   useful; a confident invention is a liability.
 
 Answer with JSON only, no prose around it.`
+}
 
 /**
  * One system prompt for all four passes. A provider's cached prefix starts
@@ -80,9 +90,13 @@ Answer with JSON only, no prose around it.`
  * its own cache entry for the corpus; each pass's shape, rules and limits go
  * in its final message instead.
  */
-const SYSTEM = `${HOUSE_RULES}
+const system = (inUse: BibleInUse): string =>
+  fillSlots(
+    `${houseRules(inUse.bible)}
 
-The shape of that JSON, its rules and its limits are in the final message.`
+The shape of that JSON, its rules and its limits are in the final message.`,
+    inUse,
+  )
 
 export interface CaseContext {
   title: string
@@ -98,11 +112,12 @@ export interface CaseContext {
  * The case, as every pass reads it before the corpus: who the story is about
  * first, then the working title, which names the turn but is not the subject.
  */
-function caseHeader(input: CaseContext): string {
+function caseHeader(input: CaseContext, bible: ChannelBible): string {
   const subject = input.subject?.trim()
   const people = (input.people ?? []).map((name) => name.trim()).filter(Boolean)
   return [
-    subject ? `Subject: ${subject} (company)` : null,
+    // Not filled: the corpus message is never a template, so the noun goes in as it is.
+    subject ? `Subject: ${subject} (${noun(bible, 'singular')})` : null,
     people.length > 0 ? `People: ${people.join(', ')}` : null,
     `Working title: ${input.title}`,
     `Category: ${input.category}`,
@@ -119,10 +134,10 @@ function caseHeader(input: CaseContext): string {
  * prefix, so the corpus, most of every request's input, is cached once per
  * run where the provider supports it. Everything pass-specific comes after.
  */
-function corpusMessage(input: CaseContext, corpus: string): Msg {
+function corpusMessage(input: CaseContext, corpus: string, bible: ChannelBible): Msg {
   return {
     role: 'user',
-    content: `${caseHeader(input)}\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`,
+    content: `${caseHeader(input, bible)}\n\nDocuments, numbered. Cite them by number.\n\n${corpus}`,
   }
 }
 
@@ -132,11 +147,17 @@ function passRequest(
   earlier: readonly Msg[],
   instructions: string,
   answerTokens: number,
+  bible: BibleInUse,
 ): LLMTaskRequest {
   return {
     task: 'research',
-    system: SYSTEM,
-    messages: [corpusMessage(input, corpus), ...earlier, { role: 'user', content: instructions }],
+    system: system(bible),
+    messages: [
+      corpusMessage(input, corpus, bible.bible),
+      ...earlier,
+      // Only the instructions are filled: the corpus and the earlier passes are never templates.
+      { role: 'user', content: fillSlots(instructions, bible) },
+    ],
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(answerTokens),
   }
@@ -449,7 +470,11 @@ each \`at\` at most ${POINT_AT_MAX} and \`asWritten\` at most ${POINT_WRITTEN_MA
 // Pass 1, the brief
 // ---------------------------------------------------------------------------
 
-export function buildBriefRequest(input: CaseContext, corpus: string): LLMTaskRequest {
+export function buildBriefRequest(
+  input: CaseContext,
+  corpus: string,
+  bible: BibleInUse,
+): LLMTaskRequest {
   return passRequest(
     input,
     corpus,
@@ -465,11 +490,10 @@ the list already told.
  "currentStatus": {"asOf": string, "text": string} | null}
 
 - \`turningPoint\` is the moment the story turns: what the script builds toward.
-- \`currentStatus\` is where things stand now, dated from the newest document that speaks to the outcome: what happened to the people and the money after the turn, in plain words. Set it to null when the documents say nothing after the turn.
+- \`currentStatus\` is where things stand now, dated from the newest document that speaks to the outcome: what happened to [[example:dossier-status-subject]] after the turn, in plain words. Set it to null when the documents say nothing after the turn.
   \`asOf\` is YYYY-MM-DD, YYYY-MM or YYYY: the date of that newest document.
 - \`cast\` are the people and organisations the story follows. \`wanted\` is
-  what that person wanted, in one sentence ("to make every quarter look like
-  growth"), not their job title. \`scene\` is the document and the quote that
+  what that person wanted, in one sentence ("[[example:dossier-wanted-example]]"), not their job title. \`scene\` is the document and the quote that
   show them wanting it; null when no document shows it.
 - \`toldAlready\` lists the beats existing videos already cover, so the angle
   can be checked against them. Take them ONLY from documents of kind \`video\`;
@@ -486,6 +510,7 @@ ${CAST_ROLE_MAX} and "wanted" 10 to ${CAST_WANTED_MAX} characters; at most ${DOS
 "beat" 10 to ${BEAT_MAX} characters; at most ${DOSSIER_OPEN_QUESTIONS_MAX} open questions, each at least 10 characters;
 "currentStatus.text" 20 to ${DOSSIER_STATUS_MAX} characters.`,
     6_000,
+    bible,
   )
 }
 
@@ -578,6 +603,7 @@ export function buildScenesRequest(
   input: CaseContext,
   corpus: string,
   brief: CaseBrief,
+  bible: BibleInUse,
 ): LLMTaskRequest {
   return passRequest(
     input,
@@ -588,8 +614,7 @@ export function buildScenesRequest(
   "doc": number, "quote": string}]}
 
 - A scene is a moment a documentary can show: something said or done, by
-  someone, at a time. A results call, a stage keynote, a board meeting, a raid,
-  a resignation, a short seller's report landing. This is the story's spine,
+  someone, at a time. [[example:dossier-scene-examples]]. This is the story's spine,
   not a legal chronology: leave out filings and procedural steps unless that
   moment changes the story.
 - \`when\` may be imprecise where the document is ("late 2019", "March 2001").
@@ -606,6 +631,7 @@ Limits (the app checks them): 1 to ${DOSSIER_SCENES_MAX} scenes; "when" 3 to ${D
 "who" 2 to ${SCENE_WHO_MAX} characters; "what" 10 to ${DOSSIER_EVENT_WHAT_MAX} characters; "why" 10 to
 ${SCENE_WHY_MAX} characters; "quote" at most ${DOSSIER_QUOTE_MAX} characters.`,
     10_000,
+    bible,
   )
 }
 
@@ -672,6 +698,7 @@ export function buildClaimsRequest(
   brief: CaseBrief,
   scenes: readonly Scene[],
   part: PassPart,
+  bible: BibleInUse,
 ): LLMTaskRequest {
   // A pass run as one part has no other part to defer to.
   const share =
@@ -683,7 +710,7 @@ export function buildClaimsRequest(
     corpus,
     [{ role: 'assistant', content: JSON.stringify({ brief, scenes }) }],
     `Now extract the facts the script will narrate, each with the words that prove
-it: what the money did, who said what, what the numbers show over time. The
+it: [[example:dossier-claims-focus]]. The
 brief and the scenes tell you which facts the story rests on.
 ${share}{"claims": [${CLAIM_SHAPE}]}
 
@@ -691,6 +718,7 @@ ${CLAIM_RULES}
 
 Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
     8_000,
+    bible,
   )
 }
 
@@ -748,6 +776,7 @@ export function buildAnswersRequest(
   brief: CaseBrief,
   scenes: readonly Scene[],
   part: PassPart,
+  bible: BibleInUse,
 ): LLMTaskRequest {
   // Numbered, not bulleted: the number is the join key the renderer places
   // each answer by (decision 203). Text matching alone lost every answer of
@@ -790,8 +819,9 @@ ${DOSSIER_QUESTION_MAX} characters; each "answer" at most ${DOSSIER_ANSWER_MAX} 
 ${DOSSIER_ANSWER_CLAIMS_MAX} claims; ${CLAIM_LIMITS}.
 
 ${share}The open questions:
-${questions}`,
+${literalBibleText(questions)}`,
     8_000,
+    bible,
   )
 }
 

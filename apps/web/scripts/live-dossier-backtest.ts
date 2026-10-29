@@ -2,6 +2,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
+  channelForProject,
   createCase,
   createProjectFromCase,
   deleteCase,
@@ -161,7 +162,7 @@ async function main(): Promise<void> {
           documents: loaded.documents,
           corpus: loaded.corpus,
         },
-        { complete, mocked: false },
+        { complete, mocked: false, bible: () => channelForProject(db, project.id) },
       )
       if (result.budgetGate)
         throw new Error('A budget guard parked the passes before they finished.')
