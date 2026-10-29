@@ -4201,22 +4201,54 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 
 ### Owner actions at deploy
 
+`apps/web/package.json` runs `scripts/deploy-migrate.mjs` on every production
+Vercel build (`VERCEL_ENV=production`). It runs the `@boom-busters/db`
+migrate script against `DATABASE_URL` and fails the build if a migration
+fails. So pushing master applies 0039 and 0040 to production, and everything
+under "Before the push" has to be done first.
+
+Before the push to master:
+
 1. Migration numbers: this branch adds 0039 (`channel_bibles`) and 0040
    (`case_category_text`). Compare `packages/db/drizzle/meta/_journal.json`
    with master's at merge time; if another branch took either number,
    regenerate this branch's as the next free one (drizzle skips a migration
    stamped older than the last applied).
-2. Before migrating production, read the production first channel's
-   `channels.bible` read-only and compare it with stage A's stored shape
-   (`FIRST_CHANNEL_BIBLE_AT_0037` in
-   `packages/db/src/migration-0038.test.ts`). If the owner has edited it,
-   stop and ask: 0039 replaces it with `FIRST_CHANNEL_BIBLE` as version 1.
-3. `pnpm db:migrate` on a Neon branch first. Check the row counts: every
-   project has a `bible_id`, and the first channel has version 1, complete.
-   Then production.
-4. `deploy:stacks boom-busters-broker` (the timeline schema gained
+2. Read production's first-channel `channels.bible` read-only and compare it
+   with stage A's stored shape (`FIRST_CHANNEL_BIBLE_AT_0037` in
+   `packages/db/src/migration-0038.test.ts`). If it differs, stop and ask the
+   owner: 0039 replaces it with `FIRST_CHANNEL_BIBLE` as version 1.
+3. Rehearse on a Neon branch with `pnpm db:migrate`. Seed a second channel in
+   0038 state first, so 0039's "other channels" insert runs against a real
+   row. Check the row counts: every project has a `bible_id`, the first
+   channel has version 1 with `complete` true, and the second channel has
+   version 1 with `complete` false.
+4. Choose a moment with no run parked or in flight.
+
+Then:
+
+5. Push master. The Vercel build applies 0039 and 0040 through
+   `deploy-migrate.mjs`. Expect a build-length window where the old
+   deployment is still serving against the new schema (0039 drops
+   `channels.bible`).
+6. `deploy:stacks boom-busters-broker` (the timeline schema gained
    `identity`) and `deploy:remotion` (EndCta and Watermark changed).
-5. `PUT /api/inngest` after the Vercel deploy.
+7. `PUT /api/inngest` after the Vercel deploy.
+
+### Carried to branch 2
+
+- Later stages rely on `BibleSlotMissingError` rather than the bible gate, so
+  "Use the latest bible" must refuse an incomplete version (or the later
+  runners gain the gate).
+- The weekly digest must skip, or fall back, when the current bible is
+  incomplete instead of failing the run.
+- Enforce each slot's `maxLength` (and the cast guardrail limit) when a draft
+  is validated.
+- Consider strict-on-write, strip-on-read for bible parsing.
+- The Channel tab's "Bible incomplete" message, and the voice audition
+  fallback (still the Wirecard line), for a channel without the Bible tab.
+- The slot passes (rebriefer, retyper, redirector) do not append the
+  channel's direction rules.
 
 ---
 
