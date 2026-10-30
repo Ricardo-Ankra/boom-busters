@@ -197,14 +197,7 @@ describeDb('bible-drafter (mock mode)', () => {
       ),
     )
     expect(draft.errors).toEqual({})
-    // The mock psychology examples reuse some craft wording of Boom & Busters' own,
-    // which the check rightly flags; the hooks share nothing with the digest.
-    const flags = Object.entries(draft.tooClose)
-    expect(
-      flags.every(
-        ([path, flag]) => path.startsWith('examples.') && flag.source === 'Boom & Busters',
-      ),
-    ).toBe(true)
+    expect(draft.tooClose).toEqual({})
     expect(draft.job).toMatchObject({ kind: 'draft', state: 'done', current: null, error: null })
     // The sources the research names survive.
     expect(draft.bible.hooks[0]?.drawnFrom.length).toBeGreaterThan(0)

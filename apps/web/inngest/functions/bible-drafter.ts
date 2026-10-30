@@ -8,6 +8,7 @@ import {
 } from '@boom-busters/providers'
 import {
   BIBLE_SECTION_LABELS,
+  EXAMPLE_SLOTS,
   FIRST_CHANNEL_ID,
   parseEventData,
   tooCloseTo,
@@ -84,16 +85,26 @@ function digestSources(draft: BibleDraft): OverlapSource[] {
   return sources
 }
 
+/** Craft sentences the slots' `teaches` lines quote: every channel keeps them word for word. */
+const CRAFT_TEXTS: readonly string[] = EXAMPLE_SLOTS.map((slot) => slot.teaches)
+
+interface Sources {
+  /** Other creators' research quotes: no exemption. */
+  digest: OverlapSource[]
+  /** Boom & Busters' own bible, on a second channel; craft wording is exempt. */
+  firstChannel: OverlapSource[]
+}
+
 /** On a channel other than the first, the first channel's current bible is a source too. */
-async function overlapSources(channelId: string, draft: BibleDraft): Promise<OverlapSource[]> {
-  const sources = digestSources(draft)
+async function overlapSources(channelId: string, draft: BibleDraft): Promise<Sources> {
+  const sources: Sources = { digest: digestSources(draft), firstChannel: [] }
   if (channelId === FIRST_CHANNEL_ID) return sources
   const first = (await currentBible(db, FIRST_CHANNEL_ID)).bible
   const texts = [
     ...Object.values(first.examples),
     ...LISTS.flatMap((list) => first[list].map((entry) => entry.text)),
   ]
-  for (const text of texts) sources.push({ label: FIRST_CHANNEL_LABEL, text })
+  for (const text of texts) sources.firstChannel.push({ label: FIRST_CHANNEL_LABEL, text })
   return sources
 }
 
@@ -194,7 +205,8 @@ async function draftUnit(input: {
         Object.entries(draft.tooClose).filter(([path]) => !belongsTo(unit, path, written)),
       )
       for (const [path, text] of fields) {
-        const found = tooCloseTo(text, sources)
+        const found =
+          tooCloseTo(text, sources.digest) ?? tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS)
         if (found) tooClose[path] = found
       }
 
