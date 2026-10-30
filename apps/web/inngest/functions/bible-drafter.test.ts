@@ -53,7 +53,7 @@ type Seam = (unit: BibleDraftUnit) => Partial<ChannelBible> | undefined
 
 const seams = vi.hoisted(() => ({
   answers: [] as unknown[],
-  requests: [] as { unit: BibleDraftUnit; steer?: string; previousError?: string }[],
+  requests: [] as { unit: BibleDraftUnit; text: string; steer?: string; previousError?: string }[],
 }))
 
 vi.mock('@boom-busters/providers', async (importOriginal) => {
@@ -61,12 +61,14 @@ vi.mock('@boom-busters/providers', async (importOriginal) => {
   return {
     ...original,
     buildBibleUnitRequest: (input: Parameters<typeof original.buildBibleUnitRequest>[0]) => {
+      const built = original.buildBibleUnitRequest(input)
       seams.requests.push({
         unit: input.unit,
+        text: built.messages.map((m) => m.content).join(' '),
         ...(input.steer ? { steer: input.steer } : {}),
         ...(input.previousError ? { previousError: input.previousError } : {}),
       })
-      return original.buildBibleUnitRequest(input)
+      return built
     },
     mockBibleUnit: (unit: BibleDraftUnit) => {
       const next = seams.answers.shift() as Seam | Error | undefined
@@ -334,6 +336,40 @@ describeDb('bible-drafter (mock mode)', () => {
     expect((await draftOf()).tooClose).toEqual({ 'examples.script-foreshadow': flag })
   })
 
+  it('leaves the list and example flags alone when another section is redrafted', async () => {
+    await prepare(channelId, mockResearchDigest(INPUTS))
+    const flag = { source: 'Somewhere', run: 'a b c d e f g h' }
+    const flags = { 'hooks.0': flag, 'titles.1': flag, 'examples.script-foreshadow': flag }
+    await writeBibleDraft(db, channelId, (draft) => ({ ...draft, tooClose: flags }), {
+      allowWhileRunning: true,
+    })
+    await engine.execute(request(channelId, [{ section: 'voice' }]))
+    expect((await draftOf()).tooClose).toEqual(flags)
+  })
+
+  it('a single-slot unit writes only that slot, keeping the others and their flags', async () => {
+    await prepare(channelId)
+    const [slot, other] = EXAMPLE_SLOTS.filter((s) => s.kind === 'line')
+    const flag = { source: 'Somewhere', run: 'a b c d e f g h' }
+    await writeBibleDraft(
+      db,
+      channelId,
+      (draft) => ({
+        ...draft,
+        bible: { ...draft.bible, examples: { [other!.id]: 'kept as it was' } },
+        tooClose: { [`examples.${other!.id}`]: flag },
+      }),
+      { allowWhileRunning: true },
+    )
+    await engine.execute(request(channelId, [{ section: 'examples', slotId: slot!.id }]))
+    const draft = await draftOf()
+    expect(Object.keys(draft.bible.examples).sort()).toEqual([slot!.id, other!.id].sort())
+    expect(draft.bible.examples[other!.id]).toBe('kept as it was')
+    expect(draft.bible.examples[slot!.id]).toBeTruthy()
+    expect(draft.tooClose).toEqual({ [`examples.${other!.id}`]: flag })
+    expect(draft.statuses.examples).toBe('drafted')
+  })
+
   it('drops a drawnFrom entry the research does not name, and keeps none without research', async () => {
     const digest = mockResearchDigest(INPUTS)
     const named = digest.videos[0]!
@@ -364,6 +400,7 @@ describeDb('bible-drafter (mock mode)', () => {
     await engine.execute(request(channelId, [{ section: 'voice' }], 'more clinical'))
 
     expect(seams.requests[0]).toMatchObject({ unit: { section: 'voice' }, steer: 'more clinical' })
+    expect(seams.requests[0]?.text).toContain('The owner asks: more clinical')
     const after = (await draftOf()).bible
     const changed = (Object.keys(after) as (keyof ChannelBible)[]).filter(
       (k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]),

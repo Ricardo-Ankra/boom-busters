@@ -138,7 +138,8 @@ function writtenFields(unit: BibleDraftUnit, answer: Partial<ChannelBible>): [st
 /** Whether a flag's path belongs to the fields a unit writes (so it is cleared before the new ones). */
 function belongsTo(unit: BibleDraftUnit, path: string, written: readonly string[]): boolean {
   if (unit.section === 'examples') return written.includes(path)
-  return LISTS.some((list) => path.startsWith(`${list}.`))
+  if (unit.section === 'hooks') return LISTS.some((list) => path.startsWith(`${list}.`))
+  return false
 }
 
 async function draftUnit(input: {
