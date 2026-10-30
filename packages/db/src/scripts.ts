@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { sentenceHash } from '@boom-busters/schemas'
 import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -246,9 +246,9 @@ export async function setScriptStatus(
 const OPENING_CHARS = 300
 
 /**
- * The opening of the channel's approved scripts, newest first, one per project
- * and at most `limit`: the first 300 characters of the script's first chapter.
- * A script with an empty opening is skipped.
+ * The opening of the channel's approved scripts, newest first, one per script
+ * and at most `limit`: the first 300 characters of its first chapter. A script
+ * with an empty opening is skipped. Bounded in SQL, so no chapter body is read whole.
  */
 export async function approvedScriptOpenings(
   db: Database,
@@ -256,32 +256,29 @@ export async function approvedScriptOpenings(
   limit: number,
 ): Promise<string[]> {
   const rows = await db
-    .select({
-      scriptId: scripts.id,
-      projectId: scripts.projectId,
-      contentMd: chapters.contentMd,
-    })
+    .select({ opening: sql<string>`left(trim(${chapters.contentMd}), ${OPENING_CHARS})` })
     .from(scripts)
     .innerJoin(projects, eq(projects.id, scripts.projectId))
-    .innerJoin(chapters, eq(chapters.scriptId, scripts.id))
-    .where(and(eq(projects.channelId, channelId), eq(scripts.status, 'approved')))
-    .orderBy(desc(scripts.updatedAt), asc(chapters.index))
-
-  const seenScripts = new Set<string>()
-  const seenProjects = new Set<string>()
-  const openings: string[] = []
-  for (const row of rows) {
-    // The first row of each script is its first chapter.
-    if (seenScripts.has(row.scriptId)) continue
-    seenScripts.add(row.scriptId)
-    if (seenProjects.has(row.projectId)) continue
-    const text = row.contentMd.trim().slice(0, OPENING_CHARS)
-    if (text === '') continue
-    seenProjects.add(row.projectId)
-    openings.push(text)
-    if (openings.length >= limit) break
-  }
-  return openings
+    .innerJoin(
+      chapters,
+      and(
+        eq(chapters.scriptId, scripts.id),
+        eq(
+          chapters.index,
+          sql`(select min(c.index) from chapters c where c.script_id = ${scripts.id})`,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(projects.channelId, channelId),
+        eq(scripts.status, 'approved'),
+        sql`trim(${chapters.contentMd}) <> ''`,
+      ),
+    )
+    .orderBy(desc(scripts.updatedAt))
+    .limit(limit)
+  return rows.map((row) => row.opening)
 }
 
 /** Every warning across a script — the count the gate card shows. */

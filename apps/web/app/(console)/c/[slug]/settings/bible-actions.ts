@@ -52,7 +52,7 @@ async function checkResearch(channelId: string, input: unknown): Promise<Estimat
   }
 
   const apiKey = await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY)
-  const client = apiKey ? vidiqClientFor(apiKey) : null
+  const client = vidiqClientFor(apiKey)
   if (!client) return { ok: false, error: 'Add a VidIQ key in Settings, Connections' }
 
   try {

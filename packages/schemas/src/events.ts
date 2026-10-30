@@ -359,11 +359,6 @@ export const AnalyticsRefreshRequestedSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
- * Every event the system sends, by name. This object is the single source the
- * Inngest client's `EventSchemas` is built from, so an event that is not here
- * cannot be sent in typed code at all.
- */
-/**
  * Research a channel's bible draft with VidIQ, keep a digest, then hand over
  * to the drafting run. The run reads the draft's `inputs` itself: nothing the
  * owner typed travels in the event.
@@ -379,6 +374,11 @@ export const BibleDraftRequestedSchema = z.object({
   steer: z.string().max(1000).optional(),
 })
 
+/**
+ * Every event the system sends, by name. This object is the single source the
+ * Inngest client's `EventSchemas` is built from, so an event that is not here
+ * cannot be sent in typed code at all.
+ */
 export const EVENT_SCHEMAS = {
   'project/created': ProjectCreatedSchema,
   'project/cancelled': ProjectCancelledSchema,

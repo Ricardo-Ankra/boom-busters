@@ -34,12 +34,18 @@ vi.mock('@/inngest/client', () => ({ inngest: { send: inngestMock.send } }))
 const vidiq = vi.hoisted(() => ({
   balance: vi.fn(async () => ({ totalCredits: 1443, renewableResetsAt: null })),
   close: vi.fn(async () => {}),
+  useReal: false,
 }))
-vi.mock('@boom-busters/providers/vidiq', async (importOriginal) => ({
-  ...(await importOriginal<typeof VidiqModule>()),
-  vidiqClientFor: (key: string | undefined) =>
-    key ? { balance: vidiq.balance, close: vidiq.close } : null,
-}))
+vi.mock('@boom-busters/providers/vidiq', async (importOriginal) => {
+  const original = await importOriginal<typeof VidiqModule>()
+  return {
+    ...original,
+    vidiqClientFor: (key: string | undefined) => {
+      if (vidiq.useReal) return original.vidiqClientFor(key)
+      return key ? { balance: vidiq.balance, close: vidiq.close } : null
+    },
+  }
+})
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -56,6 +62,7 @@ const ESTIMATE = 40
 describeDb('the bible research actions', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    vidiq.useReal = false
     vidiq.balance.mockResolvedValue({ totalCredits: 1443, renewableResetsAt: null })
     await seed(db)
     await updateWorkspace(db, DEFAULT_WORKSPACE_SETTINGS)
@@ -78,6 +85,16 @@ describeDb('the bible research actions', () => {
       ok: false,
       error: 'Add a VidIQ key in Settings, Connections',
     })
+  })
+
+  it('runs under mock providers with no stored key, on the fixture balance', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    vidiq.useReal = true
+    await db.delete(providerCredentials)
+    const result = await estimateBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
+    vi.unstubAllEnvs()
+    expect(result).toEqual({ ok: true, estimate: ESTIMATE, balance: 1443, capLeft: 1000 })
+    expect(vidiq.balance).not.toHaveBeenCalled()
   })
 
   it('names the input that is not a YouTube channel', async () => {
@@ -167,8 +184,9 @@ describeDb('the bible research actions', () => {
 
   it('frees the draft when the run cannot be sent', async () => {
     inngestMock.send.mockRejectedValueOnce(new Error('down'))
-    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
     const result = await startBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
+    quiet.mockRestore()
     expect(result.ok).toBe(false)
     expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.job).toMatchObject({ state: 'failed' })
   })

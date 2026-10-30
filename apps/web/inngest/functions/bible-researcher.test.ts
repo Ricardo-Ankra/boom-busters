@@ -125,6 +125,7 @@ describeDb('bible-researcher (mock mode)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllEnvs()
   })
 
@@ -148,7 +149,8 @@ describeDb('bible-researcher (mock mode)', () => {
     const draft = await getBibleDraft(db, FIRST_CHANNEL_ID)
     expect(BibleResearchDigestSchema.safeParse(draft?.research).success).toBe(true)
     expect(longestString(draft?.research)).toBeLessThanOrEqual(900)
-    expect(draft?.job).toMatchObject({ kind: 'research', state: 'done', error: null })
+    // The drafting run follows at once, so the draft stays locked.
+    expect(draft?.job).toMatchObject({ kind: 'draft', state: 'running', error: null })
 
     expect(ctx.step.sendEvent).toHaveBeenCalledWith(
       'draft-requested',
@@ -195,6 +197,7 @@ describeDb('bible-researcher (mock mode)', () => {
 
   it('records a transcript that VidIQ refuses as no opening, charging nothing for it', async () => {
     const { VidiqError } = await import('@boom-busters/providers/vidiq')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     let first = true
     seams.clientOverride = (real) => ({
       ...(real as object),
@@ -212,6 +215,7 @@ describeDb('bible-researcher (mock mode)', () => {
   })
 
   it('stops, without calling VidIQ, when the monthly cap would be crossed', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 3 } })
     const { error } = await engine.execute(request())
     expect(JSON.stringify(error)).toContain('The VidIQ cap is reached')
@@ -219,6 +223,7 @@ describeDb('bible-researcher (mock mode)', () => {
   })
 
   it('leaves the reason on the draft when the digest fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     seams.digest = () => {
       throw new NonRetriableError('The research digest could not be written: the answer was empty')
     }
@@ -259,6 +264,29 @@ describeDb('bible-researcher (mock mode)', () => {
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([])
     await setScriptStatus(db, script.id, 'approved')
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual(['x'.repeat(300)])
+
+    // One row per approved script, the first chapter's, and the limit holds.
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 1,
+      title: 'Two',
+      contentMd: 'second chapter',
+      estRuntimeSec: 10,
+    })
+    const second = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    await saveChapter(db, {
+      scriptId: second.id,
+      index: 0,
+      title: 'One',
+      contentMd: 'another script',
+      estRuntimeSec: 10,
+    })
+    await setScriptStatus(db, second.id, 'approved')
+    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([
+      'another script',
+      'x'.repeat(300),
+    ])
+    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 1)).toEqual(['another script'])
     await db.delete(chapters)
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([])
   })

@@ -286,12 +286,14 @@ export const bibleResearcher = inngest.createFunction(
         (draft) => ({
           ...draft,
           research: digest,
+          // The drafting run follows at once: keep the draft locked until it
+          // takes over (a lost event frees it by the 30-minute stale rule).
           job: {
-            kind: 'research',
-            state: 'done',
+            kind: 'draft',
+            state: 'running',
             current: null,
             error: null,
-            startedAt: draft.job?.startedAt ?? new Date().toISOString(),
+            startedAt: new Date().toISOString(),
           },
         }),
         { allowWhileRunning: true },
