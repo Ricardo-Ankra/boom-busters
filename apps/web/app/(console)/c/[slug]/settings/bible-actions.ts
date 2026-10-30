@@ -15,8 +15,7 @@ import {
   vidiqCreditsThisMonth,
   writeBibleDraft,
 } from '@boom-busters/db'
-import { PREVIEW_STAGES, composeStagePrompt } from '@boom-busters/providers'
-import type { PreviewStage } from '@boom-busters/providers'
+import { composeStagePrompt } from '@boom-busters/providers/preview'
 import { estimateResearchCredits, vidiqClientFor } from '@boom-busters/providers/vidiq'
 import {
   BIBLE_SECTIONS,
@@ -24,6 +23,7 @@ import {
   BibleDraftInputsSchema,
   ChannelBibleSchema,
   EXAMPLE_SLOT_IDS,
+  PREVIEW_STAGES,
   UlidSchema,
   bibleDraftUnits,
   jobIsRunning,
@@ -33,6 +33,7 @@ import type {
   BibleDraftUnit,
   BibleSection,
   ChannelBible,
+  PreviewStage,
   TooCloseFlags,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -40,7 +41,7 @@ import { auth } from '@/auth'
 import { BIBLE_ENTRY_LISTS, errorSection, flagSection } from '@/lib/bible-draft-keys'
 import { overlapFlag, overlapSources } from '@/lib/bible-overlap-sources'
 import { researchPlanFor } from '@/lib/bible-research'
-import { channelWriteRefusal } from '@/lib/channel-lookup'
+import { channelWriteRefusal, findChannel } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { inngest } from '@/inngest/client'
@@ -540,8 +541,10 @@ export async function previewStagePromptAction(
       error: issue ? `${issue.path.join('.')}: ${issue.message}` : 'The bible is not valid',
     }
   }
+  const channel = await findChannel(channelId)
+  if (!channel) return { ok: false, error: 'Unknown channel' }
   try {
-    return { ok: true, text: composeStagePrompt(stage as PreviewStage, parsed.data) }
+    return { ok: true, text: composeStagePrompt(stage as PreviewStage, parsed.data, channel.name) }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not compose' }
   }

@@ -225,3 +225,14 @@ export function bibleSaveBlockers(draft: BibleDraft): string[] {
   }
   return [...blockers, ...bibleProblems(draft.bible)]
 }
+
+/** The stages the Bible tab can show the composed system prompt for. */
+export const PREVIEW_STAGES = [
+  'script',
+  'shotlist',
+  'direction',
+  'graphics',
+  'metadata',
+  'dossier',
+] as const
+export type PreviewStage = (typeof PREVIEW_STAGES)[number]

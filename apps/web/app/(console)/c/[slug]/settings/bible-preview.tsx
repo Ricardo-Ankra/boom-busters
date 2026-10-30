@@ -1,6 +1,6 @@
 'use client'
 
-import { PREVIEW_STAGES } from '@boom-busters/providers'
+import { PREVIEW_STAGES } from '@boom-busters/schemas'
 import type { ChannelBible } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Label } from '@/components/ui/input'

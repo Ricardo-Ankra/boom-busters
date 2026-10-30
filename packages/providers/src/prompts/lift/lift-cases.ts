@@ -53,7 +53,8 @@ import { buildNameSubjectRequest } from '../subject'
  */
 export interface LiftCase {
   name: string
-  build: (bible: BibleInUse) => LLMTaskRequest
+  /** `channelName` stands in for the name the first channel's cases would use (the preview passes the real one). */
+  build: (bible: BibleInUse, channelName?: string) => LLMTaskRequest
   bibleAware: boolean
   /**
    * Text the case's own input puts into the system prompt (a brief's own
@@ -66,7 +67,7 @@ export interface LiftCase {
 /** A case whose builder reads the bible: the psychology test holds it to a second channel. */
 const liftAware = (
   name: string,
-  build: (bible: BibleInUse) => LLMTaskRequest,
+  build: (bible: BibleInUse, channelName?: string) => LLMTaskRequest,
   inputText: readonly string[] = [],
 ): LiftCase => ({
   name,
@@ -79,8 +80,8 @@ const liftAware = (
  * The channel's name is a `channels` row column, not bible text: the first
  * channel's cases pass its own name, the psychology run an imagined one.
  */
-const channelNameFor = (inUse: BibleInUse): string =>
-  inUse.bible.subject === FIRST_CHANNEL_BIBLE.subject ? 'Boom & Busters' : 'Mind Matters'
+const channelNameFor = (inUse: BibleInUse, given?: string): string =>
+  given ?? (inUse.bible.subject === FIRST_CHANNEL_BIBLE.subject ? 'Boom & Busters' : 'Mind Matters')
 
 // ---------------------------------------------------------------------------
 // Shared inputs
@@ -326,10 +327,10 @@ const CHAPTERS_META = [
 ]
 
 const metadataCases: LiftCase[] = [
-  liftAware('metadata-titles-master', (bible) =>
+  liftAware('metadata-titles-master', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
@@ -338,20 +339,20 @@ const metadataCases: LiftCase[] = [
       centralQuestion: 'How did 1.9 billion euros never exist?',
     }),
   ),
-  liftAware('metadata-titles-master-bare', (bible) =>
+  liftAware('metadata-titles-master-bare', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
       workingTitle: 'How Wirecard Lost 1.9 Billion Euros',
     }),
   ),
-  liftAware('metadata-titles-short', (bible) =>
+  liftAware('metadata-titles-short', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -360,10 +361,10 @@ const metadataCases: LiftCase[] = [
       centralQuestion: 'How did 1.9 billion euros never exist?',
     }),
   ),
-  liftAware('metadata-titles-short-clip', (bible) =>
+  liftAware('metadata-titles-short-clip', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -373,10 +374,10 @@ const metadataCases: LiftCase[] = [
       shortText: SHORT_TEXT,
     }),
   ),
-  liftAware('metadata-titles-short-clip-long', (bible) =>
+  liftAware('metadata-titles-short-clip-long', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'short',
@@ -385,10 +386,10 @@ const metadataCases: LiftCase[] = [
     }),
   ),
   // A shortText on a master is ignored: the clip is for a Short only.
-  liftAware('metadata-titles-master-ignores-short-text', (bible) =>
+  liftAware('metadata-titles-master-ignores-short-text', (bible, name) =>
     buildTitlesRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       caseTitle: 'Wirecard',
       hook: HOOK,
       target: 'master',
@@ -397,57 +398,57 @@ const metadataCases: LiftCase[] = [
       shortText: SHORT_TEXT,
     }),
   ),
-  liftAware('metadata-description-master', (bible) =>
+  liftAware('metadata-description-master', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'master',
       claims: CLAIMS,
       centralQuestion: 'How did 1.9 billion euros never exist?',
       chapters: CHAPTERS_META,
     }),
   ),
-  liftAware('metadata-description-master-bare', (bible) =>
+  liftAware('metadata-description-master-bare', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'master',
       claims: CLAIMS,
       chapters: [],
     }),
   ),
-  liftAware('metadata-description-master-question-only', (bible) =>
+  liftAware('metadata-description-master-question-only', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'master',
       claims: CLAIMS,
       centralQuestion: 'How did 1.9 billion euros never exist?',
       chapters: [],
     }),
   ),
-  liftAware('metadata-description-master-chapters-only', (bible) =>
+  liftAware('metadata-description-master-chapters-only', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'master',
       claims: CLAIMS,
       chapters: CHAPTERS_META,
     }),
   ),
-  liftAware('metadata-description-short', (bible) =>
+  liftAware('metadata-description-short', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'short',
       claims: CLAIMS,
       chapters: [],
     }),
   ),
-  liftAware('metadata-description-short-clip', (bible) =>
+  liftAware('metadata-description-short-clip', (bible, name) =>
     buildDescriptionRequest({
       bible,
-      channelName: channelNameFor(bible),
+      channelName: channelNameFor(bible, name),
       target: 'short',
       claims: CLAIMS,
       chapters: [],

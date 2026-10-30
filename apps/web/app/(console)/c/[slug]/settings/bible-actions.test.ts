@@ -35,8 +35,11 @@ import {
   draftBibleAction,
   editBibleSectionAction,
   estimateBibleResearchAction,
+  previewStagePromptAction,
+  restoreBibleVersionAction,
   saveBibleAction,
   startBibleResearchAction,
+  viewBibleVersionAction,
 } from './bible-actions'
 
 /**
@@ -506,5 +509,68 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/archived/i)
     expect(await getBibleDraft(db, channel.id)).toBeNull()
+  })
+
+  describe('history and the prompt preview', () => {
+    it('restores an earlier version as the next one', async () => {
+      const [first] = await listBibleVersions(db, FIRST_CHANNEL_ID)
+      const result = await restoreBibleVersionAction(FIRST_CHANNEL_ID, first!.id)
+      expect(result).toEqual({ ok: true })
+      const versions = await listBibleVersions(db, FIRST_CHANNEL_ID)
+      const last = versions[versions.length - 1]!
+      expect(last.version).toBe(versions.length)
+      expect(last.note).toBe(`Restored version ${first!.version}`)
+    })
+
+    it('asks to save or discard the draft first while one is open', async () => {
+      const [first] = await listBibleVersions(db, FIRST_CHANNEL_ID)
+      const before = (await listBibleVersions(db, FIRST_CHANNEL_ID)).length
+      await openBibleDraft(db, FIRST_CHANNEL_ID)
+      const result = await restoreBibleVersionAction(FIRST_CHANNEL_ID, first!.id)
+      expect(result).toEqual({ ok: false, error: 'Save or discard the draft first' })
+      expect((await listBibleVersions(db, FIRST_CHANNEL_ID)).length).toBe(before)
+    })
+
+    it("refuses another channel's version on restore and on view", async () => {
+      const other = await createChannel(db, {
+        name: 'Other',
+        handle: null,
+        slug: `other-${Date.now()}`,
+        settings: DEFAULT_SETTINGS,
+        bible: ChannelBibleSchema.parse({}),
+      })
+      const [theirs] = await listBibleVersions(db, other.id)
+      const viewed = await viewBibleVersionAction(FIRST_CHANNEL_ID, theirs!.id)
+      expect(viewed.ok).toBe(false)
+      const restored = await restoreBibleVersionAction(FIRST_CHANNEL_ID, theirs!.id)
+      expect(restored.ok).toBe(false)
+    })
+
+    it('shows a version of its own channel', async () => {
+      const [first] = await listBibleVersions(db, FIRST_CHANNEL_ID)
+      const viewed = await viewBibleVersionAction(FIRST_CHANNEL_ID, first!.id)
+      expect(viewed.ok).toBe(true)
+      if (viewed.ok) expect(viewed.bible.subject).toBe(FIRST_CHANNEL_BIBLE.subject)
+    })
+
+    it('composes the stage prompt for a valid bible', async () => {
+      const result = await previewStagePromptAction(FIRST_CHANNEL_ID, 'script', FIRST_CHANNEL_BIBLE)
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.text.length).toBeGreaterThan(0)
+    })
+
+    it('returns the schema message for an invalid bible', async () => {
+      const result = await previewStagePromptAction(FIRST_CHANNEL_ID, 'script', {
+        ...FIRST_CHANNEL_BIBLE,
+        youtubeCategoryId: 'abc',
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error).toContain('youtubeCategoryId')
+    })
+
+    it('refuses an unknown stage', async () => {
+      const result = await previewStagePromptAction(FIRST_CHANNEL_ID, 'nope', FIRST_CHANNEL_BIBLE)
+      expect(result).toEqual({ ok: false, error: 'Unknown stage' })
+    })
   })
 })
