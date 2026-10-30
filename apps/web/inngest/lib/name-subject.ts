@@ -4,6 +4,7 @@ import { buildNameSubjectRequest, mockNameSubject, parseNameSubject } from '@boo
 import type { NamedSubject } from '@boom-busters/providers'
 import { BudgetExceededError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { requireCompleteBible } from './channel'
 import { answerOrStop, callForAnswer } from '@/lib/answer'
 import type { AnswerComplete } from '@/lib/answer'
 
@@ -29,6 +30,10 @@ export async function nameSubjectIfMissing(
 ): Promise<NamedSubject> {
   if (caseRow.subject) return { subject: caseRow.subject, people: caseRow.people }
 
+  // A project's frozen bible must be complete, mocked or not.
+  const frozen = deps.projectId
+    ? requireCompleteBible(await channelForProject(db, deps.projectId))
+    : undefined
   let named: NamedSubject
   if (deps.mocked) {
     named = mockNameSubject(caseRow.title)
@@ -37,9 +42,7 @@ export async function nameSubjectIfMissing(
       if (!deps.projectId && !caseRow.channelId) {
         throw new Error('Naming a subject needs a project or the case row with its channel')
       }
-      const bible = deps.projectId
-        ? await channelForProject(db, deps.projectId)
-        : await currentBible(db, caseRow.channelId!)
+      const bible = frozen ?? (await currentBible(db, caseRow.channelId!))
       named = answerOrStop(
         await callForAnswer({
           request: buildNameSubjectRequest({

@@ -162,12 +162,13 @@ export const shortsRunner = inngest.createFunction(
 
       let picked
       let repairs: Repair[] = []
+      const frozen = requireCompleteBible(await channelForProject(db, projectId))
       if (mockProvidersEnabled()) {
         picked = mockShortsCandidates(chapterSources)
       } else {
         try {
           const marked = await markShortsWith(completeForProject(projectId), {
-            bible: requireCompleteBible(await channelForProject(db, projectId)),
+            bible: frozen,
             chapters: chapterSources,
             ...(tension ? { tension } : {}),
           })

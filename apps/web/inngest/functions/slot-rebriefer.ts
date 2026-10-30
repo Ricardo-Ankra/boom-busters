@@ -193,12 +193,12 @@ export const slotRebriefer = inngest.createFunction(
 
       let answer: Answer<ShotBrief>
       try {
+        // Read here, inside the step that builds the request, before any mock branch.
+        const bible = requireCompleteBible(await channelForProject(db, projectId))
         if (brief.type === 'map') {
           const claims = await scriptableClaims(db, projectId)
           // The logo library's index (decision 268, Plan B), which the
           // re-type prompt lists for every target.
-          // Read here, inside the step that builds the request.
-          const bible = requireCompleteBible(await channelForProject(db, projectId))
           const { channelId } = bible
           const logos = (await listLogos(db, channelId)).map((row) => ({
             id: row.id,
@@ -248,8 +248,7 @@ export const slotRebriefer = inngest.createFunction(
             ? { ok: true, value: mockRebriefedBrief(brief, guidance), calls: 1 }
             : await callForAnswer({
                 request: buildRebriefRequest({
-                  // Read here, inside the step that builds the request.
-                  bible: requireCompleteBible(await channelForProject(db, projectId)),
+                  bible,
                   caseTitle: project.title,
                   brief,
                   ...(guidance === undefined ? {} : { guidance }),

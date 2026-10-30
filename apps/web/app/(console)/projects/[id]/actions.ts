@@ -28,6 +28,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
+import { requireCompleteBible } from '@/inngest/lib/channel'
 import { db } from '@/lib/db'
 import { callForText } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
@@ -246,6 +247,8 @@ export async function regenerateSection(
   }))
 
   try {
+    // Read here, in the action that builds the request, before any mock branch.
+    const frozen = requireCompleteBible(await channelForProject(db, projectId))
     if (mockProvidersEnabled()) {
       return { ok: true, proposal: mockRegeneratedSection(selection, note) }
     }
@@ -253,7 +256,7 @@ export async function regenerateSection(
     // asked once more at double it, so half a passage never reaches the diff.
     const answer = await callForText({
       request: buildRegenerateRequest({
-        bible: await channelForProject(db, projectId),
+        bible: frozen,
         chapterTitle: chapter.title,
         contentMd: chapter.contentMd,
         selection,

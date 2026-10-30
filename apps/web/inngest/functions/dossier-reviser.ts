@@ -154,6 +154,9 @@ export const dossierReviser = inngest.createFunction(
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
+      // The research below reads the bible lazily, in later steps; refuse here, before any mock branch.
+      requireCompleteBible(await channelForProject(db, projectId))
+
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 

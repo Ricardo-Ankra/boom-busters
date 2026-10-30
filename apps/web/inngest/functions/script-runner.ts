@@ -220,13 +220,14 @@ export const scriptRunner = inngest.createFunction(
         | { ok: true; outline: Outline; repairs?: Repair[] }
         | { ok: false; gate: Record<string, unknown> }
       > => {
+        // Read here, in the step that builds the request, never from an
+        // earlier step's memoised output: a run parked before the bible
+        // existed replays those without it. The gate sits before the mock branch.
+        const frozen = requireCompleteBible(await channelForProject(db, projectId))
         if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin), repairs: [] }
         try {
-          // Read here, in the step that builds the request, never from an
-          // earlier step's memoised output: a run parked before the bible
-          // existed replays those without it.
           const drafted = await draftOutlineWith(completeForProject(projectId), {
-            bible: requireCompleteBible(await channelForProject(db, projectId)),
+            bible: frozen,
             caseTitle: setup.caseTitle,
             dossierMd: setup.dossierMd,
             claims: setup.claims,
@@ -270,6 +271,7 @@ export const scriptRunner = inngest.createFunction(
           | { ok: true; chapterId: string; contentMd: string }
           | { ok: false; gate: Record<string, unknown> }
         > => {
+          const frozen = requireCompleteBible(await channelForProject(db, projectId))
           let contentMd: string
           if (mocked) {
             contentMd = mockChapter(chapter.title)
@@ -284,7 +286,7 @@ export const scriptRunner = inngest.createFunction(
                   estimateOutputTokens: Math.round(chapter.targetWords * 1.6),
                 }),
                 {
-                  bible: requireCompleteBible(await channelForProject(db, projectId)),
+                  bible: frozen,
                   caseTitle: setup.caseTitle,
                   outline,
                   chapterIndex: index,
@@ -339,10 +341,11 @@ export const scriptRunner = inngest.createFunction(
 
     for (const chapter of written) {
       await step.run(`self-check-${chapter.index}`, async () => {
+        const frozen = requireCompleteBible(await channelForProject(db, projectId))
         const check = mocked
           ? mockSelfCheck(chapter.contentMd)
           : await selfCheckWith(completeForProject(projectId), {
-              bible: requireCompleteBible(await channelForProject(db, projectId)),
+              bible: frozen,
               chapterTitle: chapter.title,
               contentMd: chapter.contentMd,
               claims: setup.claims,

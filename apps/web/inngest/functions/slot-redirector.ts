@@ -96,12 +96,13 @@ export const slotRedirector = inngest.createFunction(
         const original = brief.data
         let answer: Answer<StillBrief>
         try {
+          // Read here, inside the step that builds the request, before any mock branch.
+          const bible = requireCompleteBible(await channelForProject(db, projectId))
           answer = mockProvidersEnabled()
             ? { ok: true, value: mockRedirectedBrief(original), calls: 1 }
             : await callForAnswer({
                 request: buildRedirectRequest({
-                  // Read here, inside the step that builds the request.
-                  bible: requireCompleteBible(await channelForProject(db, projectId)),
+                  bible,
                   caseTitle: project.title,
                   brief: original,
                   reason,

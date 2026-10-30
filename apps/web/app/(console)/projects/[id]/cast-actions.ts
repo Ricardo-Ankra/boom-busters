@@ -34,6 +34,7 @@ import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
+import { requireCompleteBible } from '@/inngest/lib/channel'
 import { db } from '@/lib/db'
 import { recordRepairs } from '@/lib/notices'
 import { fetchRemoteImage } from '@/lib/remote-image'
@@ -417,7 +418,7 @@ async function describeFromPhotos(member: CastMember): Promise<void> {
   let written: { identityString: string; guardrail: string }
   let repairs: Repair[] = []
   // Read here, in the action that builds the request: the guardrail it starts from is the channel's.
-  const bible = await channelForProject(db, member.projectId)
+  const bible = requireCompleteBible(await channelForProject(db, member.projectId))
   if (mockProvidersEnabled()) {
     written = mockCastIdentity({ bible, name: member.name, role: member.role })
   } else {

@@ -1,3 +1,4 @@
+import { requireCompleteBible } from './channel'
 import { channelForProject, getLatestScript, getProject, MOCK_KEY_PREFIX } from '@boom-busters/db'
 import {
   buildTeaserRequest,
@@ -64,6 +65,8 @@ export async function writeTeaserScript(
   const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
   const target: NoticeTarget = { projectId, subject: 'teaser', subjectId: null }
 
+  // Read here, inside the step, before any mock branch.
+  const frozen = requireCompleteBible(await channelForProject(db, projectId))
   if (mockProvidersEnabled()) {
     await recordRepairs(target)
     return { ok: true, ...mockTeaser(chapterSources), scriptVersion: latest.script.version }
@@ -73,7 +76,7 @@ export async function writeTeaserScript(
     const project = await getProject(db, projectId)
     const answer = await callForAnswer({
       request: buildTeaserRequest({
-        bible: await channelForProject(db, projectId),
+        bible: frozen,
         caseTitle: project?.title ?? '',
         chapters: chapterSources,
         ...(tension ? { tension } : {}),

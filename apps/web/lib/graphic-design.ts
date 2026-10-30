@@ -1,4 +1,5 @@
 import { channelForProject } from '@boom-busters/db'
+import { requireCompleteBible } from '@/inngest/lib/channel'
 import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
@@ -41,6 +42,9 @@ export async function designGraphic(
   slot: GraphicSlotTiming & { brief: DesignableBrief },
   options: { guidance?: string; redesign?: boolean } = {},
 ): Promise<GraphicDesignResult> {
+  // Read here, inside the step that designs, so the bible is the project's frozen one and never
+  // an earlier step's memoised copy. The gate sits before the mock branch.
+  const inUse = requireCompleteBible(await channelForProject(db, context.projectId))
   if (mockProvidersEnabled()) {
     // The fixture component (decision 295), through the same scan, compile,
     // dry run and facts as a real answer, so the runners, the retyper and the
@@ -65,9 +69,6 @@ export async function designGraphic(
       : { ok: false, issue: checked.issue }
   }
 
-  // Read here, inside the step that designs, so the bible is the project's frozen one and never
-  // an earlier step's memoised copy.
-  const inUse = await channelForProject(db, context.projectId)
   return designGraphicWith(
     (request, callOptions) =>
       callLlm(request, {
