@@ -1,8 +1,8 @@
-import { asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { sentenceHash } from '@boom-busters/schemas'
 import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { chapters, claimRefs, claims, dossiers, scriptEdits, scripts } from './schema'
+import { chapters, claimRefs, claims, dossiers, projects, scriptEdits, scripts } from './schema'
 import type { ChapterRow, EditType, ScriptRow, ScriptStatus } from './schema'
 
 /**
@@ -240,6 +240,48 @@ export async function setScriptStatus(
   status: ScriptStatus,
 ): Promise<void> {
   await db.update(scripts).set({ status, updatedAt: new Date() }).where(eq(scripts.id, scriptId))
+}
+
+/** The first characters of a script's opening chapter, for the research digest. */
+const OPENING_CHARS = 300
+
+/**
+ * The opening of the channel's approved scripts, newest first, one per project
+ * and at most `limit`: the first 300 characters of the script's first chapter.
+ * A script with an empty opening is skipped.
+ */
+export async function approvedScriptOpenings(
+  db: Database,
+  channelId: string,
+  limit: number,
+): Promise<string[]> {
+  const rows = await db
+    .select({
+      scriptId: scripts.id,
+      projectId: scripts.projectId,
+      contentMd: chapters.contentMd,
+    })
+    .from(scripts)
+    .innerJoin(projects, eq(projects.id, scripts.projectId))
+    .innerJoin(chapters, eq(chapters.scriptId, scripts.id))
+    .where(and(eq(projects.channelId, channelId), eq(scripts.status, 'approved')))
+    .orderBy(desc(scripts.updatedAt), asc(chapters.index))
+
+  const seenScripts = new Set<string>()
+  const seenProjects = new Set<string>()
+  const openings: string[] = []
+  for (const row of rows) {
+    // The first row of each script is its first chapter.
+    if (seenScripts.has(row.scriptId)) continue
+    seenScripts.add(row.scriptId)
+    if (seenProjects.has(row.projectId)) continue
+    const text = row.contentMd.trim().slice(0, OPENING_CHARS)
+    if (text === '') continue
+    seenProjects.add(row.projectId)
+    openings.push(text)
+    if (openings.length >= limit) break
+  }
+  return openings
 }
 
 /** Every warning across a script — the count the gate card shows. */

@@ -130,6 +130,14 @@ export type BibleDraftUnit =
   | { section: 'examples'; source: string }
   | { section: 'examples'; slotId: string }
 
+const PlainSectionSchema = z.enum(['identity', 'voice', 'look', 'hooks', 'search', 'publishing'])
+
+export const BibleDraftUnitSchema = z.union([
+  z.object({ section: z.literal('examples'), slotId: z.string().min(1) }),
+  z.object({ section: z.literal('examples'), source: z.string().min(1) }),
+  z.object({ section: PlainSectionSchema }),
+])
+
 /** The units to draft, in section order, with examples split by the craft file they feed. */
 export function bibleDraftUnits(
   sections: readonly BibleSection[] = BIBLE_SECTION_ORDER,

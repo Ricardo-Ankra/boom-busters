@@ -57,10 +57,14 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - teaser-shot-fetcher works per beat, and two beats of the same Short
   //   fetching at once is a feature; the action refuses per-beat duplicates
   //   against the stored fetch state instead.
+  // - bible-researcher is queued per channel (`concurrency` keyed on the channel):
+  //   the start action refuses while a job runs, and a second run must wait its
+  //   turn, never cancel the one that is paying for VidIQ calls.
   // - stretch-replanner queues one chapter's stretches behind each other
   //   (`concurrency` keyed on the chapter, the stretch re-plan design 3.3):
   //   a second stretch is another selection, never a duplicate to cancel.
   'analytics-runner': null,
+  'bible-researcher': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,

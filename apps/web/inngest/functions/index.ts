@@ -1,5 +1,6 @@
 import { analyticsRunner } from './analytics-runner'
 import { assemblyRunner } from './assembly-runner'
+import { bibleResearcher } from './bible-researcher'
 import { cancellationMirror } from './cancellation-mirror'
 import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
@@ -47,6 +48,7 @@ import { voiceRunner } from './voice-runner'
  */
 export const functions = [
   analyticsRunner,
+  bibleResearcher,
   cancellationMirror,
   cancelReconciler,
   dossierRunner,
@@ -77,6 +79,7 @@ export const functions = [
 export {
   analyticsRunner,
   assemblyRunner,
+  bibleResearcher,
   cancellationMirror,
   cancelReconciler,
   draftRunner,
