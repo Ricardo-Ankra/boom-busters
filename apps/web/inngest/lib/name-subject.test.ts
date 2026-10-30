@@ -10,9 +10,15 @@ import {
   ensureFirstChannel,
   saveBibleVersion,
 } from '@boom-busters/db'
-import { BudgetExceededError, DEFAULT_SETTINGS, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_BIBLE,
+} from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import type { AnswerComplete } from '@/lib/answer'
 import { nameSubjectIfMissing } from './name-subject'
@@ -54,6 +60,23 @@ describeDb('nameSubjectIfMissing', () => {
     })
     expect(again).toEqual(first)
     expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses a case whose channel's current bible is incomplete, sending nothing", async () => {
+    const channel = await createChannel(db, {
+      name: 'Blank channel',
+      handle: null,
+      slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const row = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+    made.push(row.id)
+    const complete = reply('Nobody')
+    await expect(nameSubjectIfMissing(db, row, { complete, mocked: false })).rejects.toThrow(
+      BIBLE_INCOMPLETE_MESSAGE,
+    )
+    expect(complete).not.toHaveBeenCalled()
   })
 
   it('makes no call for a case that has a subject', async () => {

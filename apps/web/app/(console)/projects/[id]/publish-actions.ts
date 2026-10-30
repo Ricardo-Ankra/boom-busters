@@ -1,6 +1,7 @@
 'use server'
 
 import { createHash } from 'node:crypto'
+import { NonRetriableError } from 'inngest'
 import {
   ensurePublishRecord,
   getLatestScript,
@@ -53,6 +54,8 @@ import { descriptionIngredients } from '@/lib/publish-review'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
+import { requireCompleteBible } from '@/inngest/lib/channel'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { events } from '@/inngest/events'
 
 /**
@@ -225,6 +228,25 @@ async function metadataGrounding(projectId: string): Promise<{
 }
 
 /**
+ * The project's frozen bible, refused when incomplete. A server action answers
+ * with an error result, so the owner reads the bible gate's own words; the
+ * gate sits before the mock branch, as every stage's does.
+ */
+async function completeFrozenBible(
+  projectId: string,
+): Promise<{ ok: true; frozen: Awaited<ReturnType<typeof channelForProject>> } | ActionResult> {
+  const frozen = await channelForProject(db, projectId)
+  try {
+    return { ok: true, frozen: requireCompleteBible(frozen) }
+  } catch (error) {
+    if (error instanceof NonRetriableError && error.message === BIBLE_INCOMPLETE_MESSAGE) {
+      return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
+    }
+    throw error
+  }
+}
+
+/**
  * The search description (decision 303): the opening, a gloss per chapter,
  * three hashtags and tags, written from the claim list and the film itself,
  * never from the pitch title. One metadata-tier call; mock mode answers
@@ -246,6 +268,9 @@ export async function generateDescription(
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
 
+  const bibleGate = await completeFrozenBible(projectId)
+  if (!('frozen' in bibleGate)) return bibleGate
+
   const [grounding, ingredients, sources] = await Promise.all([
     metadataGrounding(projectId),
     descriptionIngredients(db, projectId),
@@ -266,8 +291,7 @@ export async function generateDescription(
     answer = mockDescription(chapters.length)
   } else {
     try {
-      // The project's frozen bible, read here where the request is built.
-      const frozen = await channelForProject(db, projectId)
+      const { frozen } = bibleGate
       const written = await callForAnswer({
         request: buildDescriptionRequest({
           bible: frozen,
@@ -360,6 +384,9 @@ export async function generateTitles(targetType: string, targetId: string): Prom
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
 
+  const bibleGate = await completeFrozenBible(projectId)
+  if (!('frozen' in bibleGate)) return bibleGate
+
   const workingTitle =
     type === 'master' ? project.title : ((await getShort(db, targetId))?.title ?? project.title)
 
@@ -381,8 +408,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           )
         : undefined
     try {
-      // The project's frozen bible, read here where the request is built.
-      const frozen = await channelForProject(db, projectId)
+      const { frozen } = bibleGate
       // At most two calls (decision 293): a cut-off is asked once more at
       // double the budget, a refusal once more with its reason. An unusable
       // title is still dropped by the parser, as ordinary filtering.
