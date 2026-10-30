@@ -1,4 +1,4 @@
-import { currentBible, getBibleDraft, getChannel, writeBibleDraft } from '@boom-busters/db'
+import { getBibleDraft, getChannel, writeBibleDraft } from '@boom-busters/db'
 import {
   buildBibleUnitRequest,
   mergeBibleUnit,
@@ -6,24 +6,18 @@ import {
   mockProvidersEnabled,
   parseBibleUnit,
 } from '@boom-busters/providers'
-import {
-  BIBLE_SECTION_LABELS,
-  EXAMPLE_SLOTS,
-  FIRST_CHANNEL_ID,
-  parseEventData,
-  tooCloseTo,
-  unitKey,
-} from '@boom-busters/schemas'
+import { BIBLE_SECTION_LABELS, parseEventData, unitKey } from '@boom-busters/schemas'
 import type {
   BibleDraft,
   BibleDraftUnit,
   BibleExampleEntry,
   ChannelBible,
-  OverlapSource,
   TooCloseFlags,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { callForAnswer } from '@/lib/answer'
+import { BIBLE_ENTRY_LISTS } from '@/lib/bible-draft-keys'
+import { overlapFlag, overlapSources } from '@/lib/bible-overlap-sources'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { inngest } from '../client'
@@ -43,8 +37,6 @@ import { events } from '../events'
  */
 
 const FUNCTION_ID = 'bible-drafter'
-const LISTS = ['hooks', 'openings', 'titles'] as const
-const FIRST_CHANNEL_LABEL = 'Boom & Busters'
 
 /** Marks the draft's job failed with the reason; the owner sees it on the draft. */
 export async function failBibleDraft(channelId: string, message: string): Promise<void> {
@@ -74,45 +66,6 @@ function withCurrent(draft: BibleDraft, current: string | null): BibleDraft['job
   return draft.job ? { ...draft.job, current } : null
 }
 
-/** Other creators' quotes from the research digest: patterns whose every source is not the channel's own. */
-function digestSources(draft: BibleDraft): OverlapSource[] {
-  const sources: OverlapSource[] = []
-  for (const pattern of draft.research?.patterns ?? []) {
-    const first = pattern.sources[0]
-    if (!pattern.quote || !first || pattern.sources.some((s) => s.own)) continue
-    sources.push({ label: `${first.channel}: ${first.title}`, text: pattern.quote })
-  }
-  return sources
-}
-
-/** Craft sentences the slots' `teaches` lines quote: every channel keeps them word for word. */
-const CRAFT_TEXTS: readonly string[] = EXAMPLE_SLOTS.map((slot) => slot.teaches)
-
-/** Worked examples share their scaffolding (headers, component code) with every channel's: not compared. */
-const WORKED_PATHS: ReadonlySet<string> = new Set(
-  EXAMPLE_SLOTS.filter((slot) => slot.kind === 'worked').map((slot) => `examples.${slot.id}`),
-)
-
-interface Sources {
-  /** Other creators' research quotes: no exemption. */
-  digest: OverlapSource[]
-  /** Boom & Busters' own bible, on a second channel; craft wording is exempt. */
-  firstChannel: OverlapSource[]
-}
-
-/** On a channel other than the first, the first channel's current bible is a source too. */
-async function overlapSources(channelId: string, draft: BibleDraft): Promise<Sources> {
-  const sources: Sources = { digest: digestSources(draft), firstChannel: [] }
-  if (channelId === FIRST_CHANNEL_ID) return sources
-  const first = (await currentBible(db, FIRST_CHANNEL_ID)).bible
-  const texts = [
-    ...Object.values(first.examples),
-    ...LISTS.flatMap((list) => first[list].map((entry) => entry.text)),
-  ]
-  for (const text of texts) sources.firstChannel.push({ label: FIRST_CHANNEL_LABEL, text })
-  return sources
-}
-
 /** Entries keep only the videos the research names; with no research, none. */
 function knownSources(
   entries: BibleExampleEntry[],
@@ -130,7 +83,7 @@ function writtenFields(unit: BibleDraftUnit, answer: Partial<ChannelBible>): [st
     return Object.entries(answer.examples ?? {}).map(([id, text]) => [`examples.${id}`, text])
   }
   if (unit.section !== 'hooks') return []
-  return LISTS.flatMap((list) =>
+  return BIBLE_ENTRY_LISTS.flatMap((list) =>
     (answer[list] ?? []).map((entry, i): [string, string] => [`${list}.${i}`, entry.text]),
   )
 }
@@ -138,7 +91,7 @@ function writtenFields(unit: BibleDraftUnit, answer: Partial<ChannelBible>): [st
 /** Whether a flag's path belongs to the fields a unit writes (so it is cleared before the new ones). */
 function belongsTo(unit: BibleDraftUnit, path: string, written: readonly string[]): boolean {
   if (unit.section === 'examples') return written.includes(path)
-  if (unit.section === 'hooks') return LISTS.some((list) => path.startsWith(`${list}.`))
+  if (unit.section === 'hooks') return BIBLE_ENTRY_LISTS.some((list) => path.startsWith(`${list}.`))
   return false
 }
 
@@ -200,7 +153,7 @@ async function draftUnit(input: {
     (draft) => {
       const videoIds = new Set((draft.research?.videos ?? []).map((v) => v.videoId))
       const value: Partial<ChannelBible> = { ...answer.value }
-      for (const list of LISTS) {
+      for (const list of BIBLE_ENTRY_LISTS) {
         const entries = value[list]
         if (entries) value[list] = knownSources(entries, videoIds)
       }
@@ -211,9 +164,7 @@ async function draftUnit(input: {
         Object.entries(draft.tooClose).filter(([path]) => !belongsTo(unit, path, written)),
       )
       for (const [path, text] of fields) {
-        const found =
-          tooCloseTo(text, sources.digest) ??
-          (WORKED_PATHS.has(path) ? null : tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS))
+        const found = overlapFlag(path, text, sources)
         if (found) tooClose[path] = found
       }
 

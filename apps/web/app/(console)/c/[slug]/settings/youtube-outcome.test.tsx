@@ -15,6 +15,13 @@ vi.mock('./actions', () => ({
   verifyYoutubeConnection: vi.fn(),
   disconnectYoutubeAction: vi.fn(),
 }))
+vi.mock('./bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+}))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),

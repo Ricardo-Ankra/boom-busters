@@ -1,13 +1,14 @@
 'use client'
 
 import type { ChannelBible } from '@boom-busters/schemas'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { BIBLE_TEXT_FIELDS, missingBibleFields } from '@/lib/bible-fields'
+import { missingBibleFields } from '@/lib/bible-fields'
 import { channelHref } from '@/lib/channel-href'
 import { archiveChannelAction } from './channel-actions'
 import { NewChannelForm } from './new-channel-form'
@@ -24,18 +25,11 @@ export interface ChannelView {
 export interface ChannelPatch {
   name?: string
   handle?: string
-  bible?: ChannelBible
 }
 
-const textareaClass =
-  'min-h-24 w-full rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] ' +
-  'px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ' +
-  'disabled:cursor-not-allowed disabled:opacity-50'
-
 /**
- * The Channel tab: who the channel is (name, handle), the bible the prompts
- * read, and the way to archive it. `commit` saves a patch through the form,
+ * The Channel tab: who the channel is (name, handle), where its bible stands
+ * and the way to archive it. `commit` saves a patch through the form,
  * which owns the channel's state the way it owns the settings.
  */
 export function ChannelTab({
@@ -58,7 +52,7 @@ export function ChannelTab({
       {showNew ? <NewChannelForm channels={channels} /> : null}
       {/* An archived channel is read-only. */}
       <IdentityCard channel={channel} saving={saving || channel.archived} commit={commit} />
-      <BibleCard channel={channel} saving={saving || channel.archived} commit={commit} />
+      <BibleStatusCard channel={channel} />
       {channel.archived ? null : <ArchiveCard channel={channel} />}
     </div>
   )
@@ -120,39 +114,18 @@ function IdentityCard({
   )
 }
 
-function BibleCard({
-  channel,
-  saving,
-  commit,
-}: {
-  channel: ChannelView
-  saving: boolean
-  commit: (patch: ChannelPatch) => Promise<void>
-}) {
-  const [bible, setBible] = React.useState(channel.bible)
-  const missing = missingBibleFields(bible)
-
-  const setField = (key: (typeof BIBLE_TEXT_FIELDS)[number]['key'], value: string) =>
-    setBible((current) => ({ ...current, [key]: value }))
-
-  const setCategory = (index: number, change: { key?: string; label?: string }) =>
-    setBible((current) => ({
-      ...current,
-      caseCategories: current.caseCategories.map((entry, at) =>
-        at === index ? { ...entry, ...change } : entry,
-      ),
-    }))
-
+/** Where the bible stands, with the way to the tab that edits it. */
+function BibleStatusCard({ channel }: { channel: ChannelView }) {
+  const missing = missingBibleFields(channel.bible)
   return (
     <Card>
       <CardHeader>
         <CardTitle>Channel bible</CardTitle>
         <CardDescription>
-          What the prompts used to hard-code. Until it is complete this channel cannot suggest
-          cases, start a project or run research.
+          Until it is complete this channel cannot suggest cases, start a project or run research.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex flex-wrap items-center gap-3">
         <p
           role="status"
           className={
@@ -163,80 +136,9 @@ function BibleCard({
         >
           {missing.length === 0 ? 'Bible complete' : `Bible incomplete: ${missing.length} missing`}
         </p>
-
-        {BIBLE_TEXT_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col gap-1.5">
-            <Label htmlFor={`bible-${field.key}`}>{field.label}</Label>
-            <textarea
-              id={`bible-${field.key}`}
-              className={textareaClass}
-              value={bible[field.key]}
-              disabled={saving}
-              onChange={(event) => setField(field.key, event.target.value)}
-            />
-            <p className="text-[12px] text-[var(--color-text-muted)]">{field.hint}</p>
-          </div>
-        ))}
-
-        <fieldset className="flex flex-col gap-2">
-          <legend className="text-[13px] font-medium text-[var(--color-text-secondary)]">
-            Case categories
-          </legend>
-          <p className="text-[12px] text-[var(--color-text-muted)]">
-            At least two. The key is lower-case letters, digits, dashes or underscores.
-          </p>
-          {bible.caseCategories.map((category, index) => (
-            <div key={index} className="flex flex-wrap items-center gap-2">
-              <Input
-                aria-label={`Category ${index + 1} key`}
-                value={category.key}
-                disabled={saving}
-                className="w-40 font-mono"
-                onChange={(event) => setCategory(index, { key: event.target.value })}
-              />
-              <Input
-                aria-label={`Category ${index + 1} label`}
-                value={category.label}
-                disabled={saving}
-                className="w-56"
-                onChange={(event) => setCategory(index, { label: event.target.value })}
-              />
-              <Button
-                variant="ghost"
-                disabled={saving}
-                aria-label={`Remove category ${index + 1}`}
-                onClick={() =>
-                  setBible((current) => ({
-                    ...current,
-                    caseCategories: current.caseCategories.filter((_, at) => at !== index),
-                  }))
-                }
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-          <div>
-            <Button
-              variant="outline"
-              disabled={saving}
-              onClick={() =>
-                setBible((current) => ({
-                  ...current,
-                  caseCategories: [...current.caseCategories, { key: '', label: '' }],
-                }))
-              }
-            >
-              Add category
-            </Button>
-          </div>
-        </fieldset>
-
-        <div>
-          <Button variant="primary" disabled={saving} onClick={() => void commit({ bible })}>
-            Save bible
-          </Button>
-        </div>
+        <Link href="?tab=bible" className="text-[13px] text-[var(--color-accent-text)] underline">
+          Open the Bible tab
+        </Link>
       </CardContent>
     </Card>
   )

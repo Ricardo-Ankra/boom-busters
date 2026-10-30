@@ -3,6 +3,7 @@
 import {
   bibleDrafts,
   getBibleDraft,
+  listBibleVersions,
   openBibleDraft,
   providerCredentials,
   recordVidiqCredits,
@@ -17,6 +18,7 @@ import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import {
   DEFAULT_WORKSPACE_SETTINGS,
   EXAMPLE_SLOTS,
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
   bibleDraftUnits,
 } from '@boom-busters/schemas'
@@ -24,8 +26,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
+  approveBibleSectionAction,
+  discardBibleDraftAction,
   draftBibleAction,
+  editBibleSectionAction,
   estimateBibleResearchAction,
+  saveBibleAction,
   startBibleResearchAction,
 } from './bible-actions'
 
@@ -292,5 +298,175 @@ describeDb('the bible research actions', () => {
         state: 'failed',
       })
     })
+  })
+})
+
+describeDb('the bible edit, approve, save and discard actions', () => {
+  const SLOT_ID = EXAMPLE_SLOTS[0]!.id
+  // Eight or more words a research quote and an example can share.
+  const RUN = 'the quiet collapse of a bank that nobody thought could fall'
+  const DIGEST = {
+    patterns: [
+      {
+        kind: 'hook' as const,
+        pattern: 'Opens on a cold fact',
+        quote: RUN,
+        sources: [{ videoId: 'v1', channel: 'Alpha', title: 'The Fall', own: false }],
+      },
+    ],
+    videos: [],
+  }
+
+  async function openWithResearch() {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (current) => ({ ...current, research: DIGEST }))
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(bibleDrafts)
+  })
+
+  it('edits a section, opens the draft, approves it and takes only that section', async () => {
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+    const result = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', {
+      keywordContext: 'banking collapse',
+      channelTags: ['finance', 'history'],
+    })
+    expect(result.ok).toBe(true)
+
+    const draft = await getBibleDraft(db, FIRST_CHANNEL_ID)
+    expect(draft?.bible.keywordContext).toBe('banking collapse')
+    expect(draft?.bible.channelTags).toEqual(['finance', 'history'])
+    expect(draft?.statuses.search).toBe('approved')
+    // A field of the section the patch left out keeps its value.
+    expect(draft?.bible.language).toBe(FIRST_CHANNEL_BIBLE.language)
+    expect(draft?.bible.subject).toBe(FIRST_CHANNEL_BIBLE.subject)
+  })
+
+  it('refuses a key outside the section and a value the schema refuses', async () => {
+    expect(await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { subject: 'x' })).toEqual({
+      ok: false,
+      error: 'subject is not part of this section',
+    })
+    const bad = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { country: 'USA' })
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toContain('country')
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.bible.country).toBe(
+      FIRST_CHANNEL_BIBLE.country,
+    )
+  })
+
+  it('refuses every change while a job runs', async () => {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      job: {
+        kind: 'draft',
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt: new Date().toISOString(),
+      },
+    }))
+    const wait = { ok: false, error: 'Wait for the draft to finish' }
+    expect(await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { language: 'fr' })).toEqual(
+      wait,
+    )
+    expect(await approveBibleSectionAction(FIRST_CHANNEL_ID, 'search')).toEqual(wait)
+    expect(await saveBibleAction(FIRST_CHANNEL_ID, '')).toEqual(wait)
+    expect(await discardBibleDraftAction(FIRST_CHANNEL_ID)).toEqual(wait)
+  })
+
+  it('keeps the flag on an example that still overlaps and clears it once it is reworded', async () => {
+    await openWithResearch()
+    const flagged = await editBibleSectionAction(FIRST_CHANNEL_ID, 'examples', {
+      examples: { [SLOT_ID]: `He wrote about ${RUN} in 1907.` },
+    })
+    expect(flagged.ok).toBe(true)
+    expect(Object.keys((await getBibleDraft(db, FIRST_CHANNEL_ID))!.tooClose)).toEqual([
+      `examples.${SLOT_ID}`,
+    ])
+
+    // Typing over the same words does not pass.
+    await editBibleSectionAction(FIRST_CHANNEL_ID, 'examples', {
+      examples: { [SLOT_ID]: `He wrote about ${RUN} in 1912.` },
+    })
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.tooClose[`examples.${SLOT_ID}`]).toEqual({
+      source: 'Alpha: The Fall',
+      run: 'the quiet collapse of a bank that nobody',
+    })
+
+    await editBibleSectionAction(FIRST_CHANNEL_ID, 'examples', {
+      examples: { [SLOT_ID]: 'A short line of its own.' },
+    })
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.tooClose).toEqual({})
+  })
+
+  it('refuses to approve a section with a flagged field', async () => {
+    await openWithResearch()
+    await editBibleSectionAction(FIRST_CHANNEL_ID, 'examples', {
+      examples: { [SLOT_ID]: `He wrote about ${RUN} in 1907.` },
+    })
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      statuses: { ...draft.statuses, examples: 'drafted' },
+    }))
+    const result = await approveBibleSectionAction(FIRST_CHANNEL_ID, 'examples')
+    expect(result.ok).toBe(false)
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.examples).toBe('drafted')
+  })
+
+  it('approves a drafted section', async () => {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      statuses: { ...draft.statuses, voice: 'drafted' },
+    }))
+    expect((await approveBibleSectionAction(FIRST_CHANNEL_ID, 'voice')).ok).toBe(true)
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.voice).toBe('approved')
+  })
+
+  it('names what blocks a save, and saves a new version once approved', async () => {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      statuses: { ...draft.statuses, voice: 'drafted' },
+    }))
+    expect(await saveBibleAction(FIRST_CHANNEL_ID, '')).toEqual({
+      ok: false,
+      error: 'The draft cannot be saved yet',
+      blockers: ['Voice is drafted, not approved'],
+    })
+
+    await approveBibleSectionAction(FIRST_CHANNEL_ID, 'voice')
+    const before = (await listBibleVersions(db, FIRST_CHANNEL_ID)).length
+    expect(await saveBibleAction(FIRST_CHANNEL_ID, '  Tightened the voice  ')).toEqual({ ok: true })
+    const versions = await listBibleVersions(db, FIRST_CHANNEL_ID)
+    expect(versions).toHaveLength(before + 1)
+    expect(versions.at(-1)?.note).toBe('Tightened the voice')
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+  })
+
+  it('defaults the note to how the draft was made', async () => {
+    await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { language: 'en' })
+    await saveBibleAction(FIRST_CHANNEL_ID, '')
+    expect((await listBibleVersions(db, FIRST_CHANNEL_ID)).at(-1)?.note).toBe(
+      'Edited in the Bible tab',
+    )
+
+    await openWithResearch()
+    await saveBibleAction(FIRST_CHANNEL_ID, '')
+    expect((await listBibleVersions(db, FIRST_CHANNEL_ID)).at(-1)?.note).toBe('Drafted with AI')
+  })
+
+  it('has nothing to save or discard without a draft, and discards one that exists', async () => {
+    expect((await saveBibleAction(FIRST_CHANNEL_ID, '')).ok).toBe(false)
+    expect((await discardBibleDraftAction(FIRST_CHANNEL_ID)).ok).toBe(false)
+
+    await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { language: 'fr' })
+    expect(await discardBibleDraftAction(FIRST_CHANNEL_ID)).toEqual({ ok: true })
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
   })
 })

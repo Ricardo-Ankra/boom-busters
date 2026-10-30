@@ -1,24 +1,39 @@
 'use server'
 
 import {
+  BibleDraftBlockedError,
   BibleDraftBusyError,
+  discardBibleDraft,
+  getBibleDraft,
   getWorkspace,
   openBibleDraft,
+  saveBibleDraft,
   vidiqCredential,
   vidiqCreditsThisMonth,
   writeBibleDraft,
 } from '@boom-busters/db'
 import { estimateResearchCredits, vidiqClientFor } from '@boom-busters/providers/vidiq'
 import {
+  BIBLE_SECTIONS,
   BIBLE_SECTION_ORDER,
   BibleDraftInputsSchema,
+  ChannelBibleSchema,
   EXAMPLE_SLOT_IDS,
   UlidSchema,
   bibleDraftUnits,
   jobIsRunning,
 } from '@boom-busters/schemas'
-import type { BibleDraftUnit, BibleSection } from '@boom-busters/schemas'
+import type {
+  BibleDraft,
+  BibleDraftUnit,
+  BibleSection,
+  ChannelBible,
+  TooCloseFlags,
+} from '@boom-busters/schemas'
+import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { BIBLE_ENTRY_LISTS, errorSection, flagSection } from '@/lib/bible-draft-keys'
+import { overlapFlag, overlapSources } from '@/lib/bible-overlap-sources'
 import { researchPlanFor } from '@/lib/bible-research'
 import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
@@ -275,5 +290,185 @@ export async function draftBibleAction(
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }
+  return { ok: true }
+}
+
+const WAIT = { ok: false as const, error: 'Wait for the draft to finish' }
+
+/** The draft, or the reason an owner's change to it must not go ahead. */
+type Opened = { ok: true; draft: BibleDraft } | { ok: false; error: string }
+
+/**
+ * The checks every owner change makes: the id, the archived guard and a job
+ * running. The first change opens the draft; `needDraft` refuses to make one.
+ */
+async function openForChange(channelId: string, needDraft = false): Promise<Opened> {
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+  const draft = needDraft ? await getBibleDraft(db, channelId) : await openBibleDraft(db, channelId)
+  if (!draft) return { ok: false, error: 'There is no draft to change' }
+  if (draft.job && jobIsRunning(draft.job)) return WAIT
+  return { ok: true, draft }
+}
+
+/** Runs a draft change, turning a job that started meanwhile into the refusal. */
+async function writeChange(
+  channelId: string,
+  change: (draft: BibleDraft) => BibleDraft,
+): Promise<ActionResult & { draft?: BibleDraft }> {
+  try {
+    return { ok: true, draft: await writeBibleDraft(db, channelId, change) }
+  } catch (error) {
+    if (error instanceof BibleDraftBusyError) return WAIT
+    throw error
+  }
+}
+
+/** The section's flags, recomputed from the text it now holds: a field that still overlaps keeps its flag. */
+async function recheckedFlags(
+  channelId: string,
+  draft: BibleDraft,
+  section: BibleSection,
+  bible: ChannelBible,
+): Promise<TooCloseFlags> {
+  const flags: TooCloseFlags = Object.fromEntries(
+    Object.entries(draft.tooClose).filter(([path]) => flagSection(path) !== section),
+  )
+  if (section !== 'examples' && section !== 'hooks') return flags
+
+  const sources = await overlapSources(channelId, draft)
+  const fields: [string, string][] =
+    section === 'examples'
+      ? Object.entries(bible.examples).map(([id, text]) => [`examples.${id}`, text])
+      : BIBLE_ENTRY_LISTS.flatMap((list) =>
+          bible[list].map((entry, i): [string, string] => [`${list}.${i}`, entry.text]),
+        )
+  for (const [path, text] of fields) {
+    const found = overlapFlag(path, text, sources)
+    if (found) flags[path] = found
+  }
+  return flags
+}
+
+/**
+ * Save the owner's edit of one section. The patch holds only that section's
+ * keys, is checked against the bible's own schema, replaces those fields and
+ * counts as the owner's approval. The overlap check runs again on the examples
+ * and entries, so pasting a source back in does not pass.
+ */
+export async function editBibleSectionAction(
+  channelId: string,
+  section: BibleSection,
+  patch: unknown,
+): Promise<ActionResult & { draft?: BibleDraft }> {
+  await requireOwner()
+  if (!BIBLE_SECTION_ORDER.includes(section)) return { ok: false, error: 'Unknown section' }
+  if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
+    return { ok: false, error: 'That change is not valid' }
+  }
+  const keys = BIBLE_SECTIONS[section]
+  const stray = Object.keys(patch).find((key) => !(keys as readonly string[]).includes(key))
+  if (stray) return { ok: false, error: `${stray} is not part of this section` }
+
+  const open = await openForChange(channelId)
+  if (!open.ok) return open
+
+  const mask = Object.fromEntries(keys.map((key) => [key, true])) as {
+    [K in keyof ChannelBible]?: true
+  }
+  const current = Object.fromEntries(keys.map((key) => [key, open.draft.bible[key]]))
+  const parsed = ChannelBibleSchema.pick(mask)
+    .strict()
+    .safeParse({ ...current, ...patch })
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      ok: false,
+      error: issue ? `${issue.path.join('.')}: ${issue.message}` : 'That change is not valid',
+    }
+  }
+  const tooClose = await recheckedFlags(channelId, open.draft, section, {
+    ...open.draft.bible,
+    ...parsed.data,
+  })
+
+  return writeChange(channelId, (draft) => {
+    const errors = Object.fromEntries(
+      Object.entries(draft.errors).filter(([key]) => errorSection(key) !== section),
+    )
+    return {
+      ...draft,
+      bible: { ...draft.bible, ...parsed.data },
+      statuses: { ...draft.statuses, [section]: 'approved' },
+      tooClose,
+      errors,
+    }
+  })
+}
+
+/** Approve a drafted section as it stands; refused while a field in it is too close to its source. */
+export async function approveBibleSectionAction(
+  channelId: string,
+  section: BibleSection,
+): Promise<ActionResult & { draft?: BibleDraft }> {
+  await requireOwner()
+  if (!BIBLE_SECTION_ORDER.includes(section)) return { ok: false, error: 'Unknown section' }
+  const open = await openForChange(channelId)
+  if (!open.ok) return open
+  if (Object.keys(open.draft.tooClose).some((path) => flagSection(path) === section)) {
+    return { ok: false, error: 'Change the lines that are too close to their source first' }
+  }
+  return writeChange(channelId, (draft) => ({
+    ...draft,
+    statuses: { ...draft.statuses, [section]: 'approved' },
+  }))
+}
+
+/**
+ * Turn the approved draft into the channel's next version. The note defaults
+ * to how the draft was made: by AI when it holds research, the inputs it was
+ * drafted from or a section still marked drafted.
+ */
+export async function saveBibleAction(
+  channelId: string,
+  note: string,
+): Promise<ActionResult & { blockers?: string[] }> {
+  await requireOwner()
+  const open = await openForChange(channelId, true)
+  if (!open.ok) return open
+
+  const { draft } = open
+  const byAi =
+    draft.research !== null ||
+    draft.inputs !== null ||
+    Object.values(draft.statuses).some((status) => status === 'drafted')
+  const text = note.trim().slice(0, 300) || (byAi ? 'Drafted with AI' : 'Edited in the Bible tab')
+
+  try {
+    await saveBibleDraft(db, channelId, text)
+  } catch (error) {
+    if (error instanceof BibleDraftBlockedError) {
+      return { ok: false, error: 'The draft cannot be saved yet', blockers: error.blockers }
+    }
+    if (error instanceof BibleDraftBusyError) return WAIT
+    throw error
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** Throw the working draft away; the channel keeps its current version. */
+export async function discardBibleDraftAction(channelId: string): Promise<ActionResult> {
+  await requireOwner()
+  const open = await openForChange(channelId, true)
+  if (!open.ok) return open
+  try {
+    await discardBibleDraft(db, channelId)
+  } catch (error) {
+    if (error instanceof BibleDraftBusyError) return WAIT
+    throw error
+  }
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

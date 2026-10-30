@@ -57,24 +57,6 @@ describe('ChannelTab', () => {
     expect(screen.getByText('Bible complete')).toBeInTheDocument()
   })
 
-  it('gives every bible field its own labelled textarea', () => {
-    renderTab()
-    for (const label of [
-      'Subject',
-      'What a case is',
-      'How a subject is named',
-      'Audience',
-      'Narration register',
-      'Visual register',
-      'Title style',
-      'Call to action',
-      'Script rules',
-      'Direction rules',
-    ]) {
-      expect(screen.getByLabelText(label).tagName).toBe('TEXTAREA')
-    }
-  })
-
   it('saves the name and handle with a Save button', async () => {
     renderTab()
     const name = screen.getByLabelText('Name')
@@ -86,31 +68,20 @@ describe('ChannelTab', () => {
     expect(commit).toHaveBeenCalledWith({ name: 'Mind', handle: '' })
   })
 
-  it('saves an edited bible field', async () => {
+  it('no longer edits the bible here, and links to the Bible tab', () => {
     renderTab()
-    await userEvent.type(screen.getByLabelText('Audience'), 'curious adults')
-    await userEvent.click(screen.getByRole('button', { name: 'Save bible' }))
-
-    expect(commit).toHaveBeenCalledWith({
-      bible: { ...EMPTY_BIBLE, audience: 'curious adults' },
-    })
-  })
-
-  it('adds and removes category rows with labelled buttons', async () => {
-    renderTab({ channel: { ...CHANNEL, bible: FIRST_CHANNEL_BIBLE } })
-    expect(screen.getAllByRole('button', { name: /^Remove category/ })).toHaveLength(5)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Add category' }))
-    expect(screen.getAllByRole('button', { name: /^Remove category/ })).toHaveLength(6)
-
-    await userEvent.click(screen.getAllByRole('button', { name: /^Remove category/ })[0]!)
-    expect(screen.getAllByRole('button', { name: /^Remove category/ })).toHaveLength(5)
+    expect(screen.queryByRole('button', { name: 'Save bible' })).toBeNull()
+    expect(screen.queryByLabelText('Audience')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open the Bible tab' })).toHaveAttribute(
+      'href',
+      '?tab=bible',
+    )
   })
 
   it('makes every action a labelled button with a 40 px hit target', () => {
     renderTab()
     const buttons = screen.getAllByRole('button')
-    expect(buttons.length).toBeGreaterThanOrEqual(4)
+    expect(buttons.length).toBeGreaterThanOrEqual(2)
     for (const button of buttons) {
       expect(button.textContent?.trim(), 'a visible label').not.toBe('')
       expect(button.className).toContain('h-10')

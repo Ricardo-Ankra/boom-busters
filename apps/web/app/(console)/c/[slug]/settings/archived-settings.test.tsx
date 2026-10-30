@@ -12,6 +12,13 @@ import { SettingsForm } from './settings-form'
  */
 
 vi.mock('./actions', () => ({ saveSettings: vi.fn() }))
+vi.mock('./bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+}))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),
@@ -68,9 +75,7 @@ describe('SettingsForm for an archived channel', () => {
 
     expect(screen.getByText(/This channel is archived/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save name and handle' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Save bible' })).toBeDisabled()
     expect(screen.getByLabelText('Name')).toBeDisabled()
-    expect(screen.getByLabelText('Subject')).toBeDisabled()
   })
 
   it('disables the controls of the other tabs too, but keeps the tabs themselves usable', async () => {
@@ -79,12 +84,15 @@ describe('SettingsForm for an archived channel', () => {
 
     expect(screen.getByLabelText('Uploads per quota day')).toBeDisabled()
     expect(screen.getByRole('tab', { name: 'Models' })).toBeEnabled()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Bible' }))
+    expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeDisabled()
   })
 
   it('leaves a live channel editable and shows no notice', () => {
     renderForm(false)
 
     expect(screen.queryByText(/This channel is archived/)).toBeNull()
-    expect(screen.getByRole('button', { name: 'Save bible' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save name and handle' })).toBeEnabled()
   })
 })
