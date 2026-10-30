@@ -56,7 +56,7 @@ const modelOptions = buildModelOptions({
   mock: false,
 })
 
-function renderForm(archived: boolean) {
+function renderForm(archived: boolean, initialTab = 'channel') {
   render(
     <SettingsForm
       channelId={FIXTURE_CHANNEL_VIEW.id}
@@ -64,7 +64,7 @@ function renderForm(archived: boolean) {
       channel={{ ...FIXTURE_CHANNEL_VIEW, archived }}
       initialSettings={structuredClone(DEFAULT_SETTINGS)}
       modelOptions={modelOptions}
-      initialTab="channel"
+      initialTab={initialTab}
     />,
   )
 }
@@ -94,5 +94,18 @@ describe('SettingsForm for an archived channel', () => {
 
     expect(screen.queryByText(/This channel is archived/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Save name and handle' })).toBeEnabled()
+  })
+
+  it('opens the Bible tab from the Channel tab link every time, after a hand-made tab switch', async () => {
+    renderForm(false, 'bible')
+    expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeVisible()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Channel' }))
+    expect(window.location.search).toContain('tab=channel')
+    expect(screen.queryByRole('button', { name: 'Edit Identity' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('link', { name: 'Open the Bible tab' }))
+    expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'Bible' })).toHaveAttribute('data-state', 'active')
   })
 })

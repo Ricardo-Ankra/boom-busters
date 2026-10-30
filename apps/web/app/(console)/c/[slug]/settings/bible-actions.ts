@@ -371,16 +371,11 @@ export async function editBibleSectionAction(
   const stray = Object.keys(patch).find((key) => !(keys as readonly string[]).includes(key))
   if (stray) return { ok: false, error: `${stray} is not part of this section` }
 
-  const open = await openForChange(channelId)
-  if (!open.ok) return open
-
-  const mask = Object.fromEntries(keys.map((key) => [key, true])) as {
+  // Checked before the draft is opened, so a refused first edit leaves none behind.
+  const mask = Object.fromEntries(Object.keys(patch).map((key) => [key, true])) as {
     [K in keyof ChannelBible]?: true
   }
-  const current = Object.fromEntries(keys.map((key) => [key, open.draft.bible[key]]))
-  const parsed = ChannelBibleSchema.pick(mask)
-    .strict()
-    .safeParse({ ...current, ...patch })
+  const parsed = ChannelBibleSchema.pick(mask).strict().safeParse(patch)
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
     return {
@@ -388,6 +383,9 @@ export async function editBibleSectionAction(
       error: issue ? `${issue.path.join('.')}: ${issue.message}` : 'That change is not valid',
     }
   }
+
+  const open = await openForChange(channelId)
+  if (!open.ok) return open
   const tooClose = await recheckedFlags(channelId, open.draft, section, {
     ...open.draft.bible,
     ...parsed.data,

@@ -139,6 +139,13 @@ export function SettingsForm({
   // Controlled, so an in-page link to `?tab=bible` switches the tab.
   const [tab, setTab] = React.useState(initialTab)
   React.useEffect(() => setTab(initialTab), [initialTab])
+  // The URL follows the tab, so a deep link and the in-page link agree with what is shown.
+  const selectTab = React.useCallback((next: string) => {
+    setTab(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', next)
+    window.history.replaceState(window.history.state, '', url)
+  }, [])
 
   /** The same optimistic-with-rollback save, for the channel's own row. */
   const commitChannel = React.useCallback(
@@ -175,7 +182,7 @@ export function SettingsForm({
           {CHANNEL_ARCHIVED_MESSAGE}. Its settings can be read but not changed.
         </p>
       ) : null}
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={selectTab}>
         <TabsList>
           <TabsTrigger value="channel">Channel</TabsTrigger>
           <TabsTrigger value="bible">Bible</TabsTrigger>
@@ -195,6 +202,7 @@ export function SettingsForm({
               channel={channel}
               channels={channels}
               showNew={showNewChannel}
+              onOpenBible={() => selectTab('bible')}
               saving={saving}
               commit={commitChannel}
             />

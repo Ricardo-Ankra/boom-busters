@@ -50,8 +50,8 @@ function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
   }
 }
 
-function renderTab(draft: BibleDraft | null, over: { archived?: boolean } = {}) {
-  return render(
+function tabElement(draft: BibleDraft | null, over: { archived?: boolean } = {}) {
+  return (
     <BibleTab
       channel={CHANNEL}
       draft={draft}
@@ -59,8 +59,12 @@ function renderTab(draft: BibleDraft | null, over: { archived?: boolean } = {}) 
       currentVersion={{ id: '01J00000000000000000000009', version: 3, bible: FIRST_CHANNEL_BIBLE }}
       vidiqReady={false}
       archived={over.archived ?? false}
-    />,
+    />
   )
+}
+
+function renderTab(draft: BibleDraft | null, over: { archived?: boolean } = {}) {
+  return render(tabElement(draft, over))
 }
 
 /** A section's card, found by its label in the summary. */
@@ -190,9 +194,15 @@ describe('BibleTab', () => {
   it('refreshes every three seconds while a run works, and not otherwise', () => {
     vi.useFakeTimers()
     try {
-      const { unmount } = renderTab(draftOf({ job: running('Voice') }))
+      const { unmount, rerender } = renderTab(draftOf({ job: running('Voice') }))
       act(() => vi.advanceTimersByTime(6000))
       expect(refresh).toHaveBeenCalledTimes(2)
+
+      // The refresh reports the job done: the polling stops.
+      rerender(tabElement(draftOf()))
+      refresh.mockClear()
+      act(() => vi.advanceTimersByTime(9000))
+      expect(refresh).not.toHaveBeenCalled()
       unmount()
 
       refresh.mockClear()

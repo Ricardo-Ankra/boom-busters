@@ -1,7 +1,9 @@
 // @vitest-environment node
 
 import {
+  archiveChannel,
   bibleDrafts,
+  createChannel,
   getBibleDraft,
   listBibleVersions,
   openBibleDraft,
@@ -16,6 +18,8 @@ import {
 } from '@boom-busters/db'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import {
+  ChannelBibleSchema,
+  DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
   EXAMPLE_SLOTS,
   FIRST_CHANNEL_BIBLE,
@@ -353,9 +357,7 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     const bad = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { country: 'USA' })
     expect(bad.ok).toBe(false)
     expect(bad.error).toContain('country')
-    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.bible.country).toBe(
-      FIRST_CHANNEL_BIBLE.country,
-    )
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
   })
 
   it('refuses every change while a job runs', async () => {
@@ -468,5 +470,41 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { language: 'fr' })
     expect(await discardBibleDraftAction(FIRST_CHANNEL_ID)).toEqual({ ok: true })
     expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+  })
+
+  it('leaves no draft behind when the first edit is invalid', async () => {
+    const bad = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', { country: 'USA' })
+    expect(bad.ok).toBe(false)
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+  })
+
+  it('saves a YouTube category id and refuses one that is not a number', async () => {
+    expect(
+      (await editBibleSectionAction(FIRST_CHANNEL_ID, 'publishing', { youtubeCategoryId: '27' }))
+        .ok,
+    ).toBe(true)
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.bible.youtubeCategoryId).toBe('27')
+
+    const bad = await editBibleSectionAction(FIRST_CHANNEL_ID, 'publishing', {
+      youtubeCategoryId: 'abc',
+    })
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toContain('youtubeCategoryId')
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.bible.youtubeCategoryId).toBe('27')
+  })
+
+  it('refuses an edit on an archived channel', async () => {
+    const channel = await createChannel(db, {
+      name: 'Old',
+      handle: null,
+      slug: `old-${Date.now()}`,
+      settings: DEFAULT_SETTINGS,
+      bible: ChannelBibleSchema.parse({}),
+    })
+    await archiveChannel(db, channel.id)
+    const result = await editBibleSectionAction(channel.id, 'search', { language: 'fr' })
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/archived/i)
+    expect(await getBibleDraft(db, channel.id)).toBeNull()
   })
 })

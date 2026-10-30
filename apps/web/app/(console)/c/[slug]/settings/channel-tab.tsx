@@ -36,6 +36,7 @@ export function ChannelTab({
   channel,
   channels,
   showNew,
+  onOpenBible,
   saving,
   commit,
 }: {
@@ -44,6 +45,8 @@ export function ChannelTab({
   channels: { id: string; name: string }[]
   /** `?new=1`: the New channel form opens above the rest. */
   showNew: boolean
+  /** Switches to the Bible tab; the link's href is the fallback. */
+  onOpenBible?: () => void
   saving: boolean
   commit: (patch: ChannelPatch) => Promise<void>
 }) {
@@ -52,7 +55,7 @@ export function ChannelTab({
       {showNew ? <NewChannelForm channels={channels} /> : null}
       {/* An archived channel is read-only. */}
       <IdentityCard channel={channel} saving={saving || channel.archived} commit={commit} />
-      <BibleStatusCard channel={channel} />
+      <BibleStatusCard channel={channel} onOpen={onOpenBible} />
       {channel.archived ? null : <ArchiveCard channel={channel} />}
     </div>
   )
@@ -115,7 +118,7 @@ function IdentityCard({
 }
 
 /** Where the bible stands, with the way to the tab that edits it. */
-function BibleStatusCard({ channel }: { channel: ChannelView }) {
+function BibleStatusCard({ channel, onOpen }: { channel: ChannelView; onOpen?: () => void }) {
   const missing = missingBibleFields(channel.bible)
   return (
     <Card>
@@ -136,7 +139,11 @@ function BibleStatusCard({ channel }: { channel: ChannelView }) {
         >
           {missing.length === 0 ? 'Bible complete' : `Bible incomplete: ${missing.length} missing`}
         </p>
-        <Link href="?tab=bible" className="text-[13px] text-[var(--color-accent-text)] underline">
+        <Link
+          href="?tab=bible"
+          onClick={onOpen}
+          className="text-[13px] text-[var(--color-accent-text)] underline"
+        >
           Open the Bible tab
         </Link>
       </CardContent>
