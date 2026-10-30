@@ -10,6 +10,7 @@ import {
   publishRecords,
   recordChannelYoutubeVerify,
   requireTestDatabase,
+  saveBibleVersion,
   saveChannelYoutubeConnection,
   seed,
   snapshotsSince,
@@ -23,6 +24,7 @@ import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
   EMPTY_BIBLE,
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
   FIRST_CHANNEL_IN_USE,
 } from '@boom-busters/schemas'
@@ -345,6 +347,53 @@ describeDb('analytics-runner (mock mode)', () => {
         expect(google.refreshAccessToken).toHaveBeenCalledTimes(1)
         expect(google.refreshAccessToken).toHaveBeenCalledWith('1//refresh-UC-first')
         expect(await channelYoutubeConnection(db, second)).toBeUndefined()
+      },
+    )
+
+    it(
+      'skips the digest of a channel whose bible is incomplete and sends the next channel its own',
+      { timeout: 60_000 },
+      async () => {
+        const second = await createChannel(db, {
+          name: 'Second channel',
+          handle: null,
+          slug: `analytics-second-${Math.random().toString(36).slice(2, 8)}`,
+          settings: DEFAULT_SETTINGS,
+          bible: FIRST_CHANNEL_BIBLE,
+        })
+        await connect(second.id, 'UC-second')
+        await db.insert(publishRecords).values({
+          channelId: second.id,
+          targetType: 'master',
+          targetId: '01HQ00000000000000000000S9',
+          youtubeVideoId: 'yt-second-1',
+          status: 'live',
+          publishAt: new Date('2026-08-20T15:00:00Z'),
+        })
+        // The first channel's current bible goes blank, then is put back.
+        await saveBibleVersion(db, FIRST_CHANNEL_ID, EMPTY_BIBLE, 'Blanked for a test')
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        try {
+          vi.setSystemTime(new Date('2026-08-31T06:00:05Z')) // a Monday
+          const { result } = await engine.execute({ events: refreshEvent() })
+
+          expect(result).toMatchObject({
+            channels: [
+              { channelId: FIRST_CHANNEL_ID, outcome: 'ran', digestSent: false },
+              { channelId: second.id, outcome: 'ran', digestSent: true },
+            ],
+          })
+          const digests = notify.mock.calls
+            .map(([notification]) => notification as { kind: string; title: string })
+            .filter((notification) => notification.kind === 'weekly-digest')
+          expect(digests).toHaveLength(1)
+          expect(digests[0]!.title).toContain('Second channel')
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('boom-busters'))
+          expect(warn).toHaveBeenCalledWith(expect.stringContaining('subject'))
+        } finally {
+          warn.mockRestore()
+          await saveBibleVersion(db, FIRST_CHANNEL_ID, FIRST_CHANNEL_BIBLE, 'Restored after a test')
+        }
       },
     )
 

@@ -14,7 +14,12 @@ import {
 } from '@boom-busters/db'
 import { buildDigestRequest, mockDigest, mockProvidersEnabled } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
-import { BudgetExceededError, FIRST_CHANNEL_SLUG, parseEventData } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  FIRST_CHANNEL_SLUG,
+  missingBibleFields,
+  parseEventData,
+} from '@boom-busters/schemas'
 import { answerOrStop, callForText, type AnswerComplete } from '@/lib/answer'
 import { channelHref } from '@/lib/channel-href'
 import { db } from '@/lib/db'
@@ -315,6 +320,17 @@ export const analyticsRunner = inngest.createFunction(
         const now = new Date()
         if (now.getUTCDay() !== 1) return false
 
+        // Read here, in the step. A channel whose current bible is incomplete
+        // has no digest this week: the next channel still gets its own.
+        const current = await currentBible(db, channelId)
+        const missing = missingBibleFields(current.bible, current.slotIds)
+        if (missing.length > 0) {
+          console.warn(
+            `[analytics] digest skipped for ${await slugOf(channelId)}: channel bible incomplete, first missing ${missing[0]}`,
+          )
+          return false
+        }
+
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
         const [snapshots, labelled] = await Promise.all([
           snapshotsSince(db, channelId, weekAgo),
@@ -366,7 +382,7 @@ export const analyticsRunner = inngest.createFunction(
             body = await writeDigestWith(
               (request, call) =>
                 callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) }),
-              { bible: await currentBible(db, channelId), weekOf, lines },
+              { bible: current, weekOf, lines },
             )
           } catch (error) {
             // A digest is never worth a budget gate: the numbers keep landing

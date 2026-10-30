@@ -19,6 +19,7 @@ import { planStretchWith } from '@/lib/plan-stretch'
 import { isFetching } from '@/lib/visuals-fetching'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { releaseFailedStretchJob } from '../lib/jobs'
@@ -159,7 +160,7 @@ export const stretchReplanner = inngest.createFunction(
 
       const planned = await step.run('plan', async () => {
         // Read here, inside the step, once for every request it builds.
-        const bible = await channelForProject(db, projectId)
+        const bible = requireCompleteBible(await channelForProject(db, projectId))
         // Mock mode answers with the mock stretch plan, through the same
         // parse and checks a model's answer goes through; the brief repair
         // gets an empty answer and keeps the slots.

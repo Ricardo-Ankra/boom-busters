@@ -44,6 +44,7 @@ import {
 } from '@/lib/script-answers'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import {
   autoCloseReviewGate,
   budgetGateData,
@@ -116,7 +117,7 @@ export async function markShortsStep(
     // The bible is read here, inside the step, as every request-building step does.
     marked = await markShortsWith(completeForProject(projectId), {
       ...input,
-      bible: await channelForProject(db, projectId),
+      bible: requireCompleteBible(await channelForProject(db, projectId)),
     })
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
@@ -225,7 +226,7 @@ export const scriptRunner = inngest.createFunction(
           // earlier step's memoised output: a run parked before the bible
           // existed replays those without it.
           const drafted = await draftOutlineWith(completeForProject(projectId), {
-            bible: await channelForProject(db, projectId),
+            bible: requireCompleteBible(await channelForProject(db, projectId)),
             caseTitle: setup.caseTitle,
             dossierMd: setup.dossierMd,
             claims: setup.claims,
@@ -283,7 +284,7 @@ export const scriptRunner = inngest.createFunction(
                   estimateOutputTokens: Math.round(chapter.targetWords * 1.6),
                 }),
                 {
-                  bible: await channelForProject(db, projectId),
+                  bible: requireCompleteBible(await channelForProject(db, projectId)),
                   caseTitle: setup.caseTitle,
                   outline,
                   chapterIndex: index,
@@ -341,7 +342,7 @@ export const scriptRunner = inngest.createFunction(
         const check = mocked
           ? mockSelfCheck(chapter.contentMd)
           : await selfCheckWith(completeForProject(projectId), {
-              bible: await channelForProject(db, projectId),
+              bible: requireCompleteBible(await channelForProject(db, projectId)),
               chapterTitle: chapter.title,
               contentMd: chapter.contentMd,
               claims: setup.claims,

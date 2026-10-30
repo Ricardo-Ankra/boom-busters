@@ -31,6 +31,7 @@ import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { releaseFailedSlotJob } from '../lib/jobs'
 
@@ -100,7 +101,7 @@ export const slotRedirector = inngest.createFunction(
             : await callForAnswer({
                 request: buildRedirectRequest({
                   // Read here, inside the step that builds the request.
-                  bible: await channelForProject(db, projectId),
+                  bible: requireCompleteBible(await channelForProject(db, projectId)),
                   caseTitle: project.title,
                   brief: original,
                   reason,

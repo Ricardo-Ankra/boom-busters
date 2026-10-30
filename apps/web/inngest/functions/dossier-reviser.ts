@@ -18,6 +18,7 @@ import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
 import { awaitDossierApproval } from '../lib/dossier-approval'
 import { nameSubjectIfMissing } from '../lib/name-subject'
@@ -270,7 +271,7 @@ export const dossierReviser = inngest.createFunction(
         documents,
         corpus,
       },
-      { bible: () => channelForProject(db, projectId) },
+      { bible: async () => requireCompleteBible(await channelForProject(db, projectId)) },
     )
 
     const overBudget = research.budgetGate

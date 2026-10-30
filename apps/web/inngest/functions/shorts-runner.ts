@@ -43,6 +43,7 @@ import { markShortsWith } from '@/lib/script-answers'
 import { recordRepairs, recordSkip } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
 import { voiceTeaserBeat, writeTeaserScript, type TeaserWriteResult } from '../lib/teaser-build'
 
@@ -166,7 +167,7 @@ export const shortsRunner = inngest.createFunction(
       } else {
         try {
           const marked = await markShortsWith(completeForProject(projectId), {
-            bible: await channelForProject(db, projectId),
+            bible: requireCompleteBible(await channelForProject(db, projectId)),
             chapters: chapterSources,
             ...(tension ? { tension } : {}),
           })

@@ -106,6 +106,7 @@ ${GRAPHIC_INTENT_RULES}`
 
   return {
     task: 'shotlist',
+    // No direction rules here: this pass carries no direction craft for them to amend.
     system: fillSlots(
       `You are re-planning ONE visual slot of a documentary. ${
         input.brief.type === input.targetType

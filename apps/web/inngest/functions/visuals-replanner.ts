@@ -21,6 +21,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import {
   chapterShotListRequest,
   draftDirectorsBook,
@@ -195,7 +196,7 @@ export const visualsReplanner = inngest.createFunction(
           if (mine.length === 0) continue
           const fixed = await step.run(`repair-${index}`, async () => {
             // Read here, inside the step, once for the request and its repair.
-            const bible = await channelForProject(db, projectId)
+            const bible = requireCompleteBible(await channelForProject(db, projectId))
             const request = chapterShotListRequest({
               bible,
               caseTitle: setup.caseTitle,
