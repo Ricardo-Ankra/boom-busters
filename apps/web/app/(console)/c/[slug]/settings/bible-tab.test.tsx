@@ -9,12 +9,16 @@ import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 const approveBibleSectionAction = vi.fn()
 const discardBibleDraftAction = vi.fn()
 const draftBibleAction = vi.fn()
+const estimateBibleResearchAction = vi.fn()
+const startBibleResearchAction = vi.fn()
 const editBibleSectionAction = vi.fn()
 const saveBibleAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: (...args: unknown[]) => approveBibleSectionAction(...args),
   discardBibleDraftAction: (...args: unknown[]) => discardBibleDraftAction(...args),
   draftBibleAction: (...args: unknown[]) => draftBibleAction(...args),
+  estimateBibleResearchAction: (...args: unknown[]) => estimateBibleResearchAction(...args),
+  startBibleResearchAction: (...args: unknown[]) => startBibleResearchAction(...args),
   editBibleSectionAction: (...args: unknown[]) => editBibleSectionAction(...args),
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
 }))
@@ -248,14 +252,47 @@ describe('BibleTab', () => {
       }),
     )
     expect(screen.getByText('VidIQ did not answer')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+
+  it('reopens the research confirm from a failed research, with the saved inputs', async () => {
+    estimateBibleResearchAction.mockResolvedValue({
+      ok: true,
+      estimate: 45,
+      balance: 1474,
+      capLeft: 900,
+    })
+    const inputs = {
+      description: 'Saved description',
+      audience: '',
+      admiredChannels: ['Alpha'],
+      videos: [],
+      avoid: '',
+    }
+    renderTab(
+      draftOf({
+        inputs,
+        job: {
+          kind: 'research',
+          state: 'failed',
+          current: null,
+          error: 'VidIQ did not answer',
+          startedAt: '2026-10-30T08:00:00.000Z',
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(estimateBibleResearchAction).toHaveBeenCalledWith(CHANNEL.id, inputs)
+    expect(await screen.findByText(/About 45 VidIQ credits/)).toBeInTheDocument()
   })
 
   it('redrafts one section', async () => {
     draftBibleAction.mockResolvedValue({ ok: true })
     renderTab(draftOf())
     await userEvent.click(screen.getByRole('button', { name: 'Redraft Look' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Start redraft of Look' }))
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { sections: ['look'] })
+    expect(draftBibleAction.mock.calls[0]![1]).not.toHaveProperty('steer')
   })
 
   it('saves an edited section on Done, as that section only', async () => {

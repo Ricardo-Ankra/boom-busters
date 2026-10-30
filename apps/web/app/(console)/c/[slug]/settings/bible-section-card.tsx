@@ -9,6 +9,7 @@ import type {
 } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
+import { Input, Label } from '@/components/ui/input'
 import {
   SectionEditor,
   SectionView,
@@ -62,12 +63,14 @@ export function BibleSectionCard({
   disabled: boolean
   onEdit: (section: BibleSection, patch: Record<string, unknown>) => Promise<boolean>
   onApprove: (section: BibleSection) => void
-  onRedraft: (section: BibleSection) => void
+  onRedraft: (section: BibleSection, steer?: string) => void
   onDraftSlot: (slotId: string) => void
 }) {
   const label = sectionStatusLabel(bible, section, status)
   const flagged = Object.keys(flags).length > 0
   const [editing, setEditing] = React.useState(false)
+  const [steering, setSteering] = React.useState(false)
+  const [steer, setSteer] = React.useState('')
   const [values, setValues] = React.useState<FormValues>({})
   // Open when the section needs the owner; the owner's own toggling wins after that.
   const [open, setOpen] = React.useState(label !== 'Approved' || errors.length > 0)
@@ -102,9 +105,9 @@ export function BibleSectionCard({
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            disabled={disabled || editing}
+            disabled={disabled || editing || steering}
             aria-label={`Redraft ${BIBLE_SECTION_LABELS[section]}`}
-            onClick={() => onRedraft(section)}
+            onClick={() => setSteering(true)}
           >
             Redraft
           </Button>
@@ -141,6 +144,38 @@ export function BibleSectionCard({
             </Button>
           )}
         </div>
+
+        {steering ? (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`steer-${section}`}>What should change?</Label>
+            <Input
+              id={`steer-${section}`}
+              value={steer}
+              maxLength={1000}
+              placeholder="Optional"
+              disabled={disabled}
+              onChange={(event) => setSteer(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                disabled={disabled}
+                aria-label={`Start redraft of ${BIBLE_SECTION_LABELS[section]}`}
+                onClick={() => {
+                  const line = steer.trim()
+                  setSteering(false)
+                  setSteer('')
+                  onRedraft(section, line || undefined)
+                }}
+              >
+                Start
+              </Button>
+              <Button variant="ghost" onClick={() => setSteering(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {flagged && !editing ? (
           <p className="text-[12px] text-[var(--color-text-muted)]">

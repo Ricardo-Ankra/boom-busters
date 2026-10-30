@@ -18,6 +18,7 @@ import {
   saveBibleAction,
 } from './bible-actions'
 import { BibleSectionCard } from './bible-section-card'
+import { DraftWithAi } from './draft-with-ai'
 
 export interface BibleVersionView {
   id: string
@@ -41,9 +42,10 @@ export function BibleTab({
   channel,
   draft: initialDraft,
   currentVersion,
+  vidiqReady,
   archived,
 }: {
-  channel: { id: string }
+  channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
   draft: BibleDraft | null
   /** The saved bible the channel runs on. */
@@ -59,6 +61,7 @@ export function BibleTab({
   const [draft, setDraft] = React.useState(initialDraft)
   const [busy, setBusy] = React.useState(false)
   const [note, setNote] = React.useState('')
+  const [retryToken, setRetryToken] = React.useState(0)
 
   // The server's draft wins whenever the page refreshes.
   React.useEffect(() => setDraft(initialDraft), [initialDraft])
@@ -91,8 +94,11 @@ export function BibleTab({
     }
   }
 
-  const redraft = (sections: BibleSection[]) =>
-    act(() => draftBibleAction(channel.id, { sections }), 'Could not start the draft')
+  const redraft = (sections: BibleSection[], steer?: string) =>
+    act(
+      () => draftBibleAction(channel.id, steer ? { sections, steer } : { sections }),
+      'Could not start the draft',
+    )
 
   const tryAgain = () => {
     const failed = new Set<BibleSection>()
@@ -135,6 +141,17 @@ export function BibleTab({
         until you save them as a new version.
       </p>
 
+      <DraftWithAi
+        channelId={channel.id}
+        channelName={channel.name}
+        channelHandle={channel.handle}
+        savedInputs={draft?.inputs ?? null}
+        vidiqReady={vidiqReady}
+        disabled={locked}
+        retryToken={retryToken}
+        onDraft={setDraft}
+      />
+
       {running && job ? (
         <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
           {job.kind === 'research'
@@ -148,11 +165,13 @@ export function BibleTab({
       {job && job.state === 'failed' ? (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-[13px]">
           <span className="text-[var(--color-danger)]">{job.error ?? 'The run failed'}</span>
-          {job.kind === 'draft' ? (
-            <Button variant="outline" disabled={locked} onClick={() => void tryAgain()}>
-              Try again
-            </Button>
-          ) : null}
+          <Button
+            variant="outline"
+            disabled={locked}
+            onClick={() => (job.kind === 'draft' ? void tryAgain() : setRetryToken((n) => n + 1))}
+          >
+            Try again
+          </Button>
         </div>
       ) : null}
 
@@ -178,7 +197,7 @@ export function BibleTab({
           onApprove={(target) =>
             void act(() => approveBibleSectionAction(channel.id, target), 'Could not approve')
           }
-          onRedraft={(target) => void redraft([target])}
+          onRedraft={(target, steer) => void redraft([target], steer)}
           onDraftSlot={(slotId) =>
             void act(() => draftBibleAction(channel.id, { slotId }), 'Could not start the draft')
           }
