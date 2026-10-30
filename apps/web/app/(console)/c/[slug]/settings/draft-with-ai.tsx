@@ -30,9 +30,18 @@ function linesOf(text: string): string[] {
     .filter((line) => line.length > 0)
 }
 
+/** Whether inputs would pass the server's schema limits. */
+function inputsAreValid(inputs: BibleDraftInputs): boolean {
+  return (
+    inputs.description.trim().length > 0 &&
+    inputs.admiredChannels.length <= MAX_CHANNELS &&
+    inputs.videos.length <= MAX_VIDEOS
+  )
+}
+
 type Confirm =
   | { state: 'checking' }
-  | { state: 'ready'; estimate: number; balance: number }
+  | { state: 'ready'; estimate: number; balance: number; inputs: BibleDraftInputs }
   | { state: 'error'; message: string }
 
 type Reply = ActionResult & { draft?: BibleDraft }
@@ -82,6 +91,9 @@ export function DraftWithAi({
   const videosError = videoLines.length > MAX_VIDEOS ? `Up to ${MAX_VIDEOS} videos` : null
   const invalid = Boolean(channelsError || videosError) || description.trim().length === 0
   const locked = disabled || busy
+  // The fields hold still while a confirm shows, so Start sends what was estimated.
+  const fieldsLocked = locked || confirm?.state === 'checking' || confirm?.state === 'ready'
+  const estimateRun = React.useRef(0)
 
   const inputs = (): BibleDraftInputs => ({
     description: description.trim(),
@@ -92,17 +104,24 @@ export function DraftWithAi({
   })
 
   const estimate = async (forInputs: BibleDraftInputs) => {
+    const run = ++estimateRun.current
     setConfirm({ state: 'checking' })
+    let next: Confirm
     try {
       const result = await estimateBibleResearchAction(channelId, forInputs)
-      setConfirm(
-        result.ok
-          ? { state: 'ready', estimate: result.estimate, balance: result.balance }
-          : { state: 'error', message: result.error },
-      )
+      next = result.ok
+        ? { state: 'ready', estimate: result.estimate, balance: result.balance, inputs: forInputs }
+        : { state: 'error', message: result.error }
     } catch {
-      setConfirm({ state: 'error', message: 'Could not check the VidIQ credits' })
+      next = { state: 'error', message: 'Could not check the VidIQ credits' }
     }
+    // A Cancel (or a newer estimate) since this one began wins.
+    if (run === estimateRun.current) setConfirm(next)
+  }
+
+  const cancelConfirm = () => {
+    estimateRun.current++
+    setConfirm(null)
   }
 
   // "Try again" on a failed research reopens the confirm with the saved inputs.
@@ -110,9 +129,15 @@ export function DraftWithAi({
   React.useEffect(() => {
     if (retryToken === lastToken.current) return
     lastToken.current = retryToken
-    if (!savedInputs) return
     setOpen(true)
+    if (!savedInputs) return
+    setDescription(savedInputs.description)
+    setAudience(savedInputs.audience)
+    setAdmired(savedInputs.admiredChannels.join('\n'))
+    setVideos(savedInputs.videos.join('\n'))
+    setAvoid(savedInputs.avoid)
     void estimate(savedInputs)
+    // Runs only when the token changes; the rest is read as it stands then.
   }, [retryToken])
 
   const run = async (start: () => Promise<Reply>, failure: string) => {
@@ -151,7 +176,7 @@ export function DraftWithAi({
           className={TEXTAREA_CLASS}
           value={description}
           maxLength={1000}
-          disabled={locked}
+          disabled={fieldsLocked}
           onChange={(event) => setDescription(event.target.value)}
         />
       </div>
@@ -162,7 +187,7 @@ export function DraftWithAi({
           className={TEXTAREA_CLASS}
           value={audience}
           maxLength={600}
-          disabled={locked}
+          disabled={fieldsLocked}
           onChange={(event) => setAudience(event.target.value)}
         />
       </div>
@@ -170,14 +195,21 @@ export function DraftWithAi({
         <Label htmlFor="draft-admired">Channels you admire</Label>
         <textarea
           id="draft-admired"
+          aria-describedby="draft-admired-hint draft-admired-error"
           className={TEXTAREA_CLASS}
           value={admired}
-          disabled={locked}
+          disabled={fieldsLocked}
           onChange={(event) => setAdmired(event.target.value)}
         />
-        <p className="text-[12px] text-[var(--color-text-muted)]">One per line, up to 5.</p>
+        <p id="draft-admired-hint" className="text-[12px] text-[var(--color-text-muted)]">
+          One per line, up to 5.
+        </p>
         {channelsError ? (
-          <p role="alert" className="text-[13px] text-[var(--color-danger)]">
+          <p
+            id="draft-admired-error"
+            role="alert"
+            className="text-[13px] text-[var(--color-danger)]"
+          >
             {channelsError}
           </p>
         ) : null}
@@ -186,14 +218,21 @@ export function DraftWithAi({
         <Label htmlFor="draft-videos">Videos that feel right</Label>
         <textarea
           id="draft-videos"
+          aria-describedby="draft-videos-hint draft-videos-error"
           className={TEXTAREA_CLASS}
           value={videos}
-          disabled={locked}
+          disabled={fieldsLocked}
           onChange={(event) => setVideos(event.target.value)}
         />
-        <p className="text-[12px] text-[var(--color-text-muted)]">One per line, up to 10.</p>
+        <p id="draft-videos-hint" className="text-[12px] text-[var(--color-text-muted)]">
+          One per line, up to 10.
+        </p>
         {videosError ? (
-          <p role="alert" className="text-[13px] text-[var(--color-danger)]">
+          <p
+            id="draft-videos-error"
+            role="alert"
+            className="text-[13px] text-[var(--color-danger)]"
+          >
             {videosError}
           </p>
         ) : null}
@@ -205,7 +244,7 @@ export function DraftWithAi({
           className={TEXTAREA_CLASS}
           value={avoid}
           maxLength={600}
-          disabled={locked}
+          disabled={fieldsLocked}
           onChange={(event) => setAvoid(event.target.value)}
         />
       </div>
@@ -232,11 +271,11 @@ export function DraftWithAi({
             {confirm.state === 'ready' ? (
               <Button
                 variant="primary"
-                disabled={locked}
+                disabled={locked || !inputsAreValid(confirm.inputs)}
                 busy={busy}
                 onClick={() =>
                   void run(
-                    () => startBibleResearchAction(channelId, inputs()),
+                    () => startBibleResearchAction(channelId, confirm.inputs),
                     'Could not start the research',
                   )
                 }
@@ -244,7 +283,7 @@ export function DraftWithAi({
                 Start
               </Button>
             ) : null}
-            <Button variant="ghost" disabled={busy} onClick={() => setConfirm(null)}>
+            <Button variant="ghost" disabled={busy} onClick={cancelConfirm}>
               Cancel
             </Button>
           </div>

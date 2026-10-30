@@ -1,6 +1,6 @@
-import { EXAMPLE_SLOTS, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
+import { FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import type { BibleDraft } from '@boom-busters/schemas'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BibleTab } from './bible-tab'
@@ -24,7 +24,6 @@ const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
 const CHANNEL = { ...FIXTURE_CHANNEL_VIEW, name: 'First', handle: '@first' }
-void EXAMPLE_SLOTS
 
 function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
   return {
@@ -65,6 +64,14 @@ function renderTab(vidiqReady: boolean, draft: BibleDraft | null = null) {
 
 async function openCard() {
   await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+}
+
+const SAVED = {
+  description: 'Saved description',
+  audience: 'Saved audience',
+  admiredChannels: ['Alpha'],
+  videos: [],
+  avoid: '',
 }
 
 beforeEach(() => {
@@ -164,6 +171,99 @@ describe('Draft with AI', () => {
         avoid: '',
       },
     })
+  })
+
+  it('locks the fields while the confirm shows and Start sends what was estimated', async () => {
+    estimateBibleResearchAction.mockResolvedValue({
+      ok: true,
+      estimate: 45,
+      balance: 1474,
+      capLeft: 900,
+    })
+    startBibleResearchAction.mockResolvedValue({ ok: true })
+    renderTab(true)
+    await openCard()
+    await userEvent.click(screen.getByRole('button', { name: 'Research with VidIQ, then draft' }))
+    await screen.findByText(/About 45 VidIQ credits/)
+    for (const label of [
+      'Describe the channel in a few lines',
+      'Who is it for?',
+      'Channels you admire',
+      'Videos that feel right',
+      "Anything you don't want",
+    ]) {
+      expect(screen.getByLabelText(label)).toBeDisabled()
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Start' }))
+    expect(startBibleResearchAction).toHaveBeenCalledWith(
+      CHANNEL.id,
+      estimateBibleResearchAction.mock.calls[0]![1],
+    )
+  })
+
+  it('calls neither action on Cancel', async () => {
+    estimateBibleResearchAction.mockResolvedValue({
+      ok: true,
+      estimate: 45,
+      balance: 1474,
+      capLeft: 900,
+    })
+    renderTab(true)
+    await openCard()
+    await userEvent.click(screen.getByRole('button', { name: 'Research with VidIQ, then draft' }))
+    await screen.findByText(/About 45 VidIQ credits/)
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull()
+    expect(startBibleResearchAction).not.toHaveBeenCalled()
+    expect(draftBibleAction).not.toHaveBeenCalled()
+  })
+
+  it('does not reopen the confirm when an estimate lands after Cancel', async () => {
+    let resolve!: (value: unknown) => void
+    estimateBibleResearchAction.mockReturnValue(new Promise((r) => (resolve = r)))
+    renderTab(true)
+    await openCard()
+    await userEvent.click(screen.getByRole('button', { name: 'Research with VidIQ, then draft' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await act(async () => resolve({ ok: true, estimate: 45, balance: 1474, capLeft: 900 }))
+    expect(screen.queryByText(/About 45 VidIQ credits/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull()
+  })
+
+  it('prefills from the saved inputs rather than the name and handle', async () => {
+    renderTab(true, draftOf({ inputs: SAVED }))
+    await openCard()
+    expect(screen.getByLabelText('Describe the channel in a few lines')).toHaveValue(
+      'Saved description',
+    )
+    expect(screen.getByLabelText('Who is it for?')).toHaveValue('Saved audience')
+    expect(screen.getByLabelText('Channels you admire')).toHaveValue('Alpha')
+  })
+
+  it('disables both buttons when the description is empty', async () => {
+    renderTab(true)
+    await openCard()
+    await userEvent.clear(screen.getByLabelText('Describe the channel in a few lines'))
+    expect(screen.getByRole('button', { name: 'Research with VidIQ, then draft' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Draft without VidIQ' })).toBeDisabled()
+  })
+
+  it('opens the card on Try again from a failed research with no saved inputs', async () => {
+    renderTab(
+      true,
+      draftOf({
+        job: {
+          kind: 'research',
+          state: 'failed',
+          current: null,
+          error: 'VidIQ did not answer',
+          startedAt: '2026-10-30T08:00:00.000Z',
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(screen.getByLabelText('Who is it for?')).toBeInTheDocument()
+    expect(estimateBibleResearchAction).not.toHaveBeenCalled()
   })
 
   it('holds the card while a run works', async () => {
