@@ -21,6 +21,9 @@ vi.mock('./bible-actions', () => ({
   startBibleResearchAction: (...args: unknown[]) => startBibleResearchAction(...args),
   editBibleSectionAction: (...args: unknown[]) => editBibleSectionAction(...args),
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
 }))
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh }) }))

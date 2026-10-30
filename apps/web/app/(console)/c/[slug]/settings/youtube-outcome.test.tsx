@@ -21,6 +21,9 @@ vi.mock('./bible-actions', () => ({
   draftBibleAction: vi.fn(),
   editBibleSectionAction: vi.fn(),
   saveBibleAction: vi.fn(),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
 }))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),

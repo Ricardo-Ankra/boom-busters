@@ -3,15 +3,20 @@
 import {
   BibleDraftBlockedError,
   BibleDraftBusyError,
+  BibleDraftExistsError,
+  bibleVersionById,
   discardBibleDraft,
   getBibleDraft,
   getWorkspace,
   openBibleDraft,
+  restoreBibleVersion,
   saveBibleDraft,
   vidiqCredential,
   vidiqCreditsThisMonth,
   writeBibleDraft,
 } from '@boom-busters/db'
+import { PREVIEW_STAGES, composeStagePrompt } from '@boom-busters/providers'
+import type { PreviewStage } from '@boom-busters/providers'
 import { estimateResearchCredits, vidiqClientFor } from '@boom-busters/providers/vidiq'
 import {
   BIBLE_SECTIONS,
@@ -469,4 +474,75 @@ export async function discardBibleDraftAction(channelId: string): Promise<Action
   }
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
+}
+
+/**
+ * Append an earlier version as the channel's next one. Refused while a draft
+ * is open: the draft's base would go stale under the restore.
+ */
+export async function restoreBibleVersionAction(
+  channelId: string,
+  versionId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  if (!UlidSchema.safeParse(versionId).success) return { ok: false, error: 'Unknown version' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+  try {
+    await restoreBibleVersion(db, channelId, versionId)
+  } catch (error) {
+    if (error instanceof BibleDraftExistsError) {
+      return { ok: false, error: 'Save or discard the draft first' }
+    }
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not restore' }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** One saved version's bible, for the read-only view in the history. */
+export async function viewBibleVersionAction(
+  channelId: string,
+  versionId: string,
+): Promise<{ ok: true; bible: ChannelBible } | { ok: false; error: string }> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  if (!UlidSchema.safeParse(versionId).success) return { ok: false, error: 'Unknown version' }
+  try {
+    const version = await bibleVersionById(db, versionId)
+    if (version.channelId !== channelId) return { ok: false, error: 'Unknown version' }
+    return { ok: true, bible: version.bible }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not load' }
+  }
+}
+
+/**
+ * The system prompt a stage sends for this bible, composed from the draft as
+ * it stands. Spends nothing: it only fills the builder's template.
+ */
+export async function previewStagePromptAction(
+  channelId: string,
+  stage: string,
+  bible: unknown,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  if (!(PREVIEW_STAGES as readonly string[]).includes(stage)) {
+    return { ok: false, error: 'Unknown stage' }
+  }
+  const parsed = ChannelBibleSchema.strict().safeParse(bible)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return {
+      ok: false,
+      error: issue ? `${issue.path.join('.')}: ${issue.message}` : 'The bible is not valid',
+    }
+  }
+  try {
+    return { ok: true, text: composeStagePrompt(stage as PreviewStage, parsed.data) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not compose' }
+  }
 }

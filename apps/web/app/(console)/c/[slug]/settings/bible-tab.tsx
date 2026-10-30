@@ -17,6 +17,8 @@ import {
   editBibleSectionAction,
   saveBibleAction,
 } from './bible-actions'
+import { BibleHistory } from './bible-history'
+import { BiblePreview } from './bible-preview'
 import { BibleSectionCard } from './bible-section-card'
 import { DraftWithAi } from './draft-with-ai'
 
@@ -42,6 +44,7 @@ export function BibleTab({
   channel,
   draft: initialDraft,
   currentVersion,
+  versions,
   vidiqReady,
   archived,
 }: {
@@ -141,6 +144,12 @@ export function BibleTab({
         until you save them as a new version.
       </p>
 
+      <BibleHistory
+        channelId={channel.id}
+        versions={versions}
+        disabled={archived || draft !== null}
+      />
+
       <DraftWithAi
         channelId={channel.id}
         channelName={channel.name}
@@ -203,6 +212,8 @@ export function BibleTab({
           }
         />
       ))}
+
+      <BiblePreview channelId={channel.id} bible={bible} />
 
       {draft ? (
         <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
