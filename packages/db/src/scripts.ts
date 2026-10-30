@@ -246,17 +246,21 @@ export async function setScriptStatus(
 const OPENING_CHARS = 300
 
 /**
- * The opening of the channel's approved scripts, newest first, one per script
- * and at most `limit`: the first 300 characters of its first chapter. A script
- * with an empty opening is skipped. Bounded in SQL, so no chapter body is read whole.
+ * The opening of the channel's approved scripts, newest first, one per project
+ * (its newest approved script) and at most `limit`: the first 300 characters of
+ * that script's first chapter. A script with an empty opening is skipped.
+ * Bounded in SQL, so no chapter body is read whole.
  */
 export async function approvedScriptOpenings(
   db: Database,
   channelId: string,
   limit: number,
 ): Promise<string[]> {
-  const rows = await db
-    .select({ opening: sql<string>`left(trim(${chapters.contentMd}), ${OPENING_CHARS})` })
+  const newest = db
+    .selectDistinctOn([projects.id], {
+      opening: sql<string>`left(trim(${chapters.contentMd}), ${OPENING_CHARS})`.as('opening'),
+      updatedAt: scripts.updatedAt,
+    })
     .from(scripts)
     .innerJoin(projects, eq(projects.id, scripts.projectId))
     .innerJoin(
@@ -269,14 +273,15 @@ export async function approvedScriptOpenings(
         ),
       ),
     )
-    .where(
-      and(
-        eq(projects.channelId, channelId),
-        eq(scripts.status, 'approved'),
-        sql`trim(${chapters.contentMd}) <> ''`,
-      ),
-    )
-    .orderBy(desc(scripts.updatedAt))
+    .where(and(eq(projects.channelId, channelId), eq(scripts.status, 'approved')))
+    .orderBy(projects.id, desc(scripts.updatedAt))
+    .as('newest')
+
+  const rows = await db
+    .select({ opening: newest.opening })
+    .from(newest)
+    .where(sql`${newest.opening} <> ''`)
+    .orderBy(desc(newest.updatedAt))
     .limit(limit)
   return rows.map((row) => row.opening)
 }

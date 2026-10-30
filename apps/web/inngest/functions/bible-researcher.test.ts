@@ -265,7 +265,7 @@ describeDb('bible-researcher (mock mode)', () => {
     await setScriptStatus(db, script.id, 'approved')
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual(['x'.repeat(300)])
 
-    // One row per approved script, the first chapter's, and the limit holds.
+    // One opening per project, the newest approved script's first chapter.
     await saveChapter(db, {
       scriptId: script.id,
       index: 1,
@@ -282,11 +282,8 @@ describeDb('bible-researcher (mock mode)', () => {
       estRuntimeSec: 10,
     })
     await setScriptStatus(db, second.id, 'approved')
-    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([
-      'another script',
-      'x'.repeat(300),
-    ])
-    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 1)).toEqual(['another script'])
+    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual(['another script'])
+    expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 0)).toEqual([])
     await db.delete(chapters)
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([])
   })

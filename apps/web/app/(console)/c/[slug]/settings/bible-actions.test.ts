@@ -15,7 +15,7 @@ import {
 } from '@boom-busters/db'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import { DEFAULT_WORKSPACE_SETTINGS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { estimateBibleResearchAction, startBibleResearchAction } from './bible-actions'
@@ -72,6 +72,11 @@ describeDb('the bible research actions', () => {
     await setCredential(db, 'vidiq', 'vidiq-test-key', env.SECRETS_ENCRYPTION_KEY)
   })
 
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
   it('estimates the run against the balance and the cap, spending nothing', async () => {
     const result = await estimateBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
     expect(result).toEqual({ ok: true, estimate: ESTIMATE, balance: 1443, capLeft: 1000 })
@@ -92,9 +97,18 @@ describeDb('the bible research actions', () => {
     vidiq.useReal = true
     await db.delete(providerCredentials)
     const result = await estimateBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
-    vi.unstubAllEnvs()
     expect(result).toEqual({ ok: true, estimate: ESTIMATE, balance: 1443, capLeft: 1000 })
     expect(vidiq.balance).not.toHaveBeenCalled()
+  })
+
+  it('asks for a key with the real client when mocks are off and none is stored', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    vidiq.useReal = true
+    await db.delete(providerCredentials)
+    expect(await estimateBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)).toEqual({
+      ok: false,
+      error: 'Add a VidIQ key in Settings, Connections',
+    })
   })
 
   it('names the input that is not a YouTube channel', async () => {
@@ -184,9 +198,8 @@ describeDb('the bible research actions', () => {
 
   it('frees the draft when the run cannot be sent', async () => {
     inngestMock.send.mockRejectedValueOnce(new Error('down'))
-    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const result = await startBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
-    quiet.mockRestore()
     expect(result.ok).toBe(false)
     expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.job).toMatchObject({ state: 'failed' })
   })
