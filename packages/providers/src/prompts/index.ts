@@ -1,6 +1,7 @@
 export * from './json'
 export * from './bible'
 export * from './bible-digest'
+export * from './bible-draft'
 export * from './bible-mocks'
 export * from './cases'
 export * from './subject'

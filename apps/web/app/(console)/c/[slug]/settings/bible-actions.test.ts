@@ -14,11 +14,20 @@ import {
   writeBibleDraft,
 } from '@boom-busters/db'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
-import { DEFAULT_WORKSPACE_SETTINGS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  DEFAULT_WORKSPACE_SETTINGS,
+  EXAMPLE_SLOTS,
+  FIRST_CHANNEL_ID,
+  bibleDraftUnits,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
-import { estimateBibleResearchAction, startBibleResearchAction } from './bible-actions'
+import {
+  draftBibleAction,
+  estimateBibleResearchAction,
+  startBibleResearchAction,
+} from './bible-actions'
 
 /**
  * The research actions against the test database, with the session, the cache,
@@ -202,5 +211,86 @@ describeDb('the bible research actions', () => {
     const result = await startBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
     expect(result.ok).toBe(false)
     expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.job).toMatchObject({ state: 'failed' })
+  })
+
+  describe('draftBibleAction', () => {
+    it('asks for a description first when there are no inputs', async () => {
+      expect(await draftBibleAction(FIRST_CHANNEL_ID, {})).toEqual({
+        ok: false,
+        error: 'Describe the channel first',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('saves the inputs, marks the draft running and sends every section', async () => {
+      expect(await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })).toEqual({ ok: true })
+      const draft = await getBibleDraft(db, FIRST_CHANNEL_ID)
+      expect(draft?.inputs).toEqual(INPUTS)
+      expect(draft?.job).toMatchObject({ kind: 'draft', state: 'running', error: null })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'bible/draft.requested',
+          data: { channelId: FIRST_CHANNEL_ID, units: bibleDraftUnits() },
+        }),
+      )
+    })
+
+    it('redrafts one section with a steer, on the inputs already saved', async () => {
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({ ...draft, job: null }), {
+        allowWhileRunning: true,
+      })
+      inngestMock.send.mockClear()
+      expect(
+        await draftBibleAction(FIRST_CHANNEL_ID, { sections: ['voice'], steer: 'more clinical' }),
+      ).toEqual({ ok: true })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            channelId: FIRST_CHANNEL_ID,
+            units: [{ section: 'voice' }],
+            steer: 'more clinical',
+          },
+        }),
+      )
+    })
+
+    it('drafts one slot, and refuses an unknown one', async () => {
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({ ...draft, job: null }), {
+        allowWhileRunning: true,
+      })
+      inngestMock.send.mockClear()
+      const slotId = EXAMPLE_SLOTS[0]!.id
+      expect(await draftBibleAction(FIRST_CHANNEL_ID, { slotId: 'nope-nope' })).toEqual({
+        ok: false,
+        error: 'Unknown example',
+      })
+      expect(await draftBibleAction(FIRST_CHANNEL_ID, { slotId })).toEqual({ ok: true })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { channelId: FIRST_CHANNEL_ID, units: [{ section: 'examples', slotId }] },
+        }),
+      )
+    })
+
+    it('refuses while a job runs, and sends nothing', async () => {
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })
+      inngestMock.send.mockClear()
+      const result = await draftBibleAction(FIRST_CHANNEL_ID, { sections: ['voice'] })
+      expect(result.ok).toBe(false)
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('frees the draft when the run cannot be sent', async () => {
+      inngestMock.send.mockRejectedValueOnce(new Error('down'))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const result = await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })
+      expect(result.ok).toBe(false)
+      expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.job).toMatchObject({
+        kind: 'draft',
+        state: 'failed',
+      })
+    })
   })
 })

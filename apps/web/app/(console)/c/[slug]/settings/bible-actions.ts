@@ -9,7 +9,15 @@ import {
   writeBibleDraft,
 } from '@boom-busters/db'
 import { estimateResearchCredits, vidiqClientFor } from '@boom-busters/providers/vidiq'
-import { BibleDraftInputsSchema, UlidSchema, jobIsRunning } from '@boom-busters/schemas'
+import {
+  BIBLE_SECTION_ORDER,
+  BibleDraftInputsSchema,
+  EXAMPLE_SLOT_IDS,
+  UlidSchema,
+  bibleDraftUnits,
+  jobIsRunning,
+} from '@boom-busters/schemas'
+import type { BibleDraftUnit, BibleSection } from '@boom-busters/schemas'
 import { auth } from '@/auth'
 import { researchPlanFor } from '@/lib/bible-research'
 import { channelWriteRefusal } from '@/lib/channel-lookup'
@@ -160,6 +168,110 @@ export async function startBibleResearchAction(
       ok: false,
       error:
         'Could not reach Inngest to start the research. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * Draft the bible without VidIQ (inputs, every section), redraft one or more
+ * sections with an optional steer, or draft one example slot. Saves `inputs`
+ * when given, marks the draft's job running (refused while one runs) and sends
+ * the run.
+ */
+export async function draftBibleAction(
+  channelId: string,
+  request: {
+    inputs?: unknown
+    sections?: BibleSection[]
+    slotId?: string
+    steer?: string
+  },
+): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+
+  const steer = request.steer?.trim() || undefined
+  if (steer && steer.length > 1000) return { ok: false, error: 'The steer is over 1000 characters' }
+
+  let units: BibleDraftUnit[]
+  if (request.slotId !== undefined) {
+    if (!(EXAMPLE_SLOT_IDS as readonly string[]).includes(request.slotId)) {
+      return { ok: false, error: 'Unknown example' }
+    }
+    units = [{ section: 'examples', slotId: request.slotId }]
+  } else {
+    const sections = request.sections ?? BIBLE_SECTION_ORDER
+    if (sections.some((section) => !BIBLE_SECTION_ORDER.includes(section))) {
+      return { ok: false, error: 'Unknown section' }
+    }
+    units = bibleDraftUnits(sections)
+    if (units.length === 0) return { ok: false, error: 'Choose a section to draft' }
+  }
+
+  const open = await openBibleDraft(db, channelId)
+  if (open.job && jobIsRunning(open.job)) return BUSY
+
+  let inputs = open.inputs
+  if (request.inputs !== undefined) {
+    const parsed = BibleDraftInputsSchema.safeParse(request.inputs)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      return {
+        ok: false,
+        error: issue ? `${issue.path.join('.')}: ${issue.message}` : 'Invalid input',
+      }
+    }
+    inputs = parsed.data
+  }
+  if (!inputs) return { ok: false, error: 'Describe the channel first' }
+
+  try {
+    await writeBibleDraft(db, channelId, (draft) => ({
+      ...draft,
+      inputs,
+      job: {
+        kind: 'draft',
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt: new Date().toISOString(),
+      },
+    }))
+  } catch (error) {
+    if (error instanceof BibleDraftBusyError) return BUSY
+    throw error
+  }
+
+  try {
+    await inngest.send(
+      events.bibleDraftRequested.create({ channelId, units, ...(steer ? { steer } : {}) }),
+    )
+  } catch (error) {
+    console.error('[bible] could not send the drafting run', error)
+    // Nothing is running: say so, or the draft stays locked until the job goes stale.
+    await writeBibleDraft(
+      db,
+      channelId,
+      (draft) => ({
+        ...draft,
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The drafting run could not be started',
+          startedAt: draft.job?.startedAt ?? new Date().toISOString(),
+        },
+      }),
+      { allowWhileRunning: true },
+    )
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to start the drafting. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }

@@ -60,10 +60,13 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - bible-researcher is queued per channel (`concurrency` keyed on the channel):
   //   the start action refuses while a job runs, and a second run must wait its
   //   turn, never cancel the one that is paying for VidIQ calls.
+  // - bible-drafter is queued per channel the same way: a redraft waits for the
+  //   run before it, never cancels a run that is mid-answer.
   // - stretch-replanner queues one chapter's stretches behind each other
   //   (`concurrency` keyed on the chapter, the stretch re-plan design 3.3):
   //   a second stretch is another selection, never a duplicate to cancel.
   'analytics-runner': null,
+  'bible-drafter': null,
   'bible-researcher': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
