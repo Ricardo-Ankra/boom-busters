@@ -88,6 +88,11 @@ function digestSources(draft: BibleDraft): OverlapSource[] {
 /** Craft sentences the slots' `teaches` lines quote: every channel keeps them word for word. */
 const CRAFT_TEXTS: readonly string[] = EXAMPLE_SLOTS.map((slot) => slot.teaches)
 
+/** Worked examples share their scaffolding (headers, component code) with every channel's: not compared. */
+const WORKED_PATHS: ReadonlySet<string> = new Set(
+  EXAMPLE_SLOTS.filter((slot) => slot.kind === 'worked').map((slot) => `examples.${slot.id}`),
+)
+
 interface Sources {
   /** Other creators' research quotes: no exemption. */
   digest: OverlapSource[]
@@ -206,7 +211,8 @@ async function draftUnit(input: {
       )
       for (const [path, text] of fields) {
         const found =
-          tooCloseTo(text, sources.digest) ?? tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS)
+          tooCloseTo(text, sources.digest) ??
+          (WORKED_PATHS.has(path) ? null : tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS))
         if (found) tooClose[path] = found
       }
 

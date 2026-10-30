@@ -296,6 +296,28 @@ describeDb('bible-drafter (mock mode)', () => {
     expect((await draftOf(FIRST_CHANNEL_ID)).tooClose).toEqual({})
   })
 
+  it('does not compare a worked slot with Boom & Busters, but still compares a line or passage', async () => {
+    const copyOf = (kind: string) => {
+      const slot = EXAMPLE_SLOTS.find(
+        (s) =>
+          s.kind === kind && (FIRST_CHANNEL_BIBLE.examples[s.id] ?? '').split(/\s+/).length >= 10,
+      )!
+      return { slot, copy: firstWords(FIRST_CHANNEL_BIBLE.examples[slot.id]!, 10) }
+    }
+    const worked = copyOf('worked')
+    const passage = copyOf('passage')
+    const line = copyOf('line')
+    await prepare(channelId)
+    for (const { slot, copy } of [worked, passage, line]) {
+      seams.answers = [() => ({ examples: { [slot.id]: copy } })]
+      await engine.execute(request(channelId, [{ section: 'examples', slotId: slot.id }]))
+    }
+    const flags = (await draftOf()).tooClose
+    expect(flags[`examples.${worked.slot.id}`]).toBeUndefined()
+    expect(flags[`examples.${passage.slot.id}`]).toMatchObject({ source: 'Boom & Busters' })
+    expect(flags[`examples.${line.slot.id}`]).toMatchObject({ source: 'Boom & Busters' })
+  })
+
   it('clears the unit’s earlier flags and leaves other fields’ flags alone', async () => {
     await prepare(channelId, mockResearchDigest(INPUTS))
     const flag = { source: 'Somewhere', run: 'a b c d e f g h' }
