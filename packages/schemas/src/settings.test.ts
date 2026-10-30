@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BrandKitStoredSchema,
   BrandKitTokensSchema,
+  DEFAULT_BIBLE_ROUTE,
   DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
@@ -423,6 +424,19 @@ describe('the graphics route (decision 289)', () => {
     const { graphics: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
     const parsed = ModelRoutingSchema.parse(stored)
     expect(parsed.graphics).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' })
+  })
+})
+
+describe('the bible route', () => {
+  it('is an LLM task on the scripting tier', () => {
+    expect(LLM_TASKS).toContain('bible')
+    expect(DEFAULT_BIBLE_ROUTE).toEqual(DEFAULT_SETTINGS.modelRouting.scripting)
+    expect(DEFAULT_SETTINGS.modelRouting.bible).toEqual(DEFAULT_BIBLE_ROUTE)
+  })
+
+  it('fills the default into routing stored before it existed', () => {
+    const { bible: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
+    expect(ModelRoutingSchema.parse(stored).bible).toEqual(DEFAULT_BIBLE_ROUTE)
   })
 })
 

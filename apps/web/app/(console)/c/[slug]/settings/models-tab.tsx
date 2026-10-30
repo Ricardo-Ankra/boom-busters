@@ -42,6 +42,7 @@ const TASK_LABELS: Record<LlmTask, string> = {
   digest: 'Weekly digest',
   direction: 'Visual direction',
   graphics: 'Motion graphics',
+  bible: 'Bible drafting',
 }
 
 /** The image routes, which are priced per image rather than per token. */

@@ -40,6 +40,8 @@ export const LLM_TASKS = [
   'direction',
   /** One call per graphic slot (decision 289): what it shows, its layout and its motion. */
   'graphics',
+  /** Drafting a channel's bible, one section at a time, and digesting its research. */
+  'bible',
 ] as const
 export const LlmTaskSchema = z.enum(LLM_TASKS)
 export type LlmTask = z.infer<typeof LlmTaskSchema>
@@ -194,6 +196,13 @@ export function modelPriceKey(provider: string, modelId: string): string {
  */
 export const DEFAULT_GRAPHICS_ROUTE = { provider: 'anthropic', model: 'claude-opus-5-5' } as const
 
+/**
+ * The bible drafter's default: the scripting tier (spec 4.7), the same model
+ * the default settings give scripting. A row stored before the route existed
+ * reads this.
+ */
+export const DEFAULT_BIBLE_ROUTE = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -203,6 +212,7 @@ export const ModelRoutingSchema = z.object({
   digest: ModelRefSchema,
   direction: ModelRefSchema,
   graphics: ModelRefSchema.default(DEFAULT_GRAPHICS_ROUTE),
+  bible: ModelRefSchema.default(DEFAULT_BIBLE_ROUTE),
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
   /**
@@ -702,6 +712,8 @@ export const DEFAULT_SETTINGS: Settings = {
     direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
     // Graphics get a designer of their own (decision 289).
     graphics: DEFAULT_GRAPHICS_ROUTE,
+    // Drafting a bible is scripting-tier work (spec 4.7).
+    bible: DEFAULT_BIBLE_ROUTE,
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
     //
