@@ -4250,6 +4250,22 @@ Then:
 - The slot passes (rebriefer, retyper, redirector) do not append the
   channel's direction rules.
 
+## Editable schedule slots (2026-11-01)
+
+> Settings → Publishing's "Default schedule slots" card was read-only, so a
+> channel kept the hard-coded starting slots. Branch `schedule-slot-editor`;
+> decision 336. No schema or migration change: slots were already stored
+> per channel.
+
+### Deliverables
+
+- [x] Each slot's format, day and time edited in the owner's timezone, saved
+      as UTC (`apps/web/lib/schedule-slots.ts`, with tests).
+- [x] Add long-form slot, Add Short slot and Remove buttons; adding stops at
+      the schema's 21.
+- [x] Two slots at the same moment are refused with a toast.
+- [x] Component tests (`schedule-slots-card.test.tsx`).
+
 ---
 
 # Decisions made
@@ -8707,3 +8723,16 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      alphabetical by key (collapse, con, empire, meltdown, turnaround)
      rather than enum order. The AI draft of the bible and free-text
      category checking remain for the next plan.
+
+336. **Default slots are edited in the owner's timezone** (2026-11-01). The
+     slots stay stored as a UTC weekday and time, so the publish screen and
+     the Calendar read them unchanged. The Publishing card converts with the
+     browser's offset in force today, so a timezone with daylight saving
+     sees its slots move by an hour across the change; the stored UTC time
+     is shown beside each slot. The server renders UTC and the client swaps
+     in the local offset on hydration. Two slots at the same UTC moment are
+     refused, whatever their format, because the publish screen keys its
+     slot buttons by instant. A new slot starts at its format's usual time
+     (long-form Friday 15:00 UTC, Short Wednesday 16:00 UTC) on the first
+     free day, then an hour later once the week is full at that time. Times
+     save on blur, not on change, so typing a time is one save, not several.
