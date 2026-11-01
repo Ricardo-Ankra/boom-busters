@@ -24,6 +24,7 @@ import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { saveSettings } from './actions'
 import { updateChannelAction } from './channel-actions'
 import { ChannelTab, type ChannelPatch, type ChannelView } from './channel-tab'
+import { ScheduleSlotsCard } from './schedule-slots-card'
 
 /**
  * Loaded on demand: the specimen carries @remotion/player and the whole
@@ -460,31 +461,10 @@ function PublishingTab({ settings, saving, commit }: TabProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Default schedule slots</CardTitle>
-          <CardDescription>
-            Stored as UTC; the calendar renders them in your timezone.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {settings.publish.defaultScheduleSlots.map((slot, index) => (
-            <div
-              key={`${slot.kind}-${slot.weekday}-${slot.timeUtc}-${index}`}
-              className="flex items-center gap-3 text-[14px]"
-            >
-              <span className="w-20 text-[var(--color-text-secondary)]">{slot.kind}</span>
-              <span className="w-28">{WEEKDAYS[slot.weekday]}</span>
-              <span className="font-mono tabular-nums">{slot.timeUtc} UTC</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <ScheduleSlotsCard settings={settings} saving={saving} commit={commit} />
     </div>
   )
 }
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 function ConnectionsTab({
   youtubeConnection,
