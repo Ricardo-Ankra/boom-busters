@@ -98,6 +98,7 @@ function titleSearchRules(
           `- Title shapes that won on this subject, for their shape only, never their words or figures: ${patterns}.`,
         ]
       : []),
+    '- List the titles best first: the strongest title, the one most likely to be searched and clicked, comes first.',
     ...(keyword || subject
       ? [
           `- At least half the titles contain ${[keyword, subject].filter(Boolean).join(' or ')} as people search it; any figure still comes only from the claims.`,

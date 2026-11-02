@@ -30,9 +30,11 @@ import {
   DEFAULT_WORKSPACE_SETTINGS,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
+  PublishDraftSchema,
   resolveBrandKit,
 } from '@boom-busters/schemas'
 import type { SearchBrief, Timeline } from '@boom-busters/schemas'
+import type * as DbModule from '@boom-busters/db'
 import type * as YoutubeLib from '@/lib/youtube'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
@@ -69,6 +71,17 @@ vi.mock('@/lib/youtube', async (importOriginal) => ({
   refreshAccessToken: youtube.refreshAccessToken,
 }))
 const callLlm = vi.hoisted(() => vi.fn())
+const credentialSeam = vi.hoisted(() => ({ fail: false, message: 'the credential store is down' }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const original = await importOriginal<typeof DbModule>()
+  return {
+    ...original,
+    vidiqCredential: (...args: Parameters<typeof original.vidiqCredential>) => {
+      if (credentialSeam.fail) throw new Error(credentialSeam.message)
+      return original.vidiqCredential(...args)
+    },
+  }
+})
 vi.mock('@/lib/llm', () => ({ callLlm }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -617,6 +630,8 @@ describeDb('the search brief in titles, description and tags', () => {
   })
 
   afterEach(async () => {
+    credentialSeam.fail = false
+    credentialSeam.message = 'the credential store is down'
     await setBrief(null)
     vi.unstubAllEnvs()
   })
@@ -736,6 +751,77 @@ describeDb('the search brief in titles, description and tags', () => {
         ok: false,
         error: 'Every title option is already scored.',
       })
+    })
+
+    it('keeps the titles with a one-line note that fits the draft when VidIQ fails with a huge message', async () => {
+      await setBrief(BRIEF)
+      credentialSeam.fail = true
+      credentialSeam.message = 'HTTP 502 ' + 'upstream\ntrace '.repeat(200)
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const record = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      const parsed = PublishDraftSchema.safeParse(record?.metadata)
+      expect(parsed.success).toBe(true)
+      if (!parsed.success) return
+      expect(parsed.data.titleOptions.length).toBeGreaterThan(3)
+      expect(parsed.data.titleScores).toEqual({})
+      expect(parsed.data.titleScoreNote).toMatch(/^VidIQ did not score the titles: HTTP 502/)
+      expect(parsed.data.titleScoreNote).not.toContain('\n')
+      expect(parsed.data.titleScoreNote.length).toBeLessThanOrEqual(480)
+    })
+
+    it('keeps the titles with a note when the credential read itself fails', async () => {
+      await setBrief(BRIEF)
+      credentialSeam.fail = true
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      expect((stored['titleOptions'] as string[]).length).toBeGreaterThan(3)
+      expect(stored['titleScores']).toEqual({})
+      expect(stored['titleScoreNote']).toBe(
+        'VidIQ did not score the titles: the credential store is down',
+      )
+    })
+
+    it('buys one score for titles that differ only in case, and gives the copy the same score', async () => {
+      await setBrief(BRIEF)
+      await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+      await updatePublishRecord(db, record.id, {
+        metadata: { titleOptions: ['Same title here', 'SAME TITLE HERE', 'Other title here'] },
+      })
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      expect(await db.select().from(vidiqCredits)).toHaveLength(2)
+      const scores = (await draft())['titleScores'] as Record<string, number | null>
+      expect(Object.keys(scores).sort()).toEqual(
+        ['Other title here', 'SAME TITLE HERE', 'Same title here'].sort(),
+      )
+      expect(scores['SAME TITLE HERE']).toBe(scores['Same title here'])
+    })
+
+    it('Score all refuses a Short, and a project with no brief, before any call', async () => {
+      const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+      const chapter = await saveChapter(db, {
+        scriptId: script.id,
+        index: 0,
+        title: 'The audit',
+        contentMd: 'EY refused to sign the accounts.',
+        estRuntimeSec: 12,
+      })
+      const short = await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Nine days',
+        segmentRef: { chapterId: chapter.id, fromParagraph: 0, toParagraph: 0 },
+      })
+      await setBrief(BRIEF)
+      expect(await scoreAllTitlesAction('short', short.id)).toEqual({
+        ok: false,
+        error: "Only the full film's titles are scored.",
+      })
+      await setBrief(null)
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: 'This project has no search brief, so its titles are not scored.',
+      })
+      expect(await db.select().from(vidiqCredits)).toHaveLength(0)
     })
 
     it('Score all refuses before any call when the rest would pass the cap', async () => {

@@ -810,7 +810,7 @@ function ItemEditor({
             <p className="text-[13px] text-[var(--color-warning)]">{record.titleScoreNote}</p>
           ) : null}
 
-          {model.hasSearchBrief && unscoredTitles > 0 ? (
+          {isMaster && model.hasSearchBrief && unscoredTitles > 0 ? (
             <ConfirmButton
               label={`Score all titles (about ${unscoredTitles * model.titleScoreCredits} credits)`}
               confirmLabel="Score them"

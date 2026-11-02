@@ -35,6 +35,7 @@ import {
   PublishMetadataSchema,
   splitParagraphs,
   TeaserScriptSchema,
+  searchBriefLine,
   UlidSchema,
 } from '@boom-busters/schemas'
 import {
@@ -393,17 +394,30 @@ async function scoreTitleList(input: {
   projectId: string
   titles: readonly string[]
   type: 'long' | 'short'
+  /** Skip silently when VidIQ has no key (the automatic scoring); Score all reports it instead. */
+  skipWithoutKey?: boolean
 }): Promise<{ scores: Record<string, number | null>; note: string }> {
   const scores: Record<string, number | null> = {}
-  if (input.titles.length === 0) return { scores, note: '' }
+  // One purchase per title, whatever its case: a duplicate shares the first one's score.
+  const first = new Map<string, string>()
+  for (const title of input.titles) {
+    if (!first.has(title.toLowerCase())) first.set(title.toLowerCase(), title)
+  }
+  const distinct = [...first.values()]
+  if (distinct.length === 0) return { scores, note: '' }
   const cost = VIDIQ_CREDIT_COST.scoreTitle
+  // Kept to what a draft may store, on one line: a longer note would make the whole draft unreadable.
+  const noteOf = (text: string): string => searchBriefLine(text, 480)
   try {
-    const budget = await checkVidiqBudget(cost * input.titles.length)
-    if (!budget.ok) return { scores, note: `VidIQ did not score the titles: ${budget.error}` }
+    if (input.skipWithoutKey && !(await vidiqAvailable())) return { scores, note: '' }
+    const budget = await checkVidiqBudget(cost * distinct.length)
+    if (!budget.ok) {
+      return { scores, note: noteOf(`VidIQ did not score the titles: ${budget.error}`) }
+    }
     // The channel's own YouTube id sharpens the score; a channel not yet connected is scored without it.
     const connection = await channelYoutubeConnection(db, input.channelId)
     const youtubeChannelId = connection?.youtubeChannelId ?? undefined
-    for (const title of input.titles) {
+    for (const title of distinct) {
       const call = await spendVidiq(
         {
           channelId: input.channelId,
@@ -421,16 +435,19 @@ async function scoreTitleList(input: {
       )
       scores[title] = call.data.score
     }
+    for (const title of input.titles)
+      scores[title] = scores[first.get(title.toLowerCase())!] ?? null
     return { scores, note: '' }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     const done = Object.keys(scores).length
     return {
       scores,
-      note:
+      note: noteOf(
         done > 0
-          ? `VidIQ scored ${done} of ${input.titles.length} titles, then stopped: ${reason}`
+          ? `VidIQ scored ${done} of ${distinct.length} titles, then stopped: ${reason}`
           : `VidIQ did not score the titles: ${reason}`,
+      ),
     }
   }
 }
@@ -526,8 +543,9 @@ export async function generateTitles(targetType: string, targetId: string): Prom
   // titles scored (spec 7.3). Scoring never costs the titles: a refusal keeps
   // them, with a note under the list saying why. A Short is not scored here.
   const scored =
-    type === 'master' && project.searchBrief && (await vidiqAvailable())
+    type === 'master' && project.searchBrief
       ? await scoreTitleList({
+          skipWithoutKey: true,
           channelId: bibleGate.frozen.channelId,
           projectId,
           titles: titles.slice(0, TITLES_SCORED_UP_FRONT),
@@ -558,9 +576,14 @@ export async function scoreAllTitlesAction(
   const invalid = parseTarget(targetType, targetId)
   if (invalid) return invalid
   const type = targetType as 'master' | 'short'
+  // Shorts are not scored (spec 7.3): Score all is the master's candidates only.
+  if (type !== 'master') return { ok: false, error: "Only the full film's titles are scored." }
 
   const projectId = await projectIdOf(type, targetId)
   if (!projectId) return { ok: false, error: 'Unknown target' }
+  if (!(await getProject(db, projectId))?.searchBrief) {
+    return { ok: false, error: 'This project has no search brief, so its titles are not scored.' }
+  }
 
   const record = await ensurePublishRecord(db, type, targetId)
   const blocked = editableReason(record)
@@ -576,7 +599,7 @@ export async function scoreAllTitlesAction(
     channelId: channel.channelId,
     projectId,
     titles: unscored,
-    type: type === 'master' ? 'long' : 'short',
+    type: 'long',
   })
   if (Object.keys(scored.scores).length > 0 || scored.note === '') {
     await mergeDraft(record, {

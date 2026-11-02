@@ -518,6 +518,16 @@ describe('metadata prompts with a search brief', () => {
     expect(system).not.toContain('$2')
   })
 
+  it("asks a master's titles to come best first, since the top three are the ones scored", () => {
+    const rule = 'List the titles best first'
+    const master = buildTitlesRequest({ ...titlesInput, target: 'master', searchBrief: brief() })
+    expect(master.system).toContain(rule)
+    expect(buildTitlesRequest({ ...titlesInput, target: 'master' }).system).not.toContain(rule)
+    expect(
+      buildTitlesRequest({ ...titlesInput, target: 'short', searchBrief: brief() }).system,
+    ).not.toContain(rule)
+  })
+
   it('gives a Short the target keyword only', () => {
     const { system } = buildTitlesRequest({
       ...titlesInput,

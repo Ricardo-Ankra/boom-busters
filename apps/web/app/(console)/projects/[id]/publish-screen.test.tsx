@@ -928,6 +928,11 @@ describe('the search brief on the Publish screen', () => {
     expect(scoreAllTitlesAction).toHaveBeenCalledWith('master', PROJECT)
   })
 
+  it('has no Score all on a Short, which is not scored', () => {
+    renderScreen({ hasSearchBrief: true, items: [shortItem({ record: record() })] })
+    expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
+  })
+
   it('has no Score all without a brief, or when every title is scored', () => {
     const { unmount } = renderScreen({ items: [masterItem({ record: record() })] })
     expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
