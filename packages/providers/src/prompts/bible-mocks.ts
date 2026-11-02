@@ -7,8 +7,8 @@ import type {
   ChannelBible,
   ResearchSource,
 } from '@boom-busters/schemas'
-import channelVideos from '../vidiq/fixtures/channel_videos.json'
-import outliers from '../vidiq/fixtures/outliers.json'
+import channelVideos from '../vidiq/fixtures/channel_videos.json' with { type: 'json' }
+import outliers from '../vidiq/fixtures/outliers.json' with { type: 'json' }
 import { parseChannelVideos, parseOutliers } from '../vidiq/shapes'
 
 /** Words that must never appear in a non-finance channel's bible. Matched case-insensitively. */

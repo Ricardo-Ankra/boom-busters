@@ -1,12 +1,12 @@
 import { clientOver } from './client'
 import type { VidiqCaller, VidiqClient } from './client'
-import balance from './fixtures/balance.json'
+import balance from './fixtures/balance.json' with { type: 'json' }
 import { KEYWORD_RESEARCH_MARKDOWN } from './fixtures/keyword-research'
-import channelVideos from './fixtures/channel_videos.json'
-import getVideosByIds from './fixtures/get_videos_by_ids.json'
-import outliers from './fixtures/outliers.json'
-import scoreTitle from './fixtures/score_title.json'
-import videoTranscript from './fixtures/video_transcript.json'
+import channelVideos from './fixtures/channel_videos.json' with { type: 'json' }
+import getVideosByIds from './fixtures/get_videos_by_ids.json' with { type: 'json' }
+import outliers from './fixtures/outliers.json' with { type: 'json' }
+import scoreTitle from './fixtures/score_title.json' with { type: 'json' }
+import videoTranscript from './fixtures/video_transcript.json' with { type: 'json' }
 import type { VidiqRawResult, VidiqTool } from './shapes'
 
 /**
