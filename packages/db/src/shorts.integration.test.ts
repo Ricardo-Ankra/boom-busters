@@ -4,7 +4,14 @@ import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import { cases, projects, scripts } from './schema'
-import { getShort, insertShort, latestShortsCandidates, listShorts, updateShort } from './shorts'
+import {
+  getShort,
+  insertShort,
+  latestShortsCandidates,
+  listShorts,
+  shortForPoint,
+  updateShort,
+} from './shorts'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -102,5 +109,47 @@ suite('shorts bookkeeping', () => {
 
   it('a project with no script has no candidates, not an error', async () => {
     expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([])
+  })
+
+  it('a point Short round-trips its five point columns and is found by point id', async () => {
+    const pointId = '01HQ0000000000000000000P01'
+    const script = {
+      title: 'The audit that lied',
+      scriptVersion: 2,
+      pointId,
+      paragraphs: [
+        { phase: 'hook' as const, text: 'Nobody checked the one number.', chapterIndex: 0 },
+      ],
+    }
+    const voice = { scriptVersion: 2, paragraphs: [] }
+    const plan = { shots: [], plannedFor: { scriptVersion: 2, voiceHash: 'abc' } }
+    const fetches = { candidates: [], state: null }
+    const short = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'The audit that lied',
+      segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
+      kind: 'point',
+      pointId,
+      pointScript: script,
+    })
+    expect(short.kind).toBe('point')
+    expect(short.pointId).toBe(pointId)
+    expect(short.pointVoice).toBeNull()
+
+    await updateShort(db, short.id, {
+      pointVoice: voice,
+      pointPlan: plan,
+      pointFetches: fetches,
+    })
+    const stored = await getShort(db, short.id)
+    expect(stored?.pointScript).toEqual(script)
+    expect(stored?.pointVoice).toEqual(voice)
+    expect(stored?.pointPlan).toEqual(plan)
+    expect(stored?.pointFetches).toEqual(fetches)
+
+    expect((await shortForPoint(db, FIXTURE_PROJECT_ID, pointId))?.id).toBe(short.id)
+    expect(
+      await shortForPoint(db, FIXTURE_PROJECT_ID, '01HQ0000000000000000000P02'),
+    ).toBeUndefined()
   })
 })

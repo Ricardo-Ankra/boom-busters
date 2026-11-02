@@ -1,8 +1,14 @@
-import { asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { scripts, shorts } from './schema'
 import type { ShortRow } from './schema'
-import type { ShortsCandidate } from '@boom-busters/schemas'
+import type {
+  PointFetchesRecord,
+  PointPlanRecord,
+  PointScriptRecord,
+  PointVoiceRecord,
+  ShortsCandidate,
+} from '@boom-busters/schemas'
 
 /**
  * Shorts bookkeeping (build spec sections 5, 7.2 item 7). One row per Short
@@ -31,6 +37,12 @@ export async function insertShort(
     teaserScript?: Record<string, unknown>
     /** The voiced beats (decision 230); stored at build so the studio starts consistent. */
     teaserVoice?: Record<string, unknown>
+    /** 'point' rows name their talking point and carry its script (design 3.5). */
+    pointId?: string
+    pointScript?: PointScriptRecord
+    pointVoice?: PointVoiceRecord
+    pointPlan?: PointPlanRecord
+    pointFetches?: PointFetchesRecord
   },
 ): Promise<ShortRow> {
   const [row] = await db
@@ -45,6 +57,11 @@ export async function insertShort(
       ...(input.sourceTimeline !== undefined ? { sourceTimeline: input.sourceTimeline } : {}),
       ...(input.teaserScript !== undefined ? { teaserScript: input.teaserScript } : {}),
       ...(input.teaserVoice !== undefined ? { teaserVoice: input.teaserVoice } : {}),
+      ...(input.pointId !== undefined ? { pointId: input.pointId } : {}),
+      ...(input.pointScript !== undefined ? { pointScript: input.pointScript } : {}),
+      ...(input.pointVoice !== undefined ? { pointVoice: input.pointVoice } : {}),
+      ...(input.pointPlan !== undefined ? { pointPlan: input.pointPlan } : {}),
+      ...(input.pointFetches !== undefined ? { pointFetches: input.pointFetches } : {}),
     })
     .returning()
 
@@ -65,6 +82,20 @@ export async function getShort(db: Database, id: string): Promise<ShortRow | und
 export async function deleteShorts(db: Database, ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return
   await db.delete(shorts).where(inArray(shorts.id, [...ids]))
+}
+
+/** The Short built for one talking point, if any. */
+export async function shortForPoint(
+  db: Database,
+  projectId: string,
+  pointId: string,
+): Promise<ShortRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(shorts)
+    .where(and(eq(shorts.projectId, projectId), eq(shorts.pointId, pointId)))
+    .limit(1)
+  return row
 }
 
 /** All of a project's Shorts, in creation order — the Shorts screen's grid. */
@@ -96,6 +127,11 @@ export async function updateShort(
     teaserShots: Record<string, unknown>
     /** The studio's fetched new material (decision 231). */
     teaserFetches: Record<string, unknown>
+    /** A point Short's script, voice, shot plan and fetched material (design 3.5). */
+    pointScript: PointScriptRecord
+    pointVoice: PointVoiceRecord
+    pointPlan: PointPlanRecord
+    pointFetches: PointFetchesRecord
   }>,
 ): Promise<void> {
   await db

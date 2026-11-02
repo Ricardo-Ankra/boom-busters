@@ -121,7 +121,7 @@ export interface ShortCardModel {
   captions: boolean
   relatedLinkChecked: boolean
   /** An excerpt slices the master; a teaser speaks its own narration. */
-  kind: 'excerpt' | 'teaser'
+  kind: 'excerpt' | 'teaser' | 'point'
   chapterTitle: string | null
   fromParagraph: number
   toParagraph: number

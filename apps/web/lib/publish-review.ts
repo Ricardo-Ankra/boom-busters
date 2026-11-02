@@ -69,7 +69,7 @@ export interface PublishItemModel {
    * Which kind of Short this is (decision 225), so its card can tell the
    * teaser from the excerpts. Null for the master.
    */
-  shortKind: 'excerpt' | 'teaser' | null
+  shortKind: 'excerpt' | 'teaser' | 'point' | null
   durationMs: number | null
   /** Everything the runner would refuse on, said before the button exists. */
   notReadyReason: string | null

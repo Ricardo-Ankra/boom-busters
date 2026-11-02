@@ -64,6 +64,7 @@ export interface ProjectSummary {
   hasActiveRun: boolean
   /** Which visuals checkpoint the project sits at (staged-visuals design). */
   visualsPhase: 'plan' | 'board' | null
+  shortsPhase: 'points' | 'review' | null
   /** The Director's Book as stored (decision 252); parse with `DirectorsBookSchema`. */
   direction: Record<string, unknown> | null
   /** The plan-level job in flight (decision 286); parse with `VisualsJobSchema`. */
@@ -82,6 +83,7 @@ const summaryColumns = {
   inngestRunId: projects.inngestRunId,
   cancelledAt: projects.cancelledAt,
   visualsPhase: projects.visualsPhase,
+  shortsPhase: projects.shortsPhase,
   direction: projects.direction,
   visualsJob: projects.visualsJob,
   createdAt: projects.createdAt,
@@ -184,6 +186,8 @@ export async function setProjectStage(
      * project was stopped while it is plainly running.
      */
     cancelledAt?: Date | null
+    /** The Shorts stage's checkpoint; `null` clears it, omitted leaves it. */
+    shortsPhase?: 'points' | 'review' | null
   },
 ): Promise<void> {
   await db
@@ -193,6 +197,7 @@ export async function setProjectStage(
       stageStatus: next.stageStatus,
       ...(next.inngestRunId === undefined ? {} : { inngestRunId: next.inngestRunId }),
       ...(next.cancelledAt === undefined ? {} : { cancelledAt: next.cancelledAt }),
+      ...(next.shortsPhase === undefined ? {} : { shortsPhase: next.shortsPhase }),
       updatedAt: new Date(),
     })
     .where(eq(projects.id, id))
