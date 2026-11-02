@@ -20,6 +20,7 @@ import {
   toWhisperWavArgs,
   whisperArgs,
   whisperJsonToCaptions,
+  youtubeInitBody,
 } from './commands'
 
 /**
@@ -219,17 +220,7 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
         'x-upload-content-length': String(total),
         'x-upload-content-type': 'video/mp4',
       },
-      body: JSON.stringify({
-        snippet: { title: job.title, description: job.description, tags: job.tags },
-        status: {
-          privacyStatus: job.privacyStatus,
-          selfDeclaredMadeForKids: false,
-          // The altered-content label (decision 252): generated likenesses
-          // of real people are declared on upload, never left to Studio.
-          ...(job.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
-          ...(job.publishAt !== undefined ? { publishAt: job.publishAt } : {}),
-        },
-      }),
+      body: youtubeInitBody(job),
     },
   )
   if (!startResponse.ok) {

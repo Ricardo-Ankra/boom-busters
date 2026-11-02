@@ -16,6 +16,7 @@ import {
 import { beginUpload } from '@boom-busters/db'
 import {
   describeYoutubeAction,
+  FIRST_CHANNEL_ID,
   FIRST_CHANNEL_SLUG,
   mapYoutubeError,
   newId,
@@ -365,6 +366,11 @@ export const publishRunner = inngest.createFunction(
 
     const jobId = await step.run('submit-upload', async () => {
       const id = newId<'run'>()
+      // The project's frozen bible, read here and not carried from an earlier
+      // step. The first channel sends no language (its upload stays as it was); its
+      // opt-in is a one-line change to this condition when the owner asks.
+      const { channelId, bible } = await channelForProject(db, projectId)
+      const language = bible.language !== '' && channelId !== FIRST_CHANNEL_ID
       await submitMediaJob({
         kind: 'upload-youtube',
         jobId: id,
@@ -377,6 +383,10 @@ export const publishRunner = inngest.createFunction(
         tags: preflight.metadata.tags,
         privacyStatus: preflight.privacyStatus,
         ...(preflight.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
+        ...(bible.youtubeCategoryId !== null ? { categoryId: bible.youtubeCategoryId } : {}),
+        ...(language
+          ? { defaultLanguage: bible.language, defaultAudioLanguage: bible.language }
+          : {}),
         // Only a private video with a moment still ahead carries `publishAt`
         // — YouTube rejects a past one, and a public upload needs none.
         ...(preflight.privacyStatus === 'private' && preflight.scheduledAhead

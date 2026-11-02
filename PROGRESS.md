@@ -4197,6 +4197,8 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
 - [x] Task 11: categories come from the bible, Suggest cases kept for the
       first channel (decision 335).
 - [x] Task 12: every e2e spec file, the fixture proof, every package suite.
+- [x] Task 13: the YouTube upload sends the bible's category, and a second
+      channel's language; the first channel's body is byte-identical.
 - [ ] Owner actions after merge, not run by this branch (below).
 
 ### Owner actions at deploy
@@ -4232,7 +4234,12 @@ Then:
    deployment is still serving against the new schema (0039 drops
    `channels.bible`).
 6. `deploy:stacks boom-busters-broker` (the timeline schema gained
-   `identity`) and `deploy:remotion` (EndCta and Watermark changed).
+   `identity`) and `deploy:remotion` (EndCta and Watermark changed). The upload job also
+   gained `categoryId`, `defaultLanguage` and `defaultAudioLanguage`: the
+   broker parses media jobs and would drop them, and media-utils builds the
+   request, so `deploy:stacks boom-busters-media-utils` as well (first, then
+   the broker). Without them a second channel uploads with no category or
+   language, and Boom & Busters is unaffected either way.
 7. `PUT /api/inngest` after the Vercel deploy.
 
 ### Carried to branch 2
