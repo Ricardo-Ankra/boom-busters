@@ -242,6 +242,99 @@ describe('BibleTab', () => {
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { sections: ['voice', 'examples'] })
   })
 
+  it('tries again with exactly the stored units and steer, never all seven sections', async () => {
+    draftBibleAction.mockResolvedValue({ ok: true })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The drafting run could not be started',
+          startedAt: '2026-10-30T08:00:00.000Z',
+          units: [{ section: 'voice' }],
+          steer: 'more clinical',
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, {
+      sections: ['voice'],
+      steer: 'more clinical',
+    })
+  })
+
+  it('tries again for a single slot as that slot', async () => {
+    draftBibleAction.mockResolvedValue({ ok: true })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The model is down',
+          startedAt: '2026-10-30T08:00:00.000Z',
+          units: [{ section: 'examples', slotId: SLOT.id }],
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { slotId: SLOT.id })
+  })
+
+  it('offers no Try again for a failed draft job with no stored units and no errors', () => {
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The model is down',
+          startedAt: '2026-10-30T08:00:00.000Z',
+        },
+      }),
+    )
+    expect(screen.getByText('The model is down')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Redraft Look' })).toBeEnabled()
+  })
+
+  it('shows a running job with no heartbeat for thirty-one minutes as failed, with Try again', async () => {
+    draftBibleAction.mockResolvedValue({ ok: true })
+    const stale = new Date(Date.now() - 31 * 60_000).toISOString()
+    renderTab(
+      draftOf({
+        job: {
+          ...running('Voice'),
+          startedAt: stale,
+          heartbeatAt: stale,
+          units: [{ section: 'voice' }],
+        },
+      }),
+    )
+    expect(screen.getByText('The run stopped answering')).toBeInTheDocument()
+    expect(screen.queryByText('Drafting Voice')).toBeNull()
+    // Editing is open: only a live job locks the draft.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { sections: ['voice'] })
+  })
+
+  it('keeps a job started forty minutes ago running while its heartbeat is fresh', () => {
+    renderTab(
+      draftOf({
+        job: {
+          ...running('Voice'),
+          startedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+          heartbeatAt: new Date().toISOString(),
+        },
+      }),
+    )
+    expect(screen.getByText('Drafting Voice')).toBeInTheDocument()
+    expect(screen.queryByText('The run stopped answering')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+  })
+
   it('offers no Try again for a failed research run', () => {
     renderTab(
       draftOf({

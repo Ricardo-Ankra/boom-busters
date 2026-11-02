@@ -141,24 +141,21 @@ export async function startBibleResearchAction(
   const refusal = await channelWriteRefusal(channelId)
   if (refusal) return refusal
 
-  const open = await openBibleDraft(db, channelId)
-  if (open.job && jobIsRunning(open.job)) return BUSY
+  // Every refusal comes before the draft is opened, so a refused action leaves none behind.
+  const existing = await getBibleDraft(db, channelId)
+  if (existing?.job && jobIsRunning(existing.job)) return BUSY
 
   const checked = await checkResearch(channelId, inputs)
   if (!checked.ok) return checked
   const parsed = BibleDraftInputsSchema.parse(inputs)
 
+  await openBibleDraft(db, channelId)
+  const startedAt = new Date().toISOString()
   try {
     await writeBibleDraft(db, channelId, (draft) => ({
       ...draft,
       inputs: parsed,
-      job: {
-        kind: 'research',
-        state: 'running',
-        current: null,
-        error: null,
-        startedAt: new Date().toISOString(),
-      },
+      job: { kind: 'research', state: 'running', current: null, error: null, startedAt },
     }))
   } catch (error) {
     if (error instanceof BibleDraftBusyError) return BUSY
@@ -166,23 +163,25 @@ export async function startBibleResearchAction(
   }
 
   try {
-    await inngest.send(events.bibleResearchRequested.create({ channelId }))
+    await inngest.send(events.bibleResearchRequested.create({ channelId, jobStartedAt: startedAt }))
   } catch (error) {
     console.error('[bible] could not send the research run', error)
     // Nothing is running: say so, or the draft stays locked until the job goes stale.
     await writeBibleDraft(
       db,
       channelId,
-      (draft) => ({
-        ...draft,
-        job: {
-          kind: 'research',
-          state: 'failed',
-          current: null,
-          error: 'The research run could not be started',
-          startedAt: draft.job?.startedAt ?? new Date().toISOString(),
-        },
-      }),
+      (draft) =>
+        draft.job?.startedAt === startedAt
+          ? {
+              ...draft,
+              job: {
+                ...draft.job,
+                state: 'failed',
+                current: null,
+                error: 'The research run could not be started',
+              },
+            }
+          : draft,
       { allowWhileRunning: true },
     )
     return {
@@ -233,10 +232,11 @@ export async function draftBibleAction(
     if (units.length === 0) return { ok: false, error: 'Choose a section to draft' }
   }
 
-  const open = await openBibleDraft(db, channelId)
-  if (open.job && jobIsRunning(open.job)) return BUSY
+  // Every refusal comes before the draft is opened, so a refused action leaves none behind.
+  const existing = await getBibleDraft(db, channelId)
+  if (existing?.job && jobIsRunning(existing.job)) return BUSY
 
-  let inputs = open.inputs
+  let inputs = existing?.inputs ?? null
   if (request.inputs !== undefined) {
     const parsed = BibleDraftInputsSchema.safeParse(request.inputs)
     if (!parsed.success) {
@@ -250,16 +250,22 @@ export async function draftBibleAction(
   }
   if (!inputs) return { ok: false, error: 'Describe the channel first' }
 
+  await openBibleDraft(db, channelId)
+  const startedAt = new Date().toISOString()
   try {
     await writeBibleDraft(db, channelId, (draft) => ({
       ...draft,
       inputs,
+      // The units and steer stay on the job, so Try again resends exactly them.
       job: {
         kind: 'draft',
         state: 'running',
         current: null,
         error: null,
-        startedAt: new Date().toISOString(),
+        startedAt,
+        heartbeatAt: startedAt,
+        units,
+        ...(steer ? { steer } : {}),
       },
     }))
   } catch (error) {
@@ -269,7 +275,12 @@ export async function draftBibleAction(
 
   try {
     await inngest.send(
-      events.bibleDraftRequested.create({ channelId, units, ...(steer ? { steer } : {}) }),
+      events.bibleDraftRequested.create({
+        channelId,
+        units,
+        jobStartedAt: startedAt,
+        ...(steer ? { steer } : {}),
+      }),
     )
   } catch (error) {
     console.error('[bible] could not send the drafting run', error)
@@ -277,16 +288,18 @@ export async function draftBibleAction(
     await writeBibleDraft(
       db,
       channelId,
-      (draft) => ({
-        ...draft,
-        job: {
-          kind: 'draft',
-          state: 'failed',
-          current: null,
-          error: 'The drafting run could not be started',
-          startedAt: draft.job?.startedAt ?? new Date().toISOString(),
-        },
-      }),
+      (draft) =>
+        draft.job?.startedAt === startedAt
+          ? {
+              ...draft,
+              job: {
+                ...draft.job,
+                state: 'failed',
+                current: null,
+                error: 'The drafting run could not be started',
+              },
+            }
+          : draft,
       { allowWhileRunning: true },
     )
     return {

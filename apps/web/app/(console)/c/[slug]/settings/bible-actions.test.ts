@@ -213,9 +213,27 @@ describeDb('the bible research actions', () => {
     expect(inngestMock.send).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'bible/research.requested',
-        data: { channelId: FIRST_CHANNEL_ID },
+        data: { channelId: FIRST_CHANNEL_ID, jobStartedAt: expect.any(String) },
       }),
     )
+    // The run is told which job it owns.
+    const sent = (
+      inngestMock.send.mock.calls as unknown as [{ data: { jobStartedAt: string } }][]
+    )[0]![0]
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))?.job?.startedAt).toBe(sent.data.jobStartedAt)
+  })
+
+  it('leaves no draft behind when a check refuses the research', async () => {
+    await db.delete(providerCredentials)
+    await startBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+
+    await setCredential(db, 'vidiq', 'vidiq-test-key', env.SECRETS_ENCRYPTION_KEY)
+    vidiq.balance.mockResolvedValueOnce({ totalCredits: 3, renewableResetsAt: null })
+    expect((await startBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)).ok).toBe(false)
+    await startBibleResearchAction(FIRST_CHANNEL_ID, { ...INPUTS, description: '' })
+    expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+    expect(inngestMock.send).not.toHaveBeenCalled()
   })
 
   it('frees the draft when the run cannot be sent', async () => {
@@ -243,9 +261,33 @@ describeDb('the bible research actions', () => {
       expect(inngestMock.send).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'bible/draft.requested',
-          data: { channelId: FIRST_CHANNEL_ID, units: bibleDraftUnits() },
+          data: {
+            channelId: FIRST_CHANNEL_ID,
+            units: bibleDraftUnits(),
+            jobStartedAt: expect.any(String),
+          },
         }),
       )
+    })
+
+    it('stores the requested units and steer on the job, for Try again', async () => {
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS })
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({ ...draft, job: null }), {
+        allowWhileRunning: true,
+      })
+      await draftBibleAction(FIRST_CHANNEL_ID, { sections: ['voice'], steer: 'more clinical' })
+      const job = (await getBibleDraft(db, FIRST_CHANNEL_ID))?.job
+      expect(job).toMatchObject({ units: [{ section: 'voice' }], steer: 'more clinical' })
+      expect(job?.heartbeatAt).toBe(job?.startedAt)
+    })
+
+    it('leaves no draft behind when a check refuses the draft', async () => {
+      await draftBibleAction(FIRST_CHANNEL_ID, {})
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: { ...INPUTS, description: '' } })
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS, sections: [] })
+      await draftBibleAction(FIRST_CHANNEL_ID, { inputs: INPUTS, slotId: 'nope-nope' })
+      expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+      expect(inngestMock.send).not.toHaveBeenCalled()
     })
 
     it('redrafts one section with a steer, on the inputs already saved', async () => {
@@ -263,6 +305,7 @@ describeDb('the bible research actions', () => {
             channelId: FIRST_CHANNEL_ID,
             units: [{ section: 'voice' }],
             steer: 'more clinical',
+            jobStartedAt: expect.any(String),
           },
         }),
       )
@@ -282,7 +325,11 @@ describeDb('the bible research actions', () => {
       expect(await draftBibleAction(FIRST_CHANNEL_ID, { slotId })).toEqual({ ok: true })
       expect(inngestMock.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { channelId: FIRST_CHANNEL_ID, units: [{ section: 'examples', slotId }] },
+          data: {
+            channelId: FIRST_CHANNEL_ID,
+            units: [{ section: 'examples', slotId }],
+            jobStartedAt: expect.any(String),
+          },
         }),
       )
     })

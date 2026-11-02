@@ -103,14 +103,50 @@ export function BibleTab({
       'Could not start the draft',
     )
 
-  const tryAgain = () => {
+  /**
+   * What Try again resends for a draft job: exactly the units it was started
+   * with, and its steer. A job from before units were stored falls back to the
+   * sections its errors name; with neither there is nothing to resend.
+   */
+  const retryRequest = (): {
+    request: { sections: BibleSection[] } | { slotId: string }
+    steer?: string
+  } | null => {
+    const job = draft?.job
+    if (!job || job.kind !== 'draft') return null
+    const steer = job.steer
+    if (job.units && job.units.length > 0) {
+      const only = job.units.length === 1 ? job.units[0] : undefined
+      if (only && 'slotId' in only)
+        return { request: { slotId: only.slotId }, ...(steer ? { steer } : {}) }
+      const sections = new Set(job.units.map((unit) => unit.section))
+      return {
+        request: { sections: BIBLE_SECTION_ORDER.filter((s) => sections.has(s)) },
+        ...(steer ? { steer } : {}),
+      }
+    }
     const failed = new Set<BibleSection>()
     for (const key of Object.keys(draft?.errors ?? {})) {
       const section = errorSection(key)
       if (section) failed.add(section)
     }
-    return redraft(
-      failed.size > 0 ? BIBLE_SECTION_ORDER.filter((s) => failed.has(s)) : [...BIBLE_SECTION_ORDER],
+    if (failed.size === 0) return null
+    return {
+      request: { sections: BIBLE_SECTION_ORDER.filter((s) => failed.has(s)) },
+      ...(steer ? { steer } : {}),
+    }
+  }
+
+  const tryAgain = () => {
+    const retry = retryRequest()
+    if (!retry) return Promise.resolve(false)
+    return act(
+      () =>
+        draftBibleAction(channel.id, {
+          ...retry.request,
+          ...(retry.steer ? { steer: retry.steer } : {}),
+        }),
+      'Could not start the draft',
     )
   }
 
@@ -136,6 +172,9 @@ export function BibleTab({
   }
 
   const job = draft?.job ?? null
+  // A job still marked running that nothing has touched for thirty minutes: its run is gone.
+  const stale = job !== null && job.state === 'running' && !running
+  const canRetry = job !== null && (job.kind === 'research' || retryRequest() !== null)
 
   return (
     <div className="flex flex-col gap-3">
@@ -171,16 +210,20 @@ export function BibleTab({
         </p>
       ) : null}
 
-      {job && job.state === 'failed' ? (
+      {job && (job.state === 'failed' || stale) ? (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-[13px]">
-          <span className="text-[var(--color-danger)]">{job.error ?? 'The run failed'}</span>
-          <Button
-            variant="outline"
-            disabled={locked}
-            onClick={() => (job.kind === 'draft' ? void tryAgain() : setRetryToken((n) => n + 1))}
-          >
-            Try again
-          </Button>
+          <span className="text-[var(--color-danger)]">
+            {stale ? 'The run stopped answering' : (job.error ?? 'The run failed')}
+          </span>
+          {canRetry ? (
+            <Button
+              variant="outline"
+              disabled={locked}
+              onClick={() => (job.kind === 'draft' ? void tryAgain() : setRetryToken((n) => n + 1))}
+            >
+              Try again
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
