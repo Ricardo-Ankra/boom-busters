@@ -467,6 +467,88 @@ describe('BibleTab', () => {
     })
   })
 
+  describe('adding and removing hooks, openings and titles', () => {
+    const entry = (text: string) => ({ text, note: '', drawnFrom: [] })
+    const withLists = (hooks: number, titles = 0) =>
+      draftOf({
+        bible: {
+          ...FIRST_CHANNEL_BIBLE,
+          hooks: Array.from({ length: hooks }, (_, i) => entry(`hook ${i + 1}`)),
+          openings: [entry('opening one')],
+          titles: Array.from({ length: titles }, (_, i) => entry(`title ${i + 1}`)),
+        },
+      })
+
+    it('adds a blank entry to a list and sends the whole updated list on Done', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(withLists(1))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Hooks, openings and titles' }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add hook' }))
+      const second = screen.getByLabelText('Hooks 2 text')
+      await userEvent.type(second, 'a new hook')
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Done editing Hooks, openings and titles' }),
+      )
+
+      const [, section, patch] = editBibleSectionAction.mock.calls[0]!
+      expect(section).toBe('hooks')
+      expect((patch as { hooks: { text: string }[] }).hooks.map((h) => h.text)).toEqual([
+        'hook 1',
+        'a new hook',
+      ])
+    })
+
+    it('removes one entry, so a flagged one can be dropped, and sends the rest', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(withLists(3))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Hooks, openings and titles' }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Remove hook 2' }))
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Done editing Hooks, openings and titles' }),
+      )
+
+      const [, , patch] = editBibleSectionAction.mock.calls[0]!
+      expect((patch as { hooks: { text: string }[] }).hooks.map((h) => h.text)).toEqual([
+        'hook 1',
+        'hook 3',
+      ])
+    })
+
+    it('can remove the last entry of a list, and sends an empty list', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(withLists(1))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Hooks, openings and titles' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Remove opening 1' }))
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Done editing Hooks, openings and titles' }),
+      )
+      const [, , patch] = editBibleSectionAction.mock.calls[0]!
+      expect((patch as { openings: unknown[] }).openings).toEqual([])
+    })
+
+    it('disables Add at twelve entries and nowhere else', async () => {
+      renderTab(withLists(12, 2))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Hooks, openings and titles' }))
+      expect(screen.getByRole('button', { name: 'Add hook' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Add opening' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Add title' })).toBeEnabled()
+    })
+
+    it('holds Add and Remove once a run starts under an open editor', async () => {
+      const draft = withLists(2)
+      const { rerender } = renderTab(draft)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Hooks, openings and titles' }))
+      expect(screen.getByRole('button', { name: 'Add hook' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Remove hook 1' })).toBeEnabled()
+
+      rerender(tabElement({ ...draft, job: running('Voice') }))
+      expect(screen.getByRole('button', { name: 'Add hook' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Remove hook 1' })).toBeDisabled()
+    })
+  })
+
   it('shows each entry with its note and where it was drawn from, read-only', () => {
     renderTab(
       draftOf({

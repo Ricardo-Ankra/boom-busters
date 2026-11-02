@@ -27,6 +27,8 @@ interface FieldMeta {
   label: string
   hint?: string
   kind: Kind
+  /** An entries list's one-entry name, for its Add and Remove buttons. */
+  singular?: string
 }
 
 const TEXT_META = Object.fromEntries(
@@ -66,9 +68,9 @@ const FIELD_META: Partial<Record<keyof ChannelBible, FieldMeta>> = {
     kind: 'text',
   },
   examples: { label: 'Examples', kind: 'examples' },
-  hooks: { label: 'Hooks', kind: 'entries' },
-  openings: { label: 'Openings', kind: 'entries' },
-  titles: { label: 'Titles', kind: 'entries' },
+  hooks: { label: 'Hooks', kind: 'entries', singular: 'hook' },
+  openings: { label: 'Openings', kind: 'entries', singular: 'opening' },
+  titles: { label: 'Titles', kind: 'entries', singular: 'title' },
   language: { label: 'Language', hint: 'A language code such as en.', kind: 'text' },
   country: { label: 'Country', hint: 'A two-letter code such as US.', kind: 'text' },
   keywordContext: {
@@ -147,6 +149,9 @@ const textareaClass =
   'px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ' +
   'disabled:cursor-not-allowed disabled:opacity-50'
+
+/** The most hooks, openings or titles a bible holds (the schema's limit). */
+const MAX_ENTRIES = 12
 
 const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
 
@@ -462,8 +467,33 @@ export function SectionEditor({
                 />
                 <Source entry={entry} />
                 <FlagNote flags={flags} path={`${key}.${i}`} />
+                <div>
+                  <Button
+                    variant="ghost"
+                    disabled={disabled}
+                    aria-label={`Remove ${meta.singular} ${i + 1}`}
+                    onClick={() =>
+                      onChange(
+                        key,
+                        entries.filter((_, at) => at !== i),
+                      )
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
               </div>
             ))}
+            <div>
+              <Button
+                variant="outline"
+                disabled={disabled || entries.length >= MAX_ENTRIES}
+                aria-label={`Add ${meta.singular}`}
+                onClick={() => onChange(key, [...entries, { text: '', note: '', drawnFrom: [] }])}
+              >
+                Add
+              </Button>
+            </div>
           </fieldset>
         )
       })}
