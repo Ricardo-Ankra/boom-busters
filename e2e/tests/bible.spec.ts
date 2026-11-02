@@ -158,6 +158,8 @@ async function resetSecondChannel(): Promise<void> {
     const slug = SECOND_SLUG
     await connection.sql`delete from projects where channel_id in (select id from channels where slug = ${slug})`
     await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+    // vidiq_credits.channel_id restricts, so the ledger rows go before the channel.
+    await connection.sql`delete from vidiq_credits where channel_id in (select id from channels where slug = ${slug})`
     await connection.sql`delete from bible_drafts where channel_id in (select id from channels where slug = ${slug})`
     await connection.sql`update channels set current_bible_id = null where slug = ${slug}`
     await connection.sql`delete from channel_bibles where channel_id in (select id from channels where slug = ${slug})`
@@ -186,6 +188,11 @@ async function openHistory(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await signIn(page)
+})
+
+// A CI retry reruns the serial group: start it from the state global setup leaves.
+test.beforeAll(async () => {
+  await resetSecondChannel()
 })
 
 test.afterAll(async () => {

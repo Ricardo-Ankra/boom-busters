@@ -220,6 +220,8 @@ export default async function globalSetup(): Promise<void> {
     for (const slug of ['e2e-second', 'third-channel']) {
       await connection.sql`delete from projects where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+      // vidiq_credits.channel_id restricts, so the ledger rows go before the channel.
+      await connection.sql`delete from vidiq_credits where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from bible_drafts where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`update channels set current_bible_id = null where slug = ${slug}`
       await connection.sql`delete from channel_bibles where channel_id in (select id from channels where slug = ${slug})`
