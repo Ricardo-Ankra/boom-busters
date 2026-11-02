@@ -130,6 +130,24 @@ export async function bibleVersionById(db: Database, id: string): Promise<BibleV
   return parsed(row)
 }
 
+/**
+ * Lock the channel's row for the rest of the transaction and return the
+ * version it currently runs on. A save and a restore both take this first, so
+ * they serialise, and a draft's base is compared against the real current one.
+ */
+export async function lockChannelBible(
+  tx: BibleTransaction,
+  channelId: string,
+): Promise<{ currentBibleId: string | null }> {
+  const [locked] = await tx
+    .select({ currentBibleId: channels.currentBibleId })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .for('update')
+  if (!locked) throw new ChannelNotFoundError(channelId)
+  return locked
+}
+
 /** The channel has a working draft, and a restore would leave it pointing at a stale base. */
 export class BibleDraftExistsError extends Error {
   constructor(channelId: string) {
@@ -150,6 +168,7 @@ export async function restoreBibleVersion(
   versionId: string,
 ): Promise<BibleVersionRow> {
   return db.transaction(async (tx) => {
+    await lockChannelBible(tx, channelId)
     const [version] = await tx
       .select()
       .from(channelBibles)

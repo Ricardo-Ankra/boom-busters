@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   BibleDraftBlockedError,
   BibleDraftBusyError,
+  BibleDraftStaleError,
   discardBibleDraft,
   getBibleDraft,
   openBibleDraft,
@@ -14,6 +15,7 @@ import {
   BibleDraftExistsError,
   bibleVersionById,
   currentBible,
+  lockChannelBible,
   restoreBibleVersion,
   saveBibleVersion,
 } from './bibles'
@@ -158,6 +160,44 @@ suite('bible drafts', () => {
     await expect(restoreBibleVersion(db, channelId, v1.id)).rejects.toBeInstanceOf(
       BibleDraftExistsError,
     )
+  })
+
+  it('refuses to save a draft whose base is no longer the current version', async () => {
+    const v1 = await currentBible(db, channelId)
+    await saveBibleVersion(db, channelId, { ...FIRST_CHANNEL_BIBLE, subject: 'ships' }, 'Edit')
+    const v2 = await currentBible(db, channelId)
+    // A draft opened as the restore lands: it was based on the version before it.
+    await openBibleDraft(db, channelId)
+    await db.update(bibleDrafts).set({ baseBibleId: v1.id }).where(eq(bibleDrafts.channelId, channelId))
+    const refused = await saveBibleDraft(db, channelId, 'x').catch((e: unknown) => e)
+    expect(refused).toBeInstanceOf(BibleDraftStaleError)
+    expect((refused as Error).message).toMatch(/discard this draft and redraft/i)
+    // Nothing was written: the current version is still v2 and the draft is still there.
+    expect((await currentBible(db, channelId)).id).toBe(v2.id)
+    expect(await getBibleDraft(db, channelId)).not.toBeNull()
+  })
+
+  it('a restore waits for the channel lock another writer holds', async () => {
+    const v1 = await currentBible(db, channelId)
+    await saveBibleVersion(db, channelId, { ...FIRST_CHANNEL_BIBLE, subject: 'ships' }, 'Edit')
+    let restored = false
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const holder = db.transaction(async (tx) => {
+      await lockChannelBible(tx, channelId)
+      await held
+    })
+    // Give the holder time to take the lock.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const restore = restoreBibleVersion(db, channelId, v1.id).then((row) => {
+      restored = true
+      return row
+    })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(restored).toBe(false)
+    release()
+    await holder
+    expect((await restore).version).toBe(3)
   })
 
   it('moves a project to a newer version of its channel, never another channel', async () => {

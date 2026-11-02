@@ -8,7 +8,7 @@ import {
 import type { BibleDraft } from '@boom-busters/schemas'
 import { eq } from 'drizzle-orm'
 import type { Database } from './client'
-import { appendBibleVersion, currentBible } from './bibles'
+import { appendBibleVersion, currentBible, lockChannelBible } from './bibles'
 import type { BibleTransaction } from './bibles'
 import { bibleDrafts } from './schema'
 import type { BibleDraftRow, BibleVersionRow } from './schema'
@@ -23,6 +23,16 @@ export class BibleDraftBusyError extends Error {
   constructor(channelId: string) {
     super(`the bible draft for channel ${channelId} is being drafted; wait for it to finish`)
     this.name = 'BibleDraftBusyError'
+  }
+}
+
+/** The channel's bible moved on (a restore or another save) after this draft was opened. */
+export class BibleDraftStaleError extends Error {
+  constructor() {
+    super(
+      'The bible changed since this draft was opened (a version was restored or saved). Discard this draft and redraft it from the current version.',
+    )
+    this.name = 'BibleDraftStaleError'
   }
 }
 
@@ -159,8 +169,10 @@ export async function saveBibleDraft(
   note: string,
 ): Promise<BibleVersionRow> {
   return db.transaction(async (tx) => {
+    const channel = await lockChannelBible(tx, channelId)
     const draft = await lockDraft(tx, channelId)
     if (!draft) throw new Error(`channel ${channelId} has no draft to save`)
+    if (draft.baseBibleId !== channel.currentBibleId) throw new BibleDraftStaleError()
     if (draft.job && jobIsRunning(draft.job)) throw new BibleDraftBusyError(channelId)
     const blockers = bibleSaveBlockers(draft)
     if (blockers.length > 0) throw new BibleDraftBlockedError(blockers)

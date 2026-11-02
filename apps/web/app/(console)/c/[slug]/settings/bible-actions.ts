@@ -4,6 +4,7 @@ import {
   BibleDraftBlockedError,
   BibleDraftBusyError,
   BibleDraftExistsError,
+  BibleDraftStaleError,
   bibleVersionById,
   discardBibleDraft,
   getBibleDraft,
@@ -468,6 +469,7 @@ export async function saveBibleAction(
     if (error instanceof BibleDraftBlockedError) {
       return { ok: false, error: 'The draft cannot be saved yet', blockers: error.blockers }
     }
+    if (error instanceof BibleDraftStaleError) return { ok: false, error: error.message }
     if (error instanceof BibleDraftBusyError) return WAIT
     throw error
   }
