@@ -24,11 +24,13 @@ describe('GRADE_FILTER (decision 287)', () => {
  * out too — this suite is about the wrapper around them, not their own
  * markup, which the snapshot suite already renders for real.
  */
+const frameState = vi.hoisted(() => ({ frame: 0 }))
+
 vi.mock('remotion', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
-    useCurrentFrame: () => 0,
+    useCurrentFrame: () => frameState.frame,
     useVideoConfig: () => ({ fps: 30, width: 1920, height: 1080, durationInFrames: 120 }),
   }
 })
@@ -139,5 +141,32 @@ describe('SlotView dispatch (decision 295)', () => {
     const markup = renderToStaticMarkup(<SlotView slot={GRAPHIC_CODE_SLOT} brand={FIXTURE_BRAND} />)
     expect(markup).toContain('data-testid="graphic-code"')
     expect(markup).not.toContain('filter:')
+  })
+})
+
+describe('SlotView punch wrapper (playbook Shorts, spec 4.5)', () => {
+  const PUNCH_SLOT: TimelineSlot = {
+    ...IMAGE_SLOT,
+    motion: { kind: 'punch', scale: 1.15, durationMs: 250 },
+  }
+  const scaleOf = (markup: string) => /transform:scale\(([\d.]+)\)/.exec(markup)?.[1]
+
+  it('starts at scale 1 at the cut and holds the punch scale from 250 ms on', () => {
+    frameState.frame = 0
+    expect(
+      scaleOf(renderToStaticMarkup(<SlotView slot={PUNCH_SLOT} brand={FIXTURE_BRAND} />)),
+    ).toBe('1')
+    frameState.frame = 9
+    expect(
+      scaleOf(renderToStaticMarkup(<SlotView slot={PUNCH_SLOT} brand={FIXTURE_BRAND} />)),
+    ).toBe('1.15')
+    frameState.frame = 0
+  })
+
+  it('adds no scaling container to a slot without a punch', () => {
+    frameState.frame = 9
+    const markup = renderToStaticMarkup(<SlotView slot={IMAGE_SLOT} brand={FIXTURE_BRAND} />)
+    expect(scaleOf(markup)).toBeUndefined()
+    frameState.frame = 0
   })
 })

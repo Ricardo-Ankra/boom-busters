@@ -5,12 +5,12 @@ import { frameScale, typeStyle, withAlpha } from './brand'
 
 /**
  * The badge's box on a 1080 x 1920 frame (scale 1): centred horizontally,
- * bottom edge at y 1500, inside the Short safe area (bottom 1540).
+ * bottom edge at y 1300, above the related-arrow label (y 1390 to 1500) and inside the Short safe area (bottom 1540).
  */
 export const SUBSCRIBE_BADGE_LAYOUT = {
   width: 720,
   height: 150,
-  bottom: 1500,
+  bottom: 1300,
   frameWidth: 1080,
 } as const
 

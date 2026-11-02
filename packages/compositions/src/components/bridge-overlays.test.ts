@@ -26,6 +26,8 @@ describe('the bridge overlays sit inside the Short safe area', () => {
     expect(left).toBeGreaterThanOrEqual(x0)
     expect(left + width).toBeLessThanOrEqual(x1)
     expect(bottom).toBeLessThanOrEqual(y1)
+    // Both overlays run together in a bridge: the badge must clear the arrow label.
+    expect(bottom).toBeLessThanOrEqual(RELATED_ARROW_LAYOUT.label.y)
     expect(bottom - height).toBeGreaterThanOrEqual(y0)
   })
 })

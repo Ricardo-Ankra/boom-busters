@@ -30,6 +30,7 @@ import {
   FIXTURE_BRAND,
   FIXTURE_CAPTION_WORDS,
   FIXTURE_MAP_LOCATIONS,
+  FIXTURE_SHORT_BRIDGE_TIMELINE,
   FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
@@ -313,6 +314,14 @@ export function Root() {
           width: props.timeline.width,
           height: props.timeline.height,
         })}
+      />
+
+      <Composition
+        id="ShortBridgeVertical"
+        component={ShortVertical}
+        durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_BRIDGE_TIMELINE), FPS)}
+        {...TALL}
+        defaultProps={{ timeline: FIXTURE_SHORT_BRIDGE_TIMELINE }}
       />
 
       <Composition

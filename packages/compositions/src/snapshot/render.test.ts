@@ -105,6 +105,9 @@ const CASES: SnapshotCase[] = [
   { id: 'PunchImageFixture', frame: 9, maxDiffRatio: 0.06 },
   { id: 'RelatedArrowFixture', frame: 30, maxDiffRatio: 0.06 },
   { id: 'SubscribeBadgeFixture', frame: 30, maxDiffRatio: 0.06 },
+  // The real mount path: ShortVertical over the bridge timeline. Frame 120 is
+  // 4 s: the punched, left-cropped still with both overlays (3 to 5 s) up.
+  { id: 'ShortBridgeVertical', frame: 120, maxDiffRatio: 0.06 },
   // The channel mark in the corner (decision 268): an image, not the wordmark.
   { id: 'WatermarkLogo', frame: 10, maxDiffRatio: 0.03 },
 ]
