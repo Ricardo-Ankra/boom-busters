@@ -30,6 +30,7 @@ import { recordRepairs, recordStop } from '@/lib/notices'
 import { proposeTalkingPointsWith } from '@/lib/point-answers'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
 
 /**
@@ -157,6 +158,8 @@ export const talkingPointsRunner = inngest.createFunction(
       const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
       const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
 
+      // Read here, inside the step, before any mock branch: an incomplete frozen bible sends nothing.
+      const frozen = requireCompleteBible(await channelForProject(db, projectId))
       let drafts: TalkingPointDraft[]
       let repairs: Repair[] = []
       if (mockProvidersEnabled()) {
@@ -177,7 +180,7 @@ export const talkingPointsRunner = inngest.createFunction(
           const answered = await proposeTalkingPointsWith(
             completeForProject(projectId),
             {
-              bible: await channelForProject(db, projectId),
+              bible: frozen,
               caseTitle: project.title,
               chapters: chapterSources,
               claims: (await scriptableClaims(db, projectId)).map((claim) => claim.text),

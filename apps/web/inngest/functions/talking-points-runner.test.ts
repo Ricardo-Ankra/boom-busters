@@ -2,6 +2,9 @@
 
 import {
   chapters,
+  createCase,
+  createChannel,
+  createProjectFromCase,
   FIXTURE_PROJECT_ID,
   getProject,
   insertTalkingPointSet,
@@ -15,10 +18,17 @@ import {
   truncateRunMirror,
 } from '@boom-busters/db'
 import { mockTalkingPoints } from '@boom-busters/providers'
-import { BudgetExceededError, noticesFor, talkingPointSetIssues } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  noticesFor,
+  talkingPointSetIssues,
+} from '@boom-busters/schemas'
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { talkingPointsRunner } from './talking-points-runner'
@@ -51,6 +61,19 @@ const eventFor = (
 ): [{ name: string; data: Record<string, unknown> }] => [
   { name: 'shorts/points.requested', data: { projectId: FIXTURE_PROJECT_ID, ...data } },
 ]
+
+/** A project frozen to an empty bible, on its own channel. */
+async function blankProject(): Promise<string> {
+  const channel = await createChannel(db, {
+    name: 'Blank channel',
+    handle: null,
+    slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+    settings: DEFAULT_SETTINGS,
+    bible: EMPTY_BIBLE,
+  })
+  const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+  return (await createProjectFromCase(db, { caseId: kase.id, title: 'T' })).id
+}
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/
 
@@ -113,6 +136,37 @@ describeDb('talking-points-runner', () => {
       shortsPhase: 'points',
     })
     expect(callLlm).not.toHaveBeenCalled()
+  })
+
+  it('refuses a project frozen to an incomplete bible before any prompt is built', async () => {
+    const blank = await blankProject()
+    const [script] = await db
+      .insert(scripts)
+      .values({ projectId: blank, version: 1, outline: null })
+      .returning({ id: scripts.id })
+    await db.insert(chapters).values(
+      CHAPTER_ROWS.map((c, index) => ({
+        ...c,
+        id: `01HQ0000000000000000000B${index}1`,
+        scriptId: script!.id,
+      })),
+    )
+
+    for (const stub of ['1', '']) {
+      vi.stubEnv('MOCK_PROVIDERS', stub)
+      const { error } = await engine.execute({
+        events: [
+          {
+            name: 'shorts/points.requested',
+            data: { projectId: blank, mode: 'all', note: null },
+          },
+        ],
+      })
+      expect(error).toMatchObject({ message: BIBLE_INCOMPLETE_MESSAGE })
+    }
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(await latestTalkingPointSet(db, blank)).toBeUndefined()
+    vi.unstubAllEnvs()
   })
 
   it('redoes one point as version 2, changing only that point and keeping its order', async () => {

@@ -3,6 +3,9 @@
 import {
   approveTalkingPointSet,
   chapters,
+  createCase,
+  createChannel,
+  createProjectFromCase,
   FIXTURE_PROJECT_ID,
   getProject,
   insertShort,
@@ -29,6 +32,7 @@ import { truncateLedger } from '@boom-busters/cost'
 import { mockImageGen, mockPointScript, mockTalkingPoints } from '@boom-busters/providers'
 import {
   DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   noticesFor,
   PointFetchesRecordSchema,
@@ -45,6 +49,7 @@ import type * as Tts from '@/lib/tts'
 import { POINT_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { inngest } from '../client'
@@ -221,6 +226,57 @@ describeDb('point-short-runner', () => {
       })),
     )
     await insertTimeline(db, { projectId: FIXTURE_PROJECT_ID, json: canonicalMaster(), s3Key: '' })
+  })
+
+  it('refuses a project frozen to an incomplete bible before any script prompt is built', async () => {
+    const channel = await createChannel(db, {
+      name: 'Blank channel',
+      handle: null,
+      slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+    const blank = (await createProjectFromCase(db, { caseId: kase.id, title: 'T' })).id
+    const [script] = await db
+      .insert(scripts)
+      .values({ projectId: blank, version: 1 })
+      .returning({ id: scripts.id })
+    await db.insert(chapters).values(
+      CHAPTER_IDS.map((_, index) => ({
+        id: `01HQ0000000000000000000B${index}1`,
+        scriptId: script!.id,
+        index,
+        title: `Chapter ${index + 1}`,
+        contentMd: CHAPTER_MD,
+      })),
+    )
+    await insertTimeline(db, { projectId: blank, json: canonicalMaster(), s3Key: '' })
+    const [first] = (await storeApprovedSet()).slice(0, 1)
+    const set = await insertTalkingPointSet(db, {
+      projectId: blank,
+      scriptVersion: 1,
+      points: [first!],
+      note: null,
+    })
+    await approveTalkingPointSet(db, blank, set.version)
+
+    for (const stub of ['1', '']) {
+      vi.stubEnv('MOCK_PROVIDERS', stub)
+      const { error } = await engine.execute({
+        events: [
+          {
+            name: 'shorts/point.build.requested',
+            data: { projectId: blank, pointId: first!.id },
+          },
+        ],
+      })
+      expect(error).toMatchObject({ message: BIBLE_INCOMPLETE_MESSAGE })
+    }
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(spies.mockPointScript).not.toHaveBeenCalled()
+    expect(spies.mockPointPlan).not.toHaveBeenCalled()
+    expect(await listShorts(db, blank)).toHaveLength(0)
   })
 
   it(

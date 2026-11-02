@@ -55,6 +55,7 @@ import {
   generateStillCandidates,
   requireVisualKeys,
 } from '@/lib/visual-assets'
+import { requireCompleteBible } from './channel'
 import { budgetGateData } from './gates'
 import type { TeaserVoiceResult } from './teaser-build'
 
@@ -186,6 +187,8 @@ export async function writePointScript(
     contentMd: chapter.contentMd,
   }))
 
+  // Read here, inside the step, before any mock branch: an incomplete frozen bible sends nothing.
+  const bible = requireCompleteBible(await channelForProject(db, projectId))
   if (mockProvidersEnabled()) {
     return {
       ok: true,
@@ -197,7 +200,6 @@ export async function writePointScript(
 
   try {
     const project = await getProject(db, projectId)
-    const bible = await channelForProject(db, projectId)
     const written = await writePointScriptWith(
       completeForProject(projectId),
       {
@@ -388,6 +390,8 @@ export async function planPointShots(
   const latest = await getLatestScript(db, projectId)
   const library = planLibrary(input.master, { chapters: latest?.chapters ?? [] })
 
+  // Read here, inside the step, before any mock branch: an incomplete frozen bible sends nothing.
+  const frozen = requireCompleteBible(await channelForProject(db, projectId))
   let planned
   let repairs: Repair[] = []
   if (mockProvidersEnabled()) {
@@ -395,7 +399,7 @@ export async function planPointShots(
   } else {
     try {
       const answered = await planPointShotsWith(completeForProject(projectId), {
-        bible: await channelForProject(db, projectId),
+        bible: frozen,
         script: input.script,
         words,
         library: library.entries,
