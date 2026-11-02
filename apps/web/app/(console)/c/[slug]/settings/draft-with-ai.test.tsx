@@ -14,6 +14,7 @@ vi.mock('./bible-actions', () => ({
   discardBibleDraftAction: vi.fn(),
   editBibleSectionAction: vi.fn(),
   saveBibleAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
   draftBibleAction: (...args: unknown[]) => draftBibleAction(...args),
   estimateBibleResearchAction: (...args: unknown[]) => estimateBibleResearchAction(...args),
   startBibleResearchAction: (...args: unknown[]) => startBibleResearchAction(...args),
