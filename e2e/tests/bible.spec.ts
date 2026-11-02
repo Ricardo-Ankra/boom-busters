@@ -336,6 +336,43 @@ test.describe('a second channel’s bible', () => {
     await expect(page.getByText('Version 3', { exact: true })).toBeVisible()
   })
 
+  test('Copy from another channel brings in the chosen sections as drafted, and Discard undoes it', async ({
+    page,
+  }) => {
+    await page.goto(bibleTab)
+    await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Copy from another channel' }).click()
+    const picker = page.getByLabel('Channel to copy from')
+    const value = await picker
+      .locator('option')
+      .filter({ hasText: 'Boom & Busters' })
+      .first()
+      .getAttribute('value')
+    await picker.selectOption(value!)
+    await page.getByRole('checkbox', { name: 'Identity' }).uncheck()
+    await page.getByRole('button', { name: 'Copy', exact: true }).click()
+
+    // The ticked sections came across and need approval; Identity stayed as it was. (A section
+    // the source holds nothing in reads Empty, so the blockers are the count to trust.)
+    await expect(page.getByText('Voice is drafted, not approved')).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(page.getByText('Identity is drafted, not approved')).toHaveCount(0)
+    await expect(page.getByLabel('Version note')).toHaveValue(
+      /^Copied from Boom & Busters version \d+$/,
+    )
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+
+    // Nothing was saved: Discard throws the copy away and version 3 stands.
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0, {
+      timeout: 15_000,
+    })
+    await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible()
+  })
+
   test('the project still reads Bible version 2 until Use the latest bible moves it to 3', async ({
     page,
   }) => {
@@ -354,10 +391,12 @@ test.describe('a second channel’s bible', () => {
     await page.goto(bibleTab)
     await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible()
 
-    // The busiest the tab gets: History open, the input card open, a section open.
+    // The busiest the tab gets: History open, the input and copy cards open, a section open.
     await openHistory(page)
     await page.getByRole('button', { name: 'Draft with AI' }).click()
     await expect(page.getByLabel('Describe the channel in a few lines')).toBeVisible()
+    await page.getByRole('button', { name: 'Copy from another channel' }).click()
+    await expect(page.getByLabel('Channel to copy from')).toBeVisible()
     await openCard(page, 'Voice')
     await expect(page.getByRole('button', { name: 'Edit Voice', exact: true })).toBeVisible()
 

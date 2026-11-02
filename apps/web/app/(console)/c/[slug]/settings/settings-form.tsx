@@ -17,6 +17,7 @@ import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BibleTab, type BibleVersionView } from './bible-tab'
+import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
@@ -67,6 +68,7 @@ export function SettingsForm({
   versions = [],
   currentVersion,
   vidiqReady = false,
+  copySources = [],
 }: {
   initialSettings: Settings
   /** This channel's YouTube connection, masked. */
@@ -101,6 +103,8 @@ export function SettingsForm({
   currentVersion?: { id: string; version: number; bible: ChannelView['bible'] }
   /** A VidIQ key is on file, or mocks stand in for it. */
   vidiqReady?: boolean
+  /** Every other channel, archived ones included, for the Bible tab's copy. */
+  copySources?: CopySource[]
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -137,7 +141,9 @@ export function SettingsForm({
     // A no-op update must not re-render the form after hydration, or a controlled field changed before
     // hydration is reset to the server value and its old value saved.
     setChannel((current) =>
-      current.bible === initialChannel.bible ? current : { ...current, bible: initialChannel.bible },
+      current.bible === initialChannel.bible
+        ? current
+        : { ...current, bible: initialChannel.bible },
     )
   }, [initialChannel.bible])
 
@@ -223,6 +229,7 @@ export function SettingsForm({
               currentVersion={currentVersion ?? { id: '', version: 1, bible: channel.bible }}
               vidiqReady={vidiqReady}
               archived={channel.archived}
+              copySources={copySources}
             />
           </Lock>
         </TabsContent>

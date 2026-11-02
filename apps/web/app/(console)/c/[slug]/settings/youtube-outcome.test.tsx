@@ -17,6 +17,7 @@ vi.mock('./actions', () => ({
 }))
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: vi.fn(),
+  copyBibleFromChannelAction: vi.fn(),
   discardBibleDraftAction: vi.fn(),
   draftBibleAction: vi.fn(),
   editBibleSectionAction: vi.fn(),

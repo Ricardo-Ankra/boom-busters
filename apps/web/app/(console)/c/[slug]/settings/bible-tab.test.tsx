@@ -13,6 +13,7 @@ const estimateBibleResearchAction = vi.fn()
 const startBibleResearchAction = vi.fn()
 const editBibleSectionAction = vi.fn()
 const saveBibleAction = vi.fn()
+const copyBibleFromChannelAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: (...args: unknown[]) => approveBibleSectionAction(...args),
   discardBibleDraftAction: (...args: unknown[]) => discardBibleDraftAction(...args),
@@ -21,6 +22,7 @@ vi.mock('./bible-actions', () => ({
   startBibleResearchAction: (...args: unknown[]) => startBibleResearchAction(...args),
   editBibleSectionAction: (...args: unknown[]) => editBibleSectionAction(...args),
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
+  copyBibleFromChannelAction: (...args: unknown[]) => copyBibleFromChannelAction(...args),
   restoreBibleVersionAction: vi.fn(),
   viewBibleVersionAction: vi.fn(),
   previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
@@ -57,6 +59,11 @@ function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
   }
 }
 
+const SOURCES = [
+  { id: '01J00000000000000000000002', name: 'Boom & Busters', archived: false, version: 4 },
+  { id: '01J00000000000000000000003', name: 'Mind Matters', archived: true, version: 2 },
+]
+
 function tabElement(draft: BibleDraft | null, over: { archived?: boolean } = {}) {
   return (
     <BibleTab
@@ -66,6 +73,7 @@ function tabElement(draft: BibleDraft | null, over: { archived?: boolean } = {})
       currentVersion={{ id: '01J00000000000000000000009', version: 3, bible: FIRST_CHANNEL_BIBLE }}
       vidiqReady={false}
       archived={over.archived ?? false}
+      copySources={SOURCES}
     />
   )
 }
@@ -584,6 +592,150 @@ describe('BibleTab', () => {
     renderTab(draftOf(), { archived: true })
     expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+})
+
+describe('BibleTab, copy from another channel', () => {
+  const COPY = 'Copy from another channel'
+  const SECTION_LABELS = [
+    'Identity',
+    'Voice',
+    'Look',
+    'Examples',
+    'Hooks, openings and titles',
+    'Search',
+    'Publishing',
+  ]
+
+  async function openPanel() {
+    await userEvent.click(screen.getByRole('button', { name: COPY }))
+  }
+
+  it('shows the button with and without a draft, and not on an archived channel', () => {
+    const { unmount } = renderTab(null)
+    expect(screen.getByRole('button', { name: COPY })).toBeEnabled()
+    unmount()
+    const withDraft = renderTab(draftOf())
+    expect(screen.getByRole('button', { name: COPY })).toBeEnabled()
+    withDraft.unmount()
+    renderTab(draftOf(), { archived: true })
+    expect(screen.queryByRole('button', { name: COPY })).toBeNull()
+  })
+
+  it('waits while a job runs', () => {
+    renderTab(draftOf({ job: running('Voice') }))
+    expect(screen.getByRole('button', { name: COPY })).toBeDisabled()
+  })
+
+  it('lists the other channels with their versions, archived ones labelled, all boxes ticked', async () => {
+    renderTab(null)
+    await openPanel()
+    const picker = screen.getByLabelText('Channel to copy from')
+    expect(within(picker).getByRole('option', { name: 'Boom & Busters, version 4' })).toBeTruthy()
+    expect(
+      within(picker).getByRole('option', { name: 'Mind Matters (archived), version 2' }),
+    ).toBeTruthy()
+    for (const label of SECTION_LABELS) {
+      expect(screen.getByRole('checkbox', { name: label })).toBeChecked()
+    }
+  })
+
+  it('keeps Copy off until a channel is chosen and a box is ticked', async () => {
+    renderTab(null)
+    await openPanel()
+    const copy = screen.getByRole('button', { name: 'Copy' })
+    expect(copy).toBeDisabled()
+
+    await userEvent.selectOptions(screen.getByLabelText('Channel to copy from'), SOURCES[0]!.id)
+    expect(copy).toBeEnabled()
+
+    for (const label of SECTION_LABELS) {
+      await userEvent.click(screen.getByRole('checkbox', { name: label }))
+    }
+    expect(copy).toBeDisabled()
+  })
+
+  it('copies without a confirm when the draft holds no change, and prefills the note', async () => {
+    const copied = draftOf({ statuses: { ...draftOf().statuses, voice: 'drafted' } })
+    copyBibleFromChannelAction.mockResolvedValue({
+      ok: true,
+      draft: copied,
+      note: 'Copied from Boom & Busters version 4',
+    })
+    renderTab(draftOf())
+    await openPanel()
+    await userEvent.selectOptions(screen.getByLabelText('Channel to copy from'), SOURCES[0]!.id)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Identity' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+
+    expect(copyBibleFromChannelAction).toHaveBeenCalledWith(
+      CHANNEL.id,
+      SOURCES[0]!.id,
+      SECTION_LABELS.filter((label) => label !== 'Identity').map((label) =>
+        label === 'Hooks, openings and titles' ? 'hooks' : label.toLowerCase(),
+      ),
+    )
+    expect(screen.getByLabelText('Version note')).toHaveValue(
+      'Copied from Boom & Busters version 4',
+    )
+    expect(screen.getByText('Voice is drafted, not approved')).toBeInTheDocument()
+    // The panel closes.
+    expect(screen.queryByLabelText('Channel to copy from')).toBeNull()
+  })
+
+  it('asks first, naming the sections, when the draft would be overwritten', async () => {
+    copyBibleFromChannelAction.mockResolvedValue({
+      ok: true,
+      draft: draftOf(),
+      note: 'Copied from Mind Matters version 2',
+    })
+    const edited = draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, language: 'fr' } })
+    renderTab(edited)
+    await openPanel()
+    await userEvent.selectOptions(screen.getByLabelText('Channel to copy from'), SOURCES[1]!.id)
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(copyBibleFromChannelAction).not.toHaveBeenCalled()
+    expect(screen.getByText('This overwrites Search in the draft.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(copyBibleFromChannelAction).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Version note')).toHaveValue('Copied from Mind Matters version 2')
+  })
+
+  it('does not ask when the edited section is not ticked', async () => {
+    copyBibleFromChannelAction.mockResolvedValue({ ok: true, draft: draftOf(), note: 'n' })
+    renderTab(draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, language: 'fr' } }))
+    await openPanel()
+    await userEvent.selectOptions(screen.getByLabelText('Channel to copy from'), SOURCES[0]!.id)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Search' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(copyBibleFromChannelAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a refusal and keeps the panel open', async () => {
+    copyBibleFromChannelAction.mockResolvedValue({
+      ok: false,
+      error: 'Wait for the draft to finish',
+    })
+    renderTab(null)
+    await openPanel()
+    await userEvent.selectOptions(screen.getByLabelText('Channel to copy from'), SOURCES[0]!.id)
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not copy',
+        description: 'Wait for the draft to finish',
+      }),
+    )
+    expect(screen.getByLabelText('Channel to copy from')).toBeInTheDocument()
+  })
+
+  it('closes on Cancel without copying', async () => {
+    renderTab(null)
+    await openPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Channel to copy from')).toBeNull()
+    expect(copyBibleFromChannelAction).not.toHaveBeenCalled()
   })
 })
 
