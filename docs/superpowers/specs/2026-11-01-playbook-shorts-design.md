@@ -1,6 +1,6 @@
 # Playbook Shorts: every Short written for one talking point (design)
 
-Date: 2026-11-01. Status: draft for owner approval.
+Date: 2026-11-01. Status: approved, implemented.
 
 This design replaces how the Shorts stage makes Shorts. Today a finished
 master yields up to ten **excerpts** (slices of the long-form narration,
