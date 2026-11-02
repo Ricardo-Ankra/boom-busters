@@ -225,6 +225,8 @@ export const scriptRunner = inngest.createFunction(
         // existed replays those without it. The gate sits before the mock branch.
         const frozen = requireCompleteBible(await channelForProject(db, projectId))
         if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin), repairs: [] }
+        // The brief is read here too: a run parked before it existed replays no brief.
+        const searchBrief = (await getProject(db, projectId))?.searchBrief ?? null
         try {
           const drafted = await draftOutlineWith(completeForProject(projectId), {
             bible: frozen,
@@ -232,6 +234,7 @@ export const scriptRunner = inngest.createFunction(
             dossierMd: setup.dossierMd,
             claims: setup.claims,
             targetRuntimeMin: setup.targetRuntimeMin,
+            searchBrief,
           })
           return { ok: true, ...drafted }
         } catch (error) {

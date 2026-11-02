@@ -17,6 +17,7 @@ import {
   claimCarriesArticle,
   claimCarriesPost,
   countWords,
+  searchBriefLine,
   splitSentences,
 } from '@boom-busters/schemas'
 import type {
@@ -24,6 +25,7 @@ import type {
   ChannelBible,
   Outline,
   OutlineChapter,
+  SearchBrief,
   SelfCheck,
   ShortsCandidate,
   TeaserScript,
@@ -174,12 +176,50 @@ const openingExamples = (inUse: BibleInUse): string =>
 // Outline
 // ---------------------------------------------------------------------------
 
+/** Third-party search text as one quoted line: it can never start a line of its own. */
+const quotedSearch = (text: string): string => JSON.stringify(searchBriefLine(text))
+
+/**
+ * What the case's search brief adds to the outline's rules; nothing, not even a
+ * blank line, without a brief. The keyword rules need a target keyword, the
+ * subject rule only a subject.
+ */
+function outlineSearchRules(brief: SearchBrief | null | undefined): string {
+  if (!brief) return ''
+  const keyword = brief.targetKeyword ? quotedSearch(brief.targetKeyword.keyword) : null
+  const subject = searchBriefLine(brief.subject) ? quotedSearch(brief.subject) : null
+  const rules = [
+    ...(keyword
+      ? [`The central question is one a person searching ${keyword} would recognise as theirs.`]
+      : []),
+    ...(subject ? [`Name ${subject} in the first 30 seconds of narration.`] : []),
+    ...(keyword
+      ? [
+          `The phrase ${keyword} may be spoken once where it is natural; never repeat it, or bend a sentence toward it, for search.`,
+        ]
+      : []),
+  ]
+  return rules.length > 0 ? `\n\n${rules.join('\n')}` : ''
+}
+
+/** The searched questions, one quoted line each, closing the dossier message; empty without any. */
+function outlineSearchedQuestions(brief: SearchBrief | null | undefined): string {
+  const questions = (brief?.searchedQuestions ?? [])
+    .map((question) => searchBriefLine(question))
+    .filter(Boolean)
+  return questions.length > 0
+    ? `\n\nSearched questions:\n${questions.map((q) => `- ${JSON.stringify(q)}`).join('\n')}`
+    : ''
+}
+
 export function buildOutlineRequest(input: {
   bible: BibleInUse
   caseTitle: string
   dossierMd: string
   claims: readonly ScriptClaim[]
   targetRuntimeMin: number
+  /** The case's search brief, when it has one; absent or null changes nothing in the prompt. */
+  searchBrief?: SearchBrief | null
 }): LLMTaskRequest {
   // 150 words per minute of narration, minus a little for pacing beats.
   const targetWords = Math.round(input.targetRuntimeMin * 150 * 0.95)
@@ -228,7 +268,7 @@ The tension contract, per chapter:
   money, dates.
 "centralQuestion" is the one question the whole film exists to answer; only
 the final chapter answers it. Design the arc so each chapter's stakes are
-larger or more personal than the last.
+larger or more personal than the last.${outlineSearchRules(input.searchBrief)}
 
 "close" is how the film ends, written as the final chapter's last paragraphs:
 - "answer": the central question answered in plain words, as this channel's
@@ -247,7 +287,10 @@ owns.${openingExamples(input.bible)}`,
       input.bible,
     ),
     messages: [
-      { role: 'user', content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}` },
+      {
+        role: 'user',
+        content: `Case: ${input.caseTitle}\n\nDossier:\n${input.dossierMd}${outlineSearchedQuestions(input.searchBrief)}`,
+      },
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
       { role: 'user', content: `Outline it for roughly ${input.targetRuntimeMin} minutes.` },
     ],

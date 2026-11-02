@@ -616,6 +616,20 @@ const scriptCases: LiftCase[] = [
       targetRuntimeMin: 12,
     }),
   ),
+  liftAware(
+    'script-outline-search',
+    (bible) =>
+      buildOutlineRequest({
+        bible,
+        caseTitle: 'Wirecard',
+        dossierMd: '# Wirecard\n\nA payments company that reported money it did not have.',
+        claims: CLAIMS,
+        targetRuntimeMin: 12,
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The brief's own words (each replace takes one occurrence): the keyword in two rules, the subject in one.
+    ['"wirecard scandal"', '"wirecard scandal"', '"Wirecard"'],
+  ),
   liftAware('script-outline-no-claims', (bible) =>
     buildOutlineRequest({
       bible,
