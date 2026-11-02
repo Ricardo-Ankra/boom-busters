@@ -240,6 +240,35 @@ export const FIXTURE_SHORT_TIMELINE: Timeline = {
 }
 
 /**
+ * The point Short's close: the vertical fixture with its first still
+ * punched in and cropped left, then both bridge overlays (the related-video
+ * arrow and the subscribe badge) over the final moments. A separate export so
+ * `FIXTURE_SHORT_TIMELINE`, which a golden is rendered from, stays as it was.
+ */
+export const FIXTURE_SHORT_BRIDGE_TIMELINE: Timeline = {
+  ...FIXTURE_SHORT_TIMELINE,
+  slots: FIXTURE_SHORT_TIMELINE.slots.map((slot, index) =>
+    index === 0
+      ? { ...slot, motion: { kind: 'punch', scale: 1.15, durationMs: 250 }, crop: 'left' }
+      : slot,
+  ),
+  overlays: [
+    {
+      kind: 'relatedArrow',
+      startMs: 5400,
+      durationMs: 2600,
+      props: { label: 'Watch the full story' },
+    },
+    {
+      kind: 'subscribeBadge',
+      startMs: 5400,
+      durationMs: 2600,
+      props: { channelName: 'Boom & Busters', handle: '@boomandbusters' },
+    },
+  ],
+}
+
+/**
  * The RENDER fixture: the spec section 13 "local `renderMedia` of a
  * 20-second fixture instead of Lambda in CI". The 14-second Studio fixture
  * above, extended by a closing chapter — a third narration segment, a

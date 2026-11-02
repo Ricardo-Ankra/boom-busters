@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { dbToGain, kenburnsScale, mediaUrl, msToFrames, transitionOpacity } from './motion'
+import {
+  cropPosition,
+  dbToGain,
+  kenburnsScale,
+  mediaUrl,
+  msToFrames,
+  punchScale,
+  transitionOpacity,
+} from './motion'
 
 describe('kenburnsScale', () => {
   it('pushes in from 1 to 1 + intensity', () => {
@@ -55,5 +63,37 @@ describe('transitionOpacity', () => {
     expect(transitionOpacity('dissolve', 0)).toBe(0)
     expect(transitionOpacity('dissolve', 250)).toBeCloseTo(0.5)
     expect(transitionOpacity('dissolve', 800)).toBe(1)
+  })
+})
+
+describe('punchScale', () => {
+  it('starts at 1 and lands on the scale at the end of the punch', () => {
+    expect(punchScale(1.15, 250, 0)).toBe(1)
+    expect(punchScale(1.15, 250, 250)).toBe(1.15)
+    expect(punchScale(1.15, 250, 900)).toBe(1.15)
+  })
+
+  it('is monotonic between, and eases out (past halfway at half time)', () => {
+    let last = punchScale(1.15, 250, 0)
+    for (let t = 10; t <= 250; t += 10) {
+      const next = punchScale(1.15, 250, t)
+      expect(next).toBeGreaterThanOrEqual(last)
+      last = next
+    }
+    expect(punchScale(1.15, 250, 125)).toBeGreaterThan(1.075)
+  })
+
+  it('handles a zero duration and a negative time', () => {
+    expect(punchScale(1.15, 0, 0)).toBe(1.15)
+    expect(punchScale(1.15, 250, -40)).toBe(1)
+  })
+})
+
+describe('cropPosition', () => {
+  it('maps the focus to an object-position, centre when unset', () => {
+    expect(cropPosition('left')).toBe('0% 50%')
+    expect(cropPosition('centre')).toBe('50% 50%')
+    expect(cropPosition('right')).toBe('100% 50%')
+    expect(cropPosition(undefined)).toBe('50% 50%')
   })
 })
