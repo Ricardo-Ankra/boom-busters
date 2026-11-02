@@ -43,6 +43,8 @@ function kase(overrides: Partial<CaseSummary>): CaseSummary {
     subject: null,
     people: [],
     sourceLinks: [],
+    searchBrief: null,
+    searchJob: null,
     priorityScore: 88,
     status: 'idea',
     projectCount: 0,

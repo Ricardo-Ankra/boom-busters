@@ -1,9 +1,13 @@
 import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
+import type { CaseResearchJob, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
+import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
 import { createDb } from './client'
 import { countCases } from './queries'
 import {
+  caseSubjectTaken,
+  chooseCaseAngle,
   createCase,
   createSuggestedCases,
   deleteCase,
@@ -11,11 +15,14 @@ import {
   getCase,
   listCases,
   markCaseInProduction,
+  saveCaseSearchBrief,
   setCaseStatus,
+  setCaseTargetKeyword,
   truncateCases,
   updateCase,
+  writeCaseResearchJob,
 } from './cases'
-import { createProjectFromCase, deleteProjectsExcept, listProjects } from './projects'
+import { createProjectFromCase, deleteProjectsExcept, getProject, listProjects } from './projects'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -331,5 +338,249 @@ suite('cases', () => {
     expect(updated?.sourceLinks).toEqual([{ url: 'https://example.com/b' }])
     const cleared = await updateCase(db, row.id, { subject: null })
     expect(cleared?.subject).toBeNull()
+  })
+
+  describe('the search brief', () => {
+    const kw = (keyword: string, overall: number | null = 50): SearchKeyword => ({
+      keyword,
+      volume: 100,
+      competition: 20,
+      overall,
+      estimatedMonthlySearch: 1000,
+      growthPct: null,
+    })
+    const briefFor = (subject: string, over: Partial<SearchBrief> = {}): SearchBrief => ({
+      subject,
+      measuredAt: '2026-11-01T10:00:00.000Z',
+      targetKeyword: kw('wework collapse', 80),
+      secondaryKeywords: [kw('wework bankruptcy'), kw('wework $47 billion')],
+      searchedQuestions: [],
+      outliers: [],
+      titlePatterns: [],
+      toldAlready: [],
+      angleOptions: [
+        {
+          angle: 'How a lease broker became a unicorn on borrowed hype',
+          keyword: 'wework',
+          answers: [],
+          gap: 'x',
+        },
+        {
+          angle: 'The board that signed off on every excess',
+          keyword: 'wework',
+          answers: [],
+          gap: 'y',
+        },
+      ],
+      chosenAngle: null,
+      ...over,
+    })
+    const job = (startedAt: string, over: Partial<CaseResearchJob> = {}): CaseResearchJob => ({
+      state: 'running',
+      current: null,
+      error: null,
+      startedAt,
+      subject: 'WeWork',
+      ...over,
+    })
+
+    async function researched(subject = 'WeWork') {
+      const row = await createCase(db, {
+        channelId,
+        title: `Case ${subject}`,
+        category: 'con',
+        subject,
+      })
+      await writeCaseResearchJob(db, row.id, () => job('t1'))
+      await saveCaseSearchBrief(db, row.id, briefFor('WeWork'), 't1')
+      return row.id
+    }
+
+    it('reads searchBrief and searchJob null for a row written before the columns', async () => {
+      const row = await createCase(db, { channelId, title: 'Old row', category: 'con' })
+      const got = await getCase(db, row.id)
+      expect(got?.searchBrief).toBeNull()
+      expect(got?.searchJob).toBeNull()
+      expect((await listCases(db, channelId))[0]?.searchBrief).toBeNull()
+    })
+
+    it('reads a malformed stored brief as null rather than throwing', async () => {
+      const row = await createCase(db, { channelId, title: 'Bad row', category: 'con' })
+      await db.execute(
+        dsql`update cases set search_brief = '{"nonsense":true}'::jsonb, search_job = '[]'::jsonb where id = ${row.id}`,
+      )
+      const got = await getCase(db, row.id)
+      expect(got?.searchBrief).toBeNull()
+      expect(got?.searchJob).toBeNull()
+    })
+
+    describe('caseSubjectTaken', () => {
+      it('is true for a trimmed, case-insensitive match in the same channel only', async () => {
+        const row = await createCase(db, {
+          channelId,
+          title: 'WeWork',
+          category: 'con',
+          subject: 'WeWork',
+        })
+        expect(await caseSubjectTaken(db, channelId, ' wework ')).toBe(true)
+        expect(await caseSubjectTaken(db, channelId, ' WeWork ')).toBe(true)
+        expect(await caseSubjectTaken(db, otherChannelId, 'WeWork')).toBe(false)
+        expect(await caseSubjectTaken(db, channelId, 'WeWork', row.id)).toBe(false)
+        expect(await caseSubjectTaken(db, channelId, 'Enron')).toBe(false)
+      })
+    })
+
+    describe('writeCaseResearchJob', () => {
+      it('hands the update the current job and stores what it returns', async () => {
+        const row = await createCase(db, { channelId, title: 'Job', category: 'con' })
+        const seen: (CaseResearchJob | null)[] = []
+        const first = await writeCaseResearchJob(db, row.id, (current) => {
+          seen.push(current)
+          return job('2026-11-01T10:00:00.000Z')
+        })
+        expect(first?.state).toBe('running')
+        await writeCaseResearchJob(db, row.id, (current) => {
+          seen.push(current)
+          return current ? { ...current, state: 'failed', error: 'boom' } : null
+        })
+        expect(seen[0]).toBeNull()
+        expect(seen[1]?.startedAt).toBe('2026-11-01T10:00:00.000Z')
+        expect((await getCase(db, row.id))?.searchJob?.error).toBe('boom')
+      })
+
+      it('serialises concurrent writers', async () => {
+        const row = await createCase(db, { channelId, title: 'Race', category: 'con' })
+        await writeCaseResearchJob(db, row.id, () => job('t0', { current: '0' }))
+        await Promise.all(
+          [1, 2, 3].map(() =>
+            writeCaseResearchJob(db, row.id, (current) =>
+              current ? { ...current, current: String(Number(current.current) + 1) } : null,
+            ),
+          ),
+        )
+        expect((await getCase(db, row.id))?.searchJob?.current).toBe('3')
+      })
+    })
+
+    describe('saveCaseSearchBrief', () => {
+      it('writes the brief and marks the job done while the job is the one that started', async () => {
+        const row = await createCase(db, {
+          channelId,
+          title: 'Save',
+          category: 'con',
+          subject: 'WeWork',
+        })
+        await writeCaseResearchJob(db, row.id, () => job('2026-11-01T10:00:00.000Z'))
+        const saved = await saveCaseSearchBrief(
+          db,
+          row.id,
+          briefFor('WeWork'),
+          '2026-11-01T10:00:00.000Z',
+        )
+        expect(saved).toBe(true)
+        const got = await getCase(db, row.id)
+        expect(got?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+        expect(got?.searchJob?.state).toBe('done')
+      })
+
+      it('refuses a stale jobStartedAt and leaves the brief null', async () => {
+        const row = await createCase(db, { channelId, title: 'Stale', category: 'con' })
+        await writeCaseResearchJob(db, row.id, () => job('2026-11-01T11:00:00.000Z'))
+        const saved = await saveCaseSearchBrief(
+          db,
+          row.id,
+          briefFor('WeWork'),
+          '2026-11-01T10:00:00.000Z',
+        )
+        expect(saved).toBe(false)
+        const got = await getCase(db, row.id)
+        expect(got?.searchBrief).toBeNull()
+        expect(got?.searchJob?.state).toBe('running')
+      })
+
+      it('refuses when there is no job at all', async () => {
+        const row = await createCase(db, { channelId, title: 'NoJob', category: 'con' })
+        expect(await saveCaseSearchBrief(db, row.id, briefFor('WeWork'), 'x')).toBe(false)
+        expect((await getCase(db, row.id))?.searchBrief).toBeNull()
+      })
+    })
+
+    describe('chooseCaseAngle', () => {
+      it('writes the option angle, its index and the demand notes line', async () => {
+        const id = await researched()
+        const got = await chooseCaseAngle(db, id, { option: 1 })
+        expect(got.angle).toBe('The board that signed off on every excess')
+        expect(got.searchBrief?.chosenAngle).toBe(1)
+        expect(got.demandNotes).toBe(
+          'wework collapse: 100 volume, competition 20; 0 winning videos',
+        )
+        expect((await getCase(db, id))?.angle).toBe('The board that signed off on every excess')
+      })
+
+      it("writes the owner's own angle with a null chosenAngle", async () => {
+        const id = await researched()
+        await chooseCaseAngle(db, id, { option: 0 })
+        const got = await chooseCaseAngle(db, id, { own: '  My own telling  ' })
+        expect(got.angle).toBe('My own telling')
+        expect(got.searchBrief?.chosenAngle).toBeNull()
+      })
+
+      it('refuses an option that does not exist, and a case with no brief', async () => {
+        const id = await researched()
+        await expect(chooseCaseAngle(db, id, { option: 5 })).rejects.toThrow()
+        const bare = await createCase(db, { channelId, title: 'Bare', category: 'con' })
+        await expect(chooseCaseAngle(db, bare.id, { option: 0 })).rejects.toThrow()
+      })
+    })
+
+    describe('setCaseTargetKeyword', () => {
+      it('swaps the chosen secondary with the target', async () => {
+        const id = await researched()
+        const got = await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        expect(got.searchBrief?.targetKeyword?.keyword).toBe('wework bankruptcy')
+        expect(got.searchBrief?.secondaryKeywords.map((k) => k.keyword)).toEqual([
+          'wework $47 billion',
+          'wework collapse',
+        ])
+      })
+
+      it('refuses a keyword with a figure, and one that is not a secondary', async () => {
+        const id = await researched()
+        await expect(setCaseTargetKeyword(db, id, 'wework $47 billion')).rejects.toThrow(/figure/)
+        await expect(setCaseTargetKeyword(db, id, 'nothing here')).rejects.toThrow()
+        expect((await getCase(db, id))?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+      })
+    })
+
+    describe('freezing onto a project', () => {
+      it('copies the brief, and a later case edit does not change the project copy', async () => {
+        const id = await researched()
+        const project = await createProjectFromCase(db, { caseId: id, title: 'Frozen' })
+        expect((await getProject(db, project.id))?.searchBrief?.subject).toBe('WeWork')
+
+        await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        const after = await getProject(db, project.id)
+        expect(after?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+      })
+
+      it('compares the subject trimmed and case-insensitively', async () => {
+        const id = await researched(' wework ')
+        const made = await createProjectFromCase(db, { caseId: id, title: 'Loose' })
+        expect((await getProject(db, made.id))?.searchBrief).not.toBeNull()
+      })
+
+      it('freezes nothing when the brief is for a different subject', async () => {
+        const id = await researched()
+        await updateCase(db, id, { subject: 'Theranos' })
+        const project = await createProjectFromCase(db, { caseId: id, title: 'Other' })
+        expect((await getProject(db, project.id))?.searchBrief).toBeNull()
+      })
+
+      it('freezes null when the case has no brief', async () => {
+        const row = await createCase(db, { channelId, title: 'Plain', category: 'con' })
+        const project = await createProjectFromCase(db, { caseId: row.id, title: 'Plain' })
+        expect((await getProject(db, project.id))?.searchBrief).toBeNull()
+      })
+    })
   })
 })
