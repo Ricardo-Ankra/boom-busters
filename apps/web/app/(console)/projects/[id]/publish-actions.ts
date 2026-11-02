@@ -58,6 +58,7 @@ import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { searchTags } from '@/lib/search-tags'
+import { unscoredDistinctTitles } from '@/lib/title-scores'
 import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
@@ -404,6 +405,13 @@ async function scoreTitleList(input: {
     if (!first.has(title.toLowerCase())) first.set(title.toLowerCase(), title)
   }
   const distinct = [...first.values()]
+  // A duplicate takes the score of the title it copies: bought once, never read as unscored.
+  const copyToDuplicates = (): void => {
+    for (const title of input.titles) {
+      const bought = scores[first.get(title.toLowerCase())!]
+      if (bought !== undefined) scores[title] = bought
+    }
+  }
   if (distinct.length === 0) return { scores, note: '' }
   const cost = VIDIQ_CREDIT_COST.scoreTitle
   // Kept to what a draft may store, on one line: a longer note would make the whole draft unreadable.
@@ -435,12 +443,12 @@ async function scoreTitleList(input: {
       )
       scores[title] = call.data.score
     }
-    for (const title of input.titles)
-      scores[title] = scores[first.get(title.toLowerCase())!] ?? null
+    copyToDuplicates()
     return { scores, note: '' }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
-    const done = Object.keys(scores).length
+    copyToDuplicates()
+    const done = distinct.filter((title) => title in scores).length
     return {
       scores,
       note: noteOf(
@@ -591,7 +599,7 @@ export async function scoreAllTitlesAction(
 
   const draft = PublishDraftSchema.safeParse(record.metadata)
   if (!draft.success) return { ok: false, error: 'The saved draft could not be read.' }
-  const unscored = draft.data.titleOptions.filter((title) => !(title in draft.data.titleScores))
+  const unscored = unscoredDistinctTitles(draft.data.titleOptions, draft.data.titleScores)
   if (unscored.length === 0) return { ok: false, error: 'Every title option is already scored.' }
 
   const channel = await channelForProject(db, projectId)

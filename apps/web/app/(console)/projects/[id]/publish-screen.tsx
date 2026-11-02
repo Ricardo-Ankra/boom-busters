@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { unscoredDistinctTitles } from '@/lib/title-scores'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
 import { THUMB_MAX_BYTES, thumbnailDimensionError, thumbnailHint } from '@/lib/thumbnail-rules'
 import {
@@ -685,7 +686,7 @@ function ItemEditor({
   React.useEffect(() => setHashtags(storedHashtags), [storedHashtags])
   React.useEffect(() => setGlosses(storedGlossesKey.split('\u0000')), [storedGlossesKey])
   const titleScores = record?.titleScores ?? {}
-  const unscoredTitles = (record?.titleOptions ?? []).filter((o) => !(o in titleScores)).length
+  const unscoredTitles = unscoredDistinctTitles(record?.titleOptions ?? [], titleScores).length
   const fromVidiq = new Set((record?.searchTags ?? []).map((tag) => tag.toLowerCase()))
   const markedTags = tags
     .split(',')

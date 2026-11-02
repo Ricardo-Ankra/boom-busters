@@ -71,11 +71,18 @@ vi.mock('@/lib/youtube', async (importOriginal) => ({
   refreshAccessToken: youtube.refreshAccessToken,
 }))
 const callLlm = vi.hoisted(() => vi.fn())
+const creditsSeam = vi.hoisted(() => ({ calls: 0, failOn: 0 }))
 const credentialSeam = vi.hoisted(() => ({ fail: false, message: 'the credential store is down' }))
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const original = await importOriginal<typeof DbModule>()
   return {
     ...original,
+    // The Nth read of the month's credits fails: the budget check is the first, each purchase another.
+    vidiqCreditsThisMonth: (...args: Parameters<typeof original.vidiqCreditsThisMonth>) => {
+      creditsSeam.calls += 1
+      if (creditsSeam.calls === creditsSeam.failOn) throw new Error('the ledger is unreachable')
+      return original.vidiqCreditsThisMonth(...args)
+    },
     vidiqCredential: (...args: Parameters<typeof original.vidiqCredential>) => {
       if (credentialSeam.fail) throw new Error(credentialSeam.message)
       return original.vidiqCredential(...args)
@@ -630,6 +637,8 @@ describeDb('the search brief in titles, description and tags', () => {
   })
 
   afterEach(async () => {
+    creditsSeam.calls = 0
+    creditsSeam.failOn = 0
     credentialSeam.fail = false
     credentialSeam.message = 'the credential store is down'
     await setBrief(null)
@@ -755,7 +764,10 @@ describeDb('the search brief in titles, description and tags', () => {
 
     it('keeps the titles with a one-line note that fits the draft when VidIQ fails with a huge message', async () => {
       await setBrief(BRIEF)
+      // Mock mode would short-circuit the key check: turn it off so the credential read really runs.
+      vi.stubEnv('MOCK_PROVIDERS', '')
       credentialSeam.fail = true
+      callLlm.mockResolvedValueOnce({ text: TITLES })
       credentialSeam.message = 'HTTP 502 ' + 'upstream\ntrace '.repeat(200)
       expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
       const record = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
@@ -771,7 +783,9 @@ describeDb('the search brief in titles, description and tags', () => {
 
     it('keeps the titles with a note when the credential read itself fails', async () => {
       await setBrief(BRIEF)
+      vi.stubEnv('MOCK_PROVIDERS', '')
       credentialSeam.fail = true
+      callLlm.mockResolvedValueOnce({ text: TITLES })
       expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
       const stored = await draft()
       expect((stored['titleOptions'] as string[]).length).toBeGreaterThan(3)
@@ -781,7 +795,7 @@ describeDb('the search brief in titles, description and tags', () => {
       )
     })
 
-    it('buys one score for titles that differ only in case, and gives the copy the same score', async () => {
+    it('buys one score for titles that differ only in case', async () => {
       await setBrief(BRIEF)
       await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
       const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
@@ -790,11 +804,38 @@ describeDb('the search brief in titles, description and tags', () => {
       })
       expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
       expect(await db.select().from(vidiqCredits)).toHaveLength(2)
-      const scores = (await draft())['titleScores'] as Record<string, number | null>
-      expect(Object.keys(scores).sort()).toEqual(
-        ['Other title here', 'SAME TITLE HERE', 'Same title here'].sort(),
-      )
-      expect(scores['SAME TITLE HERE']).toBe(scores['Same title here'])
+      expect(Object.keys((await draft())['titleScores'] as object).sort()).toEqual([
+        'Other title here',
+        'Same title here',
+      ])
+      // The variant counts as scored: nothing is left to buy.
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: 'Every title option is already scored.',
+      })
+    })
+
+    it('after a failure part-way, the duplicate of a bought title is not bought again', async () => {
+      await setBrief(BRIEF)
+      await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+      await updatePublishRecord(db, record.id, {
+        metadata: { titleOptions: ['Same title here', 'SAME TITLE HERE', 'Other title here'] },
+      })
+      // Reads: the budget check, the first purchase, then the second purchase fails.
+      creditsSeam.failOn = 3
+      const failed = await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)
+      expect(failed).toEqual({
+        ok: false,
+        error: 'VidIQ scored 1 of 2 titles, then stopped: the ledger is unreachable',
+      })
+      expect(Object.keys((await draft())['titleScores'] as object)).toEqual(['Same title here'])
+      expect(await db.select().from(vidiqCredits)).toHaveLength(1)
+
+      creditsSeam.failOn = 0
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      // Only the title never bought: two rows in all, the duplicate never paid for.
+      expect(await db.select().from(vidiqCredits)).toHaveLength(2)
     })
 
     it('Score all refuses a Short, and a project with no brief, before any call', async () => {

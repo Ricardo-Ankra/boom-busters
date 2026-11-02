@@ -928,6 +928,38 @@ describe('the search brief on the Publish screen', () => {
     expect(scoreAllTitlesAction).toHaveBeenCalledWith('master', PROJECT)
   })
 
+  it('counts titles that differ only in case once, in the estimate and the consequence', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      hasSearchBrief: true,
+      items: [
+        masterItem({
+          record: record({
+            titleOptions: ['Same title here', 'SAME TITLE HERE', 'Other title here'],
+            titleScores: {},
+          }),
+        }),
+      ],
+    })
+    await user.click(screen.getByRole('button', { name: 'Score all titles (about 10 credits)' }))
+    expect(screen.getByText(/VidIQ scores 2 titles at 5 credits each/)).toBeInTheDocument()
+  })
+
+  it('has no Score all when a case-variant of every title is already scored', () => {
+    renderScreen({
+      hasSearchBrief: true,
+      items: [
+        masterItem({
+          record: record({
+            titleOptions: ['Same title here', 'SAME TITLE HERE'],
+            titleScores: { 'Same title here': 40 },
+          }),
+        }),
+      ],
+    })
+    expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
+  })
+
   it('has no Score all on a Short, which is not scored', () => {
     renderScreen({ hasSearchBrief: true, items: [shortItem({ record: record() })] })
     expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
