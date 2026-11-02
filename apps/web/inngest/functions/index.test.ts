@@ -67,6 +67,10 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   //   time and one per point (`concurrency` keyed on the point): a duplicate
   //   must never cancel paid work, and one that queues behind a finished
   //   build finds its row and does nothing.
+  // - point-studio-runner redoes one Short's voice or plan, two at a time and
+  //   one per Short (`concurrency` keyed on the Short): the action wins an
+  //   atomic claim on the Short's slot of work before it sends, and a cancel
+  //   would throw away paid work.
   'analytics-runner': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
@@ -74,6 +78,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'stretch-replanner': null,
   'talking-points-runner': null,
   'point-short-runner': null,
+  'point-studio-runner': null,
 }
 
 describe('function singletons (decision 233)', () => {

@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { UlidSchema } from './ids'
-import { TeaserFetchStateSchema } from './script'
 import {
   CropFocusSchema,
   PointShotMotionSchema,
@@ -169,8 +168,37 @@ export const PointPlanRecordSchema = z.object({
 })
 export type PointPlanRecord = z.infer<typeof PointPlanRecordSchema>
 
+/**
+ * What the Short studio is doing on this Short right now: a fetch, a re-voice,
+ * a re-plan, an assemble or a rebuild. Written by an atomic claim before the
+ * work starts, so a second press is refused while one is in flight; a
+ * `startedAt` older than the cooldown may be claimed again (decision 234), so
+ * a run that died without a trace cannot lock a Short for good.
+ */
+export const POINT_WORK = [
+  'stock',
+  'still',
+  'ingest',
+  'voice',
+  'plan',
+  'assemble',
+  'rebuild',
+] as const
+export const PointWorkSchema = z.enum(POINT_WORK)
+export type PointWork = z.infer<typeof PointWorkSchema>
+
+export const PointWorkStateSchema = z.union([
+  z.object({
+    state: z.literal('fetching'),
+    what: PointWorkSchema,
+    startedAt: z.string().optional(),
+  }),
+  z.object({ state: z.literal('failed'), what: PointWorkSchema, reason: z.string().min(1) }),
+])
+export type PointWorkState = z.infer<typeof PointWorkStateSchema>
+
 export const PointFetchesRecordSchema = z.object({
   candidates: z.array(SlotCandidateSchema).max(60),
-  state: TeaserFetchStateSchema.nullable(),
+  state: PointWorkStateSchema.nullable(),
 })
 export type PointFetchesRecord = z.infer<typeof PointFetchesRecordSchema>

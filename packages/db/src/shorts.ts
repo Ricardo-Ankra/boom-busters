@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, ne, or } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { scripts, shorts } from './schema'
 import type { ShortRow } from './schema'
@@ -7,6 +7,8 @@ import type {
   PointPlanRecord,
   PointScriptRecord,
   PointVoiceRecord,
+  PointWork,
+  PointWorkState,
   ShortsCandidate,
 } from '@boom-busters/schemas'
 
@@ -138,23 +140,86 @@ export async function updateShort(
     relatedLinkChecked: boolean
     /** The teaser studio's edits and the rebuild runner's recut (decision 227). */
     segmentRef: ShortRow['segmentRef']
-    sourceTimeline: Record<string, unknown>
+    /** Null turns a point Short back into a draft (rebuild from the new script). */
+    sourceTimeline: Record<string, unknown> | null
     teaserScript: Record<string, unknown>
     /** The studio's split acts (decision 230): voice and shot choices. */
     teaserVoice: Record<string, unknown>
     teaserShots: Record<string, unknown>
     /** The studio's fetched new material (decision 231). */
     teaserFetches: Record<string, unknown>
-    /** A point Short's script, voice, shot plan and fetched material (design 3.5). */
-    pointScript: PointScriptRecord
-    pointVoice: PointVoiceRecord
-    pointPlan: PointPlanRecord
-    pointFetches: PointFetchesRecord
+    /**
+     * A point Short's script, voice, shot plan and fetched material (design
+     * 3.5). Null clears a record, as a rebuild from the new script does.
+     */
+    pointScript: PointScriptRecord | null
+    pointVoice: PointVoiceRecord | null
+    pointPlan: PointPlanRecord | null
+    pointFetches: PointFetchesRecord | null
   }>,
 ): Promise<void> {
   await db
     .update(shorts)
     .set({ ...patch, updatedAt: new Date() })
+    .where(eq(shorts.id, id))
+}
+
+/**
+ * Win the Short studio's one slot of work on a point Short (design 6): an
+ * atomic compare-and-set on the stored fetch state, so two presses racing each
+ * other cannot both pass a read-then-write and both pay. Exactly one UPDATE
+ * matches the WHERE. A slot already `fetching` is refused until `staleBefore`,
+ * so a run that vanished without writing its failure cannot lock the Short
+ * for good (decision 234); a record with no timestamp predates the guard and
+ * may be claimed.
+ */
+export async function claimPointWork(
+  db: Database,
+  id: string,
+  what: PointWork,
+  staleBefore: Date,
+): Promise<boolean> {
+  const state = JSON.stringify({
+    state: 'fetching',
+    what,
+    startedAt: new Date().toISOString(),
+  } satisfies PointWorkState)
+  const rows = await db
+    .update(shorts)
+    .set({
+      pointFetches: sql`jsonb_set(coalesce(${shorts.pointFetches}, '{"candidates":[],"state":null}'::jsonb), '{state}', ${state}::jsonb)`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(shorts.id, id),
+        or(
+          sql`${shorts.pointFetches} is null`,
+          sql`coalesce(${shorts.pointFetches} -> 'state' ->> 'state', '') <> 'fetching'`,
+          sql`coalesce((${shorts.pointFetches} -> 'state' ->> 'startedAt')::timestamptz, '-infinity'::timestamptz) < ${staleBefore.toISOString()}::timestamptz`,
+        ),
+      ),
+    )
+    .returning({ id: shorts.id })
+  return rows.length > 0
+}
+
+/**
+ * Put the studio's slot back: `null` when the work is done, a `failed` state
+ * (with words for the studio to show) when it stopped. Touches only the state,
+ * so the fetched pool a racing write just stored is never overwritten.
+ */
+export async function settlePointWork(
+  db: Database,
+  id: string,
+  state: PointWorkState | null,
+): Promise<void> {
+  await db
+    .update(shorts)
+    .set({
+      pointFetches: sql`jsonb_set(coalesce(${shorts.pointFetches}, '{"candidates":[],"state":null}'::jsonb), '{state}', ${JSON.stringify(state)}::jsonb)`,
+      updatedAt: new Date(),
+    })
     .where(eq(shorts.id, id))
 }
 

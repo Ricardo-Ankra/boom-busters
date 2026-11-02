@@ -118,6 +118,8 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     estimatedCostUsd: 0.0117,
     render: null,
     teaser: null,
+    point: null,
+    studio: null,
     ...overrides,
   }
 }

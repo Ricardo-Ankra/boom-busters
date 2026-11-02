@@ -5,11 +5,13 @@ import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import { cases, projects, scripts } from './schema'
 import {
+  claimPointWork,
   getShort,
   insertShort,
   latestShortsCandidates,
   isAssembledShort,
   listShorts,
+  settlePointWork,
   shortForPoint,
   updateShort,
 } from './shorts'
@@ -171,5 +173,66 @@ suite('shorts bookkeeping', () => {
     const done = await shortForPoint(db, FIXTURE_PROJECT_ID, pointId)
     expect(isAssembledShort(done!)).toBe(true)
     expect((await listShorts(db, FIXTURE_PROJECT_ID)).map((row) => row.id)).toContain(draft.id)
+  })
+  describe('the point studio claim', () => {
+    const farPast = new Date('2000-01-01T00:00:00Z')
+    const draftPoint = () =>
+      insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Claim me',
+        segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+        kind: 'point',
+        pointId: '01HQ0000000000000000000P09',
+      })
+
+    it('is won by exactly one of two presses and refused while the work is fresh', async () => {
+      const row = await draftPoint()
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000)
+
+      const results = await Promise.all([
+        claimPointWork(db, row.id, 'plan', cutoff),
+        claimPointWork(db, row.id, 'plan', cutoff),
+      ])
+
+      expect(results.filter(Boolean)).toHaveLength(1)
+      expect((await getShort(db, row.id))?.pointFetches).toMatchObject({
+        candidates: [],
+        state: { state: 'fetching', what: 'plan' },
+      })
+      expect(await claimPointWork(db, row.id, 'voice', cutoff)).toBe(false)
+    })
+
+    it('may be won again once the work is older than the cooldown', async () => {
+      const row = await draftPoint()
+      expect(await claimPointWork(db, row.id, 'still', farPast)).toBe(true)
+
+      // The cutoff is now in the future of the claim's startedAt: it is stale.
+      expect(await claimPointWork(db, row.id, 'still', new Date(Date.now() + 60_000))).toBe(true)
+    })
+
+    it('settles to null or to failed words without touching the stored pool', async () => {
+      const row = await draftPoint()
+      await updateShort(db, row.id, {
+        pointFetches: { candidates: [], state: null },
+      })
+      expect(await claimPointWork(db, row.id, 'voice', farPast)).toBe(true)
+
+      await settlePointWork(db, row.id, { state: 'failed', what: 'voice', reason: 'it broke' })
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({
+        candidates: [],
+        state: { state: 'failed', what: 'voice', reason: 'it broke' },
+      })
+      // A failed state is not work in flight: the next press may claim it.
+      expect(await claimPointWork(db, row.id, 'voice', farPast)).toBe(true)
+      await settlePointWork(db, row.id, null)
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({ candidates: [], state: null })
+    })
+
+    it('clears a point Short back to a draft with null records', async () => {
+      const row = await draftPoint()
+      await updateShort(db, row.id, { sourceTimeline: { version: 1 } })
+      await updateShort(db, row.id, { sourceTimeline: null, pointScript: null, renderId: null })
+      expect(isAssembledShort((await getShort(db, row.id))!)).toBe(false)
+    })
   })
 })

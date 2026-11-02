@@ -6,6 +6,7 @@ import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
 import { pointShortRunner } from './point-short-runner'
+import { pointStudioRunner } from './point-studio-runner'
 import { publishRunner } from './publish-runner'
 import { renderRunner } from './render-runner'
 import { scriptRunner } from './script-runner'
@@ -69,6 +70,7 @@ export const functions = [
   shortsRunner,
   talkingPointsRunner,
   pointShortRunner,
+  pointStudioRunner,
   shortRenderRunner,
   teaserRebuildRunner,
   teaserShotFetcher,
@@ -85,6 +87,7 @@ export {
   cancelReconciler,
   draftRunner,
   pointShortRunner,
+  pointStudioRunner,
   publishRunner,
   renderRunner,
   dossierReviser,

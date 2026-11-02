@@ -433,7 +433,7 @@ export type PendingOutcome =
   | { ok: false; gate: Record<string, unknown> }
 
 /** The still model follows the opening words: make sure they name the 9:16 frame. */
-function framedPrompt(prompt: string): string {
+export function framedPrompt(prompt: string): string {
   return /^\s*vertical\b/i.test(prompt) ? prompt : `Vertical 9:16 frame: ${prompt}`
 }
 
