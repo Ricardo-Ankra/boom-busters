@@ -246,7 +246,7 @@ describe('the case form: subject, people and source links', () => {
 })
 
 describe('CaseLibrary with an incomplete channel bible', () => {
-  it('disables Suggest cases and New project and links to the Channel tab', () => {
+  it('disables Suggest cases and New project and links to the Bible tab', () => {
     render(
       <CaseLibrary
         slug="psychology"
@@ -263,9 +263,9 @@ describe('CaseLibrary with an incomplete channel bible', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'Complete the channel bible in Settings first',
     )
-    expect(screen.getByRole('link', { name: 'Open the Channel tab' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Open the Bible tab' })).toHaveAttribute(
       'href',
-      '/c/psychology/settings?tab=channel',
+      '/c/psychology/settings?tab=bible',
     )
   })
 

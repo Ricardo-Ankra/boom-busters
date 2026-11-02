@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   approveGate,
   deleteProjectAction,
+  moveToLatestBibleAction,
   requestChanges,
   restartStage,
   stopProject,
@@ -153,6 +154,41 @@ export function RestartRunButton({
       busy={busy}
       onConfirm={() => act(() => restartStage(projectId, stage), 'Sent to the pipeline')}
     />
+  )
+}
+
+/**
+ * Brings a project onto the channel's latest bible. Every project is frozen to
+ * the version current when it started; this is the deliberate way forward.
+ * The page shows it only when a newer version exists, and the action refuses
+ * a latest that is incomplete, so the refusal reaches the owner as a toast.
+ */
+export function UseLatestBibleButton({
+  projectId,
+  disabled = false,
+}: {
+  projectId: string
+  /** An archived channel is read-only. */
+  disabled?: boolean
+}) {
+  const { act, busy } = useAction()
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        variant="outline"
+        busy={busy}
+        disabled={disabled}
+        onClick={() =>
+          void act(() => moveToLatestBibleAction(projectId), 'Now using the latest bible')
+        }
+      >
+        Use the latest bible
+      </Button>
+      <p className="text-[12px] text-[var(--color-text-secondary)]">
+        Stages already done keep their text; stages run after this use the new bible.
+      </p>
+    </div>
   )
 }
 

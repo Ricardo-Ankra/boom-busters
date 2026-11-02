@@ -138,8 +138,8 @@ export function CaseLibrary({
             <span>{blockedReason}.</span>
             {archived ? null : (
               <Button asChild variant="outline">
-                <Link href={channelHref(slug, '/settings', { tab: 'channel' })}>
-                  Open the Channel tab
+                <Link href={channelHref(slug, '/settings', { tab: 'bible' })}>
+                  Open the Bible tab
                 </Link>
               </Button>
             )}

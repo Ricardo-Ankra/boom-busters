@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GateActionBar } from './project-controls'
+import { GateActionBar, UseLatestBibleButton } from './project-controls'
 
 /**
  * The gate action bar's own state, which is where a production bug lived that
@@ -12,11 +12,13 @@ import { GateActionBar } from './project-controls'
 
 const approveGate = vi.fn()
 const requestChanges = vi.fn()
+const moveToLatestBibleAction = vi.fn()
 const refresh = vi.fn()
 
 vi.mock('../actions', () => ({
   approveGate: (...args: unknown[]) => approveGate(...args),
   requestChanges: (...args: unknown[]) => requestChanges(...args),
+  moveToLatestBibleAction: (...args: unknown[]) => moveToLatestBibleAction(...args),
   restartStage: vi.fn(),
   stopProject: vi.fn(),
 }))
@@ -240,5 +242,46 @@ describe('GateActionBar', () => {
     expect(screen.getByText(/Changes happen on the cards/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(approveGate).toHaveBeenCalledWith('01J0000000000000000000000A', 'visuals', undefined)
+  })
+})
+
+describe('UseLatestBibleButton', () => {
+  const ID = '01J0000000000000000000000A'
+
+  it('shows the button with its note and moves the project when pressed', async () => {
+    moveToLatestBibleAction.mockResolvedValue({ ok: true })
+    render(<UseLatestBibleButton projectId={ID} />)
+
+    expect(
+      screen.getByText(
+        'Stages already done keep their text; stages run after this use the new bible.',
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Use the latest bible' }))
+
+    expect(moveToLatestBibleAction).toHaveBeenCalledWith(ID)
+    expect(refresh).toHaveBeenCalled()
+  })
+
+  it('says why when the move is refused', async () => {
+    moveToLatestBibleAction.mockResolvedValue({
+      ok: false,
+      error: 'The latest bible is incomplete. Complete it in the Bible tab first.',
+    })
+    render(<UseLatestBibleButton projectId={ID} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Use the latest bible' }))
+
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'The latest bible is incomplete. Complete it in the Bible tab first.',
+      }),
+    )
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('is disabled for an archived channel', () => {
+    render(<UseLatestBibleButton projectId={ID} disabled />)
+    expect(screen.getByRole('button', { name: 'Use the latest bible' })).toBeDisabled()
   })
 })

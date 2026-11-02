@@ -37,10 +37,17 @@ import {
  * spec's §11.3 lock was built and then taken back out.
  */
 
-/** The fallback when a channel's bible leaves its audition line blank. */
+/**
+ * Boom & Busters' own audition line, which its bible holds as `auditionLine`.
+ * Kept exported so that equality stays checked.
+ */
 export const DEFAULT_SAMPLE =
   'In June 2020, Wirecard admitted that roughly two billion euros of cash on its balance sheet ' +
   'probably did not exist. The auditors had signed the accounts for years.'
+
+/** The fallback when a channel's bible leaves its audition line blank. */
+export const NEUTRAL_SAMPLE =
+  "This is a short sample, read so you can hear the voice before you choose it. Write the channel's own audition line in its bible."
 
 interface TabProps {
   channelId: string
@@ -175,7 +182,7 @@ function AuditionPanel({
   commit,
   auditionLine,
 }: TabProps & { auditionLine: string }) {
-  const [sample, setSample] = React.useState(auditionLine.trim() || DEFAULT_SAMPLE)
+  const [sample, setSample] = React.useState(auditionLine.trim() || NEUTRAL_SAMPLE)
   const [catalogue, setCatalogue] = React.useState<
     { provider: TtsProvider; voices: KnownVoice[]; error?: string }[] | null
   >(null)
