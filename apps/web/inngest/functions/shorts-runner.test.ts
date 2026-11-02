@@ -1,48 +1,41 @@
 // @vitest-environment node
 
 import {
-  addNotice,
+  approveTalkingPointSet,
   chapters,
   FIXTURE_PROJECT_ID,
   getProject,
   insertShort,
+  insertTalkingPointSet,
   insertTimeline,
-  latestShortsCandidates,
-  listProjectNotices,
   listShorts,
   notices,
   renders,
   requireTestDatabase,
   scripts,
   seed,
-  setCredential,
   shorts,
+  talkingPointSets,
   timelines,
   truncateRunMirror,
-  updateChannelSettings,
-  updateWorkspace,
 } from '@boom-busters/db'
-import {
-  DEFAULT_SETTINGS,
-  noticesFor,
-  resolveBrandKit,
-  FIRST_CHANNEL_ID,
-} from '@boom-busters/schemas'
-import type { Timeline } from '@boom-busters/schemas'
+import { mockTalkingPoints } from '@boom-busters/providers'
+import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import type { TalkingPoint, Timeline } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
-import { InngestTestEngine, mockCtx } from '@inngest/test'
-import { StepError } from 'inngest'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { InngestTestEngine } from '@inngest/test'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import { inngest } from '../client'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { seedTitle, shortsRunner } from './shorts-runner'
+import { shortsRunner } from './shorts-runner'
 
 /**
- * The shorts-runner against the real database: candidates in, curatable rows
- * out, and one render event per row — the renders themselves belong to the
- * short-render-runner. What matters here: an unplaceable candidate is
- * SKIPPED with a reason, never guessed at; and a re-fired master.ready must
- * not trample rows the human already curated.
+ * The shorts-runner against the real database (playbook Shorts design 3.1
+ * and 3.5): it only decides what to ask for. With no approved talking-point
+ * set it asks for a proposal; with one it asks for a build per point that has
+ * no Short yet. Nothing here cuts a row, and legacy excerpt and teaser rows
+ * are left as they are.
  */
 
 vi.mock('@/lib/broker', () => ({
@@ -114,48 +107,67 @@ function masterReadyEvent(): [{ name: string; data: Record<string, unknown> }] {
   ]
 }
 
+const POINT_IDS = [1, 2, 3].map((n) => `01HQ0000000000000000000P0${n}`)
+
+async function storeApprovedSet(): Promise<TalkingPoint[]> {
+  const drafts = mockTalkingPoints(
+    [0, 1, 2].map((index) => ({
+      index,
+      title: `Chapter ${index + 1}`,
+      contentMd: `Narration of chapter ${index + 1}.
+
+A second paragraph.`,
+    })),
+  )
+  const points: TalkingPoint[] = POINT_IDS.map((id, i) => ({
+    ...drafts[i]!,
+    id,
+    sourceChapters: [i],
+    order: i + 1,
+  }))
+  const set = await insertTalkingPointSet(db, {
+    projectId: FIXTURE_PROJECT_ID,
+    scriptVersion: 1,
+    points,
+    note: null,
+  })
+  await approveTalkingPointSet(db, FIXTURE_PROJECT_ID, set.version)
+  return points
+}
+
+async function builtPointShort(pointId: string) {
+  return insertShort(db, {
+    projectId: FIXTURE_PROJECT_ID,
+    title: 'A built point Short',
+    segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 0 },
+    kind: 'point',
+    pointId,
+  })
+}
+
 describeDb('shorts-runner', () => {
   let engine: InngestTestEngine
+  let send: ReturnType<typeof vi.fn>
 
   beforeEach(async () => {
     engine = new InngestTestEngine({ function: shortsRunner })
     vi.clearAllMocks()
-    callLlm.mockReset()
+    send = vi
+      .spyOn(inngest as unknown as { _send: () => unknown }, '_send')
+      .mockResolvedValue({ ids: [] }) as unknown as typeof send
     await seed(db)
-    // Seeding only creates the settings row; it never resets it. A test that
-    // chooses a voice must not leak a teaser into every later test, so each
-    // run starts voiceless and the teaser tests opt in.
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      tts: { provider: 'elevenlabs', voiceId: '' },
-    })
     await truncateRunMirror(db)
     forgetRunRows()
     await db.delete(notices)
     await db.delete(renders)
     await db.delete(shorts)
     await db.delete(timelines)
+    await db.delete(talkingPointSets)
     await db.delete(scripts)
 
     const [script] = await db
       .insert(scripts)
-      .values({
-        projectId: FIXTURE_PROJECT_ID,
-        version: 1,
-        shortsCandidates: [
-          {
-            chapterIndex: 0,
-            startSentence: 'EY refused to sign the accounts.',
-            endSentence: 'The shares collapsed in nine days.',
-            hookRationale: 'The auditor said no — that is the whole scandal in one line.',
-          },
-          {
-            chapterIndex: 0,
-            startSentence: 'A sentence that is not in the chapter at all.',
-            endSentence: 'Nor is this one.',
-            hookRationale: 'The model hallucinated this one.',
-          },
-        ],
-      })
+      .values({ projectId: FIXTURE_PROJECT_ID, version: 1 })
       .returning({ id: scripts.id })
     await db.insert(chapters).values({
       id: CHAPTER,
@@ -164,140 +176,99 @@ describeDb('shorts-runner', () => {
       title: 'The audit',
       contentMd: CHAPTER_MD,
     })
-
-    await insertTimeline(db, {
-      projectId: FIXTURE_PROJECT_ID,
-      json: canonicalMaster(),
-      s3Key: '',
-    })
-  })
-
-  afterEach(() => {
-    vi.unstubAllEnvs()
-  })
-
-  it(
-    'resolves candidates into rows, skips the unplaceable one with a reason',
-    { timeout: 120_000 },
-    async () => {
-      // The fan-out step is stubbed: the engine would otherwise send its
-      // events to a live Inngest server that does not exist in tests.
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      expect((result as { skipped: string[] }).skipped).toHaveLength(1)
-      expect((result as { skipped: string[] }).skipped[0]).toContain('anchors not found')
-
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({
-        title: 'EY refused to sign the accounts.',
-        segmentRef: { chapterId: CHAPTER, fromParagraph: 1, toParagraph: 2 },
-        ending: 'cta',
-        renderId: null,
-      })
-
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stage).toBe('shorts')
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-    },
-  )
-
-  it('a re-fired master.ready keeps the rows the human curated', { timeout: 120_000 }, async () => {
-    await insertShort(db, {
-      projectId: FIXTURE_PROJECT_ID,
-      title: 'My hand-edited title',
-      segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
-      ending: 'loop',
-    })
-
-    const { result } = await engine.execute({ events: masterReadyEvent() })
-
-    expect(result).toMatchObject({ outcome: 'reused-existing', created: 0, reused: 1 })
-    const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-    expect(rows).toHaveLength(1)
-    expect(rows[0]?.title).toBe('My hand-edited title')
-    expect(rows[0]?.ending).toBe('loop')
+    await insertTimeline(db, { projectId: FIXTURE_PROJECT_ID, json: canonicalMaster(), s3Key: '' })
   })
 
   /**
-   * Decision 300: an excerpt cut from an earlier script points at narration
-   * the master no longer has (production, 2026-10-13: Shorts cut on 8
-   * September from script v2 against a master built from script v4). It can
-   * never render, so re-entry replaces it rather than keeping it; a row the
-   * master can still serve is kept as curated.
+   * Every event the run asked Inngest to send. A step.sendEvent reaches the
+   * client's private `_send`, which the spy answers instead of a live server.
    */
+  function sentEvents(): { name: string; data: Record<string, unknown> }[] {
+    return send.mock.calls.flatMap(([request]) => {
+      const { payload } = request as { payload: unknown }
+      const list = (Array.isArray(payload) ? payload : [payload]) as {
+        name: string
+        data: Record<string, unknown>
+      }[]
+      return list.map(({ name, data }) => ({ name, data }))
+    })
+  }
+
+  const run = () => engine.execute({ events: masterReadyEvent() })
+
   it(
-    'a re-fired master.ready replaces excerpts whose narration left the master, cutting fresh ones',
+    'asks the talking-points runner for a proposal when none is approved',
     { timeout: 120_000 },
     async () => {
-      await insertShort(db, {
-        projectId: FIXTURE_PROJECT_ID,
-        title: 'Cut from the old script',
-        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
-        ending: 'loop',
-      })
+      const { result } = await run()
 
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1, replaced: 1 })
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({
-        title: 'EY refused to sign the accounts.',
-        segmentRef: { chapterId: CHAPTER, fromParagraph: 1, toParagraph: 2 },
-      })
+      expect(result).toMatchObject({ outcome: 'points-requested' })
+      expect(sentEvents()).toEqual([
+        {
+          name: 'shorts/points.requested',
+          data: { projectId: FIXTURE_PROJECT_ID, mode: 'all', note: null },
+        },
+      ])
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(0)
+      // The talking-points runner parks the stage; this runner only marks it running.
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('running')
     },
   )
 
   it(
-    'a re-fired master.ready keeps a live excerpt and drops only the stale one beside it',
+    'with an approved set of three and one built, builds the other two and moves to review',
+    { timeout: 120_000 },
+    async () => {
+      await storeApprovedSet()
+      await builtPointShort(POINT_IDS[0]!)
+
+      const { result } = await run()
+
+      expect(result).toMatchObject({ outcome: 'builds-requested', requested: 2, kept: 1 })
+      expect(sentEvents()).toEqual([
+        {
+          name: 'shorts/point.build.requested',
+          data: { projectId: FIXTURE_PROJECT_ID, pointId: POINT_IDS[1] },
+        },
+        {
+          name: 'shorts/point.build.requested',
+          data: { projectId: FIXTURE_PROJECT_ID, pointId: POINT_IDS[2] },
+        },
+      ])
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      expect(project).toMatchObject({ stage: 'shorts', stageStatus: 'awaiting_review' })
+      expect(project?.shortsPhase).toBe('review')
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
+    },
+  )
+
+  /** Review Focus 3: master.ready after Back to visuals must not re-pause, re-propose or re-buy. */
+  it(
+    'a re-fired master.ready with every point built requests nothing and lands on review',
+    { timeout: 120_000 },
+    async () => {
+      await storeApprovedSet()
+      for (const id of POINT_IDS) await builtPointShort(id)
+
+      const { result } = await run()
+
+      expect(result).toMatchObject({ outcome: 'reused-existing', requested: 0, kept: 3 })
+      expect(sentEvents()).toEqual([])
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      expect(project).toMatchObject({ stageStatus: 'awaiting_review', shortsPhase: 'review' })
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(3)
+    },
+  )
+
+  it(
+    'leaves legacy teaser and excerpt rows exactly as they are',
     { timeout: 120_000 },
     async () => {
       await insertShort(db, {
         projectId: FIXTURE_PROJECT_ID,
-        title: 'Still in the master',
+        title: 'A hand-edited excerpt',
         segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
         ending: 'loop',
-      })
-      await insertShort(db, {
-        projectId: FIXTURE_PROJECT_ID,
-        title: 'Cut from the old script',
-        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
-      })
-
-      const { result } = await engine.execute({ events: masterReadyEvent() })
-
-      expect(result).toMatchObject({
-        outcome: 'reused-existing',
-        created: 0,
-        reused: 1,
-        replaced: 1,
-      })
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows.map((row) => row.title)).toEqual(['Still in the master'])
-    },
-  )
-
-  /**
-   * Decision 300, amended (production, 2026-10-13 evening): a kept teaser is
-   * not a kept excerpt. The first cut of this rule counted the September
-   * teaser as a curated row and cut nothing, leaving the project with one
-   * teaser and no excerpts. Only a live excerpt holds the fresh cut back.
-   */
-  it(
-    'cuts fresh excerpts when only a teaser survives beside the stale ones',
-    { timeout: 120_000 },
-    async () => {
-      await insertShort(db, {
-        projectId: FIXTURE_PROJECT_ID,
-        title: 'Cut from the old script',
-        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
       })
       await insertShort(db, {
         projectId: FIXTURE_PROJECT_ID,
@@ -305,389 +276,34 @@ describeDb('shorts-runner', () => {
         segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 1 },
         kind: 'teaser',
       })
+      const before = await listShorts(db, FIXTURE_PROJECT_ID)
 
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
+      await run()
 
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1, replaced: 1 })
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows.map((row) => [row.kind, row.title])).toEqual([
-        ['teaser', 'The teaser'],
-        ['excerpt', 'EY refused to sign the accounts.'],
-      ])
+      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual(before)
     },
   )
 
   it(
-    'a re-entry with no teaser row builds one without touching the curated excerpts',
+    'still deletes an excerpt whose narration left the master (decision 300)',
     { timeout: 120_000 },
     async () => {
-      // Production shape, 2026-09-08: the excerpts predate the teaser
-      // feature, so the re-entry guard must not lock the teaser out forever.
-      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
-      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-      })
-      await setCredential(
-        db,
-        'elevenlabs',
-        'mock-key-for-tests',
-        process.env['SECRETS_ENCRYPTION_KEY']!,
-      )
       await insertShort(db, {
         projectId: FIXTURE_PROJECT_ID,
-        title: 'My hand-edited title',
+        title: 'Cut from the old script',
+        segmentRef: { chapterId: '01HQ0000000000000000000OLD', fromParagraph: 3, toParagraph: 4 },
+      })
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Still in the master',
         segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
-        ending: 'loop',
       })
 
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
+      const { result } = await run()
 
-      expect(result).toMatchObject({ outcome: 'reused-existing', created: 0, reused: 1 })
+      expect(result).toMatchObject({ replaced: 1 })
       const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows).toHaveLength(2)
-      expect(rows.find((row) => row.kind === 'excerpt')?.title).toBe('My hand-edited title')
-      expect(rows.find((row) => row.kind === 'teaser')).toBeDefined()
-
-      // A second re-entry keeps the teaser as curated: still two rows. A
-      // fresh engine, because the test engine memoises step results per
-      // instance and would replay the first run instead of re-deciding.
-      const again = await new InngestTestEngine({ function: shortsRunner }).execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-      expect((again.result as { teaser: string | null }).teaser).toMatch(
-        /^skipped: the teaser already exists/,
-      )
-      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
-      // A teaser kept as curated is not a skip worth a line (decision 294).
-      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
+      expect(rows.map((row) => row.title)).toEqual(['Still in the master'])
     },
   )
-
-  it(
-    'a script with no candidates gets them marked here, never a review over nothing',
-    { timeout: 120_000 },
-    async () => {
-      // The script-runner swallows its own marking failures (an empty list
-      // reached production on 2026-09-03 and dead-ended this stage), so the
-      // runner must be able to mark candidates itself from the script text.
-      await db.update(scripts).set({ shortsCandidates: [] })
-
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows).toHaveLength(1)
-      // The mock candidate spans the whole chapter, first sentence to last.
-      expect(rows[0]?.title).toBe('By June, the auditors could not find the money.')
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-    },
-  )
-
-  it(
-    'puts what the marking repaired on the Shorts strip when it marks here (decision 293)',
-    { timeout: 120_000 },
-    async () => {
-      vi.stubEnv('MOCK_PROVIDERS', '')
-      try {
-        await db.update(scripts).set({ shortsCandidates: [] })
-        await db.delete(notices)
-        callLlm.mockResolvedValueOnce({
-          text: JSON.stringify({
-            candidates: [
-              {
-                chapterIndex: 0,
-                startSentence: 'EY refused to sign the accounts.',
-                endSentence: 'The shares collapsed in nine days.',
-                hookRationale:
-                  'The auditor said no. ' + 'That is the whole scandal in one line. '.repeat(40),
-              },
-            ],
-          }),
-        })
-
-        await engine.executeStep('mark-missing-candidates', { events: masterReadyEvent() })
-
-        const [marked] = await latestShortsCandidates(db, FIXTURE_PROJECT_ID)
-        expect(marked?.startSentence).toBe('EY refused to sign the accounts.')
-        expect(marked?.hookRationale.length).toBeLessThanOrEqual(1000)
-        const script = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'script')
-        expect(script.map((notice) => notice.message)).toEqual([
-          "Trimmed to fit: candidate 1's hook.",
-        ])
-      } finally {
-        vi.unstubAllEnvs()
-      }
-    },
-  )
-
-  it(
-    'cuts a teaser with its own narration when a voice is configured',
-    { timeout: 120_000 },
-    async () => {
-      // The teaser needs what the voice stage needs: a chosen voice and a
-      // key. The mock adapter answers to any of it without spending.
-      // setCredential rather than the env import: another suite may have left
-      // a row encrypted under a different key, and the import skips existing
-      // rows, leaving one this process cannot decrypt.
-      // The synthesis reserves against the monthly ceiling before calling
-      // the (mock) vendor; the default ceiling refuses it.
-      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
-      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-      })
-      await setCredential(
-        db,
-        'elevenlabs',
-        'mock-key-for-tests',
-        process.env['SECRETS_ENCRYPTION_KEY']!,
-      )
-
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      // One excerpt (the placeable candidate) plus the teaser. The teaser
-      // field is asserted first: on a skip it carries the reason, which is
-      // the error message worth reading.
-      expect((result as { teaser: string | null }).teaser).not.toMatch(/^skipped:/)
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
-      expect(rows).toHaveLength(2)
-
-      const teaser = rows.find((row) => row.kind === 'teaser')
-      expect(teaser).toBeDefined()
-      expect((result as { teaser: string | null }).teaser).toBe(teaser!.id)
-      // Its own narration on its own clock, ready for the render to window.
-      expect(teaser!.sourceTimeline).not.toBeNull()
-      const mini = teaser!.sourceTimeline as { narration: unknown[]; slots: unknown[] }
-      expect(mini.narration.length).toBeGreaterThanOrEqual(2)
-      expect(mini.slots.length).toBe(mini.narration.length)
-      expect(teaser!.segmentRef.fromParagraph).toBe(0)
-      expect(teaser!.segmentRef.toParagraph).toBe(mini.narration.length - 1)
-      // The editable script is stored beside the cut (decision 227) — what
-      // the teaser studio opens and the rebuild runner re-voices from.
-      const storedScript = teaser!.teaserScript as {
-        paragraphs: unknown[]
-        scriptVersion: number
-      } | null
-      expect(storedScript).not.toBeNull()
-      expect(storedScript!.paragraphs.length).toBe(mini.narration.length)
-      expect(storedScript!.scriptVersion).toBe(1)
-      // The voiced beats too (decision 230), so the studio's Voice act
-      // starts consistent with the cut this run just made.
-      const storedVoice = teaser!.teaserVoice as { beats: unknown[] } | null
-      expect(storedVoice).not.toBeNull()
-      expect(storedVoice!.beats.length).toBe(mini.narration.length)
-    },
-  )
-
-  it(
-    'skips the teaser with its reason when no voice is chosen, keeping the excerpts',
-    { timeout: 120_000 },
-    async () => {
-      // The seeded settings have no voice, so synthesis refuses before
-      // spending. The stage still parks with the excerpts: a missing teaser
-      // is a gap, never a dead stage.
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      expect((result as { teaser: string | null }).teaser).toMatch(/^skipped:/)
-      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-      // Said where the teaser would be, not only in the run result (decision 294).
-      const teaser = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')
-      expect(teaser).toEqual([
-        expect.objectContaining({
-          kind: 'skipped',
-          message: expect.stringMatching(
-            /^The teaser was skipped: beat 1 could not be synthesised: /,
-          ),
-        }),
-      ])
-    },
-  )
-
-  it(
-    'says why on the Teaser place when the cut is skipped (decision 294)',
-    { timeout: 120_000 },
-    async () => {
-      await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100, approvedOverage: null } })
-      await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-        tts: { provider: 'elevenlabs', voiceId: 'mock-narrator' },
-      })
-      await setCredential(
-        db,
-        'elevenlabs',
-        'mock-key-for-tests',
-        process.env['SECRETS_ENCRYPTION_KEY']!,
-      )
-
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [
-          { id: 'request-short-renders', handler: () => undefined },
-          {
-            id: 'assemble-teaser',
-            handler: () => ({ skipped: 'it could not be cut: it runs 41 s' }),
-          },
-        ],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([
-        expect.objectContaining({
-          kind: 'skipped',
-          message: 'The teaser was skipped: it could not be cut: it runs 41 s',
-        }),
-      ])
-    },
-  )
-
-  it(
-    'skips the teaser when its script step fails past its retries, and still renders the excerpts (decision 294)',
-    { timeout: 120_000 },
-    async () => {
-      // When a step's last retry fails, the SDK rejects `step.run` with a
-      // StepError carrying the step's error. The test engine cannot model
-      // retries (a throwing mocked step reads as a success), so the context
-      // hands the runner that rejection directly. On the engine itself, not
-      // `execute`: the engine's first execution reads only its own options.
-      const failing = new InngestTestEngine({
-        function: shortsRunner,
-        transformCtx: (raw) => {
-          const ctx = mockCtx(raw)
-          const run = ctx.step.run
-          ctx.step.run = ((id: string, ...rest: unknown[]) =>
-            id === 'write-teaser'
-              ? Promise.reject(
-                  new StepError(id, { name: 'Error', message: 'anthropic is overloaded (529).' }),
-                )
-              : (run as (...args: unknown[]) => unknown)(id, ...rest)) as typeof run
-          return ctx
-        },
-      })
-      // The last run's skip, which this one must replace, not sit beside.
-      await addNotice(
-        db,
-        { projectId: FIXTURE_PROJECT_ID, subject: 'teaser', subjectId: null },
-        { kind: 'skipped', message: 'The teaser was skipped: an older outage' },
-      )
-      const renders = vi.fn()
-      const { result } = await failing.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: renders }],
-      })
-
-      expect(result).toMatchObject({
-        outcome: 'shorts-created',
-        created: 1,
-        teaser: 'skipped: its script could not be written: anthropic is overloaded (529)',
-      })
-      expect(renders).toHaveBeenCalledTimes(1)
-      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([
-        expect.objectContaining({
-          kind: 'skipped',
-          message:
-            'The teaser was skipped: its script could not be written: anthropic is overloaded (529)',
-        }),
-      ])
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-    },
-  )
-
-  it(
-    'zero placeable segments fails the stage with the reasons, never awaiting_review',
-    { timeout: 120_000 },
-    async () => {
-      // Candidates exist but none anchor to the script: the stage must fail
-      // loudly (Re-run stage is the recovery) instead of parking a review
-      // gate over an empty screen.
-      await db.update(scripts).set({
-        shortsCandidates: [
-          {
-            chapterIndex: 0,
-            startSentence: 'A sentence that is not in the chapter at all.',
-            endSentence: 'Nor is this one.',
-            hookRationale: 'The model hallucinated this one.',
-          },
-        ],
-      })
-
-      const { result } = await engine.execute({ events: masterReadyEvent() })
-
-      expect(result).toMatchObject({ outcome: 'no-candidates', created: 0 })
-      expect(await listShorts(db, FIXTURE_PROJECT_ID)).toEqual([])
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
-    },
-  )
-
-  it(
-    'skips the teaser with the reason on its card when its script is refused twice (decision 293)',
-    { timeout: 120_000 },
-    async () => {
-      vi.stubEnv('MOCK_PROVIDERS', '')
-      callLlm.mockResolvedValue({ text: 'no json here' })
-
-      const { result } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(result).toMatchObject({ outcome: 'shorts-created', created: 1 })
-      expect((result as { teaser: string | null }).teaser).toMatch(
-        /^skipped: the teaser script failed: /,
-      )
-      expect(callLlm).toHaveBeenCalledTimes(2)
-      const [notice] = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')
-      expect(notice).toMatchObject({
-        kind: 'skipped',
-        message: expect.stringMatching(/^The teaser was skipped: The model returned no JSON/),
-      })
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
-    },
-  )
-
-  it(
-    'throws a provider error on the teaser script for Inngest to retry, never a silent skip (decision 293)',
-    { timeout: 120_000 },
-    async () => {
-      vi.stubEnv('MOCK_PROVIDERS', '')
-      callLlm.mockRejectedValue(new Error('socket hang up'))
-
-      const { error } = await engine.execute({
-        events: masterReadyEvent(),
-        steps: [{ id: 'request-short-renders', handler: () => undefined }],
-      })
-
-      expect(error).toMatchObject({ message: expect.stringContaining('socket hang up') })
-      expect(callLlm).toHaveBeenCalledTimes(1)
-      expect(noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'teaser')).toEqual([])
-      expect((await listShorts(db, FIXTURE_PROJECT_ID)).some((row) => row.kind === 'teaser')).toBe(
-        false,
-      )
-    },
-  )
-})
-
-describe('seedTitle', () => {
-  it('strips markup and fits a title field', () => {
-    expect(seedTitle('[grave] EY refused to sign.')).toBe('EY refused to sign.')
-    const long = 'word '.repeat(40).trim()
-    expect(seedTitle(long).length).toBeLessThanOrEqual(80)
-    expect(seedTitle(long).endsWith('…')).toBe(true)
-  })
 })
