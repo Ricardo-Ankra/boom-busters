@@ -245,7 +245,8 @@ function ConnectionCard({
     provider === 'elevenlabs' ||
     provider === 'pexels' ||
     provider === 'pixabay' ||
-    provider === 'fal'
+    provider === 'fal' ||
+    provider === 'vidiq'
 
   const submit = async () => {
     setSaving(true)

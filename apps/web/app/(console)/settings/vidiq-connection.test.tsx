@@ -9,10 +9,11 @@ import { WorkspaceForm } from './workspace-form'
 /** The VidIQ card under Connections: its key, and the monthly credit cap beside it. */
 
 const saveWorkspaceSettings = vi.fn()
+const verifyProviderKey = vi.fn()
 vi.mock('./workspace-actions', () => ({
   saveWorkspaceSettings: (...args: unknown[]) => saveWorkspaceSettings(...args),
   saveProviderKey: vi.fn(),
-  verifyProviderKey: vi.fn(),
+  verifyProviderKey: (...args: unknown[]) => verifyProviderKey(...args),
   createMusicUploadAction: vi.fn(),
   finaliseMusicBedAction: vi.fn(),
   recordMusicBedDurationAction: vi.fn(),
@@ -68,10 +69,12 @@ describe('the VidIQ connection', () => {
     expect(saveWorkspaceSettings).toHaveBeenCalledWith({ vidiq: { monthlyCreditCap: 500 } })
   })
 
-  it('offers no Verify button for the VidIQ key yet', () => {
+  it('offers a Verify button for the VidIQ key, which calls the verify action', async () => {
+    verifyProviderKey.mockResolvedValue({ ok: true, verified: true, mocked: false })
     renderConnections([
       { provider: 'vidiq', masked: 'vq…0000', verifyStatus: 'unchecked', lastVerifiedAt: null },
     ])
-    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }))
+    expect(verifyProviderKey).toHaveBeenCalledWith('vidiq')
   })
 })

@@ -8,7 +8,7 @@ import {
   setCredential,
   updateWorkspace,
 } from '@boom-busters/db'
-import { DEFAULT_WORKSPACE_SETTINGS } from '@boom-busters/schemas'
+import { DEFAULT_WORKSPACE_SETTINGS, ValidationError } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
@@ -122,5 +122,26 @@ describeDb('verifyProviderKey for vidiq', () => {
     const result = await verifyProviderKey('vidiq')
     expect(result.ok).toBe(false)
     expect(vidiqMock.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a refused key as invalid, saying it was refused', async () => {
+    await setCredential(db, 'vidiq', 'vidiq-test-key', env.SECRETS_ENCRYPTION_KEY)
+    vidiqMock.balance.mockRejectedValueOnce(
+      new ValidationError('vidiq refused the API key (401). Check it in Settings.'),
+    )
+    const result = await verifyProviderKey('vidiq')
+    expect(result).toMatchObject({ ok: false, verified: false })
+    expect(result.ok === false && result.error).toMatch(/refused/)
+    const [row] = await db.select().from(providerCredentials)
+    expect(row?.verifyStatus).toBe('invalid')
+  })
+
+  it('leaves the key unchecked when VidIQ could not be reached', async () => {
+    await setCredential(db, 'vidiq', 'vidiq-test-key', env.SECRETS_ENCRYPTION_KEY)
+    vidiqMock.balance.mockRejectedValueOnce(new Error('fetch failed'))
+    const result = await verifyProviderKey('vidiq')
+    expect(result.ok === false && result.error).toMatch(/could not be reached/)
+    const [row] = await db.select().from(providerCredentials)
+    expect(row?.verifyStatus).toBe('unchecked')
   })
 })
