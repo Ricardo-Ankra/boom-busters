@@ -1,3 +1,4 @@
+import { searchBriefLine } from '@boom-busters/schemas'
 import type {
   GroundedClaim,
   GroundedRef,
@@ -165,12 +166,15 @@ export function renderDossierMarkdown(input: {
   if (input.searchBrief?.targetKeyword || input.searchBrief?.searchedQuestions.length) {
     const { targetKeyword, searchedQuestions } = input.searchBrief
     lines.push('## Search', '')
-    if (targetKeyword) lines.push(`Target keyword: ${targetKeyword.keyword}`, '')
-    for (const question of searchedQuestions) {
+    // Third-party text: one line each, and a leading # never makes a heading.
+    const plain = (text: string) => searchBriefLine(text).replace(/^#/, '\\#')
+    if (targetKeyword) lines.push(`Target keyword: ${plain(targetKeyword.keyword)}`, '')
+    const shown = searchedQuestions.filter((question) => searchBriefLine(question) !== '')
+    for (const question of shown) {
       const state = answeredQuestions.has(foldQuestion(question)) ? 'answered' : 'open'
-      lines.push(`- ${question} (${state})`)
+      lines.push(`- ${plain(question)} (${state})`)
     }
-    if (searchedQuestions.length > 0) lines.push('')
+    if (shown.length > 0) lines.push('')
   }
 
   const unverified = input.claims.filter((claim) => claim.confidence === 'unverified')

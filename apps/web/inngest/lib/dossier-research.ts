@@ -93,7 +93,8 @@ export function withOutlierLinks(
   const seen = new Set(links.flatMap((link) => videoIdFromUrl(link.url) ?? []))
   const added: { url: string }[] = []
   for (const outlier of brief?.outliers ?? []) {
-    if (seen.has(outlier.videoId)) continue
+    // VidIQ's text: only a real YouTube id becomes a link.
+    if (!/^[A-Za-z0-9_-]{11}$/.test(outlier.videoId) || seen.has(outlier.videoId)) continue
     seen.add(outlier.videoId)
     added.push({ url: `https://www.youtube.com/watch?v=${outlier.videoId}` })
   }

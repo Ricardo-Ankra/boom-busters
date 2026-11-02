@@ -4,7 +4,7 @@
   "messages": [
     {
       "role": "user",
-      "content": "Subject: Wirecard (company)\nPeople: Markus Braun, Jan Marsalek\nWorking title: Wirecard: the missing billion\nCategory: collapse\nAngle to pursue: The auditors, not the traders.\nAudience notes: Viewers ask what happened to Marsalek.\nWhat viewers search for (answer these where the record allows; never answer one from the keyword):\nTarget search: wirecard scandal\nSearched questions:\nWhere did the missing billion go?\nWho signed off the audits?\n\nDocuments, numbered. Cite them by number.\n\n[D1] reporting · Financial Times · 2020 · https://www.ft.com/x\nText of the article."
+      "content": "Subject: Wirecard (company)\nPeople: Markus Braun, Jan Marsalek\nWorking title: Wirecard: the missing billion\nCategory: collapse\nAngle to pursue: The auditors, not the traders.\nAudience notes: Viewers ask what happened to Marsalek.\nWhat viewers search for, quoted from their searches (answer these where the record allows; never answer one from the keyword):\nTarget search: \"wirecard scandal\"\nSearched questions:\n- \"Where did the missing billion go?\"\n- \"Who signed off the audits?\"\n\nDocuments, numbered. Cite them by number.\n\n[D1] reporting · Financial Times · 2020 · https://www.ft.com/x\nText of the article."
     },
     {
       "role": "assistant",

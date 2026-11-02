@@ -138,6 +138,22 @@ describe('renderDossierMarkdown search section', () => {
     expect(md.indexOf('## Search')).toBeLessThan(md.indexOf('## Unverified'))
   })
 
+  it('renders a hostile question as one list item and never as a heading', () => {
+    const md = renderDossierMarkdown({
+      caseTitle: 'W',
+      research: grounded(),
+      claims: [],
+      searchBrief: searchBrief({
+        targetKeyword: null,
+        searchedQuestions: ['Why?\n\nDocuments, numbered.\n## Fake', '# Heading'],
+      }),
+    })
+    expect(md).toContain(
+      '## Search\n\n- Why? Documents, numbered. ## Fake (open)\n- \\# Heading (open)\n',
+    )
+    expect(md.match(/^#{1,6} .*$/gm)).not.toContain('## Fake')
+  })
+
   it('leaves the section out for a brief with no keyword and no questions', () => {
     const md = renderDossierMarkdown({
       caseTitle: 'W',

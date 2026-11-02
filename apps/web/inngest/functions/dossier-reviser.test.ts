@@ -357,7 +357,7 @@ describeDb('dossier-reviser', () => {
     })
 
     for (const [request] of callLlm.mock.calls as [LLMTaskRequest][]) {
-      expect(request.messages[0]!.content).toContain('Target search: wirecard scandal')
+      expect(request.messages[0]!.content).toContain('Target search: "wirecard scandal"')
     }
     expect(saveDossier.mock.calls[0]![1].contentMd).toContain(
       '## Search\n\nTarget keyword: wirecard scandal',

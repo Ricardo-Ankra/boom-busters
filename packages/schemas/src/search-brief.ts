@@ -155,3 +155,11 @@ export function briefDemandNotes(brief: SearchBrief): string {
 export function briefIsStale(brief: SearchBrief, now: Date = new Date()): boolean {
   return now.getTime() - Date.parse(brief.measuredAt) > SEARCH_BRIEF_STALE_DAYS * DAY_MS
 }
+
+/**
+ * Third-party search text (a keyword, a searched question) as one plain line
+ * for a prompt or a document: all whitespace collapsed, trimmed, capped.
+ */
+export function searchBriefLine(text: string, max = 200): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, max).trim()
+}

@@ -10,6 +10,7 @@ import {
   chooseTargetKeyword,
   keywordHasFigure,
   maskFigures,
+  searchBriefLine,
   type SearchBrief,
   type SearchKeyword,
 } from './search-brief'
@@ -164,5 +165,14 @@ describe('schemas', () => {
     expect(caseResearchJobIsRunning(job, new Date(NOW.getTime() + 31 * 60_000))).toBe(false)
     expect(caseResearchJobIsRunning({ ...job, state: 'done' }, NOW)).toBe(false)
     expect(CASE_RESEARCH_CREDITS).toBe(20)
+  })
+})
+
+describe('searchBriefLine', () => {
+  test('collapses every kind of whitespace, trims and caps', () => {
+    expect(searchBriefLine('  what\n\n did\tit \r\n do?  ')).toBe('what did it do?')
+    expect(searchBriefLine('a'.repeat(300))).toHaveLength(200)
+    expect(searchBriefLine('abc def', 5)).toBe('abc d')
+    expect(searchBriefLine(' \n ')).toBe('')
   })
 })

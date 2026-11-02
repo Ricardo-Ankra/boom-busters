@@ -897,16 +897,18 @@ suiteDb('loadCorpus', () => {
 })
 
 describe('withOutlierLinks', () => {
-  const outliers = ['dQw4w9WgXcQ', 'abcdefghijk', 'abcdefghijk'].map((videoId) => ({
-    videoId,
-    title: videoId,
-    channel: null,
-    subscribers: null,
-    views: null,
-    breakoutScore: null,
-    publishedAt: null,
-    tags: [],
-  }))
+  const outliers = ['dQw4w9WgXcQ', 'abcdefghijk', 'abcdefghijk', 'bad id\n&x=1', 'short'].map(
+    (videoId) => ({
+      videoId,
+      title: videoId,
+      channel: null,
+      subscribers: null,
+      views: null,
+      breakoutScore: null,
+      publishedAt: null,
+      tags: [],
+    }),
+  )
   const brief = { outliers } as unknown as Parameters<typeof withOutlierLinks>[1]
 
   it('appends each outlier once as a watch link, skipping a video the case already lists', () => {
@@ -919,6 +921,13 @@ describe('withOutlierLinks', () => {
       { url: 'https://youtu.be/dQw4w9WgXcQ?t=5' },
       { url: 'https://x.test/a' },
       { url: 'https://www.youtube.com/watch?v=abcdefghijk' },
+    ])
+  })
+
+  it('skips an outlier whose id is not a YouTube id', () => {
+    expect(withOutlierLinks([], brief).map((link) => link.url)).toEqual([
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?v=abcdefghijk',
     ])
   })
 

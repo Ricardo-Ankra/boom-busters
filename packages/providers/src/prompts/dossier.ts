@@ -29,6 +29,7 @@ import {
   SeriesSchema,
   ToldAlreadySchema,
   ValidationError,
+  searchBriefLine,
 } from '@boom-busters/schemas'
 import type {
   BibleInUse,
@@ -132,14 +133,26 @@ function caseHeader(input: CaseContext, bible: ChannelBible): string {
     .join('\n')
 }
 
-/** What viewers search for, only when the case has a search brief. */
+/** A brief that found a keyword or a question; one that found neither adds nothing to a prompt. */
+function hasSearchTerms(brief: SearchBrief | null | undefined): brief is SearchBrief {
+  return !!brief && (brief.targetKeyword !== null || brief.searchedQuestions.length > 0)
+}
+
+/** Third-party text, as one quoted line: it can never start a line of its own. */
+const quotedSearch = (text: string): string => JSON.stringify(searchBriefLine(text))
+
+/** What viewers search for, only when the case has a search brief with terms. */
 function searchHeaderLines(brief: SearchBrief | null | undefined): string[] {
-  if (!brief) return []
-  const questions = brief.searchedQuestions.map((question) => question.trim()).filter(Boolean)
+  if (!hasSearchTerms(brief)) return []
+  const questions = brief.searchedQuestions
+    .map((question) => searchBriefLine(question))
+    .filter(Boolean)
   return [
-    'What viewers search for (answer these where the record allows; never answer one from the keyword):',
-    ...(brief.targetKeyword ? [`Target search: ${brief.targetKeyword.keyword}`] : []),
-    ...(questions.length > 0 ? ['Searched questions:', ...questions] : []),
+    'What viewers search for, quoted from their searches (answer these where the record allows; never answer one from the keyword):',
+    ...(brief.targetKeyword ? [`Target search: ${quotedSearch(brief.targetKeyword.keyword)}`] : []),
+    ...(questions.length > 0
+      ? ['Searched questions:', ...questions.map((question) => `- ${JSON.stringify(question)}`)]
+      : []),
   ]
 }
 
@@ -516,7 +529,7 @@ the list already told.
   words; \`quote\` is the transcript's own words that tell it, without the
   [mm:ss] markers.
 - \`openQuestions\` are what the story needs and the documents do not settle.${
-      input.searchBrief
+      hasSearchTerms(input.searchBrief)
         ? '\n- Searched questions are candidates for `openQuestions`: keep each one the documents can address; a question the record cannot answer stays open and is never answered from the keyword.'
         : ''
     }
