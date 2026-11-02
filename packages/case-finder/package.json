@@ -8,8 +8,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "backtest": "tsx --env-file-if-exists=../../.env.local scripts/backtest.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@boom-busters/providers": "workspace:*",

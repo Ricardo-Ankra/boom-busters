@@ -9,9 +9,7 @@ import {
   caseSubjectTaken,
   chooseCaseAngle,
   createCase,
-  createSuggestedCases,
   deleteCase,
-  existingCaseTitles,
   getCase,
   listCases,
   markCaseInProduction,
@@ -83,24 +81,11 @@ suite('cases', () => {
       expect((await listCases(db, otherChannelId)).map((row) => row.title)).toEqual(['Beta case'])
     })
 
-    it('dedupes suggestions within a channel only', async () => {
-      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
-
-      const { created, skippedTitles } = await createSuggestedCases(db, otherChannelId, [
-        { title: 'Enron', category: 'collapse' },
-      ])
-
-      expect(created).toHaveLength(1)
-      expect(created[0]?.channelId).toBe(otherChannelId)
-      expect(skippedTitles).toEqual([])
-    })
-
-    it('existingCaseTitles and countCases are per channel', async () => {
+    it('countCases is per channel', async () => {
       await createCase(db, { channelId, title: 'Alpha case', category: 'con' })
       await createCase(db, { channelId, title: 'Alpha two', category: 'con' })
       await createCase(db, { channelId: otherChannelId, title: 'Beta case', category: 'con' })
 
-      expect(await existingCaseTitles(db, otherChannelId)).toEqual(['Beta case'])
       expect(await countCases(db, channelId)).toBe(2)
       expect(await countCases(db, otherChannelId)).toBe(1)
     })
@@ -193,48 +178,6 @@ suite('cases', () => {
     })
   })
 
-  describe('createSuggestedCases', () => {
-    it('skips a title already in the library', async () => {
-      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
-
-      const { created, skippedTitles } = await createSuggestedCases(db, channelId, [
-        { title: 'Enron', category: 'collapse' },
-        { title: 'Wirecard', category: 'con' },
-      ])
-
-      expect(created).toHaveLength(1)
-      expect(skippedTitles).toEqual(['Enron'])
-    })
-
-    it('matches titles case- and whitespace-insensitively', async () => {
-      await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
-
-      const { created } = await createSuggestedCases(db, channelId, [
-        { title: '  enron  ', category: 'collapse' },
-      ])
-
-      expect(created).toHaveLength(0)
-    })
-
-    it('deduplicates within a single batch', async () => {
-      // A model asked for ten cases will phrase the same one twice.
-      const { created, skippedTitles } = await createSuggestedCases(db, channelId, [
-        { title: 'Wirecard', category: 'con' },
-        { title: 'wirecard', category: 'con' },
-      ])
-
-      expect(created).toHaveLength(1)
-      expect(skippedTitles).toHaveLength(1)
-    })
-
-    it('does nothing at all for an empty batch', async () => {
-      expect(await createSuggestedCases(db, channelId, [])).toEqual({
-        created: [],
-        skippedTitles: [],
-      })
-    })
-  })
-
   describe('deleteCase', () => {
     it('deletes a case nothing was produced from', async () => {
       const row = await createCase(db, { channelId, title: 'Enron', category: 'collapse' })
@@ -280,13 +223,6 @@ suite('cases', () => {
 
       expect((await getCase(db, row.id))?.status).toBe('published')
     })
-  })
-
-  it('lists existing titles alphabetically for the suggestion prompt', async () => {
-    await createCase(db, { channelId, title: 'Zeta', category: 'con' })
-    await createCase(db, { channelId, title: 'Alpha', category: 'con' })
-
-    expect(await existingCaseTitles(db, channelId)).toEqual(['Alpha', 'Zeta'])
   })
 
   it('updates a case without touching what was not patched', async () => {

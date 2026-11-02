@@ -54,8 +54,6 @@ import { buildNameSubjectRequest } from '../subject'
  * literal inputs, so what each one sends today is captured once and any later
  * change to it shows as a fixture diff. `build` takes the bible, which every
  * builder now reads (`bibleAware`, asserted by the psychology test).
- * `buildSuggestCasesRequest` and `buildScoreNamedCasesRequest`
- * are left out: the Suggest cases are not parameterised by the bible.
  */
 export interface LiftCase {
   name: string

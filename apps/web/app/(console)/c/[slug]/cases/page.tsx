@@ -16,7 +16,7 @@ function readSort(value: string | undefined): CaseSort {
 
 /**
  * The Case Library (build spec section 11.3): a sortable table plus a
- * `Suggest cases` button that lands proposals as draft rows for triage, each
+ * triage list for rows proposed earlier as drafts, each
  * carrying visible `Accept` and `Dismiss` buttons.
  *
  * Sorting is a URL parameter rather than client state so a sorted view can be

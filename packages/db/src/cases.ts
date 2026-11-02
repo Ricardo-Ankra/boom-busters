@@ -169,45 +169,6 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
   return row!
 }
 
-/**
- * Insert suggestions, skipping any whose title already exists.
- *
- * Suggestion runs overlap heavily — ask twice in a month and the same famous
- * collapses come back both times. Returning the count of skipped rows lets the
- * UI say "6 new, 4 already in your library" instead of silently producing
- * duplicates the human then has to dismiss one by one.
- */
-export async function createSuggestedCases(
-  db: Database,
-  channelId: string,
-  inputs: readonly Omit<CaseInput, 'channelId'>[],
-): Promise<{ created: CaseRow[]; skippedTitles: string[] }> {
-  if (inputs.length === 0) return { created: [], skippedTitles: [] }
-
-  const existing = await db
-    .select({ title: cases.title })
-    .from(cases)
-    .where(eq(cases.channelId, channelId))
-  const seen = new Set(existing.map((row) => row.title.trim().toLowerCase()))
-
-  const created: CaseRow[] = []
-  const skippedTitles: string[] = []
-
-  for (const input of inputs) {
-    const key = input.title.trim().toLowerCase()
-    // Also guards duplicates *within* one batch, which a model will happily
-    // produce when it phrases the same case two ways.
-    if (seen.has(key)) {
-      skippedTitles.push(input.title)
-      continue
-    }
-    seen.add(key)
-    created.push(await createCase(db, { ...input, channelId }))
-  }
-
-  return { created, skippedTitles }
-}
-
 export async function updateCase(
   db: Database,
   id: string,
@@ -413,16 +374,6 @@ export async function deleteCase(db: Database, id: string): Promise<boolean> {
 
 export async function truncateCases(db: Database): Promise<void> {
   await db.execute(sql`truncate table ${cases} restart identity cascade`)
-}
-
-/** Everything the suggestion prompt should avoid proposing again. */
-export async function existingCaseTitles(db: Database, channelId: string): Promise<string[]> {
-  const rows = await db
-    .select({ title: cases.title })
-    .from(cases)
-    .where(eq(cases.channelId, channelId))
-    .orderBy(asc(cases.title))
-  return rows.map((row) => row.title)
 }
 
 /** Move a case into production when its first project starts. */

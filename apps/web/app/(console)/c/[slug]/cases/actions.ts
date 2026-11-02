@@ -6,9 +6,7 @@ import {
   chooseCaseAngle,
   createCase,
   createProjectFromCase,
-  createSuggestedCases,
   deleteCase,
-  existingCaseTitles,
   getCase,
   markCaseInProduction,
   setCaseStatus,
@@ -19,14 +17,6 @@ import {
 } from '@boom-busters/db'
 import type { CaseStatus } from '@boom-busters/db'
 import {
-  buildSuggestCasesRequest,
-  describeRepairs,
-  fileCaseRepairs,
-  mockSuggestedCases,
-  parseSuggestedCases,
-  mockProvidersEnabled,
-} from '@boom-busters/providers'
-import {
   CASE_PEOPLE_MAX,
   CASE_RESEARCH_CREDITS,
   CASE_PERSON_MAX,
@@ -34,27 +24,21 @@ import {
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
   EXAMPLE_SLOT_IDS,
-  FIRST_CHANNEL_ID,
   UlidSchema,
   caseResearchJobIsRunning,
   isBibleComplete,
   keywordHasFigure,
   serialiseError,
 } from '@boom-busters/schemas'
-import type { CaseSuggestion } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
-import { callForAnswer } from '@/lib/answer'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
-import type { Answer, AnswerComplete } from '@/lib/answer'
 import { caseCategoryKeys } from '@/lib/case-category'
-import { callLlm } from '@/lib/llm'
-import { recordRepairs } from '@/lib/notices'
 import { checkVidiqBudget } from '@/lib/vidiq-spend'
 
 /**
@@ -228,125 +212,6 @@ export async function dismissCase(id: string): Promise<ActionResult> {
 
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
-}
-
-export interface SuggestResult extends ActionResult {
-  created?: number
-  skipped?: number
-  /** True when the rows came from the mock adapter and researched nothing. */
-  mocked?: boolean
-  /**
-   * What the answer lost that no row can show (decision 293): a suggestion
-   * dropped for breaking a rule, or the cut to the number asked for. The
-   * toast carries it.
-   */
-  notice?: string
-}
-
-const SuggestInputSchema = z.object({
-  count: z.number().int().min(1).max(20),
-  steer: z.string().trim().max(500).optional(),
-})
-
-/**
- * `callForAnswer`'s call for the Case Library (decision 293): the ledgered
- * `callLlm` with no project to attribute the spend to, as before, and the
- * retry labelled in the ledger as `completeForProject` labels it.
- */
-const completeForLibrary =
-  (channelId: string): AnswerComplete =>
-  (request, call) =>
-    callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) })
-
-/**
- * `Suggest cases` — proposals land as `idea` rows for triage, never as
- * shortlisted work.
- *
- * The spend goes through `callLlm`, so it is capped by the same budget guard
- * as the pipeline and shows up on the Costs screen attributed to no project.
- */
-export async function suggestCases(channelId: string, input: unknown): Promise<SuggestResult> {
-  await requireOwner()
-  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
-  const channel = await findChannel(channelId)
-  const refusal = writeRefusalFor(channel)
-  if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
-  // The prompt names Boom & Busters' five categories and nothing else (spec section 8, call 10).
-  if (channelId !== FIRST_CHANNEL_ID) {
-    return { ok: false, error: 'Suggest cases is only available on the first channel' }
-  }
-  if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
-    return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
-
-  const parsed = SuggestInputSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Ask for between 1 and 20 cases' }
-  const { count } = parsed.data
-
-  const mocked = mockProvidersEnabled()
-
-  try {
-    // At most two calls, the second told what was wrong (decision 293).
-    const answer: Answer<CaseSuggestion[]> = mocked
-      ? { ok: true, value: mockSuggestedCases(count), calls: 1 }
-      : await callForAnswer({
-          request: buildSuggestCasesRequest({
-            existingTitles: await existingCaseTitles(db, channelId),
-            count,
-            ...(parsed.data.steer ? { steer: parsed.data.steer } : {}),
-          }),
-          parse: (text, note) => parseSuggestedCases(text, count, note),
-          complete: completeForLibrary(channelId),
-        })
-    if (!answer.ok) return { ok: false, error: answer.issue }
-    const suggestions = answer.value
-
-    const { created, skippedTitles } = await createSuggestedCases(
-      db,
-      channelId,
-      suggestions.map((suggestion) => ({
-        title: suggestion.title,
-        category: suggestion.category,
-        angle: suggestion.angle,
-        demandNotes: suggestion.demandNotes ?? null,
-        competitorLinks: suggestion.competitorLinks ?? [],
-        priorityScore: suggestion.priorityScore,
-        subject: suggestion.subject,
-        people: suggestion.people,
-        status: 'idea' as const,
-      })),
-    )
-
-    // Each created case carries its own repairs on its row. A new row has no
-    // older notes to retire, so a clean one writes nothing, and a skipped
-    // duplicate's repairs concern a row this answer did not touch.
-    const filed = fileCaseRepairs(
-      answer.repairs ?? [],
-      suggestions.map((suggestion) => suggestion.title),
-    )
-    for (const row of created) {
-      const repairs = filed.byTitle.get(row.title) ?? []
-      if (repairs.length > 0) {
-        await recordRepairs({ projectId: null, subject: 'case', subjectId: row.id }, repairs)
-      }
-    }
-    // What no row can carry goes in the toast.
-    const notice = describeRepairs(filed.rest)
-
-    revalidatePath('/c/[slug]', 'layout')
-    return {
-      ok: true,
-      created: created.length,
-      skipped: skippedTitles.length,
-      mocked,
-      ...(notice === null ? {} : { notice }),
-    }
-  } catch (error) {
-    console.error('[cases] suggestion failed', serialiseError(error))
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : 'The suggestion run failed',
-    }
-  }
 }
 
 export interface StartProjectResult extends ActionResult {

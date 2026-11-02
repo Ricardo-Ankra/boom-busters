@@ -7,8 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
 
 /**
- * The Case Library's notices (decision 293): a suggestion's repairs on its
- * own row, and a dropped suggestion, which has no row, in the toast.
+ * The Case Library's notices (decision 293): a suggestion's repairs on its own row.
  */
 
 const actions = vi.hoisted(() => ({
@@ -18,7 +17,6 @@ const actions = vi.hoisted(() => ({
   dismissCase: vi.fn(),
   setStatus: vi.fn(),
   startProjectFromCase: vi.fn(),
-  suggestCases: vi.fn(),
   researchCaseAction: vi.fn(),
   caseResearchEstimate: vi.fn(),
   chooseAngleAction: vi.fn(),
@@ -112,7 +110,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
     expect(actions.dismissCase).not.toHaveBeenCalled()
-    expect(row).toHaveTextContent('This suggestion is deleted. Suggest cases again for new ones.')
+    expect(row).toHaveTextContent('This suggestion is deleted.')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss it' }))
     await waitFor(() => expect(actions.dismissCase).toHaveBeenCalledWith(WIRECARD))
@@ -135,37 +133,6 @@ describe('CaseLibrary notices (decision 293)', () => {
       'It has projects behind it, so it is retired rather than deleted.',
     )
     expect(within(row).getByRole('button', { name: 'Dismiss it' })).toBeInTheDocument()
-  })
-
-  it('names a dropped suggestion in the success toast', async () => {
-    const dropped =
-      'Dropped suggestion 3 ("The very long case..."): its title ran over 200 characters.'
-    actions.suggestCases.mockResolvedValue({
-      ok: true,
-      created: 2,
-      skipped: 0,
-      mocked: false,
-      notice: dropped,
-    })
-    render(
-      <CaseLibrary
-        slug="psychology"
-        channelId={CHANNEL_ID}
-        categories={CATEGORIES}
-        cases={[]}
-        sort="priority"
-      />,
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: 'Suggest cases' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Get suggestions' }))
-
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith({
-        title: '2 new, 0 already in your library',
-        description: dropped,
-      }),
-    )
   })
 })
 
@@ -276,7 +243,7 @@ describe('the case form: subject, people and source links', () => {
 })
 
 describe('CaseLibrary with an incomplete channel bible', () => {
-  it('disables Suggest cases and New project and links to the Bible tab', () => {
+  it('disables New project and links to the Bible tab', () => {
     render(
       <CaseLibrary
         slug="psychology"
@@ -288,7 +255,6 @@ describe('CaseLibrary with an incomplete channel bible', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent(
       'Complete the channel bible in Settings first',
@@ -299,7 +265,7 @@ describe('CaseLibrary with an incomplete channel bible', () => {
     )
   })
 
-  it('leaves both enabled once the bible is complete', () => {
+  it('leaves New project enabled once the bible is complete', () => {
     render(
       <CaseLibrary
         slug="psychology"
@@ -309,14 +275,13 @@ describe('CaseLibrary with an incomplete channel bible', () => {
         sort="priority"
       />,
     )
-    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'New project' })).toBeEnabled()
     expect(screen.queryByRole('status')).toBeNull()
   })
 })
 
 describe('CaseLibrary for an archived channel', () => {
-  it('disables Suggest, Add and New project with the archived notice', () => {
+  it('disables Add and New project with the archived notice', () => {
     render(
       <CaseLibrary
         slug="old"
@@ -328,7 +293,6 @@ describe('CaseLibrary for an archived channel', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /Suggest cases/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Add case/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent('This channel is archived')
@@ -373,31 +337,24 @@ describe('categories come from the channel bible', () => {
     expect(row).toHaveTextContent('collapse')
   })
 
-  it('has no Suggest cases button on a channel other than the first', () => {
-    render(
-      <CaseLibrary
-        slug="psychology"
-        channelId={SECOND_CHANNEL_ID}
-        categories={PSYCHOLOGY_CATEGORIES}
-        cases={[]}
-        sort="priority"
-      />,
-    )
-    expect(screen.queryByRole('button', { name: 'Suggest cases' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add case' })).toBeInTheDocument()
-  })
-
-  it('keeps Suggest cases on the first channel', () => {
-    render(
-      <CaseLibrary
-        slug="boom-busters"
-        channelId={CHANNEL_ID}
-        categories={CATEGORIES}
-        cases={[]}
-        sort="priority"
-      />,
-    )
-    expect(screen.getByRole('button', { name: 'Suggest cases' })).toBeInTheDocument()
+  it('has no Suggest cases button on any channel', () => {
+    for (const [id, categories] of [
+      [SECOND_CHANNEL_ID, PSYCHOLOGY_CATEGORIES],
+      [CHANNEL_ID, CATEGORIES],
+    ] as const) {
+      const { unmount } = render(
+        <CaseLibrary
+          slug="psychology"
+          channelId={id}
+          categories={categories}
+          cases={[]}
+          sort="priority"
+        />,
+      )
+      expect(screen.queryByRole('button', { name: /Suggest cases/ })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Add case' })).toBeInTheDocument()
+      unmount()
+    }
   })
 })
 

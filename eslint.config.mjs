@@ -54,7 +54,6 @@ export default tseslint.config(
     files: [
       'packages/db/src/scripts/**/*.ts',
       'apps/web/scripts/**/*.ts',
-      'packages/case-finder/scripts/**/*.ts',
       'scripts/**/*.mjs',
       '**/*.config.{ts,mts,mjs,js}',
       'infra/lambdas/**/*.ts',

@@ -1,9 +1,9 @@
 'use client'
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
-import { FIRST_CHANNEL_ID, noticesFor } from '@boom-busters/schemas'
+import { noticesFor } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
-import { Check, Pencil, Plus, Sparkles, X } from 'lucide-react'
+import { Check, Pencil, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
@@ -11,13 +11,13 @@ import { ConfirmButton } from '@/components/confirm-button'
 import { Notices } from '@/components/notices'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input, Label, NumberInput, Select } from '@/components/ui/input'
+import { Input, Label, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { caseCategoryLabel } from '@/lib/case-category'
 import { channelHref } from '@/lib/channel-href'
-import { acceptCase, addCase, dismissCase, editCase, setStatus, suggestCases } from './actions'
+import { acceptCase, addCase, dismissCase, editCase, setStatus } from './actions'
 import { joinPeople, joinSourceLinks, splitPeople, splitSourceLinks } from './case-details'
 import { NewProjectButton, ResearchControl, SearchBriefPanel } from './search-brief-panel'
 
@@ -109,10 +109,6 @@ export function CaseLibrary({
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-[20px] font-semibold">Case Library</h1>
           <div className="flex flex-wrap items-center gap-2">
-            {/* Its prompt is Boom & Busters' own, so no other channel gets the button. */}
-            {channelId === FIRST_CHANNEL_ID ? (
-              <SuggestButton channelId={channelId} blocked={blockedReason} />
-            ) : null}
             <AddCaseButton channelId={channelId} run={run} disabled={archived} />
           </div>
         </header>
@@ -165,16 +161,7 @@ export function CaseLibrary({
             <Card>
               <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
                 <p className="text-[15px]">No cases yet.</p>
-                <p className="text-[13px] text-[var(--color-text-muted)]">
-                  {channelId === FIRST_CHANNEL_ID ? (
-                    <>
-                      Use <span className="font-medium">Suggest cases</span> to get proposals, or
-                      add one yourself.
-                    </>
-                  ) : (
-                    'Add one yourself.'
-                  )}
-                </p>
+                <p className="text-[13px] text-[var(--color-text-muted)]">Add one yourself.</p>
               </CardContent>
             </Card>
           ) : (
@@ -413,7 +400,7 @@ function SuggestionRow({
           consequence={
             item.projectCount > 0
               ? 'It has projects behind it, so it is retired rather than deleted.'
-              : 'This suggestion is deleted. Suggest cases again for new ones.'
+              : 'This suggestion is deleted.'
           }
           onConfirm={() => run(() => dismissCase(item.id), 'Dismissed')}
         />
@@ -488,92 +475,6 @@ function RowNotices({ notices }: { notices: readonly Notice[] }) {
   return (
     <div className="w-full">
       <Notices notices={notices} />
-    </div>
-  )
-}
-
-function SuggestButton({ channelId, blocked }: { channelId: string; blocked: string | null }) {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [open, setOpen] = React.useState(false)
-  const [count, setCount] = React.useState(8)
-  const [steer, setSteer] = React.useState('')
-  const [busy, setBusy] = React.useState(false)
-
-  if (!open) {
-    return (
-      <Button
-        variant="outline"
-        disabled={blocked !== null}
-        title={blocked ?? undefined}
-        onClick={() => setOpen(true)}
-      >
-        <Sparkles aria-hidden />
-        Suggest cases
-      </Button>
-    )
-  }
-
-  return (
-    <div className="flex flex-wrap items-end gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="suggest-count">How many</Label>
-        <NumberInput
-          id="suggest-count"
-          value={count}
-          min={1}
-          max={20}
-          onChange={(event) => setCount(Number(event.target.value))}
-          className="w-24"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="suggest-steer">Steer (optional)</Label>
-        <Input
-          id="suggest-steer"
-          value={steer}
-          placeholder="e.g. aviation, 1990s, nothing US-centric"
-          onChange={(event) => setSteer(event.target.value)}
-          className="w-72"
-        />
-      </div>
-      <Button
-        variant="primary"
-        busy={busy}
-        onClick={async () => {
-          setBusy(true)
-          try {
-            const result = await suggestCases(channelId, {
-              count,
-              steer: steer.trim() || undefined,
-            })
-            if (!result.ok) {
-              toast({
-                title: 'That did not work',
-                description: result.error,
-                variant: 'error',
-              })
-              return
-            }
-            toast({
-              title: result.mocked
-                ? `${result.created} placeholder rows — mock mode researched nothing`
-                : `${result.created} new, ${result.skipped} already in your library`,
-              // A dropped suggestion has no row to carry its notice (decision 293).
-              ...(result.notice ? { description: result.notice } : {}),
-            })
-            setOpen(false)
-            router.refresh()
-          } finally {
-            setBusy(false)
-          }
-        }}
-      >
-        Get suggestions
-      </Button>
-      <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-        Cancel
-      </Button>
     </div>
   )
 }

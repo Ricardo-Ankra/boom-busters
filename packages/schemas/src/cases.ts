@@ -1,8 +1,9 @@
 import { z } from 'zod'
 
 /**
- * Provider IO for the Case Library's `Suggest cases` button (spec section
- * 11.3), and the shape the triage table renders.
+ * The shape of a case proposal as the triage table renders it (spec section
+ * 11.3). The `Suggest cases` button is retired; the shape stays for the subject
+ * naming prompt and for proposals filed earlier.
  *
  * Two rules are enforced here rather than trusted to the prompt, because a
  * model that has been told twice still gets it wrong occasionally and a draft
@@ -34,7 +35,6 @@ export const CASE_LINKS_MAX = 10
 export const CASE_LINK_NOTE_MAX = 500
 export const CASE_PRIORITY_MIN = 0
 export const CASE_PRIORITY_MAX = 100
-export const CASE_SUGGESTIONS_MAX = 20
 export const CASE_SUBJECT_MIN = 2
 export const CASE_SUBJECT_MAX = 120
 export const CASE_PEOPLE_MAX = 6
@@ -60,8 +60,3 @@ export const CaseSuggestionSchema = z.object({
   people: z.array(z.string().trim().min(2).max(CASE_PERSON_MAX)).max(CASE_PEOPLE_MAX).default([]),
 })
 export type CaseSuggestion = z.infer<typeof CaseSuggestionSchema>
-
-export const CaseSuggestionsSchema = z.object({
-  suggestions: z.array(CaseSuggestionSchema).min(1).max(CASE_SUGGESTIONS_MAX),
-})
-export type CaseSuggestions = z.infer<typeof CaseSuggestionsSchema>

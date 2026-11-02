@@ -222,3 +222,9 @@ export function liveWikidata(client: PoliteClient): WikidataSource {
     },
   }
 }
+
+/** The QID at the end of an entity URI; null for anything else. */
+export function qidOf(uri: string): string | null {
+  const m = /\/(Q\d+)$/.exec(uri)
+  return m ? m[1]! : null
+}

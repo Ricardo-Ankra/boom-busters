@@ -1,5 +1,7 @@
 # The case finder ranks a hitlist on measured evidence
 
+Status: Dropped 2026-10-28, superseded by 2026-10-28-vidiq-search-research-design.md.
+
 Status: designed with the owner in conversation on 2026-10-20, then read
 by a builder; the calls marked "builder check, my call" are Claude's and
 the owner can overturn them. Approved by the owner on 2026-10-20, including
