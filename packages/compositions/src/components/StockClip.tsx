@@ -1,8 +1,9 @@
 import { Video } from '@remotion/media'
+import type { CropFocus } from '@boom-busters/schemas'
 import { AbsoluteFill, OffthreadVideo, useVideoConfig } from 'remotion'
 import { mediaCrossOrigin } from '../lib/cross-origin'
 import { mediaEngine } from '../lib/media-engine'
-import { msToFrames } from '../lib/motion'
+import { cropPosition, msToFrames } from '../lib/motion'
 
 /**
  * A stock video slot. Always muted BY TYPE upstream (the timeline schema
@@ -18,10 +19,12 @@ export function StockClip({
   src,
   previewSrc,
   trimStartMs,
+  crop,
 }: {
   src: string
   previewSrc?: string
   trimStartMs?: number
+  crop?: CropFocus
 }) {
   const { fps } = useVideoConfig()
   const trimBefore = msToFrames(trimStartMs ?? 0, fps)
@@ -33,7 +36,12 @@ export function StockClip({
           crossOrigin={mediaCrossOrigin()}
           muted
           startFrom={trimBefore}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: cropPosition(crop),
+          }}
         />
       ) : (
         <Video
@@ -41,7 +49,7 @@ export function StockClip({
           muted
           trimBefore={trimBefore}
           objectFit="cover"
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', objectPosition: cropPosition(crop) }}
         />
       )}
     </AbsoluteFill>

@@ -1,5 +1,5 @@
 {
-  "id": "258425f6-021b-4394-aebc-74966705a770",
+  "id": "9fbbc67d-56ad-4c91-91c7-45b3273fe014",
   "prevId": "d98920cb-f61e-4cbc-a925-fe6be8492e9f",
   "version": "7",
   "dialect": "postgresql",
@@ -414,107 +414,6 @@
             "id"
           ],
           "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.bible_drafts": {
-      "name": "bible_drafts",
-      "schema": "",
-      "columns": {
-        "channel_id": {
-          "name": "channel_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "base_bible_id": {
-          "name": "base_bible_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bible": {
-          "name": "bible",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "statuses": {
-          "name": "statuses",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "too_close": {
-          "name": "too_close",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "errors": {
-          "name": "errors",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "inputs": {
-          "name": "inputs",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "research": {
-          "name": "research",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "job": {
-          "name": "job",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "bible_drafts_channel_id_channels_id_fk": {
-          "name": "bible_drafts_channel_id_channels_id_fk",
-          "tableFrom": "bible_drafts",
-          "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "bible_drafts_base_bible_id_channel_bibles_id_fk": {
-          "name": "bible_drafts_base_bible_id_channel_bibles_id_fk",
-          "tableFrom": "bible_drafts",
-          "tableTo": "channel_bibles",
-          "columnsFrom": [
-            "base_bible_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -2302,6 +2201,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "shorts_phase": {
+          "name": "shorts_phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "direction": {
           "name": "direction",
           "type": "jsonb",
@@ -3557,6 +3462,36 @@
           "primaryKey": false,
           "notNull": false
         },
+        "point_id": {
+          "name": "point_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "point_script": {
+          "name": "point_script",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "point_voice": {
+          "name": "point_voice",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "point_plan": {
+          "name": "point_plan",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "point_fetches": {
+          "name": "point_fetches",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3946,6 +3881,104 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.talking_point_sets": {
+      "name": "talking_point_sets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "script_version": {
+          "name": "script_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points": {
+          "name": "points",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approved_at": {
+          "name": "approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "talking_point_sets_project_version_key": {
+          "name": "talking_point_sets_project_version_key",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "talking_point_sets_project_id_projects_id_fk": {
+          "name": "talking_point_sets_project_id_projects_id_fk",
+          "tableFrom": "talking_point_sets",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.timelines": {
       "name": "timelines",
       "schema": "",
@@ -4037,111 +4070,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.vidiq_credits": {
-      "name": "vidiq_credits",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "channel_id": {
-          "name": "channel_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tool": {
-          "name": "tool",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "args": {
-          "name": "args",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "credits": {
-          "name": "credits",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "occurred_at": {
-          "name": "occurred_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "vidiq_credits_occurred_idx": {
-          "name": "vidiq_credits_occurred_idx",
-          "columns": [
-            {
-              "expression": "occurred_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "vidiq_credits_channel_id_channels_id_fk": {
-          "name": "vidiq_credits_channel_id_channels_id_fk",
-          "tableFrom": "vidiq_credits",
-          "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "vidiq_credits_project_id_projects_id_fk": {
-          "name": "vidiq_credits_project_id_projects_id_fk",
-          "tableFrom": "vidiq_credits",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -4740,7 +4668,9 @@
         "teaser",
         "cast",
         "slot",
-        "case"
+        "case",
+        "points",
+        "short"
       ]
     },
     "public.privacy_status": {
@@ -4780,8 +4710,7 @@
         "fal",
         "hosted-alignment",
         "youtube",
-        "remotion",
-        "vidiq"
+        "remotion"
       ]
     },
     "public.publish_status": {
@@ -4859,7 +4788,8 @@
       "schema": "public",
       "values": [
         "excerpt",
-        "teaser"
+        "teaser",
+        "point"
       ]
     },
     "public.shot_status": {

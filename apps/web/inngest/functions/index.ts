@@ -7,11 +7,14 @@ import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
+import { pointShortRunner } from './point-short-runner'
+import { pointStudioRunner } from './point-studio-runner'
 import { publishRunner } from './publish-runner'
 import { renderRunner } from './render-runner'
 import { scriptRunner } from './script-runner'
 import { shortRenderRunner } from './short-render-runner'
 import { shortsRunner } from './shorts-runner'
+import { talkingPointsRunner } from './talking-points-runner'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
 import { slotRefetcher } from './slot-refetcher'
@@ -69,6 +72,9 @@ export const functions = [
   draftRunner,
   renderRunner,
   shortsRunner,
+  talkingPointsRunner,
+  pointShortRunner,
+  pointStudioRunner,
   shortRenderRunner,
   teaserRebuildRunner,
   teaserShotFetcher,
@@ -86,6 +92,8 @@ export {
   cancellationMirror,
   cancelReconciler,
   draftRunner,
+  pointShortRunner,
+  pointStudioRunner,
   publishRunner,
   renderRunner,
   dossierReviser,
@@ -93,6 +101,7 @@ export {
   scriptRunner,
   shortRenderRunner,
   shortsRunner,
+  talkingPointsRunner,
   teaserRebuildRunner,
   teaserShotFetcher,
   slotRebriefer,

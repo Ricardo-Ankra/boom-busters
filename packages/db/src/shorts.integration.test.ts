@@ -4,7 +4,19 @@ import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
 import { cases, projects, scripts } from './schema'
-import { getShort, insertShort, latestShortsCandidates, listShorts, updateShort } from './shorts'
+import {
+  claimPointWork,
+  getShort,
+  insertShort,
+  latestShortsCandidates,
+  isAssembledShort,
+  listShorts,
+  releasePointWork,
+  savePointShotChoice,
+  settlePointWork,
+  shortForPoint,
+  updateShort,
+} from './shorts'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -102,5 +114,198 @@ suite('shorts bookkeeping', () => {
 
   it('a project with no script has no candidates, not an error', async () => {
     expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([])
+  })
+
+  it('a point Short round-trips its five point columns and is found by point id', async () => {
+    const pointId = '01HQ0000000000000000000P01'
+    const script = {
+      title: 'The audit that lied',
+      scriptVersion: 2,
+      pointId,
+      paragraphs: [
+        { phase: 'hook' as const, text: 'Nobody checked the one number.', chapterIndex: 0 },
+      ],
+    }
+    const voice = { scriptVersion: 2, paragraphs: [] }
+    const plan = { shots: [], plannedFor: { scriptVersion: 2, voiceHash: 'abc' } }
+    const fetches = { candidates: [], state: null }
+    const short = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'The audit that lied',
+      segmentRef: { chapterId: CHAPTER, fromParagraph: 0, toParagraph: 0 },
+      kind: 'point',
+      pointId,
+      pointScript: script,
+    })
+    expect(short.kind).toBe('point')
+    expect(short.pointId).toBe(pointId)
+    expect(short.pointVoice).toBeNull()
+
+    await updateShort(db, short.id, {
+      pointVoice: voice,
+      pointPlan: plan,
+      pointFetches: fetches,
+    })
+    const stored = await getShort(db, short.id)
+    expect(stored?.pointScript).toEqual(script)
+    expect(stored?.pointVoice).toEqual(voice)
+    expect(stored?.pointPlan).toEqual(plan)
+    expect(stored?.pointFetches).toEqual(fetches)
+
+    expect((await shortForPoint(db, FIXTURE_PROJECT_ID, pointId))?.id).toBe(short.id)
+    expect(
+      await shortForPoint(db, FIXTURE_PROJECT_ID, '01HQ0000000000000000000P02'),
+    ).toBeUndefined()
+  })
+
+  it('lists a point Short only once its master is compiled; shortForPoint still finds the draft', async () => {
+    const pointId = '01HQ0000000000000000000P03'
+    const draft = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'Draft',
+      segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+      kind: 'point',
+      pointId,
+    })
+    expect(isAssembledShort(draft)).toBe(false)
+    expect((await listShorts(db, FIXTURE_PROJECT_ID)).map((row) => row.id)).not.toContain(draft.id)
+    expect((await shortForPoint(db, FIXTURE_PROJECT_ID, pointId))?.id).toBe(draft.id)
+
+    await updateShort(db, draft.id, { sourceTimeline: { version: 1 } })
+    const done = await shortForPoint(db, FIXTURE_PROJECT_ID, pointId)
+    expect(isAssembledShort(done!)).toBe(true)
+    expect((await listShorts(db, FIXTURE_PROJECT_ID)).map((row) => row.id)).toContain(draft.id)
+  })
+  describe('the point studio claim', () => {
+    const farPast = new Date('2000-01-01T00:00:00Z')
+    const draftPoint = () =>
+      insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Claim me',
+        segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+        kind: 'point',
+        pointId: '01HQ0000000000000000000P09',
+      })
+
+    it('is won by exactly one of two presses and refused while the work is fresh', async () => {
+      const row = await draftPoint()
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000)
+
+      const results = await Promise.all([
+        claimPointWork(db, row.id, 'plan', cutoff),
+        claimPointWork(db, row.id, 'plan', cutoff),
+      ])
+
+      expect(results.filter(Boolean)).toHaveLength(1)
+      expect((await getShort(db, row.id))?.pointFetches).toMatchObject({
+        candidates: [],
+        state: { state: 'fetching', what: 'plan' },
+      })
+      expect(await claimPointWork(db, row.id, 'voice', cutoff)).toBe(false)
+    })
+
+    it('may be won again once the work is older than the cooldown', async () => {
+      const row = await draftPoint()
+      expect(await claimPointWork(db, row.id, 'still', farPast)).toBe(true)
+
+      // The cutoff is now in the future of the claim's startedAt: it is stale.
+      expect(await claimPointWork(db, row.id, 'still', new Date(Date.now() + 60_000))).toBe(true)
+    })
+
+    it('settles to null or to failed words without touching the stored pool', async () => {
+      const row = await draftPoint()
+      await updateShort(db, row.id, {
+        pointFetches: { candidates: [], state: null },
+      })
+      expect(await claimPointWork(db, row.id, 'voice', farPast)).toBe(true)
+
+      await settlePointWork(db, row.id, { state: 'failed', what: 'voice', reason: 'it broke' })
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({
+        candidates: [],
+        state: { state: 'failed', what: 'voice', reason: 'it broke' },
+      })
+      // A failed state is not work in flight: the next press may claim it.
+      expect(await claimPointWork(db, row.id, 'voice', farPast)).toBe(true)
+      await settlePointWork(db, row.id, null)
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({ candidates: [], state: null })
+    })
+
+    it('releases only an assemble claim and leaves every other state alone', async () => {
+      const row = await draftPoint()
+      expect(await claimPointWork(db, row.id, 'assemble', farPast)).toBe(true)
+      await releasePointWork(db, row.id, 'assemble')
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({ candidates: [], state: null })
+
+      for (const what of ['voice', 'plan', 'still'] as const) {
+        expect(await claimPointWork(db, row.id, what, farPast)).toBe(true)
+        await releasePointWork(db, row.id, 'assemble')
+        expect((await getShort(db, row.id))?.pointFetches?.state).toMatchObject({
+          state: 'fetching',
+          what,
+        })
+        await settlePointWork(db, row.id, null)
+      }
+
+      await settlePointWork(db, row.id, { state: 'failed', what: 'plan', reason: 'it broke' })
+      await releasePointWork(db, row.id, 'assemble')
+      expect((await getShort(db, row.id))?.pointFetches?.state).toMatchObject({ state: 'failed' })
+
+      const bare = await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'No record',
+        segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+        kind: 'point',
+        pointId: '01HQ0000000000000000000P10',
+      })
+      await releasePointWork(db, bare.id, 'assemble')
+      expect((await getShort(db, bare.id))?.pointFetches).toBeNull()
+    })
+
+    it('clears a point Short back to a draft with null records', async () => {
+      const row = await draftPoint()
+      await updateShort(db, row.id, { sourceTimeline: { version: 1 } })
+      await updateShort(db, row.id, { sourceTimeline: null, pointScript: null, renderId: null })
+      expect(isAssembledShort((await getShort(db, row.id))!)).toBe(false)
+    })
+
+    it('stores a shot choice only on the plan that was read, touching just its candidate', async () => {
+      const row = await draftPoint()
+      const plan = { shots: [{ n: 1 }] } as never
+      const pool = (...ids: string[]) => ({
+        candidates: ids.map((id) => ({ id, url: `https://x/${id}` })),
+        state: null,
+      })
+      await updateShort(db, row.id, { pointPlan: plan, pointFetches: pool('a', 'b') as never })
+      // Another action's claim and a candidate added while the picture downloaded.
+      expect(await claimPointWork(db, row.id, 'plan', new Date(0))).toBe(true)
+      await db.execute(
+        dsql`update shorts set point_fetches = jsonb_set(point_fetches, '{candidates}', point_fetches -> 'candidates' || '[{"id":"c"}]'::jsonb) where id = ${row.id}`,
+      )
+
+      const chosen = { shots: [{ n: 2 }] } as never
+      expect(
+        await savePointShotChoice(db, row.id, {
+          expectedPlan: plan,
+          plan: chosen,
+          settled: { id: 'a', url: 'https://x/a', r2Key: 'stored/a' },
+        }),
+      ).toBe(true)
+      const after = await getShort(db, row.id)
+      expect(after?.pointPlan).toEqual(chosen)
+      expect(after?.pointFetches).toEqual({
+        candidates: [
+          { id: 'a', url: 'https://x/a', r2Key: 'stored/a' },
+          { id: 'b', url: 'https://x/b' },
+          { id: 'c' },
+        ],
+        state: expect.objectContaining({ state: 'fetching', what: 'plan' }),
+      })
+
+      // The plan has moved on since it was read: refused, nothing written.
+      expect(
+        await savePointShotChoice(db, row.id, { expectedPlan: plan, plan: { shots: [] } as never }),
+      ).toBe(false)
+      expect((await getShort(db, row.id))?.pointPlan).toEqual(chosen)
+    })
   })
 })

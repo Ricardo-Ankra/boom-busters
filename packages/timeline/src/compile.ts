@@ -1,5 +1,6 @@
 import {
   canonicalTimelineIssues,
+  SHORT_RULES,
   TIMELINE_VERSION,
   TimelineSchema,
   ValidationError,
@@ -149,6 +150,8 @@ export function resolveMotion(motion: MotionSpec, slot: CompileSlot): TimelineMo
       }
     case 'pan':
       return { kind: 'kenburns', direction: 'in', intensity: KENBURNS_INTENSITY.medium }
+    case 'punch':
+      return { kind: 'punch', scale: SHORT_RULES.punchScale, durationMs: SHORT_RULES.punchMs }
   }
 }
 

@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, isNotNull } from 'drizzle-orm'
+import { and, asc, count, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, publishRecords, shorts } from './schema'
 import type { PublishRecordRow } from './schema'
@@ -136,6 +136,33 @@ export async function updatePublishRecord(
     .update(publishRecords)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(publishRecords.id, id))
+}
+
+/**
+ * When the project's earliest point Short is due to go out, among those that
+ * hold a moment (scheduled, or an upload on its way); null when none does.
+ * The long form may not move to or past it (design section 8).
+ */
+export async function earliestScheduledPointShort(
+  db: Database,
+  projectId: string,
+): Promise<Date | null> {
+  const [row] = await db
+    .select({ publishAt: publishRecords.publishAt })
+    .from(publishRecords)
+    .innerJoin(shorts, eq(shorts.id, publishRecords.targetId))
+    .where(
+      and(
+        eq(publishRecords.targetType, 'short'),
+        eq(shorts.projectId, projectId),
+        eq(shorts.kind, 'point'),
+        isNotNull(publishRecords.publishAt),
+        inArray(publishRecords.status, ['scheduled', 'uploading', 'uploaded']),
+      ),
+    )
+    .orderBy(asc(publishRecords.publishAt))
+    .limit(1)
+  return row?.publishAt ?? null
 }
 
 /** One row on the global Calendar: a slotted target and where it belongs. */

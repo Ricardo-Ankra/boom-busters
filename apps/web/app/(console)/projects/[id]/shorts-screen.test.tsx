@@ -48,6 +48,19 @@ vi.mock('./shorts-actions', () => ({
   pickFetchedTeaserShot: (...args: unknown[]) => pickFetchedTeaserShot(...args),
 }))
 
+// The point Short studio's actions load next-auth too; the screen test only
+// needs the studio to open, so they are inert here.
+vi.mock('./point-studio-actions', () => ({
+  savePointScript: vi.fn(),
+  revoicePoint: vi.fn(),
+  replanPoint: vi.fn(),
+  savePointShot: vi.fn(),
+  fetchPointShotOptions: vi.fn(),
+  generatePointStill: vi.fn(),
+  assemblePoint: vi.fn(),
+  rebuildPointFromScript: vi.fn(),
+}))
+
 // The Continue-to-Publish handover lives in publish-actions, whose real
 // module is server-only (storage, Inngest). Mocked like the others.
 const advanceToPublish = vi.fn()
@@ -56,7 +69,8 @@ vi.mock('./publish-actions', () => ({
 }))
 
 const refresh = vi.fn()
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
+const replace = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace }) }))
 
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
@@ -64,6 +78,23 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 // The notice's Dismiss is a server action whose module loads next-auth,
 // which cannot load under jsdom.
 vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
+
+function pointNotice(
+  subject: 'short' | 'points',
+  subjectId: string | null,
+  message: string,
+  id = '01HQ00000000000000000000N2',
+): Notice {
+  return {
+    id,
+    projectId: PROJECT,
+    subject,
+    subjectId,
+    kind: 'skipped',
+    message,
+    createdAt: new Date('2026-10-09T10:00:00Z'),
+  }
+}
 
 function teaserNotice(message: string): Notice {
   return {
@@ -110,6 +141,7 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     captions: true,
     relatedLinkChecked: false,
     kind: 'excerpt',
+    pointId: null,
     chapterTitle: 'The audit',
     fromParagraph: 1,
     toParagraph: 2,
@@ -118,6 +150,8 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     estimatedCostUsd: 0.0117,
     render: null,
     teaser: null,
+    point: null,
+    studio: null,
     ...overrides,
   }
 }
@@ -216,6 +250,202 @@ describe('ShortsScreen', () => {
     expect(
       screen.getByText('Teaser · its own narration, cut over the board · 0:32'),
     ).toBeInTheDocument()
+  })
+
+  /** A point Short's card and its studio (design 6); teaser cards keep theirs. */
+  describe('point cards', () => {
+    const studio: NonNullable<ShortCardModel['studio']> = {
+      phases: (['hook', 'stakes', 'delivery', 'resolution', 'bridge'] as const).map((phase) => ({
+        phase,
+        paragraphs: [
+          {
+            text: `The ${phase} words are here.`,
+            chapterIndex: 0,
+            chapterTitle: null,
+            voiced: true,
+          },
+        ],
+      })),
+      words: 120,
+      estimatedRuntimeSec: 50,
+      shots: [],
+      library: [],
+      fetched: [],
+      findings: [],
+      stillEstimateUsd: 0.08,
+      scriptBehind: false,
+      planBehind: false,
+      pending: null,
+      failure: null,
+    }
+    const pointCard = (overrides: Partial<NonNullable<ShortCardModel['point']>> = {}) =>
+      card({
+        kind: 'point',
+        durationMs: 52_000,
+        point: {
+          type: 'forensic-breakdown',
+          bridgeChapterTitles: ['The audit', 'The collapse'],
+          findings: 2,
+          scriptBehind: false,
+          ...overrides,
+        },
+        studio,
+      })
+
+    it('shows the type, the bridge chapters and the findings count', () => {
+      renderScreen([pointCard()])
+
+      expect(screen.getByText('Forensic breakdown')).toBeInTheDocument()
+      expect(screen.getByText('Promises: The audit, The collapse')).toBeInTheDocument()
+      expect(screen.getByText('2 rule book findings')).toBeInTheDocument()
+      expect(
+        screen.getByText('Point Short · its own narration, cut from the long form · 0:52'),
+      ).toBeInTheDocument()
+    })
+
+    it('says when the Short was written from an earlier script', () => {
+      renderScreen([pointCard({ scriptBehind: true, findings: 0 })])
+
+      expect(screen.getByText('No rule book findings')).toBeInTheDocument()
+      expect(screen.getByText(/Written from an earlier script/)).toBeInTheDocument()
+    })
+
+    it('has no ending toggle, and says it ends on the bridge', () => {
+      renderScreen([pointCard()])
+
+      expect(screen.queryByRole('button', { name: 'Loop' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'CTA' })).not.toBeInTheDocument()
+      expect(screen.getByText('Ends with a bridge to the full video')).toBeInTheDocument()
+    })
+
+    describe('notices', () => {
+      const POINT = '01HQ00000000000000000000P1'
+      const short1 = () => '01HQ00000000000000000000S1'
+
+      it('shows a point’s notices on its own card, by Short id or point id', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[pointCard()].map((short) => ({ ...short, pointId: POINT }))}
+            live={false}
+            pointNotices={[
+              pointNotice('short', short1(), 'A new picture could not be had.'),
+              pointNotice(
+                'short',
+                POINT,
+                'An earlier attempt was skipped.',
+                '01HQ00000000000000000000N3',
+              ),
+            ]}
+          />,
+        )
+
+        expect(screen.getByText('A new picture could not be had.')).toBeInTheDocument()
+        expect(screen.getByText('An earlier attempt was skipped.')).toBeInTheDocument()
+        expect(screen.queryByLabelText('Point without a Short')).not.toBeInTheDocument()
+      })
+
+      it('lists a skipped point with its title and reason, though it has no card', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[]}
+            live={false}
+            pointNotices={[
+              pointNotice(
+                'short',
+                '01HQ00000000000000000000P2',
+                'The Short was skipped: no script.',
+              ),
+            ]}
+            pointTitles={{ '01HQ00000000000000000000P2': 'Why the audit failed' }}
+          />,
+        )
+
+        const section = screen.getByLabelText('Point without a Short')
+        expect(within(section).getByText('Why the audit failed')).toBeInTheDocument()
+        expect(within(section).getByText('The Short was skipped: no script.')).toBeInTheDocument()
+      })
+
+      it('shows the talking points’ own notes after approval', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[pointCard()]}
+            live={false}
+            pointSetNotices={[pointNotice('points', null, 'Two points were trimmed.')]}
+          />,
+        )
+
+        expect(
+          within(screen.getByLabelText('Talking points notes')).getByText(
+            'Two points were trimmed.',
+          ),
+        ).toBeInTheDocument()
+      })
+    })
+
+    it('opens the point Short studio, not the teaser studio', async () => {
+      const user = userEvent.setup()
+      renderScreen([pointCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+
+      expect(screen.getByLabelText('Point Short studio')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Teaser studio')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Open the teaser studio' }),
+      ).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Close the studio' }))
+      expect(screen.queryByLabelText('Point Short studio')).not.toBeInTheDocument()
+    })
+
+    it('writes the open studio to the address and takes it off on close', async () => {
+      const user = userEvent.setup()
+      renderScreen([pointCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(replace).toHaveBeenLastCalledWith(
+        `/projects/${PROJECT}?stage=shorts&studio=01HQ00000000000000000000S1`,
+        { scroll: false },
+      )
+      await user.click(screen.getByRole('button', { name: 'Close the studio' }))
+      expect(replace).toHaveBeenLastCalledWith(`/projects/${PROJECT}?stage=shorts`, {
+        scroll: false,
+      })
+    })
+
+    it('says the studio is opening until the page brings its model, and when the row is unreadable', async () => {
+      const user = userEvent.setup()
+      const { unmount } = renderScreen([{ ...pointCard(), studio: null }])
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(screen.getByText('Opening the Short studio…')).toBeInTheDocument()
+      unmount()
+
+      renderScreen([{ ...pointCard(), studio: null, point: null }])
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(
+        screen.getByText(/stored record could not be read|record could not be read/),
+      ).toBeInTheDocument()
+    })
+
+    it('leaves the address alone when a teaser studio opens', async () => {
+      const user = userEvent.setup()
+      renderScreen([teaserCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+      expect(replace).not.toHaveBeenCalled()
+    })
+
+    it('leaves the teaser card on its own studio and excerpts with none', () => {
+      renderScreen([teaserCard(), card({ id: '01HQ00000000000000000000S3' })])
+
+      expect(screen.getByRole('button', { name: 'Open the teaser studio' })).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Open the Short studio' }),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('saving the title and description is an explicit act, not an autosave', async () => {

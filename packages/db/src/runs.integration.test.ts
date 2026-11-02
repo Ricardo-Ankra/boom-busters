@@ -234,6 +234,25 @@ describeDb('run mirror', () => {
       )
     })
 
+    it('can ask about one function only', async () => {
+      await ensureRun(db, {
+        inngestRunId: '01JRUN0012',
+        functionName: 'visuals-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+      expect(
+        await hasLiveRun(db, FIXTURE_PROJECT_ID, { functionName: 'talking-points-runner' }),
+      ).toBe(false)
+      await ensureRun(db, {
+        inngestRunId: '01JRUN0013',
+        functionName: 'talking-points-runner',
+        projectId: FIXTURE_PROJECT_ID,
+      })
+      expect(
+        await hasLiveRun(db, FIXTURE_PROJECT_ID, { functionName: 'talking-points-runner' }),
+      ).toBe(true)
+    })
+
     it('does not count finished runs', async () => {
       const runId = await ensureRun(db, {
         inngestRunId: '01JRUN0009',

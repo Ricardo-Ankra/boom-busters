@@ -1,0 +1,1628 @@
+{
+  "version": 1,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "brand": {
+    "typography": {
+      "heading": {
+        "family": "Inter",
+        "weight": 700,
+        "sizeScale": 1.4,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "title": {
+        "family": "Inter",
+        "weight": 600,
+        "sizeScale": 1.2,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "body": {
+        "family": "Inter",
+        "weight": 400,
+        "sizeScale": 1,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "numbers": {
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "sizeScale": 1,
+        "letterSpacing": 0,
+        "transform": "none"
+      },
+      "captions": {
+        "family": "Inter",
+        "weight": 700,
+        "sizeScale": 1.1,
+        "letterSpacing": 0,
+        "transform": "none"
+      }
+    },
+    "colors": {
+      "primary": "#0f1115",
+      "accent": "#f5a524",
+      "background": "#0a0a0b",
+      "surface": "#16181d",
+      "textPrimary": "#f4f4f5",
+      "textSecondary": "#a1a1aa",
+      "chartSeries": [
+        "#f5a524",
+        "#3b82f6",
+        "#10b981",
+        "#a855f7",
+        "#ef4444",
+        "#14b8a6"
+      ],
+      "captionHighlight": "#f5a524",
+      "semantic": {
+        "collapse": "#ef4444",
+        "recovery": "#10b981"
+      }
+    },
+    "look": {
+      "logoR2Key": null,
+      "watermarkPlacement": "br",
+      "grainPreset": "subtle",
+      "gradePreset": "muted",
+      "lowerThirdVariant": "bar",
+      "chapterCardVariant": "full"
+    },
+    "music": {
+      "longFormStyle": "documentary-tension",
+      "shortsStyle": "driving",
+      "bedGainDb": -25,
+      "duckDepthDb": -12
+    },
+    "voice": {
+      "provider": "elevenlabs",
+      "voiceId": "",
+      "stability": "natural",
+      "phonemeHints": []
+    }
+  },
+  "narration": [
+    {
+      "r2Key": "boom-busters/voice/point-p0.wav",
+      "startMs": 0,
+      "durationMs": 2604,
+      "chapterId": "0P01NTP01NTP01NTP01NTP01NT",
+      "paragraphIndex": 0
+    },
+    {
+      "r2Key": "boom-busters/voice/point-p1.wav",
+      "startMs": 2754,
+      "durationMs": 11160,
+      "chapterId": "0P01NTP01NTP01NTP01NTP01NT",
+      "paragraphIndex": 1
+    },
+    {
+      "r2Key": "boom-busters/voice/point-p2.wav",
+      "startMs": 14064,
+      "durationMs": 24180,
+      "chapterId": "0P01NTP01NTP01NTP01NTP01NT",
+      "paragraphIndex": 2
+    },
+    {
+      "r2Key": "boom-busters/voice/point-p3.wav",
+      "startMs": 38394,
+      "durationMs": 8184,
+      "chapterId": "0P01NTP01NTP01NTP01NTP01NT",
+      "paragraphIndex": 3
+    },
+    {
+      "r2Key": "boom-busters/voice/point-p4.wav",
+      "startMs": 46728,
+      "durationMs": 5952,
+      "chapterId": "0P01NTP01NTP01NTP01NTP01NT",
+      "paragraphIndex": 4
+    }
+  ],
+  "music": null,
+  "captions": {
+    "words": [
+      {
+        "text": "The",
+        "startMs": 0,
+        "endMs": 330,
+        "timestampMs": 165,
+        "confidence": null
+      },
+      {
+        "text": "auditors",
+        "startMs": 372,
+        "endMs": 702,
+        "timestampMs": 537,
+        "confidence": null
+      },
+      {
+        "text": "could",
+        "startMs": 744,
+        "endMs": 1074,
+        "timestampMs": 909,
+        "confidence": null
+      },
+      {
+        "text": "not",
+        "startMs": 1116,
+        "endMs": 1446,
+        "timestampMs": 1281,
+        "confidence": null
+      },
+      {
+        "text": "find",
+        "startMs": 1488,
+        "endMs": 1818,
+        "timestampMs": 1653,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 1860,
+        "endMs": 2190,
+        "timestampMs": 2025,
+        "confidence": null
+      },
+      {
+        "text": "money.",
+        "startMs": 2232,
+        "endMs": 2562,
+        "timestampMs": 2397,
+        "confidence": null
+      },
+      {
+        "text": "One",
+        "startMs": 2754,
+        "endMs": 3084,
+        "timestampMs": 2919,
+        "confidence": null
+      },
+      {
+        "text": "point",
+        "startMs": 3126,
+        "endMs": 3456,
+        "timestampMs": 3291,
+        "confidence": null
+      },
+      {
+        "text": "nine",
+        "startMs": 3498,
+        "endMs": 3828,
+        "timestampMs": 3663,
+        "confidence": null
+      },
+      {
+        "text": "billion",
+        "startMs": 3870,
+        "endMs": 4200,
+        "timestampMs": 4035,
+        "confidence": null
+      },
+      {
+        "text": "euros",
+        "startMs": 4242,
+        "endMs": 4572,
+        "timestampMs": 4407,
+        "confidence": null
+      },
+      {
+        "text": "was",
+        "startMs": 4614,
+        "endMs": 4944,
+        "timestampMs": 4779,
+        "confidence": null
+      },
+      {
+        "text": "supposed",
+        "startMs": 4986,
+        "endMs": 5316,
+        "timestampMs": 5151,
+        "confidence": null
+      },
+      {
+        "text": "to",
+        "startMs": 5358,
+        "endMs": 5688,
+        "timestampMs": 5523,
+        "confidence": null
+      },
+      {
+        "text": "sit",
+        "startMs": 5730,
+        "endMs": 6060,
+        "timestampMs": 5895,
+        "confidence": null
+      },
+      {
+        "text": "in",
+        "startMs": 6102,
+        "endMs": 6432,
+        "timestampMs": 6267,
+        "confidence": null
+      },
+      {
+        "text": "two",
+        "startMs": 6474,
+        "endMs": 6804,
+        "timestampMs": 6639,
+        "confidence": null
+      },
+      {
+        "text": "Philippine",
+        "startMs": 6846,
+        "endMs": 7176,
+        "timestampMs": 7011,
+        "confidence": null
+      },
+      {
+        "text": "bank",
+        "startMs": 7218,
+        "endMs": 7548,
+        "timestampMs": 7383,
+        "confidence": null
+      },
+      {
+        "text": "accounts.",
+        "startMs": 7590,
+        "endMs": 7920,
+        "timestampMs": 7755,
+        "confidence": null
+      },
+      {
+        "text": "If",
+        "startMs": 7962,
+        "endMs": 8292,
+        "timestampMs": 8127,
+        "confidence": null
+      },
+      {
+        "text": "it",
+        "startMs": 8334,
+        "endMs": 8664,
+        "timestampMs": 8499,
+        "confidence": null
+      },
+      {
+        "text": "was",
+        "startMs": 8706,
+        "endMs": 9036,
+        "timestampMs": 8871,
+        "confidence": null
+      },
+      {
+        "text": "missing,",
+        "startMs": 9078,
+        "endMs": 9408,
+        "timestampMs": 9243,
+        "confidence": null
+      },
+      {
+        "text": "every",
+        "startMs": 9450,
+        "endMs": 9780,
+        "timestampMs": 9615,
+        "confidence": null
+      },
+      {
+        "text": "investor",
+        "startMs": 9822,
+        "endMs": 10152,
+        "timestampMs": 9987,
+        "confidence": null
+      },
+      {
+        "text": "in",
+        "startMs": 10194,
+        "endMs": 10524,
+        "timestampMs": 10359,
+        "confidence": null
+      },
+      {
+        "text": "a",
+        "startMs": 10566,
+        "endMs": 10896,
+        "timestampMs": 10731,
+        "confidence": null
+      },
+      {
+        "text": "company",
+        "startMs": 10938,
+        "endMs": 11268,
+        "timestampMs": 11103,
+        "confidence": null
+      },
+      {
+        "text": "worth",
+        "startMs": 11310,
+        "endMs": 11640,
+        "timestampMs": 11475,
+        "confidence": null
+      },
+      {
+        "text": "twenty",
+        "startMs": 11682,
+        "endMs": 12012,
+        "timestampMs": 11847,
+        "confidence": null
+      },
+      {
+        "text": "billion",
+        "startMs": 12054,
+        "endMs": 12384,
+        "timestampMs": 12219,
+        "confidence": null
+      },
+      {
+        "text": "euros",
+        "startMs": 12426,
+        "endMs": 12756,
+        "timestampMs": 12591,
+        "confidence": null
+      },
+      {
+        "text": "held",
+        "startMs": 12798,
+        "endMs": 13128,
+        "timestampMs": 12963,
+        "confidence": null
+      },
+      {
+        "text": "a",
+        "startMs": 13170,
+        "endMs": 13500,
+        "timestampMs": 13335,
+        "confidence": null
+      },
+      {
+        "text": "promise.",
+        "startMs": 13542,
+        "endMs": 13872,
+        "timestampMs": 13707,
+        "confidence": null
+      },
+      {
+        "text": "So",
+        "startMs": 14064,
+        "endMs": 14394,
+        "timestampMs": 14229,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 14436,
+        "endMs": 14766,
+        "timestampMs": 14601,
+        "confidence": null
+      },
+      {
+        "text": "auditors",
+        "startMs": 14808,
+        "endMs": 15138,
+        "timestampMs": 14973,
+        "confidence": null
+      },
+      {
+        "text": "asked",
+        "startMs": 15180,
+        "endMs": 15510,
+        "timestampMs": 15345,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 15552,
+        "endMs": 15882,
+        "timestampMs": 15717,
+        "confidence": null
+      },
+      {
+        "text": "banks",
+        "startMs": 15924,
+        "endMs": 16254,
+        "timestampMs": 16089,
+        "confidence": null
+      },
+      {
+        "text": "directly.",
+        "startMs": 16296,
+        "endMs": 16626,
+        "timestampMs": 16461,
+        "confidence": null
+      },
+      {
+        "text": "The",
+        "startMs": 16668,
+        "endMs": 16998,
+        "timestampMs": 16833,
+        "confidence": null
+      },
+      {
+        "text": "banks",
+        "startMs": 17040,
+        "endMs": 17370,
+        "timestampMs": 17205,
+        "confidence": null
+      },
+      {
+        "text": "said",
+        "startMs": 17412,
+        "endMs": 17742,
+        "timestampMs": 17577,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 17784,
+        "endMs": 18114,
+        "timestampMs": 17949,
+        "confidence": null
+      },
+      {
+        "text": "accounts",
+        "startMs": 18156,
+        "endMs": 18486,
+        "timestampMs": 18321,
+        "confidence": null
+      },
+      {
+        "text": "never",
+        "startMs": 18528,
+        "endMs": 18858,
+        "timestampMs": 18693,
+        "confidence": null
+      },
+      {
+        "text": "existed.",
+        "startMs": 18900,
+        "endMs": 19230,
+        "timestampMs": 19065,
+        "confidence": null
+      },
+      {
+        "text": "But",
+        "startMs": 19272,
+        "endMs": 19602,
+        "timestampMs": 19437,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 19644,
+        "endMs": 19974,
+        "timestampMs": 19809,
+        "confidence": null
+      },
+      {
+        "text": "company",
+        "startMs": 20016,
+        "endMs": 20346,
+        "timestampMs": 20181,
+        "confidence": null
+      },
+      {
+        "text": "had",
+        "startMs": 20388,
+        "endMs": 20718,
+        "timestampMs": 20553,
+        "confidence": null
+      },
+      {
+        "text": "a",
+        "startMs": 20760,
+        "endMs": 21090,
+        "timestampMs": 20925,
+        "confidence": null
+      },
+      {
+        "text": "trustee,",
+        "startMs": 21132,
+        "endMs": 21462,
+        "timestampMs": 21297,
+        "confidence": null
+      },
+      {
+        "text": "and",
+        "startMs": 21504,
+        "endMs": 21834,
+        "timestampMs": 21669,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 21876,
+        "endMs": 22206,
+        "timestampMs": 22041,
+        "confidence": null
+      },
+      {
+        "text": "trustee",
+        "startMs": 22248,
+        "endMs": 22578,
+        "timestampMs": 22413,
+        "confidence": null
+      },
+      {
+        "text": "had",
+        "startMs": 22620,
+        "endMs": 22950,
+        "timestampMs": 22785,
+        "confidence": null
+      },
+      {
+        "text": "documents.",
+        "startMs": 22992,
+        "endMs": 23322,
+        "timestampMs": 23157,
+        "confidence": null
+      },
+      {
+        "text": "Then",
+        "startMs": 23364,
+        "endMs": 23694,
+        "timestampMs": 23529,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 23736,
+        "endMs": 24066,
+        "timestampMs": 23901,
+        "confidence": null
+      },
+      {
+        "text": "documents",
+        "startMs": 24108,
+        "endMs": 24438,
+        "timestampMs": 24273,
+        "confidence": null
+      },
+      {
+        "text": "turned",
+        "startMs": 24480,
+        "endMs": 24810,
+        "timestampMs": 24645,
+        "confidence": null
+      },
+      {
+        "text": "out",
+        "startMs": 24852,
+        "endMs": 25182,
+        "timestampMs": 25017,
+        "confidence": null
+      },
+      {
+        "text": "to",
+        "startMs": 25224,
+        "endMs": 25554,
+        "timestampMs": 25389,
+        "confidence": null
+      },
+      {
+        "text": "be",
+        "startMs": 25596,
+        "endMs": 25926,
+        "timestampMs": 25761,
+        "confidence": null
+      },
+      {
+        "text": "forged.",
+        "startMs": 25968,
+        "endMs": 26298,
+        "timestampMs": 26133,
+        "confidence": null
+      },
+      {
+        "text": "Nobody",
+        "startMs": 26340,
+        "endMs": 26670,
+        "timestampMs": 26505,
+        "confidence": null
+      },
+      {
+        "text": "noticed",
+        "startMs": 26712,
+        "endMs": 27042,
+        "timestampMs": 26877,
+        "confidence": null
+      },
+      {
+        "text": "at",
+        "startMs": 27084,
+        "endMs": 27414,
+        "timestampMs": 27249,
+        "confidence": null
+      },
+      {
+        "text": "first.",
+        "startMs": 27456,
+        "endMs": 27786,
+        "timestampMs": 27621,
+        "confidence": null
+      },
+      {
+        "text": "The",
+        "startMs": 27828,
+        "endMs": 28158,
+        "timestampMs": 27993,
+        "confidence": null
+      },
+      {
+        "text": "trustee",
+        "startMs": 28200,
+        "endMs": 28530,
+        "timestampMs": 28365,
+        "confidence": null
+      },
+      {
+        "text": "had",
+        "startMs": 28572,
+        "endMs": 28902,
+        "timestampMs": 28737,
+        "confidence": null
+      },
+      {
+        "text": "never",
+        "startMs": 28944,
+        "endMs": 29274,
+        "timestampMs": 29109,
+        "confidence": null
+      },
+      {
+        "text": "held",
+        "startMs": 29316,
+        "endMs": 29646,
+        "timestampMs": 29481,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 29688,
+        "endMs": 30018,
+        "timestampMs": 29853,
+        "confidence": null
+      },
+      {
+        "text": "money,",
+        "startMs": 30060,
+        "endMs": 30390,
+        "timestampMs": 30225,
+        "confidence": null
+      },
+      {
+        "text": "and",
+        "startMs": 30432,
+        "endMs": 30762,
+        "timestampMs": 30597,
+        "confidence": null
+      },
+      {
+        "text": "nobody",
+        "startMs": 30804,
+        "endMs": 31134,
+        "timestampMs": 30969,
+        "confidence": null
+      },
+      {
+        "text": "could",
+        "startMs": 31176,
+        "endMs": 31506,
+        "timestampMs": 31341,
+        "confidence": null
+      },
+      {
+        "text": "show",
+        "startMs": 31548,
+        "endMs": 31878,
+        "timestampMs": 31713,
+        "confidence": null
+      },
+      {
+        "text": "where",
+        "startMs": 31920,
+        "endMs": 32250,
+        "timestampMs": 32085,
+        "confidence": null
+      },
+      {
+        "text": "it",
+        "startMs": 32292,
+        "endMs": 32622,
+        "timestampMs": 32457,
+        "confidence": null
+      },
+      {
+        "text": "went.",
+        "startMs": 32664,
+        "endMs": 32994,
+        "timestampMs": 32829,
+        "confidence": null
+      },
+      {
+        "text": "Then",
+        "startMs": 33036,
+        "endMs": 33366,
+        "timestampMs": 33201,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 33408,
+        "endMs": 33738,
+        "timestampMs": 33573,
+        "confidence": null
+      },
+      {
+        "text": "shares",
+        "startMs": 33780,
+        "endMs": 34110,
+        "timestampMs": 33945,
+        "confidence": null
+      },
+      {
+        "text": "fell",
+        "startMs": 34152,
+        "endMs": 34482,
+        "timestampMs": 34317,
+        "confidence": null
+      },
+      {
+        "text": "ninety",
+        "startMs": 34524,
+        "endMs": 34854,
+        "timestampMs": 34689,
+        "confidence": null
+      },
+      {
+        "text": "percent",
+        "startMs": 34896,
+        "endMs": 35226,
+        "timestampMs": 35061,
+        "confidence": null
+      },
+      {
+        "text": "in",
+        "startMs": 35268,
+        "endMs": 35598,
+        "timestampMs": 35433,
+        "confidence": null
+      },
+      {
+        "text": "nine",
+        "startMs": 35640,
+        "endMs": 35970,
+        "timestampMs": 35805,
+        "confidence": null
+      },
+      {
+        "text": "days,",
+        "startMs": 36012,
+        "endMs": 36342,
+        "timestampMs": 36177,
+        "confidence": null
+      },
+      {
+        "text": "and",
+        "startMs": 36384,
+        "endMs": 36714,
+        "timestampMs": 36549,
+        "confidence": null
+      },
+      {
+        "text": "regulators",
+        "startMs": 36756,
+        "endMs": 37086,
+        "timestampMs": 36921,
+        "confidence": null
+      },
+      {
+        "text": "opened",
+        "startMs": 37128,
+        "endMs": 37458,
+        "timestampMs": 37293,
+        "confidence": null
+      },
+      {
+        "text": "a",
+        "startMs": 37500,
+        "endMs": 37830,
+        "timestampMs": 37665,
+        "confidence": null
+      },
+      {
+        "text": "case.",
+        "startMs": 37872,
+        "endMs": 38202,
+        "timestampMs": 38037,
+        "confidence": null
+      },
+      {
+        "text": "Where",
+        "startMs": 38394,
+        "endMs": 38724,
+        "timestampMs": 38559,
+        "confidence": null
+      },
+      {
+        "text": "did",
+        "startMs": 38766,
+        "endMs": 39096,
+        "timestampMs": 38931,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 39138,
+        "endMs": 39468,
+        "timestampMs": 39303,
+        "confidence": null
+      },
+      {
+        "text": "money",
+        "startMs": 39510,
+        "endMs": 39840,
+        "timestampMs": 39675,
+        "confidence": null
+      },
+      {
+        "text": "go?",
+        "startMs": 39882,
+        "endMs": 40212,
+        "timestampMs": 40047,
+        "confidence": null
+      },
+      {
+        "text": "Nowhere,",
+        "startMs": 40254,
+        "endMs": 40584,
+        "timestampMs": 40419,
+        "confidence": null
+      },
+      {
+        "text": "because",
+        "startMs": 40626,
+        "endMs": 40956,
+        "timestampMs": 40791,
+        "confidence": null
+      },
+      {
+        "text": "it",
+        "startMs": 40998,
+        "endMs": 41328,
+        "timestampMs": 41163,
+        "confidence": null
+      },
+      {
+        "text": "was",
+        "startMs": 41370,
+        "endMs": 41700,
+        "timestampMs": 41535,
+        "confidence": null
+      },
+      {
+        "text": "never",
+        "startMs": 41742,
+        "endMs": 42072,
+        "timestampMs": 41907,
+        "confidence": null
+      },
+      {
+        "text": "there.",
+        "startMs": 42114,
+        "endMs": 42444,
+        "timestampMs": 42279,
+        "confidence": null
+      },
+      {
+        "text": "The",
+        "startMs": 42486,
+        "endMs": 42816,
+        "timestampMs": 42651,
+        "confidence": null
+      },
+      {
+        "text": "balance",
+        "startMs": 42858,
+        "endMs": 43188,
+        "timestampMs": 43023,
+        "confidence": null
+      },
+      {
+        "text": "sheet",
+        "startMs": 43230,
+        "endMs": 43560,
+        "timestampMs": 43395,
+        "confidence": null
+      },
+      {
+        "text": "had",
+        "startMs": 43602,
+        "endMs": 43932,
+        "timestampMs": 43767,
+        "confidence": null
+      },
+      {
+        "text": "been",
+        "startMs": 43974,
+        "endMs": 44304,
+        "timestampMs": 44139,
+        "confidence": null
+      },
+      {
+        "text": "invented,",
+        "startMs": 44346,
+        "endMs": 44676,
+        "timestampMs": 44511,
+        "confidence": null
+      },
+      {
+        "text": "line",
+        "startMs": 44718,
+        "endMs": 45048,
+        "timestampMs": 44883,
+        "confidence": null
+      },
+      {
+        "text": "by",
+        "startMs": 45090,
+        "endMs": 45420,
+        "timestampMs": 45255,
+        "confidence": null
+      },
+      {
+        "text": "line,",
+        "startMs": 45462,
+        "endMs": 45792,
+        "timestampMs": 45627,
+        "confidence": null
+      },
+      {
+        "text": "for",
+        "startMs": 45834,
+        "endMs": 46164,
+        "timestampMs": 45999,
+        "confidence": null
+      },
+      {
+        "text": "years.",
+        "startMs": 46206,
+        "endMs": 46536,
+        "timestampMs": 46371,
+        "confidence": null
+      },
+      {
+        "text": "Tap",
+        "startMs": 46728,
+        "endMs": 47058,
+        "timestampMs": 46893,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 47100,
+        "endMs": 47430,
+        "timestampMs": 47265,
+        "confidence": null
+      },
+      {
+        "text": "video",
+        "startMs": 47472,
+        "endMs": 47802,
+        "timestampMs": 47637,
+        "confidence": null
+      },
+      {
+        "text": "linked",
+        "startMs": 47844,
+        "endMs": 48174,
+        "timestampMs": 48009,
+        "confidence": null
+      },
+      {
+        "text": "below",
+        "startMs": 48216,
+        "endMs": 48546,
+        "timestampMs": 48381,
+        "confidence": null
+      },
+      {
+        "text": "for",
+        "startMs": 48588,
+        "endMs": 48918,
+        "timestampMs": 48753,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 48960,
+        "endMs": 49290,
+        "timestampMs": 49125,
+        "confidence": null
+      },
+      {
+        "text": "full",
+        "startMs": 49332,
+        "endMs": 49662,
+        "timestampMs": 49497,
+        "confidence": null
+      },
+      {
+        "text": "story,",
+        "startMs": 49704,
+        "endMs": 50034,
+        "timestampMs": 49869,
+        "confidence": null
+      },
+      {
+        "text": "and",
+        "startMs": 50076,
+        "endMs": 50406,
+        "timestampMs": 50241,
+        "confidence": null
+      },
+      {
+        "text": "the",
+        "startMs": 50448,
+        "endMs": 50778,
+        "timestampMs": 50613,
+        "confidence": null
+      },
+      {
+        "text": "people",
+        "startMs": 50820,
+        "endMs": 51150,
+        "timestampMs": 50985,
+        "confidence": null
+      },
+      {
+        "text": "who",
+        "startMs": 51192,
+        "endMs": 51522,
+        "timestampMs": 51357,
+        "confidence": null
+      },
+      {
+        "text": "signed",
+        "startMs": 51564,
+        "endMs": 51894,
+        "timestampMs": 51729,
+        "confidence": null
+      },
+      {
+        "text": "it",
+        "startMs": 51936,
+        "endMs": 52266,
+        "timestampMs": 52101,
+        "confidence": null
+      },
+      {
+        "text": "off.",
+        "startMs": 52308,
+        "endMs": 52638,
+        "timestampMs": 52473,
+        "confidence": null
+      }
+    ],
+    "style": "karaoke"
+  },
+  "slots": [
+    {
+      "type": "still",
+      "startMs": 0,
+      "durationMs": 1860,
+      "transition": "cut",
+      "motion": {
+        "kind": "punch",
+        "scale": 1.15,
+        "durationMs": 250
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/hook.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "stock",
+      "startMs": 1860,
+      "durationMs": 2382,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "video",
+        "src": {
+          "externalUrl": "https://cdn.example.com/office.mp4"
+        },
+        "muted": true
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 4242,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/bank.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 6474,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/ledger.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "map",
+      "startMs": 8706,
+      "durationMs": 1860,
+      "transition": "cut",
+      "motion": {
+        "kind": "static"
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "map",
+        "locations": [
+          {
+            "label": "Munich",
+            "lat": 48.14,
+            "lon": 11.58
+          },
+          {
+            "label": "Manila",
+            "lat": 14.6,
+            "lon": 120.98
+          }
+        ],
+        "route": true
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 10566,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/auditor.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "stock",
+      "startMs": 12798,
+      "durationMs": 2382,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "video",
+        "src": {
+          "externalUrl": "https://cdn.example.com/server-room.mp4"
+        },
+        "muted": true
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 15180,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/trustee.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 17412,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/contract.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 19644,
+      "durationMs": 1860,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/stamp.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 21504,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/letter.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "chart",
+      "startMs": 23736,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "draw-on"
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "chart",
+        "chartKind": "line",
+        "series": [
+          {
+            "label": "Share price",
+            "unit": "EUR",
+            "points": [
+              {
+                "x": "2020-06-17",
+                "y": 104.5
+              },
+              {
+                "x": "2020-06-26",
+                "y": 1.28
+              }
+            ]
+          }
+        ],
+        "dataRefs": [
+          "01HQ00000000000000000000AA"
+        ],
+        "takeaway": "The nine-day collapse.",
+        "reveal": "draw-on"
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 25968,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "punch",
+        "scale": 1.15,
+        "durationMs": 250
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/shares.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 28200,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/regulator.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 30432,
+      "durationMs": 1860,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/filing.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 32292,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/boardroom.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "stock",
+      "startMs": 34524,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "video",
+        "src": {
+          "externalUrl": "https://cdn.example.com/street.mp4"
+        },
+        "muted": true
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 36756,
+      "durationMs": 2382,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/balance.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 39138,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/invoice.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 41370,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/empty-vault.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 43602,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/ledger-two.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 45834,
+      "durationMs": 2382,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "centre",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/signature.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "archival",
+      "startMs": 48216,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "in",
+        "intensity": 0.3
+      },
+      "crop": "left",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/headline-clipping.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    },
+    {
+      "type": "still",
+      "startMs": 50448,
+      "durationMs": 2232,
+      "transition": "cut",
+      "motion": {
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
+      },
+      "crop": "right",
+      "payload": {
+        "kind": "image",
+        "src": {
+          "r2Key": "boom-busters/stills/point/closing.png"
+        },
+        "width": 1344,
+        "height": 768
+      }
+    }
+  ],
+  "overlays": [
+    {
+      "kind": "relatedArrow",
+      "startMs": 46728,
+      "durationMs": 5952,
+      "props": {
+        "label": "Watch the full story"
+      }
+    },
+    {
+      "kind": "subscribeBadge",
+      "startMs": 46728,
+      "durationMs": 5952,
+      "props": {
+        "channelName": "Boom & Busters",
+        "handle": "@boombusters"
+      }
+    }
+  ]
+}

@@ -13,6 +13,9 @@ import {
   RenderDraftRequestedSchema,
   RenderSettledSchema,
   ShortsRenderRequestedSchema,
+  ShortsPointBuildRequestedSchema,
+  ShortsPointsRequestedSchema,
+  ShortsPointStudioRequestedSchema,
   TeaserRebuildRequestedSchema,
   TeaserShotsRequestedSchema,
   VisualsFetchResumedSchema,
@@ -112,6 +115,15 @@ export const events = {
   }),
   shortsRenderRequested: eventType('shorts/render.requested', {
     schema: ShortsRenderRequestedSchema,
+  }),
+  shortsPointsRequested: eventType('shorts/points.requested', {
+    schema: ShortsPointsRequestedSchema,
+  }),
+  shortsPointBuildRequested: eventType('shorts/point.build.requested', {
+    schema: ShortsPointBuildRequestedSchema,
+  }),
+  shortsPointStudioRequested: eventType('shorts/point.studio.requested', {
+    schema: ShortsPointStudioRequestedSchema,
   }),
   teaserRebuildRequested: eventType('teaser/rebuild.requested', {
     schema: TeaserRebuildRequestedSchema,

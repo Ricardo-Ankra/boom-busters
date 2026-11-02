@@ -99,6 +99,15 @@ const CASES: SnapshotCase[] = [
   // ending card all on screen at once — the Short's whole vocabulary.
   { id: 'ShortVertical', frame: 190, maxDiffRatio: 0.06 },
   { id: 'EndCtaFixture', frame: 60, maxDiffRatio: 0.06 },
+  // The point Shorts' additions (spec 4.5, 4.6) on a 1080 x 1920 frame. Frame 9
+  // is 300 ms: the punch has landed (250 ms). Frame 30 is 1 s: the arrow and
+  // the badge have slid in, mid-pulse for the arrow.
+  { id: 'PunchImageFixture', frame: 9, maxDiffRatio: 0.06 },
+  { id: 'RelatedArrowFixture', frame: 30, maxDiffRatio: 0.06 },
+  { id: 'SubscribeBadgeFixture', frame: 30, maxDiffRatio: 0.06 },
+  // The real mount path: ShortVertical over the bridge timeline. Frame 120 is
+  // 4 s: the punched, left-cropped still with both overlays (3 to 5 s) up.
+  { id: 'ShortBridgeVertical', frame: 120, maxDiffRatio: 0.06 },
   // The channel mark in the corner (decision 268): an image, not the wordmark.
   { id: 'WatermarkLogo', frame: 10, maxDiffRatio: 0.03 },
 ]

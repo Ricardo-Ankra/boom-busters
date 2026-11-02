@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { MediaRef } from '@boom-busters/schemas'
+import type { CropFocus, MediaRef } from '@boom-busters/schemas'
 import { withAlpha } from '../components/brand'
 
 /** Smoothstep — gentle in and out, no library, no surprises. */
@@ -20,6 +20,30 @@ export function kenburnsScale(
 ): number {
   const eased = easeInOut(progress)
   return direction === 'in' ? 1 + intensity * eased : 1 + intensity * (1 - eased)
+}
+
+/**
+ * The punch-in scale `tMs` into a slot: 1 at the cut, `scale` once
+ * `durationMs` has passed, ease-out (cubic) between so the push lands
+ * hard and settles.
+ */
+export function punchScale(scale: number, durationMs: number, tMs: number): number {
+  if (durationMs <= 0) return scale
+  const t = Math.min(1, Math.max(0, tMs / durationMs))
+  if (t >= 1) return scale
+  const eased = 1 - Math.pow(1 - t, 3)
+  return 1 + (scale - 1) * eased
+}
+
+/**
+ * The `object-position` for a crop focus on a 16:9 source filling a 9:16
+ * frame (`object-fit: cover` crops the sides). Unset is centre, which is
+ * the browser default these components always rendered with.
+ */
+export function cropPosition(crop: CropFocus | undefined): string {
+  if (crop === 'left') return '0% 50%'
+  if (crop === 'right') return '100% 50%'
+  return '50% 50%'
 }
 
 /** dB → linear amplitude, the audio side of `gainAt`. */

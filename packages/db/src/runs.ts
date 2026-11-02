@@ -477,7 +477,7 @@ export async function listOpenBudgetGates(
 export async function hasLiveRun(
   db: Database,
   projectId: string,
-  options: { exceptInngestRunId?: string } = {},
+  options: { exceptInngestRunId?: string; functionName?: string } = {},
 ): Promise<boolean> {
   const [row] = await db
     .select({ id: runs.id })
@@ -489,6 +489,9 @@ export async function hasLiveRun(
         options.exceptInngestRunId === undefined
           ? undefined
           : ne(runs.inngestRunId, options.exceptInngestRunId),
+        options.functionName === undefined
+          ? undefined
+          : eq(runs.functionName, options.functionName),
       ),
     )
     .limit(1)

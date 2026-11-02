@@ -8,6 +8,7 @@ import {
   latestRender,
   latestTimeline,
   listMusicBeds,
+  releasePointWork,
   updateRender,
   updateShort,
 } from '@boom-busters/db'
@@ -27,6 +28,7 @@ import type { QcReport, Timeline } from '@boom-busters/schemas'
 import {
   compileShortTimeline,
   DEFAULT_CTA_TEXT,
+  POINT_CHAPTER_ID,
   segmentInMaster,
   STALE_EXCERPT,
 } from '@boom-busters/timeline'
@@ -122,10 +124,12 @@ export const shortRenderRunner = inngest.createFunction(
         throw new NonRetriableError('There is no compiled master timeline to slice.')
       }
       // A teaser slices its OWN mini master (decision 225): purpose-written
-      // narration over slots lifted from the project master at creation.
+      // narration over slots lifted from the project master at creation. A
+      // point Short does the same, over its own shots and bridge overlays.
       // Everything downstream — canvas, ending, bed, QC — is shared.
+      const ownMaster = short.kind === 'teaser' || short.kind === 'point'
       const master = TimelineSchema.parse(
-        short.kind === 'teaser' && short.sourceTimeline ? short.sourceTimeline : timelineRow.json,
+        ownMaster && short.sourceTimeline ? short.sourceTimeline : timelineRow.json,
       )
       const beds = await listMusicBeds(db)
 
@@ -141,8 +145,18 @@ export const shortRenderRunner = inngest.createFunction(
       try {
         timeline = compileShortTimeline({
           master,
-          segmentRef: short.segmentRef,
-          ending: short.ending,
+          // A point Short's window is its own whole narration, read off its own
+          // master: the stored ref predates a rebuild with more or fewer paragraphs.
+          segmentRef:
+            short.kind === 'point'
+              ? {
+                  chapterId: POINT_CHAPTER_ID,
+                  fromParagraph: 0,
+                  toParagraph: Math.max(master.narration.length - 1, 0),
+                }
+              : short.segmentRef,
+          // A point Short ends on its bridge graphics, never the CTA card.
+          ending: short.kind === 'point' ? 'bridge' : short.ending,
           ctaText: bible.ctaLine || DEFAULT_CTA_TEXT,
           music: pickShortsBed(beds, master.brand.music.shortsStyle),
           // The Short's own setting (decision 326), never the master's.
@@ -177,6 +191,10 @@ export const shortRenderRunner = inngest.createFunction(
         // moment one is queued — in-flight state included.
         await updateShort(db, shortId, { renderId: render.id })
       }
+
+      // A point Short's studio holds its slot of work from Assemble until the
+      // render is recorded, so a second press cannot queue a second render.
+      if (short.kind === 'point') await releasePointWork(db, shortId, 'assemble')
 
       let timelineS3Key = ''
       if (!mocked && storageConfigured()) {

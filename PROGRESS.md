@@ -4250,6 +4250,54 @@ Then:
 - The slot passes (rebriefer, retyper, redirector) do not append the
   channel's direction rules.
 
+## Editable schedule slots (2026-11-01)
+
+> Settings → Publishing's "Default schedule slots" card was read-only, so a
+> channel kept the hard-coded starting slots. Branch `schedule-slot-editor`;
+> decision 336. No schema or migration change: slots were already stored
+> per channel.
+
+### Deliverables
+
+- [x] Each slot's format, day and time edited in the owner's timezone, saved
+      as UTC (`apps/web/lib/schedule-slots.ts`, with tests).
+- [x] Add long-form slot, Add Short slot and Remove buttons; adding stops at
+      the schema's 21.
+- [x] Two slots at the same moment are refused with a toast.
+- [x] Component tests (`schedule-slots-card.test.tsx`).
+
+## Playbook Shorts (2026-11-02)
+
+> The Shorts stage proposes talking points from the approved script, the
+> owner approves a set, and each approved point becomes a `point` Short with
+> its own mini master. Branch `playbook-shorts`; decisions 337 to 344. Spec:
+> `docs/superpowers/specs/2026-11-01-playbook-shorts-design.md`.
+
+### Deliverables
+
+- [x] Talking points: proposal, redo with a note, add, remove, approve; the
+      Talking points screen at phase `points`.
+- [x] The Shorts rule book (`SHORT_RULES`) and its findings in the studio.
+- [x] One `point` Short per approved point, built by resuming, with a bridge
+      ending; the point Short studio.
+- [x] Publish guard: a point Short goes out after its long form.
+- [x] E2E (`e2e/tests/playbook-shorts.spec.ts`): seeded checkpoint, redo
+      refusal without Inngest, Version 2, three point cards, the studio, the
+      publish guard. The redo result and the builds are seeded by the spec,
+      because no Inngest runs in e2e.
+
+### Release notes
+
+- Migration 0041 on production: `pnpm db:migrate` against production. Check
+  `_journal.json` first; the unmerged `bible-drafting` branch also has a
+  0041, and whichever merges second regenerates as the next number.
+- `deploy:stacks boom-busters-broker` (the timeline schema gained punch,
+  crop and two overlays) and `deploy:remotion` (new compositions), both
+  before the first real point-Short render.
+- `PUT /api/inngest` after the Vercel deploy: three new functions
+  (`talking-points-runner`, `point-short-runner`, `point-studio-runner`) and
+  the changed `shorts-runner` and `short-render-runner`.
+
 ---
 
 # Decisions made
@@ -8707,3 +8755,72 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      alphabetical by key (collapse, con, empire, meltdown, turnaround)
      rather than enum order. The AI draft of the bible and free-text
      category checking remain for the next plan.
+
+336. **Default slots are edited in the owner's timezone** (2026-11-01). The
+     slots stay stored as a UTC weekday and time, so the publish screen and
+     the Calendar read them unchanged. The Publishing card converts with the
+     browser's offset in force today, so a timezone with daylight saving
+     sees its slots move by an hour across the change; the stored UTC time
+     is shown beside each slot. The server renders UTC and the client swaps
+     in the local offset on hydration. Two slots at the same UTC moment are
+     refused, whatever their format, because the publish screen keys its
+     slot buttons by instant. A new slot starts at its format's usual time
+     (long-form Friday 15:00 UTC, Short Wednesday 16:00 UTC) on the first
+     free day, then an hour later once the week is full at that time. Times
+     save on blur, not on change, so typing a time is one save, not several.
+
+337. **Playbook Shorts** (2026-11-02). The Shorts stage now starts with
+     talking points: three to five questions the approved script already
+     answers, which the owner approves, redoes with a note or edits, each
+     version appended and never overwritten. A rule book (`SHORT_RULES`:
+     five phases, four types) shapes every point Short. Approval builds one
+     `point` Short per point, each with its own mini master and a bridge
+     ending (a related-video arrow plus a subscribe badge). Legacy excerpt
+     and teaser rows are untouched, and Shorts publish after the long form.
+     Spec: `docs/superpowers/specs/2026-11-01-playbook-shorts-design.md`.
+
+338. **No Inngest singleton skip for the new runners** (2026-11-02). They
+     queue per key instead: per project for talking points, per point for
+     builds, per Short for the studio, because the guard test bans skip
+     (decision 233). Duplicate paid calls are stopped by atomic claims
+     (decision 339) and by idempotent builds.
+
+339. **Atomic claims before paid work** (2026-11-02). The talking points
+     screen wins `claimShortsCheckpoint` (one conditional UPDATE) before a
+     redo, an add or an approve sends anything. The studio wins
+     `claimPointWork` per Short (a 10 minute stale window) before any paid
+     action, and the render runner releases only an `assemble` claim
+     (`releasePointWork`). Losers are refused in words. A stage that failed
+     at the points phase cannot be claimed; the owner restarts the stage.
+
+340. **A point Short builds by resuming, not re-buying** (2026-11-02). The
+     row is created when the script is written and stays a draft, hidden
+     from `listShorts`, until its `sourceTimeline` is set. The script, each
+     paragraph's voice and the shot plan are stored as bought and reused on
+     a re-run. Known residual: a still or stock fetch cut off between runs
+     is bought again, at most four pictures, about $0.56.
+
+341. **A failed new-picture fetch drops that shot** (2026-11-02). The
+     previous shot runs on in its place and a `short` notice says so; the
+     plan stays valid. Each new picture is its own step, so a retry never
+     buys one twice.
+
+342. **The shot-plan library is numbered from 0** (2026-11-02). A planned
+     library ref is the index of the full slot snapshot.
+
+343. **Editing a point Short's script keeps its `scriptVersion`**
+     (2026-11-02). That number is the long-form script the Short was
+     written from, and it drives "written from an earlier script". Edits
+     are tracked by each paragraph's text hash, so unchanged paragraphs
+     keep their audio.
+
+344. **Point Shorts follow their long form** (2026-11-02). A point Short
+     cannot be scheduled before its long form, or before the long form has
+     a time, and cannot be published now until the long form is live. The
+     refusal names the long form's time in UTC, and a failed long form that
+     still carries a time counts as scheduled. Known limit: moving or
+     clearing the long form's own time later is not guarded. The e2e spec
+     runs without Inngest, so it presses Redo and Approve and asserts the
+     "Could not reach Inngest" refusal, then seeds what the runners would
+     have left (proposal version 2, the approved set, three built Shorts)
+     and reads the rest through the real screens.

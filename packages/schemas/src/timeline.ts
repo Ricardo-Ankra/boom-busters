@@ -3,6 +3,7 @@ import { GraphicSceneSchema } from './graphics'
 import { GraphicCodeWordSchema } from './graphic-code'
 import { UlidSchema } from './ids'
 import { BrandKitTokensSchema } from './settings'
+import { CropFocusSchema } from './short-rules'
 import { ChartKindSchema, ChartSeriesSchema, MapLocationSchema, TransitionSchema } from './visuals'
 
 /**
@@ -146,6 +147,12 @@ export const TimelineMotionSchema = z.discriminatedUnion('kind', [
     intensity: z.number().positive().max(0.5),
   }),
   z.object({ kind: z.literal('draw-on') }),
+  /** A quick scale emphasis on a beat (point Shorts): in, then settle. */
+  z.object({
+    kind: z.literal('punch'),
+    scale: z.number().gt(1).max(1.3),
+    durationMs: z.number().int().min(50).max(1000),
+  }),
   z.object({
     kind: z.literal('camera-path'),
     /** Waypoints the map camera visits, in order. */
@@ -349,6 +356,8 @@ export const TimelineSlotSchema = z
     durationMs: z.number().int().positive(),
     transition: TransitionSchema,
     motion: TimelineMotionSchema,
+    /** Which part of a wide still a vertical frame keeps. Optional: stored timelines omit it. */
+    crop: CropFocusSchema.optional(),
     payload: SlotPayloadSchema,
   })
   .superRefine((slot, ctx) => {
@@ -396,6 +405,20 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     startMs: z.number().int().min(0),
     durationMs: z.number().int().positive(),
     props: z.object({ text: z.string().min(1) }),
+  }),
+  /** A point Short's bridge: an arrow pointing at the related-video card. */
+  z.object({
+    kind: z.literal('relatedArrow'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({ label: z.string().min(1).max(40) }),
+  }),
+  /** A point Short's bridge: the channel name and handle as a subscribe badge. */
+  z.object({
+    kind: z.literal('subscribeBadge'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({ channelName: z.string().min(1).max(80), handle: z.string().max(80) }),
   }),
 ])
 export type Overlay = z.infer<typeof OverlaySchema>

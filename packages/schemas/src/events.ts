@@ -235,6 +235,37 @@ export const ShortsRenderRequestedSchema = z.object({
 })
 
 /**
+ * Propose, redo or add talking points for the playbook Shorts stage (design
+ * 3.2). `one` replaces the point `pointId`; `add` appends one. Sent by the
+ * Talking points screen; handled by the talking-points-runner, which parks the
+ * stage at the points review.
+ */
+export const ShortsPointsRequestedSchema = z.discriminatedUnion('mode', [
+  z.object({ ...projectRef, mode: z.literal('all'), note: z.string().nullable() }),
+  z.object({
+    ...projectRef,
+    mode: z.literal('one'),
+    pointId: UlidSchema,
+    note: z.string().nullable(),
+  }),
+  z.object({ ...projectRef, mode: z.literal('add'), note: z.string().nullable() }),
+])
+
+/** Build one approved talking point into a Short (design 3.4); one run per point. */
+export const ShortsPointBuildRequestedSchema = z.object({
+  ...projectRef,
+  pointId: UlidSchema,
+})
+
+/** The Short studio's Re-voice and Re-plan acts on one point Short (design 6). */
+export const ShortsPointStudioRequestedSchema = z.object({
+  ...projectRef,
+  shortId: UlidSchema,
+  op: z.enum(['voice', 'plan']),
+  note: z.string().nullable(),
+})
+
+/**
  * Rebuild one teaser from its stored script (decision 227): re-voice the
  * beats (idempotency-keyed, so unchanged text is re-served free), recut over
  * the current master board, and queue a fresh render. Sent by the teaser
@@ -409,6 +440,9 @@ export const EVENT_SCHEMAS = {
   'media/job.completed': MediaJobCompletedSchema,
   'render/draft.requested': RenderDraftRequestedSchema,
   'shorts/render.requested': ShortsRenderRequestedSchema,
+  'shorts/points.requested': ShortsPointsRequestedSchema,
+  'shorts/point.build.requested': ShortsPointBuildRequestedSchema,
+  'shorts/point.studio.requested': ShortsPointStudioRequestedSchema,
   'teaser/rebuild.requested': TeaserRebuildRequestedSchema,
   'teaser/shots.requested': TeaserShotsRequestedSchema,
   'publish/requested': PublishRequestedSchema,

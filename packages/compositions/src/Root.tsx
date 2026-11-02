@@ -1,11 +1,17 @@
-import { Composition } from 'remotion'
+import type { ReactNode } from 'react'
+import { AbsoluteFill, Composition } from 'remotion'
 import { gainAt, timelineDurationMs } from '@boom-busters/schemas'
-import type { BrandKitTokens, HeadlinePayload, SocialPayload } from '@boom-busters/schemas'
+import type {
+  BrandKitTokens,
+  HeadlinePayload,
+  SocialPayload,
+  TimelineSlot,
+} from '@boom-busters/schemas'
 import { AnimatedMap } from './components/AnimatedMap'
 import { ChapterCard } from './components/ChapterCard'
 import { ChartReveal } from './components/ChartReveal'
 import type { ChartPayload } from './components/ChartReveal'
-import { DocumentaryMaster } from './components/DocumentaryMaster'
+import { DocumentaryMaster, SlotView } from './components/DocumentaryMaster'
 import { EndCta } from './components/EndCta'
 import { GraphicCard } from './components/GraphicCard'
 import { GraphicCode } from './components/GraphicCode'
@@ -14,14 +20,17 @@ import { KaraokeCaptions } from './components/KaraokeCaptions'
 import { KenBurnsImage } from './components/KenBurnsImage'
 import { LowerThird } from './components/LowerThird'
 import { MusicBed } from './components/MusicBed'
+import { RelatedArrow } from './components/RelatedArrow'
 import { ShortVertical } from './components/ShortVertical'
 import { SocialPost } from './components/SocialPost'
 import { StockClip } from './components/StockClip'
+import { SubscribeBadge } from './components/SubscribeBadge'
 import { WatermarkFixture } from './components/Watermark'
 import {
   FIXTURE_BRAND,
   FIXTURE_CAPTION_WORDS,
   FIXTURE_MAP_LOCATIONS,
+  FIXTURE_SHORT_BRIDGE_TIMELINE,
   FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
@@ -40,6 +49,54 @@ import { msToFrames } from './lib/motion'
 const FPS = 30
 const WIDE = { fps: FPS, width: 1920, height: 1080 } as const
 const TALL = { fps: FPS, width: 1080, height: 1920 } as const
+
+/** A Short slot with the punch-in, rendered through the real SlotView. */
+function PunchImageFixture({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }) {
+  return <SlotView slot={slot} brand={brand} />
+}
+
+/** An overlay over the skyline still, so the snapshot shows it against a picture. */
+function OverOverlay({ children }: { children: ReactNode }) {
+  return (
+    <AbsoluteFill style={{ backgroundColor: FIXTURE_BRAND.colors.background }}>
+      <KenBurnsImage
+        src={FIXTURE_IMAGE_SKYLINE}
+        motion={{ kind: 'static' }}
+        durationInFrames={120}
+      />
+      {children}
+    </AbsoluteFill>
+  )
+}
+
+function RelatedArrowFixture() {
+  return (
+    <OverOverlay>
+      <RelatedArrow label="Watch the full story" brand={FIXTURE_BRAND} />
+    </OverOverlay>
+  )
+}
+
+function SubscribeBadgeFixture() {
+  return (
+    <OverOverlay>
+      <SubscribeBadge channelName="Boom & Busters" handle="@boomandbusters" brand={FIXTURE_BRAND} />
+    </OverOverlay>
+  )
+}
+
+const PUNCH_SLOT: TimelineSlot = {
+  type: 'still',
+  startMs: 0,
+  durationMs: 4000,
+  transition: 'cut',
+  motion: { kind: 'punch', scale: 1.15, durationMs: 250 },
+  crop: 'left',
+  payload: {
+    kind: 'image',
+    src: { r2Key: 'boom-busters/stills/fixture-skyline.png', url: FIXTURE_IMAGE_SKYLINE },
+  },
+}
 
 function lookVariant(look: Partial<BrandKitTokens['look']>): BrandKitTokens {
   return { ...FIXTURE_BRAND, look: { ...FIXTURE_BRAND.look, ...look } }
@@ -260,11 +317,41 @@ export function Root() {
       />
 
       <Composition
+        id="ShortBridgeVertical"
+        component={ShortVertical}
+        durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_BRIDGE_TIMELINE), FPS)}
+        {...TALL}
+        defaultProps={{ timeline: FIXTURE_SHORT_BRIDGE_TIMELINE }}
+      />
+
+      <Composition
         id="EndCtaFixture"
         component={EndCta}
         durationInFrames={120}
         {...TALL}
         defaultProps={{ text: 'The full story is on the channel', brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="PunchImageFixture"
+        component={PunchImageFixture}
+        durationInFrames={120}
+        {...TALL}
+        defaultProps={{ slot: PUNCH_SLOT, brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="RelatedArrowFixture"
+        component={RelatedArrowFixture}
+        durationInFrames={120}
+        {...TALL}
+      />
+
+      <Composition
+        id="SubscribeBadgeFixture"
+        component={SubscribeBadgeFixture}
+        durationInFrames={120}
+        {...TALL}
       />
 
       <Composition
