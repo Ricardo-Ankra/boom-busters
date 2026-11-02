@@ -60,11 +60,15 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - stretch-replanner queues one chapter's stretches behind each other
   //   (`concurrency` keyed on the chapter, the stretch re-plan design 3.3):
   //   a second stretch is another selection, never a duplicate to cancel.
+  // - talking-points-runner queues a project's requests behind each other
+  //   (`concurrency` keyed on the project): a duplicate must never cancel a
+  //   paid proposal, and `skip` is banned below.
   'analytics-runner': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,
   'stretch-replanner': null,
+  'talking-points-runner': null,
 }
 
 describe('function singletons (decision 233)', () => {

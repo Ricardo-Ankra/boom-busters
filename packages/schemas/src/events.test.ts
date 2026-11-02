@@ -17,7 +17,7 @@ const caseId = fixtureId('case', 1)
 describe('event registry', () => {
   it('names every event `<domain>/<subject>[.<verb>]`, per spec section 7', () => {
     for (const name of EVENT_NAMES) {
-      expect(name).toMatch(/^[a-z]+\/[a-z_]+(\.[a-z_]+)?$/)
+      expect(name).toMatch(/^[a-z]+\/[a-z_]+(\.[a-z_]+){0,2}$/)
     }
   })
 
@@ -244,5 +244,53 @@ describe('the stretch re-plan event (the stretch re-plan design, 3.3)', () => {
         jobId,
       }).success,
     ).toBe(false)
+  })
+})
+
+describe('playbook Shorts events', () => {
+  const pointId = fixtureId('point', 1)
+  const shortId = fixtureId('short', 1)
+
+  it('asks for all, one or an added talking point, and one needs its pointId', () => {
+    expect(
+      parseEventData('shorts/points.requested', { projectId, mode: 'all', note: null }),
+    ).toEqual({
+      projectId,
+      mode: 'all',
+      note: null,
+    })
+    expect(
+      parseEventData('shorts/points.requested', { projectId, mode: 'add', note: 'the auditors' }),
+    ).toMatchObject({ mode: 'add', note: 'the auditors' })
+    expect(
+      parseEventData('shorts/points.requested', { projectId, mode: 'one', pointId, note: null }),
+    ).toMatchObject({ mode: 'one', pointId })
+    expect(() =>
+      parseEventData('shorts/points.requested', { projectId, mode: 'one', note: null }),
+    ).toThrow()
+    expect(() =>
+      parseEventData('shorts/points.requested', { projectId, mode: 'some', note: null }),
+    ).toThrow()
+  })
+
+  it('builds one point by its id', () => {
+    expect(parseEventData('shorts/point.build.requested', { projectId, pointId })).toEqual({
+      projectId,
+      pointId,
+    })
+    expect(() =>
+      parseEventData('shorts/point.build.requested', { projectId, pointId: 'nope' }),
+    ).toThrow()
+  })
+
+  it('re-voices or re-plans one Short from the studio, and refuses any other op', () => {
+    for (const op of ['voice', 'plan'] as const) {
+      expect(
+        parseEventData('shorts/point.studio.requested', { projectId, shortId, op, note: null }),
+      ).toEqual({ projectId, shortId, op, note: null })
+    }
+    expect(() =>
+      parseEventData('shorts/point.studio.requested', { projectId, shortId, op: 'x', note: null }),
+    ).toThrow()
   })
 })

@@ -10,6 +10,7 @@ import { renderRunner } from './render-runner'
 import { scriptRunner } from './script-runner'
 import { shortRenderRunner } from './short-render-runner'
 import { shortsRunner } from './shorts-runner'
+import { talkingPointsRunner } from './talking-points-runner'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
 import { slotRefetcher } from './slot-refetcher'
@@ -65,6 +66,7 @@ export const functions = [
   draftRunner,
   renderRunner,
   shortsRunner,
+  talkingPointsRunner,
   shortRenderRunner,
   teaserRebuildRunner,
   teaserShotFetcher,
@@ -87,6 +89,7 @@ export {
   scriptRunner,
   shortRenderRunner,
   shortsRunner,
+  talkingPointsRunner,
   teaserRebuildRunner,
   teaserShotFetcher,
   slotRebriefer,
