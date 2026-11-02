@@ -291,6 +291,14 @@ describe('ShortsScreen', () => {
       expect(screen.getByText(/Written from an earlier script/)).toBeInTheDocument()
     })
 
+    it('has no ending toggle, and says it ends on the bridge', () => {
+      renderScreen([pointCard()])
+
+      expect(screen.queryByRole('button', { name: 'Loop' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'CTA' })).not.toBeInTheDocument()
+      expect(screen.getByText('Ends with a bridge to the full video')).toBeInTheDocument()
+    })
+
     it('opens the point Short studio, not the teaser studio', async () => {
       const user = userEvent.setup()
       renderScreen([pointCard()])

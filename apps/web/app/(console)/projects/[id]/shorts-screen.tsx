@@ -384,48 +384,62 @@ function ShortCard({
           </Button>
         ) : null}
 
-        {/* The ending toggle. Switching makes the current render a render of
-            something else, so it carries that consequence when one exists. */}
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-[var(--color-text-secondary)]">Ending</span>
-          {(['loop', 'cta'] as const).map((ending) =>
-            short.ending === ending ? (
-              <Button key={ending} variant="primary" disabled className="capitalize">
-                {ending === 'cta' ? 'CTA' : 'Loop'}
-              </Button>
-            ) : short.render !== null && !failed ? (
-              <ConfirmButton
-                key={ending}
-                label={ending === 'cta' ? 'CTA' : 'Loop'}
-                confirmLabel={`Switch to ${ending === 'cta' ? 'CTA' : 'loop'}`}
-                consequence="The current render is of the other ending and will need re-rendering."
-                confirmVariant="primary"
-                busy={pressed === `ending-${ending}`}
-                disabled={busy}
-                onConfirm={() =>
-                  act(() => setShortEnding(short.id, ending), 'Ending changed', `ending-${ending}`)
-                }
-              />
-            ) : (
-              <Button
-                key={ending}
-                variant="outline"
-                className="capitalize"
-                busy={pressed === `ending-${ending}`}
-                disabled={busy}
-                onClick={() =>
-                  void act(
-                    () => setShortEnding(short.id, ending),
-                    'Ending changed',
-                    `ending-${ending}`,
-                  )
-                }
-              >
-                {ending === 'cta' ? 'CTA' : 'Loop'}
-              </Button>
-            ),
-          )}
-        </div>
+        {/* A point Short always ends on its bridge to the long form (the render
+            forces it), so it has no ending to choose. */}
+        {short.kind === 'point' ? (
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            Ends with a bridge to the full video
+          </p>
+        ) : (
+          <>
+            {/* The ending toggle. Switching makes the current render a render of
+              something else, so it carries that consequence when one exists. */}
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-[var(--color-text-secondary)]">Ending</span>
+              {(['loop', 'cta'] as const).map((ending) =>
+                short.ending === ending ? (
+                  <Button key={ending} variant="primary" disabled className="capitalize">
+                    {ending === 'cta' ? 'CTA' : 'Loop'}
+                  </Button>
+                ) : short.render !== null && !failed ? (
+                  <ConfirmButton
+                    key={ending}
+                    label={ending === 'cta' ? 'CTA' : 'Loop'}
+                    confirmLabel={`Switch to ${ending === 'cta' ? 'CTA' : 'loop'}`}
+                    consequence="The current render is of the other ending and will need re-rendering."
+                    confirmVariant="primary"
+                    busy={pressed === `ending-${ending}`}
+                    disabled={busy}
+                    onConfirm={() =>
+                      act(
+                        () => setShortEnding(short.id, ending),
+                        'Ending changed',
+                        `ending-${ending}`,
+                      )
+                    }
+                  />
+                ) : (
+                  <Button
+                    key={ending}
+                    variant="outline"
+                    className="capitalize"
+                    busy={pressed === `ending-${ending}`}
+                    disabled={busy}
+                    onClick={() =>
+                      void act(
+                        () => setShortEnding(short.id, ending),
+                        'Ending changed',
+                        `ending-${ending}`,
+                      )
+                    }
+                  >
+                    {ending === 'cta' ? 'CTA' : 'Loop'}
+                  </Button>
+                ),
+              )}
+            </div>
+          </>
+        )}
 
         {/* Burned-in captions (decision 326), the ending's twin: part of the
             picture, so switching makes the current render a render of the
