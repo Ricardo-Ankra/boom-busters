@@ -89,9 +89,7 @@ describe('BiblePreview', () => {
     const { rerender } = render(<BiblePreview channelId={CHANNEL_ID} bible={FIRST_CHANNEL_BIBLE} />)
     await flush()
     expect(previewStagePromptAction).toHaveBeenCalledTimes(1)
-    rerender(
-      <BiblePreview channelId={CHANNEL_ID} bible={structuredClone(FIRST_CHANNEL_BIBLE)} />,
-    )
+    rerender(<BiblePreview channelId={CHANNEL_ID} bible={structuredClone(FIRST_CHANNEL_BIBLE)} />)
     await flush()
     await flush()
     expect(previewStagePromptAction).toHaveBeenCalledTimes(1)

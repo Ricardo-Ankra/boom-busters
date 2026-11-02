@@ -168,7 +168,10 @@ suite('bible drafts', () => {
     const v2 = await currentBible(db, channelId)
     // A draft opened as the restore lands: it was based on the version before it.
     await openBibleDraft(db, channelId)
-    await db.update(bibleDrafts).set({ baseBibleId: v1.id }).where(eq(bibleDrafts.channelId, channelId))
+    await db
+      .update(bibleDrafts)
+      .set({ baseBibleId: v1.id })
+      .where(eq(bibleDrafts.channelId, channelId))
     const refused = await saveBibleDraft(db, channelId, 'x').catch((e: unknown) => e)
     expect(refused).toBeInstanceOf(BibleDraftStaleError)
     expect((refused as Error).message).toMatch(/discard this draft and redraft/i)
@@ -180,24 +183,56 @@ suite('bible drafts', () => {
   it('a restore waits for the channel lock another writer holds', async () => {
     const v1 = await currentBible(db, channelId)
     await saveBibleVersion(db, channelId, { ...FIRST_CHANNEL_BIBLE, subject: 'ships' }, 'Edit')
-    let restored = false
+
+    /** Poll (bounded) until `check` is true; fail with a clear message rather than hang. */
+    const until = async (what: string, check: () => Promise<boolean>) => {
+      const deadline = Date.now() + 5000
+      while (!(await check())) {
+        if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+    }
+
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => (release = resolve))
+    let locked: () => void = () => {}
+    const lockTaken = new Promise<void>((resolve) => (locked = resolve))
     const holder = db.transaction(async (tx) => {
       await lockChannelBible(tx, channelId)
+      locked()
       await held
     })
-    // Give the holder time to take the lock.
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    const restore = restoreBibleVersion(db, channelId, v1.id).then((row) => {
-      restored = true
-      return row
-    })
-    await new Promise((resolve) => setTimeout(resolve, 300))
-    expect(restored).toBe(false)
-    release()
-    await holder
-    expect((await restore).version).toBe(3)
+    let restore: Promise<unknown> = Promise.resolve()
+    let restored = false
+    try {
+      // The holder has the lock (not a guess at a delay).
+      await Promise.race([
+        lockTaken,
+        holder.then(() => {
+          throw new Error('the lock holder ended before taking the lock')
+        }),
+      ])
+      restore = restoreBibleVersion(db, channelId, v1.id).then((row) => {
+        restored = true
+        return row
+      })
+      // The restore's backend is queued on a row lock.
+      await until('the restore to wait on the channel lock', async () => {
+        const rows = await db.execute(
+          dsql`select 1 from pg_stat_activity
+            where wait_event_type = 'Lock' and pid <> pg_backend_pid()
+              and query ilike '%for update%' and datname = current_database()`,
+        )
+        return Array.from(rows).length > 0
+      })
+      expect(restored).toBe(false)
+    } finally {
+      release()
+      await holder.catch(() => {})
+    }
+    const row = (await restore) as { version: number }
+    expect(restored).toBe(true)
+    expect(row.version).toBe(3)
   })
 
   it('moves a project to a newer version of its channel, never another channel', async () => {
