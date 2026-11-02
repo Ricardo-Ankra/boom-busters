@@ -246,6 +246,40 @@ export async function releasePointWork(db: Database, id: string, what: PointWork
 }
 
 /**
+ * Store one shot's new choice (a plan with the shot changed) and, when its
+ * picture was just downloaded, the settled pool candidate, in ONE conditional
+ * UPDATE. The plan is written only if it is still exactly what the caller read
+ * (`expectedPlan`), so a paid re-plan that landed meanwhile is never overwritten
+ * (false is returned and nothing changes). The pool is touched candidate by
+ * candidate: the work state and any candidate added meanwhile are left as they
+ * stand.
+ */
+export async function savePointShotChoice(
+  db: Database,
+  id: string,
+  input: {
+    expectedPlan: unknown
+    plan: PointPlanRecord
+    settled?: { id: string } & Record<string, unknown>
+  },
+): Promise<boolean> {
+  const pool = input.settled
+    ? sql`coalesce(jsonb_set(${shorts.pointFetches}, '{candidates}', coalesce((select jsonb_agg(case when t.c ->> 'id' = ${input.settled.id} then ${JSON.stringify(input.settled)}::jsonb else t.c end order by t.o) from jsonb_array_elements(${shorts.pointFetches} -> 'candidates') with ordinality as t(c, o)), '[]'::jsonb)), ${shorts.pointFetches})`
+    : sql`${shorts.pointFetches}`
+  const rows = await db
+    .update(shorts)
+    .set({ pointPlan: input.plan, pointFetches: pool, updatedAt: new Date() })
+    .where(
+      and(
+        eq(shorts.id, id),
+        sql`${shorts.pointPlan} = ${JSON.stringify(input.expectedPlan)}::jsonb`,
+      ),
+    )
+    .returning({ id: shorts.id })
+  return rows.length > 0
+}
+
+/**
  * The latest script's Shorts candidates — what the shorts-runner resolves.
  * The script gate approved these implicitly: they were on show in the
  * Script Studio's context panel when the script was approved.

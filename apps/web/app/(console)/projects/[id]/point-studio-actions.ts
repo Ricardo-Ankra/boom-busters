@@ -8,6 +8,8 @@ import {
   getShort,
   latestScriptParagraphSources,
   latestTimeline,
+  releasePointWork,
+  savePointShotChoice,
   settlePointWork,
   updateShort,
 } from '@boom-busters/db'
@@ -289,7 +291,8 @@ export async function savePointShot(
 
   const current = plan.data.shots[shotIndex]!
   let slot = current.slot
-  let pool: PointFetchesRecord | null = null
+  let settledCandidate: SlotCandidate | null = null
+  let claimedIngest = false
 
   if (choice !== null && 'ref' in choice) {
     const timelineRow = await latestTimeline(db, short.projectId)
@@ -310,28 +313,49 @@ export async function savePointShot(
     const mocked = mockProvidersEnabled()
     let settled: SlotCandidate = candidate
     if (!teaserCandidateReady(candidate, mocked)) {
-      const ingested = await ingestCandidateBytes(candidate)
-      if (!ingested.ok)
+      // The download is slow and the plan was read before it: hold the Short's
+      // slot of work so no other action starts meanwhile.
+      const claim = await win(shortId, 'ingest')
+      if (!claim.ok) return claim
+      claimedIngest = true
+      const ingested = await ingestCandidateBytes(candidate).catch(async (error: unknown) => {
+        await releasePointWork(db, shortId, 'ingest')
+        throw error
+      })
+      if (!ingested.ok) {
+        await releasePointWork(db, shortId, 'ingest')
         return { ok: false, error: `The picture could not be stored: ${ingested.reason}` }
+      }
       settled = ingested.candidate
+      settledCandidate = settled
     }
     const built = slotFromTeaserCandidate(settled, { mocked })
-    if (!built) return { ok: false, error: 'That option could not become a timeline shot.' }
-    slot = built
-    // A re-pick is then instant: the stored bytes replace the provider's link.
-    pool = {
-      ...fetches.data,
-      candidates: fetches.data.candidates.map((entry) =>
-        entry.id === candidate.id ? settled : entry,
-      ),
+    if (!built) {
+      if (claimedIngest) await releasePointWork(db, shortId, 'ingest')
+      return { ok: false, error: 'That option could not become a timeline shot.' }
     }
+    slot = built
   }
 
   const shots = plan.data.shots.map((shot, index) =>
     index === shotIndex ? { ...current, slot, pending: null, crop, motion } : shot,
   )
   const record: PointPlanRecord = { ...plan.data, shots }
-  await updateShort(db, shortId, { pointPlan: record, ...(pool ? { pointFetches: pool } : {}) })
+  // One conditional write: the plan only if it is still the one read, and just
+  // the settled candidate in the pool (a re-pick is then instant), so the work
+  // state, a newer plan or a picture bought meanwhile are never overwritten.
+  const saved = await savePointShotChoice(db, shortId, {
+    expectedPlan: short.pointPlan,
+    plan: record,
+    ...(settledCandidate ? { settled: settledCandidate } : {}),
+  })
+  if (claimedIngest) await releasePointWork(db, shortId, 'ingest')
+  if (!saved) {
+    return {
+      ok: false,
+      error: 'This Short’s shots changed while you were choosing. Reload and pick again.',
+    }
+  }
   revalidatePath(`/projects/${short.projectId}`)
   return { ok: true }
 }

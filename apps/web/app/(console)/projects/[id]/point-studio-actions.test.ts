@@ -2,6 +2,7 @@
 
 import {
   chapters,
+  claimPointWork,
   FIXTURE_PROJECT_ID,
   getShort,
   insertRender,
@@ -10,6 +11,7 @@ import {
   requireTestDatabase,
   scripts,
   seed,
+  settlePointWork,
   shorts,
   talkingPointSets,
   timelines,
@@ -57,6 +59,8 @@ vi.mock('@/lib/storage', () => ({
 }))
 const send = vi.hoisted(() => vi.fn())
 vi.mock('@/inngest/client', () => ({ inngest: { send } }))
+const ingest = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/stock-ingest', () => ({ ingestCandidateBytes: ingest }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -283,6 +287,97 @@ describeDb('point studio actions', () => {
       expect(result).toEqual({ ok: true })
       const plan = PointPlanRecordSchema.parse((await stored()).pointPlan)
       expect(plan.shots[2]!.slot?.payload.kind).toMatch(/image|video/)
+    })
+
+    describe('when the picture has to be downloaded first', () => {
+      const pick = () => savePointShot(shortId, 2, { candidateId: 'far' }, 'centre', 'static')
+
+      beforeEach(async () => {
+        // Live mode: a stock option without bytes in R2 goes through the ingest.
+        vi.stubEnv('MOCK_PROVIDERS', '')
+        const pool = PointFetchesRecordSchema.parse((await stored()).pointFetches)
+        const far = { ...pool.candidates[0]!, id: 'far' }
+        delete (far as { r2Key?: string }).r2Key
+        await updateShort(db, shortId, {
+          pointFetches: { ...pool, candidates: [...pool.candidates, far] },
+        })
+        ingest.mockImplementation(async (candidate: Record<string, unknown>) => ({
+          ok: true,
+          candidate: { ...candidate, r2Key: 'stored/far.jpg' },
+        }))
+      })
+
+      it('holds the ingest claim while downloading and gives back only that claim', async () => {
+        let during: unknown
+        ingest.mockImplementationOnce(async (candidate: Record<string, unknown>) => {
+          during = PointFetchesRecordSchema.parse((await stored()).pointFetches).state
+          return { ok: true, candidate: { ...candidate, r2Key: 'stored/far.jpg' } }
+        })
+
+        expect(await pick()).toEqual({ ok: true })
+
+        expect(during).toMatchObject({ state: 'fetching', what: 'ingest' })
+        const after = PointFetchesRecordSchema.parse((await stored()).pointFetches)
+        expect(after.state).toBeNull()
+        expect(after.candidates.find((entry) => entry.id === 'far')?.r2Key).toBe('stored/far.jpg')
+      })
+
+      it('leaves another action’s claim and a picture added meanwhile alone', async () => {
+        ingest.mockImplementationOnce(async (candidate: Record<string, unknown>) => {
+          // A stale ingest claim was reclaimed by a re-plan, and a still landed.
+          const pool = PointFetchesRecordSchema.parse((await stored()).pointFetches)
+          await updateShort(db, shortId, {
+            pointFetches: {
+              ...pool,
+              candidates: [...pool.candidates, { ...pool.candidates[0]!, id: 'bought' }],
+            },
+          })
+          await settlePointWork(db, shortId, {
+            state: 'fetching',
+            what: 'plan',
+            startedAt: new Date().toISOString(),
+          })
+          return { ok: true, candidate: { ...candidate, r2Key: 'stored/far.jpg' } }
+        })
+
+        expect(await pick()).toEqual({ ok: true })
+
+        const after = PointFetchesRecordSchema.parse((await stored()).pointFetches)
+        expect(after.state).toMatchObject({ state: 'fetching', what: 'plan' })
+        expect(after.candidates.map((entry) => entry.id)).toContain('bought')
+        expect(after.candidates.find((entry) => entry.id === 'far')?.r2Key).toBe('stored/far.jpg')
+      })
+
+      it('refuses in words when the plan changed during the download', async () => {
+        const planBefore = (await stored()).pointPlan
+        ingest.mockImplementationOnce(async (candidate: Record<string, unknown>) => {
+          const plan = PointPlanRecordSchema.parse(planBefore)
+          await updateShort(db, shortId, {
+            pointPlan: { ...plan, shots: plan.shots.map((shot) => ({ ...shot, crop: 'left' })) },
+          })
+          return { ok: true, candidate: { ...candidate, r2Key: 'stored/far.jpg' } }
+        })
+
+        const result = await pick()
+
+        expect(result.ok).toBe(false)
+        expect(result.error).toMatch(/changed while you were choosing/)
+        const plan = PointPlanRecordSchema.parse((await stored()).pointPlan)
+        expect(plan.shots.every((shot) => shot.crop === 'left')).toBe(true)
+        expect(plan.shots[2]!.slot).toEqual(PointPlanRecordSchema.parse(planBefore).shots[2]!.slot)
+      })
+
+      it('refuses without downloading when another action holds the slot', async () => {
+        expect(await claimPointWork(db, shortId, 'plan', new Date(0))).toBe(true)
+
+        const result = await pick()
+
+        expect(result.ok).toBe(false)
+        expect(ingest).not.toHaveBeenCalled()
+        expect(PointFetchesRecordSchema.parse((await stored()).pointFetches).state).toMatchObject({
+          what: 'plan',
+        })
+      })
     })
 
     it('refuses an unknown shot, library slot or fetched option', async () => {

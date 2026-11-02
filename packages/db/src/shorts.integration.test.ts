@@ -12,6 +12,7 @@ import {
   isAssembledShort,
   listShorts,
   releasePointWork,
+  savePointShotChoice,
   settlePointWork,
   shortForPoint,
   updateShort,
@@ -265,6 +266,46 @@ suite('shorts bookkeeping', () => {
       await updateShort(db, row.id, { sourceTimeline: { version: 1 } })
       await updateShort(db, row.id, { sourceTimeline: null, pointScript: null, renderId: null })
       expect(isAssembledShort((await getShort(db, row.id))!)).toBe(false)
+    })
+
+    it('stores a shot choice only on the plan that was read, touching just its candidate', async () => {
+      const row = await draftPoint()
+      const plan = { shots: [{ n: 1 }] } as never
+      const pool = (...ids: string[]) => ({
+        candidates: ids.map((id) => ({ id, url: `https://x/${id}` })),
+        state: null,
+      })
+      await updateShort(db, row.id, { pointPlan: plan, pointFetches: pool('a', 'b') as never })
+      // Another action's claim and a candidate added while the picture downloaded.
+      expect(await claimPointWork(db, row.id, 'plan', new Date(0))).toBe(true)
+      await db.execute(
+        dsql`update shorts set point_fetches = jsonb_set(point_fetches, '{candidates}', point_fetches -> 'candidates' || '[{"id":"c"}]'::jsonb) where id = ${row.id}`,
+      )
+
+      const chosen = { shots: [{ n: 2 }] } as never
+      expect(
+        await savePointShotChoice(db, row.id, {
+          expectedPlan: plan,
+          plan: chosen,
+          settled: { id: 'a', url: 'https://x/a', r2Key: 'stored/a' },
+        }),
+      ).toBe(true)
+      const after = await getShort(db, row.id)
+      expect(after?.pointPlan).toEqual(chosen)
+      expect(after?.pointFetches).toEqual({
+        candidates: [
+          { id: 'a', url: 'https://x/a', r2Key: 'stored/a' },
+          { id: 'b', url: 'https://x/b' },
+          { id: 'c' },
+        ],
+        state: expect.objectContaining({ state: 'fetching', what: 'plan' }),
+      })
+
+      // The plan has moved on since it was read: refused, nothing written.
+      expect(
+        await savePointShotChoice(db, row.id, { expectedPlan: plan, plan: { shots: [] } as never }),
+      ).toBe(false)
+      expect((await getShort(db, row.id))?.pointPlan).toEqual(chosen)
     })
   })
 })
