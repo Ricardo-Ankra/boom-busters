@@ -139,13 +139,11 @@ function BibleStatusCard({ channel, onOpen }: { channel: ChannelView; onOpen?: (
         >
           {missing.length === 0 ? 'Bible complete' : `Bible incomplete: ${missing.length} missing`}
         </p>
-        <Link
-          href="?tab=bible"
-          onClick={onOpen}
-          className="text-[13px] text-[var(--color-accent-text)] underline"
-        >
-          Open the Bible tab
-        </Link>
+        <Button asChild variant="outline">
+          <Link href="?tab=bible" onClick={onOpen}>
+            Open the Bible tab
+          </Link>
+        </Button>
       </CardContent>
     </Card>
   )

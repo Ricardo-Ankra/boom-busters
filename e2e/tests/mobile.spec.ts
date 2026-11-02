@@ -53,13 +53,18 @@ test.describe('390px', () => {
     await expectHitTargets(page)
   })
 
-  test('the Channel tab and its bible fields fit a phone', async ({ page }) => {
+  test('the Channel tab and the Bible tab fit a phone', async ({ page }) => {
     await signIn(page)
     await page.goto(channelPath('/settings?tab=channel', SECOND_SLUG))
 
-    await expect(page.getByRole('heading', { name: 'Channel bible' })).toBeVisible()
-    await expect(page.locator('#bible-subject')).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Channel' })).toHaveAttribute('data-state', 'active')
     await expectNoSidewaysScroll(page, 'channel tab')
+    await expectHitTargets(page)
+
+    await page.goto(channelPath('/settings?tab=bible', SECOND_SLUG))
+    await expect(page.getByRole('button', { name: 'Draft with AI' })).toBeVisible()
+    await expect(page.getByText('Hooks, openings and titles', { exact: true })).toBeVisible()
+    await expectNoSidewaysScroll(page, 'bible tab')
     await expectHitTargets(page)
 
     await page.goto(channelPath('/settings?tab=channel&new=1', SECOND_SLUG))
