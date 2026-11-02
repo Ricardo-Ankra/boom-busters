@@ -59,6 +59,8 @@ export interface VidiqBalance {
 export interface VidiqCall<T> {
   data: T
   credits: number
+  /** The arguments as sent on the wire, for the credits ledger. */
+  args: Record<string, unknown>
 }
 
 export interface VidiqRawResult {

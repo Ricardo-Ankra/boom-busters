@@ -1,5 +1,9 @@
+import { ValidationError } from '@boom-busters/schemas'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import {
+  StreamableHTTPClientTransport,
+  StreamableHTTPError,
+} from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import {
   VidiqError,
   creditsUsed,
@@ -49,6 +53,24 @@ export type VidiqCaller = (
   args: Record<string, unknown>,
 ) => Promise<VidiqRawResult>
 
+/**
+ * A refused key, as the error the verify path already treats as non-retriable
+ * (the LLM and fal adapters throw the same `ValidationError` for a 401 or 403).
+ * The transport reports HTTP 401 and 403 as a `StreamableHTTPError` with the
+ * status as its code; VidIQ's own tools say it in an error result's text.
+ */
+function refusedKey(tool: string, error: unknown): ValidationError | undefined {
+  const status = error instanceof StreamableHTTPError ? error.code : undefined
+  const message = error instanceof Error ? error.message : String(error)
+  const says =
+    error instanceof VidiqError && /unauthori[sz]ed|forbidden|invalid api key/i.test(message)
+  if (status !== 401 && status !== 403 && !says) return undefined
+  return new ValidationError(
+    `vidiq refused the API key${status ? ` (${status})` : ''}. Check it in Settings → Connections.`,
+    { field: 'connections.vidiq', cause: error },
+  )
+}
+
 /** The client's methods over any caller, so the live and mock clients share every parser. */
 export function clientOver(call: VidiqCaller, close: () => Promise<void>): VidiqClient {
   async function run<T>(
@@ -57,13 +79,21 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
     cost: number,
     parse: (raw: unknown) => T,
   ): Promise<VidiqCall<T>> {
-    const raw = parseVidiqResult(tool, await call(tool, args))
-    return { data: parse(raw), credits: creditsUsed(raw) ?? cost }
+    const raw = await parsed(tool, args)
+    return { data: parse(raw), credits: creditsUsed(raw) ?? cost, args }
+  }
+
+  async function parsed(tool: VidiqTool, args: Record<string, unknown>): Promise<unknown> {
+    try {
+      return parseVidiqResult(tool, await call(tool, args))
+    } catch (error) {
+      throw refusedKey(tool, error) ?? error
+    }
   }
 
   return {
     async balance() {
-      return parseBalance(parseVidiqResult('vidiq_balance', await call('vidiq_balance', {})))
+      return parseBalance(await parsed('vidiq_balance', {}))
     },
     channelVideos: (channel) =>
       run(
@@ -135,13 +165,19 @@ export function createVidiqClient(apiKey: string, options?: { endpoint?: string 
       connected = await connecting
     } catch (error) {
       connecting = null
-      throw new VidiqError(tool, error instanceof Error ? error.message : String(error))
+      throw (
+        refusedKey(tool, error) ??
+        new VidiqError(tool, error instanceof Error ? error.message : String(error))
+      )
     }
     try {
       return (await connected.callTool({ name: tool, arguments: args })) as VidiqRawResult
     } catch (error) {
       if (error instanceof VidiqError) throw error
-      throw new VidiqError(tool, error instanceof Error ? error.message : String(error))
+      throw (
+        refusedKey(tool, error) ??
+        new VidiqError(tool, error instanceof Error ? error.message : String(error))
+      )
     }
   }
 

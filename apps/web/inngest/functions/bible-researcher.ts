@@ -80,7 +80,6 @@ async function openClient(): Promise<VidiqClient> {
 async function spend<T>(
   channelId: string,
   tool: string,
-  args: Record<string, unknown>,
   cost: number,
   call: (client: VidiqClient) => Promise<VidiqCall<T>>,
 ): Promise<T> {
@@ -98,7 +97,7 @@ async function spend<T>(
       channelId,
       purpose: PURPOSE,
       tool,
-      args,
+      args: result.args,
       credits: result.credits,
     })
     return result.data
@@ -206,7 +205,6 @@ export const bibleResearcher = inngest.createFunction(
         const found = await spend(
           channelId,
           'vidiq_channel_videos',
-          { channel: channel.ref },
           VIDIQ_CREDIT_COST.channelVideos,
           (client) => client.channelVideos(channel.ref),
         )
@@ -223,7 +221,6 @@ export const bibleResearcher = inngest.createFunction(
             const found = await spend(
               channelId,
               'vidiq_get_videos_by_ids',
-              { ids: plan.videoIds },
               VIDIQ_CREDIT_COST.getVideosByIds,
               (client) => client.getVideosByIds(plan.videoIds),
             )
@@ -232,16 +229,11 @@ export const bibleResearcher = inngest.createFunction(
 
     const outliers: KeptVideo[] = await step.run('outliers', async () => {
       await beat(channelId, jobStartedAt)
-      const found = await spend(
-        channelId,
-        'vidiq_outliers',
-        { keyword: plan.outlierKeyword, ...(plan.language ? { language: plan.language } : {}) },
-        VIDIQ_CREDIT_COST.outliers,
-        (client) =>
-          client.outliers({
-            keyword: plan.outlierKeyword,
-            ...(plan.language ? { language: plan.language } : {}),
-          }),
+      const found = await spend(channelId, 'vidiq_outliers', VIDIQ_CREDIT_COST.outliers, (client) =>
+        client.outliers({
+          keyword: plan.outlierKeyword,
+          ...(plan.language ? { language: plan.language } : {}),
+        }),
       )
       return found.map(keep)
     })
@@ -270,7 +262,6 @@ export const bibleResearcher = inngest.createFunction(
           const transcript = await spend(
             channelId,
             'vidiq_video_transcript',
-            { videoId: video.videoId, ...(plan.language ? { language: plan.language } : {}) },
             VIDIQ_CREDIT_COST.videoTranscript,
             (client) =>
               client.videoTranscript({

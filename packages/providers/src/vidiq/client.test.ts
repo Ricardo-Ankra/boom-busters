@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { createVidiqClient } from './client'
+import { isRetriable, ValidationError } from '@boom-busters/schemas'
+import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { clientOver, createVidiqClient, VidiqError } from './client'
 import { KEYWORD_RESEARCH_MARKDOWN } from './fixtures/keyword-research'
 import { VIDIQ_CREDIT_COST } from './costs'
 import { mockVidiqClient } from './mock'
@@ -11,7 +13,11 @@ describe('the VidIQ mock client', () => {
     expect((await c.balance()).totalCredits).toBe(1443)
     expect((await c.channelVideos('@boom-busters')).data.length).toBeGreaterThan(0)
     const outliers = await c.outliers({ keyword: 'x' })
-    expect(outliers).toEqual({ data: expect.any(Array), credits: 5 })
+    expect(outliers).toEqual({
+      data: expect.any(Array),
+      credits: 5,
+      args: { keyword: 'x', limit: 20 },
+    })
     const details = (await c.getVideosByIds(['x'])).data
     expect(details.some((v) => v.tags === null || Array.isArray(v.tags))).toBe(true)
     expect((await c.videoTranscript({ videoId: 'x' })).data.segments.length).toBeGreaterThan(1)
@@ -37,5 +43,55 @@ describe('the embedded keyword fixture', () => {
       'utf8',
     )
     expect(KEYWORD_RESEARCH_MARKDOWN).toBe(recorded)
+  })
+})
+
+describe('what each call reports it sent', () => {
+  it('carries the wire arguments, not the method arguments', async () => {
+    const c = mockVidiqClient()
+    expect((await c.channelVideos('@boom-busters')).args).toEqual({
+      channelId: '@boom-busters',
+      videoFormat: 'long',
+      popular: true,
+    })
+    expect((await c.getVideosByIds(['a', 'b'])).args).toEqual({ videoIds: ['a', 'b'] })
+    expect((await c.videoTranscript({ videoId: 'v', language: 'en' })).args).toEqual({
+      videoId: 'v',
+      language: 'en',
+    })
+  })
+})
+
+describe('a refused key', () => {
+  const never = async () => {}
+  const failing = (error: unknown) => clientOver(async () => Promise.reject(error), never)
+
+  it('is a non-retriable validation error for an HTTP 401 or 403 from the transport', async () => {
+    for (const code of [401, 403]) {
+      const error = await failing(new StreamableHTTPError(code, 'nope'))
+        .balance()
+        .catch((e: unknown) => e)
+      expect(error).toBeInstanceOf(ValidationError)
+      expect(isRetriable(error)).toBe(false)
+      expect((error as Error).message).toMatch(/refused/i)
+    }
+  })
+
+  it('is a validation error when an MCP error result says unauthorised', async () => {
+    const c = clientOver(
+      async () => ({ isError: true, content: [{ type: 'text', text: 'Unauthorized: bad key' }] }),
+      never,
+    )
+    const error = await c.balance().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ValidationError)
+    expect(isRetriable(error)).toBe(false)
+  })
+
+  it('leaves a network failure retriable', async () => {
+    const error = await failing(new VidiqError('vidiq_balance', 'fetch failed'))
+      .balance()
+      .catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(VidiqError)
+    expect(isRetriable(error)).toBe(true)
   })
 })

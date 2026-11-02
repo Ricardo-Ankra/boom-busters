@@ -150,6 +150,18 @@ describeDb('bible-researcher (mock mode)', () => {
     if ('error' in plan) throw new Error(plan.error)
     expect(rows.reduce((sum, row) => sum + row.credits, 0)).toBe(estimateResearchCredits(plan))
     expect(await vidiqCreditsThisMonth(db)).toBe(estimateResearchCredits(plan))
+    // The ledger holds the arguments as sent on the wire (spec section 5).
+    const byTool = (tool: string) => rows.filter((row) => row.tool === tool)
+    for (const row of byTool('vidiq_channel_videos')) {
+      expect(row.args).toEqual({
+        channelId: expect.any(String),
+        videoFormat: 'long',
+        popular: true,
+      })
+    }
+    expect(byTool('vidiq_get_videos_by_ids')[0]?.args).toEqual({
+      videoIds: expect.any(Array),
+    })
     expect(rows.every((row) => row.channelId === FIRST_CHANNEL_ID && row.projectId === null)).toBe(
       true,
     )
