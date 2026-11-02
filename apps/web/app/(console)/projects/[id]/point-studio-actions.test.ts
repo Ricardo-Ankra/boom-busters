@@ -374,7 +374,11 @@ describeDb('point studio actions', () => {
       const row = await stored()
       expect(TimelineSchema.safeParse(row.sourceTimeline).success).toBe(true)
       expect(row.renderId).toBeNull()
-      expect(PointFetchesRecordSchema.parse(row.pointFetches).state).toBeNull()
+      // The claim is held until the render runner records the render.
+      expect(PointFetchesRecordSchema.parse(row.pointFetches).state).toMatchObject({
+        state: 'fetching',
+        what: 'assemble',
+      })
       expect(sent()).toEqual([
         {
           name: 'shorts/render.requested',
@@ -436,6 +440,26 @@ describeDb('point studio actions', () => {
 
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/waits for its new picture/)
+    })
+
+    it('a second press after the first returned is refused in words, one render request', async () => {
+      expect(await assemblePoint(shortId)).toEqual({ ok: true })
+
+      const second = await assemblePoint(shortId)
+
+      expect(second.ok).toBe(false)
+      expect(second.error).toMatch(/assemble is already running/)
+      expect(sent().filter((event) => event.name === 'shorts/render.requested')).toHaveLength(1)
+    })
+
+    it('gives the claim back when the render request cannot be sent', async () => {
+      send.mockRejectedValueOnce(new Error('down'))
+
+      const failed = await assemblePoint(shortId)
+      expect(failed.ok).toBe(false)
+      expect(failed.error).toMatch(/Inngest/)
+
+      expect(await assemblePoint(shortId)).toEqual({ ok: true })
     })
 
     it('two presses together request one render', async () => {

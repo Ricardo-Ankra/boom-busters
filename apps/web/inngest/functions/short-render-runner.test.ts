@@ -23,7 +23,7 @@ import type * as Db from '@boom-busters/db'
 import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { compileShortMaster, POINT_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
-import { updateShort } from '@boom-busters/db'
+import { claimPointWork, updateShort } from '@boom-busters/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -302,9 +302,12 @@ describeDb('short-render-runner', () => {
           sourceTimeline: own as unknown as Record<string, unknown>,
         })
         shortId = point.id
+        // The studio's Assemble holds its slot until the render is recorded.
+        await claimPointWork(db, shortId, 'assemble', new Date(0))
 
         await engine.executeStep('invoke-broker', { events: requestedEvent() })
 
+        expect((await getShort(db, shortId))?.pointFetches?.state).toBeNull()
         const uploaded = JSON.parse(
           (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
         ) as Timeline

@@ -508,12 +508,14 @@ export async function assemblePoint(shortId: string): Promise<ActionResult> {
     }
     throw error
   }
-  await settlePointWork(db, shortId, null)
-
+  // The `assemble` claim stays held through the send: the render runner gives
+  // it back once the render is recorded (a stale one is released by the
+  // cooldown), so a second press before then is refused, not paid twice.
   try {
     await inngest.send(events.shortsRenderRequested.create({ projectId: short.projectId, shortId }))
   } catch (error) {
     console.error('[point studio] could not request the render', error)
+    await settlePointWork(db, shortId, null)
     return {
       ok: false,
       error: 'The cut is saved, but Inngest could not be reached to start the render.',
