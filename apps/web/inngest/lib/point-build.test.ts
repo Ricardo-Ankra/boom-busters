@@ -24,6 +24,7 @@ import {
   planLibrary,
   pointParagraphAudio,
   pointParagraphIdempotencyKey,
+  pointParagraphR2Key,
   pointVoiceHash,
 } from './point-build'
 
@@ -124,6 +125,12 @@ describe('the voice and its key', () => {
     expect(pointParagraphIdempotencyKey('P', 'S', 3, 2, 'some words here')).toBe(
       `point:P:S:3:2:${teaserTextHash('some words here')}`,
     )
+  })
+
+  it('keys a paragraph file by its text hash, so an edit never overwrites old audio', () => {
+    const a = pointParagraphR2Key('P', 'S', 3, 2, 'some words here')
+    expect(a).toBe(`boom-busters/voice/P/point/S/v3-2-${teaserTextHash('some words here')}.wav`)
+    expect(pointParagraphR2Key('P', 'S', 3, 2, 'other words')).not.toBe(a)
   })
 
   it('refuses a voice whose text is not the script', () => {

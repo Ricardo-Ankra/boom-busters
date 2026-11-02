@@ -244,6 +244,21 @@ export function pointParagraphIdempotencyKey(
   return `point:${projectId}:${shortKey}:${scriptVersion}:${index}:${teaserTextHash(text)}`
 }
 
+/**
+ * Where a paragraph's audio lives. The text hash is part of the key: a studio
+ * edit keeps the script version, so without it Re-voice would overwrite audio
+ * an existing timeline or an in-flight render still reads.
+ */
+export function pointParagraphR2Key(
+  projectId: string,
+  shortKey: string,
+  scriptVersion: number,
+  index: number,
+  text: string,
+): string {
+  return `boom-busters/voice/${projectId}/point/${shortKey}/v${scriptVersion}-${index}-${teaserTextHash(text)}.wav`
+}
+
 /** Synthesise one paragraph and store its audio; budget-gated like all TTS. */
 export async function voicePointParagraph(input: {
   projectId: string
@@ -273,7 +288,7 @@ export async function voicePointParagraph(input: {
       takeStorage() === 'r2'
         ? (
             await putObject(
-              `boom-busters/voice/${projectId}/point/${shortKey}/v${scriptVersion}-${index}.wav`,
+              pointParagraphR2Key(projectId, shortKey, scriptVersion, index, text),
               narration.wav,
               'audio/wav',
             )
@@ -742,7 +757,8 @@ export async function writeOrReusePointScript(
 /**
  * One paragraph's audio: the stored paragraph when its version and text are
  * unchanged (no synthesis call at all), otherwise voiced and stored. Voicing
- * is sequential, so the stored voice is always a prefix of the script's.
+ * is sequential on a first build, and a studio Re-voice splices one paragraph
+ * into the full stored voice.
  */
 export async function voiceOrReusePointParagraph(input: {
   projectId: string
@@ -770,24 +786,18 @@ export async function voiceOrReusePointParagraph(input: {
     index,
     text,
   })
-  const prefix = current?.paragraphs.slice(0, index) ?? []
-  if (spoken.ok && prefix.length === index) {
-    await savePointProgress({
-      projectId,
-      pointId,
-      voice: {
-        scriptVersion,
-        paragraphs: [
-          ...prefix,
-          {
-            textHash: teaserTextHash(text),
-            r2Key: spoken.r2Key,
-            durationMs: spoken.durationMs,
-            wordTimings: spoken.wordTimings,
-          },
-        ],
-      },
-    })
+  // Splice into the stored voice, never truncate it: the paragraphs after this
+  // one were bought and must stay reusable (real adapters ignore the key).
+  const base = current?.paragraphs ?? []
+  if (spoken.ok && index <= base.length) {
+    const paragraphs = [...base]
+    paragraphs[index] = {
+      textHash: teaserTextHash(text),
+      r2Key: spoken.r2Key,
+      durationMs: spoken.durationMs,
+      wordTimings: spoken.wordTimings,
+    }
+    await savePointProgress({ projectId, pointId, voice: { scriptVersion, paragraphs } })
   }
   return spoken
 }

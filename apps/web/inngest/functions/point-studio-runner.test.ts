@@ -143,6 +143,29 @@ describeDb('point-studio-runner', () => {
     },
   )
 
+  it(
+    'Re-voice of the first paragraph buys that one and keeps every later paragraph stored',
+    { timeout: 120_000 },
+    async () => {
+      const oldVoice = PointVoiceRecordSchema.parse((await stored()).pointVoice)
+      expect(oldVoice.paragraphs.length).toBeGreaterThan(2)
+      await editParagraph(0)
+      expect(await claim('voice')).toBe(true)
+
+      await engine.execute(request('voice'))
+      expect(spies.synthesise).toHaveBeenCalledTimes(1)
+
+      // The stored voice is full length again, so a second Re-voice buys nothing.
+      const voice = PointVoiceRecordSchema.parse((await stored()).pointVoice)
+      expect(voice.paragraphs).toHaveLength(oldVoice.paragraphs.length)
+      expect(voice.paragraphs.slice(1)).toEqual(oldVoice.paragraphs.slice(1))
+      spies.synthesise.mockClear()
+      expect(await claim('voice')).toBe(true)
+      await engine.execute(request('voice'))
+      expect(spies.synthesise).not.toHaveBeenCalled()
+    },
+  )
+
   it('Re-voice with nothing changed buys nothing', { timeout: 120_000 }, async () => {
     expect(await claim('voice')).toBe(true)
 
