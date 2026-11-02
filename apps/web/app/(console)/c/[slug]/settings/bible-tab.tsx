@@ -20,6 +20,7 @@ import {
 import { BibleHistory } from './bible-history'
 import { BiblePreview } from './bible-preview'
 import { BibleSectionCard } from './bible-section-card'
+import { CopyFromChannel, type CopySource } from './copy-from-channel'
 import { DraftWithAi } from './draft-with-ai'
 
 export interface BibleVersionView {
@@ -47,6 +48,7 @@ export function BibleTab({
   versions,
   vidiqReady,
   archived,
+  copySources = [],
 }: {
   channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
@@ -58,6 +60,8 @@ export function BibleTab({
   /** A VidIQ key is on file (or mocks stand in for it): the research can be offered. */
   vidiqReady: boolean
   archived: boolean
+  /** Every other channel the bible can be copied from, archived ones included. */
+  copySources?: CopySource[]
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -199,6 +203,21 @@ export function BibleTab({
         retryToken={retryToken}
         onDraft={setDraft}
       />
+
+      {archived ? null : (
+        <CopyFromChannel
+          channelId={channel.id}
+          sources={copySources}
+          draft={draft}
+          currentBible={currentVersion.bible}
+          disabled={locked}
+          onCopied={(next, copiedNote) => {
+            setDraft(next)
+            setNote(copiedNote)
+            router.refresh()
+          }}
+        />
+      )}
 
       {running && job ? (
         <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">

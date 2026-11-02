@@ -26,6 +26,7 @@ vi.mock('./actions', () => ({
 // use for. Stubbed the same way `voice-tab.test.tsx` stubs them.
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: vi.fn(),
+  copyBibleFromChannelAction: vi.fn(),
   discardBibleDraftAction: vi.fn(),
   draftBibleAction: vi.fn(),
   editBibleSectionAction: vi.fn(),

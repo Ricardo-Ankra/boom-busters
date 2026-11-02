@@ -30,6 +30,7 @@ vi.mock('@/app/(console)/c/[slug]/settings/model-actions', () => ({
 vi.mock('../c/[slug]/settings/actions', () => ({ saveSettings: vi.fn() }))
 vi.mock('../c/[slug]/settings/bible-actions', () => ({
   approveBibleSectionAction: vi.fn(),
+  copyBibleFromChannelAction: vi.fn(),
   discardBibleDraftAction: vi.fn(),
   draftBibleAction: vi.fn(),
   editBibleSectionAction: vi.fn(),
