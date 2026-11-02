@@ -31,6 +31,7 @@ import {
   reschedulePublish,
   schedulePublish,
   savePublishDraft,
+  unlinkPublishRecord,
 } from './publish-actions'
 
 /**
@@ -426,6 +427,85 @@ describeDb('point Shorts publish only after their long form', () => {
     expect(await publishNow('short', pointShortId)).toEqual({
       ok: false,
       error: 'This Short has no finished render to upload.',
+    })
+  })
+
+  describe('the long form cannot move past its Shorts', () => {
+    const sayAt = (at: Date) =>
+      `${at.toLocaleString('en-ZA', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`
+
+    async function scheduledShort(id: string, publishAt: Date) {
+      const record = await ensurePublishRecord(db, 'short', id)
+      await updatePublishRecord(db, record.id, {
+        status: 'scheduled',
+        youtubeVideoId: `vid-${id}`,
+        publishAt,
+      })
+    }
+    async function scheduledMaster(publishAt: Date) {
+      const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      await updatePublishRecord(db, record.id, {
+        status: 'scheduled',
+        youtubeVideoId: 'vid-master',
+        publishAt,
+      })
+    }
+
+    it('refuses moving the long form to or past the earliest scheduled point Short', async () => {
+      const earliest = new Date(Date.now() + 6 * day)
+      const masterAt0 = new Date(Date.now() + 2 * day)
+      await scheduledMaster(masterAt0)
+      await scheduledShort(pointShortId, earliest)
+      const refusal = {
+        ok: false,
+        error: `Move its Shorts first: the earliest goes out ${sayAt(earliest)}.`,
+      }
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, at(7 * day))).toEqual(refusal)
+      // The very same instant is not before it either.
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, earliest.toISOString())).toEqual(
+        refusal,
+      )
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.publishAt?.getTime()).toBe(
+        masterAt0.getTime(),
+      )
+    })
+
+    it('lets the long form move to a time before its Shorts', async () => {
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(pointShortId, new Date(Date.now() + 6 * day))
+      const moved = new Date(Date.now() + 4 * day)
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, moved.toISOString())).toEqual({
+        ok: true,
+      })
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.publishAt).toEqual(moved)
+    })
+
+    it('refuses unscheduling the long form while a point Short is scheduled, then allows it', async () => {
+      const earliest = new Date(Date.now() + 6 * day)
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(pointShortId, earliest)
+
+      expect(await unlinkPublishRecord('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: `Its Shorts are scheduled, so move or unlink them first: the earliest goes out ${sayAt(earliest)}.`,
+      })
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.status).toBe('scheduled')
+
+      // The Short is unlinked first, as the sentence says.
+      expect(await unlinkPublishRecord('short', pointShortId)).toEqual({ ok: true })
+      expect(await unlinkPublishRecord('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    })
+
+    it('does not count teasers or excerpts', async () => {
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(teaserShortId, new Date(Date.now() + 3 * day))
+      await scheduledShort(excerptShortId, new Date(Date.now() + 3 * day))
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, at(9 * day))).toEqual({
+        ok: true,
+      })
     })
   })
 

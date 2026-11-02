@@ -5,6 +5,7 @@ import {
   ensurePublishRecord,
   getLatestScript,
   getProject,
+  earliestScheduledPointShort,
   getPublishRecord,
   getRender,
   getShort,
@@ -683,6 +684,32 @@ async function pointShortRefusal(
   return null
 }
 
+/**
+ * The other half of the order: the long form may not be moved to, or past, a
+ * moment a scheduled point Short already holds, nor unlinked while one does.
+ * `publishAt` null is the unlink. Null result when the master is free to move.
+ */
+async function masterMoveRefusal(
+  type: 'master' | 'short',
+  projectId: string,
+  publishAt: Date | null,
+): Promise<ActionResult | null> {
+  if (type !== 'master') return null
+  const earliest = await earliestScheduledPointShort(db, projectId)
+  if (!earliest) return null
+  if (publishAt === null) {
+    return {
+      ok: false,
+      error: `Its Shorts are scheduled, so move or unlink them first: the earliest goes out ${sayWhen(earliest)}.`,
+    }
+  }
+  if (publishAt.getTime() < earliest.getTime()) return null
+  return {
+    ok: false,
+    error: `Move its Shorts first: the earliest goes out ${sayWhen(earliest)}.`,
+  }
+}
+
 export async function schedulePublish(
   targetType: string,
   targetId: string,
@@ -702,7 +729,9 @@ export async function schedulePublish(
     return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
   }
 
-  const refused = await pointShortRefusal(type, targetId, projectId, publishAt)
+  const refused =
+    (await pointShortRefusal(type, targetId, projectId, publishAt)) ??
+    (await masterMoveRefusal(type, projectId, publishAt))
   if (refused) return refused
 
   return requestUpload(type, targetId, projectId, publishAt, 'private')
@@ -763,7 +792,9 @@ export async function reschedulePublish(
     return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
   }
 
-  const refused = await pointShortRefusal(type, targetId, projectId, publishAt)
+  const refused =
+    (await pointShortRefusal(type, targetId, projectId, publishAt)) ??
+    (await masterMoveRefusal(type, projectId, publishAt))
   if (refused) return refused
 
   const record = await getPublishRecord(db, type, targetId)
@@ -869,6 +900,9 @@ export async function unlinkPublishRecord(
 
   const projectId = await projectIdOf(type, targetId)
   if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const held = await masterMoveRefusal(type, projectId, null)
+  if (held) return held
 
   const record = await getPublishRecord(db, type, targetId)
   if (!record) return { ok: false, error: 'Nothing has been uploaded for this item yet.' }
