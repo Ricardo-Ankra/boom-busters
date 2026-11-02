@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, resolveBrandKit } from './settings'
 import {
@@ -9,6 +12,8 @@ import {
   TIMELINE_VERSION,
   timelineDurationMs,
   TIMELINE_SLOT_TYPES,
+  OverlaySchema,
+  TimelineMotionSchema,
   TimelineSchema,
   TimelineSlotSchema,
 } from './timeline'
@@ -495,5 +500,64 @@ describe('canonicalTimelineIssues', () => {
     const issues = canonicalTimelineIssues(parsed)
     expect(issues).toContain('slots.2.payload.media.previewUrl')
     expect(issues).not.toContain('slots.2.payload.media.url')
+  })
+})
+
+describe('playbook Shorts additions', () => {
+  it('parses a punch motion and refuses a scale outside 1 to 1.3', () => {
+    expect(
+      TimelineMotionSchema.safeParse({ kind: 'punch', scale: 1.08, durationMs: 300 }).success,
+    ).toBe(true)
+    expect(
+      TimelineMotionSchema.safeParse({ kind: 'punch', scale: 1.5, durationMs: 300 }).success,
+    ).toBe(false)
+    expect(
+      TimelineMotionSchema.safeParse({ kind: 'punch', scale: 1, durationMs: 300 }).success,
+    ).toBe(false)
+    expect(
+      TimelineMotionSchema.safeParse({ kind: 'punch', scale: 1.08, durationMs: 20 }).success,
+    ).toBe(false)
+  })
+
+  it('accepts an optional crop on a slot and refuses an unknown focus', () => {
+    const base = fixtureTimeline().slots[0]!
+    expect(TimelineSlotSchema.safeParse({ ...base, crop: 'left' }).success).toBe(true)
+    expect(TimelineSlotSchema.safeParse(base).success).toBe(true)
+    expect(TimelineSlotSchema.safeParse({ ...base, crop: 'top' }).success).toBe(false)
+  })
+
+  it('parses the relatedArrow and subscribeBadge overlays', () => {
+    expect(
+      OverlaySchema.safeParse({
+        kind: 'relatedArrow',
+        startMs: 0,
+        durationMs: 2000,
+        props: { label: 'Next: the full story' },
+      }).success,
+    ).toBe(true)
+    expect(
+      OverlaySchema.safeParse({
+        kind: 'relatedArrow',
+        startMs: 0,
+        durationMs: 2000,
+        props: { label: '' },
+      }).success,
+    ).toBe(false)
+    expect(
+      OverlaySchema.safeParse({
+        kind: 'subscribeBadge',
+        startMs: 0,
+        durationMs: 2000,
+        props: { channelName: 'Boom & Busters', handle: '' },
+      }).success,
+    ).toBe(true)
+  })
+
+  it('still parses the committed goldens unchanged', () => {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), '../../timeline/src/golden')
+    for (const name of ['master-timeline.json', 'short-timeline.json']) {
+      const json = JSON.parse(readFileSync(join(dir, name), 'utf8'))
+      expect(TimelineSchema.safeParse(json).success, name).toBe(true)
+    }
   })
 })

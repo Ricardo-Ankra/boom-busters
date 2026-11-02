@@ -18,6 +18,7 @@ import {
   PARAGRAPH_GAP_MS,
   resolveMotion,
 } from './compile'
+import { SHORT_RULES } from '@boom-busters/schemas'
 import type { CompileInput, CompileSlot } from './compile'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
 import { offsetCaptions, snapToScript } from './snap'
@@ -329,6 +330,14 @@ describe('resolveMotion', () => {
       kind: 'kenburns',
       direction: 'out',
       intensity: KENBURNS_INTENSITY.fast,
+    })
+  })
+
+  it('maps a punch brief to the rule book punch', () => {
+    expect(resolveMotion({ kind: 'punch' }, still)).toEqual({
+      kind: 'punch',
+      scale: SHORT_RULES.punchScale,
+      durationMs: SHORT_RULES.punchMs,
     })
   })
 
