@@ -4356,8 +4356,8 @@ All six were done on `bible-drafting` (the section below):
 - [x] Review fixes before the merge, from the pre-merge review (plan
       `docs/superpowers/plans/2026-11-02-bible-drafting-review-fixes.md`;
       decisions 359 to 370):
-  - [x] Task 1: the job's heartbeat, ownership and Try again; no empty draft
-        on a refusal.
+  - [x] Task 1: the job's heartbeat and ownership (`591552d`), Try again,
+        no empty draft on a refusal, a silent run shown as failed (`cc8a3e5`).
   - [x] Task 2: the VidIQ key can be verified (`782719c`, `1c2a0a5`), and
         the ledger records the wire arguments.
   - [x] Task 3: language codes, the frozen-bible message, a running project
