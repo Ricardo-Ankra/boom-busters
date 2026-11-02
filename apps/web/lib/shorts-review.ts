@@ -157,6 +157,8 @@ export interface ShortCardModel {
   render: ShortRenderProp | null
   /** The studio's data — teaser cards only, null on excerpts. */
   teaser: TeaserStudioModel | null
+  /** The talking point a point Short was written for; null on the others. */
+  pointId: string | null
   /** What a point card shows — point cards only. */
   point: PointCardModel | null
   /** The point Short studio's data — point cards only. */
@@ -392,6 +394,7 @@ export async function shortsModel(
       captions: row.captions,
       relatedLinkChecked: row.relatedLinkChecked,
       kind: row.kind,
+      pointId: row.pointId ?? null,
       chapterTitle: chapterTitles.get(row.segmentRef.chapterId) ?? null,
       fromParagraph: row.segmentRef.fromParagraph,
       toParagraph: row.segmentRef.toParagraph,

@@ -41,6 +41,9 @@ export function ShortsScreen({
   live,
   canAdvance = false,
   teaserNotices = [],
+  pointNotices = [],
+  pointSetNotices = [],
+  pointTitles = {},
 }: {
   projectId: string
   shorts: ShortCardModel[]
@@ -53,6 +56,16 @@ export function ShortsScreen({
    * would be when there is none.
    */
   teaserNotices?: readonly Notice[]
+  /**
+   * The `short` notices of the point Shorts: repairs and dropped pictures on a
+   * card (subjectId is the Short's id, or its point's id), and why a point was
+   * skipped (the point's id, with no card).
+   */
+  pointNotices?: readonly Notice[]
+  /** The `points` notices: what the talking points' proposal said, still on show after approval. */
+  pointSetNotices?: readonly Notice[]
+  /** The approved points' titles by id, to name a skipped point. */
+  pointTitles?: Readonly<Record<string, string>>
 }) {
   const { act, busy } = useAction()
   const [studioId, setStudioId] = React.useState<string | null>(null)
@@ -62,8 +75,40 @@ export function ShortsScreen({
   // missing teaser is built from where it would be, on the same terms as the
   // re-run button below (decision 294).
   const canBuildTeaser = canAdvance && !hasTeaser
+  // A point's notices go on its card; a point with no card (skipped, or still
+  // building) has them listed by its title, so its reason is never lost.
+  const cardIds = new Set(shorts.flatMap((short) => [short.id, short.pointId ?? short.id]))
+  const cardNotices = (short: ShortCardModel): Notice[] =>
+    pointNotices.filter(
+      (notice) => notice.subjectId === short.id || notice.subjectId === short.pointId,
+    )
+  const unplaced = new Map<string, Notice[]>()
+  for (const notice of pointNotices) {
+    if (notice.subjectId === null || cardIds.has(notice.subjectId)) continue
+    unplaced.set(notice.subjectId, [...(unplaced.get(notice.subjectId) ?? []), notice])
+  }
   return (
     <div className="flex flex-col gap-4">
+      {pointSetNotices.length > 0 ? (
+        <section
+          aria-label="Talking points notes"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+        >
+          <h2 className="text-[14px] font-semibold">Talking points</h2>
+          <Notices notices={pointSetNotices} />
+        </section>
+      ) : null}
+      {[...unplaced].map(([pointId, list]) => (
+        <section
+          key={pointId}
+          aria-label="Point without a Short"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+        >
+          <h2 className="text-[14px] font-semibold">{pointTitles[pointId] ?? 'A talking point'}</h2>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">This point has no Short.</p>
+          <Notices notices={list} />
+        </section>
+      ))}
       {/* No Teaser card to carry them: the notices say why where it would be. */}
       {!hasTeaser && (teaserNotices.length > 0 || canBuildTeaser) ? (
         <section
@@ -100,7 +145,13 @@ export function ShortsScreen({
             key={short.id}
             short={short}
             live={live}
-            notices={short.kind === 'teaser' ? teaserNotices : []}
+            notices={
+              short.kind === 'teaser'
+                ? teaserNotices
+                : short.kind === 'point'
+                  ? cardNotices(short)
+                  : []
+            }
             studioOpen={short.id === studioId}
             onToggleStudio={() =>
               setStudioId((current) => (current === short.id ? null : short.id))

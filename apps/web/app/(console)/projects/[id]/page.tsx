@@ -1,4 +1,5 @@
 import {
+  approvedTalkingPointSet,
   getDossier,
   listDossierDocumentSummaries,
   getLatestScript,
@@ -241,6 +242,17 @@ export default async function ProjectPage({
     showsTalkingPoints ? talkingPointsModel(db, id) : Promise.resolve(emptyTalkingPointsModel()),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
+  // The Shorts screen names a point that never got a card beside its notice.
+  const pointNotices = notices.filter((notice) => notice.subject === 'short')
+  const pointTitles: Record<string, string> =
+    viewing === 'shorts' && pointNotices.length > 0
+      ? Object.fromEntries(
+          ((await approvedTalkingPointSet(db, id))?.points ?? []).map((point) => [
+            point.id,
+            point.title,
+          ]),
+        )
+      : {}
 
   // Whether a run exists is the run mirror's answer, not `stageStatus`'s. A
   // project can read `awaiting_review` with nothing waiting on it — the seeded
@@ -280,7 +292,11 @@ export default async function ProjectPage({
   const showVoice = viewing === 'voice' && voice.expectedParagraphs > 0
   const showVisuals = viewing === 'visuals' && visuals.coverage.slots > 0
   const showPreview = viewing === 'assembly' && preview.timeline !== null
-  const showShorts = viewing === 'shorts' && shortCards.shorts.length > 0
+  // A project whose every point was skipped has no cards but still says why.
+  const showShorts =
+    viewing === 'shorts' &&
+    (shortCards.shorts.length > 0 ||
+      notices.some((notice) => notice.subject === 'short' || notice.subject === 'points'))
   const showPublish = viewing === 'publish' && publish.items.length > 0
 
   /**
@@ -557,6 +573,9 @@ export default async function ProjectPage({
           live={!mockProvidersEnabled()}
           canAdvance={project.stage === 'shorts' && !liveRun}
           teaserNotices={noticesFor(notices, 'teaser')}
+          pointNotices={pointNotices}
+          pointSetNotices={noticesFor(notices, 'points')}
+          pointTitles={pointTitles}
         />
       ) : showVisuals ? (
         <VisualBoard

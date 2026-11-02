@@ -78,6 +78,23 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 // which cannot load under jsdom.
 vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
 
+function pointNotice(
+  subject: 'short' | 'points',
+  subjectId: string | null,
+  message: string,
+  id = '01HQ00000000000000000000N2',
+): Notice {
+  return {
+    id,
+    projectId: PROJECT,
+    subject,
+    subjectId,
+    kind: 'skipped',
+    message,
+    createdAt: new Date('2026-10-09T10:00:00Z'),
+  }
+}
+
 function teaserNotice(message: string): Notice {
   return {
     id: '01HQ00000000000000000000N1',
@@ -123,6 +140,7 @@ function card(overrides: Partial<ShortCardModel> = {}): ShortCardModel {
     captions: true,
     relatedLinkChecked: false,
     kind: 'excerpt',
+    pointId: null,
     chapterTitle: 'The audit',
     fromParagraph: 1,
     toParagraph: 2,
@@ -297,6 +315,73 @@ describe('ShortsScreen', () => {
       expect(screen.queryByRole('button', { name: 'Loop' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'CTA' })).not.toBeInTheDocument()
       expect(screen.getByText('Ends with a bridge to the full video')).toBeInTheDocument()
+    })
+
+    describe('notices', () => {
+      const POINT = '01HQ00000000000000000000P1'
+      const short1 = () => '01HQ00000000000000000000S1'
+
+      it('shows a point’s notices on its own card, by Short id or point id', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[pointCard()].map((short) => ({ ...short, pointId: POINT }))}
+            live={false}
+            pointNotices={[
+              pointNotice('short', short1(), 'A new picture could not be had.'),
+              pointNotice(
+                'short',
+                POINT,
+                'An earlier attempt was skipped.',
+                '01HQ00000000000000000000N3',
+              ),
+            ]}
+          />,
+        )
+
+        expect(screen.getByText('A new picture could not be had.')).toBeInTheDocument()
+        expect(screen.getByText('An earlier attempt was skipped.')).toBeInTheDocument()
+        expect(screen.queryByLabelText('Point without a Short')).not.toBeInTheDocument()
+      })
+
+      it('lists a skipped point with its title and reason, though it has no card', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[]}
+            live={false}
+            pointNotices={[
+              pointNotice(
+                'short',
+                '01HQ00000000000000000000P2',
+                'The Short was skipped: no script.',
+              ),
+            ]}
+            pointTitles={{ '01HQ00000000000000000000P2': 'Why the audit failed' }}
+          />,
+        )
+
+        const section = screen.getByLabelText('Point without a Short')
+        expect(within(section).getByText('Why the audit failed')).toBeInTheDocument()
+        expect(within(section).getByText('The Short was skipped: no script.')).toBeInTheDocument()
+      })
+
+      it('shows the talking points’ own notes after approval', () => {
+        render(
+          <ShortsScreen
+            projectId={PROJECT}
+            shorts={[pointCard()]}
+            live={false}
+            pointSetNotices={[pointNotice('points', null, 'Two points were trimmed.')]}
+          />,
+        )
+
+        expect(
+          within(screen.getByLabelText('Talking points notes')).getByText(
+            'Two points were trimmed.',
+          ),
+        ).toBeInTheDocument()
+      })
     })
 
     it('opens the point Short studio, not the teaser studio', async () => {

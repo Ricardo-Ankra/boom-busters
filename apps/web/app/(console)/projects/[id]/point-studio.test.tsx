@@ -152,6 +152,7 @@ function card(studio: PointStudioModel | null = studioModel()): ShortCardModel {
     captions: true,
     relatedLinkChecked: false,
     kind: 'point',
+    pointId: null,
     chapterTitle: null,
     fromParagraph: 0,
     toParagraph: 4,
