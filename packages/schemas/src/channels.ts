@@ -54,6 +54,16 @@ export const BibleExampleEntrySchema = z.object({
 export type BibleExampleEntry = z.infer<typeof BibleExampleEntrySchema>
 
 /**
+ * A BCP-47 style code, because it goes to YouTube and VidIQ as one: empty
+ * (send none) or a language with optional subtags, never a name like "English".
+ */
+export const BibleLanguageSchema = z
+  .string()
+  .trim()
+  .max(12)
+  .regex(/^$|^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/)
+
+/**
  * The channel bible: the per-channel facts the prompts used to hard-code.
  * Every field defaults to empty so a new channel starts as a blank form.
  * Strict: an unknown key is refused, so a typo in a draft fails loudly.
@@ -79,7 +89,7 @@ export const ChannelBibleSchema = z
     hooks: z.array(BibleExampleEntrySchema).max(12).default([]),
     openings: z.array(BibleExampleEntrySchema).max(12).default([]),
     titles: z.array(BibleExampleEntrySchema).max(12).default([]),
-    language: z.string().max(12).default(''),
+    language: BibleLanguageSchema.default(''),
     country: z.string().max(2).default(''),
     keywordContext: z.string().max(60).default(''),
     channelTags: z.array(z.string().max(30)).max(15).default([]),
@@ -110,7 +120,11 @@ export type ChannelBible = z.infer<typeof ChannelBibleSchema>
  * Strict on write, strip on read: a stored version may carry a key the schema
  * has since dropped, and reading it must still work. Writes keep the strict one.
  */
-export const ChannelBibleReadSchema = z.object(ChannelBibleSchema.shape)
+export const ChannelBibleReadSchema = z.object({
+  ...ChannelBibleSchema.shape,
+  // A language written before the rule reads as empty, so the upload sends none.
+  language: BibleLanguageSchema.catch('').default(''),
+})
 
 export const EMPTY_BIBLE: ChannelBible = ChannelBibleSchema.parse({})
 

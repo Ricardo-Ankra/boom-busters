@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   BIBLE_SECTIONS,
+  ChannelBibleReadSchema,
   ChannelBibleSchema,
   ChannelSlugSchema,
   EMPTY_BIBLE,
@@ -101,5 +102,31 @@ describe('channels', () => {
   test('slugFromName', () => {
     expect(slugFromName('Boom & Busters')).toBe('boom-busters')
     expect(slugFromName('  Psychology: The Mind!! ')).toBe('psychology-the-mind')
+  })
+})
+
+describe('bible language', () => {
+  const parse = (language: string) => ChannelBibleSchema.safeParse({ language })
+
+  test('accepts empty and well-formed codes, and trims', () => {
+    for (const ok of ['', 'en', 'pt-BR', 'zh-Hans-CN', 'fil']) {
+      expect(parse(ok).success).toBe(true)
+    }
+    expect(ChannelBibleSchema.parse({ language: ' en-GB ' }).language).toBe('en-GB')
+  })
+
+  test('refuses a language name or a malformed code on write', () => {
+    for (const bad of ['English', 'e', 'en_GB', 'en-', '12']) {
+      expect(parse(bad).success).toBe(false)
+    }
+  })
+
+  test('a stored invalid language reads as empty', () => {
+    expect(
+      ChannelBibleReadSchema.parse({ ...FIRST_CHANNEL_BIBLE, language: 'English' }).language,
+    ).toBe('')
+    expect(ChannelBibleReadSchema.parse({ ...FIRST_CHANNEL_BIBLE, language: 'en' }).language).toBe(
+      'en',
+    )
   })
 })

@@ -39,6 +39,13 @@ describe('bibleUnitSchema', () => {
     expect(schema.safeParse(missing).success).toBe(false)
   })
 
+  it('refuses a language that is a name, not a code, so the model is retried', () => {
+    const schema = bibleUnitSchema({ section: 'search' })
+    const answer = mockBibleUnit({ section: 'search' })
+    expect(schema.safeParse({ ...answer, language: 'English' }).success).toBe(false)
+    expect(schema.safeParse({ ...answer, language: 'en-GB' }).success).toBe(true)
+  })
+
   it('refuses an examples answer with an id from another group, an extra key or an overlong entry', () => {
     const schema = bibleUnitSchema(scriptUnit)
     const good = mockBibleUnit(scriptUnit)
