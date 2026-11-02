@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import type { Notice } from '@boom-busters/schemas'
 import { Check, Clapperboard, Loader2, PenLine, Save } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -41,6 +42,7 @@ export function ShortsScreen({
   live,
   canAdvance = false,
   teaserNotices = [],
+  openStudioId = null,
   pointNotices = [],
   pointSetNotices = [],
   pointTitles = {},
@@ -62,14 +64,33 @@ export function ShortsScreen({
    * skipped (the point's id, with no card).
    */
   pointNotices?: readonly Notice[]
+  /**
+   * The point Short whose studio the address asks for. Only that card carries
+   * the full studio model (the cards stay light), so opening one writes it to
+   * the address and the page reads again.
+   */
+  openStudioId?: string | null
   /** The `points` notices: what the talking points' proposal said, still on show after approval. */
   pointSetNotices?: readonly Notice[]
   /** The approved points' titles by id, to name a skipped point. */
   pointTitles?: Readonly<Record<string, string>>
 }) {
   const { act, busy } = useAction()
-  const [studioId, setStudioId] = React.useState<string | null>(null)
+  const router = useRouter()
+  const [studioId, setStudioId] = React.useState<string | null>(openStudioId)
   const studioShort = shorts.find((short) => short.id === studioId) ?? null
+  const openStudio = (next: string | null) => {
+    const wasPoint = shorts.find((entry) => entry.id === studioId)?.kind === 'point'
+    const willBePoint = shorts.find((entry) => entry.id === next)?.kind === 'point'
+    setStudioId(next)
+    // A point studio is read by the page, from the address; any other studio is
+    // all on the card already.
+    if (wasPoint || willBePoint) {
+      router.replace(`/projects/${projectId}?stage=shorts${willBePoint ? `&studio=${next}` : ''}`, {
+        scroll: false,
+      })
+    }
+  }
   const hasTeaser = shorts.some((short) => short.kind === 'teaser')
   // The stage's own re-run builds only what is missing (decision 225), so a
   // missing teaser is built from where it would be, on the same terms as the
@@ -153,23 +174,27 @@ export function ShortsScreen({
                   : []
             }
             studioOpen={short.id === studioId}
-            onToggleStudio={() =>
-              setStudioId((current) => (current === short.id ? null : short.id))
-            }
+            onToggleStudio={() => openStudio(studioId === short.id ? null : short.id)}
           />
         ))}
       </section>
 
       {/* The teaser studio (decision 227): full width below the grid — a
           card cell is too narrow for a script worth editing. */}
-      {studioShort?.kind === 'point' ? (
+      {studioShort?.kind === 'point' && !studioShort.studio ? (
+        <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
+          {studioShort.point
+            ? 'Opening the Short studio…'
+            : 'This Short’s record could not be read, so it cannot be opened here.'}
+        </p>
+      ) : studioShort?.kind === 'point' ? (
         // The point Short studio (design 6): a point card opens it; the key
         // resets its edits when the stored script changes under it.
         <PointStudio
           key={`${studioShort.id}:${studioShort.studio?.phases.flatMap((block) => block.paragraphs.map((paragraph) => paragraph.text)).join('¶') ?? ''}`}
           short={studioShort}
           live={live}
-          onClose={() => setStudioId(null)}
+          onClose={() => openStudio(null)}
         />
       ) : studioShort ? (
         <TeaserStudio

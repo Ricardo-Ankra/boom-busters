@@ -85,10 +85,10 @@ export default async function ProjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ stage?: string }>
+  searchParams: Promise<{ stage?: string; studio?: string }>
 }) {
   const { id } = await params
-  const { stage: requestedStage } = await searchParams
+  const { stage: requestedStage, studio: openStudio } = await searchParams
 
   const [project, liveRun] = await Promise.all([getProject(db, id), hasLiveRun(db, id)])
   if (!project) notFound()
@@ -222,6 +222,8 @@ export default async function ProjectPage({
     wants('shorts')
       ? shortsModel(db, id, {
           presign: storageConfigured() ? (key) => presignGet(key) : null,
+          // Only the open point studio is built in full (the cards stay light).
+          studioShortId: openStudio ?? null,
         })
       : Promise.resolve(emptyShortsModel()),
     projectPulse(db, id),
@@ -573,6 +575,7 @@ export default async function ProjectPage({
           live={!mockProvidersEnabled()}
           canAdvance={project.stage === 'shorts' && !liveRun}
           teaserNotices={noticesFor(notices, 'teaser')}
+          openStudioId={openStudio ?? null}
           pointNotices={pointNotices}
           pointSetNotices={noticesFor(notices, 'points')}
           pointTitles={pointTitles}

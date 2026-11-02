@@ -11,6 +11,7 @@ import type { Database, RenderRow } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import {
   estimateRenderCostUsd,
+  PointScriptRecordSchema,
   teaserTextHash,
   TeaserFetchesRecordSchema,
   TeaserScriptRecordSchema,
@@ -31,7 +32,7 @@ import {
   segmentInMaster,
   teaserShotPool,
 } from '@boom-busters/timeline'
-import { pointStudioModel } from '@/lib/point-studio-model'
+import { pointFindings, pointStudioModel } from '@/lib/point-studio-model'
 import type { PointStudioModel } from '@/lib/point-studio-model'
 import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
 import { stillSlotEstimateUsd } from '@/lib/visual-assets'
@@ -194,6 +195,12 @@ export async function shortsModel(
   options: {
     /** Presigner for the studio's per-beat audio; null when R2 is absent. */
     presign?: ((key: string) => Promise<string>) | null
+    /**
+     * The point Short whose studio is open. Only that card carries the full
+     * studio model; every other point card gets just what the card shows, from
+     * rows and sources already read (the studio polls while work is pending).
+     */
+    studioShortId?: string | null
   } = {},
 ): Promise<ShortsModel> {
   const rows = await listShorts(db, projectId)
@@ -384,8 +391,14 @@ export async function shortsModel(
     const stale =
       row.kind === 'excerpt' && master !== null && !segmentInMaster(master, row.segmentRef)
     const studio =
-      row.kind === 'point' ? await pointStudioModel(db, row.id, { presign: options.presign }) : null
+      row.kind === 'point' && row.id === options.studioShortId
+        ? await pointStudioModel(db, row.id, { presign: options.presign })
+        : null
     const talkingPoint = row.pointId ? points.find((point) => point.id === row.pointId) : undefined
+    // What the card shows, without the studio: a bad stored script drops the
+    // badges of this card only.
+    const pointScript =
+      row.kind === 'point' ? PointScriptRecordSchema.safeParse(row.pointScript) : null
     shorts.push({
       id: row.id,
       title: row.title,
@@ -419,15 +432,15 @@ export async function shortsModel(
             )
           : null,
       point:
-        studio && talkingPoint
+        pointScript?.success && talkingPoint
           ? {
               type: talkingPoint.type,
               bridgeChapterTitles: talkingPoint.bridgeChapters.flatMap((index) => {
                 const title = sources.chapters[index]?.title
                 return title ? [title] : []
               }),
-              findings: studio.findings.length,
-              scriptBehind: studio.scriptBehind,
+              findings: pointFindings(row).length,
+              scriptBehind: sources.scriptVersion > pointScript.data.scriptVersion,
             }
           : null,
       studio,

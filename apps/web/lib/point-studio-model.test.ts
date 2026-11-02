@@ -41,6 +41,7 @@ const presign = async (key: string) => `https://signed.example/${key}`
 
 describeDb('pointStudioModel', () => {
   let shortId: string
+  const studioOf = async () => (await pointStudioModel(db, shortId, { presign }))!
 
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
@@ -56,7 +57,7 @@ describeDb('pointStudioModel', () => {
   }, 120_000)
 
   it('shows the script as five labelled phases with each paragraph voiced', async () => {
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     expect(model.phases.map((phase) => phase.phase)).toEqual([
       'hook',
@@ -79,7 +80,7 @@ describeDb('pointStudioModel', () => {
       0,
     )
 
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     expect(model.words).toBe(spoken)
     // Every paragraph is 10 s, 150 ms apart.
@@ -99,7 +100,7 @@ describeDb('pointStudioModel', () => {
       },
     })
 
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     const paragraphs = model.phases.flatMap((phase) => phase.paragraphs)
     expect(paragraphs[0]!.voiced).toBe(false)
@@ -112,7 +113,7 @@ describeDb('pointStudioModel', () => {
     const row = (await getShort(db, shortId))!
     const timeline = TimelineSchema.parse(row.sourceTimeline)
 
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     expect(model.shots).toHaveLength(timeline.slots.length)
     expect(model.shots.map((shot) => shot.index)).toEqual(model.shots.map((_, i) => i))
@@ -127,7 +128,7 @@ describeDb('pointStudioModel', () => {
   })
 
   it("offers the long form's slots as the library and presigns thumbnails", async () => {
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     expect(model.library).toHaveLength(6)
     expect(model.library[0]!.url).toBe('https://signed.example/boom-busters/stills/0.png')
@@ -139,7 +140,7 @@ describeDb('pointStudioModel', () => {
   })
 
   it('recomputes the rule book findings from the stored master', async () => {
-    const model = await pointStudioModel(db, shortId, { presign })
+    const model = await studioOf()
 
     // The seed's narration runs about 51 s over a short script: the findings
     // are whatever the rule book says of the stored cut, and they name a rule.
@@ -153,15 +154,15 @@ describeDb('pointStudioModel', () => {
   })
 
   it('says the Short was written from an earlier script only when a newer one exists', async () => {
-    expect((await pointStudioModel(db, shortId, { presign })).scriptBehind).toBe(false)
+    expect((await studioOf()).scriptBehind).toBe(false)
 
     await db.insert(scripts).values({ projectId: FIXTURE_PROJECT_ID, version: 2 })
 
-    expect((await pointStudioModel(db, shortId, { presign })).scriptBehind).toBe(true)
+    expect((await studioOf()).scriptBehind).toBe(true)
   })
 
   it('carries the price of one generated still and the work in flight', async () => {
-    const idle = await pointStudioModel(db, shortId, { presign })
+    const idle = await studioOf()
     expect(idle.stillEstimateUsd).toBeGreaterThanOrEqual(0)
     expect(idle.pending).toBeNull()
     expect(idle.failure).toBeNull()
@@ -173,7 +174,7 @@ describeDb('pointStudioModel', () => {
         state: { state: 'failed', what: 'still', reason: 'the model refused that picture' },
       },
     })
-    const failed = await pointStudioModel(db, shortId, { presign })
+    const failed = await studioOf()
     expect(failed.failure).toBe('the model refused that picture')
 
     await updateShort(db, shortId, {
@@ -182,14 +183,14 @@ describeDb('pointStudioModel', () => {
         state: { state: 'fetching', what: 'voice', startedAt: new Date().toISOString() },
       },
     })
-    expect((await pointStudioModel(db, shortId, { presign })).pending).toBe('voice')
+    expect((await studioOf()).pending).toBe('voice')
   })
 
   it("puts the point's type, bridge chapters, findings count and script state on the card", async () => {
     const { shorts: cards } = await shortsModel(db, FIXTURE_PROJECT_ID, { presign })
     const card = cards.find((candidate) => candidate.id === shortId)!
 
-    const studio = await pointStudioModel(db, shortId, { presign })
+    const studio = await studioOf()
     expect(card.kind).toBe('point')
     expect(card.teaser).toBeNull()
     expect(card.point).toEqual({
@@ -198,5 +199,32 @@ describeDb('pointStudioModel', () => {
       findings: studio.findings.length,
       scriptBehind: false,
     })
+  })
+
+  it('builds the full studio only for the open Short; the card is light', async () => {
+    const closed = (await shortsModel(db, FIXTURE_PROJECT_ID, { presign })).shorts
+    expect(closed.every((card) => card.studio === null)).toBe(true)
+    expect(closed.find((card) => card.id === shortId)!.point).not.toBeNull()
+
+    const open = (await shortsModel(db, FIXTURE_PROJECT_ID, { presign, studioShortId: shortId }))
+      .shorts
+    const card = open.find((entry) => entry.id === shortId)!
+    expect(card.studio?.phases.length).toBe(5)
+    expect(card.point).toEqual(closed.find((entry) => entry.id === shortId)!.point)
+  })
+
+  it('a point row with an unreadable script degrades its own card, not the screen', async () => {
+    await updateShort(db, shortId, { pointScript: { nonsense: true } as never })
+
+    const { shorts: cards } = await shortsModel(db, FIXTURE_PROJECT_ID, {
+      presign,
+      studioShortId: shortId,
+    })
+
+    const card = cards.find((entry) => entry.id === shortId)!
+    expect(card.kind).toBe('point')
+    expect(card.point).toBeNull()
+    expect(card.studio).toBeNull()
+    expect(await pointStudioModel(db, shortId, { presign })).toBeNull()
   })
 })

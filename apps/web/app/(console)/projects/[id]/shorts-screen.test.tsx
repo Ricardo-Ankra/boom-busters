@@ -69,7 +69,8 @@ vi.mock('./publish-actions', () => ({
 }))
 
 const refresh = vi.fn()
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
+const replace = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace }) }))
 
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
@@ -397,6 +398,44 @@ describe('ShortsScreen', () => {
       ).not.toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Close the studio' }))
       expect(screen.queryByLabelText('Point Short studio')).not.toBeInTheDocument()
+    })
+
+    it('writes the open studio to the address and takes it off on close', async () => {
+      const user = userEvent.setup()
+      renderScreen([pointCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(replace).toHaveBeenLastCalledWith(
+        `/projects/${PROJECT}?stage=shorts&studio=01HQ00000000000000000000S1`,
+        { scroll: false },
+      )
+      await user.click(screen.getByRole('button', { name: 'Close the studio' }))
+      expect(replace).toHaveBeenLastCalledWith(`/projects/${PROJECT}?stage=shorts`, {
+        scroll: false,
+      })
+    })
+
+    it('says the studio is opening until the page brings its model, and when the row is unreadable', async () => {
+      const user = userEvent.setup()
+      const { unmount } = renderScreen([{ ...pointCard(), studio: null }])
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(screen.getByText('Opening the Short studio…')).toBeInTheDocument()
+      unmount()
+
+      renderScreen([{ ...pointCard(), studio: null, point: null }])
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+      expect(
+        screen.getByText(/stored record could not be read|record could not be read/),
+      ).toBeInTheDocument()
+    })
+
+    it('leaves the address alone when a teaser studio opens', async () => {
+      const user = userEvent.setup()
+      renderScreen([teaserCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+      expect(replace).not.toHaveBeenCalled()
     })
 
     it('leaves the teaser card on its own studio and excerpts with none', () => {

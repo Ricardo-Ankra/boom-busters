@@ -142,14 +142,20 @@ export function pointFindings(row: {
   })
 }
 
+/**
+ * The full studio for one open point Short. Null when the stored script cannot
+ * be read: one bad row degrades its own card, never the whole Shorts screen.
+ */
 export async function pointStudioModel(
   db: Database,
   shortId: string,
   options: { presign?: Presign } = {},
-): Promise<PointStudioModel> {
+): Promise<PointStudioModel | null> {
   const row = await getShort(db, shortId)
   if (!row || row.kind !== 'point') throw new Error(`Short ${shortId} is not a point Short`)
-  const script = PointScriptRecordSchema.parse(row.pointScript)
+  const parsedScript = PointScriptRecordSchema.safeParse(row.pointScript)
+  if (!parsedScript.success) return null
+  const script = parsedScript.data
   const voice = PointVoiceRecordSchema.safeParse(row.pointVoice)
   const plan = PointPlanRecordSchema.safeParse(row.pointPlan)
   const fetches = PointFetchesRecordSchema.safeParse(row.pointFetches)
