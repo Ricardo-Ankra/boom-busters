@@ -22,9 +22,12 @@ import {
   shorts,
   seed,
   timelines,
+  updateWorkspace,
+  vidiqCredits,
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   resolveBrandKit,
@@ -41,6 +44,7 @@ import {
   publishNow,
   reschedulePublish,
   schedulePublish,
+  scoreAllTitlesAction,
   savePublishDraft,
   unlinkPublishRecord,
 } from './publish-actions'
@@ -600,6 +604,8 @@ describeDb('the search brief in titles, description and tags', () => {
     callLlm.mockReset()
     await seed(db)
     await db.delete(publishRecords)
+    await db.delete(vidiqCredits)
+    await updateWorkspace(db, DEFAULT_WORKSPACE_SETTINGS)
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     await saveChapter(db, {
       scriptId: script.id,
@@ -627,6 +633,7 @@ describeDb('the search brief in titles, description and tags', () => {
     expect(titles!.system).toContain('At least half the titles contain "wirecard scandal"')
     expect(description!.system).toContain('within the first 150 characters')
     expect(description!.system).toContain('"Where did the missing billion go?"')
+    expect(await db.select().from(vidiqCredits)).toHaveLength(0)
   })
 
   it('leads the tags with the owner, then the brief, then the model, and stores which came from the brief', async () => {
@@ -654,6 +661,93 @@ describeDb('the search brief in titles, description and tags', () => {
     expect(await draft()).toMatchObject({
       tags: ['Wirecard', 'wirecard scandal', 'fintech fraud'],
       searchTags: [],
+    })
+  })
+
+  describe('title scores (mock VidIQ)', () => {
+    beforeEach(() => {
+      vi.stubEnv('MOCK_PROVIDERS', '1')
+    })
+
+    it('scores the first three titles and records three ledger rows', async () => {
+      await setBrief(BRIEF)
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      const options = stored['titleOptions'] as string[]
+      expect(Object.keys(stored['titleScores'] as object)).toEqual(options.slice(0, 3))
+      expect(stored['titleScoreNote']).toBe('')
+      const rows = await db.select().from(vidiqCredits)
+      expect(rows).toHaveLength(3)
+      expect(rows.every((r) => r.purpose === 'title-score' && r.tool === 'vidiq_score_title')).toBe(
+        true,
+      )
+      expect(rows.every((r) => r.credits === 5 && r.projectId === FIXTURE_PROJECT_ID)).toBe(true)
+    })
+
+    it('scores nothing without a brief, and nothing for a Short', async () => {
+      await generateTitles('master', FIXTURE_PROJECT_ID)
+      expect(await db.select().from(vidiqCredits)).toHaveLength(0)
+
+      await setBrief(BRIEF)
+      const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+      const chapter = await saveChapter(db, {
+        scriptId: script.id,
+        index: 0,
+        title: 'The audit',
+        contentMd: 'EY refused to sign the accounts.',
+        estRuntimeSec: 12,
+      })
+      const short = await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Nine days',
+        segmentRef: { chapterId: chapter.id, fromParagraph: 0, toParagraph: 0 },
+      })
+      expect(await generateTitles('short', short.id)).toEqual({ ok: true })
+      expect(await db.select().from(vidiqCredits)).toHaveLength(0)
+      expect((await getPublishRecord(db, 'short', short.id))?.metadata).toMatchObject({
+        titleScores: {},
+      })
+    })
+
+    it('keeps the titles, stores no scores and says why when the cap cannot cover three', async () => {
+      await setBrief(BRIEF)
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 10 } })
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      expect((stored['titleOptions'] as string[]).length).toBeGreaterThan(3)
+      expect(stored['titleScores']).toEqual({})
+      expect(stored['titleScoreNote']).toBe(
+        "VidIQ did not score the titles: This run needs about 15 credits; 10 are left of this month's cap of 10.",
+      )
+      expect(await db.select().from(vidiqCredits)).toHaveLength(0)
+    })
+
+    it('Score all scores the unscored rest after one check, and refuses when none are left', async () => {
+      await setBrief(BRIEF)
+      await generateTitles('master', FIXTURE_PROJECT_ID)
+      const options = (await draft())['titleOptions'] as string[]
+
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      expect(Object.keys(stored['titleScores'] as object).sort()).toEqual([...options].sort())
+      expect(await db.select().from(vidiqCredits)).toHaveLength(options.length)
+
+      expect(await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: 'Every title option is already scored.',
+      })
+    })
+
+    it('Score all refuses before any call when the rest would pass the cap', async () => {
+      await setBrief(BRIEF)
+      await generateTitles('master', FIXTURE_PROJECT_ID)
+      const before = (await draft())['titleScores']
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 20 } })
+      const result = await scoreAllTitlesAction('master', FIXTURE_PROJECT_ID)
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('about 25 credits; 5 are left of this month')
+      expect((await draft())['titleScores']).toEqual(before)
+      expect(await db.select().from(vidiqCredits)).toHaveLength(3)
     })
   })
 })

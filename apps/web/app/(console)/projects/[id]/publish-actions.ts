@@ -16,11 +16,13 @@ import {
   listCastMembers,
   channelForProject,
   channelYoutubeConnected,
+  channelYoutubeConnection,
   channelYoutubeToken,
   recordChannelYoutubeVerify,
   scriptableClaims,
   setProjectStage,
   updatePublishRecord,
+  vidiqCredential,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
@@ -45,6 +47,7 @@ import {
   parseTitleOptions,
 } from '@boom-busters/providers'
 import type { DescriptionAnswer, ScriptClaim } from '@boom-busters/providers'
+import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { db } from '@/lib/db'
@@ -54,6 +57,7 @@ import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { searchTags } from '@/lib/search-tags'
+import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
@@ -375,6 +379,69 @@ async function shortNarration(
     .join(' ')
 }
 
+/** How many of a fresh set of titles VidIQ scores without being asked: the model's own first three. */
+const TITLES_SCORED_UP_FRONT = 3
+
+/**
+ * VidIQ's score for each title, one `spendVidiq` call apiece (ledger purpose
+ * 'title-score'), after one budget check for the lot. Never throws: a refusal
+ * or a failure comes back as a note saying why, and the scores already bought
+ * stay, since their credits are in the ledger.
+ */
+async function scoreTitleList(input: {
+  channelId: string
+  projectId: string
+  titles: readonly string[]
+  type: 'long' | 'short'
+}): Promise<{ scores: Record<string, number | null>; note: string }> {
+  const scores: Record<string, number | null> = {}
+  if (input.titles.length === 0) return { scores, note: '' }
+  const cost = VIDIQ_CREDIT_COST.scoreTitle
+  try {
+    const budget = await checkVidiqBudget(cost * input.titles.length)
+    if (!budget.ok) return { scores, note: `VidIQ did not score the titles: ${budget.error}` }
+    // The channel's own YouTube id sharpens the score; a channel not yet connected is scored without it.
+    const connection = await channelYoutubeConnection(db, input.channelId)
+    const youtubeChannelId = connection?.youtubeChannelId ?? undefined
+    for (const title of input.titles) {
+      const call = await spendVidiq(
+        {
+          channelId: input.channelId,
+          projectId: input.projectId,
+          purpose: 'title-score',
+          tool: 'vidiq_score_title',
+          cost,
+        },
+        (client) =>
+          client.scoreTitle({
+            title,
+            type: input.type,
+            ...(youtubeChannelId ? { channelId: youtubeChannelId } : {}),
+          }),
+      )
+      scores[title] = call.data.score
+    }
+    return { scores, note: '' }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    const done = Object.keys(scores).length
+    return {
+      scores,
+      note:
+        done > 0
+          ? `VidIQ scored ${done} of ${input.titles.length} titles, then stopped: ${reason}`
+          : `VidIQ did not score the titles: ${reason}`,
+    }
+  }
+}
+
+/** Whether VidIQ can be called at all: a stored key, or mock mode. */
+async function vidiqAvailable(): Promise<boolean> {
+  return (
+    mockProvidersEnabled() || (await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY)) !== undefined
+  )
+}
+
 /**
  * The 8 generated title options (spec section 11.3): the 'metadata' LLM task,
  * routed and budget-guarded like every other call. Mock mode answers locally
@@ -455,9 +522,72 @@ export async function generateTitles(targetType: string, targetId: string): Prom
     }
   }
 
-  await mergeDraft(record, { titleOptions: titles })
+  // A master with a search brief and a VidIQ key has the model's first three
+  // titles scored (spec 7.3). Scoring never costs the titles: a refusal keeps
+  // them, with a note under the list saying why. A Short is not scored here.
+  const scored =
+    type === 'master' && project.searchBrief && (await vidiqAvailable())
+      ? await scoreTitleList({
+          channelId: bibleGate.frozen.channelId,
+          projectId,
+          titles: titles.slice(0, TITLES_SCORED_UP_FRONT),
+          type: 'long',
+        })
+      : { scores: {}, note: '' }
+
+  await mergeDraft(record, {
+    titleOptions: titles,
+    // New titles, new scores: the old ones belong to titles that are gone.
+    titleScores: scored.scores,
+    titleScoreNote: scored.note,
+  })
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
+}
+
+/**
+ * Score every title option VidIQ has not scored yet (the Publish screen's
+ * Score all titles). The estimate is checked against the cap and the balance
+ * before any call; a failure part-way keeps what was scored and says why.
+ */
+export async function scoreAllTitlesAction(
+  targetType: string,
+  targetId: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  const type = targetType as 'master' | 'short'
+
+  const projectId = await projectIdOf(type, targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const record = await ensurePublishRecord(db, type, targetId)
+  const blocked = editableReason(record)
+  if (blocked) return { ok: false, error: blocked }
+
+  const draft = PublishDraftSchema.safeParse(record.metadata)
+  if (!draft.success) return { ok: false, error: 'The saved draft could not be read.' }
+  const unscored = draft.data.titleOptions.filter((title) => !(title in draft.data.titleScores))
+  if (unscored.length === 0) return { ok: false, error: 'Every title option is already scored.' }
+
+  const channel = await channelForProject(db, projectId)
+  const scored = await scoreTitleList({
+    channelId: channel.channelId,
+    projectId,
+    titles: unscored,
+    type: type === 'master' ? 'long' : 'short',
+  })
+  if (Object.keys(scored.scores).length > 0 || scored.note === '') {
+    await mergeDraft(record, {
+      titleScores: { ...draft.data.titleScores, ...scored.scores },
+      titleScoreNote: scored.note,
+    })
+  } else {
+    await mergeDraft(record, { titleScoreNote: scored.note })
+  }
+  revalidatePath(`/projects/${projectId}`)
+  return scored.note === '' ? { ok: true } : { ok: false, error: scored.note }
 }
 
 // ---------------------------------------------------------------------------

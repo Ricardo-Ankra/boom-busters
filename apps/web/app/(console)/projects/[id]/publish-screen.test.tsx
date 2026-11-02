@@ -29,6 +29,7 @@ const reschedulePublish = vi.fn()
 const retryPublish = vi.fn()
 const savePublishDraft = vi.fn()
 const schedulePublish = vi.fn()
+const scoreAllTitlesAction = vi.fn()
 const unlinkPublishRecord = vi.fn()
 const uploadThumbnail = vi.fn()
 vi.mock('./publish-actions', () => ({
@@ -42,6 +43,7 @@ vi.mock('./publish-actions', () => ({
   retryPublish: (...args: unknown[]) => retryPublish(...args),
   savePublishDraft: (...args: unknown[]) => savePublishDraft(...args),
   schedulePublish: (...args: unknown[]) => schedulePublish(...args),
+  scoreAllTitlesAction: (...args: unknown[]) => scoreAllTitlesAction(...args),
   unlinkPublishRecord: (...args: unknown[]) => unlinkPublishRecord(...args),
   uploadThumbnail: (...args: unknown[]) => uploadThumbnail(...args),
 }))
@@ -72,6 +74,7 @@ beforeEach(() => {
     retryPublish,
     savePublishDraft,
     schedulePublish,
+    scoreAllTitlesAction,
     setShortRelatedLink,
     unlinkPublishRecord,
     uploadThumbnail,
@@ -126,6 +129,8 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     scriptVersion: 4,
     musicAttribution: null,
     disclaimer: PUBLISH_DISCLAIMER,
+    hasSearchBrief: false,
+    titleScoreCredits: 5,
     // Friday 15:00 UTC long-form, Saturday 16:00 UTC Short — the defaults.
     slots: [
       { kind: 'longform', weekday: 5, timeUtc: '15:00' },
@@ -272,6 +277,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -322,6 +330,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -412,6 +423,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [
               { key: 'boom-busters/thumbs/p/a.png', url: null },
               { key: 'boom-busters/thumbs/p/b.png', url: null },
@@ -449,6 +463,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -481,6 +498,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -615,6 +635,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -669,6 +692,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -706,6 +732,9 @@ describe('PublishScreen', () => {
             chapterGlosses: {},
             hashtags: [],
             tags: [],
+            titleScores: {},
+            titleScoreNote: '',
+            searchTags: [],
             thumbs: [],
           },
         }),
@@ -735,6 +764,9 @@ describe('the search description (decision 303)', () => {
     chapterGlosses: {},
     hashtags: [],
     tags: [],
+    titleScores: {},
+    titleScoreNote: '',
+    searchTags: [],
     thumbs: [],
     ...over,
   })
@@ -847,5 +879,98 @@ describe('the search description (decision 303)', () => {
     renderScreen({ items: [shortItem()] })
     expect(screen.queryByRole('textbox', { name: /Search note for/ })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Hashtags/ })).toBeInTheDocument()
+  })
+})
+
+/** VidIQ's title scores and the tags it supplied, on a master with a frozen search brief. */
+describe('the search brief on the Publish screen', () => {
+  const record = (over: Partial<NonNullable<PublishItemModel['record']>> = {}) => ({
+    id: '01HQ00000000000000000000P1',
+    status: 'draft' as const,
+    publishAtIso: null,
+    youtubeVideoId: null,
+    errorMessage: null,
+    title: null,
+    titleOptions: [
+      'First title here',
+      'Second title here',
+      'Third title here',
+      'Fourth title here',
+    ],
+    titleScores: { 'First title here': 72, 'Second title here': null } as Record<
+      string,
+      number | null
+    >,
+    titleScoreNote: '',
+    descriptionBody: null,
+    bodyScriptVersion: null,
+    bodyStale: false,
+    chapterGlosses: {},
+    hashtags: [],
+    tags: ['Owner tag', 'wirecard scandal', 'Markus Braun'],
+    searchTags: ['Wirecard Scandal', 'markus braun'],
+    thumbs: [],
+    ...over,
+  })
+
+  it('shows each title its VidIQ score, or says VidIQ gave none', () => {
+    renderScreen({ hasSearchBrief: true, items: [masterItem({ record: record() })] })
+    expect(screen.getByText('VidIQ score 72')).toBeInTheDocument()
+    expect(screen.getByText('VidIQ gave no score')).toBeInTheDocument()
+    expect(screen.getAllByText(/VidIQ score/)).toHaveLength(1)
+  })
+
+  it('offers Score all for the unscored titles, with the credits, and runs it on a second click', async () => {
+    const user = userEvent.setup()
+    renderScreen({ hasSearchBrief: true, items: [masterItem({ record: record() })] })
+    await user.click(screen.getByRole('button', { name: 'Score all titles (about 10 credits)' }))
+    await user.click(screen.getByRole('button', { name: 'Score them' }))
+    expect(scoreAllTitlesAction).toHaveBeenCalledWith('master', PROJECT)
+  })
+
+  it('has no Score all without a brief, or when every title is scored', () => {
+    const { unmount } = renderScreen({ items: [masterItem({ record: record() })] })
+    expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
+    unmount()
+    renderScreen({
+      hasSearchBrief: true,
+      items: [
+        masterItem({
+          record: record({
+            titleScores: {
+              'First title here': 72,
+              'Second title here': 60,
+              'Third title here': 55,
+              'Fourth title here': null,
+            },
+          }),
+        }),
+      ],
+    })
+    expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
+  })
+
+  it('says under the list why no scores were kept', () => {
+    renderScreen({
+      hasSearchBrief: true,
+      items: [
+        masterItem({
+          record: record({
+            titleScores: {},
+            titleScoreNote: 'VidIQ did not score the titles: the cap is reached.',
+          }),
+        }),
+      ],
+    })
+    expect(screen.getByText('VidIQ did not score the titles: the cap is reached.')).toBeVisible()
+  })
+
+  it('marks the tags that came from VidIQ, whatever their case, and no others', () => {
+    renderScreen({ hasSearchBrief: true, items: [masterItem({ record: record() })] })
+    const marked = screen.getByRole('list', { name: 'Tags that came from VidIQ' })
+    expect(marked).toHaveTextContent('wirecard scandal')
+    expect(marked).toHaveTextContent('Markus Braun')
+    expect(marked).not.toHaveTextContent('Owner tag')
+    expect(screen.getAllByText('from VidIQ')).toHaveLength(2)
   })
 })
