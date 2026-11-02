@@ -4301,9 +4301,9 @@ All six were done on `bible-drafting` (the section below):
 
 ### Release notes
 
-- Migration 0041 on production: `pnpm db:migrate` against production. Check
-  `_journal.json` first; the unmerged `bible-drafting` branch also has a
-  0041, and whichever merges second regenerates as the next number.
+- [x] Migration 0041 on production: applied 2026-11-02 (42 migrations verified). Check
+      `_journal.json` first; the unmerged `bible-drafting` branch also has a
+      0041, and whichever merges second regenerates as the next number.
 - `deploy:stacks boom-busters-broker` (the timeline schema gained punch,
   crop and two overlays) and `deploy:remotion` (new compositions), both
   before the first real point-Short render.
@@ -4319,7 +4319,7 @@ All six were done on `bible-drafting` (the section below):
 > `docs/superpowers/specs/2026-10-28-channel-bible-design.md` (and the VidIQ
 > design, section 5); plan:
 > `docs/superpowers/plans/2026-10-29-channel-bible-drafting.md`; branch
-> `bible-drafting`; decisions 345 to 358. Boom & Busters' prompts are still
+> `bible-drafting`; decisions 345 to 370. Boom & Busters' prompts are still
 > byte-identical: `git diff master -- packages/providers/src/prompts/lift/__fixtures__`
 > prints nothing. Its hooks section is the owner's first run of Draft once
 > this is live; the fixtures are re-captured then, in a commit that says so.
@@ -4353,6 +4353,17 @@ All six were done on `bible-drafting` (the section below):
       mock research digest, the seven sections drafted from the mock
       provider's answers, Voice reworded after the steer) and reads the rest
       through the real screens.
+- [x] Review fixes before the merge, from the pre-merge review (plan
+      `docs/superpowers/plans/2026-11-02-bible-drafting-review-fixes.md`;
+      decisions 359 to 370):
+  - [x] Task 1: the job's heartbeat, ownership and Try again; no empty draft
+        on a refusal.
+  - [x] Task 2: the VidIQ key can be verified (`782719c`, `1c2a0a5`), and
+        the ledger records the wire arguments.
+  - [x] Task 3: language codes, the frozen-bible message, a running project
+        cannot move (`919b688`, `9fb9895`).
+  - [x] Task 4: the stale draft base, Add and Remove, the preview's
+        stale reply (`52d5e66`, `a4815cc`, `cf03f73`).
 - [ ] Owner actions at deploy, not run by this branch (below).
 
 ### Owner actions at deploy
@@ -4371,11 +4382,7 @@ applies the migration. Before the push:
 Then:
 
 3. Push master. Expect the usual build-length window.
-4. `deploy:stacks boom-busters-media-utils`, then `deploy:stacks
-boom-busters-broker`: the upload job gained `categoryId`, `defaultLanguage`
-   and `defaultAudioLanguage`, which the broker would drop and media-utils
-   builds the request from. Without them a second channel uploads with no
-   category or language; Boom & Busters is unaffected.
+4. The media-utils and broker deploys: see item 6 of the lift's list above.
 5. `PUT /api/inngest` after the Vercel deploy: two new functions
    (`bible-researcher`, `bible-drafter`).
 6. Add the VidIQ key in Settings, Connections. Check the monthly
@@ -4384,6 +4391,11 @@ boom-busters-broker`: the upload job gained `categoryId`, `defaultLanguage`
 7. Then the owner's own run: open Boom & Busters' Bible tab, press Draft for
    the hooks section, and re-capture the lift fixtures in a commit that says
    so.
+8. With the owner's permission, before deploying: a read-only production
+   query (a `READ ONLY` transaction from `packages/db`) listing non-archived
+   projects whose frozen bible version fails `isBibleComplete`. Each one
+   fails its next stage with the "Use the latest bible" message (decision
+   366); the owner moves them forward from the project page.
 
 ### Not verified
 
@@ -9027,3 +9039,81 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      process (`e2e/mock-bible.ts`) for the same reason, and puts the second
      channel back to a blank bible when it ends, because `channels.spec.ts`
      runs after it and expects one.
+
+359. **A drafting or research job carries a heartbeat** (2026-11-02). The job
+     gained `heartbeatAt`, refreshed after every unit or step, and the
+     30-minute rule is measured from the last heartbeat, or from `startedAt`
+     when there is none. Before this a full draft (17 units, up to two model
+     calls each) could pass 30 minutes while healthy, and the tab then showed
+     no progress and no error while the owner could still edit. Now a slow
+     but alive run is never shown as stopped, and a job silent for 30 minutes
+     reads as failed with "The run stopped answering" and Try again, and
+     editing unlocks.
+
+360. **A run acts only on the job it owns** (2026-11-02). The research and
+     drafting events carry `jobStartedAt`, so `onFailure` sees it too. Every
+     unit write, the finish step and the fail writers act only while the
+     stored job's `startedAt` still matches. An event without `jobStartedAt`,
+     a run parked before this deploy, owns whatever job exists, so in-flight
+     runs finish. A run that was cancelled or replaced can no longer write
+     `done` over a newer job or reset a section the owner has since edited.
+
+361. **Try again resends what failed** (2026-11-02). A draft job stores its
+     `units` and `steer`, and Try again resends exactly those. A job stored
+     before this change falls back to the sections named in `draft.errors`,
+     and with none shows no Try again; the per-section Draft buttons stay.
+     It never falls back to all seven sections, because that overwrote
+     hand-edited ones.
+
+362. **A refused action leaves no draft** (2026-11-02). The research and draft
+     actions run every refusal (busy, cap, balance, validation) before
+     opening a draft, so a refused action no longer leaves an empty draft
+     that shows Save and Discard and blocks History restore. A failed send to
+     Inngest marks the job it started failed.
+
+363. **A refused VidIQ key is a validation error** (2026-11-02). A key refused
+     with HTTP 401 or 403, or an MCP "unauthorised" answer, is a
+     `ValidationError`, the class the other adapters use, so Verify records it
+     invalid. A network failure stays retriable and reads "could not be
+     reached". The Verify button now shows for VidIQ; before, the action
+     existed and the button did not.
+
+364. **The credits ledger records the wire arguments** (2026-11-02). Each
+     VidIQ call result carries the arguments it sent (`VidiqCall.args`), and
+     the researcher records those, not the method's own arguments, as the
+     VidIQ design (section 5) says.
+
+365. **`bible.language` must be a language code** (2026-11-02). It is trimmed
+     and must be empty or match `^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`, because
+     it goes to YouTube and to VidIQ as a BCP-47 code and a model-written
+     "English" failed the upload. The drafting unit schema refuses anything
+     else, so the model is retried. A stored invalid value reads as empty, so
+     the upload omits the language rather than failing.
+
+366. **A frozen incomplete bible names its own way out** (2026-11-02). A
+     project frozen to an incomplete bible fails with a message naming **Use
+     the latest bible**, because completing the bible in Settings did not
+     help a project still pointing at the old version. Checks of a channel's
+     current bible (cases, naming a case on its own, Settings) keep "Complete
+     the channel bible in Settings first".
+
+367. **Use the latest bible waits for a running stage** (2026-11-02). It is
+     refused while the project's stage is running ("A stage is running. Wait
+     for it to finish or stop it, then use the latest bible."). It is allowed
+     at a review gate, after a failure, when idle and when queued, because the
+     first step that marks a queued stage running reads no bible.
+
+368. **Saving a stale draft is refused** (2026-11-02). Under the channel row
+     lock, a save is refused when the draft's base is no longer the channel's
+     current version, and a restore takes the same lock first. Locks are
+     always taken channel first, then draft, so the two cannot deadlock.
+
+369. **Hooks, openings and titles can be added and removed** (2026-11-02).
+     They go through the section edit path, so the section counts as approved
+     like any owner edit (the spec treats the owner's own typing as approval)
+     and the overlap flags recompute. The lists have no minimum.
+
+370. **The bible preview asks only when it must** (2026-11-02). It re-asks
+     only when the stage or the bible's content changes, and drops a reply
+     older than the latest request, so a slow answer cannot replace a newer
+     one.
