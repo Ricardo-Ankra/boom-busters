@@ -195,44 +195,65 @@ suite('bible drafts', () => {
 
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => (release = resolve))
-    let locked: () => void = () => {}
-    const lockTaken = new Promise<void>((resolve) => (locked = resolve))
+    let locked: (pid: number) => void = () => {}
+    const lockTaken = new Promise<number>((resolve) => (locked = resolve))
     const holder = db.transaction(async (tx) => {
       await lockChannelBible(tx, channelId)
-      locked()
+      const [backend] = Array.from(await tx.execute(dsql`select pg_backend_pid() as pid`)) as {
+        pid: number
+      }[]
+      locked(backend!.pid)
       await held
     })
     let restore: Promise<unknown> = Promise.resolve()
     let restored = false
+    type Outcome = { ok: true; row: { version: number } } | { ok: false; error: unknown }
+    const outcome: { value: Outcome } = {
+      value: { ok: false, error: new Error('the restore never started') },
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      // The holder has the lock (not a guess at a delay).
-      await Promise.race([
+      // The holder has the lock (not a guess at a delay); bounded, so a stuck holder fails.
+      const holderPid = await Promise.race([
         lockTaken,
         holder.then(() => {
           throw new Error('the lock holder ended before taking the lock')
         }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('timed out waiting for the holder to take the channel lock')),
+            5000,
+          )
+        }),
       ])
-      restore = restoreBibleVersion(db, channelId, v1.id).then((row) => {
-        restored = true
-        return row
-      })
-      // The restore's backend is queued on a row lock.
+      restore = restoreBibleVersion(db, channelId, v1.id).then(
+        (row) => {
+          restored = true
+          outcome.value = { ok: true, row }
+        },
+        (error: unknown) => {
+          outcome.value = { ok: false, error }
+        },
+      )
+      // Some other backend in this database is blocked by the holder's own backend.
       await until('the restore to wait on the channel lock', async () => {
         const rows = await db.execute(
-          dsql`select 1 from pg_stat_activity
-            where wait_event_type = 'Lock' and pid <> pg_backend_pid()
-              and query ilike '%for update%' and datname = current_database()`,
+          dsql`select pid from pg_stat_activity
+            where datname = current_database() and pid <> pg_backend_pid()
+              and ${holderPid}::int = any(pg_blocking_pids(pid))`,
         )
         return Array.from(rows).length > 0
       })
       expect(restored).toBe(false)
     } finally {
+      clearTimeout(timer)
       release()
       await holder.catch(() => {})
+      await restore.catch(() => {})
     }
-    const row = (await restore) as { version: number }
+    if (!outcome.value.ok) throw outcome.value.error
     expect(restored).toBe(true)
-    expect(row.version).toBe(3)
+    expect(outcome.value.row.version).toBe(3)
   })
 
   it('moves a project to a newer version of its channel, never another channel', async () => {
