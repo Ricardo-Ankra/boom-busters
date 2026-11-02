@@ -11,6 +11,7 @@ import {
   approvedTalkingPointSet,
   insertTalkingPointSet,
   latestTalkingPointSet,
+  stampTalkingPointSet,
 } from './talking-points'
 import { requireTestDatabase } from './test-database'
 
@@ -78,6 +79,15 @@ suite('talking-point sets', () => {
     expect(await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID)).toBeUndefined()
     expect(await approveTalkingPointSet(db, FIXTURE_PROJECT_ID, 3)).toBe('approved')
     expect((await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(3)
+  })
+
+  it('the stamp itself refuses a version a newer one has overtaken, with no pre-read', async () => {
+    await insert()
+    // The race: the owner's check passed on version 1, then a re-proposal landed.
+    await insert()
+    expect(await stampTalkingPointSet(db, FIXTURE_PROJECT_ID, 1)).toBe(false)
+    expect(await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID)).toBeUndefined()
+    expect(await stampTalkingPointSet(db, FIXTURE_PROJECT_ID, 2)).toBe(true)
   })
 
   it('a version that does not exist is missing', async () => {

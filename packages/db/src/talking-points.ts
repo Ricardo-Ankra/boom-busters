@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, gt, isNotNull, notExists, sql } from 'drizzle-orm'
 import type { TalkingPoint } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { talkingPointSets } from './schema'
@@ -59,6 +59,37 @@ export async function approvedTalkingPointSet(
 }
 
 /**
+ * Stamp one version approved, but only while no higher version exists. The
+ * guard lives in the UPDATE itself, so a re-proposal landing between a
+ * caller's read and this write cannot be overtaken.
+ */
+export async function stampTalkingPointSet(
+  db: Database,
+  projectId: string,
+  version: number,
+): Promise<boolean> {
+  const stamped = await db
+    .update(talkingPointSets)
+    .set({ approvedAt: new Date() })
+    .where(
+      and(
+        eq(talkingPointSets.projectId, projectId),
+        eq(talkingPointSets.version, version),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(talkingPointSets)
+            .where(
+              and(eq(talkingPointSets.projectId, projectId), gt(talkingPointSets.version, version)),
+            ),
+        ),
+      ),
+    )
+    .returning({ id: talkingPointSets.id })
+  return stamped.length > 0
+}
+
+/**
  * Approve one version. `stale` when a higher version exists: the owner read a
  * proposal that has since been replaced, and approving it would build Shorts
  * from points they are no longer looking at.
@@ -68,14 +99,10 @@ export async function approveTalkingPointSet(
   projectId: string,
   version: number,
 ): Promise<'approved' | 'stale' | 'missing'> {
+  if (await stampTalkingPointSet(db, projectId, version)) return 'approved'
+
+  // Nothing stamped: tell an overtaken version from one that never existed.
   const latest = await latestTalkingPointSet(db, projectId)
   if (!latest || latest.version < version) return 'missing'
-  if (latest.version > version) return 'stale'
-
-  const approved = await db
-    .update(talkingPointSets)
-    .set({ approvedAt: new Date() })
-    .where(and(eq(talkingPointSets.projectId, projectId), eq(talkingPointSets.version, version)))
-    .returning({ id: talkingPointSets.id })
-  return approved.length > 0 ? 'approved' : 'missing'
+  return latest.version > version ? 'stale' : 'missing'
 }
