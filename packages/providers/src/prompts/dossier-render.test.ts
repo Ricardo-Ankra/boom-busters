@@ -1,4 +1,9 @@
-import type { GroundedClaim, GroundedRef, GroundedResearch } from '@boom-busters/schemas'
+import type {
+  GroundedClaim,
+  GroundedRef,
+  GroundedResearch,
+  SearchBrief,
+} from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { renderDossierMarkdown } from './dossier-render'
 
@@ -72,6 +77,76 @@ const claim = (over: Partial<GroundedClaim> = {}): GroundedClaim => ({
   series: null,
   supports: [],
   ...over,
+})
+
+describe('renderDossierMarkdown search section', () => {
+  const searchBrief = (over: Partial<SearchBrief> = {}): SearchBrief => ({
+    subject: 'Wirecard',
+    measuredAt: '2026-11-02T12:00:00.000Z',
+    targetKeyword: {
+      keyword: 'wirecard scandal',
+      volume: null,
+      competition: null,
+      overall: null,
+      estimatedMonthlySearch: null,
+      growthPct: null,
+    },
+    secondaryKeywords: [],
+    searchedQuestions: [],
+    outliers: [],
+    titlePatterns: [],
+    toldAlready: [],
+    angleOptions: [],
+    chosenAngle: null,
+    ...over,
+  })
+
+  it('is absent without a brief', () => {
+    const md = renderDossierMarkdown({ caseTitle: 'W', research: grounded(), claims: [] })
+    expect(md).not.toContain('## Search')
+  })
+
+  it('marks a searched question answered when the research answered it, open otherwise, after Told already', () => {
+    const base = withQuestions(
+      ['Where did the billion go?', 'Who audited it?'],
+      [
+        { question: 'Where did the billion go?', index: 1, answer: 'Nowhere.', ref: ref() },
+        { question: 'Who audited it?', index: 2, answer: null, ref: null },
+      ],
+    )
+    const research: GroundedResearch = {
+      ...base,
+      brief: {
+        ...base.brief,
+        toldAlready: [{ beat: 'The collapse.', ref: ref() }],
+      },
+    }
+    const md = renderDossierMarkdown({
+      caseTitle: 'W',
+      research,
+      claims: [claim({ confidence: 'unverified' })],
+      searchBrief: searchBrief({
+        searchedQuestions: ['where did the billion go?', 'Who audited it?', 'Was Marsalek a spy?'],
+      }),
+    })
+    expect(md).toContain(
+      '## Search\n\nTarget keyword: wirecard scandal\n\n' +
+        '- where did the billion go? (answered)\n- Who audited it? (open)\n' +
+        '- Was Marsalek a spy? (open)\n\n',
+    )
+    expect(md.indexOf('## Told already')).toBeLessThan(md.indexOf('## Search'))
+    expect(md.indexOf('## Search')).toBeLessThan(md.indexOf('## Unverified'))
+  })
+
+  it('leaves the section out for a brief with no keyword and no questions', () => {
+    const md = renderDossierMarkdown({
+      caseTitle: 'W',
+      research: grounded(),
+      claims: [],
+      searchBrief: searchBrief({ targetKeyword: null }),
+    })
+    expect(md).not.toContain('## Search')
+  })
 })
 
 describe('renderDossierMarkdown', () => {

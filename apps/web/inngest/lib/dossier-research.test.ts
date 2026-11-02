@@ -26,6 +26,7 @@ import {
   researchDossier as research,
   splitRange,
   unfetchedClaims,
+  withOutlierLinks,
 } from './dossier-research'
 import { inlineSteps, type Steps } from './steps'
 
@@ -892,5 +893,39 @@ suiteDb('loadCorpus', () => {
       archivedUrl: null,
       httpStatus: 200,
     })
+  })
+})
+
+describe('withOutlierLinks', () => {
+  const outliers = ['dQw4w9WgXcQ', 'abcdefghijk', 'abcdefghijk'].map((videoId) => ({
+    videoId,
+    title: videoId,
+    channel: null,
+    subscribers: null,
+    views: null,
+    breakoutScore: null,
+    publishedAt: null,
+    tags: [],
+  }))
+  const brief = { outliers } as unknown as Parameters<typeof withOutlierLinks>[1]
+
+  it('appends each outlier once as a watch link, skipping a video the case already lists', () => {
+    expect(
+      withOutlierLinks(
+        [{ url: 'https://youtu.be/dQw4w9WgXcQ?t=5' }, { url: 'https://x.test/a' }],
+        brief,
+      ),
+    ).toEqual([
+      { url: 'https://youtu.be/dQw4w9WgXcQ?t=5' },
+      { url: 'https://x.test/a' },
+      { url: 'https://www.youtube.com/watch?v=abcdefghijk' },
+    ])
+  })
+
+  it('leaves the links alone without a brief', () => {
+    expect(withOutlierLinks([{ url: 'https://x.test/a' }], null)).toEqual([
+      { url: 'https://x.test/a' },
+    ])
+    expect(withOutlierLinks([], undefined)).toEqual([])
   })
 })

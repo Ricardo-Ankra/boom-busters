@@ -1,4 +1,9 @@
-import type { GroundedClaim, GroundedRef, GroundedResearch } from '@boom-busters/schemas'
+import type {
+  GroundedClaim,
+  GroundedRef,
+  GroundedResearch,
+  SearchBrief,
+} from '@boom-busters/schemas'
 
 /** A ref's link, carrying the transcript time the grounding step found. */
 function locatedUrl(ref: GroundedRef | null): string | null {
@@ -40,6 +45,8 @@ export function renderDossierMarkdown(input: {
    * Optional: without them a beat links under its URL.
    */
   documents?: readonly { id: string; title: string | null }[]
+  /** The case's VidIQ brief: its keyword and searched questions close the dossier. */
+  searchBrief?: SearchBrief | null
 }): string {
   const { brief, scenes, answers } = input.research
   const lines: string[] = [`# ${input.caseTitle}`, '', '## Summary', '', brief.summary, '']
@@ -71,6 +78,14 @@ export function renderDossierMarkdown(input: {
     )
   }
   lines.push('')
+
+  // The questions of the brief that the answers pass settled, folded for matching.
+  const answeredQuestions = new Set<string>()
+  const foldQuestion = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim()
 
   if (brief.openQuestions.length > 0) {
     // Placed by the numbered index first (decision 203): the first live run
@@ -104,6 +119,7 @@ export function renderDossierMarkdown(input: {
       if (at === undefined || answeredAt.has(at)) unplaced.push(answer)
       else answeredAt.set(at, answer)
     }
+    for (const at of answeredAt.keys()) answeredQuestions.add(foldQuestion(questions[at]!))
 
     if (answeredAt.size > 0 || unplaced.length > 0) {
       lines.push('## Questions the research answered', '')
@@ -143,6 +159,18 @@ export function renderDossierMarkdown(input: {
       lines.push(`- ${told.beat}${url && name ? ` ([${linkText(name)}](${url}))` : ''}`)
     }
     lines.push('')
+  }
+
+  // A brief that found no keyword and no questions has nothing to say here.
+  if (input.searchBrief?.targetKeyword || input.searchBrief?.searchedQuestions.length) {
+    const { targetKeyword, searchedQuestions } = input.searchBrief
+    lines.push('## Search', '')
+    if (targetKeyword) lines.push(`Target keyword: ${targetKeyword.keyword}`, '')
+    for (const question of searchedQuestions) {
+      const state = answeredQuestions.has(foldQuestion(question)) ? 'answered' : 'open'
+      lines.push(`- ${question} (${state})`)
+    }
+    if (searchedQuestions.length > 0) lines.push('')
   }
 
   const unverified = input.claims.filter((claim) => claim.confidence === 'unverified')

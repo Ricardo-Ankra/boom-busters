@@ -5,6 +5,7 @@ import type {
   DirectorsBook,
   Outline,
   Scene,
+  SearchBrief,
   ShotBrief,
   SlotCandidate,
   StockBrief,
@@ -1098,6 +1099,29 @@ const CASE_FULL = {
   people: ['Markus Braun', 'Jan Marsalek'],
 }
 
+const CASE_SEARCH = {
+  ...CASE_FULL,
+  searchBrief: {
+    subject: 'Wirecard',
+    measuredAt: '2026-11-02T12:00:00.000Z',
+    targetKeyword: {
+      keyword: 'wirecard scandal',
+      volume: 60,
+      competition: 40,
+      overall: 58,
+      estimatedMonthlySearch: 12000,
+      growthPct: 4,
+    },
+    secondaryKeywords: [],
+    searchedQuestions: ['Where did the missing billion go?', 'Who signed off the audits?'],
+    outliers: [],
+    titlePatterns: [],
+    toldAlready: [],
+    angleOptions: [],
+    chosenAngle: null,
+  } satisfies SearchBrief,
+}
+
 const DOSSIER_BRIEF: CaseBrief = {
   currentStatus: {
     asOf: '2024-01',
@@ -1136,6 +1160,10 @@ const DOSSIER_SCENES: Scene[] = [
 const dossierCases: LiftCase[] = [
   liftAware('dossier-brief-bare', (bible) => buildBriefRequest(CASE_BARE, CORPUS, bible)),
   liftAware('dossier-brief-full-case', (bible) => buildBriefRequest(CASE_FULL, CORPUS, bible)),
+  liftAware('dossier-brief-search', (bible) => buildBriefRequest(CASE_SEARCH, CORPUS, bible)),
+  liftAware('dossier-header-search', (bible) =>
+    buildScenesRequest(CASE_SEARCH, CORPUS, DOSSIER_BRIEF, bible),
+  ),
   liftAware('dossier-scenes', (bible) =>
     buildScenesRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, bible),
   ),

@@ -37,6 +37,7 @@ import type {
   ResearchAnswers,
   ResearchClaim,
   Scene,
+  SearchBrief,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots, literalBibleText, noun } from './bible'
@@ -106,6 +107,8 @@ export interface CaseContext {
   /** The company's common name (decision 2), named before the title, which only works. */
   subject?: string | null
   people?: readonly string[]
+  /** The case's VidIQ research (decision 371 onward): null or absent leaves every prompt as it was. */
+  searchBrief?: SearchBrief | null
 }
 
 /**
@@ -123,9 +126,21 @@ function caseHeader(input: CaseContext, bible: ChannelBible): string {
     `Category: ${input.category}`,
     input.angle ? `Angle to pursue: ${input.angle}` : null,
     input.demandNotes ? `Audience notes: ${input.demandNotes}` : null,
+    ...searchHeaderLines(input.searchBrief),
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+/** What viewers search for, only when the case has a search brief. */
+function searchHeaderLines(brief: SearchBrief | null | undefined): string[] {
+  if (!brief) return []
+  const questions = brief.searchedQuestions.map((question) => question.trim()).filter(Boolean)
+  return [
+    'What viewers search for (answer these where the record allows; never answer one from the keyword):',
+    ...(brief.targetKeyword ? [`Target search: ${brief.targetKeyword.keyword}`] : []),
+    ...(questions.length > 0 ? ['Searched questions:', ...questions] : []),
+  ]
 }
 
 /**
@@ -500,7 +515,11 @@ the list already told.
   with no video documents in the list, it is []. \`beat\` is the beat in your
   words; \`quote\` is the transcript's own words that tell it, without the
   [mm:ss] markers.
-- \`openQuestions\` are what the story needs and the documents do not settle.
+- \`openQuestions\` are what the story needs and the documents do not settle.${
+      input.searchBrief
+        ? '\n- Searched questions are candidates for `openQuestions`: keep each one the documents can address; a question the record cannot answer stays open and is never answered from the keyword.'
+        : ''
+    }
 - Every \`quote\` is the shortest span of the cited document that shows the
   point, copied exactly, at most ${DOSSIER_QUOTE_MAX} characters, and ${QUOTE_FINDABLE}.
 

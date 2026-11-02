@@ -34,6 +34,7 @@ import {
   replayedCase,
   researchDossier,
   toDraftClaims,
+  withOutlierLinks,
 } from '../lib/dossier-research'
 
 /**
@@ -200,6 +201,7 @@ export const dossierReviser = inngest.createFunction(
         people: named.people,
         sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
+        searchBrief: project.searchBrief,
         entity: dossier?.research?.entity ?? NO_ENTITY,
         linkedDocuments: linked.length,
         regather,
@@ -235,6 +237,8 @@ export const dossierReviser = inngest.createFunction(
     // stands in, as the gather was searched with it then.
     const named = replayedCase({ ...context, title: context.caseContext.title })
 
+    // A load-case stored before the search brief names none.
+    const searchBrief = context.searchBrief ?? null
     let entity = context.entity
     // `regather` is missing from a load-case stored before it existed: no change then.
     if (context.linkedDocuments === 0 || context.regather) {
@@ -245,7 +249,7 @@ export const dossierReviser = inngest.createFunction(
           subject: named.subject,
           people: named.people,
           sourceLinks: named.sourceLinks,
-          competitorLinks: context.competitorLinks,
+          competitorLinks: withOutlierLinks(context.competitorLinks, searchBrief),
           round: context.round,
         },
         { db, sources: () => liveResearchSources(), mocked: mockProvidersEnabled() },
@@ -267,7 +271,12 @@ export const dossierReviser = inngest.createFunction(
       {
         projectId,
         // Every pass opens on the subject and people the gather searched with.
-        caseContext: { ...context.caseContext, subject: named.subject, people: named.people },
+        caseContext: {
+          ...context.caseContext,
+          subject: named.subject,
+          people: named.people,
+          searchBrief,
+        },
         round: context.round,
         note,
         entity,
@@ -297,6 +306,7 @@ export const dossierReviser = inngest.createFunction(
           research: research.research,
           claims: research.claims,
           documents,
+          searchBrief,
         }),
         claims: toDraftClaims(research.claims),
         research: research.research,

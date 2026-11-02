@@ -38,6 +38,7 @@ import {
   replayedCase,
   researchDossier,
   toDraftClaims,
+  withOutlierLinks,
 } from '../lib/dossier-research'
 
 type StepTools = GetStepTools<typeof inngest>
@@ -129,6 +130,7 @@ export const dossierRunner = inngest.createFunction(
         people: named.people,
         sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
+        searchBrief: project.searchBrief,
       }
     })
     // Parked runs replay old step results: a run parked at the gate before the
@@ -137,7 +139,9 @@ export const dossierRunner = inngest.createFunction(
       const outcome = await awaitDossierApproval(step, ctx)
       return { projectId, outcome }
     }
-    const { competitorLinks } = loaded
+    // A load-case stored before the search brief names none.
+    const searchBrief = loaded.searchBrief ?? null
+    const competitorLinks = withOutlierLinks(loaded.competitorLinks, searchBrief)
     // A load-case stored before cases had a subject names none: the title
     // stands in, as the gather was searched with it then.
     const {
@@ -153,6 +157,7 @@ export const dossierRunner = inngest.createFunction(
       demandNotes: loaded.demandNotes,
       subject: caseSubject,
       people: casePeople,
+      searchBrief,
     }
 
     const mocked = mockProvidersEnabled()
@@ -216,6 +221,7 @@ export const dossierRunner = inngest.createFunction(
           research: research.research,
           claims: research.claims,
           documents,
+          searchBrief: caseContext.searchBrief,
         }),
         claims: toDraftClaims(research.claims),
         research: research.research,
