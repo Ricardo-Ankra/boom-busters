@@ -104,9 +104,12 @@ Required:
 2. Each list (hooks, openings, titles) gets an **Add** button and a per-entry **Remove** button, within the list's schema limits (Add disabled at the max; Remove disabled at the min). Adding or removing marks the section `drafted` and recomputes its overlap flags the same way an edit does.
 3. The preview ignores a reply whose request is older than the latest, and re-requests only when the stage or the bible content changes (key on a serialised bible), not on every poll.
 4. `global-setup.ts` deletes `vidiq_credits` rows for those channels before deleting the channels.
+5. (From the parent plan's Task 14 review.) `e2e/tests/bible.spec.ts` resets the `e2e-second` channel in a `beforeAll` of its serial group, with the same `resetSecondChannel` helper the setup uses, so a CI retry (`retries: 1`) does not rerun on dirty state.
 
 Tests: save refused on a stale base (db integration test); restore under the lock; Add and Remove buttons and their limits; the preview drops a stale reply and does not re-request on an unchanged bible.
 
 ### Task 5: PROGRESS
 
 Add one decision per ruling the fixes made (next free numbers after this branch's 358, checked against `origin/master`), tick the review fixes under the bible-drafting section, and add to "Owner actions at deploy": run, with the owner's permission, a read-only production query listing non-archived projects whose frozen bible version fails `isBibleComplete`, before deploying.
+
+From the parent plan's Task 14 review: in the "Channel bible, drafting" section's "Owner actions at deploy", replace item 4 (it repeats Task 13's item 6: deploy media-utils then the broker for `categoryId`, `defaultLanguage`, `defaultAudioLanguage`) with a one-line pointer to that item 6. In master's playbook-shorts owner actions, mark migration 0041 done (applied on production 2026-11-02, 42 migrations verified) so both lists agree.
