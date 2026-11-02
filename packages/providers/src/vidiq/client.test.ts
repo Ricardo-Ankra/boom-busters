@@ -24,7 +24,67 @@ describe('the VidIQ mock client', () => {
     const keywords = await c.keywordResearch('wework')
     expect(keywords.data[0]).toEqual(expect.objectContaining({ keyword: expect.any(String) }))
     expect(keywords.credits).toBe(VIDIQ_CREDIT_COST.keywordResearch)
-    expect((await c.scoreTitle('How WeWork Lost $47 Billion')).data).toEqual({ score: 80 })
+    expect((await c.scoreTitle({ title: 'How WeWork Lost $47 Billion' })).data).toEqual({
+      score: 80,
+    })
+  })
+})
+
+describe('the widened VidIQ calls', () => {
+  it('sends the questions mode with its limit and parses the questions table', async () => {
+    const call = await mockVidiqClient().keywordResearch('wework', { mode: 'questions', limit: 10 })
+    expect(call.args).toEqual({ keyword: 'wework', mode: 'questions', limit: 10 })
+    expect(call.data.length).toBeGreaterThan(3)
+    expect(call.data.every((row) => /^(why|how|what|did|is|who|was) /.test(row.keyword))).toBe(true)
+    expect(call.data[0]?.estimatedMonthlySearch).toEqual(expect.any(Number))
+  })
+
+  it('keeps the default keyword call as it was', async () => {
+    const call = await mockVidiqClient().keywordResearch('wework')
+    expect(call.args).toEqual({ keyword: 'wework', mode: 'matching_terms', limit: 8 })
+    const row = call.data.find((r) => r.keyword === 'wework documentary')
+    expect(row?.estimatedMonthlySearch).toBe(18355)
+    expect(row?.growthPct).toBe(-39.1)
+    expect(call.data.find((r) => r.keyword === 'wework rise and fall')?.growthPct).toBeNull()
+  })
+
+  it('sends each new outlier filter only when given', async () => {
+    const c = mockVidiqClient()
+    expect(
+      (
+        await c.outliers({
+          keyword: 'wework',
+          requireAllTitleTerms: true,
+          publishedWithin: 'allTime',
+          limit: 25,
+        })
+      ).args,
+    ).toEqual({
+      keyword: 'wework',
+      limit: 25,
+      requireAllTitleTerms: true,
+      publishedWithin: 'allTime',
+    })
+    expect((await c.outliers({ keyword: 'x' })).args).toEqual({ keyword: 'x', limit: 20 })
+  })
+
+  it('carries the channel subscribers on each outlier', async () => {
+    const { data } = await mockVidiqClient().outliers({ keyword: 'x' })
+    expect(data.map((v) => v.subscribers)).toEqual([15600, 1000, 64600, 1700, 8900])
+  })
+
+  it('scores a title as long by default and sends the channel only when given', async () => {
+    const c = mockVidiqClient()
+    expect((await c.scoreTitle({ title: 'x', channelId: 'UCzg' })).args).toEqual({
+      title: 'x',
+      type: 'long',
+      channelId: 'UCzg',
+    })
+    expect((await c.scoreTitle({ title: 'x' })).args).toEqual({ title: 'x', type: 'long' })
+    expect((await c.scoreTitle({ title: 'x', type: 'short' })).args).toEqual({
+      title: 'x',
+      type: 'short',
+    })
   })
 })
 

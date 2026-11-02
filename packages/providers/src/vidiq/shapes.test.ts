@@ -32,6 +32,7 @@ describe('the VidIQ parsers', () => {
       views: 66800,
       publishedAt: '2026-06-09',
       breakoutScore: 105,
+      subscribers: 15600,
     })
     expect(videos[2]?.views).toBe(503500)
   })
@@ -50,6 +51,7 @@ describe('the VidIQ parsers', () => {
         views: null,
         publishedAt: null,
         breakoutScore: null,
+        subscribers: null,
       },
     ])
   })
@@ -90,7 +92,16 @@ describe('the VidIQ parsers', () => {
     const rows = parseKeywordTable(
       '| keyword | volume | competition | overall | x |\n|---|---|---|---|---|\n| a b | 64 | null | 63 | 1 |\n',
     )
-    expect(rows).toEqual([{ keyword: 'a b', volume: 64, competition: null, overall: 63 }])
+    expect(rows).toEqual([
+      {
+        keyword: 'a b',
+        volume: 64,
+        competition: null,
+        overall: 63,
+        estimatedMonthlySearch: null,
+        growthPct: null,
+      },
+    ])
   })
 
   it('reads the balance', () => {

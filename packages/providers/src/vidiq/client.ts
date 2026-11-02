@@ -39,11 +39,20 @@ export interface VidiqClient {
     keyword: string
     language?: string
     limit?: number
+    requireAllTitleTerms?: boolean
+    publishedWithin?: 'allTime' | 'year' | 'month'
   }): Promise<VidiqCall<VidiqVideo[]>>
   getVideosByIds(ids: string[]): Promise<VidiqCall<VidiqVideoDetail[]>>
   videoTranscript(args: { videoId: string; language?: string }): Promise<VidiqCall<VidiqTranscript>>
-  keywordResearch(keyword: string): Promise<VidiqCall<VidiqKeywordRow[]>>
-  scoreTitle(title: string): Promise<VidiqCall<{ score: number | null }>>
+  keywordResearch(
+    keyword: string,
+    options?: { mode?: 'matching_terms' | 'questions'; limit?: number },
+  ): Promise<VidiqCall<VidiqKeywordRow[]>>
+  scoreTitle(args: {
+    title: string
+    channelId?: string
+    type?: 'long' | 'short'
+  }): Promise<VidiqCall<{ score: number | null }>>
   close(): Promise<void>
 }
 
@@ -106,10 +115,16 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
         VIDIQ_CREDIT_COST.channelVideos,
         parseChannelVideos,
       ),
-    outliers: ({ keyword, language, limit }) =>
+    outliers: ({ keyword, language, limit, requireAllTitleTerms, publishedWithin }) =>
       run(
         'vidiq_outliers',
-        { keyword, limit: limit ?? 20, ...(language ? { language } : {}) },
+        {
+          keyword,
+          limit: limit ?? 20,
+          ...(language ? { language } : {}),
+          ...(requireAllTitleTerms !== undefined ? { requireAllTitleTerms } : {}),
+          ...(publishedWithin ? { publishedWithin } : {}),
+        },
         VIDIQ_CREDIT_COST.outliers,
         parseOutliers,
       ),
@@ -127,15 +142,20 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
         VIDIQ_CREDIT_COST.videoTranscript,
         parseTranscript,
       ),
-    keywordResearch: (keyword) =>
+    keywordResearch: (keyword, options) =>
       run(
         'vidiq_keyword_research',
-        { keyword, mode: 'matching_terms', limit: 8 },
+        { keyword, mode: options?.mode ?? 'matching_terms', limit: options?.limit ?? 8 },
         VIDIQ_CREDIT_COST.keywordResearch,
         (raw) => parseKeywordTable(typeof raw === 'string' ? raw : ''),
       ),
-    scoreTitle: (title) =>
-      run('vidiq_score_title', { title, type: 'long' }, VIDIQ_CREDIT_COST.scoreTitle, parseScore),
+    scoreTitle: ({ title, channelId, type }) =>
+      run(
+        'vidiq_score_title',
+        { title, type: type ?? 'long', ...(channelId ? { channelId } : {}) },
+        VIDIQ_CREDIT_COST.scoreTitle,
+        parseScore,
+      ),
     close,
   }
 }
