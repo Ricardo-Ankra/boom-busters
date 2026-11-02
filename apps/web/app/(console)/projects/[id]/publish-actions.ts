@@ -56,7 +56,7 @@ import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/sto
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
 import { requireCompleteBible } from '@/inngest/lib/channel'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { events } from '@/inngest/events'
 
 /**
@@ -240,8 +240,8 @@ async function completeFrozenBible(
   try {
     return { ok: true, frozen: requireCompleteBible(frozen) }
   } catch (error) {
-    if (error instanceof NonRetriableError && error.message === BIBLE_INCOMPLETE_MESSAGE) {
-      return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
+    if (error instanceof NonRetriableError && error.message === FROZEN_BIBLE_INCOMPLETE_MESSAGE) {
+      return { ok: false, error: FROZEN_BIBLE_INCOMPLETE_MESSAGE }
     }
     throw error
   }

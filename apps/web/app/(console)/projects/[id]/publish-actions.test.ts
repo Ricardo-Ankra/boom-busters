@@ -30,7 +30,7 @@ import {
 import type { Timeline } from '@boom-busters/schemas'
 import type * as YoutubeLib from '@/lib/youtube'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
@@ -159,11 +159,11 @@ describeDb('generateTitles (decision 293)', () => {
 
       expect(await generateTitles('master', blank.id)).toEqual({
         ok: false,
-        error: BIBLE_INCOMPLETE_MESSAGE,
+        error: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
       })
       expect(await generateDescription('master', blank.id)).toEqual({
         ok: false,
-        error: BIBLE_INCOMPLETE_MESSAGE,
+        error: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
       })
       expect(callLlm).not.toHaveBeenCalled()
     },

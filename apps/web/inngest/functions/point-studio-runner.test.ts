@@ -39,7 +39,7 @@ import {
 import type * as Tts from '@/lib/tts'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { seedPointShort } from '@/lib/point-studio.fixture'
@@ -216,7 +216,7 @@ describeDb('point-studio-runner', () => {
           },
         ],
       })
-      expect(error).toMatchObject({ message: BIBLE_INCOMPLETE_MESSAGE })
+      expect(error).toMatchObject({ message: FROZEN_BIBLE_INCOMPLETE_MESSAGE })
     }
     expect(callLlm).not.toHaveBeenCalled()
   })

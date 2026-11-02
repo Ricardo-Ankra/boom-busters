@@ -118,6 +118,14 @@ export async function moveToLatestBibleAction(projectId: string): Promise<Action
 
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
+  // Runners read the bible in every step, so a stage under way would mix two
+  // versions. Parked at a review gate, failed or idle, there is nothing to mix.
+  if (project.stageStatus === 'running') {
+    return {
+      ok: false,
+      error: 'A stage is running. Wait for it to finish or stop it, then use the latest bible.',
+    }
+  }
 
   const frozen = await channelForProject(db, projectId)
   const current = await currentBible(db, frozen.channelId)

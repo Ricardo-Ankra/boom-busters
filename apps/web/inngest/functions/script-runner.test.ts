@@ -24,7 +24,7 @@ import {
 } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { markShortsStep, readMarkedShorts, scriptRunner } from './script-runner'
@@ -315,7 +315,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       steps: throughSelfCheck().slice(0, 3),
     })
     expect(refused.error).toMatchObject({
-      message: BIBLE_INCOMPLETE_MESSAGE,
+      message: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
     })
     expect(callLlm).not.toHaveBeenCalled()
 
@@ -325,7 +325,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(recordStop).toHaveBeenCalledWith(
       { projectId: blank.id, subject: 'script', subjectId: null },
       'stopped',
-      expect.stringContaining(BIBLE_INCOMPLETE_MESSAGE),
+      expect.stringContaining(FROZEN_BIBLE_INCOMPLETE_MESSAGE),
     )
   })
 

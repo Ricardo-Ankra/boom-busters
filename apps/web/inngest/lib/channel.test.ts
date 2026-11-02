@@ -6,7 +6,7 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { describe, expect, it } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { BIBLE_INCOMPLETE_MESSAGE, FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { requireCompleteBible } from './channel'
 
 describe('requireCompleteBible', () => {
@@ -18,7 +18,12 @@ describe('requireCompleteBible', () => {
     const attempt = () =>
       requireCompleteBible({ bible: EMPTY_BIBLE, slotIds: EXAMPLE_SLOT_IDS, slug: 'psychology' })
     expect(attempt).toThrow(NonRetriableError)
-    expect(attempt).toThrow(BIBLE_INCOMPLETE_MESSAGE)
+    expect(attempt).toThrow(FROZEN_BIBLE_INCOMPLETE_MESSAGE)
+  })
+
+  it('names the Use the latest bible button, where Settings keeps its own words', () => {
+    expect(FROZEN_BIBLE_INCOMPLETE_MESSAGE).toContain('Use the latest bible')
+    expect(FROZEN_BIBLE_INCOMPLETE_MESSAGE).not.toBe(BIBLE_INCOMPLETE_MESSAGE)
   })
 
   it('judges a bible by the slots it was saved with, not the registry as it stands', () => {
@@ -33,6 +38,6 @@ describe('requireCompleteBible', () => {
         slotIds: ['script-not-filled'],
         slug: 'a',
       }),
-    ).toThrow(BIBLE_INCOMPLETE_MESSAGE)
+    ).toThrow(FROZEN_BIBLE_INCOMPLETE_MESSAGE)
   })
 })

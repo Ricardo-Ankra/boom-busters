@@ -1,7 +1,7 @@
 import { isBibleComplete } from '@boom-busters/schemas'
 import type { BibleInUse } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 
 /**
  * A project whose frozen bible version is incomplete must not spend on
@@ -16,7 +16,7 @@ import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
  */
 export function requireCompleteBible<T extends BibleInUse & { slug: string }>(inUse: T): T {
   if (!isBibleComplete(inUse.bible, inUse.slotIds)) {
-    throw new NonRetriableError(BIBLE_INCOMPLETE_MESSAGE)
+    throw new NonRetriableError(FROZEN_BIBLE_INCOMPLETE_MESSAGE)
   }
   return inUse
 }

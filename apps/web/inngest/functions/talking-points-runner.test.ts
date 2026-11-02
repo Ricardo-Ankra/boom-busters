@@ -28,7 +28,7 @@ import {
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { talkingPointsRunner } from './talking-points-runner'
@@ -162,7 +162,7 @@ describeDb('talking-points-runner', () => {
           },
         ],
       })
-      expect(error).toMatchObject({ message: BIBLE_INCOMPLETE_MESSAGE })
+      expect(error).toMatchObject({ message: FROZEN_BIBLE_INCOMPLETE_MESSAGE })
     }
     expect(callLlm).not.toHaveBeenCalled()
     expect(await latestTalkingPointSet(db, blank)).toBeUndefined()

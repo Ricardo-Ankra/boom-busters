@@ -24,7 +24,7 @@ import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { MAX_OUTPUT_TOKENS, mockDirectorsBook } from '@boom-busters/providers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import {
   draftDirectorsBook,
@@ -429,7 +429,7 @@ describe('planChapterSlots against a live model', () => {
           claims: [],
           direction: null,
         }),
-      ).rejects.toThrow(BIBLE_INCOMPLETE_MESSAGE)
+      ).rejects.toThrow(FROZEN_BIBLE_INCOMPLETE_MESSAGE)
       expect(callLlm).not.toHaveBeenCalled()
     },
   )

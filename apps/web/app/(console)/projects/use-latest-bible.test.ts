@@ -9,6 +9,7 @@ import {
   requireTestDatabase,
   saveBibleVersion,
   seed,
+  setProjectStage,
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -71,4 +72,32 @@ describeDb('moveToLatestBibleAction', () => {
       error: 'This project already uses the latest bible',
     })
   })
+
+  it('refuses while a stage is running and leaves the project where it was', async () => {
+    const v1 = await currentBible(db, channelId)
+    await saveBibleVersion(db, channelId, { ...FIRST_CHANNEL_BIBLE, subject: 'x' }, 'e')
+    await setProjectStage(db, projectId, { stage: 'script', stageStatus: 'running' })
+
+    expect(await moveToLatestBibleAction(projectId)).toEqual({
+      ok: false,
+      error: 'A stage is running. Wait for it to finish or stop it, then use the latest bible.',
+    })
+    expect((await channelForProject(db, projectId)).bibleId).toBe(v1.id)
+  })
+
+  it.each(['awaiting_review', 'failed', 'queued'] as const)(
+    'is allowed while the stage is %s',
+    async (stageStatus) => {
+      const v2 = await saveBibleVersion(
+        db,
+        channelId,
+        { ...FIRST_CHANNEL_BIBLE, subject: 'x' },
+        'e',
+      )
+      await setProjectStage(db, projectId, { stage: 'script', stageStatus })
+
+      expect(await moveToLatestBibleAction(projectId)).toEqual({ ok: true })
+      expect((await channelForProject(db, projectId)).bibleId).toBe(v2.id)
+    },
+  )
 })
