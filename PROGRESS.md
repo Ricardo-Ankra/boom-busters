@@ -4234,12 +4234,7 @@ Then:
    deployment is still serving against the new schema (0039 drops
    `channels.bible`).
 6. `deploy:stacks boom-busters-broker` (the timeline schema gained
-   `identity`) and `deploy:remotion` (EndCta and Watermark changed). The upload job also
-   gained `categoryId`, `defaultLanguage` and `defaultAudioLanguage`: the
-   broker parses media jobs and would drop them, and media-utils builds the
-   request, so `deploy:stacks boom-busters-media-utils` as well (first, then
-   the broker). Without them a second channel uploads with no category or
-   language, and Boom & Busters is unaffected either way.
+   `identity`) and `deploy:remotion` (EndCta and Watermark changed).
 7. `PUT /api/inngest` after the Vercel deploy.
 
 ### Carried to branch 2
@@ -4301,9 +4296,8 @@ All six were done on `bible-drafting` (the section below):
 
 ### Release notes
 
-- [x] Migration 0041 on production: applied 2026-11-02 (42 migrations verified). Check
-      `_journal.json` first; the unmerged `bible-drafting` branch also has a
-      0041, and whichever merges second regenerates as the next number.
+- Migration 0041 was applied on production on 2026-11-02 (42 migrations
+  verified).
 - `deploy:stacks boom-busters-broker` (the timeline schema gained punch,
   crop and two overlays) and `deploy:remotion` (new compositions), both
   before the first real point-Short render.
@@ -4382,7 +4376,12 @@ applies the migration. Before the push:
 Then:
 
 3. Push master. Expect the usual build-length window.
-4. The media-utils and broker deploys: see item 6 of the lift's list above.
+4. The media-utils and broker deploys. The upload job gained `categoryId`,
+   `defaultLanguage` and `defaultAudioLanguage`: the broker parses media
+   jobs and would drop them, and media-utils builds the request, so
+   `deploy:stacks boom-busters-media-utils` first, then
+   `boom-busters-broker`. Without them a second channel uploads with no
+   category or language, and Boom & Busters is unaffected either way.
 5. `PUT /api/inngest` after the Vercel deploy: two new functions
    (`bible-researcher`, `bible-drafter`).
 6. Add the VidIQ key in Settings, Connections. Check the monthly
