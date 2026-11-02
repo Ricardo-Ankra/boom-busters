@@ -19,6 +19,7 @@ import {
 } from './shorts-actions'
 import { advanceToPublish } from './publish-actions'
 import { RestartRunButton, useAction } from './project-controls'
+import { PointStudio } from './point-studio'
 import { TeaserStudio } from './teaser-studio'
 
 /**
@@ -110,7 +111,16 @@ export function ShortsScreen({
 
       {/* The teaser studio (decision 227): full width below the grid — a
           card cell is too narrow for a script worth editing. */}
-      {studioShort ? (
+      {studioShort?.kind === 'point' ? (
+        // The point Short studio (design 6): a point card opens it; the key
+        // resets its edits when the stored script changes under it.
+        <PointStudio
+          key={`${studioShort.id}:${studioShort.studio?.phases.flatMap((block) => block.paragraphs.map((paragraph) => paragraph.text)).join('¶') ?? ''}`}
+          short={studioShort}
+          live={live}
+          onClose={() => setStudioId(null)}
+        />
+      ) : studioShort ? (
         <TeaserStudio
           key={`${studioShort.id}:${studioShort.teaser?.beats.map((beat) => beat.text).join('¶') ?? ''}`}
           short={studioShort}
@@ -156,6 +166,12 @@ export function ShortsScreen({
       ) : null}
     </div>
   )
+}
+
+/** A point's type as a card badge: "forensic-breakdown" reads "Forensic breakdown". */
+function pointTypeLabel(type: string): string {
+  const words = type.replace(/-/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 function fmtClock(ms: number): string {
@@ -241,9 +257,12 @@ function ShortCard({
     short.kind === 'teaser'
       ? 'Teaser · its own narration, cut over the board' +
         (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
-      : `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
-        (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
-        (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+      : short.kind === 'point'
+        ? 'Point Short · its own narration, cut from the long form' +
+          (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+        : `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
+          (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
+          (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
 
   return (
     <Card>
@@ -252,6 +271,7 @@ function ShortCard({
           <Clapperboard aria-hidden className="h-4 w-4" />
           <span className="truncate">{short.title}</span>
           {short.kind === 'teaser' ? <Badge tone="accent">Teaser</Badge> : null}
+          {short.point ? <Badge tone="accent">{pointTypeLabel(short.point.type)}</Badge> : null}
           {inFlight ? (
             <span className="ml-auto flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
               <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
@@ -260,6 +280,26 @@ function ShortCard({
           ) : null}
         </CardTitle>
         <p className="text-[12px] text-[var(--color-text-muted)]">{segmentLine}</p>
+        {short.point ? (
+          <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            <p>
+              Promises:{' '}
+              {short.point.bridgeChapterTitles.length > 0
+                ? short.point.bridgeChapterTitles.join(', ')
+                : 'no chapter named'}
+            </p>
+            <p>
+              {short.point.findings === 0
+                ? 'No rule book findings'
+                : `${short.point.findings} rule book finding${short.point.findings === 1 ? '' : 's'}`}
+            </p>
+            {short.point.scriptBehind ? (
+              <p className="text-[var(--color-warning)]">
+                Written from an earlier script. Open the studio to rebuild it.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {/* The 9:16 player — the finished file, or an honest placeholder. */}
@@ -299,6 +339,15 @@ function ShortCard({
           <Button variant="outline" onClick={onToggleStudio}>
             <PenLine aria-hidden className="h-4 w-4" />
             {studioOpen ? 'Close the teaser studio' : 'Open the teaser studio'}
+          </Button>
+        ) : null}
+
+        {/* The point Short's own workbench (design 6): script, voice and
+            shots in one place, opened below the grid. */}
+        {short.kind === 'point' && onToggleStudio ? (
+          <Button variant="outline" onClick={onToggleStudio}>
+            <PenLine aria-hidden className="h-4 w-4" />
+            {studioOpen ? 'Close the Short studio' : 'Open the Short studio'}
           </Button>
         ) : null}
 

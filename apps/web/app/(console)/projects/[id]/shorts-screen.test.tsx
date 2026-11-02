@@ -48,6 +48,19 @@ vi.mock('./shorts-actions', () => ({
   pickFetchedTeaserShot: (...args: unknown[]) => pickFetchedTeaserShot(...args),
 }))
 
+// The point Short studio's actions load next-auth too; the screen test only
+// needs the studio to open, so they are inert here.
+vi.mock('./point-studio-actions', () => ({
+  savePointScript: vi.fn(),
+  revoicePoint: vi.fn(),
+  replanPoint: vi.fn(),
+  savePointShot: vi.fn(),
+  fetchPointShotOptions: vi.fn(),
+  generatePointStill: vi.fn(),
+  assemblePoint: vi.fn(),
+  rebuildPointFromScript: vi.fn(),
+}))
+
 // The Continue-to-Publish handover lives in publish-actions, whose real
 // module is server-only (storage, Inngest). Mocked like the others.
 const advanceToPublish = vi.fn()
@@ -218,6 +231,89 @@ describe('ShortsScreen', () => {
     expect(
       screen.getByText('Teaser · its own narration, cut over the board · 0:32'),
     ).toBeInTheDocument()
+  })
+
+  /** A point Short's card and its studio (design 6); teaser cards keep theirs. */
+  describe('point cards', () => {
+    const studio: NonNullable<ShortCardModel['studio']> = {
+      phases: (['hook', 'stakes', 'delivery', 'resolution', 'bridge'] as const).map((phase) => ({
+        phase,
+        paragraphs: [
+          {
+            text: `The ${phase} words are here.`,
+            chapterIndex: 0,
+            chapterTitle: null,
+            voiced: true,
+          },
+        ],
+      })),
+      words: 120,
+      estimatedRuntimeSec: 50,
+      shots: [],
+      library: [],
+      fetched: [],
+      findings: [],
+      stillEstimateUsd: 0.08,
+      scriptBehind: false,
+      planBehind: false,
+      pending: null,
+      failure: null,
+    }
+    const pointCard = (overrides: Partial<NonNullable<ShortCardModel['point']>> = {}) =>
+      card({
+        kind: 'point',
+        durationMs: 52_000,
+        point: {
+          type: 'forensic-breakdown',
+          bridgeChapterTitles: ['The audit', 'The collapse'],
+          findings: 2,
+          scriptBehind: false,
+          ...overrides,
+        },
+        studio,
+      })
+
+    it('shows the type, the bridge chapters and the findings count', () => {
+      renderScreen([pointCard()])
+
+      expect(screen.getByText('Forensic breakdown')).toBeInTheDocument()
+      expect(screen.getByText('Promises: The audit, The collapse')).toBeInTheDocument()
+      expect(screen.getByText('2 rule book findings')).toBeInTheDocument()
+      expect(
+        screen.getByText('Point Short · its own narration, cut from the long form · 0:52'),
+      ).toBeInTheDocument()
+    })
+
+    it('says when the Short was written from an earlier script', () => {
+      renderScreen([pointCard({ scriptBehind: true, findings: 0 })])
+
+      expect(screen.getByText('No rule book findings')).toBeInTheDocument()
+      expect(screen.getByText(/Written from an earlier script/)).toBeInTheDocument()
+    })
+
+    it('opens the point Short studio, not the teaser studio', async () => {
+      const user = userEvent.setup()
+      renderScreen([pointCard()])
+
+      await user.click(screen.getByRole('button', { name: 'Open the Short studio' }))
+
+      expect(screen.getByLabelText('Point Short studio')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Teaser studio')).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Open the teaser studio' }),
+      ).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Close the studio' }))
+      expect(screen.queryByLabelText('Point Short studio')).not.toBeInTheDocument()
+    })
+
+    it('leaves the teaser card on its own studio and excerpts with none', () => {
+      renderScreen([teaserCard(), card({ id: '01HQ00000000000000000000S3' })])
+
+      expect(screen.getByRole('button', { name: 'Open the teaser studio' })).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Open the Short studio' }),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('saving the title and description is an explicit act, not an autosave', async () => {
