@@ -10,6 +10,7 @@ import {
   providerCredentials,
   recordVidiqCredits,
   requireTestDatabase,
+  saveBibleVersion,
   seed,
   setCredential,
   updateWorkspace,
@@ -18,6 +19,7 @@ import {
 } from '@boom-busters/db'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import {
+  BIBLE_SECTIONS,
   ChannelBibleSchema,
   DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
@@ -31,6 +33,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
   approveBibleSectionAction,
+  copyBibleFromChannelAction,
   discardBibleDraftAction,
   draftBibleAction,
   editBibleSectionAction,
@@ -619,5 +622,182 @@ describeDb('the bible edit, approve, save and discard actions', () => {
       const result = await previewStagePromptAction(FIRST_CHANNEL_ID, 'nope', FIRST_CHANNEL_BIBLE)
       expect(result).toEqual({ ok: false, error: 'Unknown stage' })
     })
+  })
+})
+
+describeDb('copying the bible from another channel', () => {
+  const SLOT_ID = EXAMPLE_SLOTS[0]!.id
+  const RUN = 'the quiet collapse of a bank that nobody thought could fall'
+
+  async function makeChannel(name: string) {
+    return createChannel(db, {
+      name,
+      handle: null,
+      slug: `${name.toLowerCase().replace(/\W+/g, '-')}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: ChannelBibleSchema.parse({}),
+    })
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await seed(db)
+    await db.delete(bibleDrafts)
+  })
+
+  it('overwrites only the ticked sections, marks them drafted and returns the note', async () => {
+    const target = await makeChannel('Target')
+    await editBibleSectionAction(target.id, 'search', { language: 'fr' })
+    await editBibleSectionAction(target.id, 'publishing', { youtubeCategoryId: '27' })
+
+    const result = await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, [
+      'identity',
+      'search',
+    ])
+    expect(result.ok).toBe(true)
+    const latest = (await listBibleVersions(db, FIRST_CHANNEL_ID)).at(-1)!
+    expect(result.note).toBe(`Copied from Boom & Busters version ${latest.version}`)
+
+    const draft = (await getBibleDraft(db, target.id))!
+    for (const key of [...BIBLE_SECTIONS.identity, ...BIBLE_SECTIONS.search]) {
+      expect(draft.bible[key]).toEqual(FIRST_CHANNEL_BIBLE[key])
+    }
+    expect(draft.statuses.identity).toBe('drafted')
+    expect(draft.statuses.search).toBe('drafted')
+    // An unticked section keeps the draft's edit and its status.
+    expect(draft.bible.youtubeCategoryId).toBe('27')
+    expect(draft.statuses.publishing).toBe('approved')
+    expect(result.draft).toEqual(draft)
+  })
+
+  it('copies the source current version, not an older one', async () => {
+    const source = await makeChannel('Source')
+    await saveBibleVersion(db, source.id, { ...ChannelBibleSchema.parse({}), language: 'de' }, 'v2')
+    await saveBibleVersion(db, source.id, { ...ChannelBibleSchema.parse({}), language: 'es' }, 'v3')
+    const target = await makeChannel('Target')
+
+    const result = await copyBibleFromChannelAction(target.id, source.id, ['search'])
+    expect(result.note).toBe('Copied from Source version 3')
+    expect((await getBibleDraft(db, target.id))!.bible.language).toBe('es')
+    // Nothing was saved as a version.
+    expect((await listBibleVersions(db, target.id)).length).toBe(1)
+  })
+
+  it('copies from an archived source', async () => {
+    const source = await makeChannel('Old source')
+    await archiveChannel(db, source.id)
+    const target = await makeChannel('Target')
+    const result = await copyBibleFromChannelAction(target.id, source.id, ['voice'])
+    expect(result.ok).toBe(true)
+    expect(result.note).toBe('Copied from Old source version 1')
+  })
+
+  it('refuses without leaving a draft behind', async () => {
+    const target = await makeChannel('Target')
+    const archived = await makeChannel('Archived target')
+    await archiveChannel(db, archived.id)
+
+    expect(await copyBibleFromChannelAction(target.id, target.id, ['voice'])).toEqual({
+      ok: false,
+      error: 'Choose another channel',
+    })
+    expect(await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, [])).toEqual({
+      ok: false,
+      error: 'Tick at least one section',
+    })
+    expect(await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, 'voice')).toEqual({
+      ok: false,
+      error: 'Tick at least one section',
+    })
+    expect(await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, ['nope'])).toEqual({
+      ok: false,
+      error: 'Unknown section',
+    })
+    expect(
+      await copyBibleFromChannelAction(target.id, '01ARZ3NDEKTSV4RRFFQ69G5FAV', ['voice']),
+    ).toEqual({ ok: false, error: 'Unknown channel' })
+    expect(await copyBibleFromChannelAction('nope', FIRST_CHANNEL_ID, ['voice'])).toEqual({
+      ok: false,
+      error: 'Unknown channel',
+    })
+    const refused = await copyBibleFromChannelAction(archived.id, FIRST_CHANNEL_ID, ['voice'])
+    expect(refused.ok).toBe(false)
+    expect(refused.error).toMatch(/archived/i)
+
+    expect(await getBibleDraft(db, target.id)).toBeNull()
+    expect(await getBibleDraft(db, archived.id)).toBeNull()
+  })
+
+  it('refuses while a job runs and leaves the draft as it was', async () => {
+    const target = await makeChannel('Target')
+    await openBibleDraft(db, target.id)
+    await writeBibleDraft(db, target.id, (draft) => ({
+      ...draft,
+      job: {
+        kind: 'draft',
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt: new Date().toISOString(),
+      },
+    }))
+    expect(await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, ['voice'])).toEqual({
+      ok: false,
+      error: 'Wait for the draft to finish',
+    })
+    expect((await getBibleDraft(db, target.id))!.statuses.voice).toBe('approved')
+  })
+
+  it('clears the errors of a copied section and keeps the others', async () => {
+    const target = await makeChannel('Target')
+    await openBibleDraft(db, target.id)
+    await writeBibleDraft(db, target.id, (draft) => ({
+      ...draft,
+      errors: { voice: 'it failed', search: 'it failed too' },
+    }))
+    await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, ['voice'])
+    const errors = (await getBibleDraft(db, target.id))!.errors
+    expect(Object.keys(errors)).toEqual(['search'])
+  })
+
+  it('recomputes the overlap flags of a copied examples section', async () => {
+    const source = await makeChannel('Source')
+    await saveBibleVersion(
+      db,
+      source.id,
+      {
+        ...ChannelBibleSchema.parse({}),
+        examples: { [SLOT_ID]: `He wrote about ${RUN} in 1907.` },
+      },
+      'with a close example',
+    )
+    const target = await makeChannel('Target')
+    await openBibleDraft(db, target.id)
+    await writeBibleDraft(db, target.id, (draft) => ({
+      ...draft,
+      research: {
+        patterns: [
+          {
+            kind: 'hook' as const,
+            pattern: 'Opens on a cold fact',
+            quote: RUN,
+            sources: [{ videoId: 'v1', channel: 'Alpha', title: 'The Fall', own: false }],
+          },
+        ],
+        videos: [],
+      },
+      tooClose: { [`examples.${SLOT_ID}`]: { source: 'Old', run: 'old run' } },
+    }))
+
+    await copyBibleFromChannelAction(target.id, source.id, ['examples'])
+    expect((await getBibleDraft(db, target.id))!.tooClose[`examples.${SLOT_ID}`]).toEqual({
+      source: 'Alpha: The Fall',
+      run: 'the quiet collapse of a bank that nobody',
+    })
+
+    // Copying a clean examples map clears the flag again.
+    const clean = await makeChannel('Clean')
+    await copyBibleFromChannelAction(target.id, clean.id, ['examples'])
+    expect((await getBibleDraft(db, target.id))!.tooClose).toEqual({})
   })
 })
