@@ -14,6 +14,7 @@ import {
   requireTestDatabase,
   saveChapter,
   scripts,
+  shorts,
   seed,
   timelines,
 } from '@boom-busters/db'
@@ -26,8 +27,11 @@ import { env } from '@/lib/env'
 import {
   generateDescription,
   generateTitles,
+  publishNow,
   reschedulePublish,
+  schedulePublish,
   savePublishDraft,
+  unlinkPublishRecord,
 } from './publish-actions'
 
 /**
@@ -321,5 +325,196 @@ describeDb('reschedulePublish on an unverified connection', () => {
 
     expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, later())).toEqual({ ok: true })
     expect(youtube.movePublishAt).toHaveBeenCalledTimes(1)
+  })
+})
+
+describeDb('point Shorts publish only after their long form', () => {
+  const day = 86_400_000
+  let pointShortId: string
+  let teaserShortId: string
+  let excerptShortId: string
+
+  async function masterAt(status: 'draft' | 'scheduled' | 'live', publishAt: Date | null) {
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, { status, publishAt })
+  }
+
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    youtube.movePublishAt.mockReset()
+    await seed(db)
+    await db.delete(publishRecords)
+    await db.delete(shorts)
+    const base = {
+      projectId: FIXTURE_PROJECT_ID,
+      segmentRef: { chapterId: 'c', fromParagraph: 0, toParagraph: 0 },
+    }
+    pointShortId = (
+      await insertShort(db, { ...base, title: 'A point', kind: 'point', pointId: 'p1' })
+    ).id
+    teaserShortId = (await insertShort(db, { ...base, title: 'A teaser', kind: 'teaser' })).id
+    excerptShortId = (await insertShort(db, { ...base, title: 'An excerpt' })).id
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  const at = (offset: number) => new Date(Date.now() + offset).toISOString()
+
+  it('refuses to schedule while the long form has no publish time', async () => {
+    expect(await schedulePublish('short', pointShortId, at(3 * day))).toEqual({
+      ok: false,
+      error: 'Schedule the long-form video first.',
+    })
+    await masterAt('draft', null)
+    expect(await schedulePublish('short', pointShortId, at(3 * day))).toEqual({
+      ok: false,
+      error: 'Schedule the long-form video first.',
+    })
+  })
+
+  it("refuses a time that is not after the long form's, and names that time", async () => {
+    const master = new Date(Date.now() + 5 * day)
+    await masterAt('scheduled', master)
+    const expected = `A Short goes out after its long-form video, which is scheduled for ${master.toLocaleString('en-ZA', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC.`
+
+    expect(await schedulePublish('short', pointShortId, at(2 * day))).toEqual({
+      ok: false,
+      error: expected,
+    })
+    // The very same instant is not after it either.
+    expect(await schedulePublish('short', pointShortId, master.toISOString())).toEqual({
+      ok: false,
+      error: expected,
+    })
+  })
+
+  it('lets a time after the long form through the guard', async () => {
+    await masterAt('scheduled', new Date(Date.now() + 2 * day))
+    // Past the guard it meets the ordinary readiness check: no render yet.
+    expect(await schedulePublish('short', pointShortId, at(3 * day))).toEqual({
+      ok: false,
+      error: 'This Short has no finished render to upload.',
+    })
+  })
+
+  it('applies the same guard to a reschedule', async () => {
+    const master = new Date(Date.now() + 5 * day)
+    await masterAt('scheduled', master)
+    const record = await ensurePublishRecord(db, 'short', pointShortId)
+    await updatePublishRecord(db, record.id, {
+      status: 'scheduled',
+      youtubeVideoId: 'vid-s',
+      publishAt: new Date(Date.now() + 6 * day),
+    })
+
+    const result = await reschedulePublish('short', pointShortId, at(2 * day))
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/^A Short goes out after its long-form video/),
+    })
+    expect(youtube.movePublishAt).not.toHaveBeenCalled()
+  })
+
+  it('refuses Publish now unless the long form is live', async () => {
+    const refusal = { ok: false, error: 'The long-form video has to be live first.' }
+    expect(await publishNow('short', pointShortId)).toEqual(refusal)
+    await masterAt('scheduled', new Date(Date.now() + day))
+    expect(await publishNow('short', pointShortId)).toEqual(refusal)
+    await masterAt('live', new Date(Date.now() - day))
+    expect(await publishNow('short', pointShortId)).toEqual({
+      ok: false,
+      error: 'This Short has no finished render to upload.',
+    })
+  })
+
+  describe('the long form cannot move past its Shorts', () => {
+    const sayAt = (at: Date) =>
+      `${at.toLocaleString('en-ZA', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`
+
+    async function scheduledShort(id: string, publishAt: Date) {
+      const record = await ensurePublishRecord(db, 'short', id)
+      await updatePublishRecord(db, record.id, {
+        status: 'scheduled',
+        youtubeVideoId: `vid-${id}`,
+        publishAt,
+      })
+    }
+    async function scheduledMaster(publishAt: Date) {
+      const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      await updatePublishRecord(db, record.id, {
+        status: 'scheduled',
+        youtubeVideoId: 'vid-master',
+        publishAt,
+      })
+    }
+
+    it('refuses moving the long form to or past the earliest scheduled point Short', async () => {
+      const earliest = new Date(Date.now() + 6 * day)
+      const masterAt0 = new Date(Date.now() + 2 * day)
+      await scheduledMaster(masterAt0)
+      await scheduledShort(pointShortId, earliest)
+      const refusal = {
+        ok: false,
+        error: `Move its Shorts first: the earliest goes out ${sayAt(earliest)}.`,
+      }
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, at(7 * day))).toEqual(refusal)
+      // The very same instant is not before it either.
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, earliest.toISOString())).toEqual(
+        refusal,
+      )
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.publishAt?.getTime()).toBe(
+        masterAt0.getTime(),
+      )
+    })
+
+    it('lets the long form move to a time before its Shorts', async () => {
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(pointShortId, new Date(Date.now() + 6 * day))
+      const moved = new Date(Date.now() + 4 * day)
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, moved.toISOString())).toEqual({
+        ok: true,
+      })
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.publishAt).toEqual(moved)
+    })
+
+    it('refuses unscheduling the long form while a point Short is scheduled, then allows it', async () => {
+      const earliest = new Date(Date.now() + 6 * day)
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(pointShortId, earliest)
+
+      expect(await unlinkPublishRecord('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: `Its Shorts are scheduled, so move or unlink them first: the earliest goes out ${sayAt(earliest)}.`,
+      })
+      expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.status).toBe('scheduled')
+
+      // The Short is unlinked first, as the sentence says.
+      expect(await unlinkPublishRecord('short', pointShortId)).toEqual({ ok: true })
+      expect(await unlinkPublishRecord('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    })
+
+    it('does not count teasers or excerpts', async () => {
+      await scheduledMaster(new Date(Date.now() + 2 * day))
+      await scheduledShort(teaserShortId, new Date(Date.now() + 3 * day))
+      await scheduledShort(excerptShortId, new Date(Date.now() + 3 * day))
+
+      expect(await reschedulePublish('master', FIXTURE_PROJECT_ID, at(9 * day))).toEqual({
+        ok: true,
+      })
+    })
+  })
+
+  it('leaves teasers and excerpts unguarded', async () => {
+    // No master record at all: a point Short would be refused here.
+    for (const id of [teaserShortId, excerptShortId]) {
+      const expected = { ok: false, error: 'This Short has no finished render to upload.' }
+      expect(await schedulePublish('short', id, at(day))).toEqual(expected)
+      expect(await publishNow('short', id)).toEqual(expected)
+    }
   })
 })

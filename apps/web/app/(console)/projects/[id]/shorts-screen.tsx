@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import type { Notice } from '@boom-busters/schemas'
 import { Check, Clapperboard, Loader2, PenLine, Save } from 'lucide-react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -19,6 +20,7 @@ import {
 } from './shorts-actions'
 import { advanceToPublish } from './publish-actions'
 import { RestartRunButton, useAction } from './project-controls'
+import { PointStudio } from './point-studio'
 import { TeaserStudio } from './teaser-studio'
 
 /**
@@ -40,6 +42,10 @@ export function ShortsScreen({
   live,
   canAdvance = false,
   teaserNotices = [],
+  openStudioId = null,
+  pointNotices = [],
+  pointSetNotices = [],
+  pointTitles = {},
 }: {
   projectId: string
   shorts: ShortCardModel[]
@@ -52,17 +58,78 @@ export function ShortsScreen({
    * would be when there is none.
    */
   teaserNotices?: readonly Notice[]
+  /**
+   * The `short` notices of the point Shorts: repairs and dropped pictures on a
+   * card (subjectId is the Short's id, or its point's id), and why a point was
+   * skipped (the point's id, with no card).
+   */
+  pointNotices?: readonly Notice[]
+  /**
+   * The point Short whose studio the address asks for. Only that card carries
+   * the full studio model (the cards stay light), so opening one writes it to
+   * the address and the page reads again.
+   */
+  openStudioId?: string | null
+  /** The `points` notices: what the talking points' proposal said, still on show after approval. */
+  pointSetNotices?: readonly Notice[]
+  /** The approved points' titles by id, to name a skipped point. */
+  pointTitles?: Readonly<Record<string, string>>
 }) {
   const { act, busy } = useAction()
-  const [studioId, setStudioId] = React.useState<string | null>(null)
+  const router = useRouter()
+  const [studioId, setStudioId] = React.useState<string | null>(openStudioId)
   const studioShort = shorts.find((short) => short.id === studioId) ?? null
+  const openStudio = (next: string | null) => {
+    const wasPoint = shorts.find((entry) => entry.id === studioId)?.kind === 'point'
+    const willBePoint = shorts.find((entry) => entry.id === next)?.kind === 'point'
+    setStudioId(next)
+    // A point studio is read by the page, from the address; any other studio is
+    // all on the card already.
+    if (wasPoint || willBePoint) {
+      router.replace(`/projects/${projectId}?stage=shorts${willBePoint ? `&studio=${next}` : ''}`, {
+        scroll: false,
+      })
+    }
+  }
   const hasTeaser = shorts.some((short) => short.kind === 'teaser')
   // The stage's own re-run builds only what is missing (decision 225), so a
   // missing teaser is built from where it would be, on the same terms as the
   // re-run button below (decision 294).
   const canBuildTeaser = canAdvance && !hasTeaser
+  // A point's notices go on its card; a point with no card (skipped, or still
+  // building) has them listed by its title, so its reason is never lost.
+  const cardIds = new Set(shorts.flatMap((short) => [short.id, short.pointId ?? short.id]))
+  const cardNotices = (short: ShortCardModel): Notice[] =>
+    pointNotices.filter(
+      (notice) => notice.subjectId === short.id || notice.subjectId === short.pointId,
+    )
+  const unplaced = new Map<string, Notice[]>()
+  for (const notice of pointNotices) {
+    if (notice.subjectId === null || cardIds.has(notice.subjectId)) continue
+    unplaced.set(notice.subjectId, [...(unplaced.get(notice.subjectId) ?? []), notice])
+  }
   return (
     <div className="flex flex-col gap-4">
+      {pointSetNotices.length > 0 ? (
+        <section
+          aria-label="Talking points notes"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+        >
+          <h2 className="text-[14px] font-semibold">Talking points</h2>
+          <Notices notices={pointSetNotices} />
+        </section>
+      ) : null}
+      {[...unplaced].map(([pointId, list]) => (
+        <section
+          key={pointId}
+          aria-label="Point without a Short"
+          className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-3"
+        >
+          <h2 className="text-[14px] font-semibold">{pointTitles[pointId] ?? 'A talking point'}</h2>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">This point has no Short.</p>
+          <Notices notices={list} />
+        </section>
+      ))}
       {/* No Teaser card to carry them: the notices say why where it would be. */}
       {!hasTeaser && (teaserNotices.length > 0 || canBuildTeaser) ? (
         <section
@@ -99,18 +166,37 @@ export function ShortsScreen({
             key={short.id}
             short={short}
             live={live}
-            notices={short.kind === 'teaser' ? teaserNotices : []}
-            studioOpen={short.id === studioId}
-            onToggleStudio={() =>
-              setStudioId((current) => (current === short.id ? null : short.id))
+            notices={
+              short.kind === 'teaser'
+                ? teaserNotices
+                : short.kind === 'point'
+                  ? cardNotices(short)
+                  : []
             }
+            studioOpen={short.id === studioId}
+            onToggleStudio={() => openStudio(studioId === short.id ? null : short.id)}
           />
         ))}
       </section>
 
       {/* The teaser studio (decision 227): full width below the grid — a
           card cell is too narrow for a script worth editing. */}
-      {studioShort ? (
+      {studioShort?.kind === 'point' && !studioShort.studio ? (
+        <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
+          {studioShort.point
+            ? 'Opening the Short studio…'
+            : 'This Short’s record could not be read, so it cannot be opened here.'}
+        </p>
+      ) : studioShort?.kind === 'point' ? (
+        // The point Short studio (design 6): a point card opens it; the key
+        // resets its edits when the stored script changes under it.
+        <PointStudio
+          key={`${studioShort.id}:${studioShort.studio?.phases.flatMap((block) => block.paragraphs.map((paragraph) => paragraph.text)).join('¶') ?? ''}`}
+          short={studioShort}
+          live={live}
+          onClose={() => openStudio(null)}
+        />
+      ) : studioShort ? (
         <TeaserStudio
           key={`${studioShort.id}:${studioShort.teaser?.beats.map((beat) => beat.text).join('¶') ?? ''}`}
           short={studioShort}
@@ -156,6 +242,12 @@ export function ShortsScreen({
       ) : null}
     </div>
   )
+}
+
+/** A point's type as a card badge: "forensic-breakdown" reads "Forensic breakdown". */
+function pointTypeLabel(type: string): string {
+  const words = type.replace(/-/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 function fmtClock(ms: number): string {
@@ -241,9 +333,12 @@ function ShortCard({
     short.kind === 'teaser'
       ? 'Teaser · its own narration, cut over the board' +
         (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
-      : `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
-        (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
-        (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+      : short.kind === 'point'
+        ? 'Point Short · its own narration, cut from the long form' +
+          (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
+        : `${short.chapterTitle ?? 'Unknown chapter'} · ¶${short.fromParagraph + 1}` +
+          (short.toParagraph !== short.fromParagraph ? `–${short.toParagraph + 1}` : '') +
+          (short.durationMs !== null ? ` · ${fmtClock(short.durationMs)}` : '')
 
   return (
     <Card>
@@ -252,6 +347,7 @@ function ShortCard({
           <Clapperboard aria-hidden className="h-4 w-4" />
           <span className="truncate">{short.title}</span>
           {short.kind === 'teaser' ? <Badge tone="accent">Teaser</Badge> : null}
+          {short.point ? <Badge tone="accent">{pointTypeLabel(short.point.type)}</Badge> : null}
           {inFlight ? (
             <span className="ml-auto flex items-center gap-1.5 text-[12px] font-normal text-[var(--color-text-muted)]">
               <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />
@@ -260,6 +356,26 @@ function ShortCard({
           ) : null}
         </CardTitle>
         <p className="text-[12px] text-[var(--color-text-muted)]">{segmentLine}</p>
+        {short.point ? (
+          <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            <p>
+              Promises:{' '}
+              {short.point.bridgeChapterTitles.length > 0
+                ? short.point.bridgeChapterTitles.join(', ')
+                : 'no chapter named'}
+            </p>
+            <p>
+              {short.point.findings === 0
+                ? 'No rule book findings'
+                : `${short.point.findings} rule book finding${short.point.findings === 1 ? '' : 's'}`}
+            </p>
+            {short.point.scriptBehind ? (
+              <p className="text-[var(--color-warning)]">
+                Written from an earlier script. Open the studio to rebuild it.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {/* The 9:16 player — the finished file, or an honest placeholder. */}
@@ -302,6 +418,15 @@ function ShortCard({
           </Button>
         ) : null}
 
+        {/* The point Short's own workbench (design 6): script, voice and
+            shots in one place, opened below the grid. */}
+        {short.kind === 'point' && onToggleStudio ? (
+          <Button variant="outline" onClick={onToggleStudio}>
+            <PenLine aria-hidden className="h-4 w-4" />
+            {studioOpen ? 'Close the Short studio' : 'Open the Short studio'}
+          </Button>
+        ) : null}
+
         {/* Editable metadata — a labelled Save, not a silent autosave: the
             title is publish copy, and saving it should feel like an act. */}
         <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -335,48 +460,62 @@ function ShortCard({
           </Button>
         ) : null}
 
-        {/* The ending toggle. Switching makes the current render a render of
-            something else, so it carries that consequence when one exists. */}
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-[var(--color-text-secondary)]">Ending</span>
-          {(['loop', 'cta'] as const).map((ending) =>
-            short.ending === ending ? (
-              <Button key={ending} variant="primary" disabled className="capitalize">
-                {ending === 'cta' ? 'CTA' : 'Loop'}
-              </Button>
-            ) : short.render !== null && !failed ? (
-              <ConfirmButton
-                key={ending}
-                label={ending === 'cta' ? 'CTA' : 'Loop'}
-                confirmLabel={`Switch to ${ending === 'cta' ? 'CTA' : 'loop'}`}
-                consequence="The current render is of the other ending and will need re-rendering."
-                confirmVariant="primary"
-                busy={pressed === `ending-${ending}`}
-                disabled={busy}
-                onConfirm={() =>
-                  act(() => setShortEnding(short.id, ending), 'Ending changed', `ending-${ending}`)
-                }
-              />
-            ) : (
-              <Button
-                key={ending}
-                variant="outline"
-                className="capitalize"
-                busy={pressed === `ending-${ending}`}
-                disabled={busy}
-                onClick={() =>
-                  void act(
-                    () => setShortEnding(short.id, ending),
-                    'Ending changed',
-                    `ending-${ending}`,
-                  )
-                }
-              >
-                {ending === 'cta' ? 'CTA' : 'Loop'}
-              </Button>
-            ),
-          )}
-        </div>
+        {/* A point Short always ends on its bridge to the long form (the render
+            forces it), so it has no ending to choose. */}
+        {short.kind === 'point' ? (
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            Ends with a bridge to the full video
+          </p>
+        ) : (
+          <>
+            {/* The ending toggle. Switching makes the current render a render of
+              something else, so it carries that consequence when one exists. */}
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-[var(--color-text-secondary)]">Ending</span>
+              {(['loop', 'cta'] as const).map((ending) =>
+                short.ending === ending ? (
+                  <Button key={ending} variant="primary" disabled className="capitalize">
+                    {ending === 'cta' ? 'CTA' : 'Loop'}
+                  </Button>
+                ) : short.render !== null && !failed ? (
+                  <ConfirmButton
+                    key={ending}
+                    label={ending === 'cta' ? 'CTA' : 'Loop'}
+                    confirmLabel={`Switch to ${ending === 'cta' ? 'CTA' : 'loop'}`}
+                    consequence="The current render is of the other ending and will need re-rendering."
+                    confirmVariant="primary"
+                    busy={pressed === `ending-${ending}`}
+                    disabled={busy}
+                    onConfirm={() =>
+                      act(
+                        () => setShortEnding(short.id, ending),
+                        'Ending changed',
+                        `ending-${ending}`,
+                      )
+                    }
+                  />
+                ) : (
+                  <Button
+                    key={ending}
+                    variant="outline"
+                    className="capitalize"
+                    busy={pressed === `ending-${ending}`}
+                    disabled={busy}
+                    onClick={() =>
+                      void act(
+                        () => setShortEnding(short.id, ending),
+                        'Ending changed',
+                        `ending-${ending}`,
+                      )
+                    }
+                  >
+                    {ending === 'cta' ? 'CTA' : 'Loop'}
+                  </Button>
+                ),
+              )}
+            </div>
+          </>
+        )}
 
         {/* Burned-in captions (decision 326), the ending's twin: part of the
             picture, so switching makes the current render a render of the

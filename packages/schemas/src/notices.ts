@@ -15,6 +15,8 @@ export const NOTICE_SUBJECTS = [
   'cast',
   'slot',
   'case',
+  'points',
+  'short',
 ] as const
 
 export const NOTICE_KINDS = ['trimmed', 'dropped', 'stopped', 'skipped'] as const

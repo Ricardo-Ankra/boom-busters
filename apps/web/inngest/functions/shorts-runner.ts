@@ -1,84 +1,37 @@
 import {
-  channelForProject,
+  approvedTalkingPointSet,
   deleteShorts,
-  getLatestScript,
   getProject,
-  insertShort,
-  latestShortsCandidates,
-  latestScriptParagraphSources,
+  isAssembledShort,
   latestTimeline,
   listShorts,
   setProjectStage,
-  setShortsCandidates,
+  shortForPoint,
 } from '@boom-busters/db'
-import {
-  mockProvidersEnabled,
-  mockShortsCandidates,
-  tensionFromOutline,
-} from '@boom-busters/providers'
-import type { Repair } from '@boom-busters/providers'
-import {
-  BudgetExceededError,
-  OutlineSchema,
-  parseEventData,
-  resolveCandidateSegment,
-  serialiseError,
-  stripNarrationMarkup,
-  teaserTextHash,
-  TimelineSchema,
-  ValidationError,
-} from '@boom-busters/schemas'
-import type { NoticeTarget } from '@boom-busters/schemas'
-import {
-  compileShortTimeline,
-  compileTeaserMaster,
-  segmentInMaster,
-  TEASER_CHAPTER_ID,
-} from '@boom-busters/timeline'
-import type { TeaserParagraphAudio } from '@boom-busters/timeline'
+import { parseEventData, serialiseError, TimelineSchema } from '@boom-busters/schemas'
+import { segmentInMaster } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { completeForProject } from '@/lib/answer-call'
-import { markShortsWith } from '@/lib/script-answers'
-import { recordRepairs, recordSkip } from '@/lib/notices'
 import { inngest } from '../client'
 import { events } from '../events'
-import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
-import { voiceTeaserBeat, writeTeaserScript, type TeaserWriteResult } from '../lib/teaser-build'
+import { markStageFailed } from '../lib/gates'
 
 /**
- * shorts-runner (build spec section 7.2 item 7): `project/master.ready` →
- * resolve each Shorts candidate to a paragraph range → a `shorts` row per
- * resolvable candidate → fan the renders out as one event per Short. The
- * candidates were approved with the script (they were on show in the Script
- * Studio when the gate was clicked); the CARDS are where the human curates
- * what actually gets scheduled.
+ * shorts-runner: `project/master.ready` hands the Shorts stage to talking
+ * points (playbook Shorts design 3.1 and 3.5). With no approved set it asks
+ * the talking-points runner for a proposal, and that runner parks the stage
+ * at `points`. With an approved set it requests one build per approved point
+ * that has no Short yet and parks the stage at `review`.
  *
- * The renders happen in the short-render-runner, one Short per run,
- * concurrency-capped — not here. A parent that waited on N completion
- * events in sequence would miss any that fired before its wait started;
- * per-Short runs make each wait start before its own submit returns.
- *
- * Re-entry (the master re-rendered, `master.ready` fired again): existing
- * rows are kept exactly as the human edited them — titles, endings and
- * related-link ticks survive — and no new excerpt rows are made.
- * Re-rendering a Short against the new master is the card's explicit
- * button. The one additive exception is the teaser (decision 225): a
- * project with no teaser row gets one built, whatever else exists.
+ * Re-entry (the master re-rendered, `master.ready` fired again): an approved
+ * set means the stage never pauses at `points` again, a built Short is kept
+ * exactly as curated and never re-bought, and only points with no Short are
+ * built. Legacy `excerpt` and `teaser` rows are left as they are; the one
+ * thing done to them is decision 300's clean-up of excerpts cut from an
+ * earlier script, which can never render against the rebuilt master.
  */
 
 const FUNCTION_ID = 'shorts-runner'
-
-/** A seeded title: the hook sentence, cut to fit a title field. */
-export function seedTitle(startSentence: string): string {
-  const words = stripNarrationMarkup(startSentence)
-  return words.length <= 80 ? words : `${words.slice(0, 79).trimEnd()}…`
-}
-
-/** A failed step's message for a notice line, without its closing full stop. */
-function stepFailure(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).replace(/\.$/, '')
-}
 
 export const shortsRunner = inngest.createFunction(
   {
@@ -104,360 +57,75 @@ export const shortsRunner = inngest.createFunction(
     },
     triggers: [events.projectMasterReady],
   },
-  async ({ event, step, runId }) => {
+  async ({ event, step }) => {
     const { projectId } = parseEventData('project/master.ready', event.data)
-    const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
-    /**
-     * A script can arrive here with no candidates: the script-runner's
-     * marking step stores none when its answer stops (the narration is the
-     * script stage's deliverable, not the Shorts; since decision 293 the
-     * Shorts strip says why), and production did exactly that on 2026-09-03:
-     * the marking response failed to parse, an
-     * empty list was stored, and this stage later sat "awaiting review" over
-     * nothing. Marking here makes the stage self-healing: a re-run recovers
-     * on its own, and a marking failure fails THIS stage loudly — picking
-     * segments IS this stage's work.
-     */
-    const marking = await step.run('mark-missing-candidates', async () => {
+    const plan = await step.run('plan-shorts-stage', async () => {
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
       await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'running' })
 
-      // Excerpts the master can still serve mean the human is curating; ones
-      // it cannot (cut from an earlier script, decision 300) are replaced
-      // below and count for nothing here. A teaser is not an excerpt: it
-      // carries its own narration and says nothing about whether excerpts
-      // need cutting (production, 2026-10-13: a kept teaser blocked the cut).
+      // Decision 300: an excerpt cut from an earlier script points at
+      // narration the rebuilt master no longer has and can never render.
       const timelineRow = await latestTimeline(db, projectId)
       const master = timelineRow ? TimelineSchema.safeParse(timelineRow.json) : null
-      const liveExcerpts = (await listShorts(db, projectId)).filter(
-        (row) =>
-          row.kind === 'excerpt' &&
-          (!master?.success || segmentInMaster(master.data, row.segmentRef)),
-      )
-      if (liveExcerpts.length > 0) return { ok: true as const, marked: 0 }
-      if ((await latestShortsCandidates(db, projectId)).length > 0) {
-        return { ok: true as const, marked: 0 }
+      let replaced = 0
+      if (master?.success) {
+        const stale = (await listShorts(db, projectId)).filter(
+          (row) => row.kind === 'excerpt' && !segmentInMaster(master.data, row.segmentRef),
+        )
+        await deleteShorts(
+          db,
+          stale.map((row) => row.id),
+        )
+        replaced = stale.length
       }
 
-      const latest = await getLatestScript(db, projectId)
-      if (!latest) {
-        throw new NonRetriableError('There is no script to pick Shorts segments from.')
-      }
-      const chapterSources = latest.chapters.map((chapter) => ({
-        index: chapter.index,
-        title: chapter.title,
-        contentMd: chapter.contentMd,
-      }))
+      const approved = await approvedTalkingPointSet(db, projectId)
+      if (!approved) return { approved: false as const, replaced }
 
-      // The stored outline carries the tension fields the marking selects
-      // by; a pre-decision-224 script has none, and the prompt degrades to
-      // text-only. safeParse, not parse: a malformed stored outline must
-      // cost the tension hints, never the marking.
-      const parsedOutline = OutlineSchema.safeParse(latest.script.outline)
-      const tension = parsedOutline.success ? tensionFromOutline(parsedOutline.data) : undefined
-
-      let picked
-      let repairs: Repair[] = []
-      if (mockProvidersEnabled()) {
-        picked = mockShortsCandidates(chapterSources)
-      } else {
-        try {
-          const marked = await markShortsWith(completeForProject(projectId), {
-            bible: await channelForProject(db, projectId),
-            chapters: chapterSources,
-            ...(tension ? { tension } : {}),
-          })
-          picked = marked.candidates
-          repairs = marked.repairs
-        } catch (error) {
-          if (error instanceof BudgetExceededError) {
-            return { ok: false as const, gate: budgetGateData(error) }
-          }
-          // A bad answer has had its two calls and stops the stage with its reason (decision 292); a provider error retries, then onFailure -> markStageFailed. Never a silent [].
-          throw error
-        }
+      const toBuild: string[] = []
+      for (const point of approved.points) {
+        // A draft row (build cut off after its script or voice) is not a Short yet.
+        const row = await shortForPoint(db, projectId, point.id)
+        if (!row || !isAssembledShort(row)) toBuild.push(point.id)
       }
-      await setShortsCandidates(db, latest.script.id, picked)
-      // What the repair trimmed or dropped, on Script Studio's Shorts strip; a
-      // clean marking retires the notes of the last one (decision 293).
-      await recordRepairs({ projectId, subject: 'script', subjectId: null }, repairs)
-      return { ok: true as const, marked: picked.length }
+      return { approved: true as const, replaced, toBuild, total: approved.points.length }
     })
 
-    if (!marking.ok) {
-      await step.run('marking-over-budget', () => markStageFailed(ctx, marking.gate))
-      return { projectId, outcome: 'over-budget' as const }
+    if (!plan.approved) {
+      // The talking-points runner proposes and parks the stage at `points`.
+      await step.sendEvent('request-talking-points', [
+        events.shortsPointsRequested.create({ projectId, mode: 'all', note: null }),
+      ])
+      return { projectId, outcome: 'points-requested' as const, replaced: plan.replaced }
     }
 
-    const outcome = await step.run('resolve-candidates', async () => {
-      const timelineRow = await latestTimeline(db, projectId)
-      if (!timelineRow) {
-        throw new NonRetriableError('master.ready fired but there is no compiled timeline')
-      }
-      const master = TimelineSchema.parse(timelineRow.json)
-
-      // Re-entry guard: rows the master can still serve were curated by the
-      // human and are kept. An excerpt cut from an earlier script (decision
-      // 300) points at narration the rebuilt master no longer has; it can
-      // never render, so it is replaced rather than kept. Teasers carry their
-      // own narration and are never stale here.
-      const existing = await listShorts(db, projectId)
-      const stale = existing.filter(
-        (row) => row.kind === 'excerpt' && !segmentInMaster(master, row.segmentRef),
-      )
-      await deleteShorts(
-        db,
-        stale.map((row) => row.id),
-      )
-      const replaced = stale.length
-      // Only a live EXCERPT holds the fresh cut back; a kept teaser is not a
-      // curated excerpt, and a project left with a teaser alone has no Shorts.
-      const kept = existing.filter((row) => row.kind === 'excerpt' && !stale.includes(row)).length
-      if (kept > 0) {
-        return { created: [] as string[], skipped: [] as string[], reused: kept, replaced }
-      }
-
-      const candidates = await latestShortsCandidates(db, projectId)
-      if (candidates.length === 0) {
-        return { created: [] as string[], skipped: [] as string[], reused: 0, replaced }
-      }
-
-      const { chapters } = await latestScriptParagraphSources(db, projectId)
-
-      const created: string[] = []
-      const skipped: string[] = []
-      for (const candidate of candidates) {
-        const segmentRef = resolveCandidateSegment(candidate, chapters)
-        if (!segmentRef) {
-          skipped.push(`"${seedTitle(candidate.startSentence)}": anchors not found in the script`)
-          continue
-        }
-
-        // Compile as validation only — the Short's real compile happens at
-        // render time against its then-current ending and bed. This catches
-        // the 180 s ceiling and broken segments before a row exists.
-        try {
-          compileShortTimeline({ master, segmentRef, ending: 'cta', music: null })
-        } catch (error) {
-          if (error instanceof ValidationError) {
-            skipped.push(`"${seedTitle(candidate.startSentence)}": ${error.message}`)
-            continue
-          }
-          throw error
-        }
-
-        const short = await insertShort(db, {
-          projectId,
-          title: seedTitle(candidate.startSentence),
-          segmentRef,
-        })
-        created.push(short.id)
-      }
-
-      return { created, skipped, reused: 0, replaced }
-    })
-
-    // -------------------------------------------------------------------------
-    // The teaser (decision 225): its own narration, the board's visuals
-    // -------------------------------------------------------------------------
-
-    /**
-     * An excerpt slices what was said; the teaser says something new. Its
-     * 25-40s narration is written for the funnel (cold open, escalation,
-     * cliffhanger), synthesised fresh, and cut over slots lifted from the
-     * master. A teaser whose script is refused twice, or whose voicing or cut
-     * fails, SKIPS with its reason rather than failing the stage: the
-     * excerpts above are complete deliverables, and a re-run rebuilds the
-     * teaser (synthesis is idempotency-keyed, so paragraphs already bought
-     * are re-served by the vendor, not re-billed). Each skip that leaves no
-     * teaser says why on the Teaser card's place: a refused script from its
-     * own step (decision 293), a voicing or cut skip from this runner
-     * (decision 294). A skip replaces the notes before it, so a retry that
-     * skips again leaves one line. A provider error on the script call is
-     * thrown, so Inngest retries the step; past the retries the teaser skips
-     * too, rather than failing a stage whose excerpts are cut and waiting to
-     * render (decision 294).
-     *
-     * Re-entry keeps every EXISTING row exactly as curated, but a missing
-     * teaser is additive and gets built: projects whose excerpts predate the
-     * teaser feature (production, 2026-09-08 morning) would otherwise never
-     * gain one, since their rows trip the guard on every re-run forever.
-     */
-    const teaserTarget: NoticeTarget = { projectId, subject: 'teaser', subjectId: null }
-    let teaserScript: TeaserWriteResult
-    try {
-      teaserScript = await step.run('write-teaser', async (): Promise<TeaserWriteResult> => {
-        const rows = await listShorts(db, projectId)
-        if (rows.some((row) => row.kind === 'teaser')) {
-          return { ok: false, skipped: 'the teaser already exists — kept as curated' }
-        }
-        // Shared with the rebuild runner (decision 227) — one implementation
-        // of the write, the voicing and their idempotency keys.
-        return writeTeaserScript(projectId)
-      })
-    } catch (error) {
-      // Only a step that used up its retries lands here: an outage that
-      // outlasted them, or a key the provider rejects.
-      const reason = `its script could not be written: ${stepFailure(error)}`
-      await step.run('teaser-script-failed', () =>
-        recordSkip(teaserTarget, `The teaser was skipped: ${reason}`),
-      )
-      teaserScript = { ok: false, skipped: reason }
-    }
-
-    if (!teaserScript.ok && 'gate' in teaserScript) {
-      await step.run('teaser-over-budget', () => markStageFailed(ctx, teaserScript.gate))
-      return { projectId, outcome: 'over-budget' as const }
-    }
-
-    let teaserSkipped = teaserScript.ok ? null : teaserScript.skipped
-    let teaserShortId: string | null = null
-
-    if (teaserScript.ok) {
-      const voiced: TeaserParagraphAudio[] = []
-      for (const [index, paragraph] of teaserScript.paragraphs.entries()) {
-        if (teaserSkipped) break
-        const spoken = await step.run(`teaser-tts-${index}`, () =>
-          voiceTeaserBeat({
-            projectId,
-            scriptVersion: teaserScript.scriptVersion,
-            index,
-            paragraph,
-          }),
-        )
-
-        if (!spoken.ok && 'gate' in spoken) {
-          await step.run('teaser-tts-over-budget', () => markStageFailed(ctx, spoken.gate))
-          return { projectId, outcome: 'over-budget' as const }
-        }
-        if (!spoken.ok) {
-          teaserSkipped = spoken.skipped
-          break
-        }
-        voiced.push({
-          text: paragraph.text,
-          chapterIndex: paragraph.chapterIndex,
-          r2Key: spoken.r2Key,
-          durationMs: spoken.durationMs,
-          wordTimings: spoken.wordTimings,
-        })
-      }
-
-      if (!teaserSkipped) {
-        const assembled = await step.run(
-          'assemble-teaser',
-          async (): Promise<{ shortId: string } | { skipped: string }> => {
-            const timelineRow = await latestTimeline(db, projectId)
-            if (!timelineRow) return { skipped: 'there is no master timeline to lift visuals from' }
-            try {
-              const teaserTimeline = compileTeaserMaster({
-                master: TimelineSchema.parse(timelineRow.json),
-                paragraphs: voiced,
-              })
-              const short = await insertShort(db, {
-                projectId,
-                title: teaserScript.title,
-                segmentRef: {
-                  chapterId: TEASER_CHAPTER_ID,
-                  fromParagraph: 0,
-                  toParagraph: voiced.length - 1,
-                },
-                kind: 'teaser',
-                sourceTimeline: teaserTimeline as unknown as Record<string, unknown>,
-                // The editable script (decision 227): what the teaser studio
-                // opens and the voice runner re-voices from.
-                teaserScript: {
-                  title: teaserScript.title,
-                  paragraphs: teaserScript.paragraphs,
-                  scriptVersion: teaserScript.scriptVersion,
-                },
-                // The voiced beats (decision 230), so the studio's Voice act
-                // starts consistent with the cut this step just made.
-                teaserVoice: {
-                  scriptVersion: teaserScript.scriptVersion,
-                  beats: voiced.map((beat) => ({
-                    textHash: teaserTextHash(beat.text),
-                    r2Key: beat.r2Key,
-                    durationMs: beat.durationMs,
-                    wordTimings: beat.wordTimings,
-                  })),
-                },
-              })
-              return { shortId: short.id }
-            } catch (error) {
-              if (error instanceof ValidationError) {
-                return { skipped: `it could not be cut: ${error.message}` }
-              }
-              throw error
-            }
-          },
-        )
-        if ('shortId' in assembled) teaserShortId = assembled.shortId
-        else teaserSkipped = assembled.skipped
-      }
-
-      // The script landed but its voicing or cut did not: the run result
-      // alone reached nobody, so say it where the teaser would be.
-      const skipped = teaserSkipped
-      if (skipped) {
-        await step.run('teaser-skipped', () =>
-          recordSkip(teaserTarget, `The teaser was skipped: ${skipped}`),
-        )
-      }
-    }
-
-    const toRender = [...outcome.created, ...(teaserShortId ? [teaserShortId] : [])]
-    if (toRender.length > 0) {
+    if (plan.toBuild.length > 0) {
       await step.sendEvent(
-        'request-short-renders',
-        toRender.map((shortId) => events.shortsRenderRequested.create({ projectId, shortId })),
+        'request-point-builds',
+        plan.toBuild.map((pointId) =>
+          events.shortsPointBuildRequested.create({ projectId, pointId }),
+        ),
       )
     }
 
-    /**
-     * A review over nothing is a dead end, not a gate: zero rows and
-     * `awaiting_review` gives the human a screen that says "no shorts yet"
-     * and no button that changes it. Fail the stage with the reasons instead
-     * — Re-run stage is the recovery, and the marking step above makes that
-     * re-run able to succeed.
-     */
-    if (outcome.reused === 0 && toRender.length === 0) {
-      await step.run('nothing-to-review', () =>
-        markStageFailed(ctx, {
-          message:
-            outcome.skipped.length > 0
-              ? `No Shorts could be cut — every segment was skipped: ${outcome.skipped.join(' · ')}`
-              : 'The model picked no usable Shorts segments. Re-run the Shorts stage to try again.',
-        }),
-      )
-      return {
-        projectId,
-        outcome: 'no-candidates' as const,
-        created: 0,
-        reused: 0,
-        skipped: outcome.skipped,
-      }
-    }
-
-    // The screen is where the human curates; the stage says so. Skipped
-    // candidates are in the run result — the activity drawer shows it.
     await step.run('shorts-ready', () =>
-      setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'awaiting_review' }),
+      setProjectStage(db, projectId, {
+        stage: 'shorts',
+        stageStatus: 'awaiting_review',
+        shortsPhase: 'review',
+      }),
     )
 
     return {
       projectId,
-      // The empty outcome returned above, so one of these two is true here.
-      outcome: outcome.reused > 0 ? ('reused-existing' as const) : ('shorts-created' as const),
-      created: outcome.created.length,
-      reused: outcome.reused,
-      // A run parked before decision 300 replays this step without it.
-      replaced: outcome.replaced ?? 0,
-      skipped: outcome.skipped,
-      teaser: teaserShortId ?? (teaserSkipped ? `skipped: ${teaserSkipped}` : null),
+      outcome:
+        plan.toBuild.length > 0 ? ('builds-requested' as const) : ('reused-existing' as const),
+      requested: plan.toBuild.length,
+      kept: plan.total - plan.toBuild.length,
+      replaced: plan.replaced,
     }
   },
 )

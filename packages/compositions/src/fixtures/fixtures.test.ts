@@ -8,7 +8,12 @@ import {
 import { describe, expect, it } from 'vitest'
 import { GRAPHIC_STAGED_DURATION_MS, GRAPHIC_STAGED_SCENE } from './graphic'
 import { FIXTURE_AUDIO_SILENCE, FIXTURE_IMAGE_SKYLINE } from './media'
-import { FIXTURE_SHORT_TIMELINE, FIXTURE_TIMELINE, renderFixtureTimeline } from './timeline'
+import {
+  FIXTURE_SHORT_BRIDGE_TIMELINE,
+  FIXTURE_SHORT_TIMELINE,
+  FIXTURE_TIMELINE,
+  renderFixtureTimeline,
+} from './timeline'
 
 describe('the fixture timeline', () => {
   it('is a valid Timeline under the contract schema', () => {
@@ -39,6 +44,18 @@ describe('the vertical fixture', () => {
 
   it('is a MATERIALISED copy, like the master fixture — the guard must flag it', () => {
     expect(canonicalTimelineIssues(FIXTURE_SHORT_TIMELINE)).toContain('narration.0.url')
+  })
+})
+
+describe('the vertical bridge fixture', () => {
+  it('parses, with a punched, left-cropped still and both bridge overlays', () => {
+    const parsed = TimelineSchema.parse(JSON.parse(JSON.stringify(FIXTURE_SHORT_BRIDGE_TIMELINE)))
+    expect(parsed.slots[0]?.motion.kind).toBe('punch')
+    expect(parsed.slots[0]?.crop).toBe('left')
+    expect(parsed.overlays.map((overlay) => overlay.kind)).toEqual([
+      'relatedArrow',
+      'subscribeBadge',
+    ])
   })
 })
 

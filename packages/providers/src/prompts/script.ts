@@ -159,7 +159,7 @@ ${literalBibleText(bible.hedgingRules)}`
 }
 
 /** The channel's own script rules, protected so `fillSlots` leaves their text as typed. */
-const scriptRules = (inUse: BibleInUse): string =>
+export const scriptRules = (inUse: BibleInUse): string =>
   literalBibleText(channelRulesBlock(inUse.bible, 'script'))
 
 /** The channel's drafted hooks and openings, for the opening chapter's rules; empty when it has none. */

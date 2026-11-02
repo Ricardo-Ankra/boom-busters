@@ -82,7 +82,7 @@ export function pickTeaserSlot(master: Timeline, chapterId: string): TimelineSlo
 }
 
 /** Even word spacing for audio that arrived without an alignment. */
-function evenTimings(text: string, durationMs: number): WordTiming[] {
+export function evenTimings(text: string, durationMs: number): WordTiming[] {
   const words = text.split(/\s+/).filter((word) => word.length > 0)
   if (words.length === 0) return []
   const per = Math.max(1, Math.floor(durationMs / words.length))

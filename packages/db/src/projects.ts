@@ -64,6 +64,7 @@ export interface ProjectSummary {
   hasActiveRun: boolean
   /** Which visuals checkpoint the project sits at (staged-visuals design). */
   visualsPhase: 'plan' | 'board' | null
+  shortsPhase: 'points' | 'review' | null
   /** The Director's Book as stored (decision 252); parse with `DirectorsBookSchema`. */
   direction: Record<string, unknown> | null
   /** The plan-level job in flight (decision 286); parse with `VisualsJobSchema`. */
@@ -82,6 +83,7 @@ const summaryColumns = {
   inngestRunId: projects.inngestRunId,
   cancelledAt: projects.cancelledAt,
   visualsPhase: projects.visualsPhase,
+  shortsPhase: projects.shortsPhase,
   direction: projects.direction,
   visualsJob: projects.visualsJob,
   createdAt: projects.createdAt,
@@ -184,6 +186,8 @@ export async function setProjectStage(
      * project was stopped while it is plainly running.
      */
     cancelledAt?: Date | null
+    /** The Shorts stage's checkpoint; `null` clears it, omitted leaves it. */
+    shortsPhase?: 'points' | 'review' | null
   },
 ): Promise<void> {
   await db
@@ -193,9 +197,43 @@ export async function setProjectStage(
       stageStatus: next.stageStatus,
       ...(next.inngestRunId === undefined ? {} : { inngestRunId: next.inngestRunId }),
       ...(next.cancelledAt === undefined ? {} : { cancelledAt: next.cancelledAt }),
+      ...(next.shortsPhase === undefined ? {} : { shortsPhase: next.shortsPhase }),
       updatedAt: new Date(),
     })
     .where(eq(projects.id, id))
+}
+
+/**
+ * Compare-and-set on the Shorts checkpoint: move the project from
+ * (`shorts`, `from.shortsPhase`, `from.stageStatus`) to `to` in one UPDATE and
+ * report whether this caller won. Two presses racing each other cannot both
+ * pass a read-then-write; exactly one of them matches the WHERE.
+ */
+export async function claimShortsCheckpoint(
+  db: Database,
+  id: string,
+  change: {
+    from: { shortsPhase: 'points' | 'review'; stageStatus: StageStatus }
+    to: { shortsPhase: 'points' | 'review'; stageStatus: StageStatus }
+  },
+): Promise<boolean> {
+  const rows = await db
+    .update(projects)
+    .set({
+      stageStatus: change.to.stageStatus,
+      shortsPhase: change.to.shortsPhase,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(projects.id, id),
+        eq(projects.stage, 'shorts'),
+        eq(projects.shortsPhase, change.from.shortsPhase),
+        eq(projects.stageStatus, change.from.stageStatus),
+      ),
+    )
+    .returning({ id: projects.id })
+  return rows.length > 0
 }
 
 /**

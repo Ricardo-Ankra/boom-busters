@@ -91,6 +91,8 @@ export const MotionSpecSchema = z.discriminatedUnion('kind', [
     /** Plain-English path: "left to right across the trading floor". */
     path: z.string().min(1),
   }),
+  /** A scale emphasis on a beat; the numbers come from SHORT_RULES at compile time. */
+  z.object({ kind: z.literal('punch') }),
 ])
 export type MotionSpec = z.infer<typeof MotionSpecSchema>
 

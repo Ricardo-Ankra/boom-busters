@@ -1,7 +1,7 @@
 import { AbsoluteFill, Img, useCurrentFrame } from 'remotion'
-import type { TimelineMotion } from '@boom-busters/schemas'
+import type { CropFocus, TimelineMotion } from '@boom-busters/schemas'
 import { mediaCrossOrigin } from '../lib/cross-origin'
-import { kenburnsScale } from '../lib/motion'
+import { cropPosition, kenburnsScale } from '../lib/motion'
 
 /**
  * A full-frame still with the compiler's resolved Ken Burns move (decision
@@ -13,10 +13,12 @@ export function KenBurnsImage({
   src,
   motion,
   durationInFrames,
+  crop,
 }: {
   src: string
   motion: TimelineMotion
   durationInFrames: number
+  crop?: CropFocus
 }) {
   const frame = useCurrentFrame()
   const progress = durationInFrames <= 1 ? 1 : frame / (durationInFrames - 1)
@@ -32,6 +34,7 @@ export function KenBurnsImage({
           width: '100%',
           height: '100%',
           objectFit: 'cover',
+          objectPosition: cropPosition(crop),
           transform: `scale(${scale})`,
           transformOrigin: 'center center',
         }}

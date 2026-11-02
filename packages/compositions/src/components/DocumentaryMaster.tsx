@@ -17,6 +17,7 @@ import {
   mediaUrl,
   msToFrames,
   previewMediaUrl,
+  punchScale,
   transitionOpacity,
 } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
@@ -30,8 +31,10 @@ import { KaraokeCaptions } from './KaraokeCaptions'
 import { KenBurnsImage } from './KenBurnsImage'
 import { LowerThird } from './LowerThird'
 import { MusicBed } from './MusicBed'
+import { RelatedArrow } from './RelatedArrow'
 import { SocialPost } from './SocialPost'
 import { StockClip } from './StockClip'
+import { SubscribeBadge } from './SubscribeBadge'
 import { Watermark } from './Watermark'
 
 /**
@@ -91,6 +94,14 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
             />
           ) : overlay.kind === 'endCta' ? (
             <EndCta text={overlay.props.text} brand={brand} />
+          ) : overlay.kind === 'relatedArrow' ? (
+            <RelatedArrow label={overlay.props.label} brand={brand} />
+          ) : overlay.kind === 'subscribeBadge' ? (
+            <SubscribeBadge
+              channelName={overlay.props.channelName}
+              handle={overlay.props.handle}
+              brand={brand}
+            />
           ) : (
             <Watermark brand={brand} />
           )}
@@ -153,14 +164,20 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
   const graded = (child: ReactNode) =>
     grade ? <AbsoluteFill style={{ filter: grade }}>{child}</AbsoluteFill> : child
 
-  return (
-    <AbsoluteFill style={{ opacity }}>
+  const punch =
+    slot.motion.kind === 'punch'
+      ? punchScale(slot.motion.scale, slot.motion.durationMs, (frame / fps) * 1000)
+      : undefined
+
+  const content = (
+    <>
       {slot.payload.kind === 'image' ? (
         graded(
           <KenBurnsImage
             src={mediaUrl(slot.payload.src)}
             motion={slot.motion}
             durationInFrames={durationInFrames}
+            {...(slot.crop !== undefined ? { crop: slot.crop } : {})}
           />,
         )
       ) : slot.payload.kind === 'video' ? (
@@ -173,6 +190,7 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
             {...(slot.payload.trimStartMs !== undefined
               ? { trimStartMs: slot.payload.trimStartMs }
               : {})}
+            {...(slot.crop !== undefined ? { crop: slot.crop } : {})}
           />,
         )
       ) : slot.payload.kind === 'chart' ? (
@@ -187,6 +205,20 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
         <SocialPost payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
       ) : (
         <AnimatedMap payload={slot.payload} brand={brand} durationInFrames={durationInFrames} />
+      )}
+    </>
+  )
+
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      {punch === undefined ? (
+        content
+      ) : (
+        // The punch-in (playbook Shorts, spec 4.5): any payload kind scales
+        // about the frame centre; the opacity wrapper stays outside it.
+        <AbsoluteFill style={{ transform: `scale(${punch})`, transformOrigin: 'center center' }}>
+          {content}
+        </AbsoluteFill>
       )}
     </AbsoluteFill>
   )

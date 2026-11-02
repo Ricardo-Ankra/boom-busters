@@ -1,4 +1,5 @@
 import {
+  approvedTalkingPointSet,
   channelForProject,
   getRendersByIds,
   latestScriptParagraphSources,
@@ -10,6 +11,7 @@ import type { Database, RenderRow } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import {
   estimateRenderCostUsd,
+  PointScriptRecordSchema,
   teaserTextHash,
   TeaserFetchesRecordSchema,
   TeaserScriptRecordSchema,
@@ -17,13 +19,21 @@ import {
   TeaserVoiceRecordSchema,
   TimelineSchema,
 } from '@boom-busters/schemas'
-import type { SlotCandidate, TeaserFetchState, Timeline, TimelineSlot } from '@boom-busters/schemas'
+import type {
+  ShortType,
+  SlotCandidate,
+  TeaserFetchState,
+  Timeline,
+  TimelineSlot,
+} from '@boom-busters/schemas'
 import {
   masterChapterIds,
   pickTeaserSlot,
   segmentInMaster,
   teaserShotPool,
 } from '@boom-busters/timeline'
+import { pointFindings, pointStudioModel } from '@/lib/point-studio-model'
+import type { PointStudioModel } from '@/lib/point-studio-model'
 import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
 import { stillSlotEstimateUsd } from '@/lib/visual-assets'
 
@@ -112,6 +122,17 @@ export interface TeaserStudioModel {
   stillEstimateUsd: number
 }
 
+/** What a point Short's card says of it (design 6): its type, promise and state. */
+export interface PointCardModel {
+  type: ShortType
+  /** The long-form chapters the Short's bridge promises, by title. */
+  bridgeChapterTitles: string[]
+  /** How many rule-book findings the assembled Short has. */
+  findings: number
+  /** Written from an earlier script than the long form's latest. */
+  scriptBehind: boolean
+}
+
 export interface ShortCardModel {
   id: string
   title: string
@@ -121,7 +142,7 @@ export interface ShortCardModel {
   captions: boolean
   relatedLinkChecked: boolean
   /** An excerpt slices the master; a teaser speaks its own narration. */
-  kind: 'excerpt' | 'teaser'
+  kind: 'excerpt' | 'teaser' | 'point'
   chapterTitle: string | null
   fromParagraph: number
   toParagraph: number
@@ -137,6 +158,12 @@ export interface ShortCardModel {
   render: ShortRenderProp | null
   /** The studio's data — teaser cards only, null on excerpts. */
   teaser: TeaserStudioModel | null
+  /** The talking point a point Short was written for; null on the others. */
+  pointId: string | null
+  /** What a point card shows — point cards only. */
+  point: PointCardModel | null
+  /** The point Short studio's data — point cards only. */
+  studio: PointStudioModel | null
 }
 
 export interface ShortsModel {
@@ -168,6 +195,12 @@ export async function shortsModel(
   options: {
     /** Presigner for the studio's per-beat audio; null when R2 is absent. */
     presign?: ((key: string) => Promise<string>) | null
+    /**
+     * The point Short whose studio is open. Only that card carries the full
+     * studio model; every other point card gets just what the card shows, from
+     * rows and sources already read (the studio polls while work is pending).
+     */
+    studioShortId?: string | null
   } = {},
 ): Promise<ShortsModel> {
   const rows = await listShorts(db, projectId)
@@ -338,12 +371,17 @@ export async function shortsModel(
     rows.flatMap((row) => (row.renderId ? [row.renderId] : [])),
   )
 
+  // A point card names its talking point's type and bridge chapters.
+  const points = rows.some((row) => row.kind === 'point')
+    ? ((await approvedTalkingPointSet(db, projectId))?.points ?? [])
+    : []
+
   const shorts: ShortCardModel[] = []
   for (const row of rows) {
     const render = row.renderId ? rendersById.get(row.renderId) : undefined
     // A teaser's runtime lives in its own mini master, not the project's.
     const sourceParsed =
-      row.kind === 'teaser' && row.sourceTimeline
+      (row.kind === 'teaser' || row.kind === 'point') && row.sourceTimeline
         ? TimelineSchema.safeParse(row.sourceTimeline)
         : null
     const durationMs = segmentDurationMs(
@@ -352,6 +390,15 @@ export async function shortsModel(
     )
     const stale =
       row.kind === 'excerpt' && master !== null && !segmentInMaster(master, row.segmentRef)
+    const studio =
+      row.kind === 'point' && row.id === options.studioShortId
+        ? await pointStudioModel(db, row.id, { presign: options.presign })
+        : null
+    const talkingPoint = row.pointId ? points.find((point) => point.id === row.pointId) : undefined
+    // What the card shows, without the studio: a bad stored script drops the
+    // badges of this card only.
+    const pointScript =
+      row.kind === 'point' ? PointScriptRecordSchema.safeParse(row.pointScript) : null
     shorts.push({
       id: row.id,
       title: row.title,
@@ -360,6 +407,7 @@ export async function shortsModel(
       captions: row.captions,
       relatedLinkChecked: row.relatedLinkChecked,
       kind: row.kind,
+      pointId: row.pointId ?? null,
       chapterTitle: chapterTitles.get(row.segmentRef.chapterId) ?? null,
       fromParagraph: row.segmentRef.fromParagraph,
       toParagraph: row.segmentRef.toParagraph,
@@ -383,6 +431,19 @@ export async function shortsModel(
               stillEstimateUsd,
             )
           : null,
+      point:
+        pointScript?.success && talkingPoint
+          ? {
+              type: talkingPoint.type,
+              bridgeChapterTitles: talkingPoint.bridgeChapters.flatMap((index) => {
+                const title = sources.chapters[index]?.title
+                return title ? [title] : []
+              }),
+              findings: pointFindings(row).length,
+              scriptBehind: sources.scriptVersion > pointScript.data.scriptVersion,
+            }
+          : null,
+      studio,
     })
   }
 

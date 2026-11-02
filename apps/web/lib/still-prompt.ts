@@ -278,7 +278,7 @@ export function planStillReferences(
   }
 }
 
-export type StillKind = 'still' | 'plate' | 'teaser'
+export type StillKind = 'still' | 'plate' | 'teaser' | 'short'
 
 export interface StillPromptInput {
   /** The brief's stored prompt. */
@@ -308,7 +308,7 @@ export function assembleStillPrompt(input: StillPromptInput): string {
     kind === 'plate' ? '' : framingLead(input.camera, input.shotSize),
     camera ?? '',
     stripBannedWords(sceneOf(input.scene)),
-    kind === 'teaser' ? TEASER_COMPOSITION : '',
+    kind === 'teaser' || kind === 'short' ? TEASER_COMPOSITION : '',
     references.join(' '),
     kind === 'plate' ? PLATE_PHOTOGRAPH_LINE : PHOTOGRAPH_LINE,
   ]

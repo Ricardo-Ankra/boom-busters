@@ -53,9 +53,11 @@ export interface ShortCompileInput {
   /**
    * `loop`: the Short just ends and YouTube's player wraps to the start —
    * expressed as the absence of an ending overlay. `cta`: an endCta overlay
-   * covers the final moments pointing viewers at the full video.
+   * covers the final moments pointing viewers at the full video. `bridge`
+   * (point Shorts): no card; the window's relatedArrow and subscribeBadge
+   * overlays ride along, re-clocked.
    */
-  ending: 'loop' | 'cta'
+  ending: 'loop' | 'cta' | 'bridge'
   /** The shorts-style bed the caller picked from the music library. */
   music: { r2Key: string } | null
   ctaText?: string
@@ -185,7 +187,8 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
   }
 
   // Chapter cards and lower thirds are 16:9 furniture; a Short is visuals
-  // and captions. The only overlay is the CTA ending, when asked for.
+  // and captions. The only overlay is the CTA ending, when asked for, or a
+  // point Short's two bridge graphics, clipped and re-clocked to the window.
   const overlays: Overlay[] =
     input.ending === 'cta'
       ? [
@@ -196,7 +199,20 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
             props: { text: input.ctaText ?? DEFAULT_CTA_TEXT },
           },
         ]
-      : []
+      : input.ending === 'bridge'
+        ? master.overlays
+            .filter(
+              (overlay) =>
+                (overlay.kind === 'relatedArrow' || overlay.kind === 'subscribeBadge') &&
+                overlay.startMs < windowEnd &&
+                overlay.startMs + overlay.durationMs > windowStart,
+            )
+            .map((overlay) => {
+              const startMs = Math.max(0, overlay.startMs - windowStart)
+              const endMs = Math.min(overlay.startMs + overlay.durationMs, windowEnd) - windowStart
+              return { ...overlay, startMs, durationMs: endMs - startMs }
+            })
+        : []
 
   // The bed is the caller's pick (shorts style, not the documentary bed);
   // the curve is rebuilt for the re-clocked narration with the same brand

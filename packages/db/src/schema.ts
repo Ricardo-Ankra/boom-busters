@@ -8,8 +8,13 @@ import {
 import type {
   ChannelBible,
   GroundedResearch,
+  PointFetchesRecord,
+  PointPlanRecord,
+  PointScriptRecord,
+  PointVoiceRecord,
   Series,
   Settings,
+  TalkingPoint,
   WordTiming,
   WorkspaceSettings,
 } from '@boom-busters/schemas'
@@ -169,7 +174,7 @@ export const renderStatusEnum = pgEnum('render_status', [
 export const shortEndingEnum = pgEnum('short_ending', ['loop', 'cta'])
 
 /** Excerpts slice the master; a teaser carries its own narration (decision 225). */
-export const shortKindEnum = pgEnum('short_kind', ['excerpt', 'teaser'])
+export const shortKindEnum = pgEnum('short_kind', ['excerpt', 'teaser', 'point'])
 
 export const publishTargetEnum = pgEnum('publish_target', ['master', 'short'])
 export const publishStatusEnum = pgEnum('publish_status', [
@@ -437,6 +442,13 @@ export const projects = pgTable(
      * two parks' reach.
      */
     visualsPhase: text('visuals_phase', { enum: ['plan', 'board'] }),
+    /**
+     * Which checkpoint of the Shorts stage the project sits at (playbook
+     * Shorts design, 2026-11-01): `points` while the owner reviews the
+     * talking-point proposal, `review` once the point Shorts exist. Null
+     * outside the stage.
+     */
+    shortsPhase: text('shorts_phase', { enum: ['points', 'review'] }),
     /**
      * The per-film Director's Book (decision 252), `DirectorsBookSchema` in
      * schemas. Null until the visuals stage drafts one; the owner's edits on
@@ -1114,10 +1126,47 @@ export const shorts = pgTable(
      * Null for excerpts and for teasers that never fetched anything.
      */
     teaserFetches: jsonb('teaser_fetches').$type<Record<string, unknown>>(),
+    /**
+     * The talking point a `point` Short pays off (playbook Shorts design
+     * 3.5): the point's id inside its `talking_point_sets` row. Null for
+     * excerpts and teasers.
+     */
+    pointId: text('point_id'),
+    /** The point's editable script, `PointScriptRecordSchema`. Null unless `kind` is `point`. */
+    pointScript: jsonb('point_script').$type<PointScriptRecord>(),
+    /** The voiced paragraphs, `PointVoiceRecordSchema`. */
+    pointVoice: jsonb('point_voice').$type<PointVoiceRecord>(),
+    /** The shot plan, `PointPlanRecordSchema`. */
+    pointPlan: jsonb('point_plan').$type<PointPlanRecord>(),
+    /** Fetched material and request state, `PointFetchesRecordSchema`. */
+    pointFetches: jsonb('point_fetches').$type<PointFetchesRecord>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [index('shorts_project_idx').on(t.projectId)],
+)
+
+/**
+ * The talking-point proposals for a project (playbook Shorts design 3.2).
+ * Append only: a re-proposal is a new version, and approval stamps one row.
+ */
+export const talkingPointSets = pgTable(
+  'talking_point_sets',
+  {
+    id: id(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    /** The `scripts.version` the points were drawn from. */
+    scriptVersion: integer('script_version').notNull(),
+    points: jsonb('points').notNull().$type<TalkingPoint[]>(),
+    /** The owner's steer for the next proposal, when this one came from a re-run. */
+    note: text('note'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('talking_point_sets_project_version_key').on(t.projectId, t.version)],
 )
 
 export const renders = pgTable(
@@ -1509,6 +1558,7 @@ export type AssetRow = typeof assets.$inferSelect
 export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type ShortRow = typeof shorts.$inferSelect
+export type TalkingPointSetRow = typeof talkingPointSets.$inferSelect
 export type PublishRecordRow = typeof publishRecords.$inferSelect
 export type ProviderCredentialRow = typeof providerCredentials.$inferSelect
 export type CostLedgerRow = typeof costLedger.$inferSelect
