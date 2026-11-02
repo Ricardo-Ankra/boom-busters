@@ -62,11 +62,15 @@ export type VidiqCaller = (
 function refusedKey(tool: string, error: unknown): ValidationError | undefined {
   const status = error instanceof StreamableHTTPError ? error.code : undefined
   const message = error instanceof Error ? error.message : String(error)
+  // Only the verify call reads a key refusal from text: another tool's error result may say
+  // "Forbidden" about a video, and that must stay a VidiqError the caller can skip.
   const says =
-    error instanceof VidiqError && /unauthori[sz]ed|forbidden|invalid api key/i.test(message)
+    tool === 'vidiq_balance' &&
+    error instanceof VidiqError &&
+    /unauthori[sz]ed|forbidden|invalid api key/i.test(message)
   if (status !== 401 && status !== 403 && !says) return undefined
   return new ValidationError(
-    `vidiq refused the API key${status ? ` (${status})` : ''}. Check it in Settings → Connections.`,
+    `vidiq refused the API key${status ? ` (${status})` : ''}. Check it in Settings, Connections.`,
     { field: 'connections.vidiq', cause: error },
   )
 }

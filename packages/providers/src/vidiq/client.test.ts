@@ -87,6 +87,26 @@ describe('a refused key', () => {
     expect(isRetriable(error)).toBe(false)
   })
 
+  it('keeps a Forbidden error result from another tool a VidiqError', async () => {
+    const c = clientOver(
+      async () => ({
+        isError: true,
+        content: [{ type: 'text', text: 'Forbidden: captions not available for this video' }],
+      }),
+      never,
+    )
+    const error = await c.videoTranscript({ videoId: 'abc' }).catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(VidiqError)
+    expect(error).not.toBeInstanceOf(ValidationError)
+  })
+
+  it('names Settings, Connections in the refusal', async () => {
+    const error = await failing(new StreamableHTTPError(401, 'nope'))
+      .balance()
+      .catch((e: unknown) => e)
+    expect((error as Error).message).toContain('Settings, Connections')
+  })
+
   it('leaves a network failure retriable', async () => {
     const error = await failing(new VidiqError('vidiq_balance', 'fetch failed'))
       .balance()
