@@ -442,6 +442,43 @@ const metadataCases: LiftCase[] = [
       chapters: CHAPTERS_META,
     }),
   ),
+  liftAware(
+    'metadata-titles-search',
+    (bible, name) =>
+      buildTitlesRequest({
+        bible,
+        channelName: channelNameFor(bible, name),
+        caseTitle: 'Wirecard',
+        hook: HOOK,
+        target: 'master',
+        workingTitle: 'How Wirecard Lost 1.9 Billion Euros',
+        claims: CLAIMS,
+        centralQuestion: 'How did 1.9 billion euros never exist?',
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The brief's own words: the keyword in two lines, the subject in the rule.
+    ['"wirecard scandal"', '"wirecard scandal"', '"Wirecard"'],
+  ),
+  liftAware(
+    'metadata-description-search',
+    (bible, name) =>
+      buildDescriptionRequest({
+        bible,
+        channelName: channelNameFor(bible, name),
+        target: 'master',
+        claims: CLAIMS,
+        centralQuestion: 'How did 1.9 billion euros never exist?',
+        chapters: CHAPTERS_META,
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The keyword in two lines, then the searched questions.
+    [
+      '"wirecard scandal"',
+      '"wirecard scandal"',
+      '"Where did the missing billion go?"',
+      '"Who signed off the audits?"',
+    ],
+  ),
   liftAware('metadata-description-short', (bible, name) =>
     buildDescriptionRequest({
       bible,

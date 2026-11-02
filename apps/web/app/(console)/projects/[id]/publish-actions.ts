@@ -13,6 +13,7 @@ import {
   hasLiveRun,
   latestRender,
   latestScriptParagraphSources,
+  listCastMembers,
   channelForProject,
   channelYoutubeConnected,
   channelYoutubeToken,
@@ -52,6 +53,7 @@ import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtu
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
+import { searchTags } from '@/lib/search-tags'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
@@ -272,6 +274,10 @@ export async function generateDescription(
   const bibleGate = await completeFrozenBible(projectId)
   if (!('frozen' in bibleGate)) return bibleGate
 
+  // The brief the project froze (null for a project started without one).
+  const brief = (await getProject(db, projectId))?.searchBrief ?? null
+  const cast = brief ? (await listCastMembers(db, projectId)).map((member) => member.name) : []
+
   const [grounding, ingredients, sources] = await Promise.all([
     metadataGrounding(projectId),
     descriptionIngredients(db, projectId),
@@ -302,6 +308,7 @@ export async function generateDescription(
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
           chapters,
           ...(shortText ? { shortText } : {}),
+          ...(brief ? { searchBrief: brief } : {}),
         }),
         parse: (text, note) => parseDescriptionAnswer(text, chapters.length, note),
         complete: completeForProject(projectId, { estimateOutputTokens: 800 }),
@@ -321,6 +328,8 @@ export async function generateDescription(
   }
 
   const stored = PublishDraftSchema.safeParse(record.metadata)
+  // The brief's own tags go after the owner's and before the model's (spec 7.5).
+  const fromBrief = brief ? searchTags(brief, cast) : []
   const patch = {
     descriptionBody: answer.body,
     bodyScriptVersion: grounding.scriptVersion,
@@ -335,7 +344,8 @@ export async function generateDescription(
         }
       : {}),
     hashtags: answer.hashtags,
-    tags: joinTags(stored.success ? stored.data.tags : [], answer.tags),
+    tags: joinTags(stored.success ? stored.data.tags : [], [...fromBrief, ...answer.tags]),
+    searchTags: fromBrief,
   }
   // A patch the draft schema would refuse would make the whole draft unreadable
   // at upload, which would then fall back to the pitch title (decision 303, review).
@@ -426,6 +436,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           claims: grounding.claims,
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
           ...(shortText ? { shortText } : {}),
+          ...(project.searchBrief ? { searchBrief: project.searchBrief } : {}),
         }),
         parse: (text) => parseTitleOptions(text),
         complete: completeForProject(projectId, { estimateOutputTokens: 500 }),

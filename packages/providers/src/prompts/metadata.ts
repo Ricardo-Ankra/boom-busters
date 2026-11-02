@@ -2,11 +2,13 @@ import {
   CHAPTER_GLOSS_MAX,
   HASHTAG_MAX,
   HASHTAGS_MAX,
+  maskFigures,
+  searchBriefLine,
   splitHashtags,
   stripNarrationMarkup,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { BibleInUse } from '@boom-busters/schemas'
+import type { BibleInUse, SearchBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { exampleEntriesBlock, fillSlots, literalBibleText, noun } from './bible'
 import { parseJsonCompletion } from './json'
@@ -47,6 +49,104 @@ function spokenExcerpt(text: string): string {
     : spoken
 }
 
+/**
+ * Third-party search text as one quoted line, literal to `fillSlots`: it can
+ * neither start a line nor open a bible marker. Keywords have any figure
+ * replaced by `{figure}`, so a title never borrows one from search data.
+ */
+const quotedKeyword = (text: string): string =>
+  literalBibleText(JSON.stringify(maskFigures(searchBriefLine(text))))
+
+/** The brief's subject, one quoted line, figures left as typed. */
+const quotedSubject = (text: string): string =>
+  literalBibleText(JSON.stringify(searchBriefLine(text)))
+
+/** Non-empty quoted lines, joined by `separator`. */
+const quotedList = (texts: readonly string[], separator: string): string =>
+  texts
+    .filter((text) => searchBriefLine(text) !== '')
+    .map(quotedKeyword)
+    .join(separator)
+
+/**
+ * What the search brief adds to the titles' rules; nothing, not even a blank
+ * line, without a brief. A master gets the target keyword, two secondary
+ * keywords and the title patterns; a Short only the target keyword.
+ */
+function titleSearchRules(
+  brief: SearchBrief | null | undefined,
+  target: 'master' | 'short',
+): string {
+  if (!brief) return ''
+  const keyword =
+    brief.targetKeyword && searchBriefLine(brief.targetKeyword.keyword) !== ''
+      ? quotedKeyword(brief.targetKeyword.keyword)
+      : null
+  if (target === 'short') {
+    return keyword
+      ? `\n- The full film is searched for as ${keyword}: use the phrase only where it fits what the Short says.`
+      : ''
+  }
+  const subject = searchBriefLine(brief.subject) ? quotedSubject(brief.subject) : null
+  const related = quotedList(brief.secondaryKeywords.map((row) => row.keyword).slice(0, 2), ', ')
+  const patterns = quotedList(brief.titlePatterns, '; ')
+  const lines = [
+    ...(keyword ? [`- The film is searched for as ${keyword}.`] : []),
+    ...(related ? [`- Related searches: ${related}.`] : []),
+    ...(patterns
+      ? [
+          `- Title shapes that won on this subject, for their shape only, never their words or figures: ${patterns}.`,
+        ]
+      : []),
+    ...(keyword || subject
+      ? [
+          `- At least half the titles contain ${[keyword, subject].filter(Boolean).join(' or ')} as people search it; any figure still comes only from the claims.`,
+        ]
+      : []),
+  ]
+  return lines.length > 0 ? `\n${lines.join('\n')}` : ''
+}
+
+/**
+ * What the search brief adds to the description's rules; nothing without one.
+ * The body's shape is a master's: a Short's body has its own.
+ */
+function descriptionSearchRules(
+  brief: SearchBrief | null | undefined,
+  target: 'master' | 'short',
+): string {
+  if (!brief) return ''
+  const keyword =
+    brief.targetKeyword && searchBriefLine(brief.targetKeyword.keyword) !== ''
+      ? quotedKeyword(brief.targetKeyword.keyword)
+      : null
+  const related = quotedList(
+    brief.secondaryKeywords.map((row) => row.keyword),
+    ', ',
+  )
+  const questions = quotedList(brief.searchedQuestions, '; ')
+  const lines = [
+    ...(keyword ? [`- The film is searched for as ${keyword}.`] : []),
+    ...(related ? [`- Related searches: ${related}.`] : []),
+    ...(questions
+      ? [
+          `- Questions people search: ${questions}. Answer one only where the claims support an answer.`,
+        ]
+      : []),
+    ...(keyword
+      ? [
+          `- The phrase ${keyword} appears within the first 150 characters of "body", the part search shows.`,
+        ]
+      : []),
+    ...(target === 'master'
+      ? [
+          '- "body" follows the shape the winning videos on this subject share: an opening dated scene with one figure taken from the claims, a line saying this is the full story, and a closing question that invites a comment.',
+        ]
+      : []),
+  ]
+  return lines.length > 0 ? `\n${lines.join('\n')}` : ''
+}
+
 export function buildTitlesRequest(input: {
   /** The channel bible the project froze. */
   bible: BibleInUse
@@ -73,6 +173,8 @@ export function buildTitlesRequest(input: {
    * Short's titles a summary of the whole film.
    */
   shortText?: string
+  /** The case's search brief; absent or null changes nothing in the prompt. */
+  searchBrief?: SearchBrief | null
 }): LLMTaskRequest {
   const shape = `Return JSON: {"titles": ["...", ...]} — exactly ${TITLE_OPTION_COUNT} strings.`
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -109,7 +211,7 @@ ${
   input.target === 'short'
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
     : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
-}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
+}${titleSearchRules(input.searchBrief, input.target)}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
       input.bible,
     ),
     messages: clip
@@ -180,6 +282,8 @@ export function buildDescriptionRequest(input: {
   chapters: readonly { title: string; text: string }[]
   /** What a Short narrates, for a Short. */
   shortText?: string
+  /** The case's search brief; absent or null changes nothing in the prompt. */
+  searchBrief?: SearchBrief | null
 }): LLMTaskRequest {
   const glossCount = input.target === 'master' ? input.chapters.length : 0
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -216,7 +320,7 @@ Rules:
   first${clip ? ', then what this Short is about' : ''}.
 - "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: [[example:metadata-tag-kinds]]${
         clip ? ', leading with the ones this Short names' : ''
-      }.`,
+      }.${descriptionSearchRules(input.searchBrief, input.target)}`,
       input.bible,
     ),
     messages: clip

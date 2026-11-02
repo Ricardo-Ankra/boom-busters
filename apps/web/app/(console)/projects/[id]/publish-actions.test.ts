@@ -10,9 +10,11 @@ import {
   getPublishRecord,
   insertShort,
   insertTimeline,
+  listCastMembers,
   recordChannelYoutubeVerify,
   saveChannelYoutubeConnection,
   updatePublishRecord,
+  projects,
   publishRecords,
   requireTestDatabase,
   saveChapter,
@@ -27,7 +29,7 @@ import {
   FIRST_CHANNEL_ID,
   resolveBrandKit,
 } from '@boom-busters/schemas'
-import type { Timeline } from '@boom-busters/schemas'
+import type { SearchBrief, Timeline } from '@boom-busters/schemas'
 import type * as YoutubeLib from '@/lib/youtube'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
@@ -551,5 +553,107 @@ describeDb('point Shorts publish only after their long form', () => {
       expect(await schedulePublish('short', id, at(day))).toEqual(expected)
       expect(await publishNow('short', id)).toEqual(expected)
     }
+  })
+})
+
+/**
+ * The frozen search brief: the prompts carry it, the tags lead with it, and a
+ * master's first three titles are scored with VidIQ (mock client here, so no
+ * credit is spent), each call a ledger row. A cap refusal keeps the titles.
+ */
+describeDb('the search brief in titles, description and tags', () => {
+  const keyword = (word: string) => ({
+    keyword: word,
+    volume: 50,
+    competition: 40,
+    overall: 50,
+    estimatedMonthlySearch: 1000,
+    growthPct: 0,
+  })
+  const BRIEF: SearchBrief = {
+    subject: 'Wirecard',
+    measuredAt: '2026-11-02T12:00:00.000Z',
+    targetKeyword: keyword('wirecard scandal'),
+    secondaryKeywords: [keyword('wirecard documentary')],
+    searchedQuestions: ['Where did the missing billion go?'],
+    outliers: [],
+    titlePatterns: [],
+    toldAlready: [],
+    angleOptions: [],
+    chosenAngle: null,
+  }
+  const TITLES = JSON.stringify({
+    titles: ['One title here', 'Two title here', 'Three title here', 'Four title here'],
+  })
+  const DESCRIPTION = JSON.stringify({
+    body: 'How Wirecard collapsed in June 2020.',
+    chapterGlosses: ['The audit'],
+    hashtags: ['#Wirecard', '#Fraud', '#Documentary'],
+    tags: ['Wirecard', 'wirecard scandal', 'fintech fraud'],
+  })
+  const setBrief = (value: SearchBrief | null) => db.update(projects).set({ searchBrief: value })
+  const draft = async () =>
+    (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.metadata as Record<string, unknown>
+
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    await seed(db)
+    await db.delete(publishRecords)
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'EY refused to sign the accounts.',
+      estRuntimeSec: 12,
+    })
+  })
+
+  afterEach(async () => {
+    await setBrief(null)
+    vi.unstubAllEnvs()
+  })
+
+  it('sends the brief to the titles prompt and to the description prompt', async () => {
+    await setBrief(BRIEF)
+    callLlm.mockResolvedValueOnce({ text: TITLES }).mockResolvedValueOnce({ text: DESCRIPTION })
+    // No VidIQ key is stored, so the titles are not scored here: the prompts are under test.
+    await generateTitles('master', FIXTURE_PROJECT_ID)
+    await generateDescription('master', FIXTURE_PROJECT_ID)
+    const [titles, description] = callLlm.mock.calls.map(
+      ([request]) => request as { system: string },
+    )
+    expect(titles!.system).toContain('At least half the titles contain "wirecard scandal"')
+    expect(description!.system).toContain('within the first 150 characters')
+    expect(description!.system).toContain('"Where did the missing billion go?"')
+  })
+
+  it('leads the tags with the owner, then the brief, then the model, and stores which came from the brief', async () => {
+    await setBrief(BRIEF)
+    await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await savePublishDraft('master', FIXTURE_PROJECT_ID, {
+      title: '',
+      descriptionBody: '',
+      tags: 'Owner tag',
+    })
+    callLlm.mockResolvedValueOnce({ text: DESCRIPTION })
+    expect(await generateDescription('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    // The project's cast follows the brief's keywords, before the model's tags.
+    const cast = (await listCastMembers(db, FIXTURE_PROJECT_ID)).map((member) => member.name)
+    const fromBrief = ['wirecard scandal', 'wirecard documentary', ...cast]
+    expect(await draft()).toMatchObject({
+      tags: ['Owner tag', ...fromBrief, 'Wirecard', 'fintech fraud'],
+      searchTags: fromBrief,
+    })
+  })
+
+  it('writes the model tags and stores no search tags without a brief', async () => {
+    callLlm.mockResolvedValueOnce({ text: DESCRIPTION })
+    expect(await generateDescription('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    expect(await draft()).toMatchObject({
+      tags: ['Wirecard', 'wirecard scandal', 'fintech fraud'],
+      searchTags: [],
+    })
   })
 })
