@@ -224,6 +224,28 @@ export async function settlePointWork(
 }
 
 /**
+ * Give back the studio's slot only when it is held for `what` (the render
+ * runner releases an `assemble` claim this way): one UPDATE with the condition
+ * in its WHERE, so a re-voice, a re-plan, a fetch or a stored failure that is
+ * present at that moment is left exactly as it is.
+ */
+export async function releasePointWork(db: Database, id: string, what: PointWork): Promise<void> {
+  await db
+    .update(shorts)
+    .set({
+      pointFetches: sql`jsonb_set(${shorts.pointFetches}, '{state}', 'null'::jsonb)`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(shorts.id, id),
+        sql`${shorts.pointFetches} -> 'state' ->> 'state' = 'fetching'`,
+        sql`${shorts.pointFetches} -> 'state' ->> 'what' = ${what}`,
+      ),
+    )
+}
+
+/**
  * The latest script's Shorts candidates — what the shorts-runner resolves.
  * The script gate approved these implicitly: they were on show in the
  * Script Studio's context panel when the script was approved.

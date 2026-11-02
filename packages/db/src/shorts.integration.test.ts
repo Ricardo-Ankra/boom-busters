@@ -11,6 +11,7 @@ import {
   latestShortsCandidates,
   isAssembledShort,
   listShorts,
+  releasePointWork,
   settlePointWork,
   shortForPoint,
   updateShort,
@@ -226,6 +227,37 @@ suite('shorts bookkeeping', () => {
       expect(await claimPointWork(db, row.id, 'voice', farPast)).toBe(true)
       await settlePointWork(db, row.id, null)
       expect((await getShort(db, row.id))?.pointFetches).toEqual({ candidates: [], state: null })
+    })
+
+    it('releases only an assemble claim and leaves every other state alone', async () => {
+      const row = await draftPoint()
+      expect(await claimPointWork(db, row.id, 'assemble', farPast)).toBe(true)
+      await releasePointWork(db, row.id, 'assemble')
+      expect((await getShort(db, row.id))?.pointFetches).toEqual({ candidates: [], state: null })
+
+      for (const what of ['voice', 'plan', 'still'] as const) {
+        expect(await claimPointWork(db, row.id, what, farPast)).toBe(true)
+        await releasePointWork(db, row.id, 'assemble')
+        expect((await getShort(db, row.id))?.pointFetches?.state).toMatchObject({
+          state: 'fetching',
+          what,
+        })
+        await settlePointWork(db, row.id, null)
+      }
+
+      await settlePointWork(db, row.id, { state: 'failed', what: 'plan', reason: 'it broke' })
+      await releasePointWork(db, row.id, 'assemble')
+      expect((await getShort(db, row.id))?.pointFetches?.state).toMatchObject({ state: 'failed' })
+
+      const bare = await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'No record',
+        segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+        kind: 'point',
+        pointId: '01HQ0000000000000000000P10',
+      })
+      await releasePointWork(db, bare.id, 'assemble')
+      expect((await getShort(db, bare.id))?.pointFetches).toBeNull()
     })
 
     it('clears a point Short back to a draft with null records', async () => {

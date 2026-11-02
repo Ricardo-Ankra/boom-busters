@@ -308,6 +308,14 @@ describeDb('short-render-runner', () => {
         await engine.executeStep('invoke-broker', { events: requestedEvent() })
 
         expect((await getShort(db, shortId))?.pointFetches?.state).toBeNull()
+        // Only the assemble claim is released: another claim held when a render
+        // is recorded (here a re-voice) survives.
+        await claimPointWork(db, shortId, 'voice', new Date(0))
+        await engine.executeStep('invoke-broker', { events: requestedEvent() })
+        expect((await getShort(db, shortId))?.pointFetches?.state).toMatchObject({
+          state: 'fetching',
+          what: 'voice',
+        })
         const uploaded = JSON.parse(
           (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
         ) as Timeline

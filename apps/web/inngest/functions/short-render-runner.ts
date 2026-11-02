@@ -8,7 +8,7 @@ import {
   latestRender,
   latestTimeline,
   listMusicBeds,
-  settlePointWork,
+  releasePointWork,
   updateRender,
   updateShort,
 } from '@boom-busters/db'
@@ -184,7 +184,7 @@ export const shortRenderRunner = inngest.createFunction(
 
       // A point Short's studio holds its slot of work from Assemble until the
       // render is recorded, so a second press cannot queue a second render.
-      if (short.kind === 'point') await settlePointWork(db, shortId, null)
+      if (short.kind === 'point') await releasePointWork(db, shortId, 'assemble')
 
       let timelineS3Key = ''
       if (!mocked && storageConfigured()) {
