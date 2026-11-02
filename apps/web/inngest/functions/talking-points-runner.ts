@@ -19,6 +19,7 @@ import {
   OutlineSchema,
   parseEventData,
   serialiseError,
+  SHORT_RULES,
   talkingPointSetIssues,
 } from '@boom-busters/schemas'
 import type { NoticeTarget, TalkingPoint, TalkingPointDraft } from '@boom-busters/schemas'
@@ -141,6 +142,14 @@ export const talkingPointsRunner = inngest.createFunction(
 
       if (request.mode === 'one' && !current.some((point) => point.id === request.pointId)) {
         return { ok: false, refused: 'that talking point is no longer in the set' }
+      }
+
+      // Refused before the call: an answer to a full set would be bought and thrown away.
+      if (request.mode === 'add' && current.length >= SHORT_RULES.pointsMax) {
+        return {
+          ok: false,
+          refused: `the set already has ${current.length} talking points, the most allowed is ${SHORT_RULES.pointsMax}`,
+        }
       }
 
       // safeParse, not parse: a missing or malformed stored outline must cost

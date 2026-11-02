@@ -161,12 +161,27 @@ describeDb('talking-points-runner', () => {
     expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
     const [notice] = noticesFor(await listProjectNotices(db, FIXTURE_PROJECT_ID), 'points')
     expect(notice).toMatchObject({ kind: 'stopped' })
-    expect(notice?.message).toMatch(/6 talking points/)
+    expect(notice?.message).toMatch(/already has 5 talking points/)
     // The set the owner had is still there to review.
     expect(await getProject(db, FIXTURE_PROJECT_ID)).toMatchObject({
       stageStatus: 'awaiting_review',
       shortsPhase: 'points',
     })
+  })
+
+  it('refuses a sixth point before any LLM call on the live path', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    try {
+      await storeMockSet(5)
+
+      const { result } = await engine.execute({ events: eventFor({ mode: 'add', note: null }) })
+
+      expect(result).toMatchObject({ outcome: 'refused' })
+      expect(callLlm).not.toHaveBeenCalled()
+      expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('still proposes when the script has no usable outline, passing no tension', async () => {
