@@ -238,6 +238,32 @@ describe('buildOutlineRequest with a search brief', () => {
     expect(messages).toEqual(plain.messages)
   })
 
+  it('sends a [[ in the keyword or subject literally, never as a bible marker', () => {
+    const build = (keyword: string, subject = 'Enron') =>
+      buildOutlineRequest({
+        ...base,
+        searchBrief: brief({
+          subject,
+          targetKeyword: {
+            keyword,
+            volume: 1,
+            competition: 1,
+            overall: 1,
+            estimatedMonthlySearch: 1,
+            growthPct: 0,
+          },
+        }),
+      })
+    const example = build('what [[example:x]] did')
+    expect(example.system).toContain('searching "what [[example:x]] did" would')
+    expect(example.system).toContain('The phrase "what [[example:x]] did" may be spoken')
+    const closeHedge = build('[[example:script-close-hedge]]')
+    expect(closeHedge.system).toContain('searching "[[example:script-close-hedge]]" would')
+    const open = build('odd [[if:script-x] keyword', 'The [[if:y]] firm')
+    expect(open.system).toContain('searching "odd [[if:script-x] keyword" would')
+    expect(open.system).toContain('Name "The [[if:y]] firm" in the first')
+  })
+
   it('keeps a newline-bearing keyword, subject and question on one quoted line', () => {
     const { system, messages } = buildOutlineRequest({
       ...base,

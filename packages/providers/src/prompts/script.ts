@@ -176,8 +176,9 @@ const openingExamples = (inUse: BibleInUse): string =>
 // Outline
 // ---------------------------------------------------------------------------
 
-/** Third-party search text as one quoted line: it can never start a line of its own. */
-const quotedSearch = (text: string): string => JSON.stringify(searchBriefLine(text))
+/** Third-party search text as one quoted line, literal to `fillSlots`: it can neither start a line nor a bible marker. */
+const quotedSearch = (text: string): string =>
+  literalBibleText(JSON.stringify(searchBriefLine(text)))
 
 /**
  * What the case's search brief adds to the outline's rules; nothing, not even a
