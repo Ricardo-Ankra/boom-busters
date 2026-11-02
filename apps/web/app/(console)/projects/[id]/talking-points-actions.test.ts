@@ -14,6 +14,7 @@ import {
   setRunStatus,
   talkingPointSets,
 } from '@boom-busters/db'
+import type * as Db from '@boom-busters/db'
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -34,6 +35,21 @@ import {
 
 vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.com' } }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
+// The real helpers, with the stamp wrapped so a test can land a removal's new
+// version between the stamp and the read, as a race would.
+const afterStamp = vi.hoisted(() => ({ run: null as null | (() => Promise<void>) }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof Db>()
+  return {
+    ...actual,
+    approveTalkingPointSet: async (...args: Parameters<typeof actual.approveTalkingPointSet>) => {
+      const outcome = await actual.approveTalkingPointSet(...args)
+      await afterStamp.run?.()
+      return outcome
+    },
+  }
+})
 
 const send = vi.hoisted(() => vi.fn())
 vi.mock('@/inngest/client', () => ({ inngest: { send } }))
@@ -96,6 +112,7 @@ describeDb('talking points actions', () => {
     await db.delete(talkingPointSets)
     await db.delete(runs)
     await parkAtPoints()
+    afterStamp.run = null
   })
 
   describe('approveTalkingPoints', () => {
@@ -193,6 +210,32 @@ describeDb('talking points actions', () => {
       const project = await getProject(db, FIXTURE_PROJECT_ID)
       expect(project?.shortsPhase).toBe('points')
       expect(project?.stageStatus).toBe('awaiting_review')
+    })
+  })
+
+  describe('what an approval builds', () => {
+    it('sends builds for the version it stamped, not a newer one that landed after', async () => {
+      await propose(3)
+      afterStamp.run = async () => {
+        await propose(5)
+      }
+
+      expect(await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)).toEqual({ ok: true })
+
+      const sent = send.mock.calls.flatMap((call) => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+      expect(sent.map((event) => event.data.pointId)).toEqual(ids.slice(0, 3))
+    })
+
+    it('takes the approval back when the builds cannot be sent', async () => {
+      await propose(3)
+      send.mockRejectedValueOnce(new Error('no inngest'))
+
+      expect((await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)).ok).toBe(false)
+
+      expect(await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID)).toBeUndefined()
+      // And a retry works, stamping again.
+      expect(await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)).toEqual({ ok: true })
+      expect((await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
     })
   })
 
@@ -373,6 +416,16 @@ describeDb('talking points actions', () => {
       const result = await removeTalkingPoint(FIXTURE_PROJECT_ID, ids[0]!)
 
       expect(result).toEqual({ ok: false, error: 'Talking points are already being redone.' })
+      expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
+    })
+
+    it('refuses once the set is approved and its Shorts are being built', async () => {
+      await propose(4)
+      expect(await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)).toEqual({ ok: true })
+
+      const result = await removeTalkingPoint(FIXTURE_PROJECT_ID, ids[0]!)
+
+      expect(result).toEqual({ ok: false, error: 'These talking points are not open for changes.' })
       expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
     })
 

@@ -13,6 +13,7 @@ import {
   latestTalkingPointSet,
   listTalkingPointSets,
   stampTalkingPointSet,
+  unstampTalkingPointSet,
 } from './talking-points'
 import { requireTestDatabase } from './test-database'
 
@@ -145,5 +146,17 @@ suite('talking-point sets', () => {
         to: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
       }),
     ).toBe(false)
+  })
+
+  it('unstamps only the named version, leaving a newer approval alone', async () => {
+    await insert()
+    await insert()
+    expect(await stampTalkingPointSet(db, FIXTURE_PROJECT_ID, 2)).toBe(true)
+
+    await unstampTalkingPointSet(db, FIXTURE_PROJECT_ID, 1)
+    expect((await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(2)
+
+    await unstampTalkingPointSet(db, FIXTURE_PROJECT_ID, 2)
+    expect(await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID)).toBeUndefined()
   })
 })

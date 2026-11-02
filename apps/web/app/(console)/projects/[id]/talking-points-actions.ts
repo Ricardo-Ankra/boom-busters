@@ -1,12 +1,14 @@
 'use server'
 
 import {
+  approvedTalkingPointSet,
   approveTalkingPointSet,
   claimShortsCheckpoint,
   getProject,
   hasLiveRun,
   insertTalkingPointSet,
   latestTalkingPointSet,
+  unstampTalkingPointSet,
 } from '@boom-busters/db'
 import { SHORT_RULES, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -97,7 +99,9 @@ export async function approveTalkingPoints(
     return { ok: false, error: 'That set of talking points no longer exists.' }
   }
 
-  const set = await latestTalkingPointSet(db, projectId)
+  // The version just stamped, not the latest: a removal racing this approval
+  // may have written a newer one the owner never approved.
+  const set = await approvedTalkingPointSet(db, projectId)
   const points = set?.points ?? []
   try {
     await inngest.send(
@@ -107,7 +111,9 @@ export async function approveTalkingPoints(
     )
   } catch (error) {
     console.error('[talking-points] could not send the builds', error)
-    // Back to where the owner can press Approve again.
+    // Back to where the owner can press Approve again, and the stamp taken
+    // back: a later master.ready must not build a set that was never sent.
+    await unstampTalkingPointSet(db, projectId, version)
     await backToPoints()
     return { ok: false, error: 'Could not reach Inngest to start building the Shorts.' }
   }
@@ -200,6 +206,15 @@ export async function removeTalkingPoint(
     (project?.shortsPhase === 'points' && project.stageStatus === 'running')
   ) {
     return { ok: false, error: ALREADY_REDOING }
+  }
+  // Once the set is approved the builds are under way for it: a newer version
+  // here would be one the owner never approved.
+  if (
+    project?.stage !== 'shorts' ||
+    project.shortsPhase !== 'points' ||
+    project.stageStatus !== 'awaiting_review'
+  ) {
+    return { ok: false, error: 'These talking points are not open for changes.' }
   }
 
   const latest = await latestTalkingPointSet(db, projectId)

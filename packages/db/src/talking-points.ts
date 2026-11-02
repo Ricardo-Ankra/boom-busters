@@ -102,6 +102,22 @@ export async function stampTalkingPointSet(
 }
 
 /**
+ * Take back one version's approval: the builds it was approved for could not
+ * be started, so a later `master.ready` must not build a set the owner never
+ * saw go out. Conditional on that version, so a newer approval is untouched.
+ */
+export async function unstampTalkingPointSet(
+  db: Database,
+  projectId: string,
+  version: number,
+): Promise<void> {
+  await db
+    .update(talkingPointSets)
+    .set({ approvedAt: null })
+    .where(and(eq(talkingPointSets.projectId, projectId), eq(talkingPointSets.version, version)))
+}
+
+/**
  * Approve one version. `stale` when a higher version exists: the owner read a
  * proposal that has since been replaced, and approving it would build Shorts
  * from points they are no longer looking at.
