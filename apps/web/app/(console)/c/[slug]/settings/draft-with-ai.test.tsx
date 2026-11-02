@@ -11,6 +11,7 @@ const estimateBibleResearchAction = vi.fn()
 const startBibleResearchAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: vi.fn(),
+  copyBibleFromChannelAction: vi.fn(),
   discardBibleDraftAction: vi.fn(),
   editBibleSectionAction: vi.fn(),
   saveBibleAction: vi.fn(),

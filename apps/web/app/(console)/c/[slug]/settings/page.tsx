@@ -51,7 +51,7 @@ export default async function SettingsPage({
     workspace,
     connectionRow,
     logos,
-    liveChannels,
+    allChannels,
     params,
     draft,
     versions,
@@ -62,7 +62,7 @@ export default async function SettingsPage({
     getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
     listLogos(db, channel.id),
-    listChannels(db),
+    listChannels(db, { includeArchived: true }),
     searchParams,
     // Never opened here: a draft exists once the owner changes something.
     getBibleDraft(db, channel.id),
@@ -139,7 +139,17 @@ export default async function SettingsPage({
           bible: channel.bible,
           archived: channel.archivedAt !== null,
         }}
-        channels={liveChannels.map((entry) => ({ id: entry.id, name: entry.name }))}
+        channels={allChannels
+          .filter((entry) => entry.archivedAt === null)
+          .map((entry) => ({ id: entry.id, name: entry.name }))}
+        copySources={allChannels
+          .filter((entry) => entry.id !== channel.id)
+          .map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            archived: entry.archivedAt !== null,
+            version: entry.bibleVersion,
+          }))}
         showNewChannel={params['new'] === '1'}
         youtubeEnvReady={hasEnvGroup('youtube')}
         youtubeOutcome={typeof params['youtube'] === 'string' ? params['youtube'] : undefined}

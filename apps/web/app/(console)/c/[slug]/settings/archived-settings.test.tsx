@@ -14,6 +14,7 @@ import { SettingsForm } from './settings-form'
 vi.mock('./actions', () => ({ saveSettings: vi.fn() }))
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: vi.fn(),
+  copyBibleFromChannelAction: vi.fn(),
   discardBibleDraftAction: vi.fn(),
   draftBibleAction: vi.fn(),
   editBibleSectionAction: vi.fn(),

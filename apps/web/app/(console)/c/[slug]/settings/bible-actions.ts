@@ -6,6 +6,7 @@ import {
   BibleDraftExistsError,
   BibleDraftStaleError,
   bibleVersionById,
+  currentBible,
   discardBibleDraft,
   getBibleDraft,
   openBibleDraft,
@@ -391,6 +392,74 @@ export async function editBibleSectionAction(
       errors,
     }
   })
+}
+
+/**
+ * Replace the chosen sections of the working draft with the source channel's
+ * current saved version of those keys. Nothing is saved as a version: each
+ * copied section is marked drafted, so it needs the owner's Approve (or an
+ * edit) first. The source may be archived; the target may not.
+ */
+export async function copyBibleFromChannelAction(
+  channelId: string,
+  sourceChannelId: string,
+  sections: unknown,
+): Promise<ActionResult & { draft?: BibleDraft; note?: string }> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  if (!UlidSchema.safeParse(sourceChannelId).success) {
+    return { ok: false, error: 'Unknown channel' }
+  }
+  if (sourceChannelId === channelId) return { ok: false, error: 'Choose another channel' }
+
+  const ticked = Array.isArray(sections) ? sections : []
+  if (ticked.length === 0) return { ok: false, error: 'Tick at least one section' }
+  if (ticked.some((section) => !BIBLE_SECTION_ORDER.includes(section as BibleSection))) {
+    return { ok: false, error: 'Unknown section' }
+  }
+  const chosen = BIBLE_SECTION_ORDER.filter((section) => ticked.includes(section))
+
+  // Every refusal comes before the draft is opened, so a refused copy leaves none behind.
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+  const source = await findChannel(sourceChannelId)
+  if (!source) return { ok: false, error: 'Unknown channel' }
+  const existing = await getBibleDraft(db, channelId)
+  if (existing?.job && jobIsRunning(existing.job)) return WAIT
+  const version = await currentBible(db, sourceChannelId)
+
+  const open = await openForChange(channelId)
+  if (!open.ok) return open
+
+  const copied: Partial<Record<keyof ChannelBible, unknown>> = {}
+  for (const section of chosen) {
+    for (const key of BIBLE_SECTIONS[section]) copied[key] = version.bible[key]
+  }
+  const next = { ...open.draft.bible, ...copied } as ChannelBible
+
+  let tooClose = open.draft.tooClose
+  for (const section of chosen) {
+    tooClose = await recheckedFlags(channelId, { ...open.draft, tooClose }, section, next)
+  }
+
+  const result = await writeChange(channelId, (draft) => ({
+    ...draft,
+    bible: { ...draft.bible, ...copied } as ChannelBible,
+    statuses: {
+      ...draft.statuses,
+      ...Object.fromEntries(chosen.map((section) => [section, 'drafted' as const])),
+    },
+    tooClose,
+    errors: Object.fromEntries(
+      Object.entries(draft.errors).filter(([key]) => {
+        const section = errorSection(key)
+        return !section || !chosen.includes(section)
+      }),
+    ),
+  }))
+  if (!result.ok) return result
+  revalidatePath('/c/[slug]', 'layout')
+  return { ...result, note: `Copied from ${source.name} version ${version.version}` }
 }
 
 /** Approve a drafted section as it stands; refused while a field in it is too close to its source. */
