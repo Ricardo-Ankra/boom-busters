@@ -20,6 +20,7 @@ import {
   shorts,
   talkingPointSets,
   timelines,
+  getShort,
   truncateRunMirror,
   updateChannelSettings,
   updateWorkspace,
@@ -38,7 +39,9 @@ import {
   TimelineSchema,
   ValidationError,
 } from '@boom-busters/schemas'
+import type * as Providers from '@boom-busters/providers'
 import type { TalkingPoint, Timeline } from '@boom-busters/schemas'
+import type * as Tts from '@/lib/tts'
 import { POINT_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -62,6 +65,24 @@ vi.mock('@/lib/storage', () => ({
   stockKey: vi.fn(),
   takeStorage: () => 'regenerated' as const,
 }))
+// Counted, not replaced: a re-run must make no script, plan or synthesis call
+// for anything already bought.
+const spies = vi.hoisted(() => ({
+  mockPointScript: vi.fn(),
+  mockPointPlan: vi.fn(),
+  synthesise: vi.fn(),
+}))
+vi.mock('@boom-busters/providers', async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof Providers
+  spies.mockPointScript.mockImplementation(actual.mockPointScript)
+  spies.mockPointPlan.mockImplementation(actual.mockPointPlan)
+  return { ...actual, mockPointScript: spies.mockPointScript, mockPointPlan: spies.mockPointPlan }
+})
+vi.mock('@/lib/tts', async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof Tts
+  spies.synthesise.mockImplementation(actual.synthesise)
+  return { ...actual, synthesise: spies.synthesise }
+})
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
@@ -135,6 +156,7 @@ const builtRow = (pointId: string) =>
     segmentRef: { chapterId: POINT_CHAPTER_ID, fromParagraph: 0, toParagraph: 4 },
     kind: 'point',
     pointId,
+    sourceTimeline: canonicalMaster() as unknown as Record<string, unknown>,
   })
 
 describeDb('point-short-runner', () => {
@@ -296,6 +318,100 @@ describeDb('point-short-runner', () => {
     expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
     expect(sentEvents()).toEqual([])
     expect(generate).not.toHaveBeenCalled()
+  })
+
+  /** A second run is a new run: a fresh engine, not the first one's memoised steps. */
+  const freshRun = (events: [{ name: string; data: Record<string, unknown> }]) =>
+    new InngestTestEngine({ function: pointShortRunner }).execute({ events })
+
+  /** Cuts a finished build back to a draft: what a run that died part-way leaves. */
+  async function cutBackTo(keep: { voiceParagraphs: number; plan: boolean }) {
+    // One Short in the table, so no filter is needed.
+    const [row] = await db.select().from(shorts)
+    const voice = PointVoiceRecordSchema.parse(row!.pointVoice)
+    await db.update(shorts).set({
+      sourceTimeline: null,
+      pointVoice: { ...voice, paragraphs: voice.paragraphs.slice(0, keep.voiceParagraphs) },
+      ...(keep.plan ? {} : { pointPlan: null, pointFetches: null }),
+    })
+  }
+
+  it(
+    'resumes a cut-off build: no new script, voice or plan call for what was bought',
+    { timeout: 180_000 },
+    async () => {
+      await storeApprovedSet()
+      await engine.execute({ events: buildEvent(POINT_IDS[0]!) })
+      const [first] = await listShorts(db, FIXTURE_PROJECT_ID)
+      await cutBackTo({ voiceParagraphs: 5, plan: true })
+      vi.clearAllMocks()
+      generate.mockClear()
+
+      const { result } = await freshRun(buildEvent(POINT_IDS[0]!))
+
+      expect(result).toMatchObject({ outcome: 'built', shortId: first!.id })
+      expect(spies.mockPointScript).not.toHaveBeenCalled()
+      expect(spies.synthesise).not.toHaveBeenCalled()
+      expect(spies.mockPointPlan).not.toHaveBeenCalled()
+      expect(generate).not.toHaveBeenCalled()
+      const rows = await listShorts(db, FIXTURE_PROJECT_ID)
+      expect(rows).toHaveLength(1)
+      expect(TimelineSchema.safeParse(rows[0]!.sourceTimeline).success).toBe(true)
+    },
+  )
+
+  it(
+    'resumes after the script and three voiced paragraphs: voices only the other two, plans once',
+    { timeout: 180_000 },
+    async () => {
+      await storeApprovedSet()
+      await engine.execute({ events: buildEvent(POINT_IDS[0]!) })
+      const [first] = await listShorts(db, FIXTURE_PROJECT_ID)
+      await cutBackTo({ voiceParagraphs: 3, plan: false })
+      vi.clearAllMocks()
+
+      const { result } = await freshRun(buildEvent(POINT_IDS[0]!))
+
+      expect(result).toMatchObject({ outcome: 'built', shortId: first!.id })
+      expect(spies.mockPointScript).not.toHaveBeenCalled()
+      expect(spies.synthesise).toHaveBeenCalledTimes(2)
+      expect(spies.mockPointPlan).toHaveBeenCalledTimes(1)
+      const stored = await getShort(db, first!.id)
+      expect(PointVoiceRecordSchema.parse(stored!.pointVoice).paragraphs).toHaveLength(5)
+    },
+  )
+
+  it('does not list a draft as a Short, and the stage does not settle on one', async () => {
+    await storeApprovedSet()
+    await builtRow(POINT_IDS[0]!)
+    await builtRow(POINT_IDS[1]!)
+    // A draft: the script is saved, nothing more.
+    await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'Draft',
+      segmentRef: { chapterId: POINT_CHAPTER_ID, fromParagraph: 0, toParagraph: 4 },
+      kind: 'point',
+      pointId: POINT_IDS[2]!,
+    })
+    expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(2)
+
+    const { result } = await engine.execute({ events: buildEvent(POINT_IDS[1]!) })
+
+    expect(result).toMatchObject({ outcome: 'exists' })
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('running')
+  })
+
+  it('does nothing at all for a fully assembled point', async () => {
+    await storeApprovedSet()
+    await builtRow(POINT_IDS[0]!)
+    vi.clearAllMocks()
+
+    await engine.execute({ events: buildEvent(POINT_IDS[0]!) })
+
+    expect(spies.mockPointScript).not.toHaveBeenCalled()
+    expect(spies.synthesise).not.toHaveBeenCalled()
+    expect(spies.mockPointPlan).not.toHaveBeenCalled()
+    expect(sentEvents()).toEqual([])
   })
 
   it(

@@ -2,6 +2,7 @@ import {
   approvedTalkingPointSet,
   channelForProject,
   getProject,
+  isAssembledShort,
   latestTimeline,
   listProjectNotices,
   setProjectStage,
@@ -34,10 +35,12 @@ import {
   assemblePointShort,
   BRIDGE_LABEL,
   fetchPendingShots,
-  planPointShots,
+  countNewPictures,
+  planOrReusePointShots,
+  savePointProgress,
   savePointShort,
-  voicePointParagraph,
-  writePointScript,
+  voiceOrReusePointParagraph,
+  writeOrReusePointScript,
 } from '../lib/point-build'
 import type { PendingOutcome } from '../lib/point-build'
 
@@ -75,7 +78,8 @@ async function settleStage(projectId: string): Promise<boolean> {
   if (!approved) return false
   const open = await listProjectNotices(db, projectId)
   for (const point of approved.points) {
-    if (await shortForPoint(db, projectId, point.id)) continue
+    const row = await shortForPoint(db, projectId, point.id)
+    if (row && isAssembledShort(row)) continue
     const stopped = noticesFor(open, 'short', point.id).some(
       (notice) => notice.kind === 'skipped' || notice.kind === 'stopped',
     )
@@ -131,7 +135,9 @@ export const pointShortRunner = inngest.createFunction(
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
       const existing = await shortForPoint(db, projectId, pointId)
-      if (existing) return { state: 'exists', shortId: existing.id }
+      // Only an assembled Short is done; a draft (a build cut off after its
+      // script or voice) is resumed from what it holds, never rebought.
+      if (existing && isAssembledShort(existing)) return { state: 'exists', shortId: existing.id }
       const point = (await approvedTalkingPointSet(db, projectId))?.points.find(
         (candidate) => candidate.id === pointId,
       )
@@ -161,7 +167,7 @@ export const pointShortRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
     // Script
     // -----------------------------------------------------------------------
-    const written = await step.run('write-script', () => writePointScript(projectId, point))
+    const written = await step.run('write-script', () => writeOrReusePointScript(projectId, point))
     if (!written.ok && 'gate' in written) return overBudget('script-over-budget', written.gate)
     if (!written.ok) return skip(written.skipped)
 
@@ -171,9 +177,9 @@ export const pointShortRunner = inngest.createFunction(
     const voice: PointVoiceRecord = { scriptVersion: written.scriptVersion, paragraphs: [] }
     for (const [index, paragraph] of written.script.paragraphs.entries()) {
       const spoken = await step.run(`tts-${index}`, () =>
-        voicePointParagraph({
+        voiceOrReusePointParagraph({
           projectId,
-          shortKey: pointId,
+          pointId,
           scriptVersion: written.scriptVersion,
           index,
           text: paragraph.text,
@@ -195,7 +201,7 @@ export const pointShortRunner = inngest.createFunction(
     const planned = await step.run('plan-shots', async () => {
       const row = await latestTimeline(db, projectId)
       if (!row) throw new NonRetriableError('There is no compiled master timeline to plan from.')
-      return planPointShots(projectId, {
+      return planOrReusePointShots(projectId, pointId, {
         script: written.script,
         voice,
         master: TimelineSchema.parse(row.json),
@@ -216,6 +222,19 @@ export const pointShortRunner = inngest.createFunction(
     )
     if (!fetched.ok && 'gate' in fetched) return overBudget('fetch-over-budget', fetched.gate)
     if (!fetched.ok) return skip(fetched.skipped)
+    const hadPending = planned.plan.shots.some((shot) => shot.pending !== null)
+    if (hadPending) {
+      await step.run('save-fetched', () =>
+        savePointProgress({
+          projectId,
+          pointId,
+          plan: fetched.plan,
+          fetches: fetched.fetches,
+        }),
+      )
+    }
+    // A reused plan has no pending shots; its pictures come from the stored pool.
+    const fetchesUsed = hadPending ? fetched.fetches : (planned.fetches ?? fetched.fetches)
 
     // -----------------------------------------------------------------------
     // Assemble and store
@@ -231,7 +250,7 @@ export const pointShortRunner = inngest.createFunction(
         pointId,
       })
       const plan: PointPlanRecord = fetched.plan
-      const fetches: PointFetchesRecord = fetched.fetches
+      const fetches: PointFetchesRecord = fetchesUsed
       const { timeline, findings } = assemblePointShort({
         master: TimelineSchema.parse(row.json),
         script,
@@ -242,7 +261,7 @@ export const pointShortRunner = inngest.createFunction(
           channelName: channel.name,
           handle: channel.handle ?? '',
         },
-        newImageCount: fetched.fetched,
+        newImageCount: hadPending ? fetched.fetched : countNewPictures(plan, fetches),
       })
       const saved = await savePointShort({
         projectId,

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, ne, or } from 'drizzle-orm'
 import type { Database } from './client'
 import { scripts, shorts } from './schema'
 import type { ShortRow } from './schema'
@@ -98,12 +98,30 @@ export async function shortForPoint(
   return row
 }
 
-/** All of a project's Shorts, in creation order — the Shorts screen's grid. */
+/**
+ * Whether a Short is finished. A point Short's row is created as its build
+ * saves progress (script, then voice, then plan), so a re-run resumes instead
+ * of re-buying; until its master is compiled it is a draft, not a Short.
+ */
+export function isAssembledShort(row: Pick<ShortRow, 'kind' | 'sourceTimeline'>): boolean {
+  return row.kind !== 'point' || row.sourceTimeline != null
+}
+
+/**
+ * A project's finished Shorts, in creation order — the Shorts screen's grid.
+ * A point Short still being built (no compiled master yet) is not listed; ask
+ * `shortForPoint` for it.
+ */
 export async function listShorts(db: Database, projectId: string): Promise<ShortRow[]> {
   return db
     .select()
     .from(shorts)
-    .where(eq(shorts.projectId, projectId))
+    .where(
+      and(
+        eq(shorts.projectId, projectId),
+        or(ne(shorts.kind, 'point'), isNotNull(shorts.sourceTimeline)),
+      ),
+    )
     .orderBy(asc(shorts.createdAt), asc(shorts.id))
 }
 

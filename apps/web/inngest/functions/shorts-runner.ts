@@ -2,6 +2,7 @@ import {
   approvedTalkingPointSet,
   deleteShorts,
   getProject,
+  isAssembledShort,
   latestTimeline,
   listShorts,
   setProjectStage,
@@ -86,7 +87,9 @@ export const shortsRunner = inngest.createFunction(
 
       const toBuild: string[] = []
       for (const point of approved.points) {
-        if (!(await shortForPoint(db, projectId, point.id))) toBuild.push(point.id)
+        // A draft row (build cut off after its script or voice) is not a Short yet.
+        const row = await shortForPoint(db, projectId, point.id)
+        if (!row || !isAssembledShort(row)) toBuild.push(point.id)
       }
       return { approved: true as const, replaced, toBuild, total: approved.points.length }
     })

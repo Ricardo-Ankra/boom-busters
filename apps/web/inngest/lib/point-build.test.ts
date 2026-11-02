@@ -39,7 +39,8 @@ const visualAssets = vi.hoisted(() => ({
   requireVisualKeys: vi.fn(),
 }))
 vi.mock('@/lib/visual-assets', () => visualAssets)
-vi.mock('@/lib/stock-ingest', () => ({ ingestCandidateBytes: vi.fn() }))
+const ingest = vi.hoisted(() => ({ ingestCandidateBytes: vi.fn() }))
+vi.mock('@/lib/stock-ingest', () => ingest)
 
 const CH_A = '01HQ0000000000000000000CH1'
 const CH_B = '01HQ0000000000000000000CH2'
@@ -298,6 +299,103 @@ describe('fetchPendingShots', () => {
     })
 
     expect(names).toEqual([`fetch-new-${plan.shots.findIndex((s) => s.pending)}`])
+  })
+})
+
+/** The live branch: keys are checked, a stock result is ingested, nothing is mocked away. */
+describe('fetchPendingShots, live stock path', () => {
+  const stock = (id: string): SlotCandidate => ({
+    id,
+    provider: 'pexels',
+    kind: 'image',
+    sourceUrl: `https://images.example/${id}.jpg`,
+    licence: 'Pexels',
+  })
+
+  /** The built plan with its one pending still turned into a stock search. */
+  function stockPlan(): PointPlanRecord {
+    const { plan } = builtInputs()
+    return {
+      ...plan,
+      shots: plan.shots.map((shot) =>
+        shot.pending
+          ? { ...shot, pending: { kind: 'stock' as const, query: 'audit office' } }
+          : shot,
+      ),
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+  })
+
+  it('searches, ingests the first result and keeps its bytes as the shot', async () => {
+    visualAssets.fetchStockCandidates.mockResolvedValue([stock('a'), stock('b')])
+    ingest.ingestCandidateBytes.mockImplementation(async (candidate: SlotCandidate) => ({
+      ok: true,
+      candidate: { ...candidate, r2Key: `boom-busters/stock/${candidate.id}.jpg` },
+    }))
+
+    const result = await fetchPendingShots('P', stockPlan())
+
+    if (!result.ok || !('plan' in result)) throw new Error('expected a plan')
+    expect(visualAssets.requireVisualKeys).toHaveBeenCalledWith(new Set(['stock']))
+    expect(visualAssets.fetchStockCandidates.mock.calls[0]![0]).toMatchObject({
+      type: 'stock',
+      query: 'audit office',
+    })
+    expect(ingest.ingestCandidateBytes).toHaveBeenCalledTimes(1)
+    expect(ingest.ingestCandidateBytes.mock.calls[0]![0].id).toBe('a')
+    const placed = result.plan.shots.find(
+      (shot) =>
+        shot.slot?.payload.kind === 'image' &&
+        shot.slot.payload.src.r2Key === 'boom-busters/stock/a.jpg',
+    )
+    expect(placed).toBeDefined()
+    expect(result.fetched).toBe(1)
+    expect(result.fetches.candidates.map((c) => c.id)).toEqual(['a', 'b'])
+    expect(result.fetches.candidates[0]!.r2Key).toBe('boom-busters/stock/a.jpg')
+  })
+
+  it('drops the shot, with the reason, when the bytes cannot be ingested', async () => {
+    visualAssets.fetchStockCandidates.mockResolvedValue([stock('a')])
+    ingest.ingestCandidateBytes.mockResolvedValue({ ok: false, reason: 'the download was refused' })
+    const plan = stockPlan()
+
+    const result = await fetchPendingShots('P', plan)
+
+    if (!result.ok || !('plan' in result)) throw new Error('expected a plan')
+    expect(result.plan.shots).toHaveLength(plan.shots.length - 1)
+    expect(result.fetched).toBe(0)
+    expect(result.repairs).toEqual([
+      expect.objectContaining({
+        action: 'dropped',
+        reason: expect.stringContaining('the download was refused'),
+      }),
+    ])
+  })
+
+  it('drops the shot when no stock key is stored', async () => {
+    visualAssets.requireVisualKeys.mockRejectedValue(
+      new ValidationError('no Pexels or Pixabay key'),
+    )
+
+    const result = await fetchPendingShots('P', stockPlan())
+
+    if (!result.ok || !('plan' in result)) throw new Error('expected a plan')
+    expect(visualAssets.fetchStockCandidates).not.toHaveBeenCalled()
+    expect(result.repairs[0]).toMatchObject({ action: 'dropped' })
+  })
+
+  it('drops the shot when the search finds nothing', async () => {
+    visualAssets.fetchStockCandidates.mockResolvedValue([])
+
+    const result = await fetchPendingShots('P', stockPlan())
+
+    if (!result.ok || !('plan' in result)) throw new Error('expected a plan')
+    expect(ingest.ingestCandidateBytes).not.toHaveBeenCalled()
+    expect(result.repairs[0]).toMatchObject({ action: 'dropped' })
   })
 })
 

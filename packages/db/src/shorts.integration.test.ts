@@ -8,6 +8,7 @@ import {
   getShort,
   insertShort,
   latestShortsCandidates,
+  isAssembledShort,
   listShorts,
   shortForPoint,
   updateShort,
@@ -151,5 +152,24 @@ suite('shorts bookkeeping', () => {
     expect(
       await shortForPoint(db, FIXTURE_PROJECT_ID, '01HQ0000000000000000000P02'),
     ).toBeUndefined()
+  })
+
+  it('lists a point Short only once its master is compiled; shortForPoint still finds the draft', async () => {
+    const pointId = '01HQ0000000000000000000P03'
+    const draft = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'Draft',
+      segmentRef: { chapterId: '0P01NTP01NTP01NTP01NTP01NT', fromParagraph: 0, toParagraph: 4 },
+      kind: 'point',
+      pointId,
+    })
+    expect(isAssembledShort(draft)).toBe(false)
+    expect((await listShorts(db, FIXTURE_PROJECT_ID)).map((row) => row.id)).not.toContain(draft.id)
+    expect((await shortForPoint(db, FIXTURE_PROJECT_ID, pointId))?.id).toBe(draft.id)
+
+    await updateShort(db, draft.id, { sourceTimeline: { version: 1 } })
+    const done = await shortForPoint(db, FIXTURE_PROJECT_ID, pointId)
+    expect(isAssembledShort(done!)).toBe(true)
+    expect((await listShorts(db, FIXTURE_PROJECT_ID)).map((row) => row.id)).toContain(draft.id)
   })
 })

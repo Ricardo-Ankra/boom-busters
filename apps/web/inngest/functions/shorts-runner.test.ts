@@ -142,6 +142,7 @@ async function builtPointShort(pointId: string) {
     segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 0 },
     kind: 'point',
     pointId,
+    sourceTimeline: canonicalMaster() as unknown as Record<string, unknown>,
   })
 }
 
@@ -239,6 +240,25 @@ describeDb('shorts-runner', () => {
       expect(project).toMatchObject({ stage: 'shorts', stageStatus: 'awaiting_review' })
       expect(project?.shortsPhase).toBe('review')
       expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(1)
+    },
+  )
+
+  it(
+    'asks again for a point whose build was cut off, a draft row with no master',
+    { timeout: 120_000 },
+    async () => {
+      await storeApprovedSet()
+      await insertShort(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        title: 'Draft',
+        segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 4 },
+        kind: 'point',
+        pointId: POINT_IDS[0]!,
+      })
+
+      const { result } = await run()
+
+      expect(result).toMatchObject({ outcome: 'builds-requested', requested: 3, kept: 0 })
     },
   )
 

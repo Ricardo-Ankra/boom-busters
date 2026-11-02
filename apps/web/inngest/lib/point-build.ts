@@ -11,6 +11,10 @@ import { mockPointPlan, mockPointScript, mockProvidersEnabled } from '@boom-bust
 import type { PlanLibraryEntry, Repair } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  PointFetchesRecordSchema,
+  PointPlanRecordSchema,
+  PointScriptRecordSchema,
+  PointVoiceRecordSchema,
   serialiseError,
   splitParagraphs,
   stripNarrationMarkup,
@@ -643,4 +647,195 @@ export async function savePointShort(input: {
     pointFetches: input.fetches,
   })
   return { shortId: row.id, created: true }
+}
+
+// ---------------------------------------------------------------------------
+// Progress and resuming
+// ---------------------------------------------------------------------------
+
+/**
+ * Every paid call lands on the point's row as it finishes (the row is a draft,
+ * not a Short, until its master is compiled: `isAssembledShort`), so a second
+ * run for the same point (a budget Re-run, an exhausted retry, a re-sent event)
+ * reuses what was bought instead of buying it again. The script call has no
+ * idempotency key of its own, and new text would change every paragraph's key.
+ */
+export async function savePointProgress(input: {
+  projectId: string
+  pointId: string
+  script?: PointScriptRecord
+  voice?: PointVoiceRecord
+  plan?: PointPlanRecord
+  fetches?: PointFetchesRecord
+}): Promise<void> {
+  const { projectId, pointId, ...records } = input
+  const existing = await shortForPoint(db, projectId, pointId)
+  const patch = {
+    ...(records.script ? { pointScript: records.script } : {}),
+    ...(records.voice ? { pointVoice: records.voice } : {}),
+    ...(records.plan ? { pointPlan: records.plan } : {}),
+    ...(records.fetches ? { pointFetches: records.fetches } : {}),
+  }
+  if (existing) {
+    await updateShort(db, existing.id, patch)
+    return
+  }
+  if (!records.script) return
+  await insertShort(db, {
+    projectId,
+    title: records.script.title,
+    segmentRef: {
+      chapterId: POINT_CHAPTER_ID,
+      fromParagraph: 0,
+      toParagraph: records.script.paragraphs.length - 1,
+    },
+    kind: 'point',
+    pointId,
+    ...patch,
+  })
+}
+
+/** The point's stored records, each undefined when absent or not parseable. */
+async function storedRecords(projectId: string, pointId: string) {
+  const row = await shortForPoint(db, projectId, pointId)
+  const script = PointScriptRecordSchema.safeParse(row?.pointScript)
+  const voice = PointVoiceRecordSchema.safeParse(row?.pointVoice)
+  const plan = PointPlanRecordSchema.safeParse(row?.pointPlan)
+  const fetches = PointFetchesRecordSchema.safeParse(row?.pointFetches)
+  return {
+    script: script.success && script.data.pointId === pointId ? script.data : undefined,
+    voice: voice.success ? voice.data : undefined,
+    plan: plan.success ? plan.data : undefined,
+    fetches: fetches.success ? fetches.data : undefined,
+  }
+}
+
+/** The stored script when there is one (no model call), otherwise write and store it. */
+export async function writeOrReusePointScript(
+  projectId: string,
+  point: TalkingPoint,
+): Promise<PointWriteResult> {
+  const stored = (await storedRecords(projectId, point.id)).script
+  if (stored) {
+    return {
+      ok: true,
+      script: { title: stored.title, paragraphs: stored.paragraphs },
+      scriptVersion: stored.scriptVersion,
+      repairs: [],
+    }
+  }
+  const written = await writePointScript(projectId, point)
+  if (written.ok) {
+    await savePointProgress({
+      projectId,
+      pointId: point.id,
+      script: PointScriptRecordSchema.parse({
+        ...written.script,
+        scriptVersion: written.scriptVersion,
+        pointId: point.id,
+      }),
+    })
+  }
+  return written
+}
+
+/**
+ * One paragraph's audio: the stored paragraph when its version and text are
+ * unchanged (no synthesis call at all), otherwise voiced and stored. Voicing
+ * is sequential, so the stored voice is always a prefix of the script's.
+ */
+export async function voiceOrReusePointParagraph(input: {
+  projectId: string
+  pointId: string
+  scriptVersion: number
+  index: number
+  text: string
+}): Promise<TeaserVoiceResult> {
+  const { projectId, pointId, scriptVersion, index, text } = input
+  const stored = (await storedRecords(projectId, pointId)).voice
+  const current = stored && stored.scriptVersion === scriptVersion ? stored : undefined
+  const kept = current?.paragraphs[index]
+  if (kept && kept.textHash === teaserTextHash(text)) {
+    return {
+      ok: true,
+      r2Key: kept.r2Key,
+      durationMs: kept.durationMs,
+      wordTimings: kept.wordTimings,
+    }
+  }
+  const spoken = await voicePointParagraph({
+    projectId,
+    shortKey: pointId,
+    scriptVersion,
+    index,
+    text,
+  })
+  const prefix = current?.paragraphs.slice(0, index) ?? []
+  if (spoken.ok && prefix.length === index) {
+    await savePointProgress({
+      projectId,
+      pointId,
+      voice: {
+        scriptVersion,
+        paragraphs: [
+          ...prefix,
+          {
+            textHash: teaserTextHash(text),
+            r2Key: spoken.r2Key,
+            durationMs: spoken.durationMs,
+            wordTimings: spoken.wordTimings,
+          },
+        ],
+      },
+    })
+  }
+  return spoken
+}
+
+export type PointPlanOrReuse =
+  | { ok: true; plan: PointPlanRecord; repairs: Repair[]; fetches: PointFetchesRecord | null }
+  | { ok: false; gate: Record<string, unknown> }
+  | { ok: false; skipped: string }
+
+/**
+ * The stored plan when it was made for this script version and this voice (no
+ * model call, and its fetched pictures with it), otherwise plan and store it.
+ */
+export async function planOrReusePointShots(
+  projectId: string,
+  pointId: string,
+  input: Parameters<typeof planPointShots>[1],
+): Promise<PointPlanOrReuse> {
+  const stored = await storedRecords(projectId, pointId)
+  if (
+    stored.plan &&
+    stored.plan.plannedFor.scriptVersion === input.voice.scriptVersion &&
+    stored.plan.plannedFor.voiceHash === pointVoiceHash(input.voice)
+  ) {
+    return { ok: true, plan: stored.plan, repairs: [], fetches: stored.fetches ?? null }
+  }
+  const planned = await planPointShots(projectId, input)
+  if (!planned.ok) return planned
+  await savePointProgress({
+    projectId,
+    pointId,
+    plan: planned.plan,
+    fetches: { candidates: [], state: null },
+  })
+  return { ...planned, fetches: null }
+}
+
+/** How many of a plan's shots are new pictures: those whose file is in the fetched pool. */
+export function countNewPictures(
+  plan: PointPlanRecord,
+  fetches: PointFetchesRecord | null,
+): number {
+  const keys = new Set<string>()
+  for (const candidate of fetches?.candidates ?? []) {
+    if (candidate.r2Key !== undefined) keys.add(candidate.r2Key)
+  }
+  return plan.shots.filter((shot) => {
+    const src = shot.slot && 'src' in shot.slot.payload ? shot.slot.payload.src : undefined
+    return src?.r2Key !== undefined && keys.has(src.r2Key)
+  }).length
 }
