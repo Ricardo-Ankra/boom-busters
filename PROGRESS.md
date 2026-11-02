@@ -4404,6 +4404,23 @@ Then:
 - The `bible-researcher` and `bible-drafter` functions under a real Inngest
   server. The e2e suite has none (see Task 14 above).
 
+## Copy the bible from another channel (2026-11-02)
+
+> The Bible tab always offers Copy from another channel: pick a channel (an
+> archived one too), tick the sections, and the source's current saved version
+> of those sections replaces them in the working draft. Branch `bible-copy`;
+> decision 371. No migration, nothing under
+> `packages/providers/src/prompts/lift/__fixtures__/` changes.
+
+### Deliverables
+
+- [x] `copyBibleFromChannelAction` in `bible-actions.ts`, with tests.
+- [x] The Copy from another channel panel (`copy-from-channel.tsx`) on the
+      Bible tab, the page passing the other channels with their versions, and
+      the Save note prefilled with `Copied from <name> version <N>`.
+- [x] Component tests, the explicit `./bible-actions` mocks extended.
+- [x] e2e step in `e2e/tests/bible.spec.ts`, and the panel in the 390 px check.
+
 ---
 
 # Decisions made
@@ -9116,3 +9133,13 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      only when the stage or the bible's content changes, and drops a reply
      older than the latest request, so a slow answer cannot replace a newer
      one.
+
+371. **Copying a bible replaces whole sections in the draft and saves nothing**
+     (2026-11-02). The copy is a draft change: each ticked section takes the
+     source's current saved keys, is marked drafted so the owner approves it
+     before Save, has its overlap flags recomputed by the edit path's own
+     check and its errors cleared. Refusals (same channel, no section, an
+     unknown channel, an archived target, a running job) come before the draft
+     is opened. The overwrite confirm names only the ticked sections that
+     differ from the saved version, since those are the ones that lose work.
+     The note is client state, so copying twice names the last copy.
