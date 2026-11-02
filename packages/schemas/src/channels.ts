@@ -61,7 +61,7 @@ export const BibleLanguageSchema = z
   .string()
   .trim()
   .max(12)
-  .regex(/^$|^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/)
+  .regex(/^$|^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/, 'Use a language code such as en or pt-BR')
 
 /**
  * The channel bible: the per-channel facts the prompts used to hard-code.
