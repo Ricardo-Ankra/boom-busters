@@ -40,6 +40,11 @@ import {
 } from '../script'
 import type { ScriptClaim } from '../script'
 import { buildShotListRequest, buildShotRepairRequest } from '../shotlist'
+import {
+  buildAngleOptionsRequest,
+  buildKeywordFilterRequest,
+  buildWinnersRequest,
+} from '../search-brief'
 import { buildStretchRequest } from '../stretch'
 import { buildNameSubjectRequest } from '../subject'
 
@@ -1286,6 +1291,53 @@ const otherCases: LiftCase[] = [
   ),
   liftAware('digest-no-lines', (bible) =>
     buildDigestRequest({ bible, weekOf: '2026-10-26', lines: [] }),
+  ),
+  liftAware('search-keyword-filter', () =>
+    buildKeywordFilterRequest({
+      subject: 'WeWork',
+      rows: [
+        'wework documentary',
+        'wework podcast',
+        'wework chair',
+        'the rise and fall of wework',
+      ].map((keyword) => ({
+        keyword,
+        volume: 60,
+        competition: 40,
+        overall: 60,
+        estimatedMonthlySearch: 9000,
+        growthPct: null,
+      })),
+    }),
+  ),
+  liftAware('search-winners', () =>
+    buildWinnersRequest({
+      subject: 'WeWork',
+      outliers: [
+        {
+          videoId: 'vid00000001',
+          title: 'The Rise and Fall of WeWork',
+          channel: 'Example Channel',
+          subscribers: 120000,
+          views: 4200000,
+          breakoutScore: 9.1,
+          publishedAt: '2024-03-01',
+          tags: ['wework', 'documentary'],
+        },
+      ],
+      descriptions: { vid00000001: 'How the office-rental startup grew, then lost its listing.' },
+    }),
+  ),
+  liftAware('search-angle-options', (bible) =>
+    buildAngleOptionsRequest({
+      bible,
+      subject: 'WeWork',
+      angleIdea: 'The lease structure is the story.',
+      targetKeyword: 'wework documentary',
+      secondaryKeywords: ['wework podcast'],
+      searchedQuestions: ['why did wework fail'],
+      toldAlready: ['the founder rise and the failed listing'],
+    }),
   ),
 ]
 
