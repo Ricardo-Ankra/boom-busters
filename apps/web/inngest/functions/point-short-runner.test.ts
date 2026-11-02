@@ -26,7 +26,7 @@ import {
   updateWorkspace,
 } from '@boom-busters/db'
 import { truncateLedger } from '@boom-busters/cost'
-import { mockImageGen, mockTalkingPoints } from '@boom-busters/providers'
+import { mockImageGen, mockPointScript, mockTalkingPoints } from '@boom-busters/providers'
 import {
   DEFAULT_SETTINGS,
   FIRST_CHANNEL_ID,
@@ -48,6 +48,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { inngest } from '../client'
+import { savePointProgress } from '../lib/point-build'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { pointShortRunner } from './point-short-runner'
 
@@ -306,6 +307,33 @@ describeDb('point-short-runner', () => {
     expect(await listShorts(db, FIXTURE_PROJECT_ID)).toHaveLength(0)
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
     expect(sentEvents().filter((event) => event.name === 'shorts/render.requested')).toEqual([])
+  })
+
+  it('moves the stored segment with the paragraph count when a rebuild saves a script', async () => {
+    const existing = await builtRow(POINT_IDS[0]!)
+    const script = mockPointScript({
+      title: 'T',
+      sourceChapters: [0],
+      bridgeChapters: [1],
+    } as TalkingPoint)
+    const longer = {
+      ...script,
+      paragraphs: [...script.paragraphs, ...script.paragraphs.slice(0, 2)],
+      scriptVersion: 1,
+      pointId: POINT_IDS[0]!,
+    }
+
+    await savePointProgress({
+      projectId: FIXTURE_PROJECT_ID,
+      pointId: POINT_IDS[0]!,
+      script: longer,
+    })
+
+    expect((await getShort(db, existing.id))?.segmentRef).toEqual({
+      chapterId: POINT_CHAPTER_ID,
+      fromParagraph: 0,
+      toParagraph: longer.paragraphs.length - 1,
+    })
   })
 
   it('does nothing when the point already has a row', { timeout: 120_000 }, async () => {

@@ -619,6 +619,15 @@ export function assemblePointShort(input: {
   return { timeline, findings }
 }
 
+/** A point Short's whole narration as a segment: the pseudo chapter, every paragraph. */
+function pointSegmentRef(paragraphCount: number) {
+  return {
+    chapterId: POINT_CHAPTER_ID,
+    fromParagraph: 0,
+    toParagraph: paragraphCount - 1,
+  }
+}
+
 /**
  * Store a built Short on its row: inserted when the point has none, otherwise
  * its script, voice, plan, pool and compiled master are replaced. The row's
@@ -637,6 +646,8 @@ export async function savePointShort(input: {
   const existing = await shortForPoint(db, input.projectId, input.pointId)
   if (existing) {
     await updateShort(db, existing.id, {
+      // A rebuild can change the paragraph count: the stored window follows it.
+      segmentRef: pointSegmentRef(input.script.paragraphs.length),
       sourceTimeline,
       pointScript: input.script,
       pointVoice: input.voice,
@@ -648,11 +659,7 @@ export async function savePointShort(input: {
   const row = await insertShort(db, {
     projectId: input.projectId,
     title: input.script.title,
-    segmentRef: {
-      chapterId: POINT_CHAPTER_ID,
-      fromParagraph: 0,
-      toParagraph: input.script.paragraphs.length - 1,
-    },
+    segmentRef: pointSegmentRef(input.script.paragraphs.length),
     kind: 'point',
     sourceTimeline,
     pointId: input.pointId,
@@ -692,18 +699,17 @@ export async function savePointProgress(input: {
     ...(records.fetches ? { pointFetches: records.fetches } : {}),
   }
   if (existing) {
-    await updateShort(db, existing.id, patch)
+    await updateShort(db, existing.id, {
+      ...patch,
+      ...(records.script ? { segmentRef: pointSegmentRef(records.script.paragraphs.length) } : {}),
+    })
     return
   }
   if (!records.script) return
   await insertShort(db, {
     projectId,
     title: records.script.title,
-    segmentRef: {
-      chapterId: POINT_CHAPTER_ID,
-      fromParagraph: 0,
-      toParagraph: records.script.paragraphs.length - 1,
-    },
+    segmentRef: pointSegmentRef(records.script.paragraphs.length),
     kind: 'point',
     pointId,
     ...patch,
