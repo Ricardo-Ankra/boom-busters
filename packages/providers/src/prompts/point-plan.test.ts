@@ -22,7 +22,7 @@ const words = Array.from({ length: 30 }, (_, i) => ({
 }))
 const library: PlanLibraryEntry[] = [
   {
-    ref: 1,
+    ref: 0,
     type: 'headline',
     payloadKind: 'headline',
     covered: 'The auditors found nothing.',
@@ -30,7 +30,7 @@ const library: PlanLibraryEntry[] = [
     chapterIndex: 0,
   },
   {
-    ref: 2,
+    ref: 1,
     type: 'archival',
     payloadKind: 'archival',
     covered: 'The shares collapsed.',
@@ -46,7 +46,7 @@ const collect = () => {
   return { notes, note }
 }
 const limits = { wordCount: 30, libraryCount: 2 }
-const lib = (startWord: number, ref = 1, extra: Record<string, unknown> = {}) => ({
+const lib = (startWord: number, ref = 0, extra: Record<string, unknown> = {}) => ({
   startWord,
   crop: 'centre',
   motion: 'kenburns-in',
@@ -115,20 +115,20 @@ describe('the point plan request', () => {
 
 describe('parsePointPlan', () => {
   it('reads a valid plan', () => {
-    const shots = parsePointPlan(plan([lib(0), stock(5), still(10), lib(15, 2)]), limits)
+    const shots = parsePointPlan(plan([lib(0), stock(5), still(10), lib(15, 1)]), limits)
     expect(shots).toHaveLength(4)
     expect(shots[0]).toEqual({
       startWord: 0,
       crop: 'centre',
       motion: 'kenburns-in',
-      source: { kind: 'library', ref: 1 },
+      source: { kind: 'library', ref: 0 },
     })
     expect(shots[1]!.source).toEqual({ kind: 'stock', query: 'trading floor' })
   })
 
   it('refuses a library number outside the list, never clamping it', () => {
-    expect(() => parsePointPlan(plan([lib(0), lib(5, 3)]), limits)).toThrow(ValidationError)
-    expect(() => parsePointPlan(plan([lib(0), lib(5, 0)]), limits)).toThrow(ValidationError)
+    expect(() => parsePointPlan(plan([lib(0), lib(5, 2)]), limits)).toThrow(ValidationError)
+    expect(() => parsePointPlan(plan([lib(0), lib(5, -1)]), limits)).toThrow(ValidationError)
   })
 
   it('refuses a startWord beyond the words, never clamping it', () => {
@@ -156,7 +156,7 @@ describe('parsePointPlan', () => {
   it('drops new shots over the cap, latest first, with a note', () => {
     const { notes, note } = collect()
     const shots = parsePointPlan(
-      plan([lib(0), stock(3), still(6), stock(9), still(12), lib(15, 2), stock(18), stock(21)]),
+      plan([lib(0), stock(3), still(6), stock(9), still(12), lib(15, 1), stock(18), stock(21)]),
       limits,
       note,
     )
@@ -191,8 +191,8 @@ describe('mockPointPlan', () => {
     expect(shots[0]!.motion).toBe('punch')
     expect(shots.filter((s) => s.source.kind === 'still')).toHaveLength(1)
     // the still takes the second shot's turn in the round-robin
-    expect(shots.map((s) => (s.source.kind === 'library' ? s.source.ref : 0))).toEqual([
-      1, 0, 1, 2, 1, 2,
+    expect(shots.map((s) => (s.source.kind === 'library' ? s.source.ref : -1))).toEqual([
+      0, -1, 0, 1, 0, 1,
     ])
     expect(check(shots, 30, 2)).toEqual(shots)
     expect(mockPointPlan(words, library)).toEqual(shots)

@@ -174,10 +174,10 @@ export function parsePointPlan(
     }
     if (
       shot.source.kind === 'library' &&
-      (shot.source.ref < 1 || shot.source.ref > limits.libraryCount)
+      (shot.source.ref < 0 || shot.source.ref >= limits.libraryCount)
     ) {
       issues.push(
-        `${label} uses library picture ${shot.source.ref}, but the library runs 1 to ${limits.libraryCount}`,
+        `${label} uses library picture ${shot.source.ref}, but the library runs 0 to ${limits.libraryCount - 1}`,
       )
     }
   })
@@ -222,7 +222,7 @@ export function mockPointPlan(
       motion: n === 0 ? 'punch' : 'kenburns-in',
       source: wantsStill
         ? { kind: 'still', prompt: 'MOCK vertical 9:16 frame, a stand-in picture' }
-        : { kind: 'library', ref: entry.ref },
+        : { kind: 'library', ref: n % library.length },
     })
   }
   return shots
