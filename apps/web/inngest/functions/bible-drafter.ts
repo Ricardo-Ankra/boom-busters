@@ -38,22 +38,44 @@ import { events } from '../events'
 
 const FUNCTION_ID = 'bible-drafter'
 
-/** Marks the draft's job failed with the reason; the owner sees it on the draft. */
-export async function failBibleDraft(channelId: string, message: string): Promise<void> {
+/**
+ * Whether this run still owns the draft's job: the stored job began when the
+ * run's job did. An event without a start (sent before runs carried one) owns
+ * whatever job there is.
+ */
+function owns(draft: BibleDraft, jobStartedAt: string | undefined): boolean {
+  return jobStartedAt === undefined || draft.job?.startedAt === jobStartedAt
+}
+
+/**
+ * Marks the draft's job failed with the reason; the owner sees it on the draft.
+ * A run that no longer owns the job (a newer one started) leaves it alone.
+ */
+export async function failBibleDraft(
+  channelId: string,
+  message: string,
+  jobStartedAt?: string,
+): Promise<void> {
   try {
     await writeBibleDraft(
       db,
       channelId,
-      (draft) => ({
-        ...draft,
-        job: {
-          kind: 'draft',
-          state: 'failed',
-          current: null,
-          error: message,
-          startedAt: draft.job?.startedAt ?? new Date().toISOString(),
-        },
-      }),
+      (draft) => {
+        if (!owns(draft, jobStartedAt)) return draft
+        const now = new Date().toISOString()
+        return {
+          ...draft,
+          // The requested units and steer stay, so Try again can resend them.
+          job: {
+            ...draft.job,
+            kind: 'draft',
+            state: 'failed',
+            current: null,
+            error: message,
+            startedAt: draft.job?.startedAt ?? now,
+          },
+        }
+      },
       { allowWhileRunning: true },
     )
   } catch (error) {
@@ -61,9 +83,14 @@ export async function failBibleDraft(channelId: string, message: string): Promis
   }
 }
 
-/** The draft's job with the unit in progress named; null when the draft has no job. */
+/** The draft's job with the unit in progress named and the heartbeat refreshed; null when the draft has no job. */
 function withCurrent(draft: BibleDraft, current: string | null): BibleDraft['job'] {
-  return draft.job ? { ...draft.job, current } : null
+  return draft.job ? { ...draft.job, current, heartbeatAt: new Date().toISOString() } : null
+}
+
+/** The draft's job with the heartbeat refreshed. */
+function beat(draft: BibleDraft): BibleDraft['job'] {
+  return draft.job ? { ...draft.job, heartbeatAt: new Date().toISOString() } : null
 }
 
 /** Entries keep only the videos the research names; with no research, none. */
@@ -99,17 +126,23 @@ async function draftUnit(input: {
   channelId: string
   unit: BibleDraftUnit
   steer: string | undefined
+  jobStartedAt: string | undefined
 }): Promise<void> {
-  const { channelId, unit, steer } = input
+  const { channelId, unit, steer, jobStartedAt } = input
   const key = unitKey(unit)
 
   const start = await getBibleDraft(db, channelId)
   if (!start) throw new NonRetriableError('The channel has no bible draft to write')
+  // A newer job took the draft: spend nothing and write nothing.
+  if (!owns(start, jobStartedAt)) return
   const channel = await getChannel(db, channelId)
   await writeBibleDraft(
     db,
     channelId,
-    (draft) => ({ ...draft, job: withCurrent(draft, BIBLE_SECTION_LABELS[unit.section]) }),
+    (draft) =>
+      owns(draft, jobStartedAt)
+        ? { ...draft, job: withCurrent(draft, BIBLE_SECTION_LABELS[unit.section]) }
+        : draft,
     { allowWhileRunning: true },
   )
 
@@ -140,7 +173,10 @@ async function draftUnit(input: {
     await writeBibleDraft(
       db,
       channelId,
-      (draft) => ({ ...draft, errors: { ...draft.errors, [key]: answer.issue } }),
+      (draft) =>
+        owns(draft, jobStartedAt)
+          ? { ...draft, errors: { ...draft.errors, [key]: answer.issue }, job: beat(draft) }
+          : draft,
       { allowWhileRunning: true },
     )
     return
@@ -151,6 +187,7 @@ async function draftUnit(input: {
     db,
     channelId,
     (draft) => {
+      if (!owns(draft, jobStartedAt)) return draft
       const videoIds = new Set((draft.research?.videos ?? []).map((v) => v.videoId))
       const value: Partial<ChannelBible> = { ...answer.value }
       for (const list of BIBLE_ENTRY_LISTS) {
@@ -176,6 +213,7 @@ async function draftUnit(input: {
         statuses: { ...draft.statuses, [unit.section]: 'drafted' },
         tooClose,
         errors,
+        job: beat(draft),
       }
     },
     { allowWhileRunning: true },
@@ -191,31 +229,45 @@ export const bibleDrafter = inngest.createFunction(
     onFailure: async ({ event }) => {
       const channelId = event.data.event.data['channelId']
       if (typeof channelId !== 'string') return
-      await failBibleDraft(channelId, String(event.data.error?.message ?? 'Unknown error'))
+      const jobStartedAt = event.data.event.data['jobStartedAt']
+      await failBibleDraft(
+        channelId,
+        String(event.data.error?.message ?? 'Unknown error'),
+        typeof jobStartedAt === 'string' ? jobStartedAt : undefined,
+      )
     },
     triggers: [events.bibleDraftRequested],
   },
   async ({ event, step }) => {
-    const { channelId, units, steer } = parseEventData('bible/draft.requested', event.data)
+    const { channelId, units, steer, jobStartedAt } = parseEventData(
+      'bible/draft.requested',
+      event.data,
+    )
 
     for (const unit of units) {
-      await step.run(`draft-${unitKey(unit)}`, () => draftUnit({ channelId, unit, steer }))
+      await step.run(`draft-${unitKey(unit)}`, () =>
+        draftUnit({ channelId, unit, steer, jobStartedAt }),
+      )
     }
 
     await step.run('finish', async () => {
       await writeBibleDraft(
         db,
         channelId,
-        (draft) => ({
-          ...draft,
-          job: {
-            kind: 'draft',
-            state: 'done',
-            current: null,
-            error: null,
-            startedAt: draft.job?.startedAt ?? new Date().toISOString(),
-          },
-        }),
+        (draft) =>
+          owns(draft, jobStartedAt)
+            ? {
+                ...draft,
+                job: {
+                  ...draft.job,
+                  kind: 'draft',
+                  state: 'done',
+                  current: null,
+                  error: null,
+                  startedAt: draft.job?.startedAt ?? new Date().toISOString(),
+                },
+              }
+            : draft,
         { allowWhileRunning: true },
       )
     })

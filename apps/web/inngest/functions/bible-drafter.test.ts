@@ -26,6 +26,7 @@ import {
   bibleDraftUnits,
   bibleSaveBlockers,
   isBibleComplete,
+  jobIsRunning,
   sectionIsEmpty,
   unitKey,
 } from '@boom-busters/schemas'
@@ -39,7 +40,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { bibleDrafter } from './bible-drafter'
+import { bibleDrafter, failBibleDraft } from './bible-drafter'
 
 /**
  * The bible drafter in mock-provider mode against the real database. A seam
@@ -97,11 +98,17 @@ const request = (
   channelId: string,
   units: BibleDraftUnit[],
   steer?: string,
+  jobStartedAt?: string,
 ): { events: [{ name: string; data: Record<string, unknown> }] } => ({
   events: [
     {
       name: 'bible/draft.requested',
-      data: { channelId, units, ...(steer ? { steer } : {}) },
+      data: {
+        channelId,
+        units,
+        ...(steer ? { steer } : {}),
+        ...(jobStartedAt ? { jobStartedAt } : {}),
+      },
     },
   ],
 })
@@ -433,6 +440,94 @@ describeDb('bible-drafter (mock mode)', () => {
       state: 'failed',
       current: null,
       error: 'the model is down',
+    })
+  })
+  describe('the job it owns', () => {
+    const FORTY_MINUTES_AGO = () => new Date(Date.now() - 40 * 60_000).toISOString()
+
+    /** A draft whose running job began at `startedAt`, with the requested units stored. */
+    async function startJob(
+      startedAt: string,
+      extra: Partial<NonNullable<BibleDraft['job']>> = {},
+    ) {
+      await prepare(channelId)
+      await writeBibleDraft(
+        db,
+        channelId,
+        (draft) => ({
+          ...draft,
+          job: {
+            ...draft.job!,
+            startedAt,
+            units: [{ section: 'voice' }],
+            steer: 'shorter',
+            ...extra,
+          },
+        }),
+        { allowWhileRunning: true },
+      )
+    }
+
+    it('refreshes the heartbeat as each unit is written, so a long run stays alive', async () => {
+      const startedAt = FORTY_MINUTES_AGO()
+      await startJob(startedAt)
+      expect(jobIsRunning((await draftOf()).job!)).toBe(false)
+
+      // The first unit starts and the run is then lost: the heartbeat is still fresh.
+      seams.answers = [new Error('the model is down')]
+      await engine.execute(request(channelId, [{ section: 'voice' }], undefined, startedAt))
+      const job = (await draftOf()).job!
+      expect(job.startedAt).toBe(startedAt)
+      expect(Date.now() - Date.parse(job.heartbeatAt!)).toBeLessThan(60_000)
+      expect(jobIsRunning(job)).toBe(true)
+    })
+
+    it('a run that lost its job writes no section, spends nothing and leaves the newer job alone', async () => {
+      const newer = new Date().toISOString()
+      await startJob(newer)
+      const before = await draftOf()
+
+      const staleStart = new Date(Date.now() - 5 * 60_000).toISOString()
+      const { result } = await engine.execute(
+        request(channelId, [{ section: 'voice' }], undefined, staleStart),
+      )
+      expect(result).toMatchObject({ outcome: 'drafted' })
+
+      const after = await draftOf()
+      expect(after.bible).toEqual(before.bible)
+      expect(after.statuses).toEqual(before.statuses)
+      expect(after.errors).toEqual({})
+      // `finish` did not write `done` over the newer job.
+      expect(after.job).toEqual(before.job)
+      expect(seams.requests).toHaveLength(0)
+    })
+
+    it('a run that owns the job finishes it, keeping the stored units and steer', async () => {
+      const startedAt = new Date().toISOString()
+      await startJob(startedAt)
+      await engine.execute(request(channelId, [{ section: 'voice' }], 'shorter', startedAt))
+      expect((await draftOf()).job).toMatchObject({
+        state: 'done',
+        startedAt,
+        units: [{ section: 'voice' }],
+        steer: 'shorter',
+      })
+    })
+
+    it('the fail writer keeps the units and steer, and leaves a newer job alone', async () => {
+      const startedAt = new Date().toISOString()
+      await startJob(startedAt)
+
+      await failBibleDraft(channelId, 'old run died', new Date(Date.now() - 60_000).toISOString())
+      expect((await draftOf()).job).toMatchObject({ state: 'running', error: null })
+
+      await failBibleDraft(channelId, 'the model is down', startedAt)
+      expect((await draftOf()).job).toMatchObject({
+        state: 'failed',
+        error: 'the model is down',
+        units: [{ section: 'voice' }],
+        steer: 'shorter',
+      })
     })
   })
 })

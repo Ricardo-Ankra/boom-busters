@@ -168,14 +168,24 @@ export const BibleDraftJobSchema = z.object({
   current: z.string().nullable(),
   error: z.string().nullable(),
   startedAt: z.string().datetime(),
+  /** Refreshed by the run as it works; the job is stale thirty minutes after it, or after `startedAt` without one. */
+  heartbeatAt: z.string().datetime().optional(),
+  /** A draft job's requested units, so Try again resends exactly them. */
+  units: z.array(BibleDraftUnitSchema).optional(),
+  /** A draft job's steer, resent with the units. */
+  steer: z.string().max(1000).optional(),
 })
 export type BibleDraftJob = z.infer<typeof BibleDraftJobSchema>
 
 const JOB_STALE_MS = 30 * 60_000
 
-/** Running, and started under thirty minutes ago: an older one is taken as dead. */
+/**
+ * Running, and heard from (its last heartbeat, else its start) under thirty
+ * minutes ago: a job silent for longer is taken as dead.
+ */
 export function jobIsRunning(job: BibleDraftJob, now: Date = new Date()): boolean {
-  return job.state === 'running' && now.getTime() - Date.parse(job.startedAt) < JOB_STALE_MS
+  const lastSeen = Date.parse(job.heartbeatAt ?? job.startedAt)
+  return job.state === 'running' && now.getTime() - lastSeen < JOB_STALE_MS
 }
 
 /** Flags by field path (`examples.<id>`, `hooks.<i>`, `openings.<i>`, `titles.<i>`). */

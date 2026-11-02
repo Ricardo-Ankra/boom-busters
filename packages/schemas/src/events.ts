@@ -396,6 +396,8 @@ export const AnalyticsRefreshRequestedSchema = z.object({
  */
 export const BibleResearchRequestedSchema = z.object({
   channelId: UlidSchema,
+  /** The `startedAt` of the draft job this run owns; a run that no longer matches leaves the job alone. */
+  jobStartedAt: z.string().datetime().optional(),
 })
 
 /** Draft these units of the channel's bible draft, with an optional steer. */
@@ -403,6 +405,8 @@ export const BibleDraftRequestedSchema = z.object({
   channelId: UlidSchema,
   units: z.array(BibleDraftUnitSchema).min(1),
   steer: z.string().max(1000).optional(),
+  /** The `startedAt` of the draft job this run owns; a run that no longer matches leaves the job alone. */
+  jobStartedAt: z.string().datetime().optional(),
 })
 
 /**

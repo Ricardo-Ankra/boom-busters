@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   BIBLE_SECTION_LABELS,
   BIBLE_SECTION_ORDER,
+  BibleDraftJobSchema,
   bibleDraftUnits,
   bibleProblems,
   bibleSaveBlockers,
@@ -143,6 +144,49 @@ describe('jobIsRunning', () => {
     expect(
       jobIsRunning({ kind: 'draft', state: 'running', current: null, error: null, startedAt }),
     ).toBe(false)
+  })
+
+  test('a heartbeat keeps a job started forty minutes ago running', () => {
+    const startedAt = new Date(Date.now() - 40 * 60_000).toISOString()
+    const heartbeatAt = new Date(Date.now() - 60_000).toISOString()
+    expect(
+      jobIsRunning({
+        kind: 'draft',
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt,
+        heartbeatAt,
+      }),
+    ).toBe(true)
+  })
+
+  test('a job with no heartbeat for thirty-one minutes is stale, whatever its start', () => {
+    const startedAt = new Date(Date.now() - 40 * 60_000).toISOString()
+    const heartbeatAt = new Date(Date.now() - 31 * 60_000).toISOString()
+    expect(
+      jobIsRunning({
+        kind: 'draft',
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt,
+        heartbeatAt,
+      }),
+    ).toBe(false)
+  })
+
+  test('a job row written before heartbeats and units still parses', () => {
+    const old = {
+      kind: 'draft',
+      state: 'running',
+      current: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+    }
+    expect(BibleDraftJobSchema.parse(old)).toEqual(old)
+    const withUnits = { ...old, units: [{ section: 'voice' }], steer: 'shorter' }
+    expect(BibleDraftJobSchema.parse(withUnits)).toEqual(withUnits)
   })
 
   test('a recent running job is running, a done one is not', () => {

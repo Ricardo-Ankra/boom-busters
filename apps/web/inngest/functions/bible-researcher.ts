@@ -23,7 +23,7 @@ import {
 } from '@boom-busters/providers/vidiq'
 import type { VidiqCall, VidiqClient, VidiqVideo } from '@boom-busters/providers/vidiq'
 import { bibleDraftUnits, parseEventData } from '@boom-busters/schemas'
-import type { BibleDraftInputs, BibleResearchDigest } from '@boom-busters/schemas'
+import type { BibleDraft, BibleDraftInputs, BibleResearchDigest } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { answerOrStop, callForAnswer } from '@/lib/answer'
 import { OWN_LINES_LIMIT, researchPlanFor } from '@/lib/bible-research'
@@ -107,22 +107,59 @@ async function spend<T>(
   }
 }
 
-/** Marks the draft's job failed with the reason; the owner sees it on the draft. */
-export async function failBibleResearch(channelId: string, message: string): Promise<void> {
+/**
+ * Whether this run still owns the draft's job: the stored job began when the
+ * run's job did. An event without a start (sent before runs carried one) owns
+ * whatever job there is.
+ */
+function owns(draft: BibleDraft, jobStartedAt: string | undefined): boolean {
+  return jobStartedAt === undefined || draft.job?.startedAt === jobStartedAt
+}
+
+/**
+ * Refreshes the job's heartbeat at the start of a step, so a long run is not
+ * taken as dead. A run that no longer owns the job stops before it spends.
+ */
+async function beat(channelId: string, jobStartedAt: string | undefined): Promise<void> {
+  const lost = await writeBibleDraft(
+    db,
+    channelId,
+    (draft) =>
+      owns(draft, jobStartedAt) && draft.job
+        ? { ...draft, job: { ...draft.job, heartbeatAt: new Date().toISOString() } }
+        : draft,
+    { allowWhileRunning: true },
+  ).then((draft) => !owns(draft, jobStartedAt))
+  if (lost) throw new NonRetriableError('A newer job has taken the draft; this research stops')
+}
+
+/**
+ * Marks the draft's job failed with the reason; the owner sees it on the draft.
+ * A run that no longer owns the job (a newer one started) leaves it alone.
+ */
+export async function failBibleResearch(
+  channelId: string,
+  message: string,
+  jobStartedAt?: string,
+): Promise<void> {
   try {
     await writeBibleDraft(
       db,
       channelId,
-      (draft) => ({
-        ...draft,
-        job: {
-          kind: 'research',
-          state: 'failed',
-          current: null,
-          error: message,
-          startedAt: draft.job?.startedAt ?? new Date().toISOString(),
-        },
-      }),
+      (draft) =>
+        owns(draft, jobStartedAt)
+          ? {
+              ...draft,
+              job: {
+                ...draft.job,
+                kind: 'research',
+                state: 'failed',
+                current: null,
+                error: message,
+                startedAt: draft.job?.startedAt ?? new Date().toISOString(),
+              },
+            }
+          : draft,
       { allowWhileRunning: true },
     )
   } catch (error) {
@@ -139,12 +176,17 @@ export const bibleResearcher = inngest.createFunction(
     onFailure: async ({ event }) => {
       const channelId = event.data.event.data['channelId']
       if (typeof channelId !== 'string') return
-      await failBibleResearch(channelId, String(event.data.error?.message ?? 'Unknown error'))
+      const jobStartedAt = event.data.event.data['jobStartedAt']
+      await failBibleResearch(
+        channelId,
+        String(event.data.error?.message ?? 'Unknown error'),
+        typeof jobStartedAt === 'string' ? jobStartedAt : undefined,
+      )
     },
     triggers: [events.bibleResearchRequested],
   },
   async ({ event, step }) => {
-    const { channelId } = parseEventData('bible/research.requested', event.data)
+    const { channelId, jobStartedAt } = parseEventData('bible/research.requested', event.data)
 
     const planned = await step.run('plan', async () => {
       const draft = await getBibleDraft(db, channelId)
@@ -160,6 +202,7 @@ export const bibleResearcher = inngest.createFunction(
     const lists: { own: boolean; ref: string; videos: KeptVideo[] }[] = []
     for (const [index, channel] of plan.channels.entries()) {
       const videos = await step.run(`channel-videos-${index}`, async () => {
+        await beat(channelId, jobStartedAt)
         const found = await spend(
           channelId,
           'vidiq_channel_videos',
@@ -176,6 +219,7 @@ export const bibleResearcher = inngest.createFunction(
       plan.videoIds.length === 0
         ? []
         : await step.run('videos-by-ids', async () => {
+            await beat(channelId, jobStartedAt)
             const found = await spend(
               channelId,
               'vidiq_get_videos_by_ids',
@@ -187,6 +231,7 @@ export const bibleResearcher = inngest.createFunction(
           })
 
     const outliers: KeptVideo[] = await step.run('outliers', async () => {
+      await beat(channelId, jobStartedAt)
       const found = await spend(
         channelId,
         'vidiq_outliers',
@@ -220,6 +265,7 @@ export const bibleResearcher = inngest.createFunction(
     const openings: { videoId: string; text: string }[] = []
     for (const video of wanted) {
       const opening = await step.run(`transcript-${video.videoId}`, async () => {
+        await beat(channelId, jobStartedAt)
         try {
           const transcript = await spend(
             channelId,
@@ -243,6 +289,7 @@ export const bibleResearcher = inngest.createFunction(
     }
 
     const digest: BibleResearchDigest = await step.run('digest', async () => {
+      await beat(channelId, jobStartedAt)
       if (mockProvidersEnabled()) return mockResearchDigest(inputs)
 
       const seen = new Set<string>()
@@ -279,30 +326,45 @@ export const bibleResearcher = inngest.createFunction(
       return answerOrStop(answer, 'The research digest could not be written')
     })
 
-    await step.run('save-digest', async () => {
+    const handOver = await step.run('save-digest', async () => {
+      const startedAt = new Date().toISOString()
+      let handedOver = false
       await writeBibleDraft(
         db,
         channelId,
-        (draft) => ({
-          ...draft,
-          research: digest,
-          // The drafting run follows at once: keep the draft locked until it
-          // takes over (a lost event frees it by the 30-minute stale rule).
-          job: {
-            kind: 'draft',
-            state: 'running',
-            current: null,
-            error: null,
-            startedAt: new Date().toISOString(),
-          },
-        }),
+        (draft) => {
+          // A newer job took the draft meanwhile: it keeps it.
+          if (!owns(draft, jobStartedAt)) return draft
+          handedOver = true
+          return {
+            ...draft,
+            research: digest,
+            // The drafting run follows at once: keep the draft locked until it
+            // takes over (a lost event frees it by the 30-minute stale rule).
+            job: {
+              kind: 'draft',
+              state: 'running',
+              current: null,
+              error: null,
+              startedAt,
+              heartbeatAt: startedAt,
+              units: bibleDraftUnits(),
+            },
+          }
+        },
         { allowWhileRunning: true },
       )
+      return handedOver ? { startedAt } : null
     })
+    if (!handOver) return { outcome: 'superseded' as const }
 
     await step.sendEvent(
       'draft-requested',
-      events.bibleDraftRequested.create({ channelId, units: bibleDraftUnits() }),
+      events.bibleDraftRequested.create({
+        channelId,
+        units: bibleDraftUnits(),
+        jobStartedAt: handOver.startedAt,
+      }),
     )
 
     return { outcome: 'researched' as const, videos: digest.videos.length }

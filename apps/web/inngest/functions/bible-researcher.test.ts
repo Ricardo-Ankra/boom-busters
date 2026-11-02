@@ -31,13 +31,14 @@ import {
   bibleDraftUnits,
   DEFAULT_WORKSPACE_SETTINGS,
   FIRST_CHANNEL_ID,
+  jobIsRunning,
 } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { NonRetriableError } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { bibleResearcher } from './bible-researcher'
+import { bibleResearcher, failBibleResearch } from './bible-researcher'
 
 /**
  * The bible researcher in mock-provider mode against the real database: every
@@ -81,8 +82,15 @@ const INPUTS = {
   avoid: '',
 }
 
-const request = (): { events: [{ name: string; data: { channelId: string } }] } => ({
-  events: [{ name: 'bible/research.requested', data: { channelId: FIRST_CHANNEL_ID } }],
+const request = (
+  jobStartedAt?: string,
+): { events: [{ name: string; data: { channelId: string; jobStartedAt?: string } }] } => ({
+  events: [
+    {
+      name: 'bible/research.requested',
+      data: { channelId: FIRST_CHANNEL_ID, ...(jobStartedAt ? { jobStartedAt } : {}) },
+    },
+  ],
 })
 
 /** Every longest string in a value, so a stored transcript would show. */
@@ -156,9 +164,21 @@ describeDb('bible-researcher (mock mode)', () => {
       'draft-requested',
       expect.objectContaining({
         name: 'bible/draft.requested',
-        data: { channelId: FIRST_CHANNEL_ID, units: bibleDraftUnits() },
+        data: {
+          channelId: FIRST_CHANNEL_ID,
+          units: bibleDraftUnits(),
+          jobStartedAt: expect.any(String),
+        },
       }),
     )
+    // The drafting job it hands over stores the units for Try again, and the event names it.
+    const sent = (
+      ctx.step.sendEvent as unknown as {
+        mock: { calls: [string, { data: { jobStartedAt: string } }][] }
+      }
+    ).mock.calls[0]![1]
+    expect(draft?.job?.startedAt).toBe(sent.data.jobStartedAt)
+    expect(draft?.job?.units).toEqual(bibleDraftUnits())
   })
 
   it('adds no ledger row for a step a restart has already memoised', async () => {
@@ -286,5 +306,63 @@ describeDb('bible-researcher (mock mode)', () => {
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 0)).toEqual([])
     await db.delete(chapters)
     expect(await approvedScriptOpenings(db, FIRST_CHANNEL_ID, 10)).toEqual([])
+  })
+  describe('the job it owns', () => {
+    /** The research job the action started, `startedAt` forty minutes ago. */
+    async function oldJob(): Promise<string> {
+      const startedAt = new Date(Date.now() - 40 * 60_000).toISOString()
+      await writeBibleDraft(
+        db,
+        FIRST_CHANNEL_ID,
+        (draft) => ({ ...draft, job: { ...draft.job!, startedAt } }),
+        { allowWhileRunning: true },
+      )
+      return startedAt
+    }
+
+    it('refreshes the heartbeat before it spends, so a long run stays alive', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const startedAt = await oldJob()
+      // The run stops at its first call (the cap), after the heartbeat.
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 3 } })
+      await engine.execute(request(startedAt))
+      const job = (await getBibleDraft(db, FIRST_CHANNEL_ID))!.job!
+      expect(job.startedAt).toBe(startedAt)
+      expect(Date.now() - Date.parse(job.heartbeatAt!)).toBeLessThan(60_000)
+      expect(jobIsRunning(job)).toBe(true)
+    })
+
+    it('a run that lost its job stops before it calls VidIQ and leaves the newer job alone', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const before = (await getBibleDraft(db, FIRST_CHANNEL_ID))!.job
+      const lost = new Date(Date.now() - 5 * 60_000).toISOString()
+      const { error } = await engine.execute(request(lost))
+      expect(JSON.stringify(error)).toContain('A newer job has taken the draft')
+      expect(await db.select().from(vidiqCredits)).toHaveLength(0)
+
+      const opts = (
+        bibleResearcher as unknown as { opts: { onFailure: (args: unknown) => Promise<void> } }
+      ).opts
+      await opts.onFailure({
+        event: {
+          data: {
+            event: { data: { channelId: FIRST_CHANNEL_ID, jobStartedAt: lost } },
+            error: { message: 'A newer job has taken the draft' },
+          },
+        },
+      })
+      expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.job).toEqual(before)
+    })
+
+    it('the fail writer marks the job it owns failed', async () => {
+      const startedAt = (await getBibleDraft(db, FIRST_CHANNEL_ID))!.job!.startedAt
+      await failBibleResearch(FIRST_CHANNEL_ID, 'VidIQ did not answer', startedAt)
+      expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.job).toMatchObject({
+        kind: 'research',
+        state: 'failed',
+        error: 'VidIQ did not answer',
+        startedAt,
+      })
+    })
   })
 })
