@@ -10,3 +10,10 @@ export const FIXTURE_CHANNEL_VIEW: ChannelView = {
   bible: EMPTY_BIBLE,
   archived: false,
 }
+
+/** The saved bible version behind the fixture channel, for the Bible tab. */
+export const FIXTURE_CURRENT_VERSION = {
+  id: '01J00000000000000000000009',
+  version: 1,
+  bible: EMPTY_BIBLE,
+}

@@ -188,7 +188,7 @@ export const dossierRunner = inngest.createFunction(
           documents,
           corpus,
         },
-        { bible: () => channelForProject(db, projectId) },
+        { bible: async () => requireCompleteBible(await channelForProject(db, projectId)) },
       )
 
     // Research, parking on the budget gate for as many rounds as the human is

@@ -10,6 +10,7 @@ import {
   parseSilences,
   qcArgs,
   whisperJsonToCaptions,
+  youtubeInitBody,
 } from './commands'
 
 describe('qcArgs', () => {
@@ -157,5 +158,54 @@ describe('whisperJsonToCaptions', () => {
   it('returns nothing for an empty or malformed payload', () => {
     expect(whisperJsonToCaptions({})).toEqual([])
     expect(whisperJsonToCaptions({ transcription: [] })).toEqual([])
+  })
+})
+
+describe('youtubeInitBody', () => {
+  const job = {
+    kind: 'upload-youtube' as const,
+    jobId: '01HQ0000000000000000000JOB',
+    projectId: '01HQ0000000000000000000PRJ',
+    callbackUrl: 'https://example.com/hook',
+    videoS3Key: 'renders/master.mp4',
+    accessToken: 'ya29.short',
+    title: 'The audit that lied',
+    description: 'Wirecard.',
+    tags: ['finance'],
+    privacyStatus: 'private' as const,
+    publishAt: '2026-11-05T15:00:00.000Z',
+    containsSyntheticMedia: true,
+  }
+
+  it('is byte-identical to the body sent before the category and language existed', () => {
+    const before = JSON.stringify({
+      snippet: { title: job.title, description: job.description, tags: job.tags },
+      status: {
+        privacyStatus: job.privacyStatus,
+        selfDeclaredMadeForKids: false,
+        containsSyntheticMedia: true,
+        publishAt: job.publishAt,
+      },
+    })
+    expect(youtubeInitBody(job)).toBe(before)
+  })
+
+  it('puts the category and both languages in the snippet when the job has them', () => {
+    const body = JSON.parse(
+      youtubeInitBody({
+        ...job,
+        categoryId: '27',
+        defaultLanguage: 'en',
+        defaultAudioLanguage: 'en',
+      }),
+    ) as { snippet: Record<string, unknown> }
+    expect(body.snippet).toEqual({
+      title: job.title,
+      description: job.description,
+      tags: job.tags,
+      categoryId: '27',
+      defaultLanguage: 'en',
+      defaultAudioLanguage: 'en',
+    })
   })
 })

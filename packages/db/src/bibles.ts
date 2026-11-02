@@ -1,5 +1,5 @@
 import {
-  ChannelBibleSchema,
+  ChannelBibleReadSchema,
   ChannelNotFoundError,
   EXAMPLE_SLOT_IDS,
   isBibleComplete,
@@ -7,7 +7,7 @@ import {
 import type { ChannelBible } from '@boom-busters/schemas'
 import { asc, eq, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { channelBibles, channels } from './schema'
+import { bibleDrafts, channelBibles, channels } from './schema'
 import type { BibleVersionRow } from './schema'
 
 /**
@@ -84,11 +84,12 @@ export async function saveBibleVersion(
 /**
  * A stored version with its bible parsed, so a version saved before a key was
  * added (stage A stored eleven) comes back with the schema's defaults, as
- * `toChannel` already gives the project freeze.
+ * `toChannel` already gives the project freeze. The read schema strips a key
+ * the bible no longer has, so a retired one never fails the read.
  */
 const parsed = (row: BibleVersionRow): BibleVersionRow => ({
   ...row,
-  bible: ChannelBibleSchema.parse(row.bible),
+  bible: ChannelBibleReadSchema.parse(row.bible),
 })
 
 /** The version the channel's current pointer names. A channel without one is a broken row. */
@@ -127,4 +128,66 @@ export async function bibleVersionById(db: Database, id: string): Promise<BibleV
   const [row] = await db.select().from(channelBibles).where(eq(channelBibles.id, id)).limit(1)
   if (!row) throw new Error(`bible version ${id} not found`)
   return parsed(row)
+}
+
+/**
+ * Lock the channel's row for the rest of the transaction and return the
+ * version it currently runs on. A save and a restore both take this first, so
+ * they serialise, and a draft's base is compared against the real current one.
+ */
+export async function lockChannelBible(
+  tx: BibleTransaction,
+  channelId: string,
+): Promise<{ currentBibleId: string | null }> {
+  const [locked] = await tx
+    .select({ currentBibleId: channels.currentBibleId })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .for('update')
+  if (!locked) throw new ChannelNotFoundError(channelId)
+  return locked
+}
+
+/** The channel has a working draft, and a restore would leave it pointing at a stale base. */
+export class BibleDraftExistsError extends Error {
+  constructor(channelId: string) {
+    super(`channel ${channelId} has an open bible draft; save or discard it first`)
+    this.name = 'BibleDraftExistsError'
+  }
+}
+
+/**
+ * Append a copy of an earlier version as the channel's next one (nothing is
+ * rewritten; the history keeps both). Refuses another channel's version, and
+ * refuses while a draft is open: the draft was based on the version now
+ * current, and a restore under it would make its save overwrite the restore.
+ */
+export async function restoreBibleVersion(
+  db: Database,
+  channelId: string,
+  versionId: string,
+): Promise<BibleVersionRow> {
+  return db.transaction(async (tx) => {
+    await lockChannelBible(tx, channelId)
+    const [version] = await tx
+      .select()
+      .from(channelBibles)
+      .where(eq(channelBibles.id, versionId))
+      .limit(1)
+    if (!version || version.channelId !== channelId) {
+      throw new Error('bible version belongs to another channel')
+    }
+    const [draft] = await tx
+      .select({ channelId: bibleDrafts.channelId })
+      .from(bibleDrafts)
+      .where(eq(bibleDrafts.channelId, channelId))
+      .limit(1)
+    if (draft) throw new BibleDraftExistsError(channelId)
+    return appendBibleVersion(
+      tx,
+      channelId,
+      ChannelBibleReadSchema.parse(version.bible),
+      `Restored version ${version.version}`,
+    )
+  })
 }

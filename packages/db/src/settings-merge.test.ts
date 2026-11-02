@@ -238,3 +238,15 @@ describe('normaliseSettings and the direction route (decision 252)', () => {
     })
   })
 })
+
+describe('merging the VidIQ cap', () => {
+  it('writes the cap from a patch and keeps it through a budget-only save', () => {
+    const capped = mergeWorkspaceSettings(DEFAULT_WORKSPACE_SETTINGS, {
+      vidiq: { monthlyCreditCap: 500 },
+    })
+    expect(capped.vidiq.monthlyCreditCap).toBe(500)
+
+    const later = mergeWorkspaceSettings(capped, { budgets: { monthlyCeilingUsd: 42 } })
+    expect(later.vidiq.monthlyCreditCap).toBe(500)
+  })
+})

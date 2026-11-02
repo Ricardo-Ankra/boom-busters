@@ -7,6 +7,9 @@ import {
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   insertShort,
+  moveProjectBible,
+  saveBibleVersion,
+  currentBible,
   insertTalkingPointSet,
   approveTalkingPointSet,
   publishRecords,
@@ -78,6 +81,35 @@ describeDb('publishModel budget', () => {
     expect((await descriptionIngredients(db, otherProject.id)).disclaimer).toBe(
       'This is education, not advice.',
     )
+  })
+})
+
+describeDb('publishModel after Use the latest bible', () => {
+  it("reads the newer version's disclaimer once the project is moved onto it", async () => {
+    await seed(db)
+    const other = await createChannel(db, {
+      name: 'Moved channel',
+      handle: null,
+      slug: `moved-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...EMPTY_BIBLE, disclaimer: 'The first disclaimer.' },
+    })
+    const kase = await createCase(db, { channelId: other.id, title: 'M', category: 'con' })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'On M' })
+    expect((await descriptionIngredients(db, project.id)).disclaimer).toBe('The first disclaimer.')
+
+    const v2 = await saveBibleVersion(
+      db,
+      other.id,
+      { ...EMPTY_BIBLE, disclaimer: 'The second disclaimer.' },
+      'New disclaimer',
+    )
+    // Frozen until the owner moves it.
+    expect((await descriptionIngredients(db, project.id)).disclaimer).toBe('The first disclaimer.')
+
+    await moveProjectBible(db, project.id, (await currentBible(db, other.id)).id)
+    expect(v2.id).toBe((await currentBible(db, other.id)).id)
+    expect((await descriptionIngredients(db, project.id)).disclaimer).toBe('The second disclaimer.')
   })
 })
 

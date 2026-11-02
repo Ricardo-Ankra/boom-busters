@@ -24,6 +24,16 @@ vi.mock('./actions', () => ({
 // unmounted panels never call these, but the modules still load, and their
 // `'use server'` chains reach `next-auth` and R2 in ways this suite has no
 // use for. Stubbed the same way `voice-tab.test.tsx` stubs them.
+vi.mock('./bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
+}))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),

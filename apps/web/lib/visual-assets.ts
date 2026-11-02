@@ -60,6 +60,7 @@ import { postForUrl } from '@/lib/social-source'
 import { env } from '@/lib/env'
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
+import { requireCompleteBible } from '@/inngest/lib/channel'
 import { stillCatalogue, stillGenerator } from '@/lib/model-catalogue'
 import type { CatalogueInputs } from '@/lib/model-catalogue'
 import {
@@ -751,11 +752,12 @@ export async function scoreSlotCandidates(
 ): Promise<SlotCandidate[]> {
   if (candidates.length === 0) return []
 
+  // Read here, in the call that builds the request (one scoring call per slot), before any mock branch.
+  const frozen = requireCompleteBible(await channelForProject(db, projectId))
   if (mockProvidersEnabled()) return applyScores(candidates, mockScores(candidates))
   const answer = await callForAnswer({
-    // Read here, in the call that builds the request (one scoring call per slot).
     request: buildScoringRequest({
-      bible: await channelForProject(db, projectId),
+      bible: frozen,
       brief,
       candidates,
     }),

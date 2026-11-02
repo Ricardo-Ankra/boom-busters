@@ -28,6 +28,16 @@ vi.mock('@/app/(console)/c/[slug]/settings/model-actions', () => ({
   refreshModelListsAction: vi.fn(),
 }))
 vi.mock('../c/[slug]/settings/actions', () => ({ saveSettings: vi.fn() }))
+vi.mock('../c/[slug]/settings/bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
+}))
 vi.mock('../c/[slug]/settings/channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),

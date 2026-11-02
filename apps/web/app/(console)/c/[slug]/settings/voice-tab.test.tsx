@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { type ChannelView } from './channel-tab'
 import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
 import { SettingsForm } from './settings-form'
-import { DEFAULT_SAMPLE } from './voice-tab'
+import { DEFAULT_SAMPLE, NEUTRAL_SAMPLE } from './voice-tab'
 
 /**
  * Choosing a narrator, through the whole screen rather than the panel alone.
@@ -34,6 +34,16 @@ vi.mock('./actions', () => ({
   disconnectYoutubeAction: vi.fn(),
 }))
 
+vi.mock('./bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
+}))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),
@@ -191,9 +201,23 @@ describe('the audition sample', () => {
     expect(sample()).toBe('A line for another channel.')
   })
 
-  it('falls back to the default when the bible leaves it blank', async () => {
-    await openVoiceTab()
+  it('shows the first channel’s line unchanged', async () => {
+    await openVoiceTab({
+      ...FIXTURE_CHANNEL_VIEW,
+      bible: { ...FIXTURE_CHANNEL_VIEW.bible, auditionLine: FIRST_CHANNEL_BIBLE.auditionLine },
+    })
     expect(sample()).toBe(DEFAULT_SAMPLE)
+  })
+
+  it('falls back to the neutral line when the bible leaves it blank', async () => {
+    await openVoiceTab({
+      ...FIXTURE_CHANNEL_VIEW,
+      bible: { ...FIXTURE_CHANNEL_VIEW.bible, auditionLine: '   ' },
+    })
+    expect(sample()).toBe(NEUTRAL_SAMPLE)
+    expect(NEUTRAL_SAMPLE).toBe(
+      "This is a short sample, read so you can hear the voice before you choose it. Write the channel's own audition line in its bible.",
+    )
   })
 })
 

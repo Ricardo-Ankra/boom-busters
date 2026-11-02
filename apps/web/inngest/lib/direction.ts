@@ -48,6 +48,7 @@ import type {
   ShotBrief,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
+import { requireCompleteBible } from './channel'
 import { z } from 'zod'
 import { answerOrStop, callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
@@ -216,6 +217,9 @@ export async function loadDirectionInputs(projectId: string): Promise<{
  */
 export async function draftDirectorsBook(projectId: string): Promise<DirectorsBook> {
   const inputs = await loadDirectionInputs(projectId)
+  // Read here, inside the step that drafts, never from an earlier step's output.
+  // The gate sits before the mock branch.
+  const frozen = requireCompleteBible(await channelForProject(db, projectId))
   let book: DirectorsBook
   let repairs: Repair[] | undefined
   if (mockProvidersEnabled()) {
@@ -229,11 +233,7 @@ export async function draftDirectorsBook(projectId: string): Promise<DirectorsBo
     // a cut-off is asked once more at double the budget, a refusal once more
     // with its reason; then the stage stops with the reason, never a blind retry.
     const answer = await callForAnswer({
-      // Read here, inside the step that drafts, never from an earlier step's output.
-      request: buildDirectorsBookRequest({
-        ...inputs,
-        bible: await channelForProject(db, projectId),
-      }),
+      request: buildDirectorsBookRequest({ ...inputs, bible: frozen }),
       parse: (text, note) => parseDirectorsBook(text, inputs.chapters.length, note),
       complete: completeForProject(projectId),
     })
@@ -297,6 +297,8 @@ export async function planChapterSlots(input: {
    */
   logos?: readonly LogoIndex[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
+  // One read for the chapter, before any mock branch: every request this step builds shares it.
+  const bible = requireCompleteBible(await channelForProject(db, input.projectId))
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return { rows: [], rejected: 0 }
 
@@ -321,8 +323,6 @@ export async function planChapterSlots(input: {
   } else {
     // The first ask and the brief repair are the ledger's plain rows; the
     // automatic timing repair ('stretch') and the retries are named on theirs.
-    // One read for the chapter: every request this step builds shares it.
-    const bible = await channelForProject(db, input.projectId)
     const planned = await planChapterWith(
       (request, purpose) =>
         callLlm(request, {

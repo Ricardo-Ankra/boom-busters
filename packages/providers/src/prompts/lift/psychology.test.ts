@@ -55,3 +55,21 @@ describe('the lift is complete', () => {
     expect(LIFT_CASES.filter((c) => !c.bibleAware).map((c) => c.name)).toEqual([])
   })
 })
+
+describe('the slot passes carry the channel direction rules', () => {
+  const RULE = "Never show a patient's face."
+  const bible = { ...PSYCHOLOGY_TEST_BIBLE, directionRulesMd: RULE }
+  const inUse = { bible, slotIds: EXAMPLE_SLOT_IDS }
+
+  it.each(LIFT_CASES.filter((c) => c.name.includes('rebrief') || c.name.includes('redirect')))(
+    '$name prints the rules after the craft',
+    (c) => {
+      const { system } = c.build(inUse)
+      expect(system).toContain("This channel's rules")
+      expect(system).toContain(RULE)
+      expect(
+        c.build({ bible: PSYCHOLOGY_TEST_BIBLE, slotIds: EXAMPLE_SLOT_IDS }).system,
+      ).not.toContain("This channel's rules")
+    },
+  )
+})

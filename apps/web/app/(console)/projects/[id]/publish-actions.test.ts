@@ -1,6 +1,9 @@
 // @vitest-environment node
 
 import {
+  createCase,
+  createChannel,
+  createProjectFromCase,
   createScriptVersion,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
@@ -18,10 +21,16 @@ import {
   seed,
   timelines,
 } from '@boom-busters/db'
-import { DEFAULT_SETTINGS, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  FIRST_CHANNEL_ID,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import type * as YoutubeLib from '@/lib/youtube'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
@@ -133,6 +142,32 @@ describeDb('generateTitles (decision 293)', () => {
       ],
     })
   })
+
+  it.each(['', '1'])(
+    'refuses a project frozen to an incomplete bible with the gate message and no call (MOCK_PROVIDERS=%j)',
+    async (mock) => {
+      vi.stubEnv('MOCK_PROVIDERS', mock)
+      const channel = await createChannel(db, {
+        name: 'Blank channel',
+        handle: null,
+        slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+        settings: DEFAULT_SETTINGS,
+        bible: EMPTY_BIBLE,
+      })
+      const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+      const blank = await createProjectFromCase(db, { caseId: kase.id, title: 'T' })
+
+      expect(await generateTitles('master', blank.id)).toEqual({
+        ok: false,
+        error: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
+      })
+      expect(await generateDescription('master', blank.id)).toEqual({
+        ok: false,
+        error: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
+      })
+      expect(callLlm).not.toHaveBeenCalled()
+    },
+  )
 
   it('stops after a second cut-off with the reason, and offers nothing', async () => {
     callLlm.mockResolvedValue({ text: HALF, truncated: true })

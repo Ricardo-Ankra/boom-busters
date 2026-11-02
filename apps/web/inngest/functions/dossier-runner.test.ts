@@ -30,6 +30,7 @@ import type { GroundedClaim } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { completeForProject } from '@/lib/answer-call'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { notify } from '@/lib/notify'
@@ -406,7 +407,7 @@ describeDb('dossier-runner', () => {
 
     expect(run.error).toMatchObject({
       name: 'NonRetriableError',
-      message: expect.stringContaining('channel bible incomplete'),
+      message: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
     })
     expect(researchDossier).not.toHaveBeenCalled()
     expect(await listLedger(db, { projectId: otherProject.id, limit: 1 })).toEqual([])
@@ -437,7 +438,7 @@ describeDb('dossier-runner', () => {
 
     expect(run.error).toMatchObject({
       name: 'NonRetriableError',
-      message: expect.stringContaining('channel bible incomplete'),
+      message: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
     })
     expect(researchDossier).not.toHaveBeenCalled()
     expect(await listLedger(db, { projectId: otherProject.id, limit: 1 })).toEqual([])

@@ -9,6 +9,7 @@ import {
   setMusicBedDuration,
   ttsCredential,
   updateWorkspace,
+  vidiqCredential,
   visualCredentials,
 } from '@boom-busters/db'
 import {
@@ -18,6 +19,7 @@ import {
   stockAdapter,
   ttsAdapter,
 } from '@boom-busters/providers'
+import { createVidiqClient } from '@boom-busters/providers/vidiq'
 import {
   LlmProviderSchema,
   MUSIC_ATTRIBUTION_MAX_CHARS,
@@ -146,6 +148,23 @@ async function verifiableKey(
             mockProvidersEnabled() ? Promise.resolve() : falImageGen.verifyKey(apiKey)
         : (apiKey: string) => stockAdapter(provider).verifyKey(apiKey)
     return { verify, apiKey: keys[provider] }
+  }
+
+  // VidIQ verifies through its free balance call: a wrong key is refused there
+  // and nothing is spent. The client opens a connection, so it is closed after.
+  if (provider === 'vidiq') {
+    return {
+      verify: async (apiKey) => {
+        if (mockProvidersEnabled()) return
+        const client = createVidiqClient(apiKey)
+        try {
+          await client.balance()
+        } finally {
+          await client.close()
+        }
+      },
+      apiKey: await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY),
+    }
   }
 
   return undefined

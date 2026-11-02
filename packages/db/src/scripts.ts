@@ -1,8 +1,8 @@
-import { asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { sentenceHash } from '@boom-busters/schemas'
 import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { chapters, claimRefs, claims, dossiers, scriptEdits, scripts } from './schema'
+import { chapters, claimRefs, claims, dossiers, projects, scriptEdits, scripts } from './schema'
 import type { ChapterRow, EditType, ScriptRow, ScriptStatus } from './schema'
 
 /**
@@ -240,6 +240,50 @@ export async function setScriptStatus(
   status: ScriptStatus,
 ): Promise<void> {
   await db.update(scripts).set({ status, updatedAt: new Date() }).where(eq(scripts.id, scriptId))
+}
+
+/** The first characters of a script's opening chapter, for the research digest. */
+const OPENING_CHARS = 300
+
+/**
+ * The opening of the channel's approved scripts, newest first, one per project
+ * (its newest approved script) and at most `limit`: the first 300 characters of
+ * that script's first chapter. A script with an empty opening is skipped.
+ * Bounded in SQL, so no chapter body is read whole.
+ */
+export async function approvedScriptOpenings(
+  db: Database,
+  channelId: string,
+  limit: number,
+): Promise<string[]> {
+  const newest = db
+    .selectDistinctOn([projects.id], {
+      opening: sql<string>`left(trim(${chapters.contentMd}), ${OPENING_CHARS})`.as('opening'),
+      updatedAt: scripts.updatedAt,
+    })
+    .from(scripts)
+    .innerJoin(projects, eq(projects.id, scripts.projectId))
+    .innerJoin(
+      chapters,
+      and(
+        eq(chapters.scriptId, scripts.id),
+        eq(
+          chapters.index,
+          sql`(select min(c.index) from chapters c where c.script_id = ${scripts.id})`,
+        ),
+      ),
+    )
+    .where(and(eq(projects.channelId, channelId), eq(scripts.status, 'approved')))
+    .orderBy(projects.id, desc(scripts.updatedAt))
+    .as('newest')
+
+  const rows = await db
+    .select({ opening: newest.opening })
+    .from(newest)
+    .where(sql`${newest.opening} <> ''`)
+    .orderBy(desc(newest.updatedAt))
+    .limit(limit)
+  return rows.map((row) => row.opening)
 }
 
 /** Every warning across a script — the count the gate card shows. */

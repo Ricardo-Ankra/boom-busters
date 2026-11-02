@@ -36,3 +36,6 @@ packages/providers/src/exemplars/vendored/
 # Captured watch-page markup: the transcript source finds a key in the raw text, so the
 # fixture keeps the minified one-line shape YouTube serves.
 packages/case-finder/src/sources/fixtures/youtube-player-*.html
+
+# Recorded VidIQ responses: kept byte-for-byte as the tools returned them.
+packages/providers/src/vidiq/fixtures/

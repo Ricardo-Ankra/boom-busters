@@ -3,8 +3,13 @@
 import {
   chapters,
   claimPointWork,
+  createCase,
+  createChannel,
+  createProjectFromCase,
   FIXTURE_PROJECT_ID,
   getShort,
+  insertTimeline,
+  latestTimeline,
   notices,
   renders,
   requireTestDatabase,
@@ -21,16 +26,20 @@ import {
 } from '@boom-busters/db'
 import { truncateLedger } from '@boom-busters/cost'
 import {
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   PointFetchesRecordSchema,
   PointPlanRecordSchema,
   PointScriptRecordSchema,
   PointVoiceRecordSchema,
   teaserTextHash,
+  TimelineSchema,
 } from '@boom-busters/schemas'
 import type * as Tts from '@/lib/tts'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { seedPointShort } from '@/lib/point-studio.fixture'
@@ -54,6 +63,8 @@ vi.mock('@/lib/storage', () => ({
   takeStorage: () => 'regenerated' as const,
 }))
 const spies = vi.hoisted(() => ({ synthesise: vi.fn() }))
+const callLlm = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/llm', () => ({ callLlm }))
 vi.mock('@/lib/tts', async (importOriginal) => {
   const actual = (await importOriginal()) as typeof Tts
   spies.synthesise.mockImplementation(actual.synthesise)
@@ -173,6 +184,41 @@ describeDb('point-studio-runner', () => {
 
     expect(result).toMatchObject({ outcome: 'voiced' })
     expect(spies.synthesise).not.toHaveBeenCalled()
+  })
+
+  it('Re-plan refuses a project frozen to an incomplete bible before any prompt is built', async () => {
+    const channel = await createChannel(db, {
+      name: 'Blank channel',
+      handle: null,
+      slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+    const blank = (await createProjectFromCase(db, { caseId: kase.id, title: 'T' })).id
+    // Move the seeded Short, and a copy of its master, onto the blank project.
+    const master = (await latestTimeline(db, FIXTURE_PROJECT_ID))!
+    await insertTimeline(db, {
+      projectId: blank,
+      json: TimelineSchema.parse(master.json),
+      s3Key: '',
+    })
+    await db.update(shorts).set({ projectId: blank })
+    expect(await claim('plan')).toBe(true)
+
+    for (const stub of ['1', '']) {
+      vi.stubEnv('MOCK_PROVIDERS', stub)
+      const { error } = await engine.execute({
+        events: [
+          {
+            name: 'shorts/point.studio.requested',
+            data: { projectId: blank, shortId, op: 'plan', note: 'more footage' },
+          },
+        ],
+      })
+      expect(error).toMatchObject({ message: FROZEN_BIBLE_INCOMPLETE_MESSAGE })
+    }
+    expect(callLlm).not.toHaveBeenCalled()
   })
 
   it(

@@ -85,29 +85,38 @@ test.describe('channels', () => {
     await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
 
+    // The Channel tab only reports where the bible stands and points to the
+    // Bible tab, which is where it is written.
     await page.goto(channelPath('/settings?tab=channel', SECOND_SLUG))
-    const fields: Record<string, string> = {
-      subject: 'The psychology of everyday decisions',
-      whatACaseIs: 'A named, documented episode where a known bias changed an outcome.',
-      subjectKind: 'The study or episode as its Wikipedia article titles it',
-      audience: 'Curious adults who read popular science.',
-      narrationRegister: 'Calm, plain and a little dry.',
-      visualRegister: 'Archival photographs and muted documentary stills.',
-      titleStyle: 'A plain statement of what happened, under 60 characters.',
-    }
-    for (const [key, value] of Object.entries(fields)) {
-      await page.locator(`#bible-${key}`).fill(value)
-    }
+    await expect(page.getByText(/^Bible incomplete: \d+ missing$/)).toBeVisible()
+    await page.getByRole('link', { name: 'Open the Bible tab' }).click()
+    await expect(page).toHaveURL(/tab=bible/)
+
+    // Fill the Identity section by hand and save it as a version. Identity is
+    // one of seven sections (and the examples are drafted, not typed), so the
+    // bible stays incomplete: bible.spec.ts drafts the rest.
+    await page.getByRole('button', { name: 'Edit Identity', exact: true }).click()
+    await page.getByLabel('Subject', { exact: true }).fill('The psychology of everyday decisions')
+    await page
+      .getByLabel('What a case is')
+      .fill('A named, documented episode where a known bias changed an outcome.')
+    await page
+      .getByLabel('How a subject is named')
+      .fill('The study or episode as its Wikipedia article titles it')
+    await page.getByLabel('Subject noun, singular').fill('episode')
+    await page.getByLabel('Subject noun, plural').fill('episodes')
+    await page
+      .getByLabel('Audience', { exact: true })
+      .fill('Curious adults who read popular science.')
     for (let index = 1; index <= 2; index += 1) {
       await page.getByRole('button', { name: 'Add category' }).click()
       await page.getByLabel(`Category ${index} key`).fill(`category-${index}`)
       await page.getByLabel(`Category ${index} label`).fill(`Category ${index}`)
     }
-    // The bible's full shape needs fields the Channel tab cannot set yet, so
-    // filling every field it does have leaves the bible incomplete.
-    await expect(page.getByText('Bible incomplete')).toBeVisible()
-    await page.getByRole('button', { name: 'Save bible' }).click()
-    await expect(page.getByText('Saved').first()).toBeVisible()
+    await page.getByRole('button', { name: 'Done editing Identity', exact: true }).click()
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Saved as a new version').first()).toBeVisible()
+    await expect(page.getByText('Version 2 is what the channel runs on.')).toBeVisible()
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
     await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)

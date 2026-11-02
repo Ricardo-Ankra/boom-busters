@@ -1,5 +1,7 @@
 import {
   approvedTalkingPointSet,
+  currentBible,
+  getChannel,
   getDossier,
   listDossierDocumentSummaries,
   getLatestScript,
@@ -66,6 +68,7 @@ import {
   GateActionBar,
   RestartRunButton,
   StopButton,
+  UseLatestBibleButton,
 } from './project-controls'
 
 export const dynamic = 'force-dynamic'
@@ -121,6 +124,15 @@ export default async function ProjectPage({
 
   // The project's channel: its settings and the estimates priced against them.
   const channel = await channelForProjectOrNotFound(project.id)
+
+  // A project is frozen to the bible version it started on (the channel above
+  // carries that one). The button to move on shows only when a newer version
+  // exists; the action itself refuses one that is incomplete.
+  const [latestBible, ownChannel] = await Promise.all([
+    currentBible(db, channel.channelId),
+    getChannel(db, channel.channelId),
+  ])
+  const newerBible = latestBible.version > channel.bibleVersion
 
   // The cast (decision 253) is on screen from the script stage onward, in
   // every phase: the faces outlive the Direction card that names them.
@@ -368,7 +380,7 @@ export default async function ProjectPage({
           <h1 className="text-[20px] font-semibold">{project.title}</h1>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
             {caseCategoryLabel(channel.bible, project.caseCategory)} · {project.caseTitle} ·{' '}
-            {project.targetRuntimeMin} min target
+            {project.targetRuntimeMin} min target · Bible version {channel.bibleVersion}
           </p>
         </div>
 
@@ -381,6 +393,12 @@ export default async function ProjectPage({
             pulseUrl={`/api/pulse?project=${project.id}`}
             initialPulse={pulse}
           />
+          {newerBible ? (
+            <UseLatestBibleButton
+              projectId={project.id}
+              disabled={ownChannel.archivedAt !== null}
+            />
+          ) : null}
           {control.kind === 'stop' ? (
             <StopButton
               projectId={project.id}

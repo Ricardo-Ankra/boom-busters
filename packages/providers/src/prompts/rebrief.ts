@@ -7,7 +7,7 @@ import {
 import type { BibleInUse, DirectorsBook, ShotBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots } from './bible'
-import { directionCraft } from './direction-craft-text'
+import { directionCraft, directionRules } from './direction-craft-text'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs } from './repair'
 import type { Note } from './repair'
@@ -136,7 +136,7 @@ Do not restate the current idea in other words. It was rejected, so a
 paraphrase of it is not an answer. If the producer has given a steer below,
 follow it, and keep every craft rule that does not conflict with it.
 
-${directionCraft(input.bible.bible)}
+${directionCraft(input.bible.bible)}${directionRules(input.bible)}
 
 The target shape:
 ${input.brief.type === 'still' ? stillShape(sets.length > 0, input.bible) : TARGET_SHAPE[input.brief.type]}

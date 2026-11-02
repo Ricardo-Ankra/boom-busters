@@ -128,7 +128,6 @@ const UpdateChannelSchema = z.object({
     .transform((value) => (value === '' ? null : value))
     .nullable()
     .optional(),
-  bible: ChannelBibleSchema.optional(),
 })
 
 export async function updateChannelAction(
@@ -139,6 +138,11 @@ export async function updateChannelAction(
   if (!UlidSchema.safeParse(channelId).success) return UNKNOWN_CHANNEL
   const refusal = await channelWriteRefusal(channelId)
   if (refusal) return refusal
+
+  // The bible is versioned and approved section by section in the Bible tab.
+  if (typeof patch === 'object' && patch !== null && 'bible' in patch) {
+    return { ok: false, error: 'Edit the bible in the Bible tab' }
+  }
 
   const parsed = UpdateChannelSchema.safeParse(patch)
   if (!parsed.success) {

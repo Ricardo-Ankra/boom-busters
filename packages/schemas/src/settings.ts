@@ -23,6 +23,8 @@ export const PROVIDERS = [
   'pixabay',
   'fal',
   'hosted-alignment',
+  /** YouTube research for a channel's bible (read-only). Not an LLM provider. */
+  'vidiq',
 ] as const
 export const ProviderSchema = z.enum(PROVIDERS)
 export type Provider = z.infer<typeof ProviderSchema>
@@ -38,6 +40,8 @@ export const LLM_TASKS = [
   'direction',
   /** One call per graphic slot (decision 289): what it shows, its layout and its motion. */
   'graphics',
+  /** Drafting a channel's bible, one section at a time, and digesting its research. */
+  'bible',
 ] as const
 export const LlmTaskSchema = z.enum(LLM_TASKS)
 export type LlmTask = z.infer<typeof LlmTaskSchema>
@@ -192,6 +196,13 @@ export function modelPriceKey(provider: string, modelId: string): string {
  */
 export const DEFAULT_GRAPHICS_ROUTE = { provider: 'anthropic', model: 'claude-opus-5-5' } as const
 
+/**
+ * The bible drafter's default: the scripting tier (spec 4.7), the same model
+ * the default settings give scripting. A row stored before the route existed
+ * reads this.
+ */
+export const DEFAULT_BIBLE_ROUTE = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -201,6 +212,7 @@ export const ModelRoutingSchema = z.object({
   digest: ModelRefSchema,
   direction: ModelRefSchema,
   graphics: ModelRefSchema.default(DEFAULT_GRAPHICS_ROUTE),
+  bible: ModelRefSchema.default(DEFAULT_BIBLE_ROUTE),
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
   /**
@@ -506,6 +518,17 @@ export const BudgetsPatchSchema = z.object({
 })
 export type BudgetsPatch = z.infer<typeof BudgetsPatchSchema>
 
+export const DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP = 1000
+
+export const VidiqSettingsSchema = z.object({
+  monthlyCreditCap: z.number().int().min(0).max(100000).catch(DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP),
+})
+export type VidiqSettings = z.infer<typeof VidiqSettingsSchema>
+
+export const VidiqSettingsPatchSchema = z.object({
+  monthlyCreditCap: z.number().int().min(0).max(100000).optional(),
+})
+
 /**
  * Settings that belong to the whole workspace rather than one channel: model
  * price overrides and the monthly budget.
@@ -513,6 +536,12 @@ export type BudgetsPatch = z.infer<typeof BudgetsPatchSchema>
 export const WorkspaceSettingsSchema = z.object({
   modelPrices: ModelPricesSchema.default({ llm: {}, image: {} }),
   budgets: BudgetsSchema.default({ monthlyCeilingUsd: 100 }),
+  /**
+   * VidIQ bills in credits, not dollars, so its cap is its own number. `.catch`
+   * on both levels so a stored row that predates it, or holds a bad value,
+   * still parses.
+   */
+  vidiq: VidiqSettingsSchema.catch({ monthlyCreditCap: DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP }),
 })
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>
 
@@ -521,12 +550,14 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   // The sum of the old per-provider defaults was $60/month; $100 leaves the
   // same order of magnitude with headroom for a real production month.
   budgets: { monthlyCeilingUsd: 100 },
+  vidiq: { monthlyCreditCap: DEFAULT_VIDIQ_MONTHLY_CREDIT_CAP },
 }
 
 export const WorkspaceSettingsPatchSchema = z
   .object({
     modelPrices: ModelPricesSchema.optional(),
     budgets: BudgetsPatchSchema.optional(),
+    vidiq: VidiqSettingsPatchSchema.optional(),
     // Strict, so a channel key sent here is refused rather than dropped.
   })
   .strict()
@@ -681,6 +712,8 @@ export const DEFAULT_SETTINGS: Settings = {
     direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
     // Graphics get a designer of their own (decision 289).
     graphics: DEFAULT_GRAPHICS_ROUTE,
+    // Drafting a bible is scripting-tier work (spec 4.7).
+    bible: DEFAULT_BIBLE_ROUTE,
     // Gemini rides the Google key Settings already holds for the LLM
     // adapters, so it is the default that costs no extra account.
     //

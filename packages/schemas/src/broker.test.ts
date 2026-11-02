@@ -140,6 +140,36 @@ describe('MediaJobSchema', () => {
     })
     expect(parsed.success).toBe(true)
   })
+
+  const upload = {
+    kind: 'upload-youtube',
+    ...common,
+    videoS3Key: 'renders/master.mp4',
+    accessToken: 'ya29.short-lived',
+    title: 'How Wirecard vanished',
+    description: '',
+    tags: [],
+    privacyStatus: 'private',
+  }
+
+  it('accepts an upload with a category and both languages, and without them', () => {
+    expect(MediaJobSchema.safeParse(upload).success).toBe(true)
+    const parsed = MediaJobSchema.parse({
+      ...upload,
+      categoryId: '27',
+      defaultLanguage: 'en',
+      defaultAudioLanguage: 'en',
+    })
+    expect(parsed).toMatchObject({ categoryId: '27', defaultLanguage: 'en' })
+  })
+
+  it('refuses a category that is not one to three digits, and an over-long language', () => {
+    expect(MediaJobSchema.safeParse({ ...upload, categoryId: 'education' }).success).toBe(false)
+    expect(MediaJobSchema.safeParse({ ...upload, categoryId: '1234' }).success).toBe(false)
+    expect(MediaJobSchema.safeParse({ ...upload, defaultLanguage: 'x'.repeat(13) }).success).toBe(
+      false,
+    )
+  })
 })
 
 describe('callbacks', () => {

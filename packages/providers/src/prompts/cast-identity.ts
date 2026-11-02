@@ -1,4 +1,9 @@
-import { CAST_GUARDRAIL_MAX, CAST_IDENTITY_MAX, ValidationError } from '@boom-busters/schemas'
+import {
+  CAST_GUARDRAIL_MAX,
+  CAST_IDENTITY_MAX,
+  DEFAULT_GUARDRAIL_SUFFIX,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { BibleInUse } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots } from './bible'
@@ -27,7 +32,7 @@ import type { LLMTaskRequest, MsgImage } from '../llm/types'
  * the channel's own first clause, then the exclusions every channel keeps.
  */
 const DEFAULT_GUARDRAIL_TEMPLATE =
-  '[[example:direction-default-guardrail]]; ' + 'never mocked, caricatured or shown in humiliation'
+  '[[example:direction-default-guardrail]]' + DEFAULT_GUARDRAIL_SUFFIX
 
 /** The guardrail a member starts from, for this channel. */
 export function defaultGuardrail(bible: BibleInUse): string {

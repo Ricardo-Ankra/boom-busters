@@ -1,6 +1,9 @@
 // @vitest-environment node
 
 import {
+  createCase,
+  createChannel,
+  createProjectFromCase,
   createScriptVersion,
   deleteCastMember,
   deleteProjectSet,
@@ -17,9 +20,11 @@ import {
   setProjectDirection,
   setScriptOutline,
 } from '@boom-busters/db'
+import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { MAX_OUTPUT_TOKENS, mockDirectorsBook } from '@boom-busters/providers'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import {
   draftDirectorsBook,
@@ -400,6 +405,34 @@ describe('planChapterSlots against a live model', () => {
     const prefix = callLlm.mock.calls[0]?.[0]?.messages?.[0]?.content ?? ''
     expect(prefix).toContain('Boardroom: dark wood panelling, one window')
   })
+
+  it.each(['', '1'])(
+    'refuses a project frozen to an incomplete bible, sending nothing (MOCK_PROVIDERS=%j)',
+    async (mock) => {
+      vi.stubEnv('MOCK_PROVIDERS', mock)
+      const channel = await createChannel(db, {
+        name: 'Blank channel',
+        handle: null,
+        slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+        settings: DEFAULT_SETTINGS,
+        bible: EMPTY_BIBLE,
+      })
+      const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+      const blank = await createProjectFromCase(db, { caseId: kase.id, title: 'T' })
+
+      await expect(
+        planChapterSlots({
+          projectId: blank.id,
+          caseTitle: 'Wirecard',
+          chapter: { id: 'ch-1', title: 'The audit', number: 1 },
+          paragraphs: PARAGRAPHS,
+          claims: [],
+          direction: null,
+        }),
+      ).rejects.toThrow(FROZEN_BIBLE_INCOMPLETE_MESSAGE)
+      expect(callLlm).not.toHaveBeenCalled()
+    },
+  )
 
   it('gives up after the bigger retry is cut off too, with the truncation error', async () => {
     callLlm.mockResolvedValue({ text: '{ "slots": [ {' })

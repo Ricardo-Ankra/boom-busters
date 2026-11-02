@@ -295,6 +295,13 @@
       "when": 1793601368423,
       "tag": "0041_talking_points",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793625123737,
+      "tag": "0042_bible_drafts_vidiq",
+      "breakpoints": true
     }
   ]
 }

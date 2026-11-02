@@ -2,7 +2,7 @@ import { renderDirectorsBook, StillBriefSchema, ValidationError } from '@boom-bu
 import type { BibleInUse, DirectorsBook, StillBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots } from './bible'
-import { directionCraft } from './direction-craft-text'
+import { directionCraft, directionRules } from './direction-craft-text'
 import { formatIssues, parseJsonCompletion } from './json'
 import { ignoreRepairs } from './repair'
 import type { Note } from './repair'
@@ -36,7 +36,7 @@ natural face, visible and resembling no real person. Keep "coversText"
 EXACTLY as given; keep "motion", "transition" and "shotSize"; rewrite
 "description" and "prompt"; omit "depicts" entirely.
 
-${directionCraft(input.bible.bible)}
+${directionCraft(input.bible.bible)}${directionRules(input.bible)}
 
 Return JSON: {"brief": {"type": "still", "coversText", "description", "shotSize",
 "motion", "transition", "prompt", "negativePrompt"?}}`,

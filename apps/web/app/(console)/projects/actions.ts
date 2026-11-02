@@ -4,6 +4,8 @@ import {
   PIPELINE_STAGES,
   blockingClaims,
   cancelRunsForProject,
+  channelForProject,
+  currentBible,
   deleteProject,
   getDossier,
   getLatestScript,
@@ -11,6 +13,7 @@ import {
   hasLiveRun,
   latestRender,
   markProjectCancelled,
+  moveProjectBible,
   projectDeletionSummary,
   renderInFlight,
   setProjectStage,
@@ -21,9 +24,11 @@ import {
 import { voiceGateBlockedReason } from '@/lib/voice-review'
 import type { ProjectStage } from '@boom-busters/db'
 import {
+  EXAMPLE_SLOT_IDS,
   GateStageSchema,
   ProviderSchema,
   UlidSchema,
+  isBibleComplete,
   visualsApprovalBlockedReason,
 } from '@boom-busters/schemas'
 import type { GateStage } from '@boom-busters/schemas'
@@ -90,6 +95,53 @@ async function send(
 function refresh(projectId: string): void {
   revalidatePath('/c/[slug]', 'layout')
   revalidatePath(`/projects/${projectId}`)
+}
+
+// ---------------------------------------------------------------------------
+// The channel's latest bible
+// ---------------------------------------------------------------------------
+
+/**
+ * Move a project onto its channel's current bible version.
+ *
+ * A project is frozen to the version current when it started. This is the
+ * owner's deliberate step forward: stages already done keep their text, and
+ * stages run after it read the new version (each reads its bible inside its
+ * own step). It refuses a latest version that is incomplete, judged by its own
+ * record against today's slot registry, so a half-written bible cannot reach a
+ * run through here.
+ */
+export async function moveToLatestBibleAction(projectId: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badId(projectId)
+  if (invalid) return invalid
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'Unknown project' }
+  // Runners read the bible in every step, so a stage under way would mix two
+  // versions. Parked at a review gate, failed or idle, there is nothing to mix.
+  if (project.stageStatus === 'running') {
+    return {
+      ok: false,
+      error: 'A stage is running. Wait for it to finish or stop it, then use the latest bible.',
+    }
+  }
+
+  const frozen = await channelForProject(db, projectId)
+  const current = await currentBible(db, frozen.channelId)
+  if (!isBibleComplete(current.bible, EXAMPLE_SLOT_IDS)) {
+    return {
+      ok: false,
+      error: 'The latest bible is incomplete. Complete it in the Bible tab first.',
+    }
+  }
+  if (current.id === frozen.bibleId) {
+    return { ok: false, error: 'This project already uses the latest bible' }
+  }
+
+  await moveProjectBible(db, projectId, current.id)
+  refresh(projectId)
+  return { ok: true }
 }
 
 // ---------------------------------------------------------------------------

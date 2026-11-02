@@ -71,6 +71,7 @@ export function mergeWorkspaceSettings(
   return WorkspaceSettingsSchema.parse({
     modelPrices: patch.modelPrices ?? current.modelPrices,
     budgets: mergeBudgets(current.budgets, patch.budgets),
+    vidiq: { ...current.vidiq, ...patch.vidiq },
   })
 }
 

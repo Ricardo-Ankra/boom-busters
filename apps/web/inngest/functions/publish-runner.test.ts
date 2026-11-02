@@ -1,10 +1,14 @@
 // @vitest-environment node
 
 import {
+  createChannel,
+  currentBible,
   FIXTURE_PROJECT_ID,
+  fixtureProject,
   getPublishRecord,
   insertRender,
   insertShort,
+  projects,
   publishRecords,
   renders,
   requireTestDatabase,
@@ -17,7 +21,12 @@ import {
   updateChannelSettings,
   updateShort,
 } from '@boom-busters/db'
-import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  FIRST_CHANNEL_BIBLE,
+  FIRST_CHANNEL_ID,
+  newId,
+} from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -286,9 +295,74 @@ describeDb('publish-runner', () => {
             publishAt: record.publishAt!.toISOString(),
           }),
         )
+        // The first channel sends today's job: none of the bible's category or language keys.
+        const sent = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+        expect(sent).not.toHaveProperty('categoryId')
+        expect(sent).not.toHaveProperty('defaultLanguage')
+        expect(sent).not.toHaveProperty('defaultAudioLanguage')
         // The claim happened before the spend: the record is uploading.
         const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
         expect(stored?.status).toBe('uploading')
+      },
+    )
+
+    it.each([
+      { language: 'en', sent: true },
+      { language: '', sent: false },
+    ])(
+      'sends a second channel its bible category, and its language only when set ($language)',
+      { timeout: 120_000 },
+      async ({ language, sent }) => {
+        const second = await createChannel(db, {
+          name: 'Second channel',
+          handle: null,
+          slug: `publish-second-${Math.random().toString(36).slice(2, 8)}`,
+          settings: DEFAULT_SETTINGS,
+          bible: { ...FIRST_CHANNEL_BIBLE, youtubeCategoryId: '27', language },
+        })
+        const bible = await currentBible(db, second.id)
+        // A project of the second channel, frozen on that channel's bible.
+        const secondProject = newId<'project'>()
+        await db
+          .insert(projects)
+          .values({ ...fixtureProject, id: secondProject, channelId: second.id, bibleId: bible.id })
+        await saveChannelYoutubeConnection(db, second.id, {
+          refreshToken: '1//second-refresh',
+          encryptionKey: env.SECRETS_ENCRYPTION_KEY,
+          youtubeChannelId: `UC-second-${secondProject}`,
+          youtubeChannelTitle: 'Second',
+        })
+        await recordChannelYoutubeVerify(db, second.id, 'ok', `UC-second-${secondProject}`)
+        const render = await insertRender(db, {
+          projectId: secondProject,
+          timelineVersion: 1,
+          kind: 'master',
+        })
+        await updateRender(db, render.id, { status: 'done', outputS3Key: 'renders/second.mp4' })
+        await draftRecord('master', secondProject, {
+          channelId: second.id,
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+
+        await engine.executeStep('submit-upload', {
+          events: [
+            {
+              name: 'publish/requested',
+              data: { projectId: secondProject, targetType: 'master', targetId: secondProject },
+            },
+          ],
+        })
+
+        expect(broker.submitMediaJob).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'upload-youtube', categoryId: '27' }),
+        )
+        const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+        if (sent) {
+          expect(job).toMatchObject({ defaultLanguage: language, defaultAudioLanguage: language })
+        } else {
+          expect(job).not.toHaveProperty('defaultLanguage')
+          expect(job).not.toHaveProperty('defaultAudioLanguage')
+        }
       },
     )
 

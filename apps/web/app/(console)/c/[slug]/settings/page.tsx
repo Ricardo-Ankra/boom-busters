@@ -1,11 +1,16 @@
 import {
+  currentBible,
+  getBibleDraft,
   getChannelSettings,
   getWorkspace,
+  hasCredential,
+  listBibleVersions,
   listChannels,
   listLogos,
   maskKey,
   channelYoutubeConnection,
 } from '@boom-busters/db'
+import { mockProvidersEnabled } from '@boom-busters/providers'
 import { hasEnvGroup } from '@boom-busters/schemas'
 import { redirect } from 'next/navigation'
 import { channelFromSlug } from '@/lib/channel-context'
@@ -21,6 +26,7 @@ export const metadata = { title: 'Settings · Boom-Busters' }
 
 const TABS = [
   'channel',
+  'bible',
   'models',
   'brand-kit',
   'voice',
@@ -40,13 +46,29 @@ export default async function SettingsPage({
 }) {
   const { slug } = await routeParams
   const channel = await channelFromSlug(slug)
-  const [settings, workspace, connectionRow, logos, liveChannels, params] = await Promise.all([
+  const [
+    settings,
+    workspace,
+    connectionRow,
+    logos,
+    liveChannels,
+    params,
+    draft,
+    versions,
+    current,
+    vidiqKey,
+  ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
     listLogos(db, channel.id),
     listChannels(db),
     searchParams,
+    // Never opened here: a draft exists once the owner changes something.
+    getBibleDraft(db, channel.id),
+    listBibleVersions(db, channel.id),
+    currentBible(db, channel.id),
+    hasCredential(db, 'vidiq'),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -127,6 +149,15 @@ export default async function SettingsPage({
         modelOptions={modelOptions}
         exemplars={exemplarViews()}
         exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
+        draft={draft}
+        versions={versions.map((row) => ({
+          id: row.id,
+          version: row.version,
+          note: row.note,
+          createdAt: row.createdAt.toISOString(),
+        }))}
+        currentVersion={{ id: current.id, version: current.version, bible: current.bible }}
+        vidiqReady={mockProvidersEnabled() || vidiqKey}
       />
     </div>
   )

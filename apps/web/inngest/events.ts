@@ -1,5 +1,7 @@
 import {
   AnalyticsRefreshRequestedSchema,
+  BibleDraftRequestedSchema,
+  BibleResearchRequestedSchema,
   BudgetApprovedSchema,
   MediaJobCompletedSchema,
   DemoRequestedSchema,
@@ -134,6 +136,13 @@ export const events = {
 
   analyticsRefreshRequested: eventType('analytics/refresh.requested', {
     schema: AnalyticsRefreshRequestedSchema,
+  }),
+
+  bibleResearchRequested: eventType('bible/research.requested', {
+    schema: BibleResearchRequestedSchema,
+  }),
+  bibleDraftRequested: eventType('bible/draft.requested', {
+    schema: BibleDraftRequestedSchema,
   }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),

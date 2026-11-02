@@ -20,6 +20,16 @@ vi.mock('./actions', () => ({
   saveSettings: (...args: unknown[]) => saveSettings(...args),
 }))
 
+vi.mock('./bible-actions', () => ({
+  approveBibleSectionAction: vi.fn(),
+  discardBibleDraftAction: vi.fn(),
+  draftBibleAction: vi.fn(),
+  editBibleSectionAction: vi.fn(),
+  saveBibleAction: vi.fn(),
+  restoreBibleVersionAction: vi.fn(),
+  viewBibleVersionAction: vi.fn(),
+  previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
+}))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),
   updateChannelAction: vi.fn(),

@@ -14,7 +14,7 @@ vi.mock('@boom-busters/db', async (importOriginal) => ({
     channelId: '01J00000000000000000000CH1',
     slug: 'first',
     settings: {},
-    bible: {},
+    ...(await import('@boom-busters/schemas')).FIRST_CHANNEL_IN_USE,
   }),
 }))
 

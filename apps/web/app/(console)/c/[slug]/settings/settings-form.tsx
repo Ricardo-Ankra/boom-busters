@@ -1,6 +1,11 @@
 'use client'
 
-import { type GradePreset, type Settings, type SettingsPatch } from '@boom-busters/schemas'
+import {
+  type BibleDraft,
+  type GradePreset,
+  type Settings,
+  type SettingsPatch,
+} from '@boom-busters/schemas'
 import type { ModelOptions } from '@boom-busters/providers'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -11,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { BibleTab, type BibleVersionView } from './bible-tab'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
@@ -57,6 +63,10 @@ export function SettingsForm({
   modelOptions,
   exemplars = [],
   exemplarLogo = null,
+  draft = null,
+  versions = [],
+  currentVersion,
+  vidiqReady = false,
 }: {
   initialSettings: Settings
   /** This channel's YouTube connection, masked. */
@@ -83,6 +93,14 @@ export function SettingsForm({
   exemplars?: ExemplarView[]
   /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
   exemplarLogo?: ExemplarLogo | null
+  /** The bible's working draft, or null when there is none. */
+  draft?: BibleDraft | null
+  /** Every saved version of the bible, oldest first. */
+  versions?: BibleVersionView[]
+  /** The saved bible the channel runs on; defaults to the channel's own. */
+  currentVersion?: { id: string; version: number; bible: ChannelView['bible'] }
+  /** A VidIQ key is on file, or mocks stand in for it. */
+  vidiqReady?: boolean
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -114,6 +132,25 @@ export function SettingsForm({
   )
 
   const [channel, setChannel] = React.useState(initialChannel)
+  // A saved bible version arrives with the refresh; the Channel tab's status line follows it.
+  React.useEffect(() => {
+    // A no-op update must not re-render the form after hydration, or a controlled field changed before
+    // hydration is reset to the server value and its old value saved.
+    setChannel((current) =>
+      current.bible === initialChannel.bible ? current : { ...current, bible: initialChannel.bible },
+    )
+  }, [initialChannel.bible])
+
+  // Controlled, so an in-page link to `?tab=bible` switches the tab.
+  const [tab, setTab] = React.useState(initialTab)
+  React.useEffect(() => setTab(initialTab), [initialTab])
+  // The URL follows the tab, so a deep link and the in-page link agree with what is shown.
+  const selectTab = React.useCallback((next: string) => {
+    setTab(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', next)
+    window.history.replaceState(window.history.state, '', url)
+  }, [])
 
   /** The same optimistic-with-rollback save, for the channel's own row. */
   const commitChannel = React.useCallback(
@@ -123,7 +160,6 @@ export function SettingsForm({
         ...channel,
         ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
         ...(patch.handle === undefined ? {} : { handle: patch.handle.trim() || null }),
-        ...(patch.bible === undefined ? {} : { bible: patch.bible }),
       })
       setSaving(true)
 
@@ -151,9 +187,10 @@ export function SettingsForm({
           {CHANNEL_ARCHIVED_MESSAGE}. Its settings can be read but not changed.
         </p>
       ) : null}
-      <Tabs defaultValue={initialTab}>
+      <Tabs value={tab} onValueChange={selectTab}>
         <TabsList>
           <TabsTrigger value="channel">Channel</TabsTrigger>
+          <TabsTrigger value="bible">Bible</TabsTrigger>
           <TabsTrigger value="models">Models</TabsTrigger>
           <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
           <TabsTrigger value="voice">Voice</TabsTrigger>
@@ -170,8 +207,22 @@ export function SettingsForm({
               channel={channel}
               channels={channels}
               showNew={showNewChannel}
+              onOpenBible={() => selectTab('bible')}
               saving={saving}
               commit={commitChannel}
+            />
+          </Lock>
+        </TabsContent>
+
+        <TabsContent value="bible">
+          <Lock archived={channel.archived}>
+            <BibleTab
+              channel={channel}
+              draft={draft}
+              versions={versions}
+              currentVersion={currentVersion ?? { id: '', version: 1, bible: channel.bible }}
+              vidiqReady={vidiqReady}
+              archived={channel.archived}
             />
           </Lock>
         </TabsContent>

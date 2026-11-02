@@ -250,4 +250,5 @@ export const PROVIDER_ENV_SEEDS = {
   pexels: 'PEXELS_API_KEY',
   pixabay: 'PIXABAY_API_KEY',
   fal: 'FAL_API_KEY',
+  vidiq: 'VIDIQ_API_KEY',
 } as const satisfies Record<string, string>

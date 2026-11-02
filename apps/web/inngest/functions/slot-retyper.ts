@@ -36,6 +36,7 @@ import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { designableBrief } from '../lib/graphic-steps'
 
@@ -160,7 +161,7 @@ export const slotRetyper = inngest.createFunction(
         // The logo library's index (decision 268, Plan B): a graphic drafted
         // here may name a mark the producer already holds.
         // Read here, inside the step that builds the request.
-        const bible = await channelForProject(db, projectId)
+        const bible = requireCompleteBible(await channelForProject(db, projectId))
         const { channelId } = bible
         const logos = (await listLogos(db, channelId)).map((row) => ({
           id: row.id,

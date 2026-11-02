@@ -1,4 +1,4 @@
-import type { Caption, QcReport } from '@boom-busters/schemas'
+import type { Caption, MediaJob, QcReport } from '@boom-busters/schemas'
 
 /**
  * The media-utils Lambda's brain: FFmpeg invocation plans, stderr parsers
@@ -295,4 +295,32 @@ export function whisperJsonToCaptions(json: unknown): Caption[] {
     }
   }
   return words.filter((word) => word.text.length > 0)
+}
+
+/**
+ * The body of the YouTube resumable-upload start request. The category and
+ * language keys join the snippet only when the job carries them, so a job
+ * without them serialises exactly as it did before the fields existed.
+ */
+export function youtubeInitBody(job: Extract<MediaJob, { kind: 'upload-youtube' }>): string {
+  return JSON.stringify({
+    snippet: {
+      title: job.title,
+      description: job.description,
+      tags: job.tags,
+      ...(job.categoryId !== undefined ? { categoryId: job.categoryId } : {}),
+      ...(job.defaultLanguage !== undefined ? { defaultLanguage: job.defaultLanguage } : {}),
+      ...(job.defaultAudioLanguage !== undefined
+        ? { defaultAudioLanguage: job.defaultAudioLanguage }
+        : {}),
+    },
+    status: {
+      privacyStatus: job.privacyStatus,
+      selfDeclaredMadeForKids: false,
+      // The altered-content label (decision 252): generated likenesses
+      // of real people are declared on upload, never left to Studio.
+      ...(job.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
+      ...(job.publishAt !== undefined ? { publishAt: job.publishAt } : {}),
+    },
+  })
 }

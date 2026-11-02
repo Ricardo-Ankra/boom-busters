@@ -509,6 +509,36 @@ export async function createProjectFromCase(
 }
 
 /**
+ * Point a project at another version of its own channel's bible, so the owner
+ * can bring a film onto a newer bible deliberately. Refuses a version of any
+ * other channel.
+ */
+export async function moveProjectBible(
+  db: Database,
+  projectId: string,
+  bibleId: string,
+): Promise<void> {
+  const [project] = await db
+    .select({ channelId: projects.channelId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project) throw new Error(`project ${projectId} not found`)
+  const [version] = await db
+    .select({ channelId: channelBibles.channelId })
+    .from(channelBibles)
+    .where(eq(channelBibles.id, bibleId))
+    .limit(1)
+  if (!version || version.channelId !== project.channelId) {
+    throw new Error('bible version belongs to another channel')
+  }
+  await db
+    .update(projects)
+    .set({ bibleId, updatedAt: new Date() })
+    .where(eq(projects.id, projectId))
+}
+
+/**
  * What a project's ledger rows say it cost and which model answered. The
  * back-test reads this before deleting its throwaway project, because the
  * rows outlive the project but lose their link to it.

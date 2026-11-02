@@ -18,6 +18,7 @@ import { recordRepairs } from '@/lib/notices'
 import { liveResearchSources } from '@/lib/research-sources'
 import { inngest } from '../client'
 import { events } from '../events'
+import { requireCompleteBible } from '../lib/channel'
 import { markStageFailed, openReviewGate, type GateContext } from '../lib/gates'
 import { awaitDossierApproval } from '../lib/dossier-approval'
 import { nameSubjectIfMissing } from '../lib/name-subject'
@@ -153,6 +154,9 @@ export const dossierReviser = inngest.createFunction(
       const project = await getProject(db, projectId)
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
+      // The research below reads the bible lazily, in later steps; refuse here, before any mock branch.
+      requireCompleteBible(await channelForProject(db, projectId))
+
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
 
@@ -270,7 +274,7 @@ export const dossierReviser = inngest.createFunction(
         documents,
         corpus,
       },
-      { bible: () => channelForProject(db, projectId) },
+      { bible: async () => requireCompleteBible(await channelForProject(db, projectId)) },
     )
 
     const overBudget = research.budgetGate

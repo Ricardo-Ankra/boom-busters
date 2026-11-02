@@ -209,8 +209,10 @@ export default async function globalSetup(): Promise<void> {
     })
     await recordChannelYoutubeVerify(connection.db, FIRST_CHANNEL_ID, 'ok', 'UC-mock-first')
     // The second fixture channel: no connection, no cases, no logos, a blank
-    // bible. channels.spec.ts fills its Channel tab (still incomplete until the tab sets the new fields) and also creates
-    // and archives a third, so both are dropped and re-created every run.
+    // bible. channels.spec.ts fills its Channel tab (the bible stays
+    // incomplete: the Bible tab sets the rest) and also creates and archives a
+    // third, and bible.spec.ts drafts the second's bible, so both are dropped
+    // and re-created every run.
     // Their dependants (the cases the spec adds) go first: the channel foreign
     // keys restrict. So do the bible versions: a project holds its version, and
     // the channel and its versions point at each other, so the pointer is
@@ -218,6 +220,9 @@ export default async function globalSetup(): Promise<void> {
     for (const slug of ['e2e-second', 'third-channel']) {
       await connection.sql`delete from projects where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from cases where channel_id in (select id from channels where slug = ${slug})`
+      // vidiq_credits.channel_id restricts, so the ledger rows go before the channel.
+      await connection.sql`delete from vidiq_credits where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from bible_drafts where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`update channels set current_bible_id = null where slug = ${slug}`
       await connection.sql`delete from channel_bibles where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from youtube_connections where channel_id in (select id from channels where slug = ${slug})`

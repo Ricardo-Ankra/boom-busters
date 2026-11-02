@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BibleDraftUnitSchema } from './bible-draft'
 import { UlidSchema } from './ids'
 import { ShotSlotTypeSchema } from './visuals'
 
@@ -389,6 +390,26 @@ export const AnalyticsRefreshRequestedSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /**
+ * Research a channel's bible draft with VidIQ, keep a digest, then hand over
+ * to the drafting run. The run reads the draft's `inputs` itself: nothing the
+ * owner typed travels in the event.
+ */
+export const BibleResearchRequestedSchema = z.object({
+  channelId: UlidSchema,
+  /** The `startedAt` of the draft job this run owns; a run that no longer matches leaves the job alone. */
+  jobStartedAt: z.string().datetime().optional(),
+})
+
+/** Draft these units of the channel's bible draft, with an optional steer. */
+export const BibleDraftRequestedSchema = z.object({
+  channelId: UlidSchema,
+  units: z.array(BibleDraftUnitSchema).min(1),
+  steer: z.string().max(1000).optional(),
+  /** The `startedAt` of the draft job this run owns; a run that no longer matches leaves the job alone. */
+  jobStartedAt: z.string().datetime().optional(),
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -432,6 +453,9 @@ export const EVENT_SCHEMAS = {
   'render/settled': RenderSettledSchema,
 
   'analytics/refresh.requested': AnalyticsRefreshRequestedSchema,
+
+  'bible/research.requested': BibleResearchRequestedSchema,
+  'bible/draft.requested': BibleDraftRequestedSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

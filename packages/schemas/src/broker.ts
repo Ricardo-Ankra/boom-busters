@@ -191,6 +191,16 @@ export const UploadYoutubeJobSchema = z.object({
    * built before the field ignores it rather than rejecting the job.
    */
   containsSyntheticMedia: z.boolean().optional(),
+  /**
+   * The channel bible's YouTube category and language. Each is sent only when
+   * the bible sets it, so a channel that sets none uploads as it always did.
+   */
+  categoryId: z
+    .string()
+    .regex(/^\d{1,3}$/)
+    .optional(),
+  defaultLanguage: z.string().max(12).optional(),
+  defaultAudioLanguage: z.string().max(12).optional(),
 })
 
 export const MediaJobSchema = z.discriminatedUnion('kind', [

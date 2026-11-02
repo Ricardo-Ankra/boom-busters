@@ -1,6 +1,9 @@
 // @vitest-environment node
 
 import {
+  createCase,
+  createChannel,
+  createProjectFromCase,
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   getProject,
@@ -13,9 +16,15 @@ import {
 } from '@boom-busters/db'
 import type * as Db from '@boom-busters/db'
 import type { ClaimRow } from '@boom-busters/db'
-import { BudgetExceededError, TransientProviderError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  TransientProviderError,
+} from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { markShortsStep, readMarkedShorts, scriptRunner } from './script-runner'
@@ -286,6 +295,38 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(result).toMatchObject({ ok: true, contentMd: 'A whole chapter.' })
     const sent = callLlm.mock.calls[0]![0] as { system: string }
     expect(sent.system).toContain('a documentary channel about\ncorporate collapses, frauds')
+  })
+
+  it('refuses a project frozen to an incomplete bible before any prompt is sent', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    const channel = await createChannel(db, {
+      name: 'Blank channel',
+      handle: null,
+      slug: `blank-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: EMPTY_BIBLE,
+    })
+    const kase = await createCase(db, { channelId: channel.id, title: 'T', category: 'collapse' })
+    const blank = await createProjectFromCase(db, { caseId: kase.id, title: 'T' })
+
+    const refused = await engine.executeStep('draft-chapter-0', {
+      events: [{ name: 'gate/dossier.approved', data: { projectId: blank.id } }],
+      steps: throughSelfCheck().slice(0, 3),
+    })
+    expect(refused.error).toMatchObject({
+      message: FROZEN_BIBLE_INCOMPLETE_MESSAGE,
+    })
+    expect(callLlm).not.toHaveBeenCalled()
+
+    // The optional marking stops with the same reason and sends nothing either.
+    await markShortsStep(blank.id, { chapters })
+    expect(callLlm).not.toHaveBeenCalled()
+    expect(recordStop).toHaveBeenCalledWith(
+      { projectId: blank.id, subject: 'script', subjectId: null },
+      'stopped',
+      expect.stringContaining(FROZEN_BIBLE_INCOMPLETE_MESSAGE),
+    )
   })
 
   it('parks the run when the marking is over budget, as the other steps do', async () => {
