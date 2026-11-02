@@ -92,6 +92,10 @@ const CODED_GRAPHIC_SOURCE = [
 ].join('\n')
 export const PREVIEW_PROJECT_TITLE = 'Preview compiled, master rendered (E2E)'
 export const PUBLISH_PROJECT_TITLE = 'Shorts cut, ready to publish (E2E)'
+/** Ids of the seeded points end in 1, 2, 3 (a ULID has no I, L, O or U). */
+export const PLAYBOOK_POINT_ID_PREFIX = '01E2EPNT00000000000000000'
+/** Parked at the Shorts stage's talking points checkpoint (playbook Shorts design 3.3). */
+export const PLAYBOOK_SHORTS_TITLE = 'Talking points waiting (E2E)'
 /** A freshly compiled film: a timeline, no draft and no master (decision 295's server-render guard). */
 export const FRESH_PREVIEW_TITLE = 'Preview compiled, nothing rendered (E2E)'
 
@@ -1817,6 +1821,194 @@ export default async function globalSetup(): Promise<void> {
       await setProjectStage(connection.db, publish.id, {
         stage: 'shorts',
         stageStatus: 'awaiting_review',
+      })
+    }
+
+    /**
+     * A project parked at the playbook Shorts checkpoint: the long form is
+     * finished (script with its outline, a master) and the stage waits at
+     * phase `points` with proposal version 1. Three chapters, because a set
+     * fails `talkingPointSetIssues` when one chapter leads more than two
+     * points. No Inngest runs here, so the redo and the builds are seeded by
+     * the spec as what the runners would have left (playbook-shorts.spec.ts).
+     */
+    {
+      const { compileTimeline } = await import('@boom-busters/timeline')
+      const {
+        getChannelSettings,
+        insertRender,
+        insertTalkingPointSet,
+        insertTimeline,
+        setScriptOutline,
+        setTimelineKey,
+        updateRender,
+      } = await import('@boom-busters/db')
+      const { resolveBrandKit, talkingPointSetIssues } = await import('@boom-busters/schemas')
+
+      const playbookText = [
+        'The auditors signed the accounts for eighteen straight years.',
+        'Nobody asked the obvious question about where the cash actually sat.',
+        'By the time anyone did, the answer was that it had never existed.',
+      ]
+      const playbookChapters = ['The rise', 'The hole', 'The fall']
+
+      const playbook = await createProjectFromCase(connection.db, {
+        caseId: FIXTURE_CASE_ID,
+        title: PLAYBOOK_SHORTS_TITLE,
+      })
+      await saveDossier(connection.db, {
+        projectId: playbook.id,
+        contentMd: '# Research behind the talking points.',
+        claims: [],
+      })
+      const playbookScript = await createScriptVersion(connection.db, playbook.id)
+      await setScriptOutline(connection.db, playbookScript.id, {
+        chapters: playbookChapters.map((title) => ({
+          title,
+          beat: `${title}: what the auditors did, and what they never checked.`,
+          targetWords: 900,
+        })),
+      })
+
+      const playbookParagraphs: Parameters<typeof compileTimeline>[0]['paragraphs'] = []
+      const playbookSlots: Parameters<typeof compileTimeline>[0]['slots'] = []
+      let playbookClock = 0
+      for (const [chapterIndex, text] of playbookText.entries()) {
+        const chapter = await saveChapter(connection.db, {
+          scriptId: playbookScript.id,
+          index: chapterIndex,
+          title: playbookChapters[chapterIndex]!,
+          contentMd: text,
+          estRuntimeSec: 7,
+        })
+        const claimed = await claimTake(connection.db, {
+          projectId: playbook.id,
+          chapterId: chapter.id,
+          paragraphIndex: 0,
+          idempotencyKey: takeIdempotencyKey({
+            projectId: playbook.id,
+            chapterId: chapter.id,
+            paragraphIndex: 0,
+            text,
+            voiceId: 'mock-narrator',
+          }),
+          provider: 'elevenlabs',
+          voiceId: 'mock-narrator',
+          builtFromScriptVersion: playbookScript.version,
+        })
+        const durationMs = 6_000
+        await storeTakeAudio(connection.db, claimed.take.id, {
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+          costUsd: 0.0009,
+          waveform: Array.from({ length: 32 }, (_, i) => (i * 9 + chapterIndex * 7) % 100),
+        })
+        playbookParagraphs.push({
+          chapterId: chapter.id,
+          chapterIndex,
+          chapterTitle: playbookChapters[chapterIndex]!,
+          paragraphIndex: 0,
+          r2Key: mockVoiceTakeKey(claimed.take.id),
+          durationMs,
+        })
+        playbookSlots.push({
+          type: 'map',
+          startMs: playbookClock,
+          durationMs,
+          transition: 'cut',
+          motion: { kind: 'static' },
+          map: {
+            locations: [
+              { label: 'Munich', lat: 48.14, lon: 11.58 },
+              { label: 'Manila', lat: 14.6, lon: 120.98 },
+            ],
+            route: false,
+          },
+        })
+        playbookClock += durationMs
+      }
+
+      const playbookTimeline = await insertTimeline(connection.db, {
+        projectId: playbook.id,
+        json: compileTimeline({
+          brand: resolveBrandKit(await getChannelSettings(connection.db, FIRST_CHANNEL_ID)),
+          paragraphs: playbookParagraphs,
+          slots: playbookSlots,
+          music: null,
+          captions: { words: [], style: 'karaoke' },
+        }),
+        s3Key: '',
+      })
+      await setTimelineKey(
+        connection.db,
+        playbookTimeline.id,
+        `boom-busters/timelines/${playbook.id}/v${playbookTimeline.version}.json`,
+      )
+      const playbookMaster = await insertRender(connection.db, {
+        projectId: playbook.id,
+        timelineVersion: playbookTimeline.version,
+        kind: 'master',
+        costUsd: '0',
+      })
+      copyFileSync(renderFixtureMaster(), path.join(RENDER_LOCAL_DIR, `${playbookMaster.id}.mp4`))
+      await updateRender(connection.db, playbookMaster.id, {
+        status: 'done',
+        progressPct: 100,
+        outputS3Key: `local://${playbookMaster.id}.mp4`,
+        qcReport: { passed: true, integratedLufs: -14, issues: [] },
+        completedAt: new Date(Date.now() - 60_000),
+      })
+
+      // Proposal version 1: three points, three different lead chapters, two
+      // types. Ids are fixed so the spec can name them.
+      const proposed = [
+        {
+          type: 'forensic-breakdown' as const,
+          title: 'Eighteen clean audits',
+          question: 'How did the auditors sign off eighteen years running?',
+          payoff: 'They never tested the cash balances at all.',
+          bridge: 'The long film walks through the year it all unravelled.',
+          bridgeChapters: [2],
+          sourceChapters: [0],
+          hook: 'Eighteen years of clean accounts, and not one cash check.',
+        },
+        {
+          type: 'contrarian-thesis' as const,
+          title: 'The hole was never a theft',
+          question: 'Was the missing money ever stolen in the first place?',
+          payoff: 'It was never there, so nothing was taken.',
+          bridge: 'The long film shows where the numbers came from.',
+          bridgeChapters: [1],
+          sourceChapters: [1],
+          hook: 'You cannot steal a billion euros that never existed.',
+        },
+        {
+          type: 'result-first' as const,
+          title: 'The answer nobody wanted',
+          question: 'What did the first person to ask about the cash find?',
+          payoff: 'The accounts it sat in did not exist.',
+          bridge: 'The long film follows the question to its end.',
+          bridgeChapters: [0],
+          sourceChapters: [2],
+          hook: 'The cash was not missing. It was never anywhere.',
+        },
+      ].map((point, index) => ({
+        ...point,
+        id: `${PLAYBOOK_POINT_ID_PREFIX}${index + 1}`,
+        order: index + 1,
+      }))
+      const issues = talkingPointSetIssues(proposed, playbookChapters.length)
+      if (issues.length > 0) throw new Error(`the seeded talking points fail: ${issues.join('; ')}`)
+      await insertTalkingPointSet(connection.db, {
+        projectId: playbook.id,
+        scriptVersion: playbookScript.version,
+        points: proposed,
+        note: null,
+      })
+      await setProjectStage(connection.db, playbook.id, {
+        stage: 'shorts',
+        stageStatus: 'awaiting_review',
+        shortsPhase: 'points',
       })
     }
   } finally {
