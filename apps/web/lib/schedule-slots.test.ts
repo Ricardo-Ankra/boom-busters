@@ -1,6 +1,13 @@
 import type { ScheduleSlot } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { clashes, nextFreeSlot, offsetLabel, slotFromLocal, slotToLocal } from './schedule-slots'
+import {
+  clashes,
+  nextFreeSlot,
+  offsetLabel,
+  shortSlotsAfter,
+  slotFromLocal,
+  slotToLocal,
+} from './schedule-slots'
 
 const SAST = 120
 
@@ -97,5 +104,44 @@ describe('offsetLabel', () => {
     expect(offsetLabel(330)).toBe('UTC+5:30')
     expect(offsetLabel(-210)).toBe('UTC-3:30')
     expect(offsetLabel(0)).toBe('UTC')
+  })
+})
+
+describe('shortSlotsAfter', () => {
+  const slots: ScheduleSlot[] = [
+    { kind: 'longform', weekday: 5, timeUtc: '15:00' },
+    { kind: 'short', weekday: 3, timeUtc: '16:00' },
+    { kind: 'short', weekday: 6, timeUtc: '10:00' },
+  ]
+  // Friday 2026-11-06 15:00 UTC.
+  const friday = new Date('2026-11-06T15:00:00Z')
+
+  it('takes the next Short slots in order, skipping long-form slots', () => {
+    expect(shortSlotsAfter(friday, slots, 3).map((at) => at.toISOString())).toEqual([
+      '2026-11-07T10:00:00.000Z',
+      '2026-11-11T16:00:00.000Z',
+      '2026-11-14T10:00:00.000Z',
+    ])
+  })
+
+  it('wraps the week when the long form falls after the last slot', () => {
+    const sunday = new Date('2026-11-08T12:00:00Z')
+    expect(shortSlotsAfter(sunday, slots, 3).map((at) => at.toISOString())).toEqual([
+      '2026-11-11T16:00:00.000Z',
+      '2026-11-14T10:00:00.000Z',
+      '2026-11-18T16:00:00.000Z',
+    ])
+  })
+
+  it('is strictly after: a slot at the long form instant is not after it', () => {
+    const atSlot = new Date('2026-11-07T10:00:00Z')
+    expect(shortSlotsAfter(atSlot, slots, 1)[0]?.toISOString()).toBe('2026-11-11T16:00:00.000Z')
+    const justBefore = new Date('2026-11-07T09:59:59Z')
+    expect(shortSlotsAfter(justBefore, slots, 1)[0]?.toISOString()).toBe('2026-11-07T10:00:00.000Z')
+  })
+
+  it('gives nothing when there is no Short slot, or nothing was asked for', () => {
+    expect(shortSlotsAfter(friday, [slots[0]!], 2)).toEqual([])
+    expect(shortSlotsAfter(friday, slots, 0)).toEqual([])
   })
 })

@@ -1,4 +1,5 @@
 import {
+  approvedTalkingPointSet,
   channelForProject,
   countUploadsSince,
   getArticleSources,
@@ -29,6 +30,7 @@ import {
 } from '@boom-busters/schemas'
 import type { DescriptionSource, ScheduleSlot } from '@boom-busters/schemas'
 import { z } from 'zod'
+import { shortSlotsAfter } from './schedule-slots'
 
 /**
  * What the Publish screen (build spec section 11.3) needs in one read: an
@@ -88,6 +90,12 @@ export interface PublishItemModel {
    * from the same visuals.
    */
   syntheticLikenesses: string[]
+  /**
+   * When an unscheduled point Short would take the next Short slot after its
+   * long form (design section 8). A suggestion only: the owner's Schedule
+   * click still decides. Absent for everything else.
+   */
+  suggestedPublishAtIso?: string | null
 }
 
 /**
@@ -477,6 +485,42 @@ export async function publishModel(
       relatedLinkChecked: short.relatedLinkChecked,
       record: record ? toRecordProp(record, await thumbsFor(record), current) : null,
       syntheticLikenesses: likenesses,
+    })
+  }
+
+  // Unscheduled point Shorts take the Short slots after the long form, in
+  // their talking-point order, skipping moments another item already holds.
+  // A long form that is already live starts the search from now.
+  if (masterRecord?.publishAt) {
+    const order = new Map(
+      ((await approvedTalkingPointSet(db, projectId))?.points ?? []).map((point) => [
+        point.id,
+        point.order,
+      ]),
+    )
+    const waiting = items
+      .filter((item) => item.shortKind === 'point' && !item.record?.publishAtIso)
+      .map((item, position) => ({
+        item,
+        position,
+        order:
+          order.get(shorts.find((short) => short.id === item.targetId)?.pointId ?? '') ?? Infinity,
+      }))
+      .sort((a, b) => a.order - b.order || a.position - b.position)
+    const held = new Set(
+      records
+        .filter((row) => row.publishAt && row.status !== 'failed')
+        .map((row) => row.publishAt!.getTime()),
+    )
+    const from = new Date(Math.max(masterRecord.publishAt.getTime(), Date.now()))
+    const free = shortSlotsAfter(
+      from,
+      settings.publish.defaultScheduleSlots,
+      waiting.length + held.size,
+    ).filter((at) => !held.has(at.getTime()))
+    waiting.forEach(({ item }, index) => {
+      const at = free[index]
+      if (at) item.suggestedPublishAtIso = at.toISOString()
     })
   }
 

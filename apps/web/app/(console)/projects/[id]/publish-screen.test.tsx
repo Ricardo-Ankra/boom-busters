@@ -555,6 +555,35 @@ describe('PublishScreen', () => {
     )
   })
 
+  it('pre-fills an unscheduled point Short with its suggested slot, and waits for the Schedule click', async () => {
+    const user = userEvent.setup()
+    renderScreen({
+      items: [
+        masterItem({ notReadyReason: 'There is no finished master render yet.' }),
+        shortItem({
+          shortKind: 'point',
+          suggestedPublishAtIso: new Date('2035-06-16T16:00').toISOString(),
+        }),
+      ],
+    })
+
+    expect(screen.getByLabelText(/custom time/i)).toHaveValue('2035-06-16T16:00')
+    expect(screen.getByText(/suggested.*after the long-form video/i)).toBeInTheDocument()
+    expect(schedulePublish).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Schedule at this time' }))
+    expect(schedulePublish).toHaveBeenCalledWith(
+      'short',
+      SHORT,
+      new Date('2035-06-16T16:00').toISOString(),
+    )
+  })
+
+  it('names a point Short on its card', () => {
+    renderScreen({ items: [masterItem(), shortItem({ shortKind: 'point' })] })
+    expect(screen.getByText('Point short')).toBeInTheDocument()
+  })
+
   it('a past custom time gets a refusal in words, not a call', () => {
     renderScreen()
 

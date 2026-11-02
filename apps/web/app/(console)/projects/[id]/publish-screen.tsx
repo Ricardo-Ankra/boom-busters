@@ -101,7 +101,17 @@ function keyOf(item: PublishItemModel): string {
  */
 function kindLabel(item: PublishItemModel): string {
   if (item.targetType === 'master') return 'Full video'
+  if (item.shortKind === 'point') return 'Point short'
   return item.shortKind === 'teaser' ? 'Teaser short' : 'Excerpt short'
+}
+
+/** A datetime-local field's value: the moment in the owner's own timezone. */
+function toLocalInput(at: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return (
+    `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` +
+    `T${pad(at.getHours())}:${pad(at.getMinutes())}`
+  )
 }
 
 function slotKindFor(item: PublishItemModel): 'longform' | 'short' {
@@ -154,6 +164,15 @@ export function PublishScreen({
   const [customTime, setCustomTime] = React.useState('')
 
   const selected = model.items.find((item) => keyOf(item) === selectedKey) ?? null
+
+  // A point Short's suggested slot (design section 8) is put in the custom
+  // time field when it is selected: a pre-fill, so the Schedule click is
+  // still the owner's.
+  const suggestedIso =
+    selected !== null && schedulable(selected) ? (selected.suggestedPublishAtIso ?? null) : null
+  React.useEffect(() => {
+    if (suggestedIso) setCustomTime(toLocalInput(new Date(suggestedIso)))
+  }, [selectedKey, suggestedIso])
   const days = React.useMemo(() => upcomingDays(model.slots, now), [model.slots, now])
   const scheduledAt = new Map(
     model.items
@@ -560,6 +579,11 @@ export function PublishScreen({
                   {selected === null ? (
                     <p className="text-[11px] text-[var(--color-text-muted)]">
                       Select an item above first.
+                    </p>
+                  ) : suggestedIso && customTime === toLocalInput(new Date(suggestedIso)) ? (
+                    <p className="text-[11px] text-[var(--color-text-muted)]">
+                      Suggested: the next Short slot after the long-form video. Press Schedule to
+                      confirm it.
                     </p>
                   ) : customTime !== '' && !valid ? (
                     <p className="text-[11px] text-[var(--color-text-muted)]">

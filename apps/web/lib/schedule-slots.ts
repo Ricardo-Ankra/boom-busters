@@ -95,6 +95,41 @@ export function nextFreeSlot(
   return null
 }
 
+/**
+ * The next `count` Short slot instants strictly after the long form's publish
+ * moment, in order. Slots repeat weekly, so the week wraps; long-form slots
+ * are skipped. Pure: the instants come from the stored UTC weekday and time.
+ */
+export function shortSlotsAfter(
+  masterPublishAt: Date,
+  slots: readonly ScheduleSlot[],
+  count: number,
+): Date[] {
+  const shortSlots = slots.filter((slot) => slot.kind === 'short')
+  if (count <= 0 || shortSlots.length === 0) return []
+  const startOfDay = Date.UTC(
+    masterPublishAt.getUTCFullYear(),
+    masterPublishAt.getUTCMonth(),
+    masterPublishAt.getUTCDate(),
+  )
+  const found: Date[] = []
+  // Each week holds every Short slot once, so ceil(count / slots) weeks plus
+  // the one the long form sits in is always enough.
+  const days = (Math.ceil(count / shortSlots.length) + 1) * 7
+  for (let day = 0; day < days && found.length < count; day++) {
+    const dayStart = startOfDay + day * MINUTES_PER_DAY * 60_000
+    const weekday = new Date(dayStart).getUTCDay()
+    const today = shortSlots
+      .filter((slot) => slot.weekday === weekday)
+      .map((slot) => dayStart + toMinutes(0, slot.timeUtc) * 60_000)
+      .sort((a, b) => a - b)
+    for (const at of today) {
+      if (at > masterPublishAt.getTime() && found.length < count) found.push(new Date(at))
+    }
+  }
+  return found
+}
+
 /** "UTC+2", "UTC-3:30", "UTC" — the label beside the editor's times. */
 export function offsetLabel(offsetMinutes: number): string {
   if (offsetMinutes === 0) return 'UTC'

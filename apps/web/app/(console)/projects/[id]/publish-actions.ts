@@ -642,6 +642,47 @@ async function requestUpload(
   return { ok: true }
 }
 
+// ---------------------------------------------------------------------------
+// Point Shorts follow their long form (design section 8)
+// ---------------------------------------------------------------------------
+
+/** The server has no viewer timezone, so the date is said in UTC, and says so. */
+function sayWhen(at: Date): string {
+  return `${at.toLocaleString('en-ZA', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' })} UTC`
+}
+
+/**
+ * A `point` Short is the long form's companion: it never goes out before the
+ * film it points at. Null when the target is not one, or the order is right;
+ * legacy teasers and excerpts are not guarded. `publishAt` is the moment the
+ * Short would go public; `now` means "Publish now", which needs the film live.
+ */
+async function pointShortRefusal(
+  type: 'master' | 'short',
+  targetId: string,
+  projectId: string,
+  publishAt: Date | 'now',
+): Promise<ActionResult | null> {
+  if (type !== 'short') return null
+  const short = await getShort(db, targetId)
+  if (short?.kind !== 'point') return null
+
+  const master = await getPublishRecord(db, 'master', projectId)
+  if (publishAt === 'now') {
+    return master?.status === 'live'
+      ? null
+      : { ok: false, error: 'The long-form video has to be live first.' }
+  }
+  if (!master?.publishAt) return { ok: false, error: 'Schedule the long-form video first.' }
+  if (publishAt.getTime() <= master.publishAt.getTime()) {
+    return {
+      ok: false,
+      error: `A Short goes out after its long-form video, which is scheduled for ${sayWhen(master.publishAt)}.`,
+    }
+  }
+  return null
+}
+
 export async function schedulePublish(
   targetType: string,
   targetId: string,
@@ -661,6 +702,9 @@ export async function schedulePublish(
     return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
   }
 
+  const refused = await pointShortRefusal(type, targetId, projectId, publishAt)
+  if (refused) return refused
+
   return requestUpload(type, targetId, projectId, publishAt, 'private')
 }
 
@@ -679,6 +723,9 @@ export async function publishNow(targetType: string, targetId: string): Promise<
 
   const projectId = await projectIdOf(type, targetId)
   if (!projectId) return { ok: false, error: 'Unknown target' }
+
+  const refused = await pointShortRefusal(type, targetId, projectId, 'now')
+  if (refused) return refused
 
   const { settings } = await channelForProject(db, projectId)
   const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'
@@ -715,6 +762,9 @@ export async function reschedulePublish(
   if (publishAt.getTime() <= Date.now()) {
     return { ok: false, error: 'That slot is in the past — pick one ahead of now.' }
   }
+
+  const refused = await pointShortRefusal(type, targetId, projectId, publishAt)
+  if (refused) return refused
 
   const record = await getPublishRecord(db, type, targetId)
   if (!record) return { ok: false, error: 'Nothing has been scheduled for this item yet.' }
