@@ -85,6 +85,36 @@ describe('BiblePreview', () => {
     expect(screen.getByText('prompt for script')).toBeInTheDocument()
   })
 
+  it('does not re-request when a re-render brings an equal bible', async () => {
+    const { rerender } = render(<BiblePreview channelId={CHANNEL_ID} bible={FIRST_CHANNEL_BIBLE} />)
+    await flush()
+    expect(previewStagePromptAction).toHaveBeenCalledTimes(1)
+    rerender(
+      <BiblePreview channelId={CHANNEL_ID} bible={structuredClone(FIRST_CHANNEL_BIBLE)} />,
+    )
+    await flush()
+    await flush()
+    expect(previewStagePromptAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the previous stage reply that lands before the new stage is asked for', async () => {
+    let releaseOld: (value: unknown) => void = () => {}
+    previewStagePromptAction.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseOld = resolve)),
+    )
+    render(<BiblePreview channelId={CHANNEL_ID} bible={FIRST_CHANNEL_BIBLE} />)
+    await flush()
+    // The script request is still in flight; the owner picks another stage.
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'direction')
+    // The old reply lands inside the pause, before the direction request goes out.
+    await act(async () => releaseOld({ ok: true, text: 'stale script prompt' }))
+    expect(screen.queryByText('stale script prompt')).toBeNull()
+    await flush()
+    expect(await screen.findByText('prompt for direction')).toBeInTheDocument()
+  })
+
   it('shows the error when the draft cannot be composed', async () => {
     previewStagePromptAction.mockResolvedValue({ ok: false, error: 'audience: too long' })
     render(<BiblePreview channelId={CHANNEL_ID} bible={FIRST_CHANNEL_BIBLE} />)

@@ -20,16 +20,23 @@ export function BiblePreview({ channelId, bible }: { channelId: string; bible: C
   const [stage, setStage] = React.useState<string>(PREVIEW_STAGES[0])
   const [shown, setShown] = React.useState<Shown>(null)
   const requests = React.useRef(0)
+  // The effect keys on the bible's content, not its identity: the tab re-renders
+  // with a fresh object on every three-second refresh during a run.
+  const bibleKey = JSON.stringify(bible)
 
   React.useEffect(() => {
+    // Whatever is in flight now was asked for something else.
+    const mine = ++requests.current
     const timer = setTimeout(async () => {
-      const mine = ++requests.current
-      const result = await previewStagePromptAction(channelId, stage, bible)
-      // A newer request has gone out since: its answer is the one to show.
+      const result = await previewStagePromptAction(
+        channelId,
+        stage,
+        JSON.parse(bibleKey) as ChannelBible,
+      )
       if (mine === requests.current) setShown(result)
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [channelId, stage, bible])
+  }, [channelId, stage, bibleKey])
 
   return (
     <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
