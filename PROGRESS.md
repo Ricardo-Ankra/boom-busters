@@ -4244,18 +4244,24 @@ Then:
 
 ### Carried to branch 2
 
-- Later stages rely on `BibleSlotMissingError` rather than the bible gate, so
-  "Use the latest bible" must refuse an incomplete version (or the later
-  runners gain the gate).
-- The weekly digest must skip, or fall back, when the current bible is
-  incomplete instead of failing the run.
-- Enforce each slot's `maxLength` (and the cast guardrail limit) when a draft
-  is validated.
-- Consider strict-on-write, strip-on-read for bible parsing.
-- The Channel tab's "Bible incomplete" message, and the voice audition
-  fallback (still the Wirecard line), for a channel without the Bible tab.
-- The slot passes (rebriefer, retyper, redirector) do not append the
-  channel's direction rules.
+All six were done on `bible-drafting` (the section below):
+
+- [x] Later stages rely on `BibleSlotMissingError` rather than the gate: every
+      stage now refuses an incomplete frozen bible with the gate's own
+      message (Task 5), and "Use the latest bible" refuses an incomplete
+      version (Task 12, `moveToLatestBibleAction`).
+- [x] The weekly digest skips an incomplete current bible instead of failing
+      the run (Task 5).
+- [x] Each slot's `maxLength` and the cast guardrail limit are enforced when a
+      draft is validated and block Save (Tasks 1, 2 and 6).
+- [x] Strict on write, strip on read: stored bibles are read with
+      `ChannelBibleReadSchema` and only a write parses strictly (Task 2,
+      `packages/db/src/bible-drafts.ts`).
+- [x] The Channel tab's "Bible incomplete" message points to the Bible tab
+      (Task 9), and the voice audition falls back to a neutral line, no
+      longer the Wirecard one (Task 12).
+- [x] The slot passes now append the channel's direction rules: the rebriefer
+      and redirector do; the retyper deliberately does not (decision 352).
 
 ## Editable schedule slots (2026-11-01)
 
@@ -4304,6 +4310,88 @@ Then:
 - `PUT /api/inngest` after the Vercel deploy: three new functions
   (`talking-points-runner`, `point-short-runner`, `point-studio-runner`) and
   the changed `shorts-runner` and `short-render-runner`.
+
+## Channel bible, drafting (2026-11-02)
+
+> The Bible tab: a second channel's bible is drafted with AI from a short
+> description and VidIQ research, approved section by section, saved as a new
+> version, frozen into projects and moved forward on request. Design:
+> `docs/superpowers/specs/2026-10-28-channel-bible-design.md` (and the VidIQ
+> design, section 5); plan:
+> `docs/superpowers/plans/2026-10-29-channel-bible-drafting.md`; branch
+> `bible-drafting`; decisions 345 to 358. Boom & Busters' prompts are still
+> byte-identical: `git diff master -- packages/providers/src/prompts/lift/__fixtures__`
+> prints nothing. Its hooks section is the owner's first run of Draft once
+> this is live; the fixtures are re-captured then, in a commit that says so.
+
+### Deliverables
+
+- [x] Task 1: draft shapes, units, the overlap check, save blockers (schemas).
+- [x] Task 2: the draft row, versions restore, moving a project, the VidIQ
+      credits table (migration `0042_bible_drafts_vidiq`).
+- [x] Task 3: the VidIQ key and the monthly credit cap in Settings.
+- [x] Task 4: the VidIQ client over MCP, parsers built from live recordings,
+      the research plan and its estimate.
+- [x] Task 5: every stage gate, the digest skip, the slot passes' direction
+      rules.
+- [x] Task 6: the research digest and the per-unit drafting prompts, with
+      mocks.
+- [x] Task 7: `bible-researcher`, the estimate and Start actions.
+- [x] Task 8: `bible-drafter`, drafting per unit, redraft with a steer.
+- [x] Task 9: the Bible tab: sections, Edit, Approve, Save, Discard; the
+      Channel tab's status card.
+- [x] Task 10: Draft with AI: the input card, the credits shown first.
+- [x] Task 11: History (view, restore) and the prompt preview.
+- [x] Task 12: Use the latest bible, the start gate's link, the neutral
+      audition line.
+- [x] Task 13: the upload sends the bible's category, and a second channel's
+      language.
+- [x] Task 14: end to end (`e2e/tests/bible.spec.ts`) and the branch check.
+      The research and drafting runs cannot start without Inngest in e2e, so
+      the spec presses Start and Redraft, asserts the "Could not reach
+      Inngest" refusal, then writes what the runners would have left (the
+      mock research digest, the seven sections drafted from the mock
+      provider's answers, Voice reworded after the steer) and reads the rest
+      through the real screens.
+- [ ] Owner actions at deploy, not run by this branch (below).
+
+### Owner actions at deploy
+
+Production Vercel builds run `scripts/deploy-migrate.mjs`, so pushing master
+applies the migration. Before the push:
+
+1. Migration numbers: this branch adds `0042_bible_drafts_vidiq`. Master's
+   `0041_talking_points` is already applied on production. Compare
+   `packages/db/drizzle/meta/_journal.json` with master's at merge time; if
+   another branch took 0042, regenerate this one as the next free number.
+2. `pnpm db:migrate` against production applies 0042 (the `vidiq` value on the
+   provider enum, `bible_drafts`, `vidiq_credits`). The Vercel build does the
+   same; run it by hand first if you want to see it pass.
+
+Then:
+
+3. Push master. Expect the usual build-length window.
+4. `deploy:stacks boom-busters-media-utils`, then `deploy:stacks
+boom-busters-broker`: the upload job gained `categoryId`, `defaultLanguage`
+   and `defaultAudioLanguage`, which the broker would drop and media-utils
+   builds the request from. Without them a second channel uploads with no
+   category or language; Boom & Busters is unaffected.
+5. `PUT /api/inngest` after the Vercel deploy: two new functions
+   (`bible-researcher`, `bible-drafter`).
+6. Add the VidIQ key in Settings, Connections. Check the monthly
+   credit cap in Settings (default 1,000) against the balance on the VidIQ
+   account. Without a key the Bible tab still drafts, without research.
+7. Then the owner's own run: open Boom & Busters' Bible tab, press Draft for
+   the hooks section, and re-capture the lift fixtures in a commit that says
+   so.
+
+### Not verified
+
+- A live VidIQ research run and a live drafting run. The fixtures were
+  recorded once (30 credits, 2026-10-29); every test and the e2e suite use
+  the mock client and mock provider.
+- The `bible-researcher` and `bible-drafter` functions under a real Inngest
+  server. The e2e suite has none (see Task 14 above).
 
 ---
 
@@ -8831,3 +8919,111 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      "Could not reach Inngest" refusal, then seeds what the runners would
      have left (proposal version 2, the approved set, three built Shorts)
      and reads the rest through the real screens.
+
+345. **A bible's draft is one row per channel** (2026-11-02). `bible_drafts`
+     holds the working bible, each section's status, the flagged lines, the
+     errors, the inputs, the research digest and the job. A page view never
+     creates it: the Bible tab shows the current version with every section
+     approved until the first Edit, Approve or Draft opens one. Save turns it
+     into the next version and deletes it in one transaction, and a save or a
+     discard is refused while a job runs. Design:
+     `docs/superpowers/specs/2026-10-28-channel-bible-design.md`.
+
+346. **The VidIQ client lives in providers, on its own path**
+     (2026-11-02). It is `@boom-busters/providers/vidiq`, not the main
+     barrel, because `'use client'` components import that barrel by value
+     and the MCP SDK must not reach a browser bundle. It calls only the read
+     tools (`balance`, `channel_videos`, `outliers`, `get_videos_by_ids`,
+     `video_transcript`, `keyword_research`, `score_title`). Its parsers are
+     built from the recorded formats, not from the plan's guess: outliers
+     arrive as markdown inside JSON, keyword research as plain markdown, a
+     transcript as one timestamped string. Only the research digest is
+     stored, never a full transcript.
+
+347. **VidIQ spend has its own table** (2026-11-02). `vidiq_credits` has one
+     row per call, written inside the Inngest step that made it.
+     `cost_ledger` is dollars and VidIQ is credits, so they stay apart. The
+     monthly cap defaults to 1,000 credits (`settings.vidiq.monthlyCreditCap`)
+     and is checked on the estimate and again on Start. A run can overshoot
+     the cap by one call at most; two runs on different channels at once can
+     each overshoot by one.
+
+348. **Examples are drafted per craft file** (2026-11-02). The examples
+     section is split into one unit for each craft file the slots feed
+     (script, dossier, direction, shot list, graphics, metadata, digest), so
+     one answer carries that file's slots and no more, and a single slot can
+     be redrafted on its own. An answer with an id from another group, an
+     extra key or an entry over its slot's `maxLength` is refused.
+
+349. **An edit is checked for overlap again** (2026-11-02). Edit and Done on
+     the examples or on hooks, openings and titles recompute the section's
+     flags from the text it now holds, with the same sources and rules the
+     drafter used (one shared module, `apps/web/lib/bible-overlap-sources.ts`).
+     A field that still overlaps keeps its flag, Approve stays off, and Save
+     is blocked. Pasting a source back in does not pass.
+
+350. **Restore is refused while a draft exists** (2026-11-02). Restoring
+     appends an earlier version as the next one, which would leave an open
+     draft pointing at a stale base. The refusal says "Save or discard the
+     draft first". The History button's Restore is disabled in the same
+     case.
+
+351. **The own channel is researched when it has approved scripts**
+     (2026-11-02). The research plan puts the channel's own handle first when
+     it has one and `approvedScriptOpenings` returns at least one line, one
+     opening per project (the newest approved script, because approving a
+     script never un-approves an older one). Spec 4.7 said "for the first
+     channel"; this generalises it. The own channel's videos are marked
+     `own`.
+
+352. **The retyper is left without the direction rules** (2026-11-02). The
+     rebriefer and the redirector append the channel's direction rules after
+     the direction craft. The retyper carries no direction craft, and rules
+     without the craft they refine would read as orders from nowhere.
+
+353. **A running job goes stale after 30 minutes** (2026-11-02).
+     `jobIsRunning` treats a `running` job older than 30 minutes as not
+     running, so a lost event or a crashed run frees the draft instead of
+     locking it. The research run hands over by writing the draft job as
+     running in its last step, which closes the window between Save and the
+     drafter. A failed send marks the job failed at once and says so.
+
+354. **Research buys at most four transcripts** (2026-11-02).
+     `TRANSCRIPT_CAP` is 4, taken from the most-viewed videos on the
+     admired channels. The estimate always counts four, a safe upper bound
+     when fewer videos qualify, and a transcript that cannot be read counts
+     as no opening, not a failed run.
+
+355. **Language is sent for a second channel only** (2026-11-02). The
+     upload sends the bible's YouTube category when it has one, and
+     `defaultLanguage` and `defaultAudioLanguage` for every channel except
+     the first. Boom & Busters' upload body stays byte-identical to before.
+     Opting the first channel in is one condition in `publish-runner`.
+
+356. **Mocks stand in for the VidIQ key** (2026-11-02). Under
+     `MOCK_PROVIDERS` `vidiqClientFor` returns a client that answers from the
+     recorded fixtures, so the estimate, Start and the researcher run without
+     a key and the Bible tab offers "Research with VidIQ, then draft". Mock
+     examples are worded apart from Boom & Busters', so a mock run flags
+     nothing. No test and no e2e run spends a credit.
+
+357. **Worked examples skip the Boom & Busters comparison** (2026-11-02). The
+     overlap check compares a drafted example with Boom & Busters' own and
+     with the research quotes, but ignores any eight-word run that appears in
+     a slot's `teaches` line (craft sentences a slot must keep verbatim), and
+     skips the Boom & Busters comparison for the `worked` slots (the graphics
+     examples), whose headers and component code every channel shares.
+     Known limit: a worked example copied from Boom & Busters is not flagged;
+     the owner approves it by eye. A real channel may need to reword line and
+     passage examples that echo Boom & Busters' boilerplate, which is the
+     intended edit.
+
+358. **JSON fixtures in providers carry their type** (2026-11-02). The
+     imports in `vidiq/mock.ts` and `prompts/bible-mocks.ts` are
+     `with { type: 'json' }`. Playwright's loader runs plain ESM, refuses a
+     bare JSON import, and the e2e global setup reaches those files through
+     `@boom-busters/cost`, so without it no e2e spec could start on this
+     branch. The e2e spec also reads the mock bible through a `tsx` child
+     process (`e2e/mock-bible.ts`) for the same reason, and puts the second
+     channel back to a blank bible when it ends, because `channels.spec.ts`
+     runs after it and expects one.
