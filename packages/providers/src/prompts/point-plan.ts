@@ -117,7 +117,9 @@ Return exactly:
         ].join('\n\n'),
       },
     ],
-    maxTokens: outputBudget(1500),
+    // A 20 to 30 shot plan with four still prompts runs 1 100 to 1 700 tokens, and the
+    // shotlist model's thinking shares the budget; this is the cost estimate's 3 000.
+    maxTokens: outputBudget(3000),
   }
 }
 

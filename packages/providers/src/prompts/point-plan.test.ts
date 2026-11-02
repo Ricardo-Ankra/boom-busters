@@ -1,6 +1,7 @@
 import { FIRST_CHANNEL_IN_USE, SHORT_RULES, ValidationError } from '@boom-busters/schemas'
 import type { PointScript } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { outputBudget } from '../llm/types'
 import { buildPointPlanRequest, mockPointPlan, parsePointPlan } from './point-plan'
 import type { PlanLibraryEntry } from './point-plan'
 import type { Note, Repair } from './repair'
@@ -77,6 +78,10 @@ describe('the point plan request', () => {
     note: 'Keep the cuts tight on the hook',
   })
   const text = [r.system, ...r.messages.map((m) => m.content)].join('\n').replace(/\s+/g, ' ')
+
+  it('budgets 3 000 answer tokens for a long plan, on top of thinking headroom', () => {
+    expect(r.maxTokens).toBe(outputBudget(3000))
+  })
 
   it('carries the library numbers, the word times and the note', () => {
     expect(text).toContain('The auditors found nothing.')
