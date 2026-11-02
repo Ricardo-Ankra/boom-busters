@@ -44,6 +44,18 @@ export async function latestTalkingPointSet(
   return row
 }
 
+/** Every version, newest first: the screen's note history. */
+export async function listTalkingPointSets(
+  db: Database,
+  projectId: string,
+): Promise<TalkingPointSetRow[]> {
+  return db
+    .select()
+    .from(talkingPointSets)
+    .where(eq(talkingPointSets.projectId, projectId))
+    .orderBy(desc(talkingPointSets.version))
+}
+
 /** The newest set the owner approved; later unapproved proposals do not hide it. */
 export async function approvedTalkingPointSet(
   db: Database,

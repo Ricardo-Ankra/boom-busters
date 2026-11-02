@@ -11,6 +11,7 @@ import {
   approvedTalkingPointSet,
   insertTalkingPointSet,
   latestTalkingPointSet,
+  listTalkingPointSets,
   stampTalkingPointSet,
 } from './talking-points'
 import { requireTestDatabase } from './test-database'
@@ -69,6 +70,15 @@ suite('talking-point sets', () => {
     expect(first.approvedAt).toBeNull()
     expect(first.points[0]?.title).toBe('Point 1 title')
     expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(3)
+  })
+
+  it('lists every version, newest first', async () => {
+    expect(await listTalkingPointSets(db, FIXTURE_PROJECT_ID)).toEqual([])
+    await insert()
+    await insert('fewer, sharper')
+    const listed = await listTalkingPointSets(db, FIXTURE_PROJECT_ID)
+    expect(listed.map((set) => set.version)).toEqual([2, 1])
+    expect(listed[0]?.note).toBe('fewer, sharper')
   })
 
   it('approving a set overtaken by a newer version is stale and changes nothing', async () => {

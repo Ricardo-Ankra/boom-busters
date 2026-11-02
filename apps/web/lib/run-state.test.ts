@@ -172,6 +172,24 @@ describe('projectControl', () => {
     }
   })
 
+  it('does not offer Continue to Publish while the Shorts stage waits at the talking points', () => {
+    // Nothing is built yet, so there is nothing to publish; and with no Shorts
+    // rows the empty-review rescue would otherwise offer a pointless restart.
+    for (const hasShorts of [false, true]) {
+      const control = projectControl(project('shorts', 'awaiting_review'), false, {
+        hasDossier: true,
+        hasScript: true,
+        hasMaster: true,
+        hasShorts,
+        shortsPhase: 'points',
+        now: NOW,
+      })
+      expect(control.kind).toBe('working')
+      expect(control).toMatchObject({ message: expect.stringContaining('talking points') })
+      expect(JSON.stringify(control)).not.toContain('Publish')
+    }
+  })
+
   /**
    * The production dead end of 2026-09-07: the script's Shorts marking had
    * silently failed, the old runner parked `awaiting_review` over zero rows,

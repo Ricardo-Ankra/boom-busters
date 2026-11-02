@@ -20,6 +20,7 @@ import { emptyVoiceModel, voiceReviewModel } from '@/lib/voice-review'
 import { emptyVisualsModel, jobsNeedPolling, visualsReviewModel } from '@/lib/visuals-review'
 import { emptyPreviewModel, previewModel } from '@/lib/preview-review'
 import { emptyShortsModel, shortsModel } from '@/lib/shorts-review'
+import { emptyTalkingPointsModel, talkingPointsModel } from '@/lib/talking-points-review'
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
@@ -50,6 +51,7 @@ import type { PreviewRenderProp } from './preview-screen'
 import { PublishScreen } from './publish-screen'
 import { ScriptStudio } from './script-studio'
 import { ShortsScreen } from './shorts-screen'
+import { TalkingPointsScreen } from './talking-points-screen'
 import { VisualBoard } from './visual-board'
 import type { SetPhotoGroup } from './visual-board'
 import { VoiceReview } from './voice-review'
@@ -112,6 +114,9 @@ export default async function ProjectPage({
   const viewingCurrent = viewing === project.stage
   const viewed = views.find((view) => view.stage === viewing)
   const wants = (stage: ProjectStage): boolean => viewing === stage || project.stage === stage
+  // The Shorts stage's first checkpoint: proposed talking points, nothing built.
+  const showsTalkingPoints =
+    viewing === 'shorts' && project.stage === 'shorts' && project.shortsPhase === 'points'
 
   // The project's channel: its settings and the estimates priced against them.
   const channel = await channelForProjectOrNotFound(project.id)
@@ -193,6 +198,7 @@ export default async function ProjectPage({
     publish,
     masterRender,
     notices,
+    talkingPoints,
   ] = await Promise.all([
     listActivity(db, { projectId: id, limit: 50 }),
     listOpenBudgetGates(db, channel.channelId),
@@ -230,6 +236,9 @@ export default async function ProjectPage({
       ? latestRender(db, id)
       : Promise.resolve(undefined),
     listProjectNotices(db, project.id),
+    // The talking points screen takes the Shorts stage while it is parked at
+    // phase `points` (design 3.5); no other view needs the set.
+    showsTalkingPoints ? talkingPointsModel(db, id) : Promise.resolve(emptyTalkingPointsModel()),
   ])
   const budgetGate = budgetGates.find((gate) => gate.projectId === id)
 
@@ -253,6 +262,7 @@ export default async function ProjectPage({
     hasMaster: masterRender?.status === 'done',
     hasShorts: shortCards.shorts.length > 0,
     hasLiveShorts: shortCards.shorts.some((short) => !short.stale),
+    shortsPhase: project.shortsPhase,
   })
 
   // Driven by the stage on screen rather than the stage the project is on, so
@@ -349,7 +359,7 @@ export default async function ProjectPage({
               plan screen with no run parked has no live run to poll on, before
               Inngest starts it or after it lands. */}
           <LiveRefresh
-            active={moving || jobsNeedPolling(visuals)}
+            active={moving || jobsNeedPolling(visuals) || talkingPoints.busy}
             pulseUrl={`/api/pulse?project=${project.id}`}
             initialPulse={pulse}
           />
@@ -533,6 +543,12 @@ export default async function ProjectPage({
           model={publish}
           live={!mockProvidersEnabled()}
           canFinish={project.stage === 'publish' && !liveRun}
+        />
+      ) : showsTalkingPoints ? (
+        <TalkingPointsScreen
+          projectId={project.id}
+          model={talkingPoints}
+          notices={noticesFor(notices, 'points')}
         />
       ) : showShorts ? (
         <ShortsScreen

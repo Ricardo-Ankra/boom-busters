@@ -174,6 +174,12 @@ export interface ControlInputs {
    * ones. Absent means every row counts as live (callers before 300).
    */
   hasLiveShorts?: boolean
+  /**
+   * The Shorts stage's checkpoint. At `points` the owner is reviewing talking
+   * points and nothing is built, so neither "Continue to Publish" nor the
+   * empty-review rescue applies.
+   */
+  shortsPhase?: 'points' | 'review' | null
   now?: Date
 }
 
@@ -310,6 +316,14 @@ export function projectControl(
       // parked a review over nothing, production 2026-09-07), and the only
       // way out is running the stage again.
       if (project.stage === 'shorts') {
+        if (inputs.shortsPhase === 'points') {
+          return {
+            kind: 'working',
+            message:
+              'The talking points are ready for your review below. Nothing is built until ' +
+              'you approve them.',
+          }
+        }
         if (!inputs.hasShorts) {
           return restartable
             ? {
