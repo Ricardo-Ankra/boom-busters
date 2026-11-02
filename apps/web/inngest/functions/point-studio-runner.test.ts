@@ -34,6 +34,7 @@ import {
   PointScriptRecordSchema,
   PointVoiceRecordSchema,
   teaserTextHash,
+  TimelineSchema,
 } from '@boom-busters/schemas'
 import type * as Tts from '@/lib/tts'
 import { InngestTestEngine } from '@inngest/test'
@@ -197,7 +198,11 @@ describeDb('point-studio-runner', () => {
     const blank = (await createProjectFromCase(db, { caseId: kase.id, title: 'T' })).id
     // Move the seeded Short, and a copy of its master, onto the blank project.
     const master = (await latestTimeline(db, FIXTURE_PROJECT_ID))!
-    await insertTimeline(db, { projectId: blank, json: master.json, s3Key: '' })
+    await insertTimeline(db, {
+      projectId: blank,
+      json: TimelineSchema.parse(master.json),
+      s3Key: '',
+    })
     await db.update(shorts).set({ projectId: blank })
     expect(await claim('plan')).toBe(true)
 
