@@ -4,7 +4,7 @@ import type { TalkingPoint } from '@boom-busters/schemas'
 import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import { FIXTURE_PROJECT_ID, fixtureCase, fixtureProject } from './fixtures'
-import { getProject, setProjectStage } from './projects'
+import { claimShortsCheckpoint, getProject, setProjectStage } from './projects'
 import { cases, projects } from './schema'
 import {
   approveTalkingPointSet,
@@ -120,5 +120,30 @@ suite('talking-point sets', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.shortsPhase).toBe('points')
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'running', shortsPhase: null })
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.shortsPhase).toBeNull()
+  })
+
+  it('claimShortsCheckpoint lets exactly one of two racing callers win', async () => {
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'shorts',
+      stageStatus: 'awaiting_review',
+      shortsPhase: 'points',
+    })
+    const change = {
+      from: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+      to: { shortsPhase: 'points', stageStatus: 'running' },
+    } as const
+    const results = await Promise.all([
+      claimShortsCheckpoint(db, FIXTURE_PROJECT_ID, change),
+      claimShortsCheckpoint(db, FIXTURE_PROJECT_ID, change),
+    ])
+    expect(results.filter(Boolean)).toHaveLength(1)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('running')
+    // And the wrong stage or phase never matches.
+    expect(
+      await claimShortsCheckpoint(db, FIXTURE_PROJECT_ID, {
+        from: { shortsPhase: 'review', stageStatus: 'running' },
+        to: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+      }),
+    ).toBe(false)
   })
 })

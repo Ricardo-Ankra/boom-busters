@@ -2,6 +2,7 @@ import { estimateLlmUsd, estimateTtsUsd } from '@boom-busters/cost'
 import {
   getChannelSettings,
   getLatestScript,
+  getProject,
   getWorkspace,
   hasLiveRun,
   latestTalkingPointSet,
@@ -133,12 +134,15 @@ export async function talkingPointsModel(
   const latest = await latestTalkingPointSet(db, projectId)
   if (!latest) return emptyTalkingPointsModel()
 
-  const [script, sets, busy, channel] = await Promise.all([
+  const [script, sets, liveRun, channel, project] = await Promise.all([
     getLatestScript(db, projectId),
     listTalkingPointSets(db, projectId),
     hasLiveRun(db, projectId, { functionName: TALKING_POINTS_RUNNER }),
     channelForProject(db, projectId),
+    getProject(db, projectId),
   ])
+  // The mirror lags a request by seconds; the claimed stage status does not.
+  const busy = liveRun || (project?.shortsPhase === 'points' && project.stageStatus === 'running')
   const chapters = (script?.chapters ?? []).map((chapter) => ({
     index: chapter.index,
     title: chapter.title,

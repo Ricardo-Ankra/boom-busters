@@ -8,6 +8,7 @@ import {
   runs,
   ensureRun,
   seed,
+  setProjectStage,
   talkingPointSets,
 } from '@boom-busters/db'
 import { estimateRenderCostUsd } from '@boom-busters/schemas'
@@ -172,6 +173,24 @@ describeDb('talkingPointsModel', () => {
       functionName: 'talking-points-runner',
       projectId: FIXTURE_PROJECT_ID,
     })
+    expect((await talkingPointsModel(db, FIXTURE_PROJECT_ID)).busy).toBe(true)
+  })
+
+  it('is busy at once when the project is running at points, before any run is mirrored', async () => {
+    await insertTalkingPointSet(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      scriptVersion: 1,
+      points: [point(1), point(2), point(3)],
+      note: null,
+    })
+    await setProjectStage(db, FIXTURE_PROJECT_ID, {
+      stage: 'shorts',
+      stageStatus: 'awaiting_review',
+      shortsPhase: 'points',
+    })
+    expect((await talkingPointsModel(db, FIXTURE_PROJECT_ID)).busy).toBe(false)
+
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'running' })
     expect((await talkingPointsModel(db, FIXTURE_PROJECT_ID)).busy).toBe(true)
   })
 })

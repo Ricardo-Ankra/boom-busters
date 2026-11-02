@@ -204,6 +204,39 @@ export async function setProjectStage(
 }
 
 /**
+ * Compare-and-set on the Shorts checkpoint: move the project from
+ * (`shorts`, `from.shortsPhase`, `from.stageStatus`) to `to` in one UPDATE and
+ * report whether this caller won. Two presses racing each other cannot both
+ * pass a read-then-write; exactly one of them matches the WHERE.
+ */
+export async function claimShortsCheckpoint(
+  db: Database,
+  id: string,
+  change: {
+    from: { shortsPhase: 'points' | 'review'; stageStatus: StageStatus }
+    to: { shortsPhase: 'points' | 'review'; stageStatus: StageStatus }
+  },
+): Promise<boolean> {
+  const rows = await db
+    .update(projects)
+    .set({
+      stageStatus: change.to.stageStatus,
+      shortsPhase: change.to.shortsPhase,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(projects.id, id),
+        eq(projects.stage, 'shorts'),
+        eq(projects.shortsPhase, change.from.shortsPhase),
+        eq(projects.stageStatus, change.from.stageStatus),
+      ),
+    )
+    .returning({ id: projects.id })
+  return rows.length > 0
+}
+
+/**
  * Which visuals checkpoint the project sits at (staged-visuals design,
  * 2026-08-26): `plan` between generation and the fetch, `board` once assets
  * exist, null outside the stage. The visuals-runner is the only writer.

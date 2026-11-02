@@ -116,6 +116,31 @@ describeDb('talking points actions', () => {
       expect(sent.every((event) => event.data.projectId === FIXTURE_PROJECT_ID)).toBe(true)
     })
 
+    it('two approvals one after the other send the N builds once', async () => {
+      await propose(3)
+
+      const first = await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)
+      const second = await approveTalkingPoints(FIXTURE_PROJECT_ID, 1)
+
+      expect(first).toEqual({ ok: true })
+      expect(second.ok).toBe(false)
+      const sent = send.mock.calls.flatMap((call) => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+      expect(sent).toHaveLength(3)
+    })
+
+    it('two approvals pressed together send the N builds once', async () => {
+      await propose(3)
+
+      const results = await Promise.all([
+        approveTalkingPoints(FIXTURE_PROJECT_ID, 1),
+        approveTalkingPoints(FIXTURE_PROJECT_ID, 1),
+      ])
+
+      expect(results.filter((result) => result.ok)).toHaveLength(1)
+      const sent = send.mock.calls.flatMap((call) => (Array.isArray(call[0]) ? call[0] : [call[0]]))
+      expect(sent).toHaveLength(3)
+    })
+
     it('refuses version 2 once version 3 has landed, and sends nothing', async () => {
       await propose(3)
       await propose(3)
@@ -129,7 +154,9 @@ describeDb('talking points actions', () => {
       })
       expect(await approvedTalkingPointSet(db, FIXTURE_PROJECT_ID)).toBeUndefined()
       expect(send).not.toHaveBeenCalled()
-      expect((await getProject(db, FIXTURE_PROJECT_ID))?.shortsPhase).toBe('points')
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      expect(project?.shortsPhase).toBe('points')
+      expect(project?.stageStatus).toBe('awaiting_review')
     })
 
     it('refuses a version that does not exist', async () => {
@@ -253,6 +280,40 @@ describeDb('talking points actions', () => {
       expect(send).not.toHaveBeenCalled()
     })
 
+    it('two redos with an empty run mirror send exactly once, the second in words', async () => {
+      await propose(3)
+
+      const first = await redoTalkingPoints(FIXTURE_PROJECT_ID, 'one')
+      const second = await redoTalkingPoints(FIXTURE_PROJECT_ID, 'two')
+
+      expect(first).toEqual({ ok: true })
+      expect(second).toEqual({ ok: false, error: 'Talking points are already being redone.' })
+      expect(send).toHaveBeenCalledTimes(1)
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('running')
+    })
+
+    it('a redo and an add pressed together send once', async () => {
+      await propose(3)
+
+      const results = await Promise.all([
+        redoTalkingPoints(FIXTURE_PROJECT_ID, 'one'),
+        addTalkingPoint(FIXTURE_PROJECT_ID, 'two'),
+      ])
+
+      expect(results.filter((result) => result.ok)).toHaveLength(1)
+      expect(send).toHaveBeenCalledTimes(1)
+    })
+
+    it('hands the claim back when the request cannot be sent, so a retry is possible', async () => {
+      await propose(3)
+      send.mockRejectedValueOnce(new Error('no inngest'))
+
+      await redoTalkingPoints(FIXTURE_PROJECT_ID, 'one')
+
+      expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      expect(await redoTalkingPoints(FIXTURE_PROJECT_ID, 'again')).toEqual({ ok: true })
+    })
+
     it('a finished runner no longer blocks a redo', async () => {
       await propose(3)
       runCounter += 1
@@ -303,6 +364,16 @@ describeDb('talking points actions', () => {
       expect(latest?.points.map((p) => p.id)).toEqual([ids[0], ids[2], ids[3]])
       expect(latest?.points.map((p) => p.order)).toEqual([1, 2, 3])
       expect(send).not.toHaveBeenCalled()
+    })
+
+    it('refuses while the stage is running at points, even with an empty run mirror', async () => {
+      await propose(4)
+      await setProjectStage(db, FIXTURE_PROJECT_ID, { stageStatus: 'running' })
+
+      const result = await removeTalkingPoint(FIXTURE_PROJECT_ID, ids[0]!)
+
+      expect(result).toEqual({ ok: false, error: 'Talking points are already being redone.' })
+      expect((await latestTalkingPointSet(db, FIXTURE_PROJECT_ID))?.version).toBe(1)
     })
 
     it('refuses to leave fewer than three', async () => {

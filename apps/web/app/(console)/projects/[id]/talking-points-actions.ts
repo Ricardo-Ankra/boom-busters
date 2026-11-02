@@ -2,11 +2,11 @@
 
 import {
   approveTalkingPointSet,
+  claimShortsCheckpoint,
   getProject,
   hasLiveRun,
   insertTalkingPointSet,
   latestTalkingPointSet,
-  setProjectStage,
 } from '@boom-busters/db'
 import { SHORT_RULES, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -64,31 +64,41 @@ export async function approveTalkingPoints(
   if (project.stage !== 'shorts' || project.shortsPhase !== 'points') {
     return { ok: false, error: 'These talking points are not waiting for approval.' }
   }
-  if (await runnerIsLive(projectId)) {
+  if (project.stageStatus === 'running' || (await runnerIsLive(projectId))) {
     return {
       ok: false,
       error: 'Talking points are being redone. Approve once the new set appears.',
     }
   }
 
+  // Win the points to review transition before anything is stamped or sent:
+  // a second approval arriving together loses here and sends nothing.
+  const won = await claimShortsCheckpoint(db, projectId, {
+    from: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+    to: { shortsPhase: 'review', stageStatus: 'running' },
+  })
+  if (!won) return { ok: false, error: 'These talking points are already being approved.' }
+  const backToPoints = () =>
+    claimShortsCheckpoint(db, projectId, {
+      from: { shortsPhase: 'review', stageStatus: 'running' },
+      to: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+    })
+
   const outcome = await approveTalkingPointSet(db, projectId, version)
   if (outcome === 'stale') {
+    await backToPoints()
     return {
       ok: false,
       error: 'A newer set of talking points exists. Review it before approving.',
     }
   }
   if (outcome === 'missing') {
+    await backToPoints()
     return { ok: false, error: 'That set of talking points no longer exists.' }
   }
 
   const set = await latestTalkingPointSet(db, projectId)
   const points = set?.points ?? []
-  await setProjectStage(db, projectId, {
-    stage: 'shorts',
-    stageStatus: 'running',
-    shortsPhase: 'review',
-  })
   try {
     await inngest.send(
       points.map((point) =>
@@ -98,11 +108,7 @@ export async function approveTalkingPoints(
   } catch (error) {
     console.error('[talking-points] could not send the builds', error)
     // Back to where the owner can press Approve again.
-    await setProjectStage(db, projectId, {
-      stage: 'shorts',
-      stageStatus: 'awaiting_review',
-      shortsPhase: 'points',
-    })
+    await backToPoints()
     return { ok: false, error: 'Could not reach Inngest to start building the Shorts.' }
   }
   refresh(projectId)
@@ -116,10 +122,23 @@ type PointsRequest =
 
 async function requestPoints(projectId: string, request: PointsRequest): Promise<ActionResult> {
   if (await runnerIsLive(projectId)) return { ok: false, error: ALREADY_REDOING }
+  // The run mirror only shows a run seconds after `send`, so the guard that
+  // closes the gap is this compare-and-set: one press wins `awaiting_review`
+  // to `running`, and a second finds nothing to claim. The runner sets
+  // `running` itself at its start and `awaiting_review` when it parks.
+  const claimed = await claimShortsCheckpoint(db, projectId, {
+    from: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+    to: { shortsPhase: 'points', stageStatus: 'running' },
+  })
+  if (!claimed) return { ok: false, error: ALREADY_REDOING }
   try {
     await inngest.send(events.shortsPointsRequested.create({ projectId, ...request }))
   } catch (error) {
     console.error('[talking-points] could not send the request', error)
+    await claimShortsCheckpoint(db, projectId, {
+      from: { shortsPhase: 'points', stageStatus: 'running' },
+      to: { shortsPhase: 'points', stageStatus: 'awaiting_review' },
+    })
     return { ok: false, error: INNGEST_UNREACHABLE }
   }
   refresh(projectId)
@@ -175,7 +194,13 @@ export async function removeTalkingPoint(
   await requireOwner()
   if (!(await ownedProject(projectId))) return { ok: false, error: 'Unknown project' }
   // A removal writes a version too, so it must not race the runner's.
-  if (await runnerIsLive(projectId)) return { ok: false, error: ALREADY_REDOING }
+  const project = await ownedProject(projectId)
+  if (
+    (await runnerIsLive(projectId)) ||
+    (project?.shortsPhase === 'points' && project.stageStatus === 'running')
+  ) {
+    return { ok: false, error: ALREADY_REDOING }
+  }
 
   const latest = await latestTalkingPointSet(db, projectId)
   const removed = latest?.points.find((point) => point.id === pointId)
