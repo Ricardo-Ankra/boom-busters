@@ -20,7 +20,8 @@ import {
 import { listLedger, truncateLedger } from '@boom-busters/cost'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type * as Db from '@boom-busters/db'
-import type { Timeline } from '@boom-busters/schemas'
+import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
+import { compileShortMaster, POINT_CHAPTER_ID } from '@boom-busters/timeline'
 import { InngestTestEngine } from '@inngest/test'
 import { updateShort } from '@boom-busters/db'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -252,6 +253,69 @@ describeDb('short-render-runner', () => {
         expect(uploaded.overlays[0]).toMatchObject({ kind: 'endCta' })
         // Captioned by default, whatever the master says (decision 326).
         expect(uploaded.captions.style).toBe('karaoke')
+      },
+    )
+
+    /**
+     * A point Short slices its own mini master like a teaser, and ends on its
+     * bridge graphics: no CTA card, the arrow and the subscribe badge instead.
+     */
+    it(
+      'compiles a point Short from its own master and ends on the bridge, not the CTA card',
+      { timeout: 120_000 },
+      async () => {
+        broker.submitRender.mockResolvedValue({
+          brokerRenderId: '01HQ0000000000000000000BR1',
+          remotionRenderId: 'rem-short',
+          estimatedCostUsd: 0.0033,
+        })
+        const phases = ['hook', 'stakes', 'delivery', 'resolution', 'bridge'] as const
+        const slot: TimelineSlot = {
+          type: 'still',
+          startMs: 0,
+          durationMs: 1000,
+          transition: 'cut',
+          motion: { kind: 'static' },
+          payload: { kind: 'image', src: { r2Key: 'boom-busters/stills/p.png' } },
+        }
+        const own = compileShortMaster({
+          master: canonicalMaster(),
+          paragraphs: phases.map((phase) => ({
+            text: `The ${phase} paragraph has a few words in it.`,
+            phase,
+            r2Key: `mock://voice/${phase}.wav`,
+            durationMs: 6000,
+            wordTimings: null,
+          })),
+          shots: [
+            { startWord: 0, slot, crop: 'centre', motion: 'punch' },
+            { startWord: 10, slot, crop: 'left', motion: 'kenburns-in' },
+          ],
+          bridge: { label: 'Full video', channelName: 'Boom & Busters', handle: '@bb' },
+        })
+        await db.delete(shorts)
+        const point = await insertShort(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          title: 'A point Short',
+          segmentRef: { chapterId: POINT_CHAPTER_ID, fromParagraph: 0, toParagraph: 4 },
+          kind: 'point',
+          sourceTimeline: own as unknown as Record<string, unknown>,
+        })
+        shortId = point.id
+
+        await engine.executeStep('invoke-broker', { events: requestedEvent() })
+
+        const uploaded = JSON.parse(
+          (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
+        ) as Timeline
+        expect([uploaded.width, uploaded.height]).toEqual([1080, 1920])
+        expect(uploaded.overlays.map((o) => o.kind).sort()).toEqual([
+          'relatedArrow',
+          'subscribeBadge',
+        ])
+        expect(uploaded.overlays.some((o) => o.kind === 'endCta')).toBe(false)
+        // The Short's own narration, not a slice of the project master.
+        expect(uploaded.narration).toHaveLength(5)
       },
     )
 

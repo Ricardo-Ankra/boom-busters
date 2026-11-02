@@ -60,6 +60,42 @@ function shotMotion(slot: TimelineSlot, motion: PointShotMotion): TimelineMotion
   }
 }
 
+/**
+ * The narration's own clock: one segment per paragraph, `paragraphGapMs`
+ * between them, and the caption words snapped to the script on that clock.
+ * Exported so the shot planner indexes the very words the compile will cut on.
+ */
+export function layoutPointNarration(paragraphs: readonly PointParagraphAudio[]): {
+  narration: Timeline['narration']
+  words: Timeline['captions']['words']
+  narrationEndMs: number
+  bridgeStartMs: number | null
+} {
+  let clock = 0
+  let bridgeStartMs: number | null = null
+  const narration: Timeline['narration'] = []
+  const words: Timeline['captions']['words'] = []
+
+  for (const [index, paragraph] of paragraphs.entries()) {
+    const startMs = clock
+    narration.push({
+      r2Key: paragraph.r2Key,
+      startMs,
+      durationMs: paragraph.durationMs,
+      chapterId: POINT_CHAPTER_ID,
+      paragraphIndex: index,
+    })
+    if (paragraph.phase === 'bridge' && bridgeStartMs === null) bridgeStartMs = startMs
+
+    const heard = paragraph.wordTimings ?? evenTimings(paragraph.text, paragraph.durationMs)
+    words.push(...offsetCaptions(snapToScript(paragraph.text, heard).captions, startMs))
+
+    const last = index === paragraphs.length - 1
+    clock = startMs + paragraph.durationMs + (last ? 0 : SHORT_RULES.paragraphGapMs)
+  }
+  return { narration, words, narrationEndMs: clock, bridgeStartMs }
+}
+
 export function compileShortMaster(input: {
   master: Timeline
   paragraphs: readonly PointParagraphAudio[]
@@ -76,29 +112,7 @@ export function compileShortMaster(input: {
     throw new ValidationError('a point Short needs at least one shot', { field: 'shots' })
   }
 
-  let clock = 0
-  let bridgeStartMs: number | null = null
-  const narration: Timeline['narration'] = []
-  const words: Timeline['captions']['words'] = []
-
-  for (const [index, paragraph] of input.paragraphs.entries()) {
-    const startMs = clock
-    narration.push({
-      r2Key: paragraph.r2Key,
-      startMs,
-      durationMs: paragraph.durationMs,
-      chapterId: POINT_CHAPTER_ID,
-      paragraphIndex: index,
-    })
-    if (paragraph.phase === 'bridge' && bridgeStartMs === null) bridgeStartMs = startMs
-
-    const heard = paragraph.wordTimings ?? evenTimings(paragraph.text, paragraph.durationMs)
-    words.push(...offsetCaptions(snapToScript(paragraph.text, heard).captions, startMs))
-
-    const last = index === input.paragraphs.length - 1
-    clock = startMs + paragraph.durationMs + (last ? 0 : SHORT_RULES.paragraphGapMs)
-  }
-  const narrationEndMs = clock
+  const { narration, words, narrationEndMs, bridgeStartMs } = layoutPointNarration(input.paragraphs)
 
   if (bridgeStartMs === null) {
     throw new ValidationError('a point Short needs a bridge paragraph', { field: 'paragraphs' })

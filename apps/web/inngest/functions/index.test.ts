@@ -63,12 +63,17 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - talking-points-runner queues a project's requests behind each other
   //   (`concurrency` keyed on the project): a duplicate must never cancel a
   //   paid proposal, and `skip` is banned below.
+  // - point-short-runner builds one Short per approved talking point, two at a
+  //   time and one per point (`concurrency` keyed on the point): a duplicate
+  //   must never cancel paid work, and one that queues behind a finished
+  //   build finds its row and does nothing.
   'analytics-runner': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,
   'stretch-replanner': null,
   'talking-points-runner': null,
+  'point-short-runner': null,
 }
 
 describe('function singletons (decision 233)', () => {

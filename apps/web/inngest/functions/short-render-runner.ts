@@ -122,10 +122,12 @@ export const shortRenderRunner = inngest.createFunction(
         throw new NonRetriableError('There is no compiled master timeline to slice.')
       }
       // A teaser slices its OWN mini master (decision 225): purpose-written
-      // narration over slots lifted from the project master at creation.
+      // narration over slots lifted from the project master at creation. A
+      // point Short does the same, over its own shots and bridge overlays.
       // Everything downstream — canvas, ending, bed, QC — is shared.
+      const ownMaster = short.kind === 'teaser' || short.kind === 'point'
       const master = TimelineSchema.parse(
-        short.kind === 'teaser' && short.sourceTimeline ? short.sourceTimeline : timelineRow.json,
+        ownMaster && short.sourceTimeline ? short.sourceTimeline : timelineRow.json,
       )
       const beds = await listMusicBeds(db)
 
@@ -142,7 +144,8 @@ export const shortRenderRunner = inngest.createFunction(
         timeline = compileShortTimeline({
           master,
           segmentRef: short.segmentRef,
-          ending: short.ending,
+          // A point Short ends on its bridge graphics, never the CTA card.
+          ending: short.kind === 'point' ? 'bridge' : short.ending,
           ctaText: bible.ctaLine || DEFAULT_CTA_TEXT,
           music: pickShortsBed(beds, master.brand.music.shortsStyle),
           // The Short's own setting (decision 326), never the master's.

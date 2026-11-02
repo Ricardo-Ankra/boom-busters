@@ -232,6 +232,13 @@ describe('assembleStillPrompt (decision 287)', () => {
     expect(prompt).not.toContain('9:16')
   })
 
+  it('gives a point Short’s still the same vertical composition as a teaser’s', () => {
+    const input = { scene: 'Emad at a podium.', layout: '', people: [], set: null }
+    expect(assembleStillPrompt({ ...input, kind: 'short' })).toBe(
+      assembleStillPrompt({ ...input, kind: 'teaser' }),
+    )
+  })
+
   // The rule this guards: no named prop, no lens, no grain, anywhere the
   // assembler writes for itself rather than quoting the planner. Extended
   // (final review) to the framing lead with no camera and the reference
