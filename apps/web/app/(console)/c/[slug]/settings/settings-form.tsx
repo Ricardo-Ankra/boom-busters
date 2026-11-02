@@ -134,7 +134,11 @@ export function SettingsForm({
   const [channel, setChannel] = React.useState(initialChannel)
   // A saved bible version arrives with the refresh; the Channel tab's status line follows it.
   React.useEffect(() => {
-    setChannel((current) => ({ ...current, bible: initialChannel.bible }))
+    // A no-op update must not re-render the form after hydration, or a controlled field changed before
+    // hydration is reset to the server value and its old value saved.
+    setChannel((current) =>
+      current.bible === initialChannel.bible ? current : { ...current, bible: initialChannel.bible },
+    )
   }, [initialChannel.bible])
 
   // Controlled, so an in-page link to `?tab=bible` switches the tab.
