@@ -81,8 +81,10 @@ describe('the point plan request', () => {
   it('carries the library numbers, the word times and the note', () => {
     expect(text).toContain('The auditors found nothing.')
     expect(text).toContain('A trading floor in panic')
-    expect(text).toMatch(/\b1\b.*headline/)
-    expect(text).toMatch(/\b2\b.*archival/)
+    expect(text).toContain(
+      '0. headline (headline), chapter 0. Covered: The auditors found nothing.',
+    )
+    expect(text).toContain('1. archival (archival), chapter 1. Covered: The shares collapsed.')
     expect(text).toContain('w29')
     expect(text).toContain('11.6')
     expect(text).toContain('Keep the cuts tight on the hook')
