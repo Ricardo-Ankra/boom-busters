@@ -284,8 +284,8 @@ export async function writeCaseResearchJob(
 
 /**
  * Save a finished brief and mark the job done, only while the job is still the
- * run that started at `jobStartedAt`. A run that was stopped or superseded
- * writes nothing and gets false.
+ * running job that started at `jobStartedAt`. A run that was stopped, failed or
+ * superseded writes nothing and gets false.
  */
 export async function saveCaseSearchBrief(
   db: Database,
@@ -295,7 +295,8 @@ export async function saveCaseSearchBrief(
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     const { job } = await lockCaseResearch(tx, caseId)
-    if (!job || job.startedAt !== jobStartedAt) return false
+    // A failed or stopped job keeps its startedAt, so the state matters too.
+    if (!job || job.startedAt !== jobStartedAt || job.state !== 'running') return false
     await tx
       .update(cases)
       .set({

@@ -2,12 +2,20 @@
 
 import type * as ChannelLookup from '@/lib/channel-lookup'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CaseResearchJob } from '@boom-busters/schemas'
 import {
   EMPTY_BIBLE,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID as CHANNEL_ID,
 } from '@boom-busters/schemas'
-import { addCase, editCase, startProjectFromCase, suggestCases } from './actions'
+import {
+  addCase,
+  caseResearchEstimate,
+  editCase,
+  researchCaseAction,
+  startProjectFromCase,
+  suggestCases,
+} from './actions'
 
 /**
  * `Suggest cases` on the answer helper (decision 293), with the database,
@@ -26,6 +34,7 @@ const store = vi.hoisted(() => ({
   createProjectFromCase: vi.fn(),
   markCaseInProduction: vi.fn(),
   setProjectStage: vi.fn(),
+  writeCaseResearchJob: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -36,7 +45,10 @@ vi.mock('@boom-busters/db', () => store)
 vi.mock('@/lib/db', () => ({ db: { marker: 'db' } }))
 vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.com' } }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/inngest/client', () => ({ inngest: { send: vi.fn() } }))
+const send = vi.hoisted(() => vi.fn())
+vi.mock('@/inngest/client', () => ({ inngest: { send } }))
+const checkVidiqBudget = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/vidiq-spend', () => ({ checkVidiqBudget }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 const recordRepairs = vi.hoisted(() => vi.fn())
@@ -358,5 +370,194 @@ describe('case categories come from the channel bible', () => {
     })
     expect(callLlm).not.toHaveBeenCalled()
     expect(store.createSuggestedCases).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * `Research with VidIQ` on a case: every refusal (the owner, the case, the
+ * channel, the estimate against the cap and the balance, a run already going)
+ * comes before the job is stamped or any event is sent.
+ */
+describe('researchCaseAction and caseResearchEstimate', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+  const caseRow = (over: Record<string, unknown> = {}) => ({
+    id: CASE_ID,
+    subject: 'WeWork',
+    status: 'shortlisted',
+    searchJob: null,
+    ...over,
+  })
+  const running = (over: Partial<CaseResearchJob> = {}): CaseResearchJob => ({
+    state: 'running',
+    current: null,
+    error: null,
+    startedAt: new Date().toISOString(),
+    heartbeatAt: new Date().toISOString(),
+    subject: 'WeWork',
+    ...over,
+  })
+  /** What `cases.search_job` holds, as the mocked lock-and-write sees it. */
+  let stored: CaseResearchJob | null
+
+  beforeEach(() => {
+    stored = null
+    send.mockReset().mockResolvedValue(undefined)
+    checkVidiqBudget.mockReset().mockResolvedValue({ ok: true, balance: 1443, capLeft: 1000 })
+    store.getCase.mockReset().mockResolvedValue(caseRow())
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    store.writeCaseResearchJob.mockReset().mockImplementation(async (_db, _id, update) => {
+      stored = update(stored)
+      return stored
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('stamps the job with the case subject and sends the run', async () => {
+    expect(await researchCaseAction(CASE_ID)).toEqual({ ok: true })
+    expect(checkVidiqBudget).toHaveBeenCalledWith(20)
+    expect(stored).toMatchObject({ state: 'running', error: null, subject: 'WeWork' })
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0]![0]).toMatchObject({
+      name: 'case/research.requested',
+      data: { caseId: CASE_ID, jobStartedAt: stored!.startedAt },
+    })
+  })
+
+  it('refuses an unknown, missing or retired case, and a case with no subject', async () => {
+    expect(await researchCaseAction('nope')).toEqual({ ok: false, error: 'Unknown case' })
+    store.getCase.mockResolvedValue(null)
+    expect(await researchCaseAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'That case no longer exists',
+    })
+    store.getCase.mockResolvedValue(caseRow({ status: 'retired' }))
+    expect(await researchCaseAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'That case is retired. Move it back to shortlisted first.',
+    })
+    store.getCase.mockResolvedValue(caseRow({ subject: null }))
+    expect(await researchCaseAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Give the case a subject before researching it',
+    })
+    expect(checkVidiqBudget).not.toHaveBeenCalled()
+    expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('refuses a case on an archived channel, before the estimate', async () => {
+    store.channelForCase.mockResolvedValue({
+      id: CHANNEL_ID,
+      bible: FIRST_CHANNEL_BIBLE,
+      archivedAt: new Date(),
+    })
+    const result = await researchCaseAction(CASE_ID)
+    expect(result.ok).toBe(false)
+    expect(checkVidiqBudget).not.toHaveBeenCalled()
+    expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
+  })
+
+  it('refuses on the estimate against the cap or the balance, before the job is stamped', async () => {
+    for (const error of [
+      "This run needs about 20 credits; 5 are left of this month's cap of 1000.",
+      'This run needs about 20 credits; the VidIQ balance is 10.',
+      'Add a VidIQ key in Settings, Connections',
+    ]) {
+      checkVidiqBudget.mockResolvedValue({ ok: false, error })
+      expect(await researchCaseAction(CASE_ID)).toEqual({ ok: false, error })
+    }
+    expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('refuses a second press while a run is going, leaving that run alone', async () => {
+    stored = running()
+    store.getCase.mockResolvedValue(caseRow({ searchJob: stored }))
+    const before = stored
+    expect(await researchCaseAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Research is already running for this case',
+    })
+    expect(stored).toBe(before)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('refuses when another press stamped a job between the check and the stamp', async () => {
+    // The case read shows no job, but the locked write finds a running one.
+    stored = running({ startedAt: '2020-01-01T00:00:00.000Z' })
+    expect(await researchCaseAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Research is already running for this case',
+    })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('takes over a job that has gone stale', async () => {
+    const old = new Date(Date.now() - 40 * 60_000).toISOString()
+    stored = running({ startedAt: old, heartbeatAt: old })
+    store.getCase.mockResolvedValue(caseRow({ searchJob: stored }))
+    expect(await researchCaseAction(CASE_ID)).toEqual({ ok: true })
+    expect(stored!.startedAt).not.toBe(old)
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks the job failed when Inngest cannot be reached, and says how to start it', async () => {
+    send.mockRejectedValue(new Error('connect ECONNREFUSED'))
+    const result = await researchCaseAction(CASE_ID)
+    expect(result).toEqual({
+      ok: false,
+      error:
+        'Could not reach Inngest to start the research. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    })
+    expect(stored).toMatchObject({
+      state: 'failed',
+      current: null,
+      error: 'The research run could not be started',
+    })
+  })
+
+  it('leaves a newer job alone when its own send fails', async () => {
+    send.mockImplementation(async () => {
+      // A newer press took the job while this send was in flight.
+      stored = running({ startedAt: '2099-01-01T00:00:00.000Z', heartbeatAt: undefined })
+      throw new Error('boom')
+    })
+    await researchCaseAction(CASE_ID)
+    expect(stored).toMatchObject({ state: 'running', startedAt: '2099-01-01T00:00:00.000Z' })
+  })
+
+  it('the estimate is 20 credits with what is left of the cap and the balance, and spends nothing', async () => {
+    expect(await caseResearchEstimate(CASE_ID)).toEqual({
+      ok: true,
+      credits: 20,
+      capLeft: 1000,
+      balance: 1443,
+    })
+    expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('the estimate passes a refusal through, and refuses an unknown or missing case', async () => {
+    checkVidiqBudget.mockResolvedValue({
+      ok: false,
+      error: 'This run needs about 20 credits; the VidIQ balance is 10.',
+    })
+    expect(await caseResearchEstimate(CASE_ID)).toEqual({
+      ok: false,
+      error: 'This run needs about 20 credits; the VidIQ balance is 10.',
+    })
+    expect(await caseResearchEstimate('nope')).toEqual({ ok: false, error: 'Unknown case' })
+    store.getCase.mockResolvedValue(null)
+    expect(await caseResearchEstimate(CASE_ID)).toEqual({
+      ok: false,
+      error: 'That case no longer exists',
+    })
   })
 })

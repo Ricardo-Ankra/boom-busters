@@ -12,6 +12,7 @@ import {
   setCaseStatus,
   setProjectStage,
   updateCase,
+  writeCaseResearchJob,
 } from '@boom-busters/db'
 import type { CaseStatus } from '@boom-busters/db'
 import {
@@ -24,6 +25,7 @@ import {
 } from '@boom-busters/providers'
 import {
   CASE_PEOPLE_MAX,
+  CASE_RESEARCH_CREDITS,
   CASE_PERSON_MAX,
   CASE_SOURCE_LINKS_MAX,
   CASE_SUBJECT_MAX,
@@ -31,6 +33,7 @@ import {
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_ID,
   UlidSchema,
+  caseResearchJobIsRunning,
   isBibleComplete,
   serialiseError,
 } from '@boom-busters/schemas'
@@ -48,6 +51,7 @@ import type { Answer, AnswerComplete } from '@/lib/answer'
 import { caseCategoryKeys } from '@/lib/case-category'
 import { callLlm } from '@/lib/llm'
 import { recordRepairs } from '@/lib/notices'
+import { checkVidiqBudget } from '@/lib/vidiq-spend'
 
 /**
  * Case Library actions (build spec section 11.3).
@@ -403,4 +407,101 @@ export async function startProjectFromCase(
   }
 
   return { ok: true, projectId: project.id }
+}
+
+const RESEARCH_RUNNING: ActionResult = {
+  ok: false,
+  error: 'Research is already running for this case',
+}
+
+/**
+ * The checks the estimate and the run both make, up to the case itself: the
+ * case exists, is not retired, belongs to a channel that is not archived and
+ * has a subject to search for.
+ */
+async function researchableCase(id: string) {
+  if (!UlidSchema.safeParse(id).success) return { ok: false as const, error: 'Unknown case' }
+  const existing = await getCase(db, id)
+  if (!existing) return { ok: false as const, error: 'That case no longer exists' }
+  if (existing.status === 'retired') {
+    return { ok: false as const, error: 'That case is retired. Move it back to shortlisted first.' }
+  }
+  const refusal = writeRefusalFor((await channelForCase(db, id)) ?? null)
+  if (refusal) return refusal
+  const subject = existing.subject?.trim() ?? ''
+  if (subject === '') {
+    return { ok: false as const, error: 'Give the case a subject before researching it' }
+  }
+  return { ok: true as const, existing, subject }
+}
+
+export type CaseResearchEstimate =
+  { ok: true; credits: number; capLeft: number; balance: number } | { ok: false; error: string }
+
+/**
+ * What `Research with VidIQ` would cost, for the button's label: the credits
+ * the run needs, what is left of this month's cap and the VidIQ balance.
+ * Spends nothing.
+ */
+export async function caseResearchEstimate(caseId: string): Promise<CaseResearchEstimate> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  if (!(await getCase(db, caseId))) return { ok: false, error: 'That case no longer exists' }
+  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  if (!budget.ok) return budget
+  return {
+    ok: true,
+    credits: CASE_RESEARCH_CREDITS,
+    capLeft: budget.capLeft,
+    balance: budget.balance,
+  }
+}
+
+/**
+ * `Research with VidIQ`: check everything, stamp the case's research job and
+ * send the run. Every refusal comes before the job is stamped, so a refused
+ * press leaves no trace; the estimate on screen may be old, so it is checked
+ * again here.
+ */
+export async function researchCaseAction(caseId: string): Promise<ActionResult> {
+  await requireOwner()
+  const checked = await researchableCase(caseId)
+  if (!checked.ok) return checked
+
+  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  if (!budget.ok) return budget
+
+  if (checked.existing.searchJob && caseResearchJobIsRunning(checked.existing.searchJob)) {
+    return RESEARCH_RUNNING
+  }
+
+  // The read above can be stale: the stamp itself refuses a running job, under the row lock.
+  const startedAt = new Date().toISOString()
+  const stamped = await writeCaseResearchJob(db, caseId, (job) =>
+    job && caseResearchJobIsRunning(job)
+      ? job
+      : { state: 'running', current: null, error: null, startedAt, subject: checked.subject },
+  )
+  if (stamped?.startedAt !== startedAt) return RESEARCH_RUNNING
+  revalidatePath('/c/[slug]', 'layout')
+
+  try {
+    await inngest.send(events.caseResearchRequested.create({ caseId, jobStartedAt: startedAt }))
+  } catch (error) {
+    console.error('[cases] could not send the research run', serialiseError(error))
+    // Nothing is running: say so, or the case stays locked until the job goes stale.
+    await writeCaseResearchJob(db, caseId, (job) =>
+      job?.startedAt === startedAt
+        ? { ...job, state: 'failed', current: null, error: 'The research run could not be started' }
+        : job,
+    )
+    revalidatePath('/c/[slug]', 'layout')
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to start the research. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  return { ok: true }
 }

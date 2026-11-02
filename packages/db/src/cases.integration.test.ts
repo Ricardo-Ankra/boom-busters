@@ -498,6 +498,23 @@ suite('cases', () => {
         expect(got?.searchJob?.state).toBe('running')
       })
 
+      it('refuses a failed job whose startedAt still matches, and leaves the brief null', async () => {
+        const row = await createCase(db, { channelId, title: 'Failed', category: 'con' })
+        await writeCaseResearchJob(db, row.id, () =>
+          job('2026-11-01T10:00:00.000Z', { state: 'failed', error: 'VidIQ did not answer' }),
+        )
+        const saved = await saveCaseSearchBrief(
+          db,
+          row.id,
+          briefFor('WeWork'),
+          '2026-11-01T10:00:00.000Z',
+        )
+        expect(saved).toBe(false)
+        const got = await getCase(db, row.id)
+        expect(got?.searchBrief).toBeNull()
+        expect(got?.searchJob?.state).toBe('failed')
+      })
+
       it('refuses when there is no job at all', async () => {
         const row = await createCase(db, { channelId, title: 'NoJob', category: 'con' })
         expect(await saveCaseSearchBrief(db, row.id, briefFor('WeWork'), 'x')).toBe(false)

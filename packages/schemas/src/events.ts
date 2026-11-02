@@ -410,6 +410,17 @@ export const BibleDraftRequestedSchema = z.object({
 })
 
 /**
+ * Research a case's subject with VidIQ and keep a search brief on the case. The
+ * run reads the case's subject from its research job: only the case and the job
+ * it owns travel in the event.
+ */
+export const CaseResearchRequestedSchema = z.object({
+  caseId: UlidSchema,
+  /** The `startedAt` of the case's research job this run owns; a run that no longer matches leaves the job alone. */
+  jobStartedAt: z.string().datetime(),
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -456,6 +467,8 @@ export const EVENT_SCHEMAS = {
 
   'bible/research.requested': BibleResearchRequestedSchema,
   'bible/draft.requested': BibleDraftRequestedSchema,
+
+  'case/research.requested': CaseResearchRequestedSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const
