@@ -120,6 +120,16 @@ describe('compileShortTimeline', () => {
     }
   })
 
+  it('adds no overlay for a bridge ending when the master carries no bridge graphics', () => {
+    const short = compileShortTimeline({
+      master: goldenMaster(),
+      segmentRef: { chapterId: CHAPTER_ONE, fromParagraph: 0, toParagraph: 1 },
+      ending: 'bridge',
+      music: null,
+    })
+    expect(short.overlays).toEqual([])
+  })
+
   it('adds the endCta overlay for a cta ending and nothing for a loop', () => {
     const short = chapterOneShort()
     expect(short.overlays).toEqual([
