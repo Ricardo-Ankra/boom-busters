@@ -8,16 +8,13 @@ import {
   bibleVersionById,
   discardBibleDraft,
   getBibleDraft,
-  getWorkspace,
   openBibleDraft,
   restoreBibleVersion,
   saveBibleDraft,
-  vidiqCredential,
-  vidiqCreditsThisMonth,
   writeBibleDraft,
 } from '@boom-busters/db'
 import { composeStagePrompt } from '@boom-busters/providers/preview'
-import { estimateResearchCredits, vidiqClientFor } from '@boom-busters/providers/vidiq'
+import { estimateResearchCredits } from '@boom-busters/providers/vidiq'
 import {
   BIBLE_SECTIONS,
   BIBLE_SECTION_ORDER,
@@ -44,7 +41,7 @@ import { overlapFlag, overlapSources } from '@/lib/bible-overlap-sources'
 import { researchPlanFor } from '@/lib/bible-research'
 import { channelWriteRefusal, findChannel } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
-import { env } from '@/lib/env'
+import { checkVidiqBudget } from '@/lib/vidiq-spend'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
 import type { ActionResult } from './actions'
@@ -81,42 +78,13 @@ async function checkResearch(channelId: string, input: unknown): Promise<Estimat
     }
   }
 
-  const apiKey = await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY)
-  const client = vidiqClientFor(apiKey)
-  if (!client) return { ok: false, error: 'Add a VidIQ key in Settings, Connections' }
+  const plan = await researchPlanFor(channelId, parsed.data)
+  if ('error' in plan) return { ok: false, error: plan.error }
+  const estimate = estimateResearchCredits(plan)
 
-  try {
-    const plan = await researchPlanFor(channelId, parsed.data)
-    if ('error' in plan) return { ok: false, error: plan.error }
-    const estimate = estimateResearchCredits(plan)
-
-    let balance: number
-    try {
-      balance = (await client.balance()).totalCredits
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      return { ok: false, error: `VidIQ did not answer: ${message}` }
-    }
-
-    const { settings } = await getWorkspace(db)
-    const cap = settings.vidiq.monthlyCreditCap
-    const capLeft = Math.max(0, cap - (await vidiqCreditsThisMonth(db)))
-    if (estimate > capLeft) {
-      return {
-        ok: false,
-        error: `This run needs about ${estimate} credits; ${capLeft} are left of this month's cap of ${cap}.`,
-      }
-    }
-    if (estimate > balance) {
-      return {
-        ok: false,
-        error: `This run needs about ${estimate} credits; the VidIQ balance is ${balance}.`,
-      }
-    }
-    return { ok: true, estimate, balance, capLeft }
-  } finally {
-    await client.close()
-  }
+  const budget = await checkVidiqBudget(estimate)
+  if (!budget.ok) return budget
+  return { ok: true, estimate, balance: budget.balance, capLeft: budget.capLeft }
 }
 
 /** What the research would cost, before the owner commits to it. Spends nothing. */
