@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
 import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
-import type { Notice } from '@boom-busters/schemas'
+import type { Notice, SearchBrief } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
 
@@ -19,13 +19,18 @@ const actions = vi.hoisted(() => ({
   setStatus: vi.fn(),
   startProjectFromCase: vi.fn(),
   suggestCases: vi.fn(),
+  researchCaseAction: vi.fn(),
+  caseResearchEstimate: vi.fn(),
+  chooseAngleAction: vi.fn(),
+  setTargetKeywordAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 // The notice's Dismiss is a server action whose module loads next-auth,
 // which cannot load under jsdom.
 vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
 const refresh = vi.fn()
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push: vi.fn() }) }))
+const push = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }))
 const toast = vi.fn()
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
 
@@ -178,20 +183,27 @@ describe('the case form: subject, people and source links', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
   }
 
-  it('prefills Subject from the title before its first colon while the box is empty', async () => {
+  it('leads with Subject, then Angle idea, and defaults Title from the subject until it is typed in', async () => {
     await openAddForm()
-    await userEvent.type(screen.getByLabelText('Title'), 'Wirecard: the missing billion')
-    expect(screen.getByLabelText('Subject')).toHaveValue('Wirecard')
-    await userEvent.clear(screen.getByLabelText('Subject'))
-    await userEvent.type(screen.getByLabelText('Subject'), 'Wirecard AG')
-    await userEvent.type(screen.getByLabelText('Title'), ' and more')
-    expect(screen.getByLabelText('Subject')).toHaveValue('Wirecard AG')
+    const labels = screen
+      .getAllByText(/^(Subject|Angle idea|Title|Category|People|Source links)$/)
+      .map((label) => label.textContent)
+    expect(labels.slice(0, 3)).toEqual(['Subject', 'Angle idea', 'Title'])
+    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Subject'), 'Iomega')
+    expect(screen.getByLabelText('Title')).toHaveValue('Iomega')
+    await userEvent.clear(screen.getByLabelText('Title'))
+    await userEvent.type(screen.getByLabelText('Title'), 'Iomega: the zip drive')
+    await userEvent.type(screen.getByLabelText('Subject'), ' Corp')
+    expect(screen.getByLabelText('Title')).toHaveValue('Iomega: the zip drive')
   })
 
-  it('sends the three fields to addCase', async () => {
+  it('sends the subject, the angle idea and the other fields to addCase, with no priority', async () => {
     actions.addCase.mockResolvedValue({ ok: true })
     await openAddForm()
-    await userEvent.type(screen.getByLabelText('Title'), 'Wirecard')
+    await userEvent.type(screen.getByLabelText('Subject'), 'Wirecard')
+    await userEvent.type(screen.getByLabelText('Angle idea'), 'The auditors are the story')
     await userEvent.type(screen.getByLabelText('People'), 'Markus Braun, Jan Marsalek')
     await userEvent.type(
       screen.getByLabelText('Source links'),
@@ -199,15 +211,31 @@ describe('the case form: subject, people and source links', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save case' }))
     await waitFor(() =>
-      expect(actions.addCase).toHaveBeenCalledWith(
-        CHANNEL_ID,
-        expect.objectContaining({
-          title: 'Wirecard',
-          subject: 'Wirecard',
-          people: ['Markus Braun', 'Jan Marsalek'],
-          sourceLinks: [{ url: 'https://example.com/a' }, { url: 'https://example.com/b' }],
-        }),
-      ),
+      expect(actions.addCase).toHaveBeenCalledWith(CHANNEL_ID, {
+        title: 'Wirecard',
+        category: 'collapse',
+        angle: 'The auditors are the story',
+        subject: 'Wirecard',
+        people: ['Markus Braun', 'Jan Marsalek'],
+        sourceLinks: [{ url: 'https://example.com/a' }, { url: 'https://example.com/b' }],
+      }),
+    )
+  })
+
+  it('shows the duplicate-subject refusal as a toast', async () => {
+    actions.addCase.mockResolvedValue({
+      ok: false,
+      error: 'A case for this subject already exists',
+    })
+    await openAddForm()
+    await userEvent.type(screen.getByLabelText('Subject'), 'Wirecard')
+    await userEvent.click(screen.getByRole('button', { name: 'Save case' }))
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: 'That did not work',
+        description: 'A case for this subject already exists',
+        variant: 'error',
+      }),
     )
   })
 
@@ -370,5 +398,343 @@ describe('categories come from the channel bible', () => {
       />,
     )
     expect(screen.getByRole('button', { name: 'Suggest cases' })).toBeInTheDocument()
+  })
+})
+
+const BRIEF: SearchBrief = {
+  subject: 'WeWork',
+  measuredAt: '2026-10-20T10:00:00.000Z',
+  targetKeyword: {
+    keyword: 'wework documentary',
+    volume: 64,
+    competition: 38,
+    overall: 63,
+    estimatedMonthlySearch: 1200,
+    growthPct: null,
+  },
+  secondaryKeywords: [
+    {
+      keyword: 'what happened to wework',
+      volume: 50,
+      competition: 30,
+      overall: 55,
+      estimatedMonthlySearch: null,
+      growthPct: null,
+    },
+    {
+      keyword: 'wework $47 billion to bankruptcy',
+      volume: 40,
+      competition: 20,
+      overall: 70,
+      estimatedMonthlySearch: null,
+      growthPct: null,
+    },
+  ],
+  searchedQuestions: ['why did wework fail'],
+  outliers: [
+    {
+      videoId: 'v1',
+      title: 'The WeWork Collapse',
+      channel: 'Some Channel',
+      subscribers: 1000,
+      views: 172000,
+      breakoutScore: 40,
+      publishedAt: null,
+      tags: [],
+    },
+  ],
+  titlePatterns: [],
+  toldAlready: ['The Adam Neumann exit package'],
+  angleOptions: [
+    {
+      angle: 'The valuation was the product, not the offices.',
+      keyword: 'wework documentary',
+      answers: ['why did wework fail'],
+      gap: 'Nobody explains the lease arithmetic.',
+    },
+    {
+      angle: 'How a landlord sold itself as a tech company.',
+      keyword: 'what happened to wework',
+      answers: [],
+      gap: 'The IPO filing is skimmed.',
+    },
+  ],
+  chosenAngle: 1,
+}
+
+function researched(over: Partial<CaseSummary> = {}) {
+  return kase({
+    status: 'shortlisted',
+    title: 'WeWork',
+    subject: 'WeWork',
+    searchBrief: BRIEF,
+    ...over,
+  })
+}
+
+function renderRow(item: CaseSummary) {
+  render(
+    <CaseLibrary
+      slug="psychology"
+      channelId={CHANNEL_ID}
+      categories={CATEGORIES}
+      cases={[item]}
+      sort="newest"
+    />,
+  )
+  return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+}
+
+const ESTIMATE = { ok: true, credits: 20, capLeft: 980, balance: 1443 }
+
+describe('the case row: priority is gone', () => {
+  it('shows no priority fact and no Priority sort button', () => {
+    const row = renderRow(kase({ status: 'shortlisted', priorityScore: 88 }))
+    expect(row).not.toHaveTextContent(/priority/i)
+    expect(screen.queryByRole('button', { name: 'Priority' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Newest' })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('Research with VidIQ', () => {
+  it('asks first, showing the estimate, cap left and balance, then starts the run', async () => {
+    actions.caseResearchEstimate.mockResolvedValue(ESTIMATE)
+    actions.researchCaseAction.mockResolvedValue({ ok: true })
+    const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
+
+    await userEvent.click(
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+    )
+    expect(actions.researchCaseAction).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(row).toHaveTextContent("About 20 credits. 980 left of this month's cap"),
+    )
+    expect(row).toHaveTextContent('VidIQ balance 1,443')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Start research' }))
+    await waitFor(() => expect(actions.researchCaseAction).toHaveBeenCalledWith(WIRECARD))
+  })
+
+  it('shows the refusal from the estimate in the confirm step', async () => {
+    actions.caseResearchEstimate.mockResolvedValue({
+      ok: false,
+      error: 'Add a VidIQ key in Settings, Connections',
+    })
+    const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
+    await userEvent.click(within(row).getByRole('button', { name: /^Research with VidIQ/ }))
+    await waitFor(() => expect(row).toHaveTextContent('Add a VidIQ key in Settings, Connections'))
+  })
+
+  it('is disabled for a case with no subject', () => {
+    const row = renderRow(kase({ status: 'shortlisted', subject: null }))
+    expect(within(row).getByRole('button', { name: /^Research with VidIQ/ })).toBeDisabled()
+  })
+
+  it('shows the current step while the run goes, and polls every 3 seconds', () => {
+    vi.useFakeTimers()
+    try {
+      const row = renderRow(
+        kase({
+          status: 'shortlisted',
+          subject: 'Iomega',
+          searchJob: {
+            state: 'running',
+            current: 'Reading keyword demand',
+            error: null,
+            startedAt: new Date().toISOString(),
+            subject: 'Iomega',
+          },
+        }),
+      )
+      expect(row).toHaveTextContent('Researching: Reading keyword demand')
+      expect(within(row).queryByRole('button', { name: /^Research with VidIQ/ })).toBeNull()
+      expect(refresh).not.toHaveBeenCalled()
+      act(() => {
+        vi.advanceTimersByTime(3000)
+      })
+      expect(refresh).toHaveBeenCalledTimes(1)
+      act(() => {
+        vi.advanceTimersByTime(3000)
+      })
+      expect(refresh).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows a failed run with its error and Try again, which asks and then starts', async () => {
+    actions.caseResearchEstimate.mockResolvedValue(ESTIMATE)
+    actions.researchCaseAction.mockResolvedValue({ ok: true })
+    const row = renderRow(
+      kase({
+        status: 'shortlisted',
+        subject: 'Iomega',
+        searchJob: {
+          state: 'failed',
+          current: null,
+          error: 'VidIQ did not answer',
+          startedAt: '2026-10-25T09:00:00.000Z',
+          subject: 'Iomega',
+        },
+      }),
+    )
+    expect(row).toHaveTextContent('VidIQ did not answer')
+    await userEvent.click(within(row).getByRole('button', { name: 'Try again' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Start research' }))
+    await waitFor(() => expect(actions.researchCaseAction).toHaveBeenCalledWith(WIRECARD))
+  })
+
+  it('shows a run that stopped answering as failed, with Try again', () => {
+    const row = renderRow(
+      kase({
+        status: 'shortlisted',
+        subject: 'Iomega',
+        searchJob: {
+          state: 'running',
+          current: 'Reading keyword demand',
+          error: null,
+          startedAt: '2026-01-01T09:00:00.000Z',
+          subject: 'Iomega',
+        },
+      }),
+    )
+    expect(row).not.toHaveTextContent('Researching:')
+    expect(row).toHaveTextContent('The research run stopped answering')
+    expect(within(row).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+  })
+})
+
+describe('the Search brief panel', () => {
+  it('is a collapsed details with the measured date, keywords, questions, outliers and told-already', () => {
+    const row = renderRow(researched())
+    const panel = within(row).getByText('Search brief').closest('details')!
+    expect(panel).not.toHaveAttribute('open')
+    expect(panel).toHaveTextContent('Measured 20 October 2026')
+    expect(panel).toHaveTextContent('wework documentary')
+    expect(panel).toHaveTextContent('volume 64')
+    expect(panel).toHaveTextContent('what happened to wework')
+    expect(panel).toHaveTextContent('why did wework fail')
+    expect(panel).toHaveTextContent('The WeWork Collapse')
+    expect(panel).toHaveTextContent('Some Channel')
+    expect(panel).toHaveTextContent('172,000 views')
+    expect(panel).toHaveTextContent('40x')
+    expect(panel).toHaveTextContent('The Adam Neumann exit package')
+    expect(panel).toHaveTextContent('The valuation was the product, not the offices.')
+  })
+
+  it('has no panel for a case without a brief', () => {
+    const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
+    expect(within(row).queryByText('Search brief')).not.toBeInTheDocument()
+  })
+
+  it('Use this angle chooses the option by its index, and the chosen option is marked', async () => {
+    actions.chooseAngleAction.mockResolvedValue({ ok: true })
+    const row = renderRow(researched({ searchBrief: { ...BRIEF, chosenAngle: 0 } }))
+    const uses = within(row).getAllByRole('button', { name: 'Use this angle' })
+    expect(within(row).getAllByText('Chosen')).toHaveLength(1)
+    // The marked option is the first, so the one left to use is the second.
+    expect(uses).toHaveLength(1)
+    await userEvent.click(uses[0]!)
+    await waitFor(() =>
+      expect(actions.chooseAngleAction).toHaveBeenCalledWith(WIRECARD, { option: 1 }),
+    )
+  })
+
+  it('Keep my own angle opens a box and saves the words as the angle', async () => {
+    actions.chooseAngleAction.mockResolvedValue({ ok: true })
+    const row = renderRow(researched({ angle: 'My own take' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Keep my own angle' }))
+    const box = within(row).getByLabelText('Your angle')
+    expect(box).toHaveValue('My own take')
+    await userEvent.clear(box)
+    await userEvent.type(box, 'The auditors are the story')
+    await userEvent.click(within(row).getByRole('button', { name: 'Save my angle' }))
+    await waitFor(() =>
+      expect(actions.chooseAngleAction).toHaveBeenCalledWith(WIRECARD, {
+        own: 'The auditors are the story',
+      }),
+    )
+  })
+
+  it('Make target is on each secondary keyword except one with a figure', async () => {
+    actions.setTargetKeywordAction.mockResolvedValue({ ok: true })
+    const row = renderRow(researched())
+    const makes = within(row).getAllByRole('button', { name: 'Make target' })
+    expect(makes).toHaveLength(1)
+    await userEvent.click(makes[0]!)
+    await waitFor(() =>
+      expect(actions.setTargetKeywordAction).toHaveBeenCalledWith(
+        WIRECARD,
+        'what happened to wework',
+      ),
+    )
+  })
+
+  it('says the research is for another subject, offers Research again, and hides the choosers', () => {
+    const row = renderRow(researched({ subject: 'We Company' }))
+    expect(row).toHaveTextContent('This research is for WeWork. Research again for We Company.')
+    expect(
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 20 credits)' }),
+    ).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Use this angle' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Make target' })).not.toBeInTheDocument()
+  })
+
+  it('does not call a matching subject a mismatch, whatever its case or spacing', () => {
+    const row = renderRow(researched({ subject: '  wework ' }))
+    expect(row).not.toHaveTextContent('This research is for')
+    expect(
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('New project and a stale brief', () => {
+  const OLD_BRIEF = { ...BRIEF, measuredAt: new Date(Date.now() - 45 * 86_400_000).toISOString() }
+
+  it('starts directly with no brief', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const row = renderRow(kase({ status: 'shortlisted' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    expect(push).toHaveBeenCalledWith('/c/psychology/projects')
+  })
+
+  it('starts directly with a fresh brief', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const fresh = { ...BRIEF, measuredAt: new Date().toISOString() }
+    const row = renderRow(researched({ searchBrief: fresh }))
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledTimes(1))
+  })
+
+  it('asks first when the brief is over 30 days old; Refresh research starts the run and no project', async () => {
+    actions.researchCaseAction.mockResolvedValue({ ok: true })
+    const row = renderRow(researched({ searchBrief: OLD_BRIEF }))
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    expect(actions.startProjectFromCase).not.toHaveBeenCalled()
+    expect(row).toHaveTextContent('The search research is 45 days old.')
+
+    await userEvent.click(
+      within(row).getByRole('button', { name: 'Refresh research (about 20 credits)' }),
+    )
+    await waitFor(() => expect(actions.researchCaseAction).toHaveBeenCalledWith(WIRECARD))
+    expect(actions.startProjectFromCase).not.toHaveBeenCalled()
+  })
+
+  it('Start without refreshing starts the project', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const row = renderRow(researched({ searchBrief: OLD_BRIEF }))
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Start without refreshing' }))
+    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    expect(actions.researchCaseAction).not.toHaveBeenCalled()
+  })
+
+  it('starts directly when the old brief is for another subject, since none is frozen', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const row = renderRow(researched({ subject: 'We Company', searchBrief: OLD_BRIEF }))
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledTimes(1))
   })
 })

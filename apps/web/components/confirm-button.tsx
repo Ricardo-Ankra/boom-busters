@@ -23,6 +23,7 @@ export function ConfirmButton({
   confirmLabel,
   consequence,
   onConfirm,
+  onArm,
   variant = 'outline',
   confirmVariant = 'danger',
   busy: busyOutside = false,
@@ -34,6 +35,8 @@ export function ConfirmButton({
   consequence: string
   /** Any return value is ignored; awaited so the button stays busy until done. */
   onConfirm: () => unknown | Promise<unknown>
+  /** Called when the first click arms the control, e.g. to fetch what the consequence quotes. */
+  onArm?: () => void
   confirmVariant?: ButtonProps['variant']
   /**
    * Busy from outside the two-step, merged with the internal await. The
@@ -68,6 +71,7 @@ export function ConfirmButton({
         onClick={() => {
           setArmed(true)
           setFocusTarget('confirm')
+          onArm?.()
         }}
         {...props}
       >

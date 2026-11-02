@@ -1,7 +1,9 @@
 'use server'
 
 import {
+  caseSubjectTaken,
   channelForCase,
+  chooseCaseAngle,
   createCase,
   createProjectFromCase,
   createSuggestedCases,
@@ -10,6 +12,7 @@ import {
   getCase,
   markCaseInProduction,
   setCaseStatus,
+  setCaseTargetKeyword,
   setProjectStage,
   updateCase,
   writeCaseResearchJob,
@@ -35,6 +38,7 @@ import {
   UlidSchema,
   caseResearchJobIsRunning,
   isBibleComplete,
+  keywordHasFigure,
   serialiseError,
 } from '@boom-busters/schemas'
 import type { CaseSuggestion } from '@boom-busters/schemas'
@@ -76,7 +80,8 @@ const CaseFormSchema = z.object({
   category: z.string().trim().min(1, 'Pick a category'),
   angle: z.string().trim().max(2000).optional(),
   demandNotes: z.string().trim().max(2000).optional(),
-  priorityScore: z.number().int().min(0).max(100),
+  // No longer asked for: a new case writes 0, an edit leaves the stored value alone.
+  priorityScore: z.number().int().min(0).max(100).optional(),
   subject: z
     .string()
     .trim()
@@ -103,6 +108,7 @@ const CaseFormSchema = z.object({
 })
 
 const CATEGORY_NOT_IN_BIBLE = "That category is not in this channel's bible"
+const SUBJECT_TAKEN = 'A case for this subject already exists'
 
 export async function addCase(channelId: string, input: unknown): Promise<ActionResult> {
   await requireOwner()
@@ -120,9 +126,14 @@ export async function addCase(channelId: string, input: unknown): Promise<Action
     return { ok: false, error: CATEGORY_NOT_IN_BIBLE }
   }
 
+  if (await caseSubjectTaken(db, channelId, parsed.data.subject)) {
+    return { ok: false, error: SUBJECT_TAKEN }
+  }
+
   await createCase(db, {
     ...parsed.data,
     channelId,
+    priorityScore: 0,
     // A case added by hand is one the human has already decided to make, so it
     // skips triage and lands shortlisted.
     status: 'shortlisted',
@@ -146,11 +157,20 @@ export async function editCase(id: string, input: unknown): Promise<ActionResult
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'That change is not valid' }
   }
-  if (parsed.data.category !== undefined) {
+  if (parsed.data.category !== undefined || parsed.data.subject !== undefined) {
     const channel = await channelForCase(db, id)
     if (!channel) return { ok: false, error: 'That case no longer exists' }
-    if (!caseCategoryKeys(channel.bible).includes(parsed.data.category)) {
+    if (
+      parsed.data.category !== undefined &&
+      !caseCategoryKeys(channel.bible).includes(parsed.data.category)
+    ) {
       return { ok: false, error: CATEGORY_NOT_IN_BIBLE }
+    }
+    if (
+      parsed.data.subject !== undefined &&
+      (await caseSubjectTaken(db, channel.id, parsed.data.subject, id))
+    ) {
+      return { ok: false, error: SUBJECT_TAKEN }
     }
   }
 
@@ -503,5 +523,65 @@ export async function researchCaseAction(caseId: string): Promise<ActionResult> 
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }
+  return { ok: true }
+}
+
+/** The checks the two brief choices share: a real case on a channel that can be written to. */
+async function writableCase(caseId: string): Promise<ActionResult | null> {
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  const channel = await channelForCase(db, caseId)
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  return writeRefusalFor(channel)
+}
+
+const AngleChoiceSchema = z.union([
+  z.object({ option: z.number().int().min(0).max(2) }).strict(),
+  z.object({ own: z.string().trim().min(1, 'Write your angle first').max(2000) }).strict(),
+])
+
+/** `Use this angle` and `Keep my own angle`: settle the case's angle from its brief. */
+export async function chooseAngleAction(
+  caseId: string,
+  choice: { option: number } | { own: string },
+): Promise<ActionResult> {
+  await requireOwner()
+  const refusal = await writableCase(caseId)
+  if (refusal) return refusal
+  const parsed = AngleChoiceSchema.safeParse(choice)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That angle is not valid' }
+  }
+  try {
+    await chooseCaseAngle(db, caseId, parsed.data)
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not set the angle' }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** `Make target`: promote one of the brief's secondary keywords. A keyword with a figure never is. */
+export async function setTargetKeywordAction(
+  caseId: string,
+  keyword: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  const refusal = await writableCase(caseId)
+  if (refusal) return refusal
+  if (typeof keyword !== 'string' || keyword.trim() === '') {
+    return { ok: false, error: 'Pick a keyword' }
+  }
+  if (keywordHasFigure(keyword)) {
+    return { ok: false, error: 'A keyword with a figure cannot be the target keyword' }
+  }
+  try {
+    await setCaseTargetKeyword(db, caseId, keyword)
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Could not set the target keyword',
+    }
+  }
+  revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

@@ -11,8 +11,10 @@ import {
 import {
   addCase,
   caseResearchEstimate,
+  chooseAngleAction,
   editCase,
   researchCaseAction,
+  setTargetKeywordAction,
   startProjectFromCase,
   suggestCases,
 } from './actions'
@@ -35,6 +37,9 @@ const store = vi.hoisted(() => ({
   markCaseInProduction: vi.fn(),
   setProjectStage: vi.fn(),
   writeCaseResearchJob: vi.fn(),
+  caseSubjectTaken: vi.fn(),
+  chooseCaseAngle: vi.fn(),
+  setCaseTargetKeyword: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -190,6 +195,10 @@ describe('the case form actions: subject, people and source links', () => {
   beforeEach(() => {
     store.createCase.mockReset().mockResolvedValue({ id: 'x' })
     store.updateCase.mockReset().mockResolvedValue({ id: 'x' })
+    store.caseSubjectTaken.mockReset().mockResolvedValue(false)
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
   })
 
   it('stores the three fields on a new case', async () => {
@@ -200,6 +209,39 @@ describe('the case form actions: subject, people and source links', () => {
       sourceLinks: [{ url: 'https://example.com/a' }],
       status: 'shortlisted',
     })
+  })
+
+  it('writes a priority score of 0 on a new case, whatever the form sent', async () => {
+    await addCase(CHANNEL_ID, form)
+    await addCase(CHANNEL_ID, { ...form, priorityScore: undefined })
+    const { priorityScore: _sent, ...noScore } = form
+    await addCase(CHANNEL_ID, noScore)
+    for (const call of store.createCase.mock.calls) {
+      expect(call[1]).toMatchObject({ priorityScore: 0 })
+    }
+  })
+
+  it('refuses a duplicate subject on add and on edit, writing nothing', async () => {
+    store.caseSubjectTaken.mockResolvedValue(true)
+    expect(await addCase(CHANNEL_ID, form)).toEqual({
+      ok: false,
+      error: 'A case for this subject already exists',
+    })
+    expect(store.caseSubjectTaken).toHaveBeenCalledWith({ marker: 'db' }, CHANNEL_ID, 'Wirecard')
+    expect(store.createCase).not.toHaveBeenCalled()
+
+    const id = '01J00000000000000000000C01'
+    expect(await editCase(id, { subject: 'Wirecard' })).toEqual({
+      ok: false,
+      error: 'A case for this subject already exists',
+    })
+    expect(store.caseSubjectTaken).toHaveBeenLastCalledWith(
+      { marker: 'db' },
+      CHANNEL_ID,
+      'Wirecard',
+      id,
+    )
+    expect(store.updateCase).not.toHaveBeenCalled()
   })
 
   it('refuses a new case with no subject', async () => {
@@ -316,6 +358,7 @@ describe('case categories come from the channel bible', () => {
   const form = { title: 'Milgram', priorityScore: 50, subject: 'Milgram' }
 
   beforeEach(() => {
+    store.caseSubjectTaken.mockReset().mockResolvedValue(false)
     store.createCase.mockReset().mockResolvedValue({ id: 'x' })
     store.updateCase.mockReset().mockResolvedValue({ id: 'x' })
     store.channelForCase.mockReset()
@@ -559,5 +602,100 @@ describe('researchCaseAction and caseResearchEstimate', () => {
       ok: false,
       error: 'That case no longer exists',
     })
+  })
+})
+
+describe('the angle and target keyword actions', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+
+  beforeEach(() => {
+    store.chooseCaseAngle.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.setCaseTargetKeyword.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+  })
+
+  it('chooseAngleAction passes an option or the owner own words to the db', async () => {
+    expect(await chooseAngleAction(CASE_ID, { option: 1 })).toEqual({ ok: true })
+    expect(store.chooseCaseAngle).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, {
+      option: 1,
+    })
+    expect(await chooseAngleAction(CASE_ID, { own: '  The auditors are the story.  ' })).toEqual({
+      ok: true,
+    })
+    expect(store.chooseCaseAngle).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, {
+      own: 'The auditors are the story.',
+    })
+  })
+
+  it('chooseAngleAction refuses a bad id, a bad choice and an archived channel', async () => {
+    expect((await chooseAngleAction('nope', { option: 0 })).ok).toBe(false)
+    expect((await chooseAngleAction(CASE_ID, { option: -1 })).ok).toBe(false)
+    expect((await chooseAngleAction(CASE_ID, { own: '   ' })).ok).toBe(false)
+    store.channelForCase.mockResolvedValue({
+      id: CHANNEL_ID,
+      bible: FIRST_CHANNEL_BIBLE,
+      archivedAt: new Date(),
+    })
+    expect((await chooseAngleAction(CASE_ID, { option: 0 })).ok).toBe(false)
+    expect(store.chooseCaseAngle).not.toHaveBeenCalled()
+  })
+
+  it('chooseAngleAction says what the db refused, rather than throwing', async () => {
+    store.chooseCaseAngle.mockRejectedValue(new Error('angle option 2 does not exist'))
+    expect(await chooseAngleAction(CASE_ID, { option: 2 })).toEqual({
+      ok: false,
+      error: 'angle option 2 does not exist',
+    })
+  })
+
+  it('setTargetKeywordAction sets the keyword, and refuses a figure before the db', async () => {
+    expect(await setTargetKeywordAction(CASE_ID, 'wework documentary')).toEqual({ ok: true })
+    expect(store.setCaseTargetKeyword).toHaveBeenCalledWith(
+      { marker: 'db' },
+      CASE_ID,
+      'wework documentary',
+    )
+    const refused = await setTargetKeywordAction(CASE_ID, 'wework $47 billion')
+    expect(refused.ok).toBe(false)
+    expect(store.setCaseTargetKeyword).toHaveBeenCalledTimes(1)
+  })
+
+  it('setTargetKeywordAction says what the db refused, rather than throwing', async () => {
+    store.setCaseTargetKeyword.mockRejectedValue(new Error('this case has no search brief'))
+    expect(await setTargetKeywordAction(CASE_ID, 'wework')).toEqual({
+      ok: false,
+      error: 'this case has no search brief',
+    })
+  })
+})
+
+describe('startProjectFromCase and the search brief', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+
+  it('hands the case to createProjectFromCase, which freezes its brief; the action never refreshes', async () => {
+    store.getCase.mockReset().mockResolvedValue({
+      id: CASE_ID,
+      title: 'WeWork',
+      status: 'shortlisted',
+      searchBrief: { subject: 'WeWork' },
+    })
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    store.createProjectFromCase.mockReset().mockResolvedValue({ id: 'P1' })
+    store.markCaseInProduction.mockReset().mockResolvedValue(undefined)
+    send.mockReset().mockResolvedValue(undefined)
+    checkVidiqBudget.mockReset()
+    store.writeCaseResearchJob.mockReset()
+
+    expect(await startProjectFromCase(CASE_ID, 12)).toEqual({ ok: true, projectId: 'P1' })
+    expect(store.createProjectFromCase).toHaveBeenCalledWith(
+      { marker: 'db' },
+      { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 12 },
+    )
+    expect(checkVidiqBudget).not.toHaveBeenCalled()
+    expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
   })
 })

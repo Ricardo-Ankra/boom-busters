@@ -17,22 +17,9 @@ import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { caseCategoryLabel } from '@/lib/case-category'
 import { channelHref } from '@/lib/channel-href'
-import {
-  acceptCase,
-  addCase,
-  dismissCase,
-  editCase,
-  setStatus,
-  startProjectFromCase,
-  suggestCases,
-} from './actions'
-import {
-  joinPeople,
-  joinSourceLinks,
-  splitPeople,
-  splitSourceLinks,
-  subjectFromTitle,
-} from './case-details'
+import { acceptCase, addCase, dismissCase, editCase, setStatus, suggestCases } from './actions'
+import { joinPeople, joinSourceLinks, splitPeople, splitSourceLinks } from './case-details'
+import { NewProjectButton, ResearchControl, SearchBriefPanel } from './search-brief-panel'
 
 /**
  * The Case Library table and its triage controls.
@@ -59,8 +46,8 @@ const STATUS_LABELS: Record<string, string> = {
   retired: 'Retired',
 }
 
-const SORT_LABELS: Record<CaseSort, string> = {
-  priority: 'Priority',
+/** 'priority' still parses from an old URL but has no button: nothing sets it any more. */
+const SORT_LABELS: Record<Exclude<CaseSort, 'priority'>, string> = {
   category: 'Category',
   status: 'Status',
   newest: 'Newest',
@@ -217,7 +204,7 @@ function SortControls({ slug, active }: { slug: string; active: CaseSort }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       <span className="mr-1 text-[13px] text-[var(--color-text-secondary)]">Sort by</span>
-      {(Object.keys(SORT_LABELS) as CaseSort[]).map((sort) => (
+      {(Object.keys(SORT_LABELS) as (keyof typeof SORT_LABELS)[]).map((sort) => (
         <Button
           key={sort}
           variant={sort === active ? 'outline' : 'ghost'}
@@ -238,8 +225,7 @@ function CaseFacts({ item }: { item: CaseSummary }) {
       <p className="truncate text-[15px] font-medium">{item.title}</p>
       <p className="mt-0.5 text-[13px] text-[var(--color-text-secondary)]">
         <span>{caseCategoryLabel({ caseCategories: [...categories] }, item.category)}</span> ·{' '}
-        {STATUS_LABELS[item.status]} · priority{' '}
-        <span className="font-mono">{item.priorityScore}</span>
+        {STATUS_LABELS[item.status]}
         {item.projectCount > 0 ? ` · ${item.projectCount} project(s)` : ''}
       </p>
       {item.angle ? (
@@ -259,19 +245,39 @@ const TEXTAREA_CLASS =
   'px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]'
 
-/** Subject, People and Source links: the three fields the dossier reads, shared by the add and edit forms. */
-function DetailFields({
+/** The Subject box, shared by the add and edit forms. */
+function SubjectField({
   idPrefix,
   subject,
   onSubject,
+}: {
+  idPrefix: string
+  subject: string
+  onSubject: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={`${idPrefix}-subject`}>Subject</Label>
+      <Input
+        id={`${idPrefix}-subject`}
+        value={subject}
+        placeholder="As people search for it, e.g. Iomega"
+        onChange={(event) => onSubject(event.target.value)}
+        className="w-64"
+      />
+    </div>
+  )
+}
+
+/** People and Source links: the two other fields the dossier reads. */
+function PeopleAndLinksFields({
+  idPrefix,
   people,
   onPeople,
   links,
   onLinks,
 }: {
   idPrefix: string
-  subject: string
-  onSubject: (value: string) => void
   people: string
   onPeople: (value: string) => void
   links: string
@@ -279,16 +285,6 @@ function DetailFields({
 }) {
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`${idPrefix}-subject`}>Subject</Label>
-        <Input
-          id={`${idPrefix}-subject`}
-          value={subject}
-          placeholder="The company, as Wikipedia names it"
-          onChange={(event) => onSubject(event.target.value)}
-          className="w-64"
-        />
-      </div>
       <div className="flex flex-col gap-1">
         <Label htmlFor={`${idPrefix}-people`}>People</Label>
         <Input
@@ -333,10 +329,9 @@ function EditDetails({ item, run }: { item: CaseSummary; run: Run }) {
 
   return (
     <div className="flex w-full flex-wrap items-end gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
-      <DetailFields
+      <SubjectField idPrefix={`edit-${item.id}`} subject={subject} onSubject={setSubject} />
+      <PeopleAndLinksFields
         idPrefix={`edit-${item.id}`}
-        subject={subject}
-        onSubject={setSubject}
         people={people}
         onPeople={setPeople}
         links={links}
@@ -443,9 +438,6 @@ function BacklogRow({
   run: Run
   notices: readonly Notice[]
 }) {
-  const router = useRouter()
-  const [busy, setBusy] = React.useState(false)
-
   return (
     <div className="flex flex-wrap items-center gap-4 p-4">
       <CaseFacts item={item} />
@@ -466,28 +458,10 @@ function BacklogRow({
           ))}
         </Select>
 
+        {item.status !== 'retired' ? <ResearchControl item={item} run={run} /> : null}
+
         {item.status === 'shortlisted' ? (
-          <Button
-            variant="primary"
-            busy={busy}
-            disabled={blocked !== null}
-            title={blocked ?? undefined}
-            onClick={async () => {
-              setBusy(true)
-              try {
-                const result = await startProjectFromCase(item.id)
-                if (result.ok) {
-                  router.push(channelHref(slug, '/projects'))
-                } else {
-                  await run(async () => result, '')
-                }
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            New project
-          </Button>
+          <NewProjectButton slug={slug} blocked={blocked} item={item} run={run} />
         ) : null}
 
         <ConfirmButton
@@ -502,6 +476,7 @@ function BacklogRow({
         />
       </div>
       <EditDetails item={item} run={run} />
+      <SearchBriefPanel item={item} run={run} />
       <RowNotices notices={notices} />
     </div>
   )
@@ -613,16 +588,15 @@ function AddCaseButton({
   disabled: boolean
 }) {
   const [open, setOpen] = React.useState(false)
+  const [subject, setSubject] = React.useState('')
+  // Title follows the subject until the owner types in it themselves.
   const [title, setTitle] = React.useState('')
+  const [titleTouched, setTitleTouched] = React.useState(false)
   const categories = React.useContext(CategoriesContext)
   const [category, setCategory] = React.useState<string>(categories[0]?.key ?? '')
   const [angle, setAngle] = React.useState('')
-  // Subject follows the title until the owner types in it themselves.
-  const [subject, setSubject] = React.useState('')
-  const [subjectTouched, setSubjectTouched] = React.useState(false)
   const [people, setPeople] = React.useState('')
   const [links, setLinks] = React.useState('')
-  const [priorityScore, setPriorityScore] = React.useState(50)
   const [busy, setBusy] = React.useState(false)
 
   if (!open) {
@@ -641,6 +615,24 @@ function AddCaseButton({
 
   return (
     <div className="flex w-full flex-wrap items-end gap-2 rounded-[8px] border border-[var(--color-border)] p-3">
+      <SubjectField
+        idPrefix="case"
+        subject={subject}
+        onSubject={(value) => {
+          setSubject(value)
+          if (!titleTouched) setTitle(value)
+        }}
+      />
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="case-angle">Angle idea</Label>
+        <Input
+          id="case-angle"
+          value={angle}
+          placeholder="Optional: your own take, in your words"
+          onChange={(event) => setAngle(event.target.value)}
+          className="w-72"
+        />
+      </div>
       <div className="flex flex-col gap-1">
         <Label htmlFor="case-title">Title</Label>
         <Input
@@ -648,7 +640,7 @@ function AddCaseButton({
           value={title}
           onChange={(event) => {
             setTitle(event.target.value)
-            if (!subjectTouched) setSubject(subjectFromTitle(event.target.value))
+            setTitleTouched(event.target.value !== '')
           }}
           className="w-64"
         />
@@ -668,38 +660,13 @@ function AddCaseButton({
           ))}
         </Select>
       </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="case-angle">Angle</Label>
-        <Input
-          id="case-angle"
-          value={angle}
-          onChange={(event) => setAngle(event.target.value)}
-          className="w-72"
-        />
-      </div>
-      <DetailFields
+      <PeopleAndLinksFields
         idPrefix="case"
-        subject={subject}
-        onSubject={(value) => {
-          setSubject(value)
-          setSubjectTouched(value !== '')
-        }}
         people={people}
         onPeople={setPeople}
         links={links}
         onLinks={setLinks}
       />
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="case-priority">Priority</Label>
-        <NumberInput
-          id="case-priority"
-          value={priorityScore}
-          min={0}
-          max={100}
-          onChange={(event) => setPriorityScore(Number(event.target.value))}
-          className="w-24"
-        />
-      </div>
       <Button
         variant="primary"
         busy={busy}
@@ -712,7 +679,6 @@ function AddCaseButton({
                   title,
                   category,
                   angle: angle || undefined,
-                  priorityScore,
                   subject,
                   people: splitPeople(people),
                   sourceLinks: splitSourceLinks(links),
@@ -720,10 +686,10 @@ function AddCaseButton({
               'Case added to your backlog',
             )
             if (ok) {
-              setTitle('')
-              setAngle('')
               setSubject('')
-              setSubjectTouched(false)
+              setTitle('')
+              setTitleTouched(false)
+              setAngle('')
               setPeople('')
               setLinks('')
               setOpen(false)

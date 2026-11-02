@@ -11,7 +11,7 @@ export const metadata = { title: 'Case Library · Boom-Busters' }
 const SORTS = ['priority', 'category', 'status', 'newest'] as const
 
 function readSort(value: string | undefined): CaseSort {
-  return SORTS.includes(value as CaseSort) ? (value as CaseSort) : 'priority'
+  return SORTS.includes(value as CaseSort) ? (value as CaseSort) : 'newest'
 }
 
 /**
