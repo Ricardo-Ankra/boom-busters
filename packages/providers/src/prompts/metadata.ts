@@ -148,6 +148,23 @@ function descriptionSearchRules(
   return lines.length > 0 ? `\n${lines.join('\n')}` : ''
 }
 
+/**
+ * The format's title pattern, filled, and the values every title must hold.
+ * A master only; nothing without a frame. Quoted literal to `fillSlots`.
+ */
+function titleFrameRules(
+  frame: { pattern: string; required: readonly string[] } | undefined,
+): string {
+  if (!frame) return ''
+  const quoted = (text: string): string => literalBibleText(JSON.stringify(searchBriefLine(text)))
+  const required = frame.required.filter((value) => searchBriefLine(value) !== '')
+  const lines = [
+    `- At least half the titles follow this pattern exactly, with its parts already filled: ${quoted(frame.pattern)}.`,
+    ...(required.length > 0 ? [`- Every title contains: ${required.map(quoted).join(', ')}.`] : []),
+  ]
+  return `\n${lines.join('\n')}`
+}
+
 export function buildTitlesRequest(input: {
   /** The channel bible the project froze. */
   bible: BibleInUse
@@ -176,6 +193,10 @@ export function buildTitlesRequest(input: {
   shortText?: string
   /** The case's search brief; absent or null changes nothing in the prompt. */
   searchBrief?: SearchBrief | null
+  /** The format's title pattern, filled, for a master; absent changes nothing in the prompt. */
+  titleFrame?: { pattern: string; required: readonly string[] }
+  /** Reserved for the intent a title is written for. */
+  intent?: string
 }): LLMTaskRequest {
   const shape = `Return JSON: {"titles": ["...", ...]} — exactly ${TITLE_OPTION_COUNT} strings.`
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -212,7 +233,7 @@ ${
   input.target === 'short'
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
     : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
-}${titleSearchRules(input.searchBrief, input.target)}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
+}${titleSearchRules(input.searchBrief, input.target)}${input.target === 'master' ? titleFrameRules(input.titleFrame) : ''}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
       input.bible,
     ),
     messages: clip

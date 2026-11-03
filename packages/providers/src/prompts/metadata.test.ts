@@ -48,6 +48,41 @@ describe('buildTitlesRequest', () => {
     expect(content).toContain('1.9 billion euros stopped existing')
   })
 
+  it('adds the format title pattern rules after the search rules, and nothing without a frame', () => {
+    const framed = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      caseTitle: 'Wirecard',
+      hook: 'hook',
+      target: 'master',
+      workingTitle: 'title',
+      titleFrame: {
+        pattern: 'Cleopatra | History for Sleep (2 Hours)',
+        required: ['Cleopatra', 'History for Sleep'],
+      },
+    })
+    expect(framed.system).toContain(
+      '- At least half the titles follow this pattern exactly, with its parts already filled: "Cleopatra | History for Sleep (2 Hours)".',
+    )
+    expect(framed.system).toContain('- Every title contains: "Cleopatra", "History for Sleep".')
+    expect(request.system).not.toContain('follow this pattern exactly')
+    expect(request.system).not.toContain('Every title contains')
+  })
+
+  it('leaves out the contains rule when nothing is required', () => {
+    const framed = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      caseTitle: 'Wirecard',
+      hook: 'hook',
+      target: 'master',
+      workingTitle: 'title',
+      titleFrame: { pattern: 'Cleopatra', required: [] },
+    })
+    expect(framed.system).toContain('follow this pattern exactly')
+    expect(framed.system).not.toContain('Every title contains')
+  })
+
   it('tells the model when the titles are for a Short', () => {
     const short = buildTitlesRequest({
       bible: FIRST_CHANNEL_IN_USE,

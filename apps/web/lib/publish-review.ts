@@ -27,8 +27,9 @@ import {
   sourceLabel,
   stripNarrationMarkup,
   TimelineSchema,
+  timelineDurationMs,
 } from '@boom-busters/schemas'
-import type { DescriptionSource, ScheduleSlot } from '@boom-busters/schemas'
+import type { DescriptionSource, ScheduleSlot, TitleSlot } from '@boom-busters/schemas'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
 import { shortSlotsAfter } from './schedule-slots'
@@ -54,6 +55,8 @@ export interface PublishRecordProp {
   titleScores: Record<string, number | null>
   /** Why the last scoring run kept no scores, or kept only some; empty when it did not fail. */
   titleScoreNote: string
+  /** The format's required title slots each option lacks, by option text. */
+  titleSlotMisses: Record<string, TitleSlot[]>
   descriptionBody: string | null
   /** The script version the saved opening was written for; null before 303 kept it. */
   bodyScriptVersion: number | null
@@ -328,6 +331,8 @@ export async function descriptionIngredients(
   disclaimer: string
   /** The latest script's version, which a saved opening is measured against. */
   scriptVersion: number
+  /** The latest timeline's length in seconds; null when there is no timeline. */
+  runtimeSec: number | null
 }> {
   const [timelineRow, scriptSources, dossier, channel] = await Promise.all([
     latestTimeline(db, projectId),
@@ -347,6 +352,7 @@ export async function descriptionIngredients(
     musicAttribution: await timelineMusicAttribution(db, master),
     disclaimer: channel.bible.disclaimer,
     scriptVersion: scriptSources.scriptVersion,
+    runtimeSec: master ? timelineDurationMs(master) / 1000 : null,
   }
 }
 
@@ -367,6 +373,7 @@ function toRecordProp(
     titleOptions: draft.success ? draft.data.titleOptions : [],
     titleScores: draft.success ? draft.data.titleScores : {},
     titleScoreNote: draft.success ? draft.data.titleScoreNote : '',
+    titleSlotMisses: draft.success ? draft.data.titleSlotMisses : {},
     descriptionBody: draft.success ? (draft.data.descriptionBody ?? null) : null,
     bodyScriptVersion: draft.success ? (draft.data.bodyScriptVersion ?? null) : null,
     bodyStale:

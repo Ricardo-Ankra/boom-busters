@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  channelForProject,
   createCase,
   createChannel,
   createProjectFromCase,
@@ -706,6 +707,63 @@ describeDb('the search brief in titles, description and tags', () => {
         true,
       )
       expect(rows.every((r) => r.credits === 5 && r.projectId === FIXTURE_PROJECT_ID)).toBe(true)
+    })
+
+    describe('a format with a title template', () => {
+      /** A project on its own channel whose frozen format has a template and a lead keyword. */
+      async function templatedProject(): Promise<string> {
+        const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+        const format = {
+          ...bible.formats[0]!,
+          keywords: ['actually happened'],
+          titleTemplate: '{topic} | {formatKeyword}',
+          titleRequiredSlots: ['topic', 'formatKeyword'] as ('topic' | 'formatKeyword')[],
+        }
+        const channel = await createChannel(db, {
+          name: 'Templated channel',
+          handle: null,
+          slug: `templated-${Math.random().toString(36).slice(2, 8)}`,
+          settings: DEFAULT_SETTINGS,
+          bible: { ...bible, formats: [format] },
+        })
+        const kase = await createCase(db, {
+          channelId: channel.id,
+          title: 'Wirecard',
+          category: 'collapse',
+        })
+        return (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+      }
+
+      it('stores the slots each title lacks and scores only titles with none', async () => {
+        const projectId = await templatedProject()
+        await setBrief({ ...BRIEF, targetKeyword: null })
+        expect(await generateTitles('master', projectId)).toEqual({ ok: true })
+        const stored = (await getPublishRecord(db, 'master', projectId))?.metadata as Record<
+          string,
+          unknown
+        >
+        const options = stored['titleOptions'] as string[]
+        const misses = stored['titleSlotMisses'] as Record<string, string[]>
+        // Only "How Wirecard actually happened" holds the lead keyword.
+        const holding = options.filter((option) => option.includes('actually happened'))
+        expect(holding).toHaveLength(1)
+        for (const option of options) {
+          expect(misses[option]).toEqual(option === holding[0] ? undefined : ['formatKeyword'])
+        }
+        // The titles ahead of it miss, yet the one that holds the keyword is scored, alone.
+        expect(Object.keys(stored['titleScores'] as object)).toEqual(holding)
+        expect(await db.select().from(vidiqCredits)).toHaveLength(1)
+      })
+    })
+
+    it('stores no misses on the default format and scores the first three as before', async () => {
+      await setBrief(BRIEF)
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      expect(stored['titleSlotMisses']).toEqual({})
+      expect(Object.keys(stored['titleScores'] as object)).toEqual(
+        (stored['titleOptions'] as string[]).slice(0, 3),
+      )
     })
 
     it('scores nothing without a brief, and nothing for a Short', async () => {

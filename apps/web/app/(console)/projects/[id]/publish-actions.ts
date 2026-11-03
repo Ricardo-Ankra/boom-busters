@@ -29,8 +29,13 @@ import {
   CHAPTER_GLOSS_MAX,
   composeDescription,
   HASHTAGS_MAX,
+  fillTitleTemplate,
+  leadKeyword,
+  missingTitleSlots,
   OutlineSchema,
+  runtimeWords,
   splitHashtags,
+  topicForTitle,
   PublishDraftSchema,
   PublishMetadataSchema,
   splitParagraphs,
@@ -38,6 +43,7 @@ import {
   searchBriefLine,
   UlidSchema,
 } from '@boom-busters/schemas'
+import type { SearchBrief, TitleSlot, TitleSlotValues } from '@boom-busters/schemas'
 import {
   buildDescriptionRequest,
   buildTitlesRequest,
@@ -468,6 +474,52 @@ async function vidiqAvailable(): Promise<boolean> {
 }
 
 /**
+ * The format's title template filled for this project, and the values a title
+ * must hold. Null for a Short and for a format with no template: titles are
+ * then written and scored as they always were.
+ */
+async function titleFrameFor(
+  projectId: string,
+  project: {
+    caseTitle: string
+    caseCategory: string
+    searchBrief: SearchBrief | null
+  },
+  frozen: Awaited<ReturnType<typeof channelForProject>>,
+): Promise<{
+  pattern: string
+  required: string[]
+  slots: readonly TitleSlot[]
+  values: TitleSlotValues
+} | null> {
+  const { format } = frozen
+  if (format.titleTemplate === '') return null
+  const brief = project.searchBrief
+  const runtimeSec = format.titleTemplate.includes('{runtime}')
+    ? (await descriptionIngredients(db, projectId)).runtimeSec
+    : null
+  const values: TitleSlotValues = {
+    topic: topicForTitle({
+      targetKeyword: brief?.targetKeyword?.keyword ?? null,
+      subject: brief?.subject ?? project.caseTitle,
+      formatKeywords: format.keywords,
+    }),
+    formatKeyword: leadKeyword(format),
+    pillar: format.titleTemplate.includes('{pillar}')
+      ? (frozen.bible.caseCategories.find((c) => c.key === project.caseCategory)?.label ?? null)
+      : null,
+    runtime: runtimeSec === null ? null : runtimeWords(runtimeSec),
+  }
+  const slots = format.titleRequiredSlots
+  return {
+    pattern: fillTitleTemplate(format.titleTemplate, values),
+    required: slots.flatMap((slot) => (values[slot] === null ? [] : [values[slot]])),
+    slots,
+    values,
+  }
+}
+
+/**
  * The 8 generated title options (spec section 11.3): the 'metadata' LLM task,
  * routed and budget-guarded like every other call. Mock mode answers locally
  * — deterministic, obviously mock — for free.
@@ -492,6 +544,9 @@ export async function generateTitles(targetType: string, targetId: string): Prom
 
   const workingTitle =
     type === 'master' ? project.title : ((await getShort(db, targetId))?.title ?? project.title)
+  // The format's title template, for a master: the model is shown it filled,
+  // and each title is checked for the slots the format requires.
+  const frame = type === 'master' ? await titleFrameFor(projectId, project, bibleGate.frozen) : null
 
   let titles: string[]
   if (mockProvidersEnabled()) {
@@ -529,6 +584,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
           ...(shortText ? { shortText } : {}),
           ...(project.searchBrief ? { searchBrief: project.searchBrief } : {}),
+          ...(frame ? { titleFrame: { pattern: frame.pattern, required: frame.required } } : {}),
         }),
         parse: (text) => parseTitleOptions(text),
         complete: completeForProject(projectId, { estimateOutputTokens: 500 }),
@@ -547,16 +603,29 @@ export async function generateTitles(targetType: string, targetId: string): Prom
     }
   }
 
+  // The required slots each title lacks: a warning on the Publish screen,
+  // never a reason to drop a title.
+  const titleSlotMisses: Record<string, TitleSlot[]> = {}
+  if (frame) {
+    for (const title of titles) {
+      const missing = missingTitleSlots(title, frame.slots, frame.values)
+      if (missing.length > 0) titleSlotMisses[title] = missing
+    }
+  }
+
   // A master with a search brief and a VidIQ key has the model's first three
-  // titles scored (spec 7.3). Scoring never costs the titles: a refusal keeps
-  // them, with a note under the list saying why. A Short is not scored here.
+  // titles that miss nothing scored (spec 7.3), in the model's order. Scoring
+  // never costs the titles: a refusal keeps them, with a note under the list
+  // saying why. A Short is not scored here.
   const scored =
     type === 'master' && project.searchBrief
       ? await scoreTitleList({
           skipWithoutKey: true,
           channelId: bibleGate.frozen.channelId,
           projectId,
-          titles: titles.slice(0, TITLES_SCORED_UP_FRONT),
+          titles: titles
+            .filter((title) => !(title in titleSlotMisses))
+            .slice(0, TITLES_SCORED_UP_FRONT),
           type: 'long',
         })
       : { scores: {}, note: '' }
@@ -566,6 +635,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
     // New titles, new scores: the old ones belong to titles that are gone.
     titleScores: scored.scores,
     titleScoreNote: scored.note,
+    titleSlotMisses,
   })
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }

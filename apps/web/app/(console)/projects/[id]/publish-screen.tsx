@@ -55,6 +55,14 @@ import { useAction } from './project-controls'
 
 const DAYS_SHOWN = 14
 
+/** What the screen calls each title slot a candidate can lack. */
+const SLOT_LABEL = {
+  topic: 'topic',
+  formatKeyword: 'format keyword',
+  pillar: 'pillar',
+  runtime: 'runtime',
+} as const
+
 // Thumbnail limits and copy come from `lib/thumbnail-rules.ts`, shared with
 // the server action; the action re-checks everything (decision 251).
 
@@ -795,6 +803,12 @@ function ItemEditor({
                     onChange={() => setTitle(option)}
                   />
                   <span>{option}</span>
+                  {(record.titleSlotMisses[option] ?? []).length > 0 ? (
+                    <span className="shrink-0 text-[12px] text-[var(--color-warning)]">
+                      Missing:{' '}
+                      {record.titleSlotMisses[option]!.map((slot) => SLOT_LABEL[slot]).join(', ')}
+                    </span>
+                  ) : null}
                   {option in titleScores ? (
                     <span className="ml-auto shrink-0 text-[12px] text-[var(--color-text-secondary)]">
                       {titleScores[option] === null

@@ -279,6 +279,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -332,6 +333,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -425,6 +427,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [
               { key: 'boom-busters/thumbs/p/a.png', url: null },
@@ -465,6 +468,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -500,6 +504,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -637,6 +642,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -694,6 +700,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -734,6 +741,7 @@ describe('PublishScreen', () => {
             tags: [],
             titleScores: {},
             titleScoreNote: '',
+            titleSlotMisses: {},
             searchTags: [],
             thumbs: [],
           },
@@ -766,6 +774,7 @@ describe('the search description (decision 303)', () => {
     tags: [],
     titleScores: {},
     titleScoreNote: '',
+    titleSlotMisses: {},
     searchTags: [],
     thumbs: [],
     ...over,
@@ -902,6 +911,7 @@ describe('the search brief on the Publish screen', () => {
       number | null
     >,
     titleScoreNote: '',
+    titleSlotMisses: {},
     descriptionBody: null,
     bodyScriptVersion: null,
     bodyStale: false,
@@ -985,6 +995,23 @@ describe('the search brief on the Publish screen', () => {
       ],
     })
     expect(screen.queryByRole('button', { name: /Score all titles/ })).not.toBeInTheDocument()
+  })
+
+  it('notes the format keyword a candidate lacks, and only on that candidate', () => {
+    renderScreen({
+      items: [
+        masterItem({
+          record: record({
+            titleOptions: ['[mock] How Wirecard actually happened', '[mock] Nine days to zero'],
+            titleSlotMisses: { '[mock] Nine days to zero': ['formatKeyword'] },
+          }),
+        }),
+      ],
+    })
+    expect(screen.getAllByText('Missing: format keyword')).toHaveLength(1)
+    expect(screen.getByText('[mock] Nine days to zero').closest('label')).toHaveTextContent(
+      'Missing: format keyword',
+    )
   })
 
   it('says under the list why no scores were kept', () => {
