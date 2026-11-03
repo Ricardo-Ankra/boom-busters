@@ -708,6 +708,15 @@ export const MIN_SHOT_SECONDS: Record<ShotBrief['type'], number> = {
 }
 
 /**
+ * The least a shot of this type should stay on screen under a format, in
+ * seconds: the table times the format's shot hold (1 to 4 in half steps, so
+ * the result may be fractional: 3 x 2.5 = 7.5). At 1 it is the table itself.
+ */
+export function minShotSeconds(type: ShotBrief['type'], shotHold = 1): number {
+  return MIN_SHOT_SECONDS[type] * shotHold
+}
+
+/**
  * A background job running on one slot (decision 286): stamped by the server
  * action before it sends the event, released by the job that answers it, and
  * cleared by Stop. `jobId` lets a job clear only its own stamp, so one that

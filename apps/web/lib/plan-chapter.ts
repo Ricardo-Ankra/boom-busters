@@ -51,7 +51,7 @@ async function repairChapterTiming(
     durationMs: row.durationMs ?? 0,
     coversText: slots[conversion.from[at]!]!.brief.coversText ?? null,
   }))
-  const findings = timingFindings(rows, input.paragraphs)
+  const findings = timingFindings(rows, input.paragraphs, input.shotHold)
   const stretches = repairStretches(findings)
   if (stretches.length === 0) return slots
 

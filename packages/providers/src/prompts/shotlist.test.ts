@@ -2,6 +2,7 @@ import {
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_IN_USE,
   MIN_SHOT_SECONDS,
+  minShotSeconds,
   ShotListOutputSchema,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -19,6 +20,7 @@ import {
   SHOT_LIST_FLOOR_TOKENS,
 } from './shotlist'
 import { MIN_SHOT_RULE } from './stretch'
+import { minShotRule } from './min-shot-rule'
 import type { ShotParagraph } from './shotlist'
 import { mockDirectorsBook } from './direction'
 import type { ScriptClaim } from './script'
@@ -466,6 +468,26 @@ describe('the chapter planning rules about minimums and sentences', () => {
     const { system } = buildShotListRequest(baseRequest())
     expect(system).toContain(MIN_SHOT_RULE)
     expect(system).toContain('exactly one slot')
+  })
+
+  it('carries the minimums times the format shot hold', () => {
+    const at2 = buildShotListRequest({ ...baseRequest(), shotHold: 2 }).system
+    expect(at2).toContain(minShotRule(2))
+    expect(at2).not.toContain(MIN_SHOT_RULE)
+    expect(buildShotListRequest({ ...baseRequest(), shotHold: 1 }).system).toBe(
+      buildShotListRequest(baseRequest()).system,
+    )
+  })
+})
+
+describe('mockShotList at a shot hold', () => {
+  it('plans no slot under its type minimum times the hold', () => {
+    const { slots } = mockShotList({ paragraphs: LONG_PARAGRAPHS, claimCount: 2, shotHold: 2 })
+    for (const slot of slots) {
+      const paragraph = LONG_PARAGRAPHS[slot.paragraphIndex] as ShotParagraph
+      const estimate = (words(slot.brief.coversText) / words(paragraph.text)) * paragraph.seconds
+      expect(estimate).toBeGreaterThanOrEqual(minShotSeconds(slot.brief.type, 2))
+    }
   })
 })
 

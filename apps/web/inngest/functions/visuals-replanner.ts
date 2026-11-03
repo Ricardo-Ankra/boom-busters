@@ -207,6 +207,7 @@ export const visualsReplanner = inngest.createFunction(
               photographed: setup.photographed,
               sets: setup.sets,
               logos: setup.logos,
+              shotHold: setup.shotHold,
             })
             if (!request) return { ok: true as const, rewritten: [], kept: [] }
             try {

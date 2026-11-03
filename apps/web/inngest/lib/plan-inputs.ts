@@ -36,6 +36,7 @@ export async function loadPlanInputs(projectId: string) {
   const { channelId, format } = await channelForProject(db, projectId)
   const logos = await listLogos(db, channelId)
   return {
+    shotHold: format.shotHold,
     caseTitle: project.title,
     direction: book.success ? book.data : null,
     chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),

@@ -1,4 +1,4 @@
-import { MIN_SHOT_SECONDS } from '@boom-busters/schemas'
+import { MIN_SHOT_SECONDS, minShotSeconds } from '@boom-busters/schemas'
 import { anchorWordRanges } from '@boom-busters/timeline'
 import type { TimedParagraph } from './shot-list'
 
@@ -57,10 +57,11 @@ function homeParagraph(
   )
 }
 
-/** Slots in screen order (chapter, then index). */
+/** Slots in screen order (chapter, then index). `shotHold` is the format's multiplier on the minimums. */
 export function timingFindings(
   slots: readonly TimingSlot[],
   paragraphs: readonly TimedParagraph[],
+  shotHold = 1,
 ): TimingFinding[] {
   const homes = slots.map((slot) => homeParagraph(slot, paragraphs))
   const sameHome = (a: number, b: number): boolean => {
@@ -84,7 +85,8 @@ export function timingFindings(
 
   const found: TimingFinding[] = []
   for (const [index, slot] of slots.entries()) {
-    const minimum = MIN_SHOT_SECONDS[slot.type as keyof typeof MIN_SHOT_SECONDS]
+    const type = slot.type as keyof typeof MIN_SHOT_SECONDS
+    const minimum = type in MIN_SHOT_SECONDS ? minShotSeconds(type, shotHold) : undefined
     if (minimum !== undefined && slot.durationMs < minimum * 1000) {
       const home = homes[index]
       const startingHere = home ? slots.filter((_, other) => homes[other] === home).length : 0

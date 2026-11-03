@@ -142,6 +142,8 @@ export function stretchAnswerIssue(input: {
   headlineAllowed: boolean
   /** Timing findings refuse the answer only on the first attempt (spec 3.3). */
   strictTiming: boolean
+  /** The format's shot hold, a multiplier on the minimums; absent means 1. */
+  shotHold?: number
   /**
    * The chapter's rows outside the stretch, screen order, at their anchored
    * times. Given, the timing check reads the new rows among them: the last
@@ -193,10 +195,11 @@ export function stretchAnswerIssue(input: {
   }
   if (input.strictTiming) {
     const finding = input.context
-      ? chapterTimingFinding(stretch, rows, input.context, paragraphs)
+      ? chapterTimingFinding(stretch, rows, input.context, paragraphs, input.shotHold)
       : timingFindings(
           rows.map((row) => ({ chapterId: stretch.chapterId, ...row })),
           paragraphs,
+          input.shotHold,
         )[0]
     if (finding) return finding.message
   }
@@ -214,6 +217,7 @@ function chapterTimingFinding(
   rows: readonly { type: string; startMs: number; durationMs: number; coversText: string | null }[],
   context: readonly StretchRow[],
   paragraphs: readonly TimedParagraph[],
+  shotHold?: number,
 ) {
   // A row before the stretch starts no later than its first word; the row
   // after it starts later (`cutStretch` refuses one on the same word).
@@ -229,5 +233,7 @@ function chapterTimingFinding(
   const times = anchoredTimes(merged, paragraphs)
   const anchored = merged.map((row, at) => ({ ...row, ...times[at]! }))
   const fresh = (at: number) => at >= before.length && at < before.length + rows.length
-  return timingFindings(anchored, paragraphs).find((finding) => finding.slotIndexes.some(fresh))
+  return timingFindings(anchored, paragraphs, shotHold).find((finding) =>
+    finding.slotIndexes.some(fresh),
+  )
 }

@@ -69,6 +69,17 @@ describe('timingFindings', () => {
     )
   })
 
+  it('judges the minimum times the format shot hold', () => {
+    const long = paragraphOf(TEXT, { durationMs: 20_000 })
+    const still = slot({ type: 'still', startMs: 0, durationMs: 5_000, coversText: null })
+    expect(timingFindings([still], [long])).toEqual([])
+    expect(timingFindings([still], [long], 1)).toEqual([])
+    const found = timingFindings([still], [long], 2)
+    expect(found.map((f) => f.kind)).toEqual(['too-short'])
+    expect(found[0]!.message).toBe('this AI image is on screen for 5.0 s; it needs at least 6 s')
+    expect(timingFindings([still], [long], 2.5)[0]!.message).toContain('at least 7.5 s')
+  })
+
   it('does not flag a lone shot in a paragraph shorter than its minimum', () => {
     const short = paragraphOf('A very short line.', { durationMs: 2_000 })
     expect(

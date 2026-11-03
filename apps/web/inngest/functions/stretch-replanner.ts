@@ -189,6 +189,7 @@ export const stretchReplanner = inngest.createFunction(
             photographed: setup.photographed,
             sets: setup.sets,
             logos: setup.logos,
+            shotHold: setup.shotHold,
             stretch: cut.stretch,
             before: cut.before,
             after: cut.after,

@@ -2,7 +2,7 @@ import {
   figureDigitGroups,
   GRAPHIC_INTENT_MAX,
   GRAPHIC_INTENT_REFS_MAX,
-  MIN_SHOT_SECONDS,
+  minShotSeconds,
   HERO_SLOTS_ENABLED,
   PlannedSlotSchema,
   PlannedBriefSchema,
@@ -22,7 +22,7 @@ import { z } from 'zod'
 import { claimList, type ScriptClaim } from './script'
 import { fillSlots, literalBibleText } from './bible'
 import { directionCraft, directionRules } from './direction-craft-text'
-import { MIN_SHOT_RULE } from './min-shot-rule'
+import { minShotRule } from './min-shot-rule'
 import { formatIssues, parseJsonCompletion } from './json'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -288,6 +288,8 @@ export function buildShotListRequest(input: {
    * render finds the mark without an upload first.
    */
   logos?: readonly string[]
+  /** The format's shot hold, a multiplier on the minimums; absent means 1. */
+  shotHold?: number
 }): LLMTaskRequest {
   const paragraphList = input.paragraphs
     .map(
@@ -335,7 +337,7 @@ Planning rules:
 ${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
-${MIN_SHOT_RULE}
+${minShotRule(input.shotHold)}
 - Every sentence is quoted by exactly one slot: never start a slot's "coversText" inside the sentence another slot quotes.
 - Each brief is a full creative direction, not a keyword: subject, composition,
   era, mood and lighting in "description". "coversText" quotes
@@ -662,6 +664,8 @@ export function mockShotList(input: {
   claimTexts?: readonly string[]
   /** Titles the logo library holds (decision 268, Plan B); accepted for callers, unused since decision 289. */
   logoTitles?: readonly string[]
+  /** The format's shot hold, a multiplier on the minimums; absent means 1. */
+  shotHold?: number
 }): ShotListOutput {
   // Each paragraph as whole sentences, with where each one sits in the text
   // (so a quote is cut from the paragraph exactly as written) and its words.
@@ -708,7 +712,7 @@ export function mockShotList(input: {
   }
 
   input.paragraphs.forEach((_, at) => {
-    const end = run(at, MIN_SHOT_SECONDS.stock, true)
+    const end = run(at, minShotSeconds('stock', input.shotHold), true)
     if (end !== undefined) nextFree[at] = end
     planned.push({
       at,
@@ -725,7 +729,7 @@ export function mockShotList(input: {
   ): void => {
     for (let at = from; at < input.paragraphs.length; at += 1) {
       const start = nextFree[at] as number
-      const end = run(at, MIN_SHOT_SECONDS[type], false)
+      const end = run(at, minShotSeconds(type, input.shotHold), false)
       if (end === undefined) continue
       nextFree[at] = end
       planned.push({ at, start, end, build })

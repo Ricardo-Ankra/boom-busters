@@ -303,12 +303,15 @@ export const visualsRunner = inngest.createFunction(
       })
 
       const stillCount = allRows.filter((row) => row.type === 'still').length
-      await step.run('open-plan-park', () => {
+      await step.run('open-plan-park', async () => {
         // Craft misses the model let through (decisions 252, 277): notes for
         // the plan screen, never rejections. Counted INSIDE the step (decision
         // 279): a run parked for days replays with the step results it saved
         // back then, and outside a step this read the cast, which an older
         // run's saved setup does not have, and crashed the fetch.
+        // The format's shot hold is read here for the same reason: a setup
+        // saved before it existed has no such field.
+        const { format: planFormat } = await channelForProject(db, projectId)
         const warnings = planFindings({
           rows: allRows,
           chapters: setup.chapters,
@@ -327,6 +330,7 @@ export const visualsRunner = inngest.createFunction(
             coversText: row.brief.coversText,
           })),
           setup.paragraphs,
+          planFormat.shotHold,
         ).length
         return openReviewGate(ctx, {
           stage: 'visuals',

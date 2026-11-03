@@ -48,6 +48,11 @@ export interface PlanChapterInput {
   photographed?: readonly string[]
   sets?: readonly { name: string; look: string; layout?: string }[]
   logos?: readonly LogoIndex[]
+  /**
+   * The project format's shot hold, a multiplier on the minimum seconds per
+   * shot type. Read with the bible inside the step; absent means 1.
+   */
+  shotHold?: number
 }
 
 /**
@@ -79,6 +84,7 @@ export function chapterShotListRequest(input: PlanChapterInput): LLMTaskRequest 
         }
       : {}),
     logos: input.logos?.map((logo) => logo.title),
+    ...(input.shotHold !== undefined ? { shotHold: input.shotHold } : {}),
   })
 }
 

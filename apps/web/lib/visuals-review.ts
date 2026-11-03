@@ -1219,6 +1219,7 @@ export async function visualsReviewModel(
       coversText: briefs[at]?.success === true ? briefs[at].data.coversText : null,
     })),
     paragraphs,
+    paceFormat.shotHold,
   ).map((finding): TimingNoteView => {
     const first = finding.slotIndexes[0]!
     return {
