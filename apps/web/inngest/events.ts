@@ -3,6 +3,7 @@ import {
   BibleDraftRequestedSchema,
   BibleResearchRequestedSchema,
   BudgetApprovedSchema,
+  CaseResearchRequestedSchema,
   MediaJobCompletedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
@@ -143,6 +144,10 @@ export const events = {
   }),
   bibleDraftRequested: eventType('bible/draft.requested', {
     schema: BibleDraftRequestedSchema,
+  }),
+
+  caseResearchRequested: eventType('case/research.requested', {
+    schema: CaseResearchRequestedSchema,
   }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),

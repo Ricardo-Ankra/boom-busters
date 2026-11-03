@@ -1,4 +1,11 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import {
+  CaseResearchJobSchema,
+  SearchBriefSchema,
+  briefDemandNotes,
+  keywordHasFigure,
+} from '@boom-busters/schemas'
+import type { CaseResearchJob, SearchBrief } from '@boom-busters/schemas'
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
 import type { CaseRow, CaseStatus } from './schema'
@@ -29,6 +36,10 @@ export interface CaseSummary {
   subject: string | null
   people: string[]
   sourceLinks: { url: string; note?: string }[]
+  /** The VidIQ research brief for `subject`; null when none, or when the stored row does not parse. */
+  searchBrief: SearchBrief | null
+  /** The research run in flight or last finished; null when none, or when the stored row does not parse. */
+  searchJob: CaseResearchJob | null
   priorityScore: number
   status: CaseStatus
   /** How many projects have been started from this case. */
@@ -47,11 +58,32 @@ const summaryColumns = {
   subject: cases.subject,
   people: cases.people,
   sourceLinks: cases.sourceLinks,
+  searchBrief: cases.searchBrief,
+  searchJob: cases.searchJob,
   priorityScore: cases.priorityScore,
   status: cases.status,
   createdAt: cases.createdAt,
   updatedAt: cases.updatedAt,
   projectCount: sql<number>`count(${projects.id})::int`,
+}
+
+const storedBrief = SearchBriefSchema.nullable().catch(null)
+const storedJob = CaseResearchJobSchema.nullable().catch(null)
+
+/**
+ * The raw stored jsonb as the app's types. A row written before the columns
+ * existed, or one that no longer parses, reads null rather than throwing.
+ */
+type SummaryRow = Omit<CaseSummary, 'searchBrief' | 'searchJob'> & {
+  searchBrief: unknown
+  searchJob: unknown
+}
+function toSummary(row: SummaryRow): CaseSummary {
+  return {
+    ...row,
+    searchBrief: storedBrief.parse(row.searchBrief ?? null),
+    searchJob: storedJob.parse(row.searchJob ?? null),
+  }
 }
 
 function orderFor(sort: CaseSort) {
@@ -87,7 +119,7 @@ export async function listCases(
     .groupBy(cases.id)
     .orderBy(...orderFor(options.sort ?? 'priority'))
 
-  return rows as CaseSummary[]
+  return rows.map((row) => toSummary(row as SummaryRow))
 }
 
 export async function getCase(db: Database, id: string): Promise<CaseSummary | undefined> {
@@ -99,7 +131,7 @@ export async function getCase(db: Database, id: string): Promise<CaseSummary | u
     .groupBy(cases.id)
     .limit(1)
 
-  return row as CaseSummary | undefined
+  return row ? toSummary(row as SummaryRow) : undefined
 }
 
 export interface CaseInput {
@@ -137,45 +169,6 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
   return row!
 }
 
-/**
- * Insert suggestions, skipping any whose title already exists.
- *
- * Suggestion runs overlap heavily — ask twice in a month and the same famous
- * collapses come back both times. Returning the count of skipped rows lets the
- * UI say "6 new, 4 already in your library" instead of silently producing
- * duplicates the human then has to dismiss one by one.
- */
-export async function createSuggestedCases(
-  db: Database,
-  channelId: string,
-  inputs: readonly Omit<CaseInput, 'channelId'>[],
-): Promise<{ created: CaseRow[]; skippedTitles: string[] }> {
-  if (inputs.length === 0) return { created: [], skippedTitles: [] }
-
-  const existing = await db
-    .select({ title: cases.title })
-    .from(cases)
-    .where(eq(cases.channelId, channelId))
-  const seen = new Set(existing.map((row) => row.title.trim().toLowerCase()))
-
-  const created: CaseRow[] = []
-  const skippedTitles: string[] = []
-
-  for (const input of inputs) {
-    const key = input.title.trim().toLowerCase()
-    // Also guards duplicates *within* one batch, which a model will happily
-    // produce when it phrases the same case two ways.
-    if (seen.has(key)) {
-      skippedTitles.push(input.title)
-      continue
-    }
-    seen.add(key)
-    created.push(await createCase(db, { ...input, channelId }))
-  }
-
-  return { created, skippedTitles }
-}
-
 export async function updateCase(
   db: Database,
   id: string,
@@ -188,6 +181,180 @@ export async function updateCase(
     .returning()
 
   return row
+}
+
+/** Whether another case in the channel already has this subject (trimmed, case-insensitive). */
+export async function caseSubjectTaken(
+  db: Database,
+  channelId: string,
+  subject: string,
+  exceptId?: string,
+): Promise<boolean> {
+  const key = subject.trim().toLowerCase()
+  if (key === '') return false
+  const [row] = await db
+    .select({ id: cases.id })
+    .from(cases)
+    .where(
+      and(
+        eq(cases.channelId, channelId),
+        sql`lower(btrim(${cases.subject})) = ${key}`,
+        exceptId === undefined ? undefined : ne(cases.id, exceptId),
+      ),
+    )
+    .limit(1)
+  return row !== undefined
+}
+
+type CaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
+
+/** Lock the case row for the rest of the transaction and read its brief and job. */
+async function lockCaseResearch(
+  tx: CaseTransaction,
+  caseId: string,
+): Promise<{ brief: SearchBrief | null; job: CaseResearchJob | null }> {
+  const [row] = await tx
+    .select({ searchBrief: cases.searchBrief, searchJob: cases.searchJob })
+    .from(cases)
+    .where(eq(cases.id, caseId))
+    .for('update')
+  if (!row) throw new Error(`case ${caseId} not found`)
+  return {
+    brief: storedBrief.parse(row.searchBrief ?? null),
+    job: storedJob.parse(row.searchJob ?? null),
+  }
+}
+
+/**
+ * Read the case's research job under a row lock, store what `update` returns
+ * (null clears it) and hand it back. Two writers (a run's heartbeat and an
+ * owner's Stop) never overwrite each other.
+ */
+export async function writeCaseResearchJob(
+  db: Database,
+  caseId: string,
+  update: (job: CaseResearchJob | null) => CaseResearchJob | null,
+): Promise<CaseResearchJob | null> {
+  return db.transaction(async (tx) => {
+    const { job } = await lockCaseResearch(tx, caseId)
+    const next = update(job)
+    await tx.update(cases).set({ searchJob: next }).where(eq(cases.id, caseId))
+    return next
+  })
+}
+
+/**
+ * Save a finished brief and mark the job done, only while the job is still the
+ * running job that started at `jobStartedAt`. A run that was stopped, failed or
+ * superseded writes nothing and gets false.
+ */
+export async function saveCaseSearchBrief(
+  db: Database,
+  caseId: string,
+  brief: SearchBrief,
+  jobStartedAt: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const { job } = await lockCaseResearch(tx, caseId)
+    // A failed or stopped job keeps its startedAt, so the state matters too.
+    if (!job || job.startedAt !== jobStartedAt || job.state !== 'running') return false
+    await tx
+      .update(cases)
+      .set({
+        searchBrief: brief,
+        searchJob: { ...job, state: 'done', current: null, error: null },
+        updatedAt: new Date(),
+      })
+      .where(eq(cases.id, caseId))
+    return true
+  })
+}
+
+/**
+ * Settle the case's angle from its brief: one of the offered options, or the
+ * owner's own words. Rewrites the demand notes from the brief.
+ */
+export async function chooseCaseAngle(
+  db: Database,
+  caseId: string,
+  choice: { option: number } | { own: string },
+): Promise<CaseSummary> {
+  await db.transaction(async (tx) => {
+    const { brief } = await lockCaseResearch(tx, caseId)
+    if (!brief) throw new Error('this case has no search brief to choose an angle from')
+    let angle: string
+    let chosenAngle: number | null
+    if ('option' in choice) {
+      const option = brief.angleOptions[choice.option]
+      if (!option) throw new Error(`angle option ${choice.option} does not exist`)
+      angle = option.angle
+      chosenAngle = choice.option
+    } else {
+      angle = choice.own.trim()
+      if (angle === '') throw new Error('an angle of your own cannot be empty')
+      chosenAngle = null
+    }
+    const next: SearchBrief = { ...brief, chosenAngle }
+    await tx
+      .update(cases)
+      .set({
+        angle,
+        searchBrief: next,
+        demandNotes: briefDemandNotes(next),
+        updatedAt: new Date(),
+      })
+      .where(eq(cases.id, caseId))
+  })
+  const updated = await getCase(db, caseId)
+  if (!updated) throw new Error(`case ${caseId} not found`)
+  return updated
+}
+
+/**
+ * Make one of the brief's secondary keywords the target; the old target joins
+ * the secondaries. A keyword with a figure is never the target.
+ */
+export async function setCaseTargetKeyword(
+  db: Database,
+  caseId: string,
+  keyword: string,
+): Promise<CaseSummary> {
+  if (keywordHasFigure(keyword)) {
+    throw new Error('a keyword with a figure cannot be the target keyword')
+  }
+  const wanted = keyword.trim().toLowerCase()
+  await db.transaction(async (tx) => {
+    const { brief } = await lockCaseResearch(tx, caseId)
+    if (!brief) throw new Error('this case has no search brief')
+    const chosen = brief.secondaryKeywords.find((k) => k.keyword.trim().toLowerCase() === wanted)
+    if (!chosen) throw new Error(`"${keyword}" is not one of this brief's secondary keywords`)
+    const next: SearchBrief = {
+      ...brief,
+      targetKeyword: chosen,
+      secondaryKeywords: [
+        ...brief.secondaryKeywords.filter((k) => k !== chosen),
+        ...(brief.targetKeyword ? [brief.targetKeyword] : []),
+      ],
+    }
+    // Notes still exactly as chooseCaseAngle wrote them name the old target, so they follow it.
+    // Notes the owner wrote or edited by hand stay as they are.
+    const [row] = await tx
+      .select({ demandNotes: cases.demandNotes })
+      .from(cases)
+      .where(eq(cases.id, caseId))
+    const fromBrief = row?.demandNotes === briefDemandNotes(brief)
+    await tx
+      .update(cases)
+      .set({
+        searchBrief: next,
+        ...(fromBrief ? { demandNotes: briefDemandNotes(next) } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(cases.id, caseId))
+  })
+  const updated = await getCase(db, caseId)
+  if (!updated) throw new Error(`case ${caseId} not found`)
+  return updated
 }
 
 export async function setCaseStatus(
@@ -218,16 +385,6 @@ export async function deleteCase(db: Database, id: string): Promise<boolean> {
 
 export async function truncateCases(db: Database): Promise<void> {
   await db.execute(sql`truncate table ${cases} restart identity cascade`)
-}
-
-/** Everything the suggestion prompt should avoid proposing again. */
-export async function existingCaseTitles(db: Database, channelId: string): Promise<string[]> {
-  const rows = await db
-    .select({ title: cases.title })
-    .from(cases)
-    .where(eq(cases.channelId, channelId))
-    .orderBy(asc(cases.title))
-  return rows.map((row) => row.title)
 }
 
 /** Move a case into production when its first project starts. */

@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { unscoredDistinctTitles } from '@/lib/title-scores'
 import type { PublishItemModel, PublishModel } from '@/lib/publish-review'
 import { THUMB_MAX_BYTES, thumbnailDimensionError, thumbnailHint } from '@/lib/thumbnail-rules'
 import {
@@ -33,6 +34,7 @@ import {
   retryPublish,
   savePublishDraft,
   schedulePublish,
+  scoreAllTitlesAction,
   unlinkPublishRecord,
   uploadThumbnail,
 } from './publish-actions'
@@ -683,6 +685,13 @@ function ItemEditor({
   React.useEffect(() => setTags(storedTags), [storedTags])
   React.useEffect(() => setHashtags(storedHashtags), [storedHashtags])
   React.useEffect(() => setGlosses(storedGlossesKey.split('\u0000')), [storedGlossesKey])
+  const titleScores = record?.titleScores ?? {}
+  const unscoredTitles = unscoredDistinctTitles(record?.titleOptions ?? [], titleScores).length
+  const fromVidiq = new Set((record?.searchTags ?? []).map((tag) => tag.toLowerCase()))
+  const markedTags = tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag !== '' && fromVidiq.has(tag.toLowerCase()))
   const [thumbError, setThumbError] = React.useState<string | null>(null)
   const [uploadingThumb, setUploadingThumb] = React.useState(false)
 
@@ -785,10 +794,39 @@ function ItemEditor({
                     checked={title === option}
                     onChange={() => setTitle(option)}
                   />
-                  {option}
+                  <span>{option}</span>
+                  {option in titleScores ? (
+                    <span className="ml-auto shrink-0 text-[12px] text-[var(--color-text-secondary)]">
+                      {titleScores[option] === null
+                        ? 'VidIQ gave no score'
+                        : `VidIQ score ${titleScores[option]}`}
+                    </span>
+                  ) : null}
                 </label>
               ))}
             </fieldset>
+          ) : null}
+
+          {record && record.titleScoreNote ? (
+            <p className="text-[13px] text-[var(--color-warning)]">{record.titleScoreNote}</p>
+          ) : null}
+
+          {isMaster && model.hasSearchBrief && unscoredTitles > 0 ? (
+            <ConfirmButton
+              label={`Score all titles (about ${unscoredTitles * model.titleScoreCredits} credits)`}
+              confirmLabel="Score them"
+              consequence={`VidIQ scores ${unscoredTitles} title${unscoredTitles === 1 ? '' : 's'} at ${model.titleScoreCredits} credits each, against this month's cap.`}
+              confirmVariant="primary"
+              busy={pressed === 'score-titles'}
+              disabled={busy}
+              onConfirm={() =>
+                act(
+                  () => scoreAllTitlesAction(item.targetType, item.targetId),
+                  'Titles scored',
+                  'score-titles',
+                )
+              }
+            />
           ) : null}
 
           {live ? (
@@ -928,6 +966,18 @@ function ItemEditor({
             Tags, comma-separated (max 60)
             <Input value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
+          {markedTags.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Tags that came from VidIQ">
+              {markedTags.map((tag) => (
+                <li key={tag}>
+                  <Badge tone="muted">
+                    {tag}
+                    <span>from VidIQ</span>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {dirty ? (
             <Button

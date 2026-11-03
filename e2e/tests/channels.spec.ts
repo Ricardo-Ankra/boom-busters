@@ -77,12 +77,9 @@ test.describe('channels', () => {
     ).toContainText('Write the channel bible')
   })
 
-  test('Suggest cases is absent on a second channel, and an incomplete bible still shows its banner', async ({
-    page,
-  }) => {
+  test('an incomplete bible shows its banner on the second channel', async ({ page }) => {
     await signIn(page)
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
 
     // The Channel tab only reports where the bible stands and points to the
@@ -119,7 +116,6 @@ test.describe('channels', () => {
     await expect(page.getByText('Version 2 is what the channel runs on.')).toBeVisible()
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
-    await expect(page.getByRole('button', { name: 'Suggest cases' })).toHaveCount(0)
     await expect(page.getByText('Complete the channel bible in Settings first.')).toBeVisible()
   })
 
@@ -146,6 +142,7 @@ test.describe('channels', () => {
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill(SECOND_CASE_TITLE)
     await page.getByLabel('Title').fill(SECOND_CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
     await page.getByRole('button', { name: 'Save case' }).click()

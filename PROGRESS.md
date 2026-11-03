@@ -4421,6 +4421,69 @@ Then:
 - [x] Component tests, the explicit `./bible-actions` mocks extended.
 - [x] e2e step in `e2e/tests/bible.spec.ts`, and the panel in the 390 px check.
 
+## VidIQ case research (2026-11-03)
+
+> A case starts from a subject, as people search for it. Research with VidIQ
+> measures the subject, writes a search brief and offers up to three angles;
+> the owner picks the angle, and the brief freezes onto the project. The
+> dossier, outline, metadata and publish screen then work from the brief.
+> Branch `vidiq-case-research`; decisions 372 to 385. One migration
+> (`0043_safe_tusk`), a new Inngest function (`case-researcher`), and nothing
+> under `packages/providers/src/prompts/lift/__fixtures__/` changes except
+> the new search fixtures.
+
+### Deliverables
+
+- [x] Task 1: the search brief schema, target keyword rule and freshness
+      (`81f9502`).
+- [x] Task 2: VidIQ keyword questions, demand columns, outlier filters and
+      channel-aware title scores (`bf85a08`).
+- [x] Task 3: the brief on cases, frozen on projects, its research job, one
+      case per subject; migration 0043 (`2cded31`).
+- [x] Task 4: keyword filter, winning-video patterns and angle options
+      (`3bc004a`, `c7f7686`).
+- [x] Task 5: one VidIQ budget and spend path, and the `case-researcher`
+      run (`24ed1ff`, `b069a9d`).
+- [x] Task 6: subject-first intake, Research with VidIQ, the Search brief
+      panel and the angle choice (`054285b`).
+- [x] Task 7: the dossier guided and closed by the brief (`d1ebdd1`,
+      `3e313ed`).
+- [x] Task 8: the outline answers what searchers ask (`66bc4a0`, `edf1876`).
+- [x] Task 9: titles, description and tags chase the brief; VidIQ scores
+      titles (`0cb888d`, `69db8c3`, `a4c719c`, `578f9b5`).
+- [x] Task 10: Suggest cases and the case-finder ranking retired
+      (`dfcd7a7`).
+- [x] Task 11: master merged (`dcde1dd`), the e2e spec
+      `e2e/tests/case-research.spec.ts`, this section, the branch check.
+
+### Owner actions at deploy
+
+1. Migration `0043_safe_tusk` adds three nullable jsonb columns (the search
+   brief and research job on cases, the frozen brief on projects). Master's
+   last migration is 0042; there is no collision. Production Vercel builds
+   apply it through `scripts/deploy-migrate.mjs` when master is pushed.
+2. `PUT /api/inngest` after the Vercel deploy, so Inngest registers the new
+   function `case-researcher`.
+3. Add or check the VidIQ key in Settings, Connections, and the monthly
+   credit cap. A research run needs about 20 credits and is refused when
+   the cap or the VidIQ balance cannot cover it.
+4. Open item, for the owner to confirm before the first real run: the brief
+   is called stale after 30 days. That figure was chosen to sit inside the
+   YouTube API Services data-storage rules (the spec, section 6.3, asks the
+   builder to check them). The owner confirms it against the current policy.
+
+### Not verified
+
+- A live research run under a real Inngest server. The e2e suite has none;
+  the runner is covered by the harness tests with the mock VidIQ client.
+- A live VidIQ call. Every test uses the mock client.
+
+### Known test bug, not fixed here
+
+`channel-actions.test.ts` leaves a `UC-source` row in `youtube_connections`
+in the test database, so it fails on a second run until the row is deleted.
+This is on master and unrelated to this work.
+
 ---
 
 # Decisions made
@@ -9143,3 +9206,111 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      is opened. The overwrite confirm names only the ticked sections that
      differ from the saved version, since those are the ones that lose work.
      The note is client state, so copying twice names the last copy.
+
+### VidIQ case research
+
+372. **The anti-keyword rule lives in the outline's brief block, not in
+     `script-craft.md`** (2026-11-03). Writing for searchers without writing
+     for the algorithm is said only when a brief exists, so every prompt
+     built without a brief stays byte-identical. This departs from the
+     spec's wording; the rule can move to the craft file later at the cost
+     of re-embedding.
+
+373. **The brief's model steps use the `research` route** (2026-11-03). No
+     new model task and no new Settings control; a later split of the route
+     is possible if the cost needs its own line.
+
+374. **Outlier videos join the dossier gather as competitor links**
+     (2026-11-03). The gather's signature does not change, so winning videos
+     are ranked as competitor videos are.
+
+375. **One shared VidIQ spend path** (2026-11-03). `apps/web/lib/vidiq-spend.ts`
+     owns the key check, the balance, the monthly cap and the ledger write
+     for the Bible research and the case research alike. `spendVidiq` takes
+     the tool name, because the ledger needs it. The Bible check now builds
+     its plan before the key check, so only the corner of "no key and a bad
+     plan at once" changes, from the key message to the plan message.
+
+376. **Title scores and VidIQ tags are stored on the publish draft**
+     (2026-11-03). `titleScores` and `searchTags` live in the draft, with a
+     `titleScoreNote` that says why scoring stopped, so no migration is
+     needed. The note is cut to the schema's 500 characters. Tags match the
+     subject, a cast member by full name or a surname of four letters or
+     more, and years; a tag over 100 characters is dropped, not cut.
+
+377. **The brief freezes onto a project only when its subject matches the
+     case** (2026-11-03). The match is whole-subject, trimmed and
+     case-insensitive, read under the case row lock when the project is
+     inserted. After an edit to the subject the screen says the research is
+     for the old subject and hides Use this angle, Make target and Keep my
+     own angle; the stale-brief question is not asked either, since a
+     mismatched brief freezes nothing.
+
+378. **The Priority field and sort leave the UI, but the column stays**
+     (2026-11-03). The library sorts newest first by default. `priority`
+     stays in `CASE_SORTS` and in the table, so old links and rows still
+     work, and nothing new writes a score.
+
+379. **A research run reads its subject from the stamped job** (2026-11-03).
+     A `load` step reads the channel and the subject the owner pressed the
+     button on, so a later edit cannot change a run in flight and a replay
+     is safe. `saveCaseSearchBrief` writes only while the job is still the
+     running job that started at that time; a failed or stopped job keeps
+     its start time, so the state is checked too. With no keyword rows the
+     filter makes no model call, and with no outliers the winners step makes
+     none. Two presses cannot both start: the stamp itself refuses a running
+     job under the row lock, and a job silent for 30 minutes is taken over.
+
+380. **Search brief text is quoted, one line at a time, as data**
+     (2026-11-03). One helper, `searchBriefLine`, collapses whitespace and
+     caps the length at every place VidIQ text reaches a prompt. Every brief
+     value placed in a template that reaches the bible slot filler is
+     wrapped in `literalBibleText`, so a `[[` in a keyword cannot reach the
+     bible or crash the step. Keyword rows and outlier descriptions are
+     fenced as data, and an angle's gap is kept free of figures.
+
+381. **Score all is for master candidates only** (2026-11-03). The spec's
+     section 7.3 says Shorts titles get the target keyword only, with no
+     scoring by default, and names Score all for masters. The top three
+     titles are scored when a brief and a key exist; Score all buys the
+     rest, counting each distinct title once on the screen and on the
+     server. A failure part-way keeps the scores already bought, since their
+     credits are in the ledger, and the note says "scored N of M, then
+     stopped". With no key and no mock mode, scoring is skipped quietly.
+
+382. **Subject-first intake, with the estimate shown on arming**
+     (2026-11-03). A case is added by subject and the title follows it until
+     the owner types one. Research with VidIQ arms first, then shows "About
+     20 credits" with what is left of the month's cap and the VidIQ balance;
+     the action checks again, so the screen's figure may be old. Try Again
+     after a failure also asks first, because it spends. A case with no
+     subject cannot be researched, and a subject already used on the channel
+     is refused.
+
+383. **The dossier closes on the brief's questions** (2026-11-03). A
+     searched question counts as answered exactly when the matching open
+     question appears under the questions the research answered, matched
+     case and punctuation insensitively. The Search header, the target line
+     and the questions line appear only when there is something to say.
+
+384. **Suggest cases is retired; the rows and the dossier sources stay**
+     (2026-11-03). The case-finder ranking, hit list, gather and back-test
+     are deleted, with the Suggest builders and parsers. Rows already filed
+     as ideas are still triaged (Accept, Dismiss) and unit-tested, not
+     e2e-tested. `qidOf` moved to `sources/wikidata.ts` because the dossier
+     discovery path still uses it. No lift fixtures existed for the deleted
+     builders.
+
+385. **The brief schema sets the list caps; no keyword, no "Searched as"**
+     (2026-11-03). The final review found the winners parser allowing 6
+     title patterns and 10 told-already entries while `SearchBriefSchema`
+     holds 5 and 8, so a full model answer parsed and then failed the save on
+     every retry after the credits were spent. The schema is the authority:
+     it exports `TITLE_PATTERNS_MAX` and `TOLD_ALREADY_MAX`, and the parser
+     and its prompt read them. `save-brief` also cuts each list to its limit,
+     and a result that still cannot fit stops with a plain reason and no
+     retry. The `search-winners` lift fixture was edited by hand to "5 patterns
+     and 8 told-already". When no keyword was measured, the angle prompt asks
+     for an empty `keyword`, the parser and the mock force it, and the panel
+     hides "Searched as" for an empty one, so the brief never implies demand
+     that was not measured.

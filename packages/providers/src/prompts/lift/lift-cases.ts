@@ -5,6 +5,7 @@ import type {
   DirectorsBook,
   Outline,
   Scene,
+  SearchBrief,
   ShotBrief,
   SlotCandidate,
   StockBrief,
@@ -40,6 +41,11 @@ import {
 } from '../script'
 import type { ScriptClaim } from '../script'
 import { buildShotListRequest, buildShotRepairRequest } from '../shotlist'
+import {
+  buildAngleOptionsRequest,
+  buildKeywordFilterRequest,
+  buildWinnersRequest,
+} from '../search-brief'
 import { buildStretchRequest } from '../stretch'
 import { buildNameSubjectRequest } from '../subject'
 
@@ -48,8 +54,6 @@ import { buildNameSubjectRequest } from '../subject'
  * literal inputs, so what each one sends today is captured once and any later
  * change to it shows as a fixture diff. `build` takes the bible, which every
  * builder now reads (`bibleAware`, asserted by the psychology test).
- * `buildSuggestCasesRequest` and `buildScoreNamedCasesRequest`
- * are left out: the Suggest cases are not parameterised by the bible.
  */
 export interface LiftCase {
   name: string
@@ -436,6 +440,43 @@ const metadataCases: LiftCase[] = [
       chapters: CHAPTERS_META,
     }),
   ),
+  liftAware(
+    'metadata-titles-search',
+    (bible, name) =>
+      buildTitlesRequest({
+        bible,
+        channelName: channelNameFor(bible, name),
+        caseTitle: 'Wirecard',
+        hook: HOOK,
+        target: 'master',
+        workingTitle: 'How Wirecard Lost 1.9 Billion Euros',
+        claims: CLAIMS,
+        centralQuestion: 'How did 1.9 billion euros never exist?',
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The brief's own words: the keyword in two lines, the subject in the rule.
+    ['"wirecard scandal"', '"wirecard scandal"', '"Wirecard"'],
+  ),
+  liftAware(
+    'metadata-description-search',
+    (bible, name) =>
+      buildDescriptionRequest({
+        bible,
+        channelName: channelNameFor(bible, name),
+        target: 'master',
+        claims: CLAIMS,
+        centralQuestion: 'How did 1.9 billion euros never exist?',
+        chapters: CHAPTERS_META,
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The keyword in two lines, then the searched questions.
+    [
+      '"wirecard scandal"',
+      '"wirecard scandal"',
+      '"Where did the missing billion go?"',
+      '"Who signed off the audits?"',
+    ],
+  ),
   liftAware('metadata-description-short', (bible, name) =>
     buildDescriptionRequest({
       bible,
@@ -609,6 +650,20 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS,
       targetRuntimeMin: 12,
     }),
+  ),
+  liftAware(
+    'script-outline-search',
+    (bible) =>
+      buildOutlineRequest({
+        bible,
+        caseTitle: 'Wirecard',
+        dossierMd: '# Wirecard\n\nA payments company that reported money it did not have.',
+        claims: CLAIMS,
+        targetRuntimeMin: 12,
+        searchBrief: CASE_SEARCH.searchBrief,
+      }),
+    // The brief's own words (each replace takes one occurrence): the keyword in two rules, the subject in one.
+    ['"wirecard scandal"', '"wirecard scandal"', '"Wirecard"'],
   ),
   liftAware('script-outline-no-claims', (bible) =>
     buildOutlineRequest({
@@ -1093,6 +1148,29 @@ const CASE_FULL = {
   people: ['Markus Braun', 'Jan Marsalek'],
 }
 
+const CASE_SEARCH = {
+  ...CASE_FULL,
+  searchBrief: {
+    subject: 'Wirecard',
+    measuredAt: '2026-11-02T12:00:00.000Z',
+    targetKeyword: {
+      keyword: 'wirecard scandal',
+      volume: 60,
+      competition: 40,
+      overall: 58,
+      estimatedMonthlySearch: 12000,
+      growthPct: 4,
+    },
+    secondaryKeywords: [],
+    searchedQuestions: ['Where did the missing billion go?', 'Who signed off the audits?'],
+    outliers: [],
+    titlePatterns: [],
+    toldAlready: [],
+    angleOptions: [],
+    chosenAngle: null,
+  } satisfies SearchBrief,
+}
+
 const DOSSIER_BRIEF: CaseBrief = {
   currentStatus: {
     asOf: '2024-01',
@@ -1131,6 +1209,10 @@ const DOSSIER_SCENES: Scene[] = [
 const dossierCases: LiftCase[] = [
   liftAware('dossier-brief-bare', (bible) => buildBriefRequest(CASE_BARE, CORPUS, bible)),
   liftAware('dossier-brief-full-case', (bible) => buildBriefRequest(CASE_FULL, CORPUS, bible)),
+  liftAware('dossier-brief-search', (bible) => buildBriefRequest(CASE_SEARCH, CORPUS, bible)),
+  liftAware('dossier-header-search', (bible) =>
+    buildScenesRequest(CASE_SEARCH, CORPUS, DOSSIER_BRIEF, bible),
+  ),
   liftAware('dossier-scenes', (bible) =>
     buildScenesRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, bible),
   ),
@@ -1286,6 +1368,53 @@ const otherCases: LiftCase[] = [
   ),
   liftAware('digest-no-lines', (bible) =>
     buildDigestRequest({ bible, weekOf: '2026-10-26', lines: [] }),
+  ),
+  liftAware('search-keyword-filter', () =>
+    buildKeywordFilterRequest({
+      subject: 'WeWork',
+      rows: [
+        'wework documentary',
+        'wework podcast',
+        'wework chair',
+        'the rise and fall of wework',
+      ].map((keyword) => ({
+        keyword,
+        volume: 60,
+        competition: 40,
+        overall: 60,
+        estimatedMonthlySearch: 9000,
+        growthPct: null,
+      })),
+    }),
+  ),
+  liftAware('search-winners', () =>
+    buildWinnersRequest({
+      subject: 'WeWork',
+      outliers: [
+        {
+          videoId: 'vid00000001',
+          title: 'The Rise and Fall of WeWork',
+          channel: 'Example Channel',
+          subscribers: 120000,
+          views: 4200000,
+          breakoutScore: 9.1,
+          publishedAt: '2024-03-01',
+          tags: ['wework', 'documentary'],
+        },
+      ],
+      descriptions: { vid00000001: 'How the office-rental startup grew, then lost its listing.' },
+    }),
+  ),
+  liftAware('search-angle-options', (bible) =>
+    buildAngleOptionsRequest({
+      bible,
+      subject: 'WeWork',
+      angleIdea: 'The lease structure is the story.',
+      targetKeyword: 'wework documentary',
+      secondaryKeywords: ['wework podcast'],
+      searchedQuestions: ['why did wework fail'],
+      toldAlready: ['the founder rise and the failed listing'],
+    }),
   ),
 ]
 

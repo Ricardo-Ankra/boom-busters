@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createPoliteClient } from './http'
-import { liveWikidata } from './wikidata'
+import { liveWikidata, qidOf } from './wikidata'
 import { mockWikidata } from './mock'
 
 const fixture = (name: string) =>
@@ -140,5 +140,13 @@ describe('mock wikidata', () => {
     expect(a.get('Q123')!.sitelinks.enwiki).toBe('Mock entity Q123')
     expect(a.get('Q456')!.qid).toBe('Q456')
     expect(a.get('Q456')).toMatchObject({ instanceOf: [], isClass: false })
+  })
+})
+
+describe('qidOf', () => {
+  it('reads the QID at the end of an entity URI and nothing else', () => {
+    expect(qidOf('http://www.wikidata.org/entity/Q42')).toBe('Q42')
+    expect(qidOf('http://www.wikidata.org/entity/Q42/extra')).toBeNull()
+    expect(qidOf('Q42')).toBeNull()
   })
 })

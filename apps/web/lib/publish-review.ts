@@ -29,6 +29,7 @@ import {
   TimelineSchema,
 } from '@boom-busters/schemas'
 import type { DescriptionSource, ScheduleSlot } from '@boom-busters/schemas'
+import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
 import { shortSlotsAfter } from './schedule-slots'
 
@@ -49,6 +50,10 @@ export interface PublishRecordProp {
   errorMessage: string | null
   title: string | null
   titleOptions: string[]
+  /** VidIQ's score by option text; null is scored with no number, a missing key is unscored. */
+  titleScores: Record<string, number | null>
+  /** Why the last scoring run kept no scores, or kept only some; empty when it did not fail. */
+  titleScoreNote: string
   descriptionBody: string | null
   /** The script version the saved opening was written for; null before 303 kept it. */
   bodyScriptVersion: number | null
@@ -59,6 +64,8 @@ export interface PublishRecordProp {
   chapterGlosses: Record<string, string>
   hashtags: string[]
   tags: string[]
+  /** The tags that came from the case's search brief, so the screen can mark them. */
+  searchTags: string[]
   thumbs: { key: string; url: string | null }[]
 }
 
@@ -160,6 +167,10 @@ export interface PublishModel {
   musicAttribution: string | null
   /** The channel's disclaimer, from the bible the project froze; the last block of the description. */
   disclaimer: string
+  /** The project froze a search brief, so VidIQ title scores are on offer. */
+  hasSearchBrief: boolean
+  /** What VidIQ charges to score one title, for the Score all estimate. */
+  titleScoreCredits: number
   slots: ScheduleSlot[]
   apiAuditPassed: boolean
   dailyUploadBudget: number
@@ -179,6 +190,8 @@ export function emptyPublishModel(): PublishModel {
     scriptVersion: 0,
     musicAttribution: null,
     disclaimer: '',
+    hasSearchBrief: false,
+    titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: [],
     apiAuditPassed: false,
     dailyUploadBudget: 0,
@@ -352,6 +365,8 @@ function toRecordProp(
     errorMessage: typeof error?.message === 'string' ? error.message : null,
     title: draft.success ? (draft.data.title ?? null) : null,
     titleOptions: draft.success ? draft.data.titleOptions : [],
+    titleScores: draft.success ? draft.data.titleScores : {},
+    titleScoreNote: draft.success ? draft.data.titleScoreNote : '',
     descriptionBody: draft.success ? (draft.data.descriptionBody ?? null) : null,
     bodyScriptVersion: draft.success ? (draft.data.bodyScriptVersion ?? null) : null,
     bodyStale:
@@ -365,6 +380,7 @@ function toRecordProp(
     chapterGlosses: draft.success ? draft.data.chapterGlosses : {},
     hashtags: draft.success ? draft.data.hashtags : [],
     tags: draft.success ? draft.data.tags : [],
+    searchTags: draft.success ? draft.data.searchTags : [],
     thumbs,
   }
 }
@@ -543,6 +559,8 @@ export async function publishModel(
     scriptVersion: scriptSources.scriptVersion,
     musicAttribution,
     disclaimer: channel.bible.disclaimer,
+    hasSearchBrief: project.searchBrief !== null,
+    titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: settings.publish.defaultScheduleSlots,
     apiAuditPassed: settings.publish.apiAuditPassed,
     dailyUploadBudget: settings.publish.dailyUploadBudget,

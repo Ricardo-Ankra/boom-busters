@@ -2,10 +2,6 @@ import {
   approvedScriptOpenings,
   getBibleDraft,
   getChannel,
-  getWorkspace,
-  recordVidiqCredits,
-  vidiqCredential,
-  vidiqCreditsThisMonth,
   writeBibleDraft,
 } from '@boom-busters/db'
 import {
@@ -19,7 +15,6 @@ import {
   VIDIQ_CREDIT_COST,
   VidiqError,
   transcriptOpening,
-  vidiqClientFor,
 } from '@boom-busters/providers/vidiq'
 import type { VidiqCall, VidiqClient, VidiqVideo } from '@boom-busters/providers/vidiq'
 import { bibleDraftUnits, parseEventData } from '@boom-busters/schemas'
@@ -28,8 +23,8 @@ import { NonRetriableError } from 'inngest'
 import { answerOrStop, callForAnswer } from '@/lib/answer'
 import { OWN_LINES_LIMIT, researchPlanFor } from '@/lib/bible-research'
 import { db } from '@/lib/db'
-import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
+import { spendVidiq } from '@/lib/vidiq-spend'
 import { inngest } from '../client'
 import { events } from '../events'
 
@@ -47,7 +42,7 @@ import { events } from '../events'
  */
 
 const FUNCTION_ID = 'bible-researcher'
-const PURPOSE = 'bible-research'
+const PURPOSE = 'bible-research' as const
 
 /** Videos kept from each channel's list: the most viewed. */
 const CHANNEL_VIDEOS_KEPT = 10
@@ -65,17 +60,9 @@ const keep = (video: VidiqVideo): KeptVideo => ({
 
 const byViews = (a: KeptVideo, b: KeptVideo) => (b.views ?? -1) - (a.views ?? -1)
 
-async function openClient(): Promise<VidiqClient> {
-  const apiKey = await vidiqCredential(db, env.SECRETS_ENCRYPTION_KEY)
-  const client = vidiqClientFor(apiKey)
-  if (!client) throw new NonRetriableError('There is no VidIQ key to research with')
-  return client
-}
-
 /**
- * One VidIQ call and its ledger row, for use inside one step. The monthly cap
- * is checked first; the row is written after the call returns, so a call that
- * threw is never charged.
+ * One VidIQ call and its ledger row, for use inside one step (the shared
+ * `spendVidiq`, charged to the channel and to no project).
  */
 async function spend<T>(
   channelId: string,
@@ -83,27 +70,8 @@ async function spend<T>(
   cost: number,
   call: (client: VidiqClient) => Promise<VidiqCall<T>>,
 ): Promise<T> {
-  const client = await openClient()
-  try {
-    const [{ settings }, spent] = await Promise.all([getWorkspace(db), vidiqCreditsThisMonth(db)])
-    const cap = settings.vidiq.monthlyCreditCap
-    if (spent + cost > cap) {
-      throw new NonRetriableError(
-        `The VidIQ cap is reached: ${spent} of ${cap} credits used this month`,
-      )
-    }
-    const result = await call(client)
-    await recordVidiqCredits(db, {
-      channelId,
-      purpose: PURPOSE,
-      tool,
-      args: result.args,
-      credits: result.credits,
-    })
-    return result.data
-  } finally {
-    await client.close()
-  }
+  const result = await spendVidiq({ channelId, purpose: PURPOSE, tool, cost }, call)
+  return result.data
 }
 
 /**

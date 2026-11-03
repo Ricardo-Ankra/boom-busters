@@ -11,12 +11,12 @@ export const metadata = { title: 'Case Library · Boom-Busters' }
 const SORTS = ['priority', 'category', 'status', 'newest'] as const
 
 function readSort(value: string | undefined): CaseSort {
-  return SORTS.includes(value as CaseSort) ? (value as CaseSort) : 'priority'
+  return SORTS.includes(value as CaseSort) ? (value as CaseSort) : 'newest'
 }
 
 /**
  * The Case Library (build spec section 11.3): a sortable table plus a
- * `Suggest cases` button that lands proposals as draft rows for triage, each
+ * triage list for rows proposed earlier as drafts, each
  * carrying visible `Accept` and `Dismiss` buttons.
  *
  * Sorting is a URL parameter rather than client state so a sorted view can be

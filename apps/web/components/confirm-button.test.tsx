@@ -49,4 +49,23 @@ describe('ConfirmButton', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   })
+
+  it('calls onArm when the first click arms it, and not on Cancel or confirm', async () => {
+    const user = userEvent.setup()
+    const onArm = vi.fn()
+    render(
+      <ConfirmButton
+        label="Stop"
+        confirmLabel="Stop this run"
+        consequence="The run stops."
+        onConfirm={vi.fn()}
+        onArm={onArm}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    expect(onArm).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    expect(onArm).toHaveBeenCalledTimes(2)
+  })
 })

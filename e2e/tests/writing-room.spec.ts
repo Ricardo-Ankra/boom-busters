@@ -5,8 +5,8 @@ import { channelPath, expectHitTargets, signIn, openFixtureProject } from './fix
  * The M3 writing room, driven the way a human drives it (build spec section
  * 13: "All flows driven through visible buttons only").
  *
- * Everything here runs in mock-provider mode, so `Suggest cases` and every
- * other model call returns deterministic placeholder text and costs nothing.
+ * Everything here runs in mock-provider mode, so every
+ * model call returns deterministic placeholder text and costs nothing.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -14,56 +14,11 @@ test.beforeEach(async ({ page }) => {
 })
 
 test.describe('Case Library', () => {
-  test('suggests cases into a triage list, and accepting moves one to the backlog', async ({
-    page,
-  }) => {
-    await page.goto(channelPath('/cases'))
-
-    await page.getByRole('button', { name: 'Suggest cases' }).click()
-    await page.getByLabel('How many').fill('3')
-    await page.getByRole('button', { name: 'Get suggestions' }).click()
-
-    // Mock mode says so on the toast, so a demo is never mistaken for research.
-    await expect(page.getByText(/mock mode researched nothing/i).first()).toBeVisible()
-
-    const suggested = page.getByRole('heading', { name: /Suggested — \d+ waiting on you/ })
-    await expect(suggested).toBeVisible()
-
-    // Every mock row says in its own title that it is not a real case.
-    await expect(page.getByText(/not a real case/).first()).toBeVisible()
-
-    await page.getByRole('button', { name: 'Accept' }).first().click()
-    await expect(page.getByText('Accepted — it is in your backlog').first()).toBeVisible()
-  })
-
-  test('dismissing a suggestion removes that row', async ({ page }) => {
-    await page.goto(channelPath('/cases'))
-    await page.getByRole('button', { name: 'Suggest cases' }).click()
-    await page.getByRole('button', { name: 'Get suggestions' }).click()
-
-    // Asserted on the row itself rather than on a count. Suggestions are
-    // deduplicated against the whole library, so how many are on screen
-    // depends on what earlier tests left behind — the row disappearing is the
-    // behaviour, the total is not.
-    const row = page
-      .getByRole('listitem')
-      .filter({ hasText: /not a real case/ })
-      .first()
-    const title = (await row.locator('p').first().innerText()).trim()
-
-    // Deleting asks first (decision 294): Dismiss arms, Dismiss it confirms.
-    // Exact, so a notice's "Dismiss note" on the row can never match.
-    await row.getByRole('button', { name: 'Dismiss', exact: true }).click()
-    await row.getByRole('button', { name: 'Dismiss it', exact: true }).click()
-    await expect(page.getByText('Dismissed').first()).toBeVisible()
-
-    await expect(page.getByText(title, { exact: true })).toHaveCount(0)
-  })
-
   test('a case can be added by hand and lands shortlisted', async ({ page }) => {
     await page.goto(channelPath('/cases'))
 
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill('A case I decided on myself')
     await page.getByLabel('Title').fill('A case I decided on myself')
     await page.getByLabel('Angle').fill('The angle nobody else took.')
     await page.getByRole('button', { name: 'Save case' }).click()
@@ -76,7 +31,7 @@ test.describe('Case Library', () => {
   test('the library sorts by every column offered', async ({ page }) => {
     await page.goto(channelPath('/cases'))
 
-    for (const sort of ['Category', 'Status', 'Newest', 'Priority']) {
+    for (const sort of ['Category', 'Status', 'Newest']) {
       await page.getByRole('button', { name: sort, exact: true }).click()
       await expect(page).toHaveURL(new RegExp(`sort=${sort.toLowerCase()}`))
     }

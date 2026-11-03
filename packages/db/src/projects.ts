@@ -1,5 +1,6 @@
 import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
-import type { DirectorsBook, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
+import { SearchBriefSchema } from '@boom-busters/schemas'
+import type { DirectorsBook, SearchBrief, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { cases, channelBibles, channels, costLedger, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
@@ -69,6 +70,8 @@ export interface ProjectSummary {
   direction: Record<string, unknown> | null
   /** The plan-level job in flight (decision 286); parse with `VisualsJobSchema`. */
   visualsJob: Record<string, unknown> | null
+  /** The case's search brief as frozen when the project started; null when none was frozen. */
+  searchBrief: SearchBrief | null
 }
 
 const summaryColumns = {
@@ -86,6 +89,7 @@ const summaryColumns = {
   shortsPhase: projects.shortsPhase,
   direction: projects.direction,
   visualsJob: projects.visualsJob,
+  searchBrief: projects.searchBrief,
   createdAt: projects.createdAt,
   updatedAt: projects.updatedAt,
   dossierVersion: dossiers.version,
@@ -153,13 +157,25 @@ function summaryFrom(db: Database) {
     .leftJoin(dossiers, eq(dossiers.projectId, projects.id))
 }
 
+const storedBrief = SearchBriefSchema.nullable().catch(null)
+
+/** The stored brief jsonb as the app's type; a row that does not parse reads null. */
+function toProjectSummary<T extends { searchBrief: unknown }>(
+  row: T,
+): Omit<T, 'searchBrief'> & { searchBrief: SearchBrief | null } {
+  return { ...row, searchBrief: storedBrief.parse(row.searchBrief ?? null) }
+}
+
 export async function listProjects(db: Database, channelId: string): Promise<ProjectSummary[]> {
-  return summaryFrom(db).where(eq(projects.channelId, channelId)).orderBy(desc(projects.updatedAt))
+  const rows = await summaryFrom(db)
+    .where(eq(projects.channelId, channelId))
+    .orderBy(desc(projects.updatedAt))
+  return rows.map(toProjectSummary)
 }
 
 export async function getProject(db: Database, id: string): Promise<ProjectSummary | undefined> {
   const [row] = await summaryFrom(db).where(eq(projects.id, id))
-  return row
+  return row ? toProjectSummary(row) : undefined
 }
 
 /** Projects parked at a gate — the review half of the Needs-you queue. */
@@ -167,9 +183,10 @@ export async function listProjectsAwaitingReview(
   db: Database,
   channelId: string,
 ): Promise<ProjectSummary[]> {
-  return summaryFrom(db)
+  const rows = await summaryFrom(db)
     .where(and(eq(projects.channelId, channelId), eq(projects.stageStatus, 'awaiting_review')))
     .orderBy(projects.updatedAt)
+  return rows.map(toProjectSummary)
 }
 
 export async function setProjectStage(
@@ -489,23 +506,43 @@ export async function createProjectFromCase(
     }
   }
 
-  const [row] = await db
-    .insert(projects)
-    .values({
-      // A project always belongs to its case's channel.
-      channelId: sql<string>`(select ${cases.channelId} from ${cases} where ${cases.id} = ${input.caseId})`,
-      bibleId:
-        input.bibleId ??
-        sql<string>`(select ${channels.currentBibleId} from ${channels} join ${cases} on ${cases.channelId} = ${channels.id} where ${cases.id} = ${input.caseId})`,
-      caseId: input.caseId,
-      title: input.title,
-      stage: 'dossier',
-      stageStatus: 'queued',
-      ...(input.targetRuntimeMin === undefined ? {} : { targetRuntimeMin: input.targetRuntimeMin }),
-    })
-    .returning()
+  // The brief is frozen only while it still describes the case's subject, read
+  // under a lock so an edit cannot land between the check and the insert.
+  return db.transaction(async (tx) => {
+    const [kase] = await tx
+      .select({ subject: cases.subject, searchBrief: cases.searchBrief })
+      .from(cases)
+      .where(eq(cases.id, input.caseId))
+      .for('update')
+    const brief = storedBrief.parse(kase?.searchBrief ?? null)
+    const frozen =
+      brief !== null &&
+      kase?.subject != null &&
+      brief.subject.trim().toLowerCase() === kase.subject.trim().toLowerCase()
+        ? brief
+        : null
 
-  return row!
+    const [row] = await tx
+      .insert(projects)
+      .values({
+        // A project always belongs to its case's channel.
+        channelId: sql<string>`(select ${cases.channelId} from ${cases} where ${cases.id} = ${input.caseId})`,
+        bibleId:
+          input.bibleId ??
+          sql<string>`(select ${channels.currentBibleId} from ${channels} join ${cases} on ${cases.channelId} = ${channels.id} where ${cases.id} = ${input.caseId})`,
+        caseId: input.caseId,
+        title: input.title,
+        stage: 'dossier',
+        stageStatus: 'queued',
+        searchBrief: frozen,
+        ...(input.targetRuntimeMin === undefined
+          ? {}
+          : { targetRuntimeMin: input.targetRuntimeMin }),
+      })
+      .returning()
+
+    return row!
+  })
 }
 
 /**

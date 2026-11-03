@@ -11,7 +11,7 @@ import {
 import { DEFAULT_SETTINGS, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { addCase, startProjectFromCase, suggestCases } from '../cases/actions'
+import { addCase, startProjectFromCase } from '../cases/actions'
 import { disconnectYoutubeAction, saveSettings } from './actions'
 import { updateChannelAction } from './channel-actions'
 import {
@@ -90,7 +90,6 @@ describeDb('an archived channel is read-only', () => {
           priorityScore: 5,
         }),
     ],
-    ['suggestCases', () => suggestCases(channelId, { count: 3 })],
     ['startProjectFromCase', () => startProjectFromCase(caseId)],
     ['updateChannelAction', () => updateChannelAction(channelId, { name: 'Renamed' })],
     ['disconnectYoutubeAction', () => disconnectYoutubeAction(channelId)],

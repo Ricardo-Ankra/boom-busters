@@ -2,8 +2,14 @@
 
 Status: designed with the owner in conversation on 2026-10-28, then read by
 a builder. Calls marked "my call" are Claude's and the owner can overturn
-them. Not yet approved. No decision number yet; one is taken at the merge
-(parallel sessions collide on numbers).
+them. Approved by the owner on 2026-11-02 with four answers: remove
+`Suggest cases` and retire the case-finder ranking code; score the top 3
+titles automatically, with `Score all` for the rest; offer a refresh when a
+brief is over 30 days old; leave the `case-finder-seed-quality` branch alone
+for now. The plan is `docs/superpowers/plans/2026-11-02-vidiq-case-research.md`;
+where it departs from this text (the anti-keyword rule lives in the outline's
+brief block, not `script-craft.md`, to keep brief-free prompts identical), the
+plan says why. Decision numbers are taken at the merge.
 
 Supersedes the case-finder evidence-ranking design
 (`2026-10-20-case-finder-evidence-ranking-design.md`), which is dropped.

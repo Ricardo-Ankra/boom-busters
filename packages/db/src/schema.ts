@@ -17,6 +17,8 @@ import type {
   PointPlanRecord,
   PointScriptRecord,
   PointVoiceRecord,
+  SearchBrief,
+  CaseResearchJob,
   Series,
   Settings,
   TalkingPoint,
@@ -452,6 +454,10 @@ export const cases = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<{ url: string; note?: string }[]>(),
+    /** The VidIQ research brief for `subject` (`SearchBriefSchema`); null until a run saves one. */
+    searchBrief: jsonb('search_brief').$type<SearchBrief>(),
+    /** The case research run in flight or last finished (`CaseResearchJobSchema`). */
+    searchJob: jsonb('search_job').$type<CaseResearchJob>(),
     priorityScore: integer('priority_score').notNull().default(0),
     status: caseStatusEnum('status').notNull().default('idea'),
     createdAt: createdAt(),
@@ -511,6 +517,8 @@ export const projects = pgTable(
      * schemas: a re-plan, a fix, a redraft, or a fetch not yet picked up.
      */
     visualsJob: jsonb('visuals_job').$type<Record<string, unknown>>(),
+    /** The case's search brief, frozen when the project started (null when none or for another subject). */
+    searchBrief: jsonb('search_brief').$type<SearchBrief>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

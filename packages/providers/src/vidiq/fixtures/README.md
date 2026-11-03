@@ -17,7 +17,12 @@ Calls:
 | channel_videos.json | vidiq_channel_videos | channelId "@boom-busters", videoFormat long, popular true |
 | video_transcript.json | vidiq_video_transcript | videoId JH89RGzulEE, language en |
 | keyword_research.md | vidiq_keyword_research | keyword "wework", mode matching_terms, limit 8 |
+| keyword-questions.ts | vidiq_keyword_research | keyword "wework", mode questions (hand-made, see below) |
 | score_title.json | vidiq_score_title | title "How WeWork Lost $47 Billion", type long |
+
+`keyword-questions.ts` is a hand-made stand-in in the recorded format, not a recording: no live
+`questions` call was made. It copies the matching_terms table layout and column names so the same
+parser reads it; its volumes are invented and only serve the mock.
 
 Formats found (the plan assumed JSON everywhere; these override it):
 

@@ -309,6 +309,61 @@ describeDb('dossier-reviser', () => {
     }
   })
 
+  it('opens every pass on the search brief and closes the dossier with its Search section', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    const replies: Record<string, unknown> = {
+      'Read the documents': BRIEF,
+      'Now find the scenes': { scenes: SCENES },
+      'Now extract the facts': { claims: CLAIMS },
+      'Your brief raised': ANSWERS,
+    }
+    callLlm.mockImplementation(async (request: LLMTaskRequest) => {
+      const last = request.messages.at(-1)!.content
+      const reply = Object.entries(replies).find(([opening]) => last.startsWith(opening))
+      return { text: JSON.stringify(reply?.[1] ?? {}) }
+    })
+    const searched = {
+      id: 'load-case',
+      handler: () => ({
+        ...loadCase(1).handler(),
+        subject: 'Wirecard',
+        people: [],
+        sourceLinks: [],
+        searchBrief: {
+          subject: 'Wirecard',
+          measuredAt: '2026-11-02T12:00:00.000Z',
+          targetKeyword: {
+            keyword: 'wirecard scandal',
+            volume: null,
+            competition: null,
+            overall: null,
+            estimatedMonthlySearch: null,
+            growthPct: null,
+          },
+          secondaryKeywords: [],
+          searchedQuestions: ['Where did the 1.9 billion euros go?'],
+          outliers: [],
+          titlePatterns: [],
+          toldAlready: [],
+          angleOptions: [],
+          chosenAngle: null,
+        },
+      }),
+    }
+
+    await engine.executeStep('save-revision', {
+      events: changesRequested(),
+      steps: [searched, corpusLoad],
+    })
+
+    for (const [request] of callLlm.mock.calls as [LLMTaskRequest][]) {
+      expect(request.messages[0]!.content).toContain('Target search: "wirecard scandal"')
+    }
+    expect(saveDossier.mock.calls[0]![1].contentMd).toContain(
+      '## Search\n\nTarget keyword: wirecard scandal',
+    )
+  })
+
   it('stops a revision in flight from before the corpus rather than run new passes over it', async () => {
     const { ctx } = await engine.executeStep('revision-predates-corpus', {
       events: changesRequested(),

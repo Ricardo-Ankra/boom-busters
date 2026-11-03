@@ -297,6 +297,7 @@ test.describe('a second channel’s bible', () => {
     await expect(page.getByText('Complete the channel bible in Settings first.')).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill(CASE_TITLE)
     await page.getByLabel('Title').fill(CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
     await page.getByRole('button', { name: 'Save case' }).click()

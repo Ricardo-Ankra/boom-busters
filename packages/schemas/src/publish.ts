@@ -44,6 +44,13 @@ export const HASHTAG_MAX = 60
 export const PublishDraftSchema = z.object({
   title: z.string().trim().max(100).optional(),
   titleOptions: z.array(z.string()).max(12).default([]),
+  /**
+   * VidIQ's score for a title option, by the option's text; null when VidIQ
+   * answered with no score. An option with no entry has not been scored.
+   */
+  titleScores: z.record(z.string(), z.number().nullable()).default({}),
+  /** Why the last scoring run kept no scores (a cap, a refused key); empty when it did not fail. */
+  titleScoreNote: z.string().max(500).default(''),
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
   /**
@@ -61,6 +68,8 @@ export const PublishDraftSchema = z.object({
   /** At most three, each one word; the composer normalises them. */
   hashtags: z.array(z.string().trim().max(HASHTAG_MAX)).max(HASHTAGS_MAX).default([]),
   tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
+  /** The tags assembled from the case's search brief, so the screen can mark them. */
+  searchTags: z.array(z.string()).default([]),
 })
 export type PublishDraft = z.infer<typeof PublishDraftSchema>
 

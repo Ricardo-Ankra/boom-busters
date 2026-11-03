@@ -129,6 +129,7 @@ test.describe('making a project from a case', () => {
   test('creates it, and says plainly when the pipeline could not be reached', async ({ page }) => {
     await page.goto(channelPath('/cases'))
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill(CASE_TITLE)
     await page.getByLabel('Title').fill(CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
     await page.getByRole('button', { name: 'Save case' }).click()
@@ -284,6 +285,7 @@ test.describe('deleting a project', () => {
     // shared fixture out from under the tests that follow it.
     await page.goto(channelPath('/cases'))
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill(CASE_TITLE)
     await page.getByLabel('Title').fill(CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
     await page.getByRole('button', { name: 'Save case' }).click()

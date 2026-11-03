@@ -60,6 +60,9 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - bible-researcher is queued per channel (`concurrency` keyed on the channel):
   //   the start action refuses while a job runs, and a second run must wait its
   //   turn, never cancel the one that is paying for VidIQ calls.
+  // - case-researcher is queued per case (`concurrency` keyed on the case) for
+  //   the same reason: the action refuses while a job runs, and a second run
+  //   waits its turn, never cancelling the one paying for VidIQ calls.
   // - bible-drafter is queued per channel the same way: a redraft waits for the
   //   run before it, never cancels a run that is mid-answer.
   // - stretch-replanner queues one chapter's stretches behind each other
@@ -79,6 +82,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'analytics-runner': null,
   'bible-drafter': null,
   'bible-researcher': null,
+  'case-researcher': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,

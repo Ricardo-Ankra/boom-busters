@@ -26,7 +26,7 @@ import {
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
 } from '@boom-busters/schemas'
-import type { GroundedClaim } from '@boom-busters/schemas'
+import type { GroundedClaim, SearchBrief } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { completeForProject } from '@/lib/answer-call'
@@ -34,6 +34,7 @@ import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { notify } from '@/lib/notify'
+import type * as Gather from '../lib/dossier-gather'
 import type * as Research from '../lib/dossier-research'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { dossierRunner } from './dossier-runner'
@@ -68,9 +69,45 @@ vi.mock('../lib/dossier-research', async (importOriginal) => {
   return { ...original, researchDossier }
 })
 
+// The real gather, watched: which competitor links the runner hands it is under test.
+const gatherCorpus = vi.hoisted(() => vi.fn())
+vi.mock('../lib/dossier-gather', async (importOriginal) => {
+  const original = await importOriginal<typeof Gather>()
+  gatherCorpus.mockImplementation(original.gatherCorpus)
+  return { ...original, gatherCorpus }
+})
+
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const CASE = { title: 'Wirecard', category: 'con', angle: null, demandNotes: null }
+const SEARCH_BRIEF: SearchBrief = {
+  subject: 'Wirecard',
+  measuredAt: '2026-11-02T12:00:00.000Z',
+  targetKeyword: {
+    keyword: 'wirecard scandal',
+    volume: null,
+    competition: null,
+    overall: null,
+    estimatedMonthlySearch: null,
+    growthPct: null,
+  },
+  secondaryKeywords: [],
+  searchedQuestions: ['Where did the 1.9 billion euros go?'],
+  outliers: ['dQw4w9WgXcQ', 'abcdefghijk'].map((videoId) => ({
+    videoId,
+    title: videoId,
+    channel: null,
+    subscribers: null,
+    views: null,
+    breakoutScore: null,
+    publishedAt: null,
+    tags: [],
+  })),
+  titlePatterns: [],
+  toldAlready: [],
+  angleOptions: [],
+  chosenAngle: null,
+}
 const ENTITY = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
 
 const DOCUMENTS = [
@@ -614,6 +651,7 @@ describeDb('dossier-runner', () => {
       ...CASE,
       subject: 'Wirecard AG',
       people: ['Markus Braun'],
+      searchBrief: null,
     })
 
     // A load-case stored before cases had a subject: the title stands in, as it did for the gather.
@@ -628,7 +666,52 @@ describeDb('dossier-runner', () => {
       ...CASE,
       subject: 'Wirecard',
       people: [],
+      searchBrief: null,
     })
+  })
+
+  it('hands the passes the search brief and the gather the outlier videos once each', async () => {
+    researchDossier.mockClear()
+    gatherCorpus.mockClear()
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    const steps = stored().map((s) =>
+      s.id === 'load-case'
+        ? {
+            id: s.id,
+            handler: () => ({
+              ...CASE,
+              subject: 'Wirecard',
+              people: [],
+              sourceLinks: [],
+              competitorLinks: [{ url: 'https://youtu.be/dQw4w9WgXcQ?t=5' }],
+              searchBrief: SEARCH_BRIEF,
+            }),
+          }
+        : s,
+    )
+
+    await engine.executeStep('save-dossier', { events: created(), steps })
+
+    expect(researchDossier.mock.calls[0]![1].caseContext.searchBrief).toEqual(SEARCH_BRIEF)
+    expect(gatherCorpus.mock.calls[0]![1].competitorLinks).toEqual([
+      { url: 'https://youtu.be/dQw4w9WgXcQ?t=5' },
+      { url: 'https://www.youtube.com/watch?v=abcdefghijk' },
+    ])
+    expect(saveDossier.mock.calls[0]![1].contentMd).toContain(
+      '## Search\n\nTarget keyword: wirecard scandal\n\n- Where did the 1.9 billion euros go? (open)',
+    )
+  })
+
+  it('runs a replayed load-case with no search brief as before', async () => {
+    researchDossier.mockClear()
+    gatherCorpus.mockClear()
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+
+    await engine.executeStep('save-dossier', { events: created(), steps: stored() })
+
+    expect(researchDossier.mock.calls[0]![1].caseContext.searchBrief).toBeNull()
+    expect(gatherCorpus.mock.calls[0]![1].competitorLinks).toEqual([])
+    expect(saveDossier.mock.calls[0]![1].contentMd).not.toContain('## Search')
   })
 
   it('says at the gate when the subject was not found on Wikipedia', async () => {

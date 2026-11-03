@@ -28,6 +28,8 @@ import {
   withNote,
 } from '@boom-busters/providers'
 import type { CorpusDocument, LLMTaskRequest, PassPart, Repair } from '@boom-busters/providers'
+import { videoIdFromUrl } from '@boom-busters/providers/vidiq'
+import type { SearchBrief } from '@boom-busters/schemas'
 import type {
   BibleInUse,
   CaseBrief,
@@ -76,6 +78,27 @@ export interface CaseContext {
   /** The case's subject and people, as `replayedCase` reads them from load-case. */
   subject: string
   people: readonly string[]
+  /** The case's VidIQ brief, or null for a case never researched there. */
+  searchBrief?: SearchBrief | null
+}
+
+/**
+ * The case's own competitor links, then the brief's outlier videos as watch
+ * links, each video once: an outlier the case already lists is not added again.
+ */
+export function withOutlierLinks(
+  links: readonly { url: string }[],
+  brief: SearchBrief | null | undefined,
+): { url: string }[] {
+  const seen = new Set(links.flatMap((link) => videoIdFromUrl(link.url) ?? []))
+  const added: { url: string }[] = []
+  for (const outlier of brief?.outliers ?? []) {
+    // VidIQ's text: only a real YouTube id becomes a link.
+    if (!/^[A-Za-z0-9_-]{11}$/.test(outlier.videoId) || seen.has(outlier.videoId)) continue
+    seen.add(outlier.videoId)
+    added.push({ url: `https://www.youtube.com/watch?v=${outlier.videoId}` })
+  }
+  return [...links, ...added]
 }
 
 /** How the corpus split at the gather: what the passes read, and what they did not. */

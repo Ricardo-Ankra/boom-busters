@@ -29,6 +29,7 @@ import {
   SeriesSchema,
   ToldAlreadySchema,
   ValidationError,
+  searchBriefLine,
 } from '@boom-busters/schemas'
 import type {
   BibleInUse,
@@ -37,6 +38,7 @@ import type {
   ResearchAnswers,
   ResearchClaim,
   Scene,
+  SearchBrief,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots, literalBibleText, noun } from './bible'
@@ -106,6 +108,8 @@ export interface CaseContext {
   /** The company's common name (decision 2), named before the title, which only works. */
   subject?: string | null
   people?: readonly string[]
+  /** The case's VidIQ research (decision 371 onward): null or absent leaves every prompt as it was. */
+  searchBrief?: SearchBrief | null
 }
 
 /**
@@ -123,9 +127,33 @@ function caseHeader(input: CaseContext, bible: ChannelBible): string {
     `Category: ${input.category}`,
     input.angle ? `Angle to pursue: ${input.angle}` : null,
     input.demandNotes ? `Audience notes: ${input.demandNotes}` : null,
+    ...searchHeaderLines(input.searchBrief),
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+/** A brief that found a keyword or a question; one that found neither adds nothing to a prompt. */
+function hasSearchTerms(brief: SearchBrief | null | undefined): brief is SearchBrief {
+  return !!brief && (brief.targetKeyword !== null || brief.searchedQuestions.length > 0)
+}
+
+/** Third-party text, as one quoted line: it can never start a line of its own. */
+const quotedSearch = (text: string): string => JSON.stringify(searchBriefLine(text))
+
+/** What viewers search for, only when the case has a search brief with terms. */
+function searchHeaderLines(brief: SearchBrief | null | undefined): string[] {
+  if (!hasSearchTerms(brief)) return []
+  const questions = brief.searchedQuestions
+    .map((question) => searchBriefLine(question))
+    .filter(Boolean)
+  return [
+    'What viewers search for, quoted from their searches (answer these where the record allows; never answer one from the keyword):',
+    ...(brief.targetKeyword ? [`Target search: ${quotedSearch(brief.targetKeyword.keyword)}`] : []),
+    ...(questions.length > 0
+      ? ['Searched questions:', ...questions.map((question) => `- ${JSON.stringify(question)}`)]
+      : []),
+  ]
 }
 
 /**
@@ -500,7 +528,11 @@ the list already told.
   with no video documents in the list, it is []. \`beat\` is the beat in your
   words; \`quote\` is the transcript's own words that tell it, without the
   [mm:ss] markers.
-- \`openQuestions\` are what the story needs and the documents do not settle.
+- \`openQuestions\` are what the story needs and the documents do not settle.${
+      hasSearchTerms(input.searchBrief)
+        ? '\n- Searched questions are candidates for `openQuestions`: keep each one the documents can address; a question the record cannot answer stays open and is never answered from the keyword.'
+        : ''
+    }
 - Every \`quote\` is the shortest span of the cited document that shows the
   point, copied exactly, at most ${DOSSIER_QUOTE_MAX} characters, and ${QUOTE_FINDABLE}.
 

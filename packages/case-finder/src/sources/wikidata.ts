@@ -6,7 +6,7 @@ import type { PoliteClient } from './http'
  * Wikidata entity facts and SPARQL. `facts` is the cheap, exact side: one
  * `wbgetentities` call per 50 ids gives sitelinks and the claims we rank on,
  * and a second batch gives the people's labels, death and conviction claims.
- * `sparql` is the wide side, used to build the hitlist.
+ * `sparql` is the wide side, used for the wide candidate queries.
  */
 
 export interface EntityFacts {
@@ -221,4 +221,10 @@ export function liveWikidata(client: PoliteClient): WikidataSource {
       return out
     },
   }
+}
+
+/** The QID at the end of an entity URI; null for anything else. */
+export function qidOf(uri: string): string | null {
+  const m = /\/(Q\d+)$/.exec(uri)
+  return m ? m[1]! : null
 }

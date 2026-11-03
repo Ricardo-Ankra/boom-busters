@@ -5,7 +5,7 @@ import type { IsoDate } from '../types'
 import type { PoliteClient } from './http'
 
 /**
- * English Wikipedia through the MediaWiki action API. The hitlist reads
+ * English Wikipedia through the MediaWiki action API. Candidate discovery reads
  * category members and list-page links, and evidence gathering reads a page
  * as it stood before a back-test day (`revisionBefore`, then `parsed`), so
  * nothing written after the day can leak into a score.
@@ -14,7 +14,7 @@ import type { PoliteClient } from './http'
 export interface WikipediaSource {
   /** Namespace-0 titles; `category` has no `Category:` prefix. Depth 1 adds each direct subcategory's pages. */
   categoryMembers(category: string, depth: 0 | 1): Promise<string[]>
-  /** Namespace-0 links of a page. Includes navbox links; the hitlist resolves and filters later. */
+  /** Namespace-0 links of a page. Includes navbox links; the caller resolves and filters later. */
   listLinks(page: string): Promise<string[]>
   /** Titles of the redirects that point at `title`, not `title` itself. */
   redirectsTo(title: string): Promise<string[]>

@@ -304,6 +304,20 @@ describe('PublishDraftSchema', () => {
     expect(draft.tags).toEqual([])
   })
 
+  it('reads title scores and search tags, and a stored draft without them still parses', () => {
+    const draft = PublishDraftSchema.parse({
+      titleOptions: ['A', 'B'],
+      titleScores: { A: 72, B: null },
+      searchTags: ['wirecard scandal'],
+    })
+    expect(draft.titleScores).toEqual({ A: 72, B: null })
+    expect(draft.searchTags).toEqual(['wirecard scandal'])
+    const old = PublishDraftSchema.parse({ titleOptions: ['A'], tags: ['x'] })
+    expect(old.titleScores).toEqual({})
+    expect(old.titleScoreNote).toBe('')
+    expect(old.searchTags).toEqual([])
+  })
+
   it('refuses an overlong title — YouTube would truncate it silently', () => {
     expect(PublishDraftSchema.safeParse({ title: 'x'.repeat(101) }).success).toBe(false)
   })

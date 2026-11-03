@@ -8,6 +8,7 @@ import {
   FIXTURE_PROJECT_ID,
   getProject,
   latestShortsCandidates,
+  projects,
   requireTestDatabase,
   scripts,
   seed,
@@ -22,6 +23,7 @@ import {
   EMPTY_BIBLE,
   TransientProviderError,
 } from '@boom-busters/schemas'
+import { mockOutline } from '@boom-busters/providers'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
@@ -295,6 +297,66 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(result).toMatchObject({ ok: true, contentMd: 'A whole chapter.' })
     const sent = callLlm.mock.calls[0]![0] as { system: string }
     expect(sent.system).toContain('a documentary channel about\ncorporate collapses, frauds')
+  })
+
+  it("reads the project's search brief inside the outline step, never from an earlier step", async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+    const brief = {
+      subject: 'Wirecard',
+      measuredAt: '2026-11-02T12:00:00.000Z',
+      targetKeyword: {
+        keyword: 'wirecard scandal',
+        volume: 60,
+        competition: 40,
+        overall: 58,
+        estimatedMonthlySearch: 12000,
+        growthPct: 4,
+      },
+      secondaryKeywords: [],
+      searchedQuestions: ['Where did the missing billion go?'],
+      outliers: [],
+      titlePatterns: [],
+      toldAlready: [],
+      angleOptions: [],
+      chosenAngle: null,
+    }
+    const steps = [
+      {
+        id: 'load-dossier',
+        // A run parked before the brief existed: no brief field in the replayed result.
+        handler: () => ({
+          scriptId,
+          caseTitle: 'Wirecard',
+          targetRuntimeMin: 10,
+          dossierMd: 'The dossier.',
+          claims: [],
+        }),
+      },
+    ]
+    const setBrief = (value: typeof brief | null) =>
+      // Every project row: the test database holds only the seeded fixture project.
+      db.update(projects).set({ searchBrief: value })
+    try {
+      await setBrief(brief)
+      await engine.executeStep('outline', { events: approved(), steps }).catch(() => undefined)
+      const sent = callLlm.mock.calls[0]![0] as {
+        system: string
+        messages: { content: string }[]
+      }
+      expect(sent.system).toContain('searching "wirecard scandal" would recognise')
+      expect(sent.messages[0]!.content).toContain('- "Where did the missing billion go?"')
+
+      callLlm.mockClear()
+      await setBrief(null)
+      await engine.executeStep('outline', { events: approved(), steps }).catch(() => undefined)
+      const plain = callLlm.mock.calls[0]![0] as { system: string; messages: { content: string }[] }
+      expect(plain.system).not.toContain('a person searching')
+      expect(plain.messages[0]!.content).not.toContain('Searched questions')
+    } finally {
+      await setBrief(null)
+    }
   })
 
   it('refuses a project frozen to an incomplete bible before any prompt is sent', async () => {

@@ -12,6 +12,7 @@ import {
   currentBible,
   insertTalkingPointSet,
   approveTalkingPointSet,
+  projects,
   publishRecords,
   requireTestDatabase,
   seed,
@@ -194,5 +195,52 @@ describeDb('publishModel point Short pre-fill (design section 8)', () => {
     expect(items.get('First point')?.suggestedPublishAtIso ?? null).toBeNull()
     // The one still unscheduled takes the first slot, not the second.
     expect(items.get('Second point')?.suggestedPublishAtIso).toBeTruthy()
+  })
+})
+
+describeDb('publishModel search brief fields', () => {
+  it('says whether a brief is frozen, and carries the scores, the note and the marked tags', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    await db.update(projects).set({ searchBrief: null })
+    expect(await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).toMatchObject({
+      hasSearchBrief: false,
+      titleScoreCredits: 5,
+    })
+
+    await db.update(projects).set({
+      searchBrief: {
+        subject: 'Wirecard',
+        measuredAt: '2026-11-02T12:00:00.000Z',
+        targetKeyword: null,
+        secondaryKeywords: [],
+        searchedQuestions: [],
+        outliers: [],
+        titlePatterns: [],
+        toldAlready: [],
+        angleOptions: [],
+        chosenAngle: null,
+      },
+    })
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, {
+      metadata: {
+        titleOptions: ['A title', 'B title'],
+        titleScores: { 'A title': 71, 'B title': null },
+        titleScoreNote: 'VidIQ scored 2 of 3 titles, then stopped: the cap is reached.',
+        searchTags: ['wirecard scandal'],
+      },
+    })
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      expect(model.hasSearchBrief).toBe(true)
+      expect(model.items[0]!.record).toMatchObject({
+        titleScores: { 'A title': 71, 'B title': null },
+        titleScoreNote: 'VidIQ scored 2 of 3 titles, then stopped: the cap is reached.',
+        searchTags: ['wirecard scandal'],
+      })
+    } finally {
+      await db.update(projects).set({ searchBrief: null })
+    }
   })
 })
