@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
+import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createChannel } from './channels'
@@ -93,6 +94,15 @@ suite('measuredPace', () => {
     await take(channelId, 23, 10_000)
     await take(otherId, 100, 10_000)
     expect(await measuredPace(db, channelId)).toEqual({ wordsPerMinute: 138, takes: 2 })
+  })
+
+  it('ignores a take whose timings are a JSON scalar, without an error', async () => {
+    await take(channelId, 23, 10_000)
+    await take(channelId, 5, 10_000)
+    await db.execute(
+      dsql`update voice_takes set timings = 'null'::jsonb where duration_ms is not null and jsonb_array_length(timings) = 5`,
+    )
+    expect(await measuredPace(db, channelId)).toEqual({ wordsPerMinute: 138, takes: 1 })
   })
 
   it('draws on the latest takes up to the limit', async () => {

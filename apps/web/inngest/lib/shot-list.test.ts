@@ -66,6 +66,16 @@ describe('estimateParagraphMs', () => {
     expect(estimateParagraphMs(ten, 120)).toBe(5000)
   })
 
+  it('returns whole milliseconds at any pace', () => {
+    for (const wpm of [130, 170, 137]) {
+      for (const n of [7, 13, 29]) {
+        const text = Array(n).fill('word').join(' ')
+        expect(Number.isInteger(estimateParagraphMs(text, wpm))).toBe(true)
+      }
+    }
+    expect(estimateParagraphMs(Array(13).fill('word').join(' '), 130)).toBe(6000)
+  })
+
   it('takes the project pace through timedParagraphs for a paragraph with no take', () => {
     const chapters = [{ id: 'ch-a', title: 'A', contentMd: ten }]
     expect(timedParagraphs({ chapters, takes: [], wordsPerMinute: 120 })[0]?.durationMs).toBe(5000)

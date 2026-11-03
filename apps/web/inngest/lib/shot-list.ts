@@ -40,7 +40,7 @@ export interface TimedParagraph {
 /** The fallback when a paragraph has no measured take: the format's pace (150 by default). */
 export function estimateParagraphMs(text: string, wordsPerMinute = 150): number {
   const words = text.split(/\s+/).filter(Boolean).length
-  return Math.max(2_000, words * (60_000 / wordsPerMinute))
+  return Math.max(2_000, Math.round((words * 60_000) / wordsPerMinute))
 }
 
 export interface TakeDuration {

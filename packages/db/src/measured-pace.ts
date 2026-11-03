@@ -26,13 +26,12 @@ export async function measuredPace(
       coalesce(sum(latest.duration_ms), 0)::float8 as duration_ms,
       count(*)::int as takes
     from (
-      select
-        current_take.duration_ms,
-        jsonb_array_length(current_take.timings) as words
+      select current_take.duration_ms, current_take.words
       from (
         select distinct on (${voiceTakes.projectId}, ${voiceTakes.chapterId}, ${voiceTakes.paragraphIndex})
           ${voiceTakes.durationMs} as duration_ms,
-          ${voiceTakes.timings} as timings,
+          case when jsonb_typeof(${voiceTakes.timings}) = 'array'
+            then jsonb_array_length(${voiceTakes.timings}) end as words,
           ${voiceTakes.createdAt} as created_at
         from ${voiceTakes}
         join ${projects} on ${projects.id} = ${voiceTakes.projectId}
@@ -40,9 +39,7 @@ export async function measuredPace(
         order by ${voiceTakes.projectId}, ${voiceTakes.chapterId}, ${voiceTakes.paragraphIndex},
           ${voiceTakes.takeNumber} desc
       ) as current_take
-      where current_take.duration_ms > 0
-        and jsonb_typeof(current_take.timings) = 'array'
-        and jsonb_array_length(current_take.timings) > 0
+      where current_take.duration_ms > 0 and current_take.words > 0
       order by current_take.created_at desc
       limit ${takeLimit}
     ) as latest
