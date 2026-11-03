@@ -105,11 +105,11 @@ describeDb('keyword-measurer (mock mode)', () => {
     expect(
       ledger.every((r) => r.purpose === 'keyword-measure' && r.tool === 'vidiq_keyword_research'),
     ).toBe(true)
-    expect(ledger.map((r) => (r.args as { limit?: number; mode?: string }).limit)).toEqual([1, 1])
+    expect(ledger.map((r) => (r.args as { limit?: number; mode?: string }).limit)).toEqual([20, 20])
     expect((ledger[0]?.args as { mode?: string }).mode).toBe('matching_terms')
   })
 
-  it('reads the row whose keyword equals the one asked, ignoring case', async () => {
+  it('reads the later row whose keyword equals the one asked, ignoring case, when the first is another phrase', async () => {
     const row = (keyword: string, volume: number) => ({
       keyword,
       volume,
@@ -123,7 +123,7 @@ describeDb('keyword-measurer (mock mode)', () => {
       keywordResearch: async () => ({
         data: [row('something else', 99), row('WeWork Podcast', 41)],
         credits: 5,
-        args: { mode: 'matching_terms', limit: 1 },
+        args: { mode: 'matching_terms', limit: 20 },
       }),
     })
     await engine.execute(request(['wework podcast']))

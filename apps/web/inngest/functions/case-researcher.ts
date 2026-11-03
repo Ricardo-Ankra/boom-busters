@@ -70,7 +70,8 @@ import { events } from '../events'
 const FUNCTION_ID = 'case-researcher'
 const PURPOSE = 'case-research' as const
 
-const TERMS_LIMIT = 20
+/** Matching terms asked for; the keyword measurer asks for the same many. */
+export const TERMS_LIMIT = 20
 const QUESTIONS_LIMIT = 10
 const OUTLIERS_LIMIT = 25
 /** Outliers whose details are read, and which the brief keeps. */

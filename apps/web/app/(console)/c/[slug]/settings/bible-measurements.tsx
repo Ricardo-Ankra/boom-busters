@@ -37,6 +37,13 @@ export function readingText(
   if (age > SEARCH_BRIEF_STALE_DAYS * DAY_MS) {
     return { text: `Measured ${Math.floor(age / DAY_MS)} days ago`, muted: true }
   }
+  const noData = reading.volume === null && reading.competition === null
+  if (noData) {
+    return {
+      text: `No VidIQ data for this phrase, measured ${shortDate(reading.measuredAt)}`,
+      muted: true,
+    }
+  }
   const figure = (n: number | null) => (n === null ? 'unknown' : String(n))
   return {
     text: `Volume ${figure(reading.volume)}, competition ${figure(reading.competition)}, measured ${shortDate(reading.measuredAt)}`,

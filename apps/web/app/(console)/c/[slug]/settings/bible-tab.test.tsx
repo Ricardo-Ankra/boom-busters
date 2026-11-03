@@ -1037,7 +1037,10 @@ describe('BibleTab, keyword measurements', () => {
     ...FIRST_CHANNEL_BIBLE,
     formats: FIRST_CHANNEL_BIBLE.formats.map((format, i) =>
       i === 0
-        ? { ...format, keywords: ['wework documentary', 'wework podcast', 'new term'] }
+        ? {
+            ...format,
+            keywords: ['wework documentary', 'wework podcast', 'new term', 'fresh idea'],
+          }
         : format,
     ),
     caseCategories: [{ key: 'con', label: 'Con', keywords: ['Old Reading'] }],
@@ -1060,6 +1063,7 @@ describe('BibleTab, keyword measurements', () => {
             measuredAt: '2026-11-02T09:00:00.000Z',
           },
           'wework podcast': { volume: null, competition: 39, measuredAt: ago(1) },
+          'new term': { volume: null, competition: null, measuredAt: '2026-11-02T09:00:00.000Z' },
           'old reading': { volume: 5, competition: 5, measuredAt: ago(34) },
         }}
         measureCount={over.measureCount ?? 2}
@@ -1076,6 +1080,7 @@ describe('BibleTab, keyword measurements', () => {
     const formats = within(card('Formats'))
     expect(formats.getByText('Volume 64, competition 38, measured 2 Nov')).toBeInTheDocument()
     expect(formats.getByText('Volume unknown, competition 39, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('No VidIQ data for this phrase, measured 2 Nov')).toBeInTheDocument()
     expect(formats.getByText('Not measured')).toBeInTheDocument()
   })
 

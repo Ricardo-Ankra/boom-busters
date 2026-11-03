@@ -9,6 +9,7 @@ import { db } from '@/lib/db'
 import { spendVidiq } from '@/lib/vidiq-spend'
 import { inngest } from '../client'
 import { events } from '../events'
+import { TERMS_LIMIT } from './case-researcher'
 
 /**
  * keyword-measurer: one VidIQ reading (volume, competition, overall, monthly
@@ -64,9 +65,11 @@ export const keywordMeasurer = inngest.createFunction(
             tool: 'vidiq_keyword_research',
             cost: VIDIQ_CREDIT_COST.keywordResearch,
           },
-          (client) => client.keywordResearch(keyword, { mode: 'matching_terms', limit: 1 }),
+          (client) =>
+            client.keywordResearch(keyword, { mode: 'matching_terms', limit: TERMS_LIMIT }),
         )
-        // VidIQ answers with the nearest terms: only the row for this keyword is its reading.
+        // VidIQ answers with the nearest terms, the asked phrase among them when it has data:
+        // only the row for this keyword is its reading, else the row holds nulls and stays fresh.
         const row = found.data.find((candidate) => measurementKey(candidate.keyword) === key)
         await recordKeywordMeasurement(db, {
           channelId,
