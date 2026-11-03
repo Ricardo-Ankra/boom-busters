@@ -135,7 +135,7 @@ describe('the designer prompt (decision 295)', () => {
 
   it('keeps the hooks at the top of Graphic, out of every helper', () => {
     expect(rules).toContain(
-      'Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a helper the frame and fps as arguments, as both examples do.',
+      'Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a helper the frame and fps as arguments.',
     )
   })
 
@@ -284,6 +284,7 @@ describe('the designer prompt (decision 295)', () => {
     const text = buildGraphicRequest(input()).system
     expect(text).not.toContain('Example 1, a text-only beat')
     expect(text).not.toContain('Example 2, a chart slot')
+    expect(text).not.toContain('both examples')
     expect(text).toContain('Answer with JSON only:')
   })
 

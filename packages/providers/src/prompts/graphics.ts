@@ -109,7 +109,7 @@ The sandbox your code runs in:
   body of a function of (React, Remotion, props) and returns Graphic. JSX compiles to
   React.createElement. Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and
   React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a
-  helper the frame and fps as arguments, as both examples do. A helper is a plain
+  helper the frame and fps as arguments. A helper is a plain
   function you call directly, row(label, value), never a React component rendered with
   createElement or JSX: that outer function is parsed once and run again for every frame,
   so a component declared inside it is a new component on each run and would remount its
@@ -303,9 +303,9 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 
 /**
  * The slot's exemplar (decision 305): one passing design of the technique
- * the brief calls for, in the sandbox and on the tokens, so the model
- * patterns on the technique and not on the system prompt's two examples. It
- * sits in the slot message, after the data, so the cached film message and
+ * the brief calls for, in the sandbox and on the tokens. It is the only
+ * design the designer is shown (decision 386), so the model patterns on the
+ * technique and not on a fixed example. It sits in the slot message, after the data, so the cached film message and
  * the system prompt are untouched. Four backticks fence it, so a design that
  * holds three in a string cannot close the block early.
  */
