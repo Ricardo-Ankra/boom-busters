@@ -1,4 +1,10 @@
-import { FIRST_CHANNEL_IN_USE, ValidationError } from '@boom-busters/schemas'
+import {
+  FIRST_CHANNEL_IN_USE,
+  SearchBriefSchema,
+  TITLE_PATTERNS_MAX,
+  TOLD_ALREADY_MAX,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { SearchKeyword, SearchOutlier } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import type { Repair } from './repair'
@@ -95,6 +101,44 @@ describe('parseWinners', () => {
     expect(out.titlePatterns).toEqual(['From {figure} to Nothing: How {subject} Lost Everything'])
     expect(out.toldAlready).toEqual(['the founder rise'])
     expect(repairs).toHaveLength(1)
+  })
+})
+
+describe('the winners caps follow the brief schema', () => {
+  const many = (n: number, make: (i: number) => string) => Array.from({ length: n }, (_, i) => make(i))
+  const briefWith = (winners: ReturnType<typeof parseWinners>) => ({
+    subject: 'WeWork',
+    measuredAt: '2026-01-01T00:00:00.000Z',
+    targetKeyword: null,
+    secondaryKeywords: [],
+    searchedQuestions: [],
+    outliers: [],
+    titlePatterns: winners.titlePatterns,
+    toldAlready: winners.toldAlready,
+    angleOptions: [],
+    chosenAngle: null,
+  })
+
+  it.each([0, 1, 5, 20])('an answer %i over the caps still fits the brief', (extra) => {
+    const out = parseWinners(
+      JSON.stringify({
+        titlePatterns: many(TITLE_PATTERNS_MAX + extra, (i) => `Pattern ${'x'.repeat(i)} {subject}`),
+        toldAlready: many(TOLD_ALREADY_MAX + extra, (i) => `beat ${'y'.repeat(i)}`),
+      }),
+    )
+    expect(out.titlePatterns).toHaveLength(TITLE_PATTERNS_MAX)
+    expect(out.toldAlready).toHaveLength(TOLD_ALREADY_MAX)
+    expect(SearchBriefSchema.safeParse(briefWith(out)).success).toBe(true)
+  })
+
+  it('tells the model the same numbers', () => {
+    const system = buildWinnersRequest({ subject: 'WeWork', outliers: [OUTLIER], descriptions: {} })
+      .system as string
+    expect(system).toContain(
+      `At most ${TITLE_PATTERNS_MAX} patterns and ${TOLD_ALREADY_MAX} told-already entries`,
+    )
+    expect(TITLE_PATTERNS_MAX).toBe(5)
+    expect(TOLD_ALREADY_MAX).toBe(8)
   })
 })
 

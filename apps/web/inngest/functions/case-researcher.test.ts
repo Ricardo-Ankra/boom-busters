@@ -11,7 +11,8 @@ import {
   vidiqCredits,
   writeCaseResearchJob,
 } from '@boom-busters/db'
-import type { CaseResearchJob } from '@boom-busters/schemas'
+import type { AngleOption, CaseResearchJob } from '@boom-busters/schemas'
+import type * as ProvidersModule from '@boom-busters/providers'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import {
   CASE_RESEARCH_CREDITS,
@@ -37,7 +38,19 @@ vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 
 const seams = vi.hoisted(() => ({
   clientOverride: null as null | ((real: unknown) => unknown),
+  winnersOverride: null as null | { titlePatterns: string[]; toldAlready: string[] },
+  anglesOverride: null as null | AngleOption[],
 }))
+
+vi.mock('@boom-busters/providers', async (importOriginal) => {
+  const original = await importOriginal<typeof ProvidersModule>()
+  return {
+    ...original,
+    mockWinners: () => seams.winnersOverride ?? original.mockWinners(),
+    mockAngleOptions: (input: Parameters<typeof original.mockAngleOptions>[0]) =>
+      seams.anglesOverride ?? original.mockAngleOptions(input),
+  }
+})
 
 vi.mock('@boom-busters/providers/vidiq', async (importOriginal) => {
   const original = await importOriginal<typeof VidiqModule>()
@@ -97,6 +110,8 @@ describeDb('case-researcher (mock mode)', () => {
   beforeEach(async () => {
     vi.stubEnv('MOCK_PROVIDERS', '1')
     seams.clientOverride = null
+    seams.winnersOverride = null
+    seams.anglesOverride = null
     engine = new InngestTestEngine({ function: caseResearcher })
     await seed(db)
     await truncateRunMirror(db)
@@ -167,6 +182,35 @@ describeDb('case-researcher (mock mode)', () => {
       .map((r) => (r.args as { mode?: string }).mode)
       .sort()
     expect(modes).toEqual(['matching_terms', 'questions'])
+  })
+
+  it('a winners answer at the parser allowance still saves a brief, cut to the brief limits', async () => {
+    // Six patterns and ten beats were the parser's old caps; the brief holds 5 and 8.
+    seams.winnersOverride = {
+      titlePatterns: Array.from({ length: 6 }, (_, i) => `Pattern ${'x'.repeat(i)} {subject}`),
+      toldAlready: Array.from({ length: 10 }, (_, i) => `beat ${'y'.repeat(i)}`),
+    }
+    const { result } = await engine.execute(request())
+    expect(result).toMatchObject({ outcome: 'researched' })
+    const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+    expect(brief.titlePatterns).toHaveLength(5)
+    expect(brief.toldAlready).toHaveLength(8)
+    expect((await getCase(db, caseId))?.searchJob?.state).toBe('done')
+  })
+
+  it('a result that cannot fit the brief stops without a retry, with a plain reason and no brief', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // An angle under the schema's minimum length is no list overrun, so no slice mends it.
+    seams.anglesOverride = [{ angle: 'too short', keyword: 'wework', answers: [], gap: 'g' }]
+    const { error } = await engine.execute(request())
+    const plain = 'The research result did not fit the brief format, so nothing was saved.'
+    expect(JSON.stringify(error)).toContain(plain)
+    expect(JSON.stringify(error)).not.toContain('ZodError')
+    await fail(plain)
+
+    const row = await getCase(db, caseId)
+    expect(row?.searchBrief).toBeNull()
+    expect(row?.searchJob).toMatchObject({ state: 'failed', error: plain })
   })
 
   it('a subject VidIQ barely knows still saves a brief, with no target keyword and angles from the bible (Review Focus 1)', async () => {

@@ -20,7 +20,13 @@ import {
 import type { AngleOptionsInput, Winners } from '@boom-busters/providers'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import type { VidiqVideo } from '@boom-busters/providers/vidiq'
-import { SearchBriefSchema, chooseTargetKeyword, parseEventData } from '@boom-busters/schemas'
+import {
+  SearchBriefSchema,
+  TITLE_PATTERNS_MAX,
+  TOLD_ALREADY_MAX,
+  chooseTargetKeyword,
+  parseEventData,
+} from '@boom-busters/schemas'
 import type {
   AngleOption,
   CaseResearchJob,
@@ -63,6 +69,7 @@ const OUTLIERS_KEPT = 10
 /** The brief's own list limits. */
 const SECONDARY_KEPT = 10
 const TAGS_KEPT = 10
+const ANGLE_OPTIONS_MAX = 3
 /** A description is read for its start only; none is stored. */
 const DESCRIPTION_CHARS = 400
 
@@ -329,18 +336,27 @@ export const caseResearcher = inngest.createFunction(
     // 8. The brief, written once, and only while this run still owns the job.
     const saved = await step.run('save-brief', async () => {
       await beat(caseId, jobStartedAt, 'save-brief')
-      const brief: SearchBrief = SearchBriefSchema.parse({
+      // Each list is cut to the brief's own limit first, so a long model answer
+      // cannot fail the parse after every credit is spent.
+      const parsed = SearchBriefSchema.safeParse({
         subject,
         measuredAt: new Date().toISOString(),
         targetKeyword: target,
-        secondaryKeywords: secondary,
-        searchedQuestions: questions,
-        outliers: winning,
-        titlePatterns: winners.titlePatterns,
-        toldAlready: winners.toldAlready,
-        angleOptions,
+        secondaryKeywords: secondary.slice(0, SECONDARY_KEPT),
+        searchedQuestions: questions.slice(0, QUESTIONS_LIMIT),
+        outliers: winning.slice(0, OUTLIERS_KEPT),
+        titlePatterns: winners.titlePatterns.slice(0, TITLE_PATTERNS_MAX),
+        toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
+        angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
         chosenAngle: null,
       })
+      // A retry would fail the same way, so the run stops with a reason the owner can read.
+      if (!parsed.success) {
+        throw new NonRetriableError(
+          'The research result did not fit the brief format, so nothing was saved.',
+        )
+      }
+      const brief: SearchBrief = parsed.data
       return saveCaseSearchBrief(db, caseId, brief, jobStartedAt)
     })
     if (!saved) return { outcome: 'superseded' as const }

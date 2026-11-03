@@ -33,6 +33,10 @@ export const AngleOptionSchema = z.object({
 })
 export type AngleOption = z.infer<typeof AngleOptionSchema>
 
+/** The brief's list limits. The model steps that feed these lists read the same numbers. */
+export const TITLE_PATTERNS_MAX = 5
+export const TOLD_ALREADY_MAX = 8
+
 export const SearchBriefSchema = z.object({
   subject: z.string(),
   measuredAt: z.string().datetime(),
@@ -40,8 +44,8 @@ export const SearchBriefSchema = z.object({
   secondaryKeywords: z.array(SearchKeywordSchema).max(10),
   searchedQuestions: z.array(z.string()).max(10),
   outliers: z.array(SearchOutlierSchema).max(10),
-  titlePatterns: z.array(z.string()).max(5),
-  toldAlready: z.array(z.string()).max(8),
+  titlePatterns: z.array(z.string()).max(TITLE_PATTERNS_MAX),
+  toldAlready: z.array(z.string()).max(TOLD_ALREADY_MAX),
   angleOptions: z.array(AngleOptionSchema).max(3),
   chosenAngle: z.number().nullable(),
 })
