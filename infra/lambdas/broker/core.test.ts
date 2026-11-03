@@ -206,7 +206,7 @@ describe('POST /renders', () => {
     expect(response.body).toMatchObject({
       brokerRenderId: RENDER,
       remotionRenderId: 'rem-1',
-      estimatedCostUsd: 0.25,
+      estimatedCostUsd: 0.9036,
     })
     // The materialised audit copy exists and carries fresh URLs everywhere.
     const copy = w.stored.get(`renders/${RENDER}/timeline.json`) as Timeline
@@ -226,7 +226,7 @@ describe('POST /renders', () => {
       w.deps,
     )
     expect(response.status).toBe(201)
-    expect(response.body).toMatchObject({ estimatedCostUsd: 0.0625 })
+    expect(response.body).toMatchObject({ estimatedCostUsd: 0.2259 })
     expect(w.renderScales).toEqual([0.5])
     expect(w.records.get(RENDER)?.kind).toBe('draft')
   })
@@ -647,9 +647,10 @@ describe('materialiseTimeline', () => {
 })
 
 describe('estimateRenderCostUsd', () => {
-  it('anchors on ≈$0.25 per 15-minute master', () => {
-    expect(estimateRenderCostUsd(900)).toBe(0.25)
-    expect(estimateRenderCostUsd(60)).toBeCloseTo(0.0167, 3)
+  it('anchors on $1.00 per 16.6-minute master (about $0.90 per 900 s)', () => {
+    expect(estimateRenderCostUsd(996)).toBe(1)
+    expect(estimateRenderCostUsd(900)).toBe(0.9036)
+    expect(estimateRenderCostUsd(60)).toBeCloseTo(0.0602, 3)
   })
 })
 
