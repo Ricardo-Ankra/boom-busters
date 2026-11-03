@@ -4,6 +4,7 @@ import {
   createCase,
   createChannel,
   createProjectFromCase,
+  createScriptVersion,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   insertShort,
@@ -13,6 +14,8 @@ import {
   insertTalkingPointSet,
   approveTalkingPointSet,
   projects,
+  saveChapter,
+  scripts,
   publishRecords,
   requireTestDatabase,
   seed,
@@ -287,22 +290,33 @@ describeDb('publishModel cohesion', () => {
   it('does not credit an unwritten description with the generated hook', async () => {
     await seed(db)
     await db.delete(publishRecords)
-    const { hook } = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
-    // The fixture has script chapters only when an earlier suite left them.
-    const lead = hook.split(/\s+/)[0] || 'cleopatra'
+    // Its own script version, so the hook is real and starts with a known word.
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The rise',
+      contentMd: '# The rise\n\nTelegraph poles ran across the plain.',
+      estRuntimeSec: 10,
+    })
     const original = await currentBible(db, FIRST_CHANNEL_ID)
-    const frozen = await saveBibleVersion(
-      db,
-      FIRST_CHANNEL_ID,
-      { ...original.bible, formats: [{ ...original.bible.formats[0]!, keywords: [lead] }] },
-      'Lead keyword from the hook',
-    )
-    await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
     try {
+      const { hook } = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      expect(hook).not.toBe('')
+      const lead = hook.split(/\s+/)[0]!
+      expect(lead).toBe('Telegraph')
+      const frozen = await saveBibleVersion(
+        db,
+        FIRST_CHANNEL_ID,
+        { ...original.bible, formats: [{ ...original.bible.formats[0]!, keywords: [lead] }] },
+        'Lead keyword from the hook',
+      )
+      await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
       const { cohesion } = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items[0]!
       expect(cohesion?.cells.descriptionOpening.format).toBe('miss')
     } finally {
       await moveProjectBible(db, FIXTURE_PROJECT_ID, original.id)
+      await db.delete(scripts)
     }
   })
 
