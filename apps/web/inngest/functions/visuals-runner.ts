@@ -46,7 +46,7 @@ import {
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { withinFailureTolerance } from '../lib/narration'
 import { timedParagraphs } from '../lib/shot-list'
-import { rowAnswers, stepSlots } from '../lib/slot-steps'
+import { perSlotStepsFit, rowAnswers, stepSlots, visualsOtherSteps } from '../lib/slot-steps'
 import { timingFindings } from '../lib/timing-findings'
 
 /**
@@ -115,6 +115,10 @@ export const visualsRunner = inngest.createFunction(
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
     let rejectedSlots = 0
     let undesignedGraphics = 0
+    // What the planning half of this run spent steps on, for `perSlotStepsFit`.
+    // Both are rebuilt from memoised step results on every replay, so stable.
+    let planChapters = 0
+    let planDesigned = 0
 
     if (!resuming) {
       const setup = await step.run('load-narration', async () => {
@@ -218,6 +222,7 @@ export const visualsRunner = inngest.createFunction(
       // Shot-list generation, chapter by chapter, against the book
       // -----------------------------------------------------------------------
 
+      planChapters = setup.chapters.length
       const allRows: NewShotSlot[] = []
 
       for (const [index, chapter] of setup.chapters.entries()) {
@@ -253,6 +258,10 @@ export const visualsRunner = inngest.createFunction(
           await step.run(`shot-list-${index}-over-budget`, () => markStageFailed(ctx, planned.gate))
           return { projectId, outcome: 'over-budget' as const }
         }
+
+        planDesigned += planned.rows.filter(
+          (row) => row.type === 'chart' || row.type === 'graphic',
+        ).length
 
         // Each graphic gets a designer of its own (decision 289), one step
         // each, before the plan is saved. Step results are plain JSON, so the
@@ -464,14 +473,19 @@ export const visualsRunner = inngest.createFunction(
       }
     }
 
-    // A step a slot for any board a 60-minute project can hold, eight a step
-    // above that (`stepSlots`); the choice reads the memoised plan's length.
+    // A step a slot while that fits under the step limit with this run's other
+    // steps, eight a step otherwise (`stepSlots`, `perSlotStepsFit`). Every
+    // input is the memoised plan's: the board's length and the plan's counts.
     const owedBoard: OwedSlot[] = board
     const settled = await stepSlots<OwedSlot, SlotOutcome>(
       (id, fn) => step.run(id, fn) as never,
       owedBoard,
       'resolve',
       {
+        perSlot: perSlotStepsFit(
+          owedBoard.length,
+          visualsOtherSteps({ chapters: planChapters, designedSlots: planDesigned }),
+        ),
         run: resolveOne,
         // A retried batch must not buy again what its first attempt finished: a
         // slot whose stored resolution already answers this brief and route is done.

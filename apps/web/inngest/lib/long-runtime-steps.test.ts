@@ -1,8 +1,13 @@
 import { shotBriefHash } from '@boom-busters/db'
-import { RUNTIME_START_MAX } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { RESOLUTION_STEP_SLOTS } from './shot-list'
-import { PER_SLOT_STEP_MAX_SLOTS, rowAnswers, stepSlots } from './slot-steps'
+import {
+  assemblyOtherSteps,
+  perSlotStepsFit,
+  rowAnswers,
+  stepSlots,
+  visualsOtherSteps,
+} from './slot-steps'
 
 /**
  * Inngest runs one function for up to 1,000 steps (its documented limit; the
@@ -32,15 +37,38 @@ function harness(memo: Record<string, unknown> = {}) {
   return { run, ran, memo }
 }
 
-describe('the per-slot threshold', () => {
-  it('is the most slots a 60-minute board can hold at the smallest minimum shot, hold 1', () => {
-    // 3,600 s over the 3 s of the shortest minimum (stock, archival, still, graphic, hero).
-    expect(RUNTIME_START_MAX).toBe(60)
-    expect(PER_SLOT_STEP_MAX_SLOTS).toBe(1200)
+describe('perSlotStepsFit', () => {
+  it('fits at exactly 980 combined and batches at 981 (the 20-step margin under 1,000)', () => {
+    expect(perSlotStepsFit(900, 80)).toBe(true)
+    expect(perSlotStepsFit(901, 80)).toBe(false)
   })
 })
 
-describe('a board a 60-minute project can hold', () => {
+describe('the counting helpers', () => {
+  it('visuals: its fixed steps, a step per chapter, the terminals and a step per designed slot', () => {
+    expect(visualsOtherSteps({ chapters: 0, designedSlots: 0 })).toBe(21)
+    expect(visualsOtherSteps({ chapters: 15, designedSlots: 40 })).toBe(21 + 15 + 40)
+  })
+  it('assembly: its fixed steps and two a paragraph without stored timings', () => {
+    expect(assemblyOtherSteps({ untimedParagraphs: 0 })).toBe(9)
+    expect(assemblyOtherSteps({ untimedParagraphs: 5 })).toBe(19)
+  })
+  it('a real 60-minute board (855 slots, 15 chapters, timed takes) stays per-slot in both', () => {
+    expect(perSlotStepsFit(855, visualsOtherSteps({ chapters: 15, designedSlots: 80 }))).toBe(true)
+    expect(perSlotStepsFit(855, assemblyOtherSteps({ untimedParagraphs: 0 }))).toBe(true)
+  })
+  it('a 120-minute board of 1,710 slots batches in both', () => {
+    expect(perSlotStepsFit(1710, visualsOtherSteps({ chapters: 30, designedSlots: 100 }))).toBe(
+      false,
+    )
+    expect(perSlotStepsFit(1710, assemblyOtherSteps({ untimedParagraphs: 0 }))).toBe(false)
+  })
+  it('untimed paragraphs push assembly to batches sooner', () => {
+    expect(perSlotStepsFit(700, assemblyOtherSteps({ untimedParagraphs: 400 }))).toBe(false)
+  })
+})
+
+describe('a board whose per-slot steps fit', () => {
   it('(a) replays old per-slot results under resolve-<id> without re-running them', async () => {
     const slots = board(30)
     const memo = Object.fromEntries(
@@ -49,6 +77,7 @@ describe('a board a 60-minute project can hold', () => {
     const h = harness(memo)
     let resolved = 0
     const out = await stepSlots(h.run, slots, 'resolve', {
+      perSlot: true,
       run: async () => {
         resolved += 1
         return { ok: true, status: 'resolved' }
@@ -62,21 +91,22 @@ describe('a board a 60-minute project can hold', () => {
 
   it('keeps the exact per-slot id and a single outcome as the step result', async () => {
     const h = harness()
-    await stepSlots(h.run, board(PER_SLOT_STEP_MAX_SLOTS), 'ingest-stock', {
+    await stepSlots(h.run, board(900), 'ingest-stock', {
+      perSlot: true,
       run: async () => ({ ok: true }),
     })
-    expect(h.ran).toHaveLength(PER_SLOT_STEP_MAX_SLOTS)
+    expect(h.ran).toHaveLength(900)
     expect(h.ran[0]).toBe('ingest-stock-slot-0')
     expect(h.memo['ingest-stock-slot-0']).toEqual({ ok: true })
   })
 })
 
-describe('a board only a longer project can hold', () => {
-  const long = board(PER_SLOT_STEP_MAX_SLOTS + 1)
+describe('a board whose per-slot steps do not fit', () => {
+  const long = board(981)
 
   it('(b) batches eight a step under resolve-batch-<n>, never resolve-<slotId>', async () => {
     const h = harness()
-    await stepSlots(h.run, long, 'resolve', { run: async () => ({ ok: true }) })
+    await stepSlots(h.run, long, 'resolve', { perSlot: false, run: async () => ({ ok: true }) })
     expect(h.ran).toHaveLength(Math.ceil(long.length / RESOLUTION_STEP_SLOTS))
     expect(h.ran[0]).toBe('resolve-batch-0')
     expect(h.ran.every((id) => /^resolve-batch-\d+$/.test(id))).toBe(true)
@@ -85,14 +115,20 @@ describe('a board only a longer project can hold', () => {
 
   it('(b) the same for the assembly ingest', async () => {
     const h = harness()
-    await stepSlots(h.run, long, 'ingest-stock', { run: async () => ({ ok: true }) })
+    await stepSlots(h.run, long, 'ingest-stock', {
+      perSlot: false,
+      run: async () => ({ ok: true }),
+    })
     expect(h.ran.every((id) => /^ingest-stock-batch-\d+$/.test(id))).toBe(true)
     expect(h.ran.some((id) => id.startsWith('ingest-stock-slot-'))).toBe(false)
   })
 
   it('keeps every slot, in order', async () => {
     const h = harness()
-    const out = await stepSlots(h.run, long, 'resolve', { run: async () => ({ ok: true }) })
+    const out = await stepSlots(h.run, long, 'resolve', {
+      perSlot: false,
+      run: async () => ({ ok: true }),
+    })
     expect(out.map((o) => o.slot.id)).toEqual(long.map((s) => s.id))
   })
 
@@ -100,6 +136,7 @@ describe('a board only a longer project can hold', () => {
     const answered = new Set(['slot-0', 'slot-1', 'slot-2'])
     const generated: string[] = []
     const opts = {
+      perSlot: false,
       run: async (slot: Slot) => {
         generated.push(slot.id)
         answered.add(slot.id)
@@ -119,6 +156,7 @@ describe('a board only a longer project can hold', () => {
   it('stops after a step whose result carries a stop signal', async () => {
     const h = harness()
     const out = await stepSlots(h.run, long, 'resolve', {
+      perSlot: false,
       run: async (slot: Slot) => (slot.id === 'slot-2' ? { gate: true } : { ok: true }),
       stopAfter: (o) => 'gate' in (o as object),
     })
@@ -136,11 +174,14 @@ describe('step counts', () => {
     { name: 'hold 2.5, shortest slots', slots: 1824 },
     { name: 'hold 2.5, typical slots', slots: 1216 },
   ]
-  it.each(cases)('$name: a 240-minute run stays under 1,000 steps', async ({ slots }) => {
+  it.each(cases)('$name: a 240-minute visuals run stays under 1,000 steps', async ({ slots }) => {
+    const other = visualsOtherSteps({ chapters: 46, designedSlots: Math.round(slots / 10) })
     const h = harness()
-    await stepSlots(h.run, board(slots), 'resolve', { run: async () => ({ ok: true }) })
-    const OTHER_STEPS = 46 * 6 + 20 // shot list, graphics and the gate steps
-    expect(h.ran.length + OTHER_STEPS).toBeLessThan(1000)
+    await stepSlots(h.run, board(slots), 'resolve', {
+      perSlot: perSlotStepsFit(slots, other),
+      run: async () => ({ ok: true }),
+    })
+    expect(h.ran.length + other).toBeLessThan(1000)
   })
 })
 

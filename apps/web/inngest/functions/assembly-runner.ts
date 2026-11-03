@@ -48,7 +48,7 @@ import {
   slotPlan,
   timelineKey,
 } from '../lib/assembly'
-import { stepSlots } from '../lib/slot-steps'
+import { assemblyOtherSteps, perSlotStepsFit, stepSlots } from '../lib/slot-steps'
 
 /**
  * assembly-runner (build spec section 7.5).
@@ -159,13 +159,25 @@ export const assemblyRunner = inngest.createFunction(
     const ingested: Record<string, { r2Key: string; assetId?: string; previewR2Key?: string }> = {}
     const unusable: Record<string, string> = {}
     if (!mocked && storageConfigured()) {
-      // A step a slot for any board a 60-minute project can hold, eight a step
-      // above that (`stepSlots`); the choice reads the memoised load's length.
+      // A step a slot while that fits under the step limit with this run's other
+      // steps, eight a step otherwise (`stepSlots`, `perSlotStepsFit`). Every
+      // input is the memoised load's: the stock slots and the untimed paragraphs.
+      const stockSlots = setup.slots.filter(needsStockIngest)
       const settled = await stepSlots(
         (id, fn) => step.run(id, fn) as never,
-        setup.slots.filter(needsStockIngest),
+        stockSlots,
         'ingest-stock',
-        { run: (slot) => ingestSlotStock(slot) },
+        {
+          perSlot: perSlotStepsFit(
+            stockSlots.length,
+            assemblyOtherSteps({
+              untimedParagraphs: setup.plan.paragraphs.filter(
+                (paragraph) => !(paragraph.timings && paragraph.timings.length > 0),
+              ).length,
+            }),
+          ),
+          run: (slot) => ingestSlotStock(slot),
+        },
       )
       for (const { slot, outcome } of settled) {
         if (outcome.ok) {
