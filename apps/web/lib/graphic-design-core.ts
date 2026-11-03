@@ -152,11 +152,6 @@ export const GRAPHIC_DESIGN_DEADLINE_MS = 240_000
 /** Less than this left: a call would only be aborted, so none is started. */
 const MIN_CALL_MS = 15_000
 /**
- * Less than this left once a design passes: no review (decision 389). The
- * review writes a whole component again, as long as the first call took.
- */
-export const REVIEW_MIN_MS = 90_000
-/**
  * What an inspection leaves of the deadline, for the step to write its
  * outcome; with less than `FRAMES_MIN_MS` to spend, no inspection starts and
  * the design is kept on the dry run's word.
@@ -207,44 +202,15 @@ export function slotIntent(
   return { intent, intentRefs }
 }
 
-/**
- * The whole real-model path: the attempts, the cut-off doubling, the
- * deadline and the checks. `complete` is injected, so the tests drive every
- * branch without a model and the app hands it the ledgered `callLlm`; it is
- * handed the deadline's abort signal.
- */
-export async function designGraphicWith(
-  complete: GraphicCompleteFn,
+/** What every graphics call shares for a slot: the request's base and what the checks read. */
+function designInput(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: {
-    bible: BibleInUse
-    guidance?: string
-    redesign?: boolean
-    /**
-     * The browser (decision 389): with it, a design must also pass the layout
-     * check, and the review can see it. Without it, or when it cannot start,
-     * the design is kept on the dry run's word, as before.
-     */
-    frames?: GraphicFrames
-    /** The project's brand, so the browser measures the type in the film's faces; the house brand otherwise. */
-    brand?: GraphicProps['brand']
-    /** Run the paid review once a design passes (Settings, Models). */
-    review?: boolean
-    /** Told once when the browser cannot be used, so the app can log it. */
-    onFramesUnavailable?: (error: FramesUnavailable) => void
-  },
-): Promise<GraphicDesignResult> {
-  // The checks load React, react-dom/server and Remotion at run time and
-  // compile with esbuild's native binary. A host that cannot do either is
-  // found here, before any model call, and not retried: a retry would pay the
-  // model again to fail on the same require or the same missing binary.
-  try {
-    ensureDryRunRuntime()
-    ensureGraphicCompiler()
-  } catch (error) {
-    throw new NonRetriableError(error instanceof Error ? error.message : String(error))
-  }
+  options: { bible: BibleInUse; guidance?: string; redesign?: boolean },
+): {
+  base: GraphicDesignInput
+  checkSlot: { brief: DesignableBrief; durationMs: number; words: { text: string; atMs: number }[] }
+} {
   const { brief } = slot
   const { intent, intentRefs } = slotIntent(context, brief)
   const narration = slotNarration(context, slot)
@@ -289,6 +255,89 @@ export async function designGraphicWith(
     ...(options.redesign && brief.code ? { current: currentDesign(brief.code) } : {}),
     ...(options.guidance ? { guidance: options.guidance } : {}),
   }
+  return { base, checkSlot: { brief, durationMs: slot.durationMs, words } }
+}
+
+/** What the browser options are, for the design and the review alike (decision 389). */
+interface FramesOptions {
+  /**
+   * The browser: with it, a design must also pass the layout check, and the
+   * review can see it. Without it, or when it cannot start, the design is
+   * kept on the dry run's word, as before.
+   */
+  frames?: GraphicFrames
+  /** The project's brand, so the browser measures the type in the film's faces; the house brand otherwise. */
+  brand?: GraphicProps['brand']
+  /**
+   * Told each refusal, review outcome, skip and failure, one line each, so the
+   * app's logs say what the designer did (decision 389's follow-up).
+   */
+  log?: (line: string) => void
+}
+
+/**
+ * The browser for one design or one review, until it fails once: then the
+ * rest goes on without it, logged. Each inspection is bounded by the
+ * deadline, less a margin for the step to write its outcome; with too little
+ * left, none starts.
+ */
+function inspector(
+  context: GraphicDesignContext,
+  slot: GraphicSlotTiming,
+  checkSlot: ReturnType<typeof designInput>['checkSlot'],
+  options: FramesOptions,
+  deadline: number,
+) {
+  let framesDown = !options.frames
+  return async (
+    code: GraphicCode,
+    mode: { shots: boolean; measure: boolean },
+  ): Promise<FramesResult | null> => {
+    if (framesDown || !options.frames) return null
+    const left = deadline - Date.now() - FRAMES_MARGIN_MS
+    if (left < FRAMES_MIN_MS) return null
+    try {
+      return await options.frames.inspect({
+        compiled: code.compiled,
+        props: dryRunProps(context, checkSlot, options.brand),
+        durationMs: slot.durationMs,
+        ...mode,
+        timeoutMs: Math.min(INSPECT_MAX_MS, left),
+      })
+    } catch (error) {
+      if (!(error instanceof FramesUnavailable)) throw error
+      framesDown = true
+      options.log?.(`without the browser: ${error.message}`)
+      return null
+    }
+  }
+}
+
+/**
+ * The whole real-model path: the attempts, the cut-off doubling, the
+ * deadline and the checks. `complete` is injected, so the tests drive every
+ * branch without a model and the app hands it the ledgered `callLlm`; it is
+ * handed the deadline's abort signal. The review is not here: it runs in a
+ * step of its own (`reviewGraphicWith`), since a design and its retry can use
+ * most of this step's time on their own.
+ */
+export async function designGraphicWith(
+  complete: GraphicCompleteFn,
+  context: GraphicDesignContext,
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
+  options: { bible: BibleInUse; guidance?: string; redesign?: boolean } & FramesOptions,
+): Promise<GraphicDesignResult> {
+  // The checks load React, react-dom/server and Remotion at run time and
+  // compile with esbuild's native binary. A host that cannot do either is
+  // found here, before any model call, and not retried: a retry would pay the
+  // model again to fail on the same require or the same missing binary.
+  try {
+    ensureDryRunRuntime()
+    ensureGraphicCompiler()
+  } catch (error) {
+    throw new NonRetriableError(error instanceof Error ? error.message : String(error))
+  }
+  const { base, checkSlot } = designInput(context, slot, options)
 
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
   const call: AnswerComplete = async (request, label) => {
@@ -299,31 +348,11 @@ export async function designGraphicWith(
       ...(label === 'answer' ? {} : { purpose: label }),
     })
   }
-
-  const checkSlot = { brief, durationMs: slot.durationMs, words }
-  // The browser, until it fails once: then the rest of this design goes on without it.
-  let framesDown = !options.frames
-  const inspect = async (code: GraphicCode, shots: boolean): Promise<FramesResult | null> => {
-    if (framesDown || !options.frames) return null
-    const left = deadline - Date.now() - FRAMES_MARGIN_MS
-    if (left < FRAMES_MIN_MS) return null
-    try {
-      return await options.frames.inspect({
-        compiled: code.compiled,
-        props: dryRunProps(context, checkSlot, options.brand),
-        durationMs: slot.durationMs,
-        shots,
-        timeoutMs: Math.min(INSPECT_MAX_MS, left),
-      })
-    } catch (error) {
-      if (!(error instanceof FramesUnavailable)) throw error
-      framesDown = true
-      options.onFramesUnavailable?.(error)
-      return null
-    }
+  const inspect = inspector(context, slot, checkSlot, options, deadline)
+  const refuse = (issue: string): never => {
+    options.log?.(`refused: ${issue}`)
+    throw new ValidationError(issue, { field: 'graphic code' })
   }
-  // What the passing answer was, and its frames, for the review.
-  let passed: { planned: PlannedGraphicCode; shots: FrameShot[] } | null = null
 
   try {
     // At most two calls (decision 292): the checks refuse a design inside the
@@ -334,16 +363,10 @@ export async function designGraphicWith(
     const answer = await callForAnswer({
       request: buildGraphicRequest(base),
       parse: async (text, note) => {
-        const planned = parseGraphicCode(text, note)
-        const checked = graphicCodeIssue(planned, context, checkSlot)
-        if ('issue' in checked) {
-          throw new ValidationError(checked.issue, { field: 'graphic code' })
-        }
-        const inspected = await inspect(checked.code, options.review === true)
-        if (inspected?.layoutIssue) {
-          throw new ValidationError(inspected.layoutIssue, { field: 'graphic code' })
-        }
-        passed = { planned, shots: inspected?.shots ?? [] }
+        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot)
+        if ('issue' in checked) return refuse(checked.issue)
+        const inspected = await inspect(checked.code, { shots: false, measure: true })
+        if (inspected?.layoutIssue) return refuse(inspected.layoutIssue)
         return checked.code
       },
       complete: call,
@@ -352,11 +375,7 @@ export async function designGraphicWith(
       retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
       cutOffIssue: CUT_OFF_ISSUE,
     })
-    if (!answer.ok) return { ok: false, issue: answer.issue }
-    const kept = passed as { planned: PlannedGraphicCode; shots: FrameShot[] } | null
-    if (!options.review || !kept || kept.shots.length === 0) return { ok: true, code: answer.value }
-    if (deadline - Date.now() < REVIEW_MIN_MS) return { ok: true, code: answer.value }
-    return { ok: true, code: await reviewed(answer.value, kept.planned, kept.shots) }
+    return answer.ok ? { ok: true, code: answer.value } : { ok: false, issue: answer.issue }
   } catch (error) {
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
     // A budget stop parks the run whenever it comes. Anything else once the
@@ -367,39 +386,79 @@ export async function designGraphicWith(
     // Inside the deadline any other failure (provider, a rejected key) goes through.
     throw error
   }
+}
 
-  /**
-   * The review (decision 389): one call, shown the passing design's frames.
-   * A keep, or a revision that fails any check, keeps the design; a revision
-   * that passes every check, the layout included, replaces it. Nothing the
-   * review does can lose a passing design: a failed call, a budget stop or the
-   * clock running out keeps it, unmarked.
-   */
-  async function reviewed(
-    code: GraphicCode,
-    planned: PlannedGraphicCode,
-    shots: FrameShot[],
-  ): Promise<GraphicCode> {
-    const frames: ReviewFrame[] = shots.map((shot) => ({
+/** What a review made of a design: kept or revised, the design to store; or why it did not run. */
+export type GraphicReviewResult =
+  { outcome: 'kept' | 'revised'; code: GraphicCode } | { outcome: 'skipped'; reason: string }
+
+/**
+ * The review (decision 389), in a step of its own after the design is
+ * stored: the design photographed in the browser at the moments a viewer
+ * reads it, then one call shown the frames. A keep, or a revision that fails
+ * any check (the layout included), keeps the design, marked `kept`; a
+ * revision that passes every check replaces it, marked `revised`. Nothing
+ * here can lose a stored design: no browser, a failed call, a budget stop or
+ * the clock leave it as it was, and the reason is logged and returned.
+ */
+export async function reviewGraphicWith(
+  complete: GraphicCompleteFn,
+  context: GraphicDesignContext,
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
+  options: { bible: BibleInUse; guidance?: string } & FramesOptions,
+): Promise<GraphicReviewResult> {
+  const skipped = (reason: string): GraphicReviewResult => {
+    options.log?.(`review skipped: ${reason}`)
+    return { outcome: 'skipped', reason }
+  }
+  const code = slot.brief.code
+  if (!code) return skipped('the slot has no design')
+  try {
+    ensureDryRunRuntime()
+    ensureGraphicCompiler()
+  } catch (error) {
+    return skipped(error instanceof Error ? error.message : String(error))
+  }
+  const { base, checkSlot } = designInput(context, slot, options)
+  const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
+  const inspect = inspector(context, slot, checkSlot, options, deadline)
+
+  try {
+    // Photographed only: a design stored before the layout check is still
+    // shown its frames, and the review is where it gets fixed.
+    const photographed = await inspect(code, { shots: true, measure: false })
+    if (!photographed || photographed.shots.length === 0) return skipped('no frames to show')
+    const frames: ReviewFrame[] = photographed.shots.map((shot) => ({
       label: frameLabel(shot),
       image: { mimeType: 'image/jpeg', data: shot.jpeg },
     }))
-    const shown: PlannedGraphicCode = { ...planned, facts: plannedFacts(code, context) }
-    try {
-      const reply = await complete(buildGraphicReviewRequest(base, shown, frames), {
-        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-        purpose: 'review',
-      })
-      const verdict = parseGraphicReview(reply.text)
-      if (verdict.keep) return { ...code, review: 'kept' }
-      const checked = graphicCodeIssue(verdict.design, context, checkSlot)
-      if ('issue' in checked) return { ...code, review: 'kept' }
-      const inspected = await inspect(checked.code, false)
-      if (inspected?.layoutIssue) return { ...code, review: 'kept' }
-      return { ...checked.code, review: 'revised' }
-    } catch {
-      return code
+    const shown: PlannedGraphicCode = {
+      ...(code.concept ? { concept: code.concept } : {}),
+      ...(code.storyboard ? { storyboard: code.storyboard } : {}),
+      title: code.title,
+      facts: plannedFacts(code, context),
+      source: code.source,
     }
+    const remaining = deadline - Date.now()
+    if (remaining < MIN_CALL_MS) return skipped('no time left for the call')
+    const reply = await complete(buildGraphicReviewRequest(base, shown, frames), {
+      signal: AbortSignal.timeout(remaining),
+      purpose: 'review',
+    })
+    const verdict = parseGraphicReview(reply.text)
+    const kept = (why: string): GraphicReviewResult => {
+      options.log?.(`review kept the design: ${why}`)
+      return { outcome: 'kept', code: { ...code, review: 'kept' } }
+    }
+    if (verdict.keep) return kept('the designer kept it')
+    const checked = graphicCodeIssue(verdict.design, context, checkSlot)
+    if ('issue' in checked) return kept(`the revision was refused: ${checked.issue}`)
+    const inspected = await inspect(checked.code, { shots: false, measure: true })
+    if (inspected?.layoutIssue) return kept(`the revision was refused: ${inspected.layoutIssue}`)
+    options.log?.('review revised the design')
+    return { outcome: 'revised', code: { ...checked.code, review: 'revised' } }
+  } catch (error) {
+    return skipped(`the review failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
