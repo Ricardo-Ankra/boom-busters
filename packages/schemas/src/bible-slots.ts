@@ -12,9 +12,15 @@ export interface ExampleSlot {
   source: string
   /** What the example is there to teach the model. */
   teaches: string
-  kind: 'line' | 'passage' | 'worked'
+  kind: 'line' | 'passage'
   maxLength: number
 }
+
+/**
+ * Slots that left the registry. Saved versions keep the slot ids they were
+ * stamped with, so a stored bible may still hold these keys; nothing reads them.
+ */
+export const RETIRED_SLOT_IDS = ['graphics-worked-beat', 'graphics-worked-chart'] as const
 
 /** The slots the lifted prompts read, in the order of the tasks that swap them. */
 export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
@@ -165,7 +171,7 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
     source: 'direction-craft.md',
     teaches:
       'A right prompt for a photographed person, and the physical description that is the mistake, each in quotes. Keep the words " is right; adding " between them; the sentence that follows ("after it is the mistake") is craft.',
-    kind: 'worked',
+    kind: 'passage',
     maxLength: 500,
   },
   {
@@ -264,21 +270,6 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
       "Ordinary settings a cast member's guardrail must not exclude, with the line break the source has.",
     kind: 'line',
     maxLength: 200,
-  },
-  {
-    id: 'graphics-worked-beat',
-    source: 'graphics.ts',
-    teaches:
-      'A full worked example of a text-only graphic beat: the slot and its words, the claim, the answer, then the component.',
-    kind: 'worked',
-    maxLength: 6000,
-  },
-  {
-    id: 'graphics-worked-chart',
-    source: 'graphics.ts',
-    teaches: 'A full worked example of a chart slot: timing, data, the answer, then the component.',
-    kind: 'worked',
-    maxLength: 6000,
   },
   {
     id: 'metadata-channel-subject',

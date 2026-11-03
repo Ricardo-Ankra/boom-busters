@@ -9317,3 +9317,11 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      for an empty `keyword`, the parser and the mock force it, and the panel
      hides "Searched as" for an empty one, so the brief never implies demand
      that was not measured.
+
+386. **The graphics worked examples leave the Bible** (2026-11-03). The two
+     slots, their prompt markers and the `worked` kind are gone; the
+     per-technique exemplar (305) is the designer's only design.
+     `direction-worked-example` is a passage and is overlap-checked, so
+     decision 357's skip is retired. Saved versions keep their stamped slot
+     ids, and an Examples edit rechecks registered slots only, so a retired
+     key is neither flagged nor kept.

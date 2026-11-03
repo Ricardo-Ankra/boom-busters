@@ -250,11 +250,7 @@ and every length are judged on the board, not checked:
 - A beat gets one kind of entrance. Emphasis on a word is a colour or weight change over
   motion.ms.micro, with interpolate.
 
-${REMOTION_RULES}
-
-[[example:graphics-worked-beat]]
-
-[[example:graphics-worked-chart]]`
+${REMOTION_RULES}`
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 

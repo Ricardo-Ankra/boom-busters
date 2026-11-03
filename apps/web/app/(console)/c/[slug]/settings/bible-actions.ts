@@ -22,6 +22,7 @@ import {
   BibleDraftInputsSchema,
   ChannelBibleSchema,
   EXAMPLE_SLOT_IDS,
+  EXAMPLE_SLOTS,
   PREVIEW_STAGES,
   UlidSchema,
   bibleDraftUnits,
@@ -329,7 +330,10 @@ async function recheckedFlags(
   const sources = await overlapSources(channelId, draft)
   const fields: [string, string][] =
     section === 'examples'
-      ? Object.entries(bible.examples).map(([id, text]) => [`examples.${id}`, text])
+      ? EXAMPLE_SLOTS.filter((slot) => slot.id in bible.examples).map((slot): [string, string] => [
+          `examples.${slot.id}`,
+          bible.examples[slot.id]!,
+        ])
       : BIBLE_ENTRY_LISTS.flatMap((list) =>
           bible[list].map((entry, i): [string, string] => [`${list}.${i}`, entry.text]),
         )

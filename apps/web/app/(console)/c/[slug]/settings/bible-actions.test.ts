@@ -760,6 +760,31 @@ describeDb('copying the bible from another channel', () => {
     expect(Object.keys(errors)).toEqual(['search'])
   })
 
+  it('neither flags nor keeps a retired slot key on an Examples edit', async () => {
+    const copied = FIRST_CHANNEL_BIBLE.examples['direction-worked-example']!.split(/\s+/)
+      .slice(0, 12)
+      .join(' ')
+    const second = await makeChannel('Second')
+    await saveBibleVersion(
+      db,
+      second.id,
+      {
+        ...ChannelBibleSchema.parse({}),
+        examples: { [SLOT_ID]: 'A line of its own.', 'graphics-worked-beat': copied },
+      },
+      'holds a retired key',
+    )
+    const result = await editBibleSectionAction(second.id, 'examples', {
+      examples: { [SLOT_ID]: 'Another line of its own.' },
+    })
+    expect(result.ok).toBe(true)
+    const draft = result.draft!
+    expect(
+      Object.keys(draft.tooClose).filter((k) => k.startsWith('examples.graphics-worked')),
+    ).toEqual([])
+    expect(draft.bible.examples).not.toHaveProperty('graphics-worked-beat')
+  })
+
   it('recomputes the overlap flags of a copied examples section', async () => {
     const source = await makeChannel('Source')
     await saveBibleVersion(
