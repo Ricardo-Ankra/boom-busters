@@ -4487,6 +4487,30 @@ All four done 2026-11-03, after the merge (`001fff1`).
 in the test database, so it fails on a second run until the row is deleted.
 This is on master and unrelated to this work.
 
+## Bible tab rework (2026-11-03)
+
+> The Settings Bible tab is easier to scan and to finish: examples grouped by
+> stage with titles and "Next missing", a sticky draft bar, one tool row with
+> one panel open at a time, a "Start here" block for an unfinished bible, and
+> section cards with a heading, an icon chip and a progress line. Branch
+> `bible-tab-rework`; decision 386 retires the two graphics worked-example
+> slots (44 slots now). Spec
+> `docs/superpowers/specs/2026-11-03-bible-tab-rework-design.md`, plan
+> `docs/superpowers/plans/2026-11-03-bible-tab-rework.md`. No migration.
+
+### Deliverables
+
+- [x] Graphics worked-example slots retired (`0bf1f25`).
+- [x] A title and a stage for every example slot (`db8513f`).
+- [x] Examples grouped by stage with counts and Next missing (`9434d43`).
+- [x] Sticky draft bar with the next version and what stops Save (`dfd742e`).
+- [x] One tool row, one panel at a time, and the Start here block (`21bc360`).
+- [x] Section cards with a heading, an icon chip and what they hold
+      (`d71fbd2`).
+- [x] e2e: blockers opened behind Show what to fix, and the 390 px check opens
+      History, Copy, then Draft with AI in turn (`c159bb4`). The Impeccable
+      detector reports no findings on the Bible tab files.
+
 ---
 
 # Decisions made
