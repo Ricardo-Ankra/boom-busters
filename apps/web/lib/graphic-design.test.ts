@@ -879,6 +879,24 @@ describe('the layout check and the review (decision 389)', () => {
     expect(callLlm).toHaveBeenCalledTimes(1)
   })
 
+  it("bounds each inspection by the design's deadline, and starts none without the time", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT)
+    // A fresh design: the inspection's own ceiling.
+    expect(inspect.mock.calls[0]![0].timeoutMs).toBe(45_000)
+
+    inspect.mockClear()
+    callLlm.mockImplementationOnce(async () => {
+      // The answer came back with 25 s of the 240 s left: under the 20 s margin and the 10 s floor.
+      vi.setSystemTime(Date.now() + 215_000)
+      return answer('$4bn')
+    })
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(inspect).not.toHaveBeenCalled()
+  })
+
   it('designs on without the browser when it cannot start, saying so once', async () => {
     reviewSetting = true
     const { FramesUnavailable } = await vi.importActual<typeof Frames>('./graphic-code/frames')
