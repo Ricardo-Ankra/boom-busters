@@ -184,13 +184,10 @@ describe('BibleTab', () => {
     draftBibleAction.mockResolvedValue({ ok: true })
     renderTab(draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, examples: {} } }))
     const examples = card('Examples')
-    expect(within(examples).getAllByText('New slot, needs an example')).toHaveLength(
-      EXAMPLE_SLOTS.length,
-    )
-    expect(within(examples).getAllByText(`In: ${SLOT.source}`).length).toBeGreaterThan(0)
+    expect(within(examples).getAllByText('No example yet')).toHaveLength(EXAMPLE_SLOTS.length)
     expect(within(examples).getAllByText(SLOT.teaches).length).toBeGreaterThan(0)
 
-    await userEvent.click(within(examples).getByRole('button', { name: `Draft ${SLOT.id}` }))
+    await userEvent.click(within(examples).getByRole('button', { name: `Draft ${SLOT.title}` }))
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { slotId: SLOT.id })
   })
 
