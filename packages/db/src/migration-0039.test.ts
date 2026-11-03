@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  type ChannelBible,
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_BIBLE_ID,
   FIRST_CHANNEL_ID,
+  RETIRED_SLOT_IDS,
   UlidSchema,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -38,7 +40,10 @@ describe('migration 0039', () => {
     const literal = /'(\{.*?\})'::jsonb/s.exec(insert)?.[1]
     expect(literal).toBeDefined()
     // SQL doubles a single quote inside a string literal.
-    expect(JSON.parse(literal!.replaceAll("''", "'"))).toEqual(FIRST_CHANNEL_BIBLE)
+    // The migration is applied and not edited: the retired slots stay in its literal.
+    const parsed = JSON.parse(literal!.replaceAll("''", "'")) as ChannelBible
+    for (const id of RETIRED_SLOT_IDS) delete parsed.examples[id]
+    expect(parsed).toEqual(FIRST_CHANNEL_BIBLE)
   })
 
   it('writes it only when the first channel exists, so a fresh database gets nothing', () => {
@@ -54,7 +59,9 @@ describe('migration 0039', () => {
       const array = /ARRAY\[(.*?)\]::text\[\]/s.exec(insert)?.[1]
       expect(array).toBeDefined()
       const ids = [...array!.matchAll(/'([^']*)'/g)].map((match) => match[1])
-      expect(ids).toEqual([...EXAMPLE_SLOT_IDS])
+      expect(ids.filter((id) => !(RETIRED_SLOT_IDS as readonly string[]).includes(id!))).toEqual([
+        ...EXAMPLE_SLOT_IDS,
+      ])
     }
   })
 

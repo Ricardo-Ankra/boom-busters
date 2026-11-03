@@ -1,12 +1,17 @@
 'use client'
 
-import { BIBLE_SECTION_ORDER, bibleSaveBlockers, jobIsRunning } from '@boom-busters/schemas'
+import {
+  BIBLE_SECTION_ORDER,
+  EXAMPLE_SLOT_IDS,
+  bibleSaveBlockers,
+  isBibleComplete,
+  jobIsRunning,
+  liveFlags,
+} from '@boom-busters/schemas'
 import type { BibleDraft, BibleSection, ChannelBible } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { ConfirmButton } from '@/components/confirm-button'
-import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { errorSection, flagSection } from '@/lib/bible-draft-keys'
 import type { ActionResult } from './actions'
@@ -19,7 +24,9 @@ import {
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
 import { BiblePreview } from './bible-preview'
+import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
+import { BibleToolbar, type BiblePanel } from './bible-toolbar'
 import { CopyFromChannel, type CopySource } from './copy-from-channel'
 import { DraftWithAi } from './draft-with-ai'
 
@@ -69,6 +76,7 @@ export function BibleTab({
   const [busy, setBusy] = React.useState(false)
   const [note, setNote] = React.useState('')
   const [retryToken, setRetryToken] = React.useState(0)
+  const [panel, setPanel] = React.useState<BiblePanel>(null)
 
   // The server's draft wins whenever the page refreshes.
   React.useEffect(() => setDraft(initialDraft), [initialDraft])
@@ -121,7 +129,7 @@ export function BibleTab({
     const steer = job.steer
     if (job.units && job.units.length > 0) {
       const only = job.units.length === 1 ? job.units[0] : undefined
-      if (only && 'slotId' in only)
+      if (only && 'slotId' in only && EXAMPLE_SLOT_IDS.includes(only.slotId))
         return { request: { slotId: only.slotId }, ...(steer ? { steer } : {}) }
       const sections = new Set(job.units.map((unit) => unit.section))
       return {
@@ -179,18 +187,30 @@ export function BibleTab({
   // A job still marked running that nothing has touched for thirty minutes: its run is gone.
   const stale = job !== null && job.state === 'running' && !running
   const canRetry = job !== null && (job.kind === 'research' || retryRequest() !== null)
+  // An unfinished bible with nothing drafted yet: say where to start. The block
+  // gives way to the panel its buttons open, and the row takes the buttons over.
+  const unfinished =
+    draft === null && !archived && !isBibleComplete(currentVersion.bible, EXAMPLE_SLOT_IDS)
+  const startVisible = unfinished && panel !== 'draft' && panel !== 'copy'
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[13px] text-[var(--color-text-secondary)]">
-        Version {currentVersion.version} is what the channel runs on. Changes collect in a draft
-        until you save them as a new version.
-      </p>
+      <h2 className="sr-only">Channel bible</h2>
+      <BibleToolbar
+        version={currentVersion.version}
+        panel={panel}
+        onPanel={setPanel}
+        showDrafting={!startVisible}
+        historyDisabled={archived || draft !== null}
+        draftingDisabled={locked}
+        canCopy={!archived}
+      />
 
       <BibleHistory
         channelId={channel.id}
         versions={versions}
         disabled={archived || draft !== null}
+        open={panel === 'history'}
       />
 
       <DraftWithAi
@@ -201,6 +221,8 @@ export function BibleTab({
         vidiqReady={vidiqReady}
         disabled={locked}
         retryToken={retryToken}
+        open={panel === 'draft'}
+        onOpenChange={(open) => setPanel(open ? 'draft' : null)}
         onDraft={setDraft}
       />
 
@@ -211,6 +233,8 @@ export function BibleTab({
           draft={draft}
           currentBible={currentVersion.bible}
           disabled={locked}
+          open={panel === 'copy'}
+          onOpenChange={(open) => setPanel(open ? 'copy' : null)}
           onCopied={(next, copiedNote) => {
             setDraft(next)
             setNote(copiedNote)
@@ -218,6 +242,25 @@ export function BibleTab({
           }}
         />
       )}
+
+      {startVisible ? (
+        <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
+          <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Start here</h3>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            This channel&apos;s bible is not finished, so new projects cannot start yet. Draft it
+            with AI from a short description, or copy another channel&apos;s and change what
+            differs.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" disabled={locked} onClick={() => setPanel('draft')}>
+              Draft with AI
+            </Button>
+            <Button variant="outline" disabled={locked} onClick={() => setPanel('copy')}>
+              Copy from another channel
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {running && job ? (
         <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
@@ -253,7 +296,9 @@ export function BibleTab({
           bible={bible}
           status={draft?.statuses[section] ?? 'approved'}
           flags={Object.fromEntries(
-            Object.entries(draft?.tooClose ?? {}).filter(([path]) => flagSection(path) === section),
+            Object.entries(liveFlags(draft?.tooClose ?? {})).filter(
+              ([path]) => flagSection(path) === section,
+            ),
           )}
           errors={Object.entries(draft?.errors ?? {})
             .filter(([key]) => errorSection(key) === section)
@@ -278,50 +323,23 @@ export function BibleTab({
       <BiblePreview channelId={channel.id} bible={bible} />
 
       {draft ? (
-        <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
-          {blockers.length > 0 ? (
-            <ul className="list-disc pl-5 text-[13px] text-[var(--color-warning)]">
-              {blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bible-note">Version note</Label>
-            <Input
-              id="bible-note"
-              value={note}
-              maxLength={300}
-              disabled={locked}
-              placeholder="Edited in the Bible tab"
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="primary"
-              disabled={locked || blockers.length > 0}
-              onClick={() => void save()}
-            >
-              Save
-            </Button>
-            <ConfirmButton
-              label="Discard draft"
-              confirmLabel="Discard draft"
-              consequence="The draft is thrown away. The saved version is not touched."
-              disabled={locked}
-              onConfirm={async () => {
-                const result = await discardBibleDraftAction(channel.id)
-                if (!result.ok) {
-                  toast({ title: 'Could not discard', description: result.error, variant: 'error' })
-                  return
-                }
-                setDraft(null)
-                router.refresh()
-              }}
-            />
-          </div>
-        </div>
+        <BibleSaveBar
+          nextVersion={currentVersion.version + 1}
+          blockers={blockers}
+          note={note}
+          onNote={setNote}
+          disabled={locked}
+          onSave={() => void save()}
+          onDiscard={async () => {
+            const result = await discardBibleDraftAction(channel.id)
+            if (!result.ok) {
+              toast({ title: 'Could not discard', description: result.error, variant: 'error' })
+              return
+            }
+            setDraft(null)
+            router.refresh()
+          }}
+        />
       ) : null}
     </div>
   )

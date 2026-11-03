@@ -33,7 +33,7 @@ describe('the slot registry', () => {
   })
 
   it('is within the ceiling and its ids are unique', () => {
-    expect(EXAMPLE_SLOTS.length).toBe(46)
+    expect(EXAMPLE_SLOTS.length).toBe(44)
     expect(EXAMPLE_SLOTS.length).toBeLessThanOrEqual(MAX_EXAMPLE_SLOTS)
     expect(new Set(EXAMPLE_SLOT_IDS).size).toBe(EXAMPLE_SLOT_IDS.length)
     expect(Object.keys(FIRST_CHANNEL_BIBLE.examples).sort()).toEqual([...EXAMPLE_SLOT_IDS].sort())

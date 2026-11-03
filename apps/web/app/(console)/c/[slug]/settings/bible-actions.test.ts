@@ -473,6 +473,17 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.examples).toBe('drafted')
   })
 
+  it('approves Examples when the only stored flag is on a retired slot', async () => {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      statuses: { ...draft.statuses, examples: 'drafted' },
+      tooClose: { 'examples.graphics-worked-beat': { source: 'Alpha: The Fall', run: 'a b c' } },
+    }))
+    expect((await approveBibleSectionAction(FIRST_CHANNEL_ID, 'examples')).ok).toBe(true)
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.examples).toBe('approved')
+  })
+
   it('approves a drafted section', async () => {
     await openBibleDraft(db, FIRST_CHANNEL_ID)
     await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
@@ -758,6 +769,31 @@ describeDb('copying the bible from another channel', () => {
     await copyBibleFromChannelAction(target.id, FIRST_CHANNEL_ID, ['voice'])
     const errors = (await getBibleDraft(db, target.id))!.errors
     expect(Object.keys(errors)).toEqual(['search'])
+  })
+
+  it('neither flags nor keeps a retired slot key on an Examples edit', async () => {
+    const copied = FIRST_CHANNEL_BIBLE.examples['direction-worked-example']!.split(/\s+/)
+      .slice(0, 12)
+      .join(' ')
+    const second = await makeChannel('Second')
+    await saveBibleVersion(
+      db,
+      second.id,
+      {
+        ...ChannelBibleSchema.parse({}),
+        examples: { [SLOT_ID]: 'A line of its own.', 'graphics-worked-beat': copied },
+      },
+      'holds a retired key',
+    )
+    const result = await editBibleSectionAction(second.id, 'examples', {
+      examples: { [SLOT_ID]: 'Another line of its own.' },
+    })
+    expect(result.ok).toBe(true)
+    const draft = result.draft!
+    expect(
+      Object.keys(draft.tooClose).filter((k) => k.startsWith('examples.graphics-worked')),
+    ).toEqual([])
+    expect(draft.bible.examples).not.toHaveProperty('graphics-worked-beat')
   })
 
   it('recomputes the overlap flags of a copied examples section', async () => {

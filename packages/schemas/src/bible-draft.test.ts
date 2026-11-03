@@ -7,7 +7,9 @@ import {
   bibleProblems,
   bibleSaveBlockers,
   jobIsRunning,
+  liveFlags,
   sectionIsEmpty,
+  sectionProgress,
   unitKey,
 } from './bible-draft'
 import type { BibleDraft, BibleSectionStatus } from './bible-draft'
@@ -85,6 +87,35 @@ describe('bibleSaveBlockers', () => {
     }
     expect(bibleSaveBlockers(draft)).toEqual([
       'examples.script-close-hedge is too close to its source',
+    ])
+  })
+
+  test('a flag stored on a retired example slot blocks nothing', () => {
+    const draft = {
+      ...draftOf(FIRST_CHANNEL_BIBLE),
+      tooClose: { 'examples.graphics-worked-beat': { source: 'v1', run: 'a b c' } },
+    }
+    expect(bibleSaveBlockers(draft)).toEqual([])
+  })
+})
+
+describe('liveFlags', () => {
+  const flag = { source: 'v1', run: 'a b c' }
+
+  test('drops a retired example path and keeps registered and other paths', () => {
+    const flags = {
+      'examples.graphics-worked-beat': flag,
+      'examples.graphics-worked-chart': flag,
+      'examples.script-close-hedge': flag,
+      'hooks.0': flag,
+      'openings.1': flag,
+      'titles.2': flag,
+    }
+    expect(Object.keys(liveFlags(flags)).sort()).toEqual([
+      'examples.script-close-hedge',
+      'hooks.0',
+      'openings.1',
+      'titles.2',
     ])
   })
 })
@@ -194,5 +225,28 @@ describe('jobIsRunning', () => {
     const job = { kind: 'draft', current: null, error: null, startedAt } as const
     expect(jobIsRunning({ ...job, state: 'running' })).toBe(true)
     expect(jobIsRunning({ ...job, state: 'done' })).toBe(false)
+  })
+})
+
+describe('sectionProgress', () => {
+  test('says how much of a section is filled', () => {
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, examples: {} }, 'examples')).toBe(
+      '0 of 44 examples written',
+    )
+    expect(
+      sectionProgress({ ...FIRST_CHANNEL_BIBLE, hooks: [], openings: [], titles: [] }, 'hooks'),
+    ).toBe('0 hooks, 0 openings, 0 titles')
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, channelTags: [] }, 'search')).toBe(
+      '3 of 4 filled',
+    )
+    expect(
+      sectionProgress(
+        {
+          ...FIRST_CHANNEL_BIBLE,
+          examples: { ...FIRST_CHANNEL_BIBLE.examples, 'graphics-worked-beat': 'x' },
+        },
+        'examples',
+      ),
+    ).toBe('44 of 44 examples written')
   })
 })

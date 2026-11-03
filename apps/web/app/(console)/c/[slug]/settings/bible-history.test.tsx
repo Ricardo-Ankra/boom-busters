@@ -36,8 +36,7 @@ const VERSIONS = [
 
 async function openHistory() {
   const user = userEvent.setup()
-  render(<BibleHistory channelId={CHANNEL_ID} versions={VERSIONS} disabled={false} />)
-  await user.click(screen.getByRole('button', { name: 'History' }))
+  render(<BibleHistory channelId={CHANNEL_ID} versions={VERSIONS} disabled={false} open />)
   return user
 }
 

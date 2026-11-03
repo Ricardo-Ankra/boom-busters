@@ -201,7 +201,7 @@ async function draftUnit(input: {
         Object.entries(draft.tooClose).filter(([path]) => !belongsTo(unit, path, written)),
       )
       for (const [path, text] of fields) {
-        const found = overlapFlag(path, text, sources)
+        const found = overlapFlag(text, sources)
         if (found) tooClose[path] = found
       }
 

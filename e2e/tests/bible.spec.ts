@@ -47,6 +47,12 @@ function chips(page: Page, status: 'Drafted, not approved' | 'Approved') {
   return page.getByText(status, { exact: true })
 }
 
+/** The save bar keeps what stops Save behind a button; open it if it is shut. */
+async function showWhatToFix(page: Page): Promise<void> {
+  const show = page.getByRole('button', { name: 'Show what to fix' })
+  if (await show.isVisible()) await show.click()
+}
+
 async function openCard(page: Page, label: string): Promise<void> {
   const summary = page.locator('summary').filter({ hasText: label })
   const details = page.locator('details').filter({ has: summary })
@@ -243,6 +249,7 @@ test.describe('a second channel’s bible', () => {
     await expect(chips(page, 'Drafted, not approved')).toHaveCount(SECTION_LABELS.length)
     await expect(chips(page, 'Approved')).toHaveCount(0)
     // Saving is refused while anything is still only drafted.
+    await showWhatToFix(page)
     await expect(page.getByText('Identity is drafted, not approved')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   })
@@ -356,9 +363,11 @@ test.describe('a second channel’s bible', () => {
 
     // The ticked sections came across and need approval; Identity stayed as it was. (A section
     // the source holds nothing in reads Empty, so the blockers are the count to trust.)
-    await expect(page.getByText('Voice is drafted, not approved')).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Show what to fix' })).toBeVisible({
       timeout: 15_000,
     })
+    await showWhatToFix(page)
+    await expect(page.getByText('Voice is drafted, not approved')).toBeVisible()
     await expect(page.getByText('Identity is drafted, not approved')).toHaveCount(0)
     await expect(page.getByLabel('Version note')).toHaveValue(
       /^Copied from Boom & Busters version \d+$/,
@@ -393,11 +402,21 @@ test.describe('a second channel’s bible', () => {
     await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible()
 
     // The busiest the tab gets: History open, the input and copy cards open, a section open.
+    // Only one panel is open at a time, so each is opened in turn and the page checked after each.
+    const noSidewaysScroll = async (what: string) => {
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow, `${what}: the page scrolls ${overflow}px sideways`).toBeLessThanOrEqual(0)
+    }
     await openHistory(page)
-    await page.getByRole('button', { name: 'Draft with AI' }).click()
-    await expect(page.getByLabel('Describe the channel in a few lines')).toBeVisible()
+    await noSidewaysScroll('History open')
     await page.getByRole('button', { name: 'Copy from another channel' }).click()
     await expect(page.getByLabel('Channel to copy from')).toBeVisible()
+    await noSidewaysScroll('Copy open')
+    await page.getByRole('button', { name: 'Draft with AI' }).click()
+    await expect(page.getByLabel('Describe the channel in a few lines')).toBeVisible()
+    await noSidewaysScroll('Draft with AI open')
     await openCard(page, 'Voice')
     await expect(page.getByRole('button', { name: 'Edit Voice', exact: true })).toBeVisible()
 
