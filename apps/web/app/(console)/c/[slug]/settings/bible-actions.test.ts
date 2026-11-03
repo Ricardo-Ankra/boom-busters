@@ -473,6 +473,17 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.examples).toBe('drafted')
   })
 
+  it('approves Examples when the only stored flag is on a retired slot', async () => {
+    await openBibleDraft(db, FIRST_CHANNEL_ID)
+    await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+      ...draft,
+      statuses: { ...draft.statuses, examples: 'drafted' },
+      tooClose: { 'examples.graphics-worked-beat': { source: 'Alpha: The Fall', run: 'a b c' } },
+    }))
+    expect((await approveBibleSectionAction(FIRST_CHANNEL_ID, 'examples')).ok).toBe(true)
+    expect((await getBibleDraft(db, FIRST_CHANNEL_ID))!.statuses.examples).toBe('approved')
+  })
+
   it('approves a drafted section', async () => {
     await openBibleDraft(db, FIRST_CHANNEL_ID)
     await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({

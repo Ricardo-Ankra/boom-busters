@@ -193,6 +193,19 @@ describe('BibleTab', () => {
     expect(screen.getByText('examples.' + SLOT.id + ' is too close to its source')).toBeVisible()
   })
 
+  it('ignores a stored flag on a retired example slot: Approve stays enabled and no blocker names it', async () => {
+    renderTab(
+      draftOf({
+        statuses: { ...draftOf().statuses, examples: 'drafted' },
+        tooClose: { 'examples.graphics-worked-beat': { source: 'Alpha: A title', run: 'one two' } },
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'Approve Examples' })).toBeEnabled()
+    expect(within(card('Examples')).queryByText(/Too close to its source/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
+    expect(screen.queryByText(/graphics-worked-beat/)).toBeNull()
+  })
+
   it('gives every button the 40 px target', () => {
     const { examples, ...rest } = FIRST_CHANNEL_BIBLE
     void examples
@@ -293,6 +306,28 @@ describe('BibleTab', () => {
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, {
       sections: ['voice'],
       steer: 'more clinical',
+    })
+  })
+
+  it('tries again for a single retired slot as the Examples section, keeping the steer', async () => {
+    draftBibleAction.mockResolvedValue({ ok: true })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The model is down',
+          startedAt: '2026-10-30T08:00:00.000Z',
+          units: [{ section: 'examples', slotId: 'graphics-worked-beat' }],
+          steer: 'plainer',
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, {
+      sections: ['examples'],
+      steer: 'plainer',
     })
   })
 

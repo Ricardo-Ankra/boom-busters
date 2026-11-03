@@ -7,6 +7,7 @@ import {
   bibleProblems,
   bibleSaveBlockers,
   jobIsRunning,
+  liveFlags,
   sectionIsEmpty,
   sectionProgress,
   unitKey,
@@ -86,6 +87,35 @@ describe('bibleSaveBlockers', () => {
     }
     expect(bibleSaveBlockers(draft)).toEqual([
       'examples.script-close-hedge is too close to its source',
+    ])
+  })
+
+  test('a flag stored on a retired example slot blocks nothing', () => {
+    const draft = {
+      ...draftOf(FIRST_CHANNEL_BIBLE),
+      tooClose: { 'examples.graphics-worked-beat': { source: 'v1', run: 'a b c' } },
+    }
+    expect(bibleSaveBlockers(draft)).toEqual([])
+  })
+})
+
+describe('liveFlags', () => {
+  const flag = { source: 'v1', run: 'a b c' }
+
+  test('drops a retired example path and keeps registered and other paths', () => {
+    const flags = {
+      'examples.graphics-worked-beat': flag,
+      'examples.graphics-worked-chart': flag,
+      'examples.script-close-hedge': flag,
+      'hooks.0': flag,
+      'openings.1': flag,
+      'titles.2': flag,
+    }
+    expect(Object.keys(liveFlags(flags)).sort()).toEqual([
+      'examples.script-close-hedge',
+      'hooks.0',
+      'openings.1',
+      'titles.2',
     ])
   })
 })

@@ -6,6 +6,7 @@ import {
   bibleSaveBlockers,
   isBibleComplete,
   jobIsRunning,
+  liveFlags,
 } from '@boom-busters/schemas'
 import type { BibleDraft, BibleSection, ChannelBible } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
@@ -128,7 +129,7 @@ export function BibleTab({
     const steer = job.steer
     if (job.units && job.units.length > 0) {
       const only = job.units.length === 1 ? job.units[0] : undefined
-      if (only && 'slotId' in only)
+      if (only && 'slotId' in only && EXAMPLE_SLOT_IDS.includes(only.slotId))
         return { request: { slotId: only.slotId }, ...(steer ? { steer } : {}) }
       const sections = new Set(job.units.map((unit) => unit.section))
       return {
@@ -295,7 +296,9 @@ export function BibleTab({
           bible={bible}
           status={draft?.statuses[section] ?? 'approved'}
           flags={Object.fromEntries(
-            Object.entries(draft?.tooClose ?? {}).filter(([path]) => flagSection(path) === section),
+            Object.entries(liveFlags(draft?.tooClose ?? {})).filter(
+              ([path]) => flagSection(path) === section,
+            ),
           )}
           errors={Object.entries(draft?.errors ?? {})
             .filter(([key]) => errorSection(key) === section)

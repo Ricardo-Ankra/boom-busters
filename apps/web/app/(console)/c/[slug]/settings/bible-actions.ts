@@ -27,6 +27,7 @@ import {
   UlidSchema,
   bibleDraftUnits,
   jobIsRunning,
+  liveFlags,
 } from '@boom-busters/schemas'
 import type {
   BibleDraft,
@@ -338,7 +339,7 @@ async function recheckedFlags(
           bible[list].map((entry, i): [string, string] => [`${list}.${i}`, entry.text]),
         )
   for (const [path, text] of fields) {
-    const found = overlapFlag(path, text, sources)
+    const found = overlapFlag(text, sources)
     if (found) flags[path] = found
   }
   return flags
@@ -475,7 +476,7 @@ export async function approveBibleSectionAction(
   if (!BIBLE_SECTION_ORDER.includes(section)) return { ok: false, error: 'Unknown section' }
   const open = await openForChange(channelId)
   if (!open.ok) return open
-  if (Object.keys(open.draft.tooClose).some((path) => flagSection(path) === section)) {
+  if (Object.keys(liveFlags(open.draft.tooClose)).some((path) => flagSection(path) === section)) {
     return { ok: false, error: 'Change the lines that are too close to their source first' }
   }
   return writeChange(channelId, (draft) => ({
