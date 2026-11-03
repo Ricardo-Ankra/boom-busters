@@ -73,11 +73,6 @@ const FIELD_META: Partial<Record<keyof ChannelBible, FieldMeta>> = {
   titles: { label: 'Titles', kind: 'entries', singular: 'title' },
   language: { label: 'Language', hint: 'A language code such as en.', kind: 'text' },
   country: { label: 'Country', hint: 'A two-letter code such as US.', kind: 'text' },
-  keywordContext: {
-    label: 'Keyword context',
-    hint: 'A short phrase that anchors keyword research.',
-    kind: 'text',
-  },
   channelTags: { label: 'Channel tags', hint: 'One per line.', kind: 'lines' },
   disclaimer: { label: 'Disclaimer', hint: 'Added to every description. Optional.', kind: 'text' },
   youtubeCategoryId: {

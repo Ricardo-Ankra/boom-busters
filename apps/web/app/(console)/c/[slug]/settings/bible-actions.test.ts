@@ -388,13 +388,13 @@ describeDb('the bible edit, approve, save and discard actions', () => {
   it('edits a section, opens the draft, approves it and takes only that section', async () => {
     expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
     const result = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', {
-      keywordContext: 'banking collapse',
+      channelHashtag: 'BankingCollapse',
       channelTags: ['finance', 'history'],
     })
     expect(result.ok).toBe(true)
 
     const draft = await getBibleDraft(db, FIRST_CHANNEL_ID)
-    expect(draft?.bible.keywordContext).toBe('banking collapse')
+    expect(draft?.bible.channelHashtag).toBe('BankingCollapse')
     expect(draft?.bible.channelTags).toEqual(['finance', 'history'])
     expect(draft?.statuses.search).toBe('approved')
     // A field of the section the patch left out keeps its value.

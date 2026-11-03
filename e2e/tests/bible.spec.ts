@@ -100,6 +100,7 @@ async function leaveDraftedBible(): Promise<void> {
           bible: mock.bible,
           statuses: {
             identity: 'drafted',
+            formats: 'drafted',
             voice: 'drafted',
             look: 'drafted',
             examples: 'drafted',

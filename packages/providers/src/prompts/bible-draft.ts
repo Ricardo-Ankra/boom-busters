@@ -49,7 +49,11 @@ const FIELD_NOTES: Record<keyof ChannelBible, string> = {
     'array of up to 12 entries { text: string, note: string, drawnFrom: [{ videoId, channel, title }] }: video titles',
   language: 'string: a language code such as "en"',
   country: 'string: a two-letter country code such as "US"',
-  keywordContext: 'string: one or two words that place search keywords, up to 60 characters',
+  formats:
+    'array of 1 to 6 formats { key: lower-case slug, name, primary: boolean (exactly one true), keywords: up to 6 search phrases this format is found by, lead first, intent: "tension" for a film that builds suspense or "calm" for one made to relax or fall asleep to, runtime: { default, min, max } minutes between 3 and 240, wordsPerMinute: the narrator\'s speaking rate (150 if unknown), shotHold: 1 for a normal pace of pictures up to 4 for long holds, titleTemplate: a title pattern using {topic} {formatKeyword} {pillar} {runtime}, or "", titleRequiredSlots: the slots every title must carry, introRule, introLine, outroLine: "" when none }: the kinds of video the channel makes',
+  channelHashtag: 'string: one hashtag for every upload, letters and digits only, without #, or ""',
+  channelFooter:
+    'string: a short closing paragraph for every description, up to 1000 characters, or ""',
   channelTags: "array of up to 15 strings, each up to 30 characters: the channel's own tags",
   titleStyle: 'string: how this channel titles its videos, in one line',
   ctaLine: 'string: the closing line that points viewers to the channel',
@@ -57,7 +61,7 @@ const FIELD_NOTES: Record<keyof ChannelBible, string> = {
   youtubeCategoryId: 'string of one to three digits, or null',
   auditionLine: 'string: a sample opening line of narration, up to 400 characters',
   caseCategories:
-    'array of at least two { key: lower-case slug, label: string up to 40 characters }: the kinds of film the channel makes',
+    'array of at least two { key: lower-case slug, label: string up to 40 characters, keywords: up to 6 search phrases for that pillar }: the kinds of film the channel makes',
   scriptRulesMd: 'string: extra rules for the script writer, in markdown; empty when none',
   directionRulesMd: 'string: extra rules for the picture department, in markdown; empty when none',
 }

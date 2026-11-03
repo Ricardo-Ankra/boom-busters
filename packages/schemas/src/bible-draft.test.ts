@@ -97,12 +97,27 @@ describe('sectionIsEmpty', () => {
   })
 
   test('identity is not empty when only case categories are set', () => {
-    const bible = { ...EMPTY_BIBLE, caseCategories: [{ key: 'a', label: 'A' }] }
+    const bible = { ...EMPTY_BIBLE, caseCategories: [{ key: 'a', label: 'A', keywords: [] }] }
     expect(sectionIsEmpty(bible, 'identity')).toBe(false)
   })
 })
 
+describe('formats section', () => {
+  test('empty while the one format is the default, not once it has a keyword', () => {
+    expect(sectionIsEmpty(EMPTY_BIBLE, 'formats')).toBe(true)
+    const [only] = EMPTY_BIBLE.formats
+    const bible = { ...EMPTY_BIBLE, formats: [{ ...only!, keywords: ['sleep'] }] }
+    expect(sectionIsEmpty(bible, 'formats')).toBe(false)
+  })
+})
+
 describe('section order and labels', () => {
+  test('the order holds every section once', () => {
+    expect(new Set(BIBLE_SECTION_ORDER).size).toBe(BIBLE_SECTION_ORDER.length)
+    expect(BIBLE_SECTION_ORDER).toHaveLength(Object.keys(BIBLE_SECTIONS).length)
+    expect(BIBLE_SECTION_ORDER[1]).toBe('formats')
+    expect(BIBLE_SECTION_LABELS.formats).toBe('Formats')
+  })
   test('every section is ordered and labelled', () => {
     expect([...BIBLE_SECTION_ORDER].sort()).toEqual(Object.keys(BIBLE_SECTIONS).sort())
     expect(BIBLE_SECTION_LABELS.hooks).toBe('Hooks, openings and titles')

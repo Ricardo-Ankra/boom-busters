@@ -42,6 +42,7 @@ function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
     bible: FIRST_CHANNEL_BIBLE,
     statuses: {
       identity: 'approved',
+      formats: 'approved',
       voice: 'approved',
       look: 'approved',
       examples: 'approved',
@@ -109,8 +110,8 @@ describe('BibleTab', () => {
           ...FIRST_CHANNEL_BIBLE,
           language: '',
           country: '',
-          keywordContext: '',
           channelTags: [],
+          channelHashtag: '',
         },
         statuses: { ...draftOf().statuses, voice: 'drafted' },
       }),
@@ -599,6 +600,7 @@ describe('BibleTab, copy from another channel', () => {
   const COPY = 'Copy from another channel'
   const SECTION_LABELS = [
     'Identity',
+    'Formats',
     'Voice',
     'Look',
     'Examples',

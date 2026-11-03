@@ -1,4 +1,4 @@
-import { BIBLE_SECTIONS, EXAMPLE_SLOTS } from '@boom-busters/schemas'
+import { BIBLE_SECTIONS, defaultFormat, EXAMPLE_SLOTS } from '@boom-busters/schemas'
 import type {
   BibleDraftInputs,
   BibleDraftUnit,
@@ -123,8 +123,10 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
   titles: [],
   language: 'en',
   country: 'US',
-  keywordContext: 'psychology',
   channelTags: [],
+  channelHashtag: '',
+  channelFooter: '',
+  formats: [defaultFormat('Psychology')],
   titleStyle: 'Curious, plain, specific',
   ctaLine: 'The full story is on the channel',
   disclaimer: 'This film is for general interest and is not medical or clinical advice.',
@@ -132,9 +134,9 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
   auditionLine:
     'In the autumn of 1961, a researcher asked ordinary volunteers to keep going when every instinct said stop. Four in ten refused.',
   caseCategories: [
-    { key: 'experiment', label: 'Experiment' },
-    { key: 'bias', label: 'Bias' },
-    { key: 'replication', label: 'Replication' },
+    { key: 'experiment', label: 'Experiment', keywords: [] },
+    { key: 'bias', label: 'Bias', keywords: [] },
+    { key: 'replication', label: 'Replication', keywords: [] },
   ],
   scriptRulesMd: '',
   directionRulesMd: '',

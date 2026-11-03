@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { EXAMPLE_SLOT_IDS, type BibleInUse } from './bible-slots'
 import { FIRST_CHANNEL_EXAMPLES } from './first-channel-examples'
+import { defaultFormat, FormatsSchema } from './formats'
 import { UlidSchema } from './ids'
 import { PUBLISH_DISCLAIMER } from './publish'
 
@@ -91,8 +92,13 @@ export const ChannelBibleSchema = z
     titles: z.array(BibleExampleEntrySchema).max(12).default([]),
     language: BibleLanguageSchema.default(''),
     country: z.string().max(2).default(''),
-    keywordContext: z.string().max(60).default(''),
     channelTags: z.array(z.string().max(30)).max(15).default([]),
+    channelHashtag: z
+      .string()
+      .regex(/^$|^[A-Za-z0-9]{1,30}$/, 'Letters and digits only, without #')
+      .default(''),
+    channelFooter: z.string().max(1000).default(''),
+    formats: FormatsSchema.default(() => [defaultFormat()]),
     titleStyle: z.string().max(2000).default(''),
     ctaLine: z.string().max(2000).default(''),
     disclaimer: z.string().max(1000).default(''),
@@ -107,6 +113,7 @@ export const ChannelBibleSchema = z
         z.object({
           key: z.string().regex(/^[a-z][a-z0-9_-]{0,23}$/),
           label: z.string().min(1).max(40),
+          keywords: z.array(z.string().trim().min(1).max(60)).max(6).default([]),
         }),
       )
       .default([]),
@@ -117,29 +124,65 @@ export const ChannelBibleSchema = z
 export type ChannelBible = z.infer<typeof ChannelBibleSchema>
 
 /**
+ * A stored bible written before formats: adds the one format its old
+ * `keywordContext` named (else "Main"), gives each category an empty keyword
+ * list, and drops `keywordContext`. A bible that has `formats` is returned as is.
+ */
+export function upgradeStoredBible(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
+  const stored = raw as Record<string, unknown>
+  if ('formats' in stored) return raw
+  const { keywordContext, ...rest } = stored
+  const context = typeof keywordContext === 'string' ? keywordContext.trim() : ''
+  const name = context ? context.charAt(0).toUpperCase() + context.slice(1) : 'Main'
+  const categories = Array.isArray(rest.caseCategories)
+    ? rest.caseCategories.map((c) =>
+        typeof c === 'object' && c !== null && !('keywords' in c) ? { ...c, keywords: [] } : c,
+      )
+    : rest.caseCategories
+  return {
+    ...rest,
+    ...(categories === undefined ? {} : { caseCategories: categories }),
+    formats: [defaultFormat(name)],
+  }
+}
+
+/**
  * Strict on write, strip on read: a stored version may carry a key the schema
  * has since dropped, and reading it must still work. Writes keep the strict one.
+ * A version stored before formats is upgraded first.
  */
-export const ChannelBibleReadSchema = z.object({
-  ...ChannelBibleSchema.shape,
-  // A language written before the rule reads as empty, so the upload sends none.
-  language: BibleLanguageSchema.catch('').default(''),
-})
+export const ChannelBibleReadSchema = z.preprocess(
+  upgradeStoredBible,
+  z.object({
+    ...ChannelBibleSchema.shape,
+    // A language written before the rule reads as empty, so the upload sends none.
+    language: BibleLanguageSchema.catch('').default(''),
+  }),
+)
 
 export const EMPTY_BIBLE: ChannelBible = ChannelBibleSchema.parse({})
 
 export type BibleSection =
-  'identity' | 'voice' | 'look' | 'examples' | 'hooks' | 'search' | 'publishing'
+  'identity' | 'formats' | 'voice' | 'look' | 'examples' | 'hooks' | 'search' | 'publishing'
 
 /** The units the owner drafts, approves and redrafts. Every field sits in exactly one. */
 export const BIBLE_SECTIONS: Record<BibleSection, readonly (keyof ChannelBible)[]> = {
   identity: ['subject', 'whatACaseIs', 'subjectKind', 'subjectNoun', 'caseCategories', 'audience'],
+  formats: ['formats'],
   voice: ['narrationRegister', 'voiceDos', 'voiceDonts', 'hedgingRules', 'scriptRulesMd'],
   look: ['visualRegister', 'directionRulesMd'],
   examples: ['examples'],
   hooks: ['hooks', 'openings', 'titles'],
-  search: ['language', 'country', 'keywordContext', 'channelTags'],
-  publishing: ['titleStyle', 'ctaLine', 'disclaimer', 'youtubeCategoryId', 'auditionLine'],
+  search: ['language', 'country', 'channelTags', 'channelHashtag'],
+  publishing: [
+    'titleStyle',
+    'ctaLine',
+    'disclaimer',
+    'youtubeCategoryId',
+    'auditionLine',
+    'channelFooter',
+  ],
 }
 
 /**
@@ -200,11 +243,11 @@ export const FIRST_CHANNEL_BIBLE: ChannelBible = {
   titleStyle: 'Sober, specific, curiosity-driven',
   ctaLine: 'The full story is on the channel',
   caseCategories: [
-    { key: 'collapse', label: 'Collapse' },
-    { key: 'con', label: 'Con' },
-    { key: 'meltdown', label: 'Meltdown' },
-    { key: 'turnaround', label: 'Turnaround' },
-    { key: 'empire', label: 'Empire' },
+    { key: 'collapse', label: 'Collapse', keywords: [] },
+    { key: 'con', label: 'Con', keywords: [] },
+    { key: 'meltdown', label: 'Meltdown', keywords: [] },
+    { key: 'turnaround', label: 'Turnaround', keywords: [] },
+    { key: 'empire', label: 'Empire', keywords: [] },
   ],
   scriptRulesMd: '',
   directionRulesMd: '',
@@ -226,8 +269,10 @@ export const FIRST_CHANNEL_BIBLE: ChannelBible = {
   titles: [],
   language: 'en',
   country: 'US',
-  keywordContext: 'documentary',
   channelTags: [],
+  channelHashtag: '',
+  channelFooter: '',
+  formats: [defaultFormat('Documentary')],
   disclaimer: PUBLISH_DISCLAIMER,
   youtubeCategoryId: null,
   auditionLine:

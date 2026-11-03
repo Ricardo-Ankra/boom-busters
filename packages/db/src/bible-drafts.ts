@@ -91,6 +91,7 @@ export async function openBibleDraft(db: Database, channelId: string): Promise<B
       bible: current.bible,
       statuses: {
         identity: 'approved',
+        formats: 'approved',
         voice: 'approved',
         look: 'approved',
         examples: 'approved',
