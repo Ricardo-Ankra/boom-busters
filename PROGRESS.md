@@ -4458,19 +4458,22 @@ Then:
 
 ### Owner actions at deploy
 
+All four done 2026-11-03, after the merge (`001fff1`).
+
 1. Migration `0043_safe_tusk` adds three nullable jsonb columns (the search
    brief and research job on cases, the frozen brief on projects). Master's
    last migration is 0042; there is no collision. Production Vercel builds
    apply it through `scripts/deploy-migrate.mjs` when master is pushed.
+   Done: Vercel reported the production deploy of `001fff1` complete.
 2. `PUT /api/inngest` after the Vercel deploy, so Inngest registers the new
-   function `case-researcher`.
+   function `case-researcher`. Done: "Successfully registered", with
+   `modified: true`.
 3. Add or check the VidIQ key in Settings, Connections, and the monthly
    credit cap. A research run needs about 20 credits and is refused when
-   the cap or the VidIQ balance cannot cover it.
-4. Open item, for the owner to confirm before the first real run: the brief
-   is called stale after 30 days. That figure was chosen to sit inside the
-   YouTube API Services data-storage rules (the spec, section 6.3, asks the
-   builder to check them). The owner confirms it against the current policy.
+   the cap or the VidIQ balance cannot cover it. Done by the owner.
+4. The brief is called stale after 30 days, a figure chosen to sit inside
+   the YouTube API Services data-storage rules (the spec, section 6.3).
+   Closed: the owner confirmed keeping results for 30 days.
 
 ### Not verified
 
