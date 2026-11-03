@@ -5,6 +5,7 @@ import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-buste
 import type { Notice, SearchBrief } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
+import { researchStepLabel } from './search-brief-panel'
 
 /**
  * The Case Library's notices (decision 293): a suggestion's repairs on its own row.
@@ -496,14 +497,15 @@ describe('Research with VidIQ', () => {
           subject: 'Iomega',
           searchJob: {
             state: 'running',
-            current: 'Reading keyword demand',
+            current: 'keywords-terms',
             error: null,
             startedAt: new Date().toISOString(),
             subject: 'Iomega',
           },
         }),
       )
-      expect(row).toHaveTextContent('Researching: Reading keyword demand')
+      expect(row).toHaveTextContent('Finding search terms')
+      expect(row).not.toHaveTextContent('keywords-terms')
       expect(within(row).queryByRole('button', { name: /^Research with VidIQ/ })).toBeNull()
       expect(refresh).not.toHaveBeenCalled()
       act(() => {
@@ -517,6 +519,26 @@ describe('Research with VidIQ', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('names every step the researcher reports in plain words, and falls back to Researching', () => {
+    const steps = {
+      load: 'Starting',
+      'keywords-terms': 'Finding search terms',
+      'keywords-filter': 'Keeping the terms about the subject',
+      'keywords-questions': 'Finding the questions people search',
+      outliers: 'Finding the winning videos',
+      'outlier-details': 'Reading the winning videos',
+      winners: 'Studying the winning titles',
+      angles: 'Drafting angle options',
+      'save-brief': 'Saving the brief',
+    }
+    for (const [id, label] of Object.entries(steps)) {
+      expect(researchStepLabel(id)).toBe(label)
+    }
+    expect(researchStepLabel('some-new-step')).toBe('Researching')
+    expect(researchStepLabel(null)).toBe('Researching')
+    for (const label of Object.values(steps)) expect(label).not.toMatch(/[\u2013\u2014]/)
   })
 
   it('shows a failed run with its error and Try again, which asks and then starts', async () => {
@@ -641,8 +663,59 @@ describe('the Search brief panel', () => {
     const row = renderRow(researched({ subject: '  wework ' }))
     expect(row).not.toHaveTextContent('This research is for')
     expect(
-      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 20 credits)' }),
     ).toBeInTheDocument()
+  })
+
+  it('offers Research again whenever a brief exists, and plain Research when none does', () => {
+    const withBrief = renderRow(researched())
+    expect(
+      within(withBrief).getByRole('button', { name: /^Research again with VidIQ/ }),
+    ).toBeInTheDocument()
+    const without = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
+    expect(
+      within(without).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('hides "Searched as" for an option with no keyword', () => {
+    const options = BRIEF.angleOptions.map((option, at) => ({
+      ...option,
+      keyword: at === 0 ? '' : option.keyword,
+    }))
+    const row = renderRow(researched({ searchBrief: { ...BRIEF, angleOptions: options } }))
+    expect(within(row).getAllByText(/Searched as/)).toHaveLength(options.length - 1)
+    expect(row).not.toHaveTextContent('Searched as .')
+    expect(row).toHaveTextContent(options[0]!.gap)
+  })
+
+  it('Use this angle and Make target are locked while one is pending, so a double click sends once', async () => {
+    let release: (value: { ok: boolean }) => void = () => {}
+    actions.chooseAngleAction.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      }),
+    )
+    const row = renderRow(researched())
+    const use = within(row).getAllByRole('button', { name: 'Use this angle' })[0]!
+    await userEvent.dblClick(use)
+    expect(actions.chooseAngleAction).toHaveBeenCalledTimes(1)
+    expect(use).toBeDisabled()
+    // The other chooser waits too, so two choices cannot race.
+    expect(within(row).getByRole('button', { name: 'Make target' })).toBeDisabled()
+    release({ ok: true })
+    await waitFor(() => expect(use).not.toBeDisabled())
+
+    let release2: (value: { ok: boolean }) => void = () => {}
+    actions.setTargetKeywordAction.mockReturnValue(
+      new Promise((resolve) => {
+        release2 = resolve
+      }),
+    )
+    const make = within(row).getByRole('button', { name: 'Make target' })
+    await userEvent.dblClick(make)
+    expect(actions.setTargetKeywordAction).toHaveBeenCalledTimes(1)
+    release2({ ok: true })
   })
 })
 

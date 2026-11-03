@@ -54,6 +54,24 @@ export function briefMatchesSubject(brief: SearchBrief, subject: string | null):
   return subject !== null && sameSubject(brief.subject, subject)
 }
 
+/** What the researcher is doing, by the step id it reports; an unknown id reads as plain Researching. */
+const STEP_LABELS: Record<string, string> = {
+  load: 'Starting',
+  'keywords-terms': 'Finding search terms',
+  'keywords-filter': 'Keeping the terms about the subject',
+  'keywords-questions': 'Finding the questions people search',
+  outliers: 'Finding the winning videos',
+  'outlier-details': 'Reading the winning videos',
+  winners: 'Studying the winning titles',
+  angles: 'Drafting angle options',
+  'save-brief': 'Saving the brief',
+}
+
+export function researchStepLabel(step: string | null): string {
+  const label = step !== null && Object.hasOwn(STEP_LABELS, step) ? STEP_LABELS[step] : undefined
+  return label ?? 'Researching'
+}
+
 const researchLabel = (again: boolean): string =>
   `${again ? 'Research again' : 'Research'} with VidIQ (about ${CASE_RESEARCH_CREDITS} credits)`
 
@@ -74,7 +92,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
   if (running) {
     return (
       <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
-        Researching: {job.current ?? 'Starting'}
+        {researchStepLabel(job.current)}
       </p>
     )
   }
@@ -86,7 +104,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
         ? (job.error ?? 'The research run failed')
         : 'The research run stopped answering'
   const subject = item.subject?.trim() ?? ''
-  const mismatched = item.searchBrief !== null && !briefMatchesSubject(item.searchBrief, subject)
+  const hasBrief = item.searchBrief !== null
 
   const consequence =
     estimate === null
@@ -101,7 +119,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
         <p className="text-[13px] text-[var(--color-danger)]">Research failed: {failure}</p>
       )}
       <ConfirmButton
-        label={failure === null ? researchLabel(mismatched) : 'Try again'}
+        label={failure === null ? researchLabel(hasBrief) : 'Try again'}
         confirmLabel="Start research"
         confirmVariant="primary"
         consequence={consequence}
@@ -237,7 +255,23 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
   const [writing, setWriting] = React.useState(false)
   const [own, setOwn] = React.useState(item.angle ?? '')
   const [busy, setBusy] = React.useState(false)
+  // The chooser in flight; the others wait so a double click sends once.
+  const [pending, setPending] = React.useState<string | null>(null)
   if (brief === null) return null
+
+  const choose = async (
+    key: string,
+    action: () => Promise<{ ok: boolean; error?: string }>,
+    success: string,
+  ) => {
+    if (pending !== null) return
+    setPending(key)
+    try {
+      await run(action, success)
+    } finally {
+      setPending(null)
+    }
+  }
 
   const current = briefMatchesSubject(brief, item.subject)
 
@@ -280,8 +314,11 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
                     {current && !keywordHasFigure(keyword.keyword) ? (
                       <Button
                         variant="outline"
+                        busy={pending === `target:${keyword.keyword}`}
+                        disabled={pending !== null}
                         onClick={() =>
-                          void run(
+                          void choose(
+                            `target:${keyword.keyword}`,
                             () => setTargetKeywordAction(item.id, keyword.keyword),
                             'Target keyword set',
                           )
@@ -346,7 +383,8 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
                       ) : null}
                     </p>
                     <p className="text-[var(--color-text-secondary)]">
-                      Searched as {option.keyword}. {option.gap}
+                      {option.keyword === '' ? '' : `Searched as ${option.keyword}. `}
+                      {option.gap}
                     </p>
                     {option.answers.length > 0 ? (
                       <p className="text-[var(--color-text-secondary)]">
@@ -357,8 +395,11 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
                       <div>
                         <Button
                           variant="outline"
+                          busy={pending === `angle:${at}`}
+                          disabled={pending !== null}
                           onClick={() =>
-                            void run(
+                            void choose(
+                              `angle:${at}`,
                               () => chooseAngleAction(item.id, { option: at }),
                               'Angle chosen',
                             )
