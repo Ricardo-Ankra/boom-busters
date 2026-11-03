@@ -4538,8 +4538,11 @@ This is on master and unrelated to this work.
 - [x] The board shows a coded graphic's concept and storyboard (`54238775`).
 - [x] A layout check in a browser and the review on rendered frames, with a
       Settings switch (decision 389).
-- [ ] After the deploy: the Vercel logs show no "[graphics] designing ...
-      without the browser" line, so Chromium starts on Vercel.
+- [x] First production redesign (2026-11-03): the logs showed Chromium
+      launching on Vercel and then failing, and a 300 s timeout before it;
+      fixed the same day (decision 389, the follow-up).
+- [ ] After the follow-up's deploy: a redesign leaves no "[graphics]
+      designing ... without the browser" line in the logs.
 - [ ] Redesign a few real slots on the new prompt and review (paid; on the
       owner's word).
 
@@ -9515,3 +9518,21 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      images per graphic, roughly doubling a graphic's cost; the layout check
      is free. Shipping: a Vercel deploy and `PUT /api/inngest`. No migration,
      no Remotion or broker deploy.
+     Follow-up, the same evening (owner: "I did do a redesign please check
+     the logs"). Read with the Vercel CLI, now installed and signed in to the
+     account that owns the project. The first attempt ran into Vercel's 300 s
+     limit; Inngest's retry launched Chromium from `@sparticuz/chromium` and
+     lost it at `browser.newPage` ("Target page, context or browser has been
+     closed"), and the design went on without the browser, as designed. The
+     cause: the packaged Chromium runs as a single process, and closing its
+     last page closes the browser, so the 9:16 frame's new page found it gone;
+     reproduced locally with the same flags, where the inspection did not
+     throw but hung with its promise unsettled, which is how the first attempt
+     reached the 300 s limit. Fixed: one page serves both frame sizes, resized
+     between them; the launch (20 s), the whole inspection (45 s, and never
+     past the design's deadline less 20 s, none at all with under 10 s to
+     spend), the font wait (3 s) and the close (5 s) are each raced against a
+     clock, a stall is `FramesUnavailable`, and a browser that starts after
+     its launch was given up on closes itself. `GRAPHIC_CHROMIUM_ARGS` adds
+     flags to a local launch, so a test runs the single-process browser. The
+     timed-out attempt's model calls were paid again by the retry.
