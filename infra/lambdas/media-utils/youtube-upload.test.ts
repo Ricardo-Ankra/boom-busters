@@ -83,4 +83,16 @@ describe('putInChunks', () => {
       }),
     ).rejects.toThrow('youtube upload failed with 403')
   })
+
+  it('fails clearly when a ranged read comes back short', async () => {
+    const fetchImpl = (async () => new Response('x', { status: 200 })) as unknown as typeof fetch
+    await expect(
+      putInChunks({
+        total: 100,
+        uploadUrl: 'https://upload.example/session',
+        fetchImpl,
+        readRange: async () => new Uint8Array(10),
+      }),
+    ).rejects.toThrow('video read returned 10 bytes for bytes 0-99 (expected 100)')
+  })
 })

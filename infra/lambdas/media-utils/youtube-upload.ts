@@ -23,6 +23,11 @@ export async function putInChunks(input: {
   for (;;) {
     const end = Math.min(offset + chunkBytes, input.total)
     const chunk = await input.readRange(offset, end - 1)
+    if (chunk.length !== end - offset) {
+      throw new Error(
+        `video read returned ${chunk.length} bytes for bytes ${offset}-${end - 1} (expected ${end - offset})`,
+      )
+    }
     const response = await input.fetchImpl(input.uploadUrl, {
       method: 'PUT',
       headers: {
