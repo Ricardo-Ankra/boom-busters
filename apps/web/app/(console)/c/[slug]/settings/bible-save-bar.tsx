@@ -46,6 +46,7 @@ export function BibleSaveBar({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-[13px]">
           <p
+            role="status"
             className={
               blocked ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-secondary)]'
             }
@@ -58,7 +59,7 @@ export function BibleSaveBar({
             <Button
               variant="ghost"
               aria-expanded={open}
-              aria-controls={listId}
+              aria-controls={open ? listId : undefined}
               onClick={() => setOpen((value) => !value)}
             >
               {open ? 'Hide' : 'Show what to fix'}

@@ -50,7 +50,7 @@ export async function overlapSources(
   return sources
 }
 
-/** The overlap flag for the text at a field path (`examples.<id>`, `hooks.<i>`), or null. */
-export function overlapFlag(path: string, text: string, sources: OverlapSources): TooClose | null {
+/** The overlap flag for a field's text, or null. */
+export function overlapFlag(text: string, sources: OverlapSources): TooClose | null {
   return tooCloseTo(text, sources.digest) ?? tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS)
 }
