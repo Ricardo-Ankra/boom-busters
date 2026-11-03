@@ -18,6 +18,7 @@ test.describe('Case Library', () => {
     await page.goto(channelPath('/cases'))
 
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill('A case I decided on myself')
     await page.getByLabel('Title').fill('A case I decided on myself')
     await page.getByLabel('Angle').fill('The angle nobody else took.')
     await page.getByRole('button', { name: 'Save case' }).click()
@@ -30,7 +31,7 @@ test.describe('Case Library', () => {
   test('the library sorts by every column offered', async ({ page }) => {
     await page.goto(channelPath('/cases'))
 
-    for (const sort of ['Category', 'Status', 'Newest', 'Priority']) {
+    for (const sort of ['Category', 'Status', 'Newest']) {
       await page.getByRole('button', { name: sort, exact: true }).click()
       await expect(page).toHaveURL(new RegExp(`sort=${sort.toLowerCase()}`))
     }

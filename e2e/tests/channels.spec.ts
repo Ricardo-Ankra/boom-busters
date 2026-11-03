@@ -142,6 +142,7 @@ test.describe('channels', () => {
 
     await page.goto(channelPath('/cases', SECOND_SLUG))
     await page.getByRole('button', { name: 'Add case' }).click()
+    await page.getByLabel('Subject').fill(SECOND_CASE_TITLE)
     await page.getByLabel('Title').fill(SECOND_CASE_TITLE)
     await page.getByLabel('Angle').fill('An angle, so the form is valid.')
     await page.getByRole('button', { name: 'Save case' }).click()
