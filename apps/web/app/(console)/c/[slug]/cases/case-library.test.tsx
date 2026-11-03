@@ -971,4 +971,49 @@ describe('the start control: format, length and cost', () => {
     expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
     expect(row).toHaveTextContent('This format runs 5 to 10 minutes')
   })
+
+  it('for a format longer than the start limit disables the field and the button, showing only the note', () => {
+    const huge = {
+      ...defaultFormat('Huge'),
+      key: 'huge',
+      primary: false,
+      runtime: { default: 90, min: 90, max: 180 },
+    }
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'huge' }), [...formats, huge])
+    const field = within(row).getByLabelText('Length in minutes')
+    expect(field).toBeDisabled()
+    expect(field).not.toHaveAttribute('min')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(row).toHaveTextContent('Videos longer than 60 minutes are not supported yet')
+    expect(row).not.toHaveTextContent('This format runs')
+  })
+
+  it("follows the case's format when the row picker changes it", async () => {
+    actions.setCaseFormatAction.mockResolvedValue({ ok: true })
+    const item = kase({ status: 'shortlisted', formatKey: 'short' })
+    const view = render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    const row = screen.getByText(item.title, { selector: 'p' }).closest('li')!
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    view.rerender(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[{ ...item, formatKey: 'main' }]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    expect(within(row).getByLabelText('Start format')).toHaveValue('main')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(15)
+  })
 })

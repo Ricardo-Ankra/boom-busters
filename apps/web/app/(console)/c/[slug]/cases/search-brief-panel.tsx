@@ -222,11 +222,21 @@ export function NewProjectButton({
   const [formatKey, setFormatKey] = React.useState<string | null>(caseFormat?.key ?? null)
   const format = formats.length > 0 && formatKey !== null ? resolveFormat(formats, formatKey) : null
   const [runtimeText, setRuntimeText] = React.useState(String(startRuntime(caseFormat)))
+  // The row's own picker changed the case's format: the start control follows it.
+  const [seenCaseKey, setSeenCaseKey] = React.useState(caseFormat?.key ?? null)
+  if ((caseFormat?.key ?? null) !== seenCaseKey) {
+    setSeenCaseKey(caseFormat?.key ?? null)
+    setFormatKey(caseFormat?.key ?? null)
+    setRuntimeText(String(startRuntime(caseFormat)))
+  }
   const [estimate, setEstimate] = React.useState<string | null>(null)
   const minRuntime = format?.runtime.min ?? RUNTIME_OUTER_MIN
   const maxRuntime = Math.min(format?.runtime.max ?? RUNTIME_START_MAX, RUNTIME_START_MAX)
   const runtime = Number(runtimeText)
+  // Every length the format allows is past the start limit: nothing can be started yet.
+  const tooLong = format !== null && format.runtime.min > RUNTIME_START_MAX
   const runtimeValid =
+    !tooLong &&
     runtimeText.trim() !== '' &&
     Number.isInteger(runtime) &&
     runtime >= minRuntime &&
@@ -336,10 +346,10 @@ export function NewProjectButton({
       <NumberInput
         id={`start-runtime-${item.id}`}
         value={runtimeText}
-        min={minRuntime}
-        max={maxRuntime}
+        min={tooLong ? undefined : minRuntime}
+        max={tooLong ? undefined : maxRuntime}
         step={1}
-        disabled={busy}
+        disabled={busy || tooLong}
         onChange={(event) => setRuntimeText(event.target.value)}
         className="w-24"
       />
@@ -356,7 +366,7 @@ export function NewProjectButton({
         estimate === null ? null : (
           <p className="w-full text-[13px] text-[var(--color-text-secondary)]">{estimate}</p>
         )
-      ) : (
+      ) : tooLong ? null : (
         <p className="w-full text-[13px] text-[var(--color-warning)]">
           This format runs {minRuntime} to {format?.runtime.max ?? RUNTIME_START_MAX} minutes
         </p>

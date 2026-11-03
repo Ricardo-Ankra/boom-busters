@@ -264,7 +264,13 @@ export async function startProjectFromCase(
   const format = resolveFormat(formats, formatKey ?? existing.formatKey)
   const maxMin = Math.min(format.runtime.max, RUNTIME_START_MAX)
   let runtime: number
-  if (targetRuntimeMin === undefined) {
+  if (format.runtime.min > RUNTIME_START_MAX) {
+    // Every length this format allows is beyond the start limit: nothing can start.
+    return {
+      ok: false,
+      error: `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`,
+    }
+  } else if (targetRuntimeMin === undefined) {
     runtime = Math.min(Math.max(format.runtime.default, format.runtime.min), maxMin)
   } else if (Number.isInteger(targetRuntimeMin) && targetRuntimeMin > RUNTIME_START_MAX) {
     return {

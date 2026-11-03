@@ -678,6 +678,25 @@ describe('startProjectFromCase and the search brief', () => {
       expect(store.createProjectFromCase).not.toHaveBeenCalled()
     })
 
+    it('a format whose minimum is past the start limit cannot start, with or without a runtime', async () => {
+      const huge = {
+        ...defaultFormat('Huge'),
+        key: 'huge',
+        primary: false,
+        runtime: { default: 90, min: 90, max: 180 },
+      }
+      store.channelForCase.mockResolvedValue({
+        id: CHANNEL_ID,
+        bible: { ...bible, formats: [...bible.formats, huge] },
+        archivedAt: null,
+      })
+      const refusal = { ok: false, error: 'Videos longer than 60 minutes are not supported yet' }
+      expect(await startProjectFromCase(CASE_ID, undefined, 'huge')).toEqual(refusal)
+      expect(await startProjectFromCase(CASE_ID, 90, 'huge')).toEqual(refusal)
+      expect(await startProjectFromCase(CASE_ID, 60, 'huge')).toEqual(refusal)
+      expect(store.createProjectFromCase).not.toHaveBeenCalled()
+    })
+
     it('a case with no format starts as the primary, default 15', async () => {
       store.getCase.mockResolvedValue({
         id: CASE_ID,
