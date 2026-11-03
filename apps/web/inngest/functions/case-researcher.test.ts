@@ -213,6 +213,43 @@ describeDb('case-researcher (mock mode)', () => {
     expect(row?.searchJob).toMatchObject({ state: 'failed', error: plain })
   })
 
+  it('keeps the first of a keyword or question VidIQ repeats, ignoring case', async () => {
+    const row = (keyword: string, overall: number) => ({
+      keyword,
+      volume: 50,
+      competition: 30,
+      overall,
+      estimatedMonthlySearch: null,
+      growthPct: null,
+    })
+    seams.clientOverride = (real) => ({
+      ...(real as object),
+      keywordResearch: async (_subject: string, options: { mode: string }) => ({
+        data:
+          options.mode === 'questions'
+            ? [row('why did wework fail', 1), row('Why did WeWork fail', 1), row('is wework dead', 1)]
+            : [
+                row('wework documentary', 60),
+                row('WeWork Documentary', 99),
+                row('wework podcast', 40),
+              ],
+        credits: 5,
+        args: { keyword: SUBJECT, mode: options.mode },
+      }),
+    })
+    const { result } = await engine.execute(request())
+    expect(result).toMatchObject({ outcome: 'researched' })
+    const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+    const keywords = [brief.targetKeyword, ...brief.secondaryKeywords].map((k) => k?.keyword)
+    expect(keywords.map((k) => k?.toLowerCase()).sort()).toEqual([
+      'wework documentary',
+      'wework podcast',
+    ])
+    // The first row wins, so the later row's higher score never lands.
+    expect(brief.targetKeyword?.overall).toBe(60)
+    expect(brief.searchedQuestions).toEqual(['why did wework fail', 'is wework dead'])
+  })
+
   it('a subject VidIQ barely knows still saves a brief, with no target keyword and angles from the bible (Review Focus 1)', async () => {
     seams.clientOverride = (real) => ({
       ...(real as object),

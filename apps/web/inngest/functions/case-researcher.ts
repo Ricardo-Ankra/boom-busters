@@ -101,6 +101,17 @@ const toOutlier = (video: VidiqVideo): SearchOutlier => ({
   tags: [],
 })
 
+/** The first of each text, compared without case: VidIQ can repeat a row, and a repeat is a duplicate React key. */
+function firstOfEach<T>(items: readonly T[], text: (item: T) => string): T[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    const key = text(item).trim().toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 const byBreakout = (a: SearchOutlier, b: SearchOutlier) =>
   (b.breakoutScore ?? -1) - (a.breakoutScore ?? -1)
 
@@ -197,7 +208,7 @@ export const caseResearcher = inngest.createFunction(
         },
         (client) => client.keywordResearch(subject, { mode: 'matching_terms', limit: TERMS_LIMIT }),
       )
-      return found.data.map(toKeyword)
+      return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
     })
 
     // 2. The model keeps the terms that are about this subject.
@@ -232,7 +243,10 @@ export const caseResearcher = inngest.createFunction(
         },
         (client) => client.keywordResearch(subject, { mode: 'questions', limit: QUESTIONS_LIMIT }),
       )
-      return found.data.map((row) => row.keyword).slice(0, QUESTIONS_LIMIT)
+      return firstOfEach(
+        found.data.map((row) => row.keyword),
+        (question) => question,
+      ).slice(0, QUESTIONS_LIMIT)
     })
 
     // 4. The winning videos: outliers with every word of the subject in the title.
