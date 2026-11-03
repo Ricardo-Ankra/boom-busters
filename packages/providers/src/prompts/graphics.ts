@@ -23,7 +23,7 @@ import { claimList, type ScriptClaim } from './script'
 import type { Exemplar } from '../exemplars/index'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, ignoreRepairs, trimField, type Note } from './repair'
-import { outputBudget, type LLMTaskRequest } from '../llm/types'
+import { outputBudget, type LLMTaskRequest, type MsgImage } from '../llm/types'
 
 export { GRAPHIC_CODE_FIXTURE_SOURCE }
 
@@ -335,6 +335,61 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(GRAPHIC_ANSWER_TOKENS),
   }
+}
+
+/** One rendered frame the review is shown (decision 389), and how the message names it. */
+export interface ReviewFrame {
+  label: string
+  image: MsgImage
+}
+
+/**
+ * The review (decision 389): the designer is shown its own passing design,
+ * rendered at the moments a viewer reads it, and asked to keep it or fix
+ * what it sees. The design's own request is the start, so the cached system
+ * prompt and film message are shared, without the redesign's old design (the
+ * design under review replaces it) and without a refusal; the review is the
+ * last message, carrying the frames, the design as answered and the ask.
+ */
+export function buildGraphicReviewRequest(
+  input: GraphicDesignInput,
+  design: PlannedGraphicCode,
+  frames: readonly ReviewFrame[],
+): LLMTaskRequest {
+  const { current: _current, rejection: _rejection, ...rest } = input
+  const request = buildGraphicRequest(rest)
+  const listed = frames.map((frame, index) => `Frame ${index + 1}: ${frame.label}`).join('\n')
+  const review =
+    `Your design for this slot passed every check. Here it is as it renders, ${frames.length} frames ` +
+    `in this order:\n${listed}\nLogos are drawn as empty boxes in these frames; the film shows the marks.\n\n` +
+    `The design:\n\`\`\`\`json\n${JSON.stringify(design, null, 2)}\n\`\`\`\`\n\n` +
+    'Look at each frame as a viewer would, against your concept and storyboard. Fix what you see: ' +
+    'words that collide or crowd, text cut off or pressed against an edge, type too small to read on a ' +
+    'phone, a frame with two things competing to be biggest, a moment that is empty or late against ' +
+    'its word, a concept that does not read, or anything the craft section rules out. If every frame ' +
+    'reads cleanly, answer {"keep": true} and nothing else. Otherwise answer the whole design again in ' +
+    'the same JSON shape, its keys in the same order, with the fixes made and what works kept.'
+  return {
+    ...request,
+    messages: [
+      ...request.messages,
+      { role: 'user', content: review, images: frames.map((frame) => frame.image) },
+    ],
+  }
+}
+
+/** The review's answer: keep the design, or a revised one to check. */
+export type GraphicReview = { keep: true } | { keep: false; design: PlannedGraphicCode }
+
+/**
+ * The review's answer, validated: `{"keep": true}` keeps the design; anything
+ * else is a whole design, read as the designer's answer is (decision 293's
+ * trims included) and refused as it would be.
+ */
+export function parseGraphicReview(text: string, note: Note = ignoreRepairs): GraphicReview {
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'graphic review')
+  if (raw['keep'] === true) return { keep: true }
+  return { keep: false, design: parseGraphicCode(text, note) }
 }
 
 /**
