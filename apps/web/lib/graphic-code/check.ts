@@ -164,6 +164,10 @@ export function graphicCodeIssue(
       words: slot.words.map((word) => ({ text: word.text, atMs: word.atMs })),
       durationMs: slot.durationMs,
       motion: MOTION_VERSION,
+      ...(answer.concept ? { concept: answer.concept } : {}),
+      ...(answer.storyboard && answer.storyboard.length > 0
+        ? { storyboard: answer.storyboard }
+        : {}),
     },
   }
 }

@@ -77,10 +77,16 @@ describe('the designer prompt (decision 295)', () => {
   // The rules are one string, wrapped for reading; compare with the wrapping removed.
   const rules = system.replace(/\s+/g, ' ')
 
-  it('asks for a title, a facts manifest and the source as one JSON string', () => {
+  it('asks for the concept and the storyboard first, then a title, a facts manifest and the source as one JSON string (decision 388)', () => {
     expect(system).toContain(
-      '{"title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}',
+      '{"concept": "...", "storyboard": ["...", "..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}',
     )
+    expect(rules).toContain(
+      'its keys in this order, so the concept and the storyboard are settled before the code is written',
+    )
+    expect(rules).toContain('in one line of at most 200 characters')
+    expect(rules).toContain('one entry per change, each starting with its time')
+    expect(rules).toContain('at most 16 entries. Then write the code to it.')
     expect(rules).toContain('one line of at most 80 characters')
     expect(rules).toContain(
       'at most 16384 characters, as one JSON string. Escape its double quotes and line breaks as JSON requires.',
@@ -212,6 +218,32 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain('no check reads your words, only your numbers.')
   })
 
+  it('teaches a concept built from moment to moment, not a template (decision 388)', () => {
+    expect(rules).toContain(
+      'You are a motion designer, not a slide builder: the graphic is one idea that moves.',
+    )
+    expect(rules).toContain(
+      'A centred column of lines, each fading in under the last, is a template, not a design.',
+    )
+    expect(rules).toContain(
+      'Each moment is made out of the one before: an element arrives once and then changes role instead of leaving',
+    )
+    expect(rules).toContain('A hook in the first half second')
+    expect(rules).toContain('Something changes about every 1.5 seconds, and the camera never stops')
+    expect(rules).toContain('Blur follows speed')
+    expect(rules).toContain('3D when it carries meaning')
+    // The owner's review of decision 387: chart marks stay conventional, and no decorative ticks.
+    expect(rules).toContain(
+      'Charts stay honest and conventional: bars rise out of the baseline, lines draw on',
+    )
+    expect(rules).toContain(
+      'no gridlines or minor ticks, and no bar that travels or morphs from one value to the next',
+    )
+    expect(rules).toContain(
+      'Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one whole layout to another, decorative gradients, drop shadows for depth.',
+    )
+  })
+
   it('teaches the craft, and carries none of the old grid', () => {
     expect(rules).toContain('Kinetic type, not paragraphs')
     expect(rules).toContain('One dominant idea with secondary detail')
@@ -255,8 +287,9 @@ describe('the designer prompt (decision 295)', () => {
     )
     expect(rules).toContain("output: 'perceptual-scale' on any interpolate that drives a scale.")
     expect(rules).toContain(
-      'A change within a beat is an exit, a motion.ms.gap pause, then an entrance.',
+      'A change within a beat transforms what is on screen (it moves, resizes, recolours or docks) rather than clearing it; when something must leave, it exits on motion.ms.exit and what replaces it enters a motion.ms.gap later.',
     )
+    expect(rules).not.toContain('A change within a beat is an exit, a motion.ms.gap pause')
     expect(rules).toContain('A group of three or more elements staggers')
     expect(rules).toContain(
       'The hero lands last, with only its note after it: entrances follow motion.order, frame, title, body, hero, note.',
@@ -285,7 +318,7 @@ describe('the designer prompt (decision 295)', () => {
     expect(text).not.toContain('Example 1, a text-only beat')
     expect(text).not.toContain('Example 2, a chart slot')
     expect(text).not.toContain('both examples')
-    expect(text).toContain('Answer with JSON only:')
+    expect(text).toContain('Answer with JSON only,')
   })
 
   it('composes for a bible that still holds the retired keys', () => {
@@ -335,7 +368,7 @@ describe('buildGraphicRequest (decision 295)', () => {
     )
     const slot = request.messages[1]!.content
     expect(slot).toContain(
-      'A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come from this slot and its claims:',
+      "A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, for its mechanics, its timing and its standard. Its concept came from its own narration: find this slot's own rather than reusing its layout. Its words and figures are its own; yours come from this slot and its claims:",
     )
     expect(slot).toContain('````jsx\n' + exemplar.source + '\n````')
     expect(slot.indexOf('Data (draw every point')).toBeLessThan(slot.indexOf('A passing design'))
@@ -460,6 +493,37 @@ describe('parseGraphicCode (decision 295)', () => {
     expect(repairs).toEqual([{ action: 'trimmed', field: "the graphic's title" }])
     // Without a note the trim still happens, unreported.
     expect(parseGraphicCode(JSON.stringify({ ...ANSWER, title: long })).title).toBe(parsed.title)
+  })
+
+  it('reads a concept and a storyboard when the answer carries them (decision 388)', () => {
+    const planned = {
+      concept: 'the sentence parts and the figure rises out of it',
+      storyboard: ['0.0 s the rule draws', '2.0 s "1.2bn": the figure rises out of the gap'],
+      ...ANSWER,
+    }
+    expect(parseGraphicCode(JSON.stringify(planned))).toEqual(planned)
+  })
+
+  it('trims an over-long concept and storyboard and caps the storyboard, saying so (decision 388)', () => {
+    const repairs: Repair[] = []
+    const parsed = parseGraphicCode(
+      JSON.stringify({
+        ...ANSWER,
+        concept: 'a sentence that parts '.repeat(12),
+        storyboard: Array.from({ length: 20 }, (_, index) =>
+          index === 0 ? 'x'.repeat(260) : `${index}.0 s a change`,
+        ),
+      }),
+      (repair) => repairs.push(repair),
+    )
+    expect(parsed.concept!.length).toBeLessThanOrEqual(200)
+    expect(parsed.storyboard).toHaveLength(16)
+    expect(parsed.storyboard![0]!.length).toBeLessThanOrEqual(200)
+    expect(repairs).toEqual([
+      { action: 'capped', field: "the graphic's storyboard", kept: 16 },
+      { action: 'trimmed', field: "the graphic's concept" },
+      { action: 'trimmed', field: 'a storyboard line' },
+    ])
   })
 
   it('refuses a fact citing claim 0', () => {
