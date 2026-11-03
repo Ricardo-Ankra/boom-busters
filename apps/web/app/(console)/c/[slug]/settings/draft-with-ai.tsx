@@ -58,6 +58,8 @@ export function DraftWithAi({
   vidiqReady,
   disabled,
   retryToken,
+  open,
+  onOpenChange,
   onDraft,
 }: {
   channelId: string
@@ -70,11 +72,13 @@ export function DraftWithAi({
   disabled: boolean
   /** Raised by the tab's "Try again" on a failed research: reopens the confirm. */
   retryToken: number
+  /** The tab shows this card while it is open. */
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onDraft: (draft: BibleDraft) => void
 }) {
   const router = useRouter()
   const { toast } = useToast()
-  const [open, setOpen] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [confirm, setConfirm] = React.useState<Confirm | null>(null)
   const [description, setDescription] = React.useState(
@@ -129,7 +133,7 @@ export function DraftWithAi({
   React.useEffect(() => {
     if (retryToken === lastToken.current) return
     lastToken.current = retryToken
-    setOpen(true)
+    onOpenChange(true)
     if (!savedInputs) return
     setDescription(savedInputs.description)
     setAudience(savedInputs.audience)
@@ -150,22 +154,14 @@ export function DraftWithAi({
       }
       if (result.draft) onDraft(result.draft)
       setConfirm(null)
-      setOpen(false)
+      onOpenChange(false)
       router.refresh()
     } finally {
       setBusy(false)
     }
   }
 
-  if (!open) {
-    return (
-      <div>
-        <Button variant="primary" disabled={disabled} onClick={() => setOpen(true)}>
-          Draft with AI
-        </Button>
-      </div>
-    )
-  }
+  if (!open) return null
 
   return (
     <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
@@ -309,7 +305,7 @@ export function DraftWithAi({
           >
             Draft without VidIQ
           </Button>
-          <Button variant="ghost" disabled={locked} onClick={() => setOpen(false)}>
+          <Button variant="ghost" disabled={locked} onClick={() => onOpenChange(false)}>
             Close
           </Button>
           {!vidiqReady ? (

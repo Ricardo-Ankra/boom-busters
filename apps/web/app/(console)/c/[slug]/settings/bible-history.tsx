@@ -42,14 +42,16 @@ export function BibleHistory({
   channelId,
   versions,
   disabled,
+  open,
 }: {
   channelId: string
   /** Every saved version, in any order. */
   versions: BibleHistoryVersion[]
   disabled: boolean
+  /** The tab shows the list while it is open. */
+  open: boolean
 }) {
   const router = useRouter()
-  const [open, setOpen] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [viewing, setViewing] = React.useState<{
     version: number
@@ -79,14 +81,10 @@ export function BibleHistory({
     router.refresh()
   }
 
+  if (!open) return null
+
   return (
     <div className="flex flex-col gap-3">
-      <div>
-        <Button variant="outline" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-          History
-        </Button>
-      </div>
-
       {open ? (
         <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-4">
           {error ? (

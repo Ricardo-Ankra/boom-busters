@@ -764,6 +764,96 @@ describe('BibleTab, copy from another channel', () => {
   })
 })
 
+describe('BibleTab, the tool row', () => {
+  const emptyExamples = {
+    id: 'x',
+    version: 1,
+    bible: { ...FIRST_CHANNEL_BIBLE, examples: {} },
+  }
+  const startTab = (over: { archived?: boolean } = {}) => (
+    <BibleTab
+      channel={CHANNEL}
+      draft={null}
+      versions={[]}
+      currentVersion={emptyExamples}
+      vidiqReady={false}
+      archived={over.archived ?? false}
+      copySources={SOURCES}
+    />
+  )
+  const DESCRIBE = 'Describe the channel in a few lines'
+
+  it('opens one tool panel at a time', async () => {
+    renderTab(null)
+    await userEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Copy from another channel' }))
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(screen.getByLabelText('Channel to copy from')).toBeInTheDocument()
+  })
+
+  it('closes the open panel when its button is pressed again', async () => {
+    renderTab(null)
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.queryByLabelText(DESCRIBE)).toBeNull()
+  })
+
+  it('offers a start block for an unfinished bible with no draft', () => {
+    render(startTab())
+    expect(screen.getByRole('heading', { level: 3, name: 'Start here' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Draft with AI' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Copy from another channel' })).toHaveLength(1)
+  })
+
+  it('opens the same panel from the start block and hides the block meanwhile', async () => {
+    render(startTab())
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+  })
+
+  it('shows no start block on a finished bible, with a draft, or when archived', () => {
+    const first = renderTab(null)
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+    first.unmount()
+    const second = renderTab(draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, examples: {} } }))
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+    second.unmount()
+    render(startTab({ archived: true }))
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+  })
+
+  it('reopens Draft with AI when a failed research is tried again', async () => {
+    estimateBibleResearchAction.mockResolvedValue({ ok: true, estimate: 10, balance: 100 })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'research',
+          state: 'failed',
+          current: null,
+          error: 'VidIQ refused',
+          startedAt: new Date().toISOString(),
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+  })
+
+  it('keeps History off while a draft exists and Copy off an archived channel', () => {
+    const first = renderTab(draftOf())
+    expect(screen.getByRole('button', { name: 'History' })).toBeDisabled()
+    first.unmount()
+    renderTab(null, { archived: true })
+    expect(screen.queryByRole('button', { name: 'Copy from another channel' })).toBeNull()
+  })
+})
+
 afterEach(() => {
   vi.useRealTimers()
 })

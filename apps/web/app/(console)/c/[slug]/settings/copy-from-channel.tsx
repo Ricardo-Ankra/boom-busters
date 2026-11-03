@@ -36,6 +36,8 @@ export function CopyFromChannel({
   draft,
   currentBible,
   disabled,
+  open,
+  onOpenChange,
   onCopied,
 }: {
   channelId: string
@@ -46,10 +48,12 @@ export function CopyFromChannel({
   currentBible: ChannelBible
   /** A run works on the draft or an action is in flight. */
   disabled: boolean
+  /** The tab shows this panel while it is open. */
+  open: boolean
+  onOpenChange: (open: boolean) => void
   onCopied: (draft: BibleDraft, note: string) => void
 }) {
   const { toast } = useToast()
-  const [open, setOpen] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [sourceId, setSourceId] = React.useState('')
   const [ticked, setTicked] = React.useState<Set<BibleSection>>(new Set(BIBLE_SECTION_ORDER))
@@ -79,22 +83,14 @@ export function CopyFromChannel({
         return
       }
       if (result.draft) onCopied(result.draft, result.note ?? '')
-      setOpen(false)
+      onOpenChange(false)
       setSourceId('')
     } finally {
       setBusy(false)
     }
   }
 
-  if (!open) {
-    return (
-      <div>
-        <Button variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
-          Copy from another channel
-        </Button>
-      </div>
-    )
-  }
+  if (!open) return null
 
   return (
     <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
@@ -164,7 +160,7 @@ export function CopyFromChannel({
             Copy
           </Button>
         )}
-        <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
+        <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
       </div>

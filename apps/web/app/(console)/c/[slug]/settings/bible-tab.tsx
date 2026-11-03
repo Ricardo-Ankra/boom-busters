@@ -1,6 +1,12 @@
 'use client'
 
-import { BIBLE_SECTION_ORDER, bibleSaveBlockers, jobIsRunning } from '@boom-busters/schemas'
+import {
+  BIBLE_SECTION_ORDER,
+  EXAMPLE_SLOT_IDS,
+  bibleSaveBlockers,
+  isBibleComplete,
+  jobIsRunning,
+} from '@boom-busters/schemas'
 import type { BibleDraft, BibleSection, ChannelBible } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
@@ -19,6 +25,7 @@ import { BibleHistory } from './bible-history'
 import { BiblePreview } from './bible-preview'
 import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
+import { BibleToolbar, type BiblePanel } from './bible-toolbar'
 import { CopyFromChannel, type CopySource } from './copy-from-channel'
 import { DraftWithAi } from './draft-with-ai'
 
@@ -68,6 +75,7 @@ export function BibleTab({
   const [busy, setBusy] = React.useState(false)
   const [note, setNote] = React.useState('')
   const [retryToken, setRetryToken] = React.useState(0)
+  const [panel, setPanel] = React.useState<BiblePanel>(null)
 
   // The server's draft wins whenever the page refreshes.
   React.useEffect(() => setDraft(initialDraft), [initialDraft])
@@ -178,18 +186,29 @@ export function BibleTab({
   // A job still marked running that nothing has touched for thirty minutes: its run is gone.
   const stale = job !== null && job.state === 'running' && !running
   const canRetry = job !== null && (job.kind === 'research' || retryRequest() !== null)
+  // An unfinished bible with nothing drafted yet: say where to start. The block
+  // gives way to the panel its buttons open, and the row takes the buttons over.
+  const unfinished =
+    draft === null && !archived && !isBibleComplete(currentVersion.bible, EXAMPLE_SLOT_IDS)
+  const startVisible = unfinished && panel !== 'draft' && panel !== 'copy'
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[13px] text-[var(--color-text-secondary)]">
-        Version {currentVersion.version} is what the channel runs on. Changes collect in a draft
-        until you save them as a new version.
-      </p>
+      <BibleToolbar
+        version={currentVersion.version}
+        panel={panel}
+        onPanel={setPanel}
+        showDrafting={!startVisible}
+        historyDisabled={archived || draft !== null}
+        draftingDisabled={locked}
+        canCopy={!archived}
+      />
 
       <BibleHistory
         channelId={channel.id}
         versions={versions}
         disabled={archived || draft !== null}
+        open={panel === 'history'}
       />
 
       <DraftWithAi
@@ -200,6 +219,8 @@ export function BibleTab({
         vidiqReady={vidiqReady}
         disabled={locked}
         retryToken={retryToken}
+        open={panel === 'draft'}
+        onOpenChange={(open) => setPanel(open ? 'draft' : null)}
         onDraft={setDraft}
       />
 
@@ -210,6 +231,8 @@ export function BibleTab({
           draft={draft}
           currentBible={currentVersion.bible}
           disabled={locked}
+          open={panel === 'copy'}
+          onOpenChange={(open) => setPanel(open ? 'copy' : null)}
           onCopied={(next, copiedNote) => {
             setDraft(next)
             setNote(copiedNote)
@@ -217,6 +240,25 @@ export function BibleTab({
           }}
         />
       )}
+
+      {startVisible ? (
+        <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
+          <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Start here</h3>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            This channel&apos;s bible is not finished, so new projects cannot start yet. Draft it
+            with AI from a short description, or copy another channel&apos;s and change what
+            differs.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" disabled={locked} onClick={() => setPanel('draft')}>
+              Draft with AI
+            </Button>
+            <Button variant="outline" disabled={locked} onClick={() => setPanel('copy')}>
+              Copy from another channel
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {running && job ? (
         <p role="status" className="text-[13px] text-[var(--color-text-secondary)]">
