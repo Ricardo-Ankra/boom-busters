@@ -480,6 +480,30 @@ describe('the chapter planning rules about minimums and sentences', () => {
   })
 })
 
+describe('the slot ceiling follows the shot hold', () => {
+  const ceilingAt = (shotHold: number): number => {
+    const { system } = buildShotListRequest({ ...baseRequest(), shotHold })
+    return Number(/A slot runs 4-(\d+) seconds/.exec(system)?.[1])
+  }
+
+  it('is never under a type minimum, for every hold from 1 to 4', () => {
+    for (let hold = 1; hold <= 4; hold += 0.5) {
+      for (const type of Object.keys(MIN_SHOT_SECONDS) as (keyof typeof MIN_SHOT_SECONDS)[]) {
+        expect(ceilingAt(hold), `${type} at hold ${hold}`).toBeGreaterThanOrEqual(
+          minShotSeconds(type, hold),
+        )
+      }
+    }
+  })
+
+  it('stays 15 at hold 1, and the prompt is unchanged', () => {
+    expect(ceilingAt(1)).toBe(15)
+    expect(buildShotListRequest({ ...baseRequest(), shotHold: 1 }).system).toBe(
+      buildShotListRequest(baseRequest()).system,
+    )
+  })
+})
+
 describe('mockShotList at a shot hold', () => {
   it('plans no slot under its type minimum times the hold', () => {
     const { slots } = mockShotList({ paragraphs: LONG_PARAGRAPHS, claimCount: 2, shotHold: 2 })

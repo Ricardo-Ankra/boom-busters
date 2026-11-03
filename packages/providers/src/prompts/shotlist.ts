@@ -334,7 +334,7 @@ Return JSON: {"slots": [...]}
 ${slotShapes(sets.length > 0)}
 
 Planning rules:
-${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-15 seconds ("seconds" is always a
+${fieldRule(sets.length > 0)}- Cover every paragraph. A slot runs 4-${Math.ceil(15 * (input.shotHold ?? 1))} seconds ("seconds" is always a
   positive number); a paragraph's slots should add up to roughly its narration
   length.
 ${minShotRule(input.shotHold)}
