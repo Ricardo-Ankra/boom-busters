@@ -192,13 +192,13 @@ this holds (150 words a minute, multiplier 1, empty template, empty intro).
 ### 4.6 Examples
 
 Boom & Busters after the upgrade: one format "Documentary", no keywords,
-`tension`, 15 / 3 / 60 minutes, 150 words a minute, shot hold
+`tension`, 15 / 3 / 30 minutes (the start limit, section 8), 150 words a minute, shot hold
 1, no template, no intro; five pillars with no keywords; no channel tags,
 hashtag or footer. It behaves as today until the owner fills something.
 
 History channel, illustration only: format "Sleep", keywords
 `["history for sleep", "ancient history explained", "history to fall asleep to"]`,
-`calm`, 120 / 60 / 180, 120 words a minute, shot hold 2.5, template
+`calm`, 120 / 60 / 180 (startable once long renders come in parts, section 8), 120 words a minute, shot hold 2.5, template
 `"{topic} | {formatKeyword} ({runtime})"` requiring `{topic}` and
 `{formatKeyword}`, which gives "Cleopatra | History for Sleep (2 Hours)"; pillars such as Egypt, Mesopotamia, Greece, Rome, each with
 keywords like "ancient egypt history".

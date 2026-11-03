@@ -294,9 +294,8 @@ export async function startProjectFromCase(
     caseId: id,
     title: existing.title,
     targetRuntimeMin: runtime,
-    ...((formatKey ?? existing.formatKey)
-      ? { formatKey: (formatKey ?? existing.formatKey) as string }
-      : {}),
+    // Always the resolved key: left unset, the column default (`main`) would win over the primary.
+    formatKey: format.key,
   })
   await markCaseInProduction(db, id)
   revalidatePath('/c/[slug]', 'layout')

@@ -596,7 +596,7 @@ describe('startProjectFromCase and the search brief', () => {
     expect(await startProjectFromCase(CASE_ID, 12)).toEqual({ ok: true, projectId: 'P1' })
     expect(store.createProjectFromCase).toHaveBeenCalledWith(
       { marker: 'db' },
-      { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 12 },
+      { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 12, formatKey: 'main' },
     )
     expect(checkVidiqBudget).not.toHaveBeenCalled()
     expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
@@ -721,7 +721,30 @@ describe('startProjectFromCase and the search brief', () => {
       await startProjectFromCase(CASE_ID)
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 15 },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 15, formatKey: 'main' },
+      )
+    })
+
+    it("a case with no format stores the primary's key even when another format is called main", async () => {
+      const sleep = { ...defaultFormat('Sleep'), key: 'sleep', primary: true }
+      store.getCase.mockResolvedValue({
+        id: CASE_ID,
+        title: 'WeWork',
+        status: 'shortlisted',
+        formatKey: null,
+      })
+      store.channelForCase.mockResolvedValue({
+        id: CHANNEL_ID,
+        bible: {
+          ...bible,
+          formats: [{ ...defaultFormat('Main'), primary: false }, sleep],
+        },
+        archivedAt: null,
+      })
+      await startProjectFromCase(CASE_ID)
+      expect(store.createProjectFromCase).toHaveBeenCalledWith(
+        { marker: 'db' },
+        expect.objectContaining({ formatKey: 'sleep' }),
       )
     })
   })
