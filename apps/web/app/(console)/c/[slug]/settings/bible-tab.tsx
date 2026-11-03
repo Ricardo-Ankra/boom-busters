@@ -5,8 +5,6 @@ import type { BibleDraft, BibleSection, ChannelBible } from '@boom-busters/schem
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { ConfirmButton } from '@/components/confirm-button'
-import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { errorSection, flagSection } from '@/lib/bible-draft-keys'
 import type { ActionResult } from './actions'
@@ -19,6 +17,7 @@ import {
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
 import { BiblePreview } from './bible-preview'
+import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
 import { CopyFromChannel, type CopySource } from './copy-from-channel'
 import { DraftWithAi } from './draft-with-ai'
@@ -278,50 +277,23 @@ export function BibleTab({
       <BiblePreview channelId={channel.id} bible={bible} />
 
       {draft ? (
-        <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
-          {blockers.length > 0 ? (
-            <ul className="list-disc pl-5 text-[13px] text-[var(--color-warning)]">
-              {blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bible-note">Version note</Label>
-            <Input
-              id="bible-note"
-              value={note}
-              maxLength={300}
-              disabled={locked}
-              placeholder="Edited in the Bible tab"
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="primary"
-              disabled={locked || blockers.length > 0}
-              onClick={() => void save()}
-            >
-              Save
-            </Button>
-            <ConfirmButton
-              label="Discard draft"
-              confirmLabel="Discard draft"
-              consequence="The draft is thrown away. The saved version is not touched."
-              disabled={locked}
-              onConfirm={async () => {
-                const result = await discardBibleDraftAction(channel.id)
-                if (!result.ok) {
-                  toast({ title: 'Could not discard', description: result.error, variant: 'error' })
-                  return
-                }
-                setDraft(null)
-                router.refresh()
-              }}
-            />
-          </div>
-        </div>
+        <BibleSaveBar
+          nextVersion={currentVersion.version + 1}
+          blockers={blockers}
+          note={note}
+          onNote={setNote}
+          disabled={locked}
+          onSave={() => void save()}
+          onDiscard={async () => {
+            const result = await discardBibleDraftAction(channel.id)
+            if (!result.ok) {
+              toast({ title: 'Could not discard', description: result.error, variant: 'error' })
+              return
+            }
+            setDraft(null)
+            router.refresh()
+          }}
+        />
       ) : null}
     </div>
   )

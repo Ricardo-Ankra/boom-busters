@@ -133,12 +133,38 @@ describe('BibleTab', () => {
     renderTab(drafted)
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('Voice is drafted, not approved')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Approve Voice' }))
     expect(approveBibleSectionAction).toHaveBeenCalledWith(CHANNEL.id, 'voice')
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     expect(screen.queryByText('Voice is drafted, not approved')).toBeNull()
+  })
+
+  it('keeps the draft bar along the bottom with the next version number', () => {
+    renderTab(draftOf())
+    const bar = screen.getByRole('region', { name: 'Unsaved draft' })
+    expect(bar.className).toContain('sticky')
+    expect(within(bar).getByText(/Saving makes version 4/)).toBeInTheDocument()
+  })
+
+  it('counts what stops Save and lists it on request', async () => {
+    renderTab(draftOf({ statuses: { ...draftOf().statuses, voice: 'drafted', look: 'drafted' } }))
+    expect(screen.getByText(/2 things to fix before saving/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
+    expect(screen.getByText('Voice is drafted, not approved')).toBeVisible()
+  })
+
+  it('holds Save, Discard and the note on an archived channel', () => {
+    renderTab(draftOf(), { archived: true })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByLabelText('Version note')).toBeDisabled()
+  })
+
+  it('says one thing in the singular', () => {
+    renderTab(draftOf({ statuses: { ...draftOf().statuses, voice: 'drafted' } }))
+    expect(screen.getByText(/1 thing to fix before saving\./)).toBeInTheDocument()
   })
 
   it('saves with the note and clears the draft', async () => {
@@ -152,7 +178,7 @@ describe('BibleTab', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
   })
 
-  it('disables Approve on a flagged field and shows the shared run and its source', () => {
+  it('disables Approve on a flagged field and shows the shared run and its source', async () => {
     renderTab(
       draftOf({
         statuses: { ...draftOf().statuses, examples: 'drafted' },
@@ -163,6 +189,7 @@ describe('BibleTab', () => {
     const note = within(card('Examples')).getByText(/Too close to its source/)
     expect(note).toHaveTextContent('one two three')
     expect(note).toHaveTextContent('Alpha: A title')
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('examples.' + SLOT.id + ' is too close to its source')).toBeVisible()
   })
 
@@ -675,6 +702,7 @@ describe('BibleTab, copy from another channel', () => {
     expect(screen.getByLabelText('Version note')).toHaveValue(
       'Copied from Boom & Busters version 4',
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('Voice is drafted, not approved')).toBeInTheDocument()
     // The panel closes.
     expect(screen.queryByLabelText('Channel to copy from')).toBeNull()
