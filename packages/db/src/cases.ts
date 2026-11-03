@@ -336,9 +336,20 @@ export async function setCaseTargetKeyword(
         ...(brief.targetKeyword ? [brief.targetKeyword] : []),
       ],
     }
+    // Notes written from the brief (an angle was chosen) name the old target, so they follow it.
+    // Notes the owner wrote by hand stay as they are.
+    const [row] = await tx
+      .select({ demandNotes: cases.demandNotes })
+      .from(cases)
+      .where(eq(cases.id, caseId))
+    const fromBrief = brief.chosenAngle !== null || row?.demandNotes === briefDemandNotes(brief)
     await tx
       .update(cases)
-      .set({ searchBrief: next, updatedAt: new Date() })
+      .set({
+        searchBrief: next,
+        ...(fromBrief ? { demandNotes: briefDemandNotes(next) } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(cases.id, caseId))
   })
   const updated = await getCase(db, caseId)

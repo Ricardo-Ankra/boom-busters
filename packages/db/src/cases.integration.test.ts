@@ -497,6 +497,22 @@ suite('cases', () => {
         ])
       })
 
+      it('rewrites the demand notes when an angle was chosen, so they name the new target', async () => {
+        const id = await researched()
+        await chooseCaseAngle(db, id, { option: 0 })
+        expect((await getCase(db, id))?.demandNotes).toContain('wework collapse')
+        const got = await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        expect(got.demandNotes).toContain('wework bankruptcy')
+        expect(got.demandNotes).not.toContain('wework collapse')
+      })
+
+      it('leaves hand-written demand notes alone when no angle was chosen', async () => {
+        const id = await researched()
+        await updateCase(db, id, { demandNotes: 'Owner note about the audience' })
+        const got = await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        expect(got.demandNotes).toBe('Owner note about the audience')
+      })
+
       it('refuses a keyword with a figure, and one that is not a secondary', async () => {
         const id = await researched()
         await expect(setCaseTargetKeyword(db, id, 'wework $47 billion')).rejects.toThrow(/figure/)
