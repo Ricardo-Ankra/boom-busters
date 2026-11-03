@@ -22,7 +22,7 @@ describe('ChannelFormatSchema', () => {
       primary: true,
       keywords: [],
       intent: 'tension',
-      runtime: { default: 15, min: 3, max: 60 },
+      runtime: { default: 15, min: 3, max: 30 },
       wordsPerMinute: 150,
       shotHold: 1,
       titleTemplate: '',

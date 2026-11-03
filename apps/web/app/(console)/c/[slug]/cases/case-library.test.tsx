@@ -882,7 +882,7 @@ describe('the start control: format, length and cost', () => {
     ...defaultFormat('Long'),
     key: 'long',
     primary: false,
-    runtime: { default: 120, min: 60, max: 180 },
+    runtime: { default: 90, min: 3, max: 180 },
   }
   const short = {
     ...defaultFormat('Short'),
@@ -906,14 +906,14 @@ describe('the start control: format, length and cost', () => {
     return screen.getByText(item.title, { selector: 'p' }).closest('li')!
   }
 
-  it('defaults the length to the format default clamped to 60, with the not-supported note', async () => {
+  it('defaults the length to the format default clamped to 30, with the not-supported note', async () => {
     actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
     const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
-    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(60)
-    expect(row).toHaveTextContent('Videos longer than 60 minutes are not supported yet')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(30)
+    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await waitFor(() =>
-      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 60, undefined),
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 30, undefined),
     )
   })
 
@@ -923,11 +923,11 @@ describe('the start control: format, length and cost', () => {
     expect(row).not.toHaveTextContent('not supported yet')
   })
 
-  it('sets the field range from the format, capped at 60', () => {
+  it('sets the field range from the format, capped at 30', () => {
     const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
     const field = within(row).getByLabelText('Length in minutes')
-    expect(field).toHaveAttribute('min', '60')
-    expect(field).toHaveAttribute('max', '60')
+    expect(field).toHaveAttribute('min', '3')
+    expect(field).toHaveAttribute('max', '30')
   })
 
   it('offers a start format only for more than one format, and starting with another sends its key and default', async () => {
@@ -984,7 +984,7 @@ describe('the start control: format, length and cost', () => {
     expect(field).toBeDisabled()
     expect(field).not.toHaveAttribute('min')
     expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
-    expect(row).toHaveTextContent('Videos longer than 60 minutes are not supported yet')
+    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
     expect(row).not.toHaveTextContent('This format runs')
   })
 

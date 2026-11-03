@@ -607,7 +607,7 @@ describe('startProjectFromCase and the search brief', () => {
       ...defaultFormat('Long'),
       key: 'long',
       primary: false,
-      runtime: { default: 120, min: 60, max: 180 },
+      runtime: { default: 90, min: 3, max: 180 },
     }
     const narrow = {
       ...defaultFormat('Short'),
@@ -632,18 +632,32 @@ describe('startProjectFromCase and the search brief', () => {
       send.mockReset().mockResolvedValue(undefined)
     })
 
-    it("starts a 120 / 60 / 180 format at the start limit when no runtime is given, storing the case's key", async () => {
+    it("starts a 90 / 3 / 180 format at the start limit when no runtime is given, storing the case's key", async () => {
       expect(await startProjectFromCase(CASE_ID)).toEqual({ ok: true, projectId: 'P1' })
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 60, formatKey: 'long' },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 30, formatKey: 'long' },
       )
     })
 
     it('refuses a runtime outside the format range, naming the range', async () => {
-      expect(await startProjectFromCase(CASE_ID, 45)).toEqual({
+      expect(await startProjectFromCase(CASE_ID, 2)).toEqual({
         ok: false,
-        error: 'This format runs 60 to 180 minutes',
+        error: 'This format runs 3 to 180 minutes',
+      })
+      expect(store.createProjectFromCase).not.toHaveBeenCalled()
+    })
+
+    it('accepts 30 minutes on a 3 to 180 format and refuses 31', async () => {
+      expect(await startProjectFromCase(CASE_ID, 30)).toEqual({ ok: true, projectId: 'P1' })
+      expect(store.createProjectFromCase).toHaveBeenCalledWith(
+        { marker: 'db' },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 30, formatKey: 'long' },
+      )
+      store.createProjectFromCase.mockClear()
+      expect(await startProjectFromCase(CASE_ID, 31)).toEqual({
+        ok: false,
+        error: 'Videos longer than 30 minutes are not supported yet',
       })
       expect(store.createProjectFromCase).not.toHaveBeenCalled()
     })
@@ -651,7 +665,7 @@ describe('startProjectFromCase and the search brief', () => {
     it('refuses a runtime above the start limit with the not-supported message', async () => {
       expect(await startProjectFromCase(CASE_ID, 90)).toEqual({
         ok: false,
-        error: 'Videos longer than 60 minutes are not supported yet',
+        error: 'Videos longer than 30 minutes are not supported yet',
       })
       expect(store.createProjectFromCase).not.toHaveBeenCalled()
     })
@@ -690,7 +704,7 @@ describe('startProjectFromCase and the search brief', () => {
         bible: { ...bible, formats: [...bible.formats, huge] },
         archivedAt: null,
       })
-      const refusal = { ok: false, error: 'Videos longer than 60 minutes are not supported yet' }
+      const refusal = { ok: false, error: 'Videos longer than 30 minutes are not supported yet' }
       expect(await startProjectFromCase(CASE_ID, undefined, 'huge')).toEqual(refusal)
       expect(await startProjectFromCase(CASE_ID, 90, 'huge')).toEqual(refusal)
       expect(await startProjectFromCase(CASE_ID, 60, 'huge')).toEqual(refusal)

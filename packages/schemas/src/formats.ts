@@ -7,7 +7,7 @@ export type TitleSlot = (typeof TITLE_SLOTS)[number]
 /** Outer limits for a format's runtime, in minutes; the start limit is the default `max`. */
 export const RUNTIME_OUTER_MIN = 3
 export const RUNTIME_OUTER_MAX = 180
-export const RUNTIME_START_MAX = 60
+export const RUNTIME_START_MAX = 30
 
 export const DEFAULT_WORDS_PER_MINUTE = 150
 export const DEFAULT_SHOT_HOLD = 1

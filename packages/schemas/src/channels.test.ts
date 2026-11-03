@@ -148,6 +148,7 @@ describe('upgradeStoredBible', () => {
   test('the stored first bible reads with one Documentary format and no keywordContext', () => {
     const read = ChannelBibleReadSchema.parse(storedFirstBible())
     expect(read.formats).toEqual([defaultFormat('Documentary')])
+    expect(read.formats[0]?.runtime).toEqual({ default: 15, min: 3, max: 30 })
     expect(read.caseCategories.every((c) => c.keywords.length === 0)).toBe(true)
     expect(read).not.toHaveProperty('keywordContext')
   })
