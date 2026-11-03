@@ -69,6 +69,10 @@ export interface PublishRecordProp {
   tags: string[]
   /** The tags that came from the case's search brief, so the screen can mark them. */
   searchTags: string[]
+  /** The channel, format and pillar tags in the list, so the screen can mark them. */
+  channelTags: string[]
+  /** The channel tags left out to keep the list inside YouTube's limit. */
+  channelTagsDropped: string[]
   thumbs: { key: string; url: string | null }[]
 }
 
@@ -170,6 +174,8 @@ export interface PublishModel {
   musicAttribution: string | null
   /** The channel's disclaimer, from the bible the project froze; the last block of the description. */
   disclaimer: string
+  /** The channel's footer, from the same bible; the screen shows it on the master only. */
+  footer: string
   /** The project froze a search brief, so VidIQ title scores are on offer. */
   hasSearchBrief: boolean
   /** What VidIQ charges to score one title, for the Score all estimate. */
@@ -193,6 +199,7 @@ export function emptyPublishModel(): PublishModel {
     scriptVersion: 0,
     musicAttribution: null,
     disclaimer: '',
+    footer: '',
     hasSearchBrief: false,
     titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: [],
@@ -329,6 +336,8 @@ export async function descriptionIngredients(
   musicAttribution: string | null
   /** The channel's disclaimer, from the project's frozen bible. */
   disclaimer: string
+  /** The channel's footer, from the project's frozen bible; the actions add it to a master's description only. */
+  footer: string
   /** The latest script's version, which a saved opening is measured against. */
   scriptVersion: number
   /** The latest timeline's length in seconds; null when there is no timeline. */
@@ -351,6 +360,7 @@ export async function descriptionIngredients(
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
     disclaimer: channel.bible.disclaimer,
+    footer: channel.bible.channelFooter,
     scriptVersion: scriptSources.scriptVersion,
     runtimeSec: master ? timelineDurationMs(master) / 1000 : null,
   }
@@ -388,6 +398,8 @@ function toRecordProp(
     hashtags: draft.success ? draft.data.hashtags : [],
     tags: draft.success ? draft.data.tags : [],
     searchTags: draft.success ? draft.data.searchTags : [],
+    channelTags: draft.success ? draft.data.channelTags : [],
+    channelTagsDropped: draft.success ? draft.data.channelTagsDropped : [],
     thumbs,
   }
 }
@@ -566,6 +578,7 @@ export async function publishModel(
     scriptVersion: scriptSources.scriptVersion,
     musicAttribution,
     disclaimer: channel.bible.disclaimer,
+    footer: channel.bible.channelFooter,
     hasSearchBrief: project.searchBrief !== null,
     titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: settings.publish.defaultScheduleSlots,

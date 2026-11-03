@@ -48,6 +48,25 @@ describe('composeDescription', () => {
     expect(other.description).toBe('Body.\n\nEducational content, not financial advice.')
   })
 
+  it("places the channel's footer after the chapters and before the music", () => {
+    const input = {
+      body: 'Body.',
+      chapters: [
+        { title: 'One', startMs: 0 },
+        { title: 'Two', startMs: 1000 },
+        { title: 'Three', startMs: 2000 },
+      ],
+      sources: [],
+      musicAttribution: 'Track by Someone',
+    }
+    const { description } = compose({ ...input, footer: 'About this channel.' })
+    const footer = description.indexOf('About this channel.')
+    expect(footer).toBeGreaterThan(description.indexOf('0:00 One'))
+    expect(footer).toBeLessThan(description.indexOf('Music:'))
+    expect(compose({ ...input, footer: '' })).toEqual(compose(input))
+    expect(compose({ ...input, footer: '  ' })).toEqual(compose(input))
+  })
+
   const chapters = [
     { title: 'The rise', startMs: 0 },
     { title: 'The hole', startMs: 312_400 },

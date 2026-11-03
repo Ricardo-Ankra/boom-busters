@@ -7,8 +7,6 @@ const TAG_MAX = 100
 /** A tag must be on this many outlier videos to be taken. */
 const OUTLIER_TAG_MIN_VIDEOS = 2
 
-const BUSINESS_DOCUMENTARY = 'business documentary'
-
 const YEAR = /\b(?:19|20)\d{2}\b/g
 
 /** One line, or an empty string when it would not fit a tag (cut text would be a different tag). */
@@ -34,11 +32,15 @@ function castNames(cast: readonly string[]): string[] {
  * The tags the case's search brief supplies, in order (spec 7.5): the target
  * keyword and the secondary keywords as the brief lists them; the tags at least
  * two outlier videos share that name the subject, a cast member or a year the
- * brief mentions, then "business documentary" when any outlier has it; and the
- * cast's names. Deduplicated case-insensitively, first spelling kept. A keyword
+ * brief mentions, or that the channel's own keywords name; and the cast's
+ * names. Deduplicated case-insensitively, first spelling kept. A keyword
  * stays a tag even with a figure in it: a tag is search text, not a claim.
  */
-export function searchTags(brief: SearchBrief, cast: readonly string[]): string[] {
+export function searchTags(
+  brief: SearchBrief,
+  cast: readonly string[],
+  channelKeywords: readonly string[] = [],
+): string[] {
   const keywords = [
     ...(brief.targetKeyword ? [brief.targetKeyword.keyword] : []),
     ...brief.secondaryKeywords.map((row) => row.keyword),
@@ -51,8 +53,10 @@ export function searchTags(brief: SearchBrief, cast: readonly string[]): string[
   )
   const subject = tagLine(brief.subject).toLowerCase()
   const names = castNames(cast)
+  const channelOwn = new Set(channelKeywords.map((word) => word.toLowerCase()))
   const aboutCase = (tag: string): boolean => {
     const lower = tag.toLowerCase()
+    if (channelOwn.has(lower)) return true
     if (subject !== '' && lower.includes(subject)) return true
     if (names.some((name) => lower.includes(name))) return true
     return (lower.match(YEAR) ?? []).some((year) => years.has(year))
@@ -75,11 +79,10 @@ export function searchTags(brief: SearchBrief, cast: readonly string[]): string[
   const shared = [...counts.values()]
     .filter((entry) => entry.videos >= OUTLIER_TAG_MIN_VIDEOS && aboutCase(entry.tag))
     .map((entry) => entry.tag)
-  const business = counts.has(BUSINESS_DOCUMENTARY) ? [BUSINESS_DOCUMENTARY] : []
 
   const tags: string[] = []
   const seen = new Set<string>()
-  for (const raw of [...keywords, ...shared, ...business, ...cast]) {
+  for (const raw of [...keywords, ...shared, ...cast]) {
     const tag = tagLine(raw)
     const key = tag.toLowerCase()
     if (tag === '' || seen.has(key)) continue

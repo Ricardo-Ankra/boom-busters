@@ -78,13 +78,39 @@ describe('searchTags', () => {
     ])
   })
 
-  it('adds "business documentary" when any single outlier has it', () => {
-    expect(searchTags(brief({ outliers: [outlier('a', ['Business Documentary'])] }), [])).toEqual([
+  it('no longer adds "business documentary" on its own', () => {
+    const outliers = [
+      outlier('a', ['Business Documentary']),
+      outlier('b', ['business documentary']),
+    ]
+    expect(searchTags(brief({ outliers }), [])).toEqual([
       'wirecard scandal',
       'wirecard documentary',
       'markus braun trial',
-      'business documentary',
     ])
+  })
+
+  it("takes a shared outlier tag the channel's keywords name, spelled as the outliers spell it", () => {
+    const outliers = [
+      outlier('a', ['Business Documentary']),
+      outlier('b', ['business documentary']),
+    ]
+    expect(searchTags(brief({ outliers }), [], ['business documentary'])).toEqual([
+      'wirecard scandal',
+      'wirecard documentary',
+      'markus braun trial',
+      'Business Documentary',
+    ])
+    expect(searchTags(brief({ outliers }), [], ['Business Documentary'])).toContain(
+      'Business Documentary',
+    )
+  })
+
+  it('still wants two outliers for a keyword tag', () => {
+    const outliers = [outlier('a', ['business documentary'])]
+    expect(searchTags(brief({ outliers }), [], ['Business Documentary'])).not.toContain(
+      'business documentary',
+    )
   })
 
   it('counts a tag once per outlier, however often it repeats there', () => {

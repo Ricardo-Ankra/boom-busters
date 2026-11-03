@@ -129,6 +129,7 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     scriptVersion: 4,
     musicAttribution: null,
     disclaimer: PUBLISH_DISCLAIMER,
+    footer: '',
     hasSearchBrief: false,
     titleScoreCredits: 5,
     // Friday 15:00 UTC long-form, Saturday 16:00 UTC Short — the defaults.
@@ -281,6 +282,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -335,6 +338,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -429,6 +434,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [
               { key: 'boom-busters/thumbs/p/a.png', url: null },
               { key: 'boom-busters/thumbs/p/b.png', url: null },
@@ -470,6 +477,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -506,6 +515,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -644,6 +655,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -702,6 +715,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -743,6 +758,8 @@ describe('PublishScreen', () => {
             titleScoreNote: '',
             titleSlotMisses: {},
             searchTags: [],
+            channelTags: [],
+            channelTagsDropped: [],
             thumbs: [],
           },
         }),
@@ -776,6 +793,8 @@ describe('the search description (decision 303)', () => {
     titleScoreNote: '',
     titleSlotMisses: {},
     searchTags: [],
+    channelTags: [],
+    channelTagsDropped: [],
     thumbs: [],
     ...over,
   })
@@ -919,6 +938,8 @@ describe('the search brief on the Publish screen', () => {
     hashtags: [],
     tags: ['Owner tag', 'wirecard scandal', 'Markus Braun'],
     searchTags: ['Wirecard Scandal', 'markus braun'],
+    channelTags: [],
+    channelTagsDropped: [],
     thumbs: [],
     ...over,
   })
@@ -1036,5 +1057,42 @@ describe('the search brief on the Publish screen', () => {
     expect(marked).toHaveTextContent('Markus Braun')
     expect(marked).not.toHaveTextContent('Owner tag')
     expect(screen.getAllByText('from VidIQ')).toHaveLength(2)
+  })
+
+  it('marks the channel, format and pillar tags, and says which were left out', () => {
+    renderScreen({
+      items: [
+        masterItem({
+          record: record({
+            tags: ['Owner tag', 'history', 'History for Sleep', 'wirecard scandal'],
+            searchTags: ['wirecard scandal'],
+            channelTags: ['history', 'History for Sleep'],
+            channelTagsDropped: ['sleep', 'calm'],
+          }),
+        }),
+      ],
+    })
+    const marked = screen.getByRole('list', { name: 'Tags that came from the channel' })
+    expect(marked).toHaveTextContent('history')
+    expect(marked).toHaveTextContent('History for Sleep')
+    expect(marked).not.toHaveTextContent('Owner tag')
+    expect(screen.getAllByText('Channel')).toHaveLength(2)
+    expect(screen.getByText('Left out to keep room: sleep, calm')).toBeVisible()
+  })
+
+  it('shows no channel marks or left-out line when there are none', () => {
+    renderScreen({ items: [masterItem({ record: record() })] })
+    expect(screen.queryByRole('list', { name: 'Tags that came from the channel' })).toBeNull()
+    expect(screen.queryByText(/Left out to keep room/)).toBeNull()
+  })
+
+  it("previews the channel's footer on a master and not on a Short", () => {
+    renderScreen({ footer: 'About this channel.' })
+    expect(screen.getByText(/About this channel./).textContent).toContain('0:00 The rise')
+  })
+
+  it("leaves the footer out of a Short's preview", () => {
+    renderScreen({ footer: 'About this channel.', items: [shortItem()] })
+    expect(screen.queryByText(/About this channel./)).toBeNull()
   })
 })

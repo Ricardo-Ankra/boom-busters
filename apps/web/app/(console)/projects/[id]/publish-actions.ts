@@ -27,11 +27,13 @@ import {
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
   CHAPTER_GLOSS_MAX,
+  channelTagsWithin,
   composeDescription,
   HASHTAGS_MAX,
   fillTitleTemplate,
   leadKeyword,
   missingTitleSlots,
+  normaliseHashtag,
   OutlineSchema,
   runtimeWords,
   splitHashtags,
@@ -201,6 +203,25 @@ export async function savePublishDraft(
   return { ok: true }
 }
 
+/** The case's pillar in a bible, by the case's category key. */
+function pillarOf(
+  bible: { caseCategories: readonly { key: string; label: string; keywords: string[] }[] },
+  category: string | undefined,
+): { key: string; label: string; keywords: string[] } | undefined {
+  return bible.caseCategories.find((pillar) => pillar.key === category)
+}
+
+/** Each text once, case-insensitively, the first spelling kept. */
+function uniqueNoCase(texts: readonly string[]): string[] {
+  const seen = new Set<string>()
+  return texts.filter((text) => {
+    const key = text.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 /** The owner's tags first, then the written ones, inside YouTube's 500 characters. */
 function joinTags(kept: readonly string[], written: readonly string[]): string[] {
   const tags: string[] = []
@@ -287,7 +308,8 @@ export async function generateDescription(
   if (!('frozen' in bibleGate)) return bibleGate
 
   // The brief the project froze (null for a project started without one).
-  const brief = (await getProject(db, projectId))?.searchBrief ?? null
+  const project = await getProject(db, projectId)
+  const brief = project?.searchBrief ?? null
   const cast = brief ? (await listCastMembers(db, projectId)).map((member) => member.name) : []
 
   const [grounding, ingredients, sources] = await Promise.all([
@@ -305,6 +327,12 @@ export async function generateDescription(
       : []
   const shortText = type === 'short' ? await shortNarration(targetId, textOf) : undefined
 
+  // The format's keywords, then the pillar's, once each: what a master's body and
+  // tags are asked to carry.
+  const { bible, format } = bibleGate.frozen
+  const pillarKeywords = pillarOf(bible, project?.caseCategory)?.keywords ?? []
+  const channelKeywords = uniqueNoCase([...format.keywords, ...pillarKeywords])
+
   let answer: DescriptionAnswer
   if (mockProvidersEnabled()) {
     answer = mockDescription(chapters.length)
@@ -321,6 +349,7 @@ export async function generateDescription(
           chapters,
           ...(shortText ? { shortText } : {}),
           ...(brief ? { searchBrief: brief } : {}),
+          ...(type === 'master' ? { channelKeywords } : {}),
         }),
         parse: (text, note) => parseDescriptionAnswer(text, chapters.length, note),
         complete: completeForProject(projectId, { estimateOutputTokens: 800 }),
@@ -340,8 +369,34 @@ export async function generateDescription(
   }
 
   const stored = PublishDraftSchema.safeParse(record.metadata)
-  // The brief's own tags go after the owner's and before the model's (spec 7.5).
-  const fromBrief = brief ? searchTags(brief, cast) : []
+  // The channel's tags, then the format's and pillar's keywords, then the brief's
+  // own go after the owner's and before the model's (spec 6.7, 7.5). A Short keeps
+  // the owner's, the brief's and the model's alone.
+  const fromBrief = brief ? searchTags(brief, cast, type === 'master' ? channelKeywords : []) : []
+  const channelFirst =
+    type === 'master' ? channelTagsWithin(bible.channelTags) : { kept: [], dropped: [] }
+  const channelCandidates = uniqueNoCase([
+    ...channelFirst.kept,
+    ...(type === 'master' ? channelKeywords : []),
+  ])
+  const tags = joinTags(stored.success ? stored.data.tags : [], [
+    ...channelCandidates,
+    ...fromBrief,
+    ...answer.tags,
+  ])
+  const inTags = new Set(tags.map((tag) => tag.toLowerCase()))
+  // Only the channel, format and pillar tags that made the list are marked as the channel's.
+  const channelTags = channelCandidates.filter((tag) => inTags.has(tag.toLowerCase()))
+  const own = normaliseHashtag(bible.channelHashtag)
+  const hashtags =
+    type === 'master' && own !== ''
+      ? [
+          own,
+          ...answer.hashtags
+            .filter((tag) => normaliseHashtag(tag).toLowerCase() !== own.toLowerCase())
+            .slice(0, HASHTAGS_MAX - 1),
+        ]
+      : answer.hashtags
   const patch = {
     descriptionBody: answer.body,
     bodyScriptVersion: grounding.scriptVersion,
@@ -355,9 +410,11 @@ export async function generateDescription(
           ),
         }
       : {}),
-    hashtags: answer.hashtags,
-    tags: joinTags(stored.success ? stored.data.tags : [], [...fromBrief, ...answer.tags]),
+    hashtags,
+    tags,
     searchTags: fromBrief,
+    channelTags,
+    channelTagsDropped: channelFirst.dropped,
   }
   // A patch the draft schema would refuse would make the whole draft unreadable
   // at upload, which would then fall back to the pitch title (decision 303, review).
@@ -506,7 +563,7 @@ async function titleFrameFor(
     }),
     formatKeyword: leadKeyword(format),
     pillar: format.titleTemplate.includes('{pillar}')
-      ? (frozen.bible.caseCategories.find((c) => c.key === project.caseCategory)?.label ?? null)
+      ? (pillarOf(frozen.bible, project.caseCategory)?.label ?? null)
       : null,
     runtime: runtimeSec === null ? null : runtimeWords(runtimeSec),
   }
@@ -867,6 +924,8 @@ async function requestUpload(
     sources: ingredients.sources,
     // The bed plays under Shorts too — the licence rides on every upload.
     musicAttribution: ingredients.musicAttribution,
+    // The channel's footer is a long-form description's; a Short's is as it was.
+    ...(type === 'master' ? { footer: ingredients.footer } : {}),
     hashtags: draft.success ? draft.data.hashtags : [],
     disclaimer: ingredients.disclaimer,
   })

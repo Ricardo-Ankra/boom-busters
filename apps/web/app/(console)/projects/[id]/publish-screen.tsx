@@ -700,6 +700,11 @@ function ItemEditor({
     .split(',')
     .map((tag) => tag.trim())
     .filter((tag) => tag !== '' && fromVidiq.has(tag.toLowerCase()))
+  const fromChannel = new Set((record?.channelTags ?? []).map((tag) => tag.toLowerCase()))
+  const channelMarked = tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag !== '' && fromChannel.has(tag.toLowerCase()))
   const [thumbError, setThumbError] = React.useState<string | null>(null)
   const [uploadingThumb, setUploadingThumb] = React.useState(false)
 
@@ -710,6 +715,7 @@ function ItemEditor({
       : [],
     sources: model.sources,
     musicAttribution: model.musicAttribution,
+    ...(isMaster ? { footer: model.footer } : {}),
     hashtags: splitHashtags(hashtags),
     disclaimer: model.disclaimer,
   })
@@ -991,6 +997,24 @@ function ItemEditor({
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {channelMarked.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Tags that came from the channel">
+              {channelMarked.map((tag) => (
+                <li key={tag}>
+                  <Badge tone="muted">
+                    {tag}
+                    <span>Channel</span>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {(record?.channelTagsDropped ?? []).length > 0 ? (
+            <p className="text-[12px] text-[var(--color-text-secondary)]">
+              Left out to keep room: {(record?.channelTagsDropped ?? []).join(', ')}
+            </p>
           ) : null}
 
           {dirty ? (

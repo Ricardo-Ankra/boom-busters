@@ -115,8 +115,16 @@ function titleSearchRules(
 function descriptionSearchRules(
   brief: SearchBrief | null | undefined,
   target: 'master' | 'short',
+  channelKeywords: readonly string[] = [],
 ): string {
-  if (!brief) return ''
+  const channelKeywordList = target === 'master' ? quotedList(channelKeywords, ', ') : ''
+  const channelLine =
+    channelKeywordList === ''
+      ? []
+      : [
+          `- One of these also appears within the first 150 characters of "body", where it reads naturally: ${channelKeywordList}.`,
+        ]
+  if (!brief) return channelLine.length > 0 ? `\n${channelLine.join('\n')}` : ''
   const keyword =
     brief.targetKeyword && searchBriefLine(brief.targetKeyword.keyword) !== ''
       ? quotedKeyword(brief.targetKeyword.keyword)
@@ -144,6 +152,7 @@ function descriptionSearchRules(
           '- "body" follows the shape the winning videos on this subject share: an opening dated scene with one figure taken from the claims, a line saying this is the full story, and a closing question that invites a comment.',
         ]
       : []),
+    ...channelLine,
   ]
   return lines.length > 0 ? `\n${lines.join('\n')}` : ''
 }
@@ -306,6 +315,8 @@ export function buildDescriptionRequest(input: {
   shortText?: string
   /** The case's search brief; absent or null changes nothing in the prompt. */
   searchBrief?: SearchBrief | null
+  /** The format's and pillar's keywords; a master is asked to work one in early. Absent or empty changes nothing. */
+  channelKeywords?: readonly string[]
 }): LLMTaskRequest {
   const glossCount = input.target === 'master' ? input.chapters.length : 0
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -342,7 +353,7 @@ Rules:
   first${clip ? ', then what this Short is about' : ''}.
 - "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: [[example:metadata-tag-kinds]]${
         clip ? ', leading with the ones this Short names' : ''
-      }.${descriptionSearchRules(input.searchBrief, input.target)}`,
+      }.${descriptionSearchRules(input.searchBrief, input.target, input.channelKeywords)}`,
       input.bible,
     ),
     messages: clip

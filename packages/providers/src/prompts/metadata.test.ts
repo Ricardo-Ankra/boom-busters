@@ -210,6 +210,41 @@ describe('buildDescriptionRequest (decision 303)', () => {
   })
 })
 
+describe('buildDescriptionRequest with channel keywords', () => {
+  const base = {
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
+    claims: [CLAIM],
+    chapters: [],
+  }
+  const LINE =
+    '- One of these also appears within the first 150 characters of "body", where it reads naturally: "history for sleep", "bedtime history".'
+
+  it('asks a master to place one of the keywords early in the body', () => {
+    const master = buildDescriptionRequest({
+      ...base,
+      target: 'master',
+      channelKeywords: ['history for sleep', 'bedtime history'],
+    })
+    expect(master.system).toContain(LINE)
+  })
+
+  it('leaves a Short alone', () => {
+    const input = { ...base, target: 'short' as const, shortText: 'A clip.' }
+    const short = buildDescriptionRequest({ ...input, channelKeywords: ['history for sleep'] })
+    expect(short.system).not.toContain('One of these also appears')
+    expect(short).toEqual(buildDescriptionRequest(input))
+  })
+
+  it('is the same request when the keywords are absent or empty', () => {
+    const plain = buildDescriptionRequest({ ...base, target: 'master' })
+    expect(buildDescriptionRequest({ ...base, target: 'master', channelKeywords: [] })).toEqual(
+      plain,
+    )
+    expect(plain.system).not.toContain('One of these also appears')
+  })
+})
+
 describe('buildTitlesRequest for a Short (decision 303)', () => {
   const clip = buildTitlesRequest({
     bible: FIRST_CHANNEL_IN_USE,
