@@ -345,22 +345,9 @@ export function plannedToRows(input: {
 export const RESOLUTION_CONCURRENCY = 4
 
 /**
- * Slots resolved in one Inngest step, in waves of `RESOLUTION_CONCURRENCY`.
- * A step apiece would put a 240-minute run (1,200 to 3,400 slots) past the
- * 1,000 steps one function run may take; eight a step keeps it near 150 to
- * 430. Two waves of stills fit well inside the route's 300 s.
+ * Slots resolved in one Inngest step on a board too long for a step apiece
+ * (see `PER_SLOT_STEP_MAX_SLOTS`), in waves of `RESOLUTION_CONCURRENCY`. A
+ * 240-minute run has 1,200 to 3,400 slots; eight a step keeps it near 150 to
+ * 430 steps. Two waves of stills fit well inside the route's 300 s.
  */
 export const RESOLUTION_STEP_SLOTS = 8
-
-/** The slots cut into steps of `RESOLUTION_STEP_SLOTS`, each named by its first slot. */
-export function resolutionBatches<T extends { id: string }>(
-  board: readonly T[],
-  prefix = 'resolve',
-): { stepId: string; slots: T[] }[] {
-  const batches: { stepId: string; slots: T[] }[] = []
-  for (let i = 0; i < board.length; i += RESOLUTION_STEP_SLOTS) {
-    const slots = board.slice(i, i + RESOLUTION_STEP_SLOTS)
-    batches.push({ stepId: `${prefix}-${slots[0]!.id}`, slots })
-  }
-  return batches
-}

@@ -48,8 +48,7 @@ import {
   slotPlan,
   timelineKey,
 } from '../lib/assembly'
-import { chunk } from '../lib/narration'
-import { RESOLUTION_CONCURRENCY, resolutionBatches } from '../lib/shot-list'
+import { stepSlots } from '../lib/slot-steps'
 
 /**
  * assembly-runner (build spec section 7.5).
@@ -160,32 +159,22 @@ export const assemblyRunner = inngest.createFunction(
     const ingested: Record<string, { r2Key: string; assetId?: string; previewR2Key?: string }> = {}
     const unusable: Record<string, string> = {}
     if (!mocked && storageConfigured()) {
-      // Eight slots to a step, in waves of four: a 240-minute board has more
-      // stock slots than one function run has steps.
-      for (const { stepId, slots } of resolutionBatches(
+      // A step a slot for any board a 60-minute project can hold, eight a step
+      // above that (`stepSlots`); the choice reads the memoised load's length.
+      const settled = await stepSlots(
+        (id, fn) => step.run(id, fn) as never,
         setup.slots.filter(needsStockIngest),
         'ingest-stock',
-      )) {
-        const outcomes = await step.run(stepId, async () => {
-          const settled: { id: string; outcome: Awaited<ReturnType<typeof ingestSlotStock>> }[] = []
-          for (const wave of chunk(slots, RESOLUTION_CONCURRENCY)) {
-            settled.push(
-              ...(await Promise.all(
-                wave.map(async (slot) => ({ id: slot.id, outcome: await ingestSlotStock(slot) })),
-              )),
-            )
+        { run: (slot) => ingestSlotStock(slot) },
+      )
+      for (const { slot, outcome } of settled) {
+        if (outcome.ok) {
+          ingested[slot.id] = {
+            r2Key: outcome.r2Key,
+            ...(outcome.assetId !== undefined ? { assetId: outcome.assetId } : {}),
+            ...(outcome.previewR2Key !== undefined ? { previewR2Key: outcome.previewR2Key } : {}),
           }
-          return settled
-        })
-        for (const { id, outcome } of outcomes) {
-          if (outcome.ok) {
-            ingested[id] = {
-              r2Key: outcome.r2Key,
-              ...(outcome.assetId !== undefined ? { assetId: outcome.assetId } : {}),
-              ...(outcome.previewR2Key !== undefined ? { previewR2Key: outcome.previewR2Key } : {}),
-            }
-          } else unusable[id] = outcome.reason
-        }
+        } else unusable[slot.id] = outcome.reason
       }
     }
 
