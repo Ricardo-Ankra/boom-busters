@@ -4,6 +4,7 @@ import {
   caseSubjectTaken,
   channelForCase,
   chooseCaseAngle,
+  costPerMinute,
   createCase,
   createProjectFromCase,
   deleteCase,
@@ -25,6 +26,7 @@ import {
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
   EXAMPLE_SLOT_IDS,
+  RUNTIME_START_MAX,
   UlidSchema,
   caseResearchCredits,
   caseResearchJobIsRunning,
@@ -236,6 +238,7 @@ export interface StartProjectResult extends ActionResult {
 export async function startProjectFromCase(
   id: string,
   targetRuntimeMin?: number,
+  formatKey?: string,
 ): Promise<StartProjectResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown case' }
@@ -253,18 +256,41 @@ export async function startProjectFromCase(
   if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
     return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
-  const runtime = z
-    .number()
-    .int()
-    .min(3)
-    .max(60)
-    .safeParse(targetRuntimeMin ?? 15)
-  if (!runtime.success) return { ok: false, error: 'Target runtime must be 3-60 minutes' }
+  // The format: the one asked for (it must be in the bible now), else the case's, else the primary.
+  const formats = channel.bible.formats
+  if (formatKey !== undefined && !formats.some((f) => f.key === formatKey)) {
+    return { ok: false, error: "That format is not in the channel's bible" }
+  }
+  const format = resolveFormat(formats, formatKey ?? existing.formatKey)
+  const maxMin = Math.min(format.runtime.max, RUNTIME_START_MAX)
+  let runtime: number
+  if (targetRuntimeMin === undefined) {
+    runtime = Math.min(Math.max(format.runtime.default, format.runtime.min), maxMin)
+  } else if (Number.isInteger(targetRuntimeMin) && targetRuntimeMin > RUNTIME_START_MAX) {
+    return {
+      ok: false,
+      error: `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`,
+    }
+  } else if (
+    !Number.isInteger(targetRuntimeMin) ||
+    targetRuntimeMin < format.runtime.min ||
+    targetRuntimeMin > maxMin
+  ) {
+    return {
+      ok: false,
+      error: `This format runs ${format.runtime.min} to ${format.runtime.max} minutes`,
+    }
+  } else {
+    runtime = targetRuntimeMin
+  }
 
   const project = await createProjectFromCase(db, {
     caseId: id,
     title: existing.title,
-    targetRuntimeMin: runtime.data,
+    targetRuntimeMin: runtime,
+    ...((formatKey ?? existing.formatKey)
+      ? { formatKey: (formatKey ?? existing.formatKey) as string }
+      : {}),
   })
   await markCaseInProduction(db, id)
   revalidatePath('/c/[slug]', 'layout')
@@ -296,6 +322,30 @@ export async function startProjectFromCase(
   }
 
   return { ok: true, projectId: project.id }
+}
+
+export interface StartCostEstimate {
+  usd: number | null
+  /** The whole line the Start control shows. */
+  basis: string
+}
+
+/**
+ * What a project of this length is likely to cost, from what finished projects
+ * did cost per minute. Spends nothing.
+ */
+export async function estimateStartCostAction(
+  channelId: string,
+  runtimeMin: number,
+): Promise<StartCostEstimate> {
+  await requireOwner()
+  const none = { usd: null, basis: 'No estimate yet: no finished projects' }
+  if (!UlidSchema.safeParse(channelId).success || !Number.isFinite(runtimeMin)) return none
+  const rate = await costPerMinute(db, channelId)
+  if (rate === null) return none
+  const usd = Math.round(rate.usdPerMinute * runtimeMin * 100) / 100
+  const count = rate.projects === 1 ? '1 finished project' : `${rate.projects} finished projects`
+  return { usd, basis: `About $${usd.toFixed(2)}, from ${count}` }
 }
 
 const RESEARCH_RUNNING: ActionResult = {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
 import {
@@ -27,6 +27,7 @@ const actions = vi.hoisted(() => ({
   chooseAngleAction: vi.fn(),
   setTargetKeywordAction: vi.fn(),
   setCaseFormatAction: vi.fn(),
+  estimateStartCostAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 // The notice's Dismiss is a server action whose module loads next-auth,
@@ -76,6 +77,10 @@ const trimmed: Notice = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  actions.estimateStartCostAction.mockResolvedValue({
+    usd: null,
+    basis: 'No estimate yet: no finished projects',
+  })
 })
 
 describe('CaseLibrary notices (decision 293)', () => {
@@ -736,7 +741,9 @@ describe('New project and a stale brief', () => {
     actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
     const row = renderRow(kase({ status: 'shortlisted' }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
-    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 15, undefined),
+    )
     expect(push).toHaveBeenCalledWith('/c/psychology/projects')
   })
 
@@ -767,7 +774,9 @@ describe('New project and a stale brief', () => {
     const row = renderRow(researched({ searchBrief: OLD_BRIEF }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await userEvent.click(within(row).getByRole('button', { name: 'Start without refreshing' }))
-    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 15, undefined),
+    )
     expect(actions.researchCaseAction).not.toHaveBeenCalled()
   })
 
@@ -865,5 +874,101 @@ describe('the channel fit on the case row', () => {
     expect(row).not.toHaveTextContent('better')
     expect(row).not.toHaveTextContent('Outside this channel')
     expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
+  })
+})
+
+describe('the start control: format, length and cost', () => {
+  const long = {
+    ...defaultFormat('Long'),
+    key: 'long',
+    primary: false,
+    runtime: { default: 120, min: 60, max: 180 },
+  }
+  const short = {
+    ...defaultFormat('Short'),
+    key: 'short',
+    primary: false,
+    runtime: { default: 8, min: 5, max: 10 },
+  }
+  const formats = [defaultFormat('Main'), long, short]
+
+  function renderStart(item: CaseSummary, withFormats = formats) {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={withFormats}
+      />,
+    )
+    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+  }
+
+  it('defaults the length to the format default clamped to 60, with the not-supported note', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(60)
+    expect(row).toHaveTextContent('Videos longer than 60 minutes are not supported yet')
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 60, undefined),
+    )
+  })
+
+  it('shows no note for a format inside the start limit', () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'short' }))
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    expect(row).not.toHaveTextContent('not supported yet')
+  })
+
+  it('sets the field range from the format, capped at 60', () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
+    const field = within(row).getByLabelText('Length in minutes')
+    expect(field).toHaveAttribute('min', '60')
+    expect(field).toHaveAttribute('max', '60')
+  })
+
+  it('offers a start format only for more than one format, and starting with another sends its key and default', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const one = renderStart(kase({ status: 'shortlisted' }), [defaultFormat('Main')])
+    expect(within(one).queryByLabelText('Start format')).not.toBeInTheDocument()
+    cleanup()
+
+    const row = renderStart(kase({ status: 'shortlisted' }))
+    const select = within(row).getByLabelText('Start format')
+    expect(select).toHaveValue('main')
+    await userEvent.selectOptions(select, 'short')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 8, 'short'),
+    )
+  })
+
+  it('shows the estimate for the length and asks again when it changes', async () => {
+    actions.estimateStartCostAction.mockResolvedValue({
+      usd: 12.4,
+      basis: 'About $12.40, from 6 finished projects',
+    })
+    const row = renderStart(kase({ status: 'shortlisted' }))
+    await waitFor(() => expect(row).toHaveTextContent('About $12.40, from 6 finished projects'))
+    expect(actions.estimateStartCostAction).toHaveBeenLastCalledWith(CHANNEL_ID, 15)
+    const field = within(row).getByLabelText('Length in minutes')
+    await userEvent.clear(field)
+    await userEvent.type(field, '20')
+    await waitFor(() =>
+      expect(actions.estimateStartCostAction).toHaveBeenLastCalledWith(CHANNEL_ID, 20),
+    )
+  })
+
+  it('disables New project while the length is outside the range', async () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'short' }))
+    const field = within(row).getByLabelText('Length in minutes')
+    await userEvent.clear(field)
+    await userEvent.type(field, '45')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(row).toHaveTextContent('This format runs 5 to 10 minutes')
   })
 })

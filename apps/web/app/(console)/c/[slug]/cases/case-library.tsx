@@ -181,6 +181,7 @@ export function CaseLibrary({
                   <li key={item.id}>
                     <BacklogRow
                       slug={slug}
+                      channelId={channelId}
                       blocked={blockedReason}
                       item={item}
                       run={run}
@@ -425,12 +426,14 @@ function SuggestionRow({
 
 function BacklogRow({
   slug,
+  channelId,
   blocked,
   item,
   run,
   notices,
 }: {
   slug: string
+  channelId: string
   /** Why a project cannot start, or null when it can. */
   blocked: string | null
   item: CaseSummary
@@ -463,7 +466,13 @@ function BacklogRow({
         {item.status !== 'retired' ? <ResearchControl item={item} run={run} /> : null}
 
         {item.status === 'shortlisted' ? (
-          <NewProjectButton slug={slug} blocked={blocked} item={item} run={run} />
+          <NewProjectButton
+            slug={slug}
+            channelId={channelId}
+            blocked={blocked}
+            item={item}
+            run={run}
+          />
         ) : null}
 
         <ConfirmButton

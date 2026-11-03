@@ -13,6 +13,7 @@ import {
   addCase,
   caseResearchEstimate,
   chooseAngleAction,
+  estimateStartCostAction,
   editCase,
   researchCaseAction,
   setCaseFormatAction,
@@ -33,6 +34,7 @@ const store = vi.hoisted(() => ({
   chooseCaseAngle: vi.fn(),
   setCaseTargetKeyword: vi.fn(),
   setCaseFormat: vi.fn(),
+  costPerMinute: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -598,5 +600,116 @@ describe('startProjectFromCase and the search brief', () => {
     )
     expect(checkVidiqBudget).not.toHaveBeenCalled()
     expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
+  })
+
+  describe('with a format and a runtime', () => {
+    const wide = {
+      ...defaultFormat('Long'),
+      key: 'long',
+      primary: false,
+      runtime: { default: 120, min: 60, max: 180 },
+    }
+    const narrow = {
+      ...defaultFormat('Short'),
+      key: 'short',
+      primary: false,
+      runtime: { default: 8, min: 5, max: 10 },
+    }
+    const bible = { ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat('Main'), wide, narrow] }
+
+    beforeEach(() => {
+      store.getCase.mockReset().mockResolvedValue({
+        id: CASE_ID,
+        title: 'WeWork',
+        status: 'shortlisted',
+        formatKey: 'long',
+      })
+      store.channelForCase
+        .mockReset()
+        .mockResolvedValue({ id: CHANNEL_ID, bible, archivedAt: null })
+      store.createProjectFromCase.mockReset().mockResolvedValue({ id: 'P1' })
+      store.markCaseInProduction.mockReset().mockResolvedValue(undefined)
+      send.mockReset().mockResolvedValue(undefined)
+    })
+
+    it("starts a 120 / 60 / 180 format at the start limit when no runtime is given, storing the case's key", async () => {
+      expect(await startProjectFromCase(CASE_ID)).toEqual({ ok: true, projectId: 'P1' })
+      expect(store.createProjectFromCase).toHaveBeenCalledWith(
+        { marker: 'db' },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 60, formatKey: 'long' },
+      )
+    })
+
+    it('refuses a runtime outside the format range, naming the range', async () => {
+      expect(await startProjectFromCase(CASE_ID, 45)).toEqual({
+        ok: false,
+        error: 'This format runs 60 to 180 minutes',
+      })
+      expect(store.createProjectFromCase).not.toHaveBeenCalled()
+    })
+
+    it('refuses a runtime above the start limit with the not-supported message', async () => {
+      expect(await startProjectFromCase(CASE_ID, 90)).toEqual({
+        ok: false,
+        error: 'Videos longer than 60 minutes are not supported yet',
+      })
+      expect(store.createProjectFromCase).not.toHaveBeenCalled()
+    })
+
+    it('a given format wins over the case, and uses its own default and range', async () => {
+      expect(await startProjectFromCase(CASE_ID, undefined, 'short')).toEqual({
+        ok: true,
+        projectId: 'P1',
+      })
+      expect(store.createProjectFromCase).toHaveBeenCalledWith(
+        { marker: 'db' },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 8, formatKey: 'short' },
+      )
+      expect((await startProjectFromCase(CASE_ID, 12, 'short')).error).toBe(
+        'This format runs 5 to 10 minutes',
+      )
+    })
+
+    it('refuses a given format the bible lacks', async () => {
+      expect(await startProjectFromCase(CASE_ID, 15, 'gone')).toEqual({
+        ok: false,
+        error: "That format is not in the channel's bible",
+      })
+      expect(store.createProjectFromCase).not.toHaveBeenCalled()
+    })
+
+    it('a case with no format starts as the primary, default 15', async () => {
+      store.getCase.mockResolvedValue({
+        id: CASE_ID,
+        title: 'WeWork',
+        status: 'shortlisted',
+        formatKey: null,
+      })
+      await startProjectFromCase(CASE_ID)
+      expect(store.createProjectFromCase).toHaveBeenCalledWith(
+        { marker: 'db' },
+        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 15 },
+      )
+    })
+  })
+})
+
+describe('estimateStartCostAction', () => {
+  beforeEach(() => store.costPerMinute.mockReset())
+
+  it('multiplies the finished-project rate by the runtime', async () => {
+    store.costPerMinute.mockResolvedValue({ usdPerMinute: 0.62, projects: 6 })
+    expect(await estimateStartCostAction(CHANNEL_ID, 20)).toEqual({
+      usd: 12.4,
+      basis: 'About $12.40, from 6 finished projects',
+    })
+  })
+
+  it('says so when no project has finished', async () => {
+    store.costPerMinute.mockResolvedValue(null)
+    expect(await estimateStartCostAction(CHANNEL_ID, 20)).toEqual({
+      usd: null,
+      basis: 'No estimate yet: no finished projects',
+    })
   })
 })
