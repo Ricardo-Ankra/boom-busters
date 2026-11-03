@@ -25,6 +25,19 @@ export const MIN_CHAPTER_WORDS = 120
 export const MAX_CHAPTER_WORDS = 4000
 
 /**
+ * A script longer than any the app allowed before runtimes rose past 60
+ * minutes (60 minutes at 200 words a minute, less pacing headroom, is 11,400
+ * words) is planned in chapters of about `LONG_CHAPTER_WORDS`. A chapter is
+ * drafted, self-checked and shot-planned in one step each, and a shot list
+ * for a chapter much over a thousand words no longer fits one answer.
+ */
+export const LONG_SCRIPT_WORDS = 12_000
+export const LONG_CHAPTER_WORDS = 1000
+
+/** The most chapters an outline may hold: 240 minutes at 200 words a minute, in chapters of 800 words. */
+export const OUTLINE_MAX_CHAPTERS = 60
+
+/**
  * The longest beat the outline parser keeps (decision 296). A beat is one to
  * three sentences of purpose; the facts are the claims the chapter owns. The
  * 1,300 to 1,800 character beats of the Stability script were fact lists,
@@ -126,7 +139,7 @@ export const OutlineSchema = z.object({
   centralQuestion: tensionField,
   storylines,
   close: closeFields,
-  chapters: z.array(OutlineChapterSchema).min(2).max(20),
+  chapters: z.array(OutlineChapterSchema).min(2).max(OUTLINE_MAX_CHAPTERS),
 })
 export type Outline = z.infer<typeof OutlineSchema>
 

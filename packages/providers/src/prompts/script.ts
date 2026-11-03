@@ -1,4 +1,6 @@
 import {
+  LONG_CHAPTER_WORDS,
+  LONG_SCRIPT_WORDS,
   OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
@@ -233,6 +235,18 @@ function outlineSearchedQuestions(brief: SearchBrief | null | undefined): string
     : ''
 }
 
+/**
+ * How a long script is cut (spec section 8): chapters a thousand words or
+ * under, so each one drafts, self-checks and shot-plans in one step and one
+ * answer. Empty for any script the app allowed before runtimes rose past 60
+ * minutes, so those prompts are unchanged.
+ */
+function chapterSizeRule(targetWords: number): string {
+  if (targetWords <= LONG_SCRIPT_WORDS) return ''
+  const chapters = Math.ceil(targetWords / LONG_CHAPTER_WORDS)
+  return `, in chapters of about 800 to ${LONG_CHAPTER_WORDS.toLocaleString('en-US')} words each (about ${chapters} chapters)`
+}
+
 export function buildOutlineRequest(input: {
   bible: BibleInUse
   caseTitle: string
@@ -259,7 +273,7 @@ export function buildOutlineRequest(input: {
 
 ${craftFor(input.intent)}${scriptRules(input.bible)}
 
-Produce a chapter plan totalling about ${targetWords} words:
+Produce a chapter plan totalling about ${targetWords} words${chapterSizeRule(targetWords)}:
 {"centralQuestion": string,
  "storylines": [string],
  "close": {"answer": string, "echo": string, "openThread": string},
