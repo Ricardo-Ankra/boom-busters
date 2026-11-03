@@ -376,6 +376,13 @@ export function NewProjectButton({
           {NOT_SUPPORTED_NOTE}
         </p>
       ) : null}
+      {/* A warning only: the brief's keywords were measured for another format's lead keyword. */}
+      {brief?.formatKey && format !== null && brief.formatKey !== format.key ? (
+        <p className="w-full text-[13px] text-[var(--color-text-secondary)]">
+          Researched for the{' '}
+          {formats.find((f) => f.key === brief.formatKey)?.name ?? brief.formatKey} format.
+        </p>
+      ) : null}
     </div>
   )
 }

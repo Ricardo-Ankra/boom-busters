@@ -988,6 +988,40 @@ describe('the start control: format, length and cost', () => {
     expect(row).not.toHaveTextContent('This format runs')
   })
 
+  describe('a brief researched for another format', () => {
+    const briefFor = (formatKey: string | null) =>
+      researched({ formatKey: null, searchBrief: { ...BRIEF, formatKey } })
+
+    it("says so in one line, naming the brief's format, and still lets the project start", async () => {
+      actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+      const row = renderStart(briefFor('short'))
+      expect(within(row).getByLabelText('Start format')).toHaveValue('main')
+      expect(row).toHaveTextContent('Researched for the Short format.')
+      expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
+    })
+
+    it('follows the chosen format: the note goes when the start format matches the brief', async () => {
+      const row = renderStart(briefFor('short'))
+      await userEvent.selectOptions(within(row).getByLabelText('Start format'), 'short')
+      expect(row).not.toHaveTextContent('Researched for the')
+    })
+
+    it('says nothing when the brief was researched for the chosen format, or for none', () => {
+      const same = renderStart(
+        researched({ formatKey: 'short', searchBrief: { ...BRIEF, formatKey: 'short' } }),
+      )
+      expect(same).not.toHaveTextContent('Researched for the')
+      cleanup()
+      const none = renderStart(briefFor(null))
+      expect(none).not.toHaveTextContent('Researched for the')
+    })
+
+    it("names the key when the brief's format is no longer in the bible", () => {
+      const row = renderStart(briefFor('retired'))
+      expect(row).toHaveTextContent('Researched for the retired format.')
+    })
+  })
+
   it("follows the case's format when the row picker changes it", async () => {
     actions.setCaseFormatAction.mockResolvedValue({ ok: true })
     const item = kase({ status: 'shortlisted', formatKey: 'short' })
