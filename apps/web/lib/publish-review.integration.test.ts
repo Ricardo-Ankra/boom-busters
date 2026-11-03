@@ -10,6 +10,7 @@ import {
   insertShort,
   moveProjectBible,
   saveBibleVersion,
+  withTemporaryBible,
   currentBible,
   insertTalkingPointSet,
   approveTalkingPointSet,
@@ -305,17 +306,19 @@ describeDb('publishModel cohesion', () => {
       expect(hook).not.toBe('')
       const lead = hook.split(/\s+/)[0]!
       expect(lead).toBe('Telegraph')
-      const frozen = await saveBibleVersion(
-        db,
-        FIRST_CHANNEL_ID,
-        { ...original.bible, formats: [{ ...original.bible.formats[0]!, keywords: [lead] }] },
-        'Lead keyword from the hook',
-      )
-      await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
-      const { cohesion } = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items[0]!
-      expect(cohesion?.cells.descriptionOpening.format).toBe('miss')
+      const withLead = {
+        ...original.bible,
+        formats: [{ ...original.bible.formats[0]!, keywords: [lead] }],
+      }
+      // The helper puts the channel and the project back, and drops the version.
+      await withTemporaryBible(db, FIRST_CHANNEL_ID, withLead, async () => {
+        const frozen = await currentBible(db, FIRST_CHANNEL_ID)
+        await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
+        const { cohesion } = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null }))
+          .items[0]!
+        expect(cohesion?.cells.descriptionOpening.format).toBe('miss')
+      })
     } finally {
-      await moveProjectBible(db, FIXTURE_PROJECT_ID, original.id)
       await db.delete(scripts)
     }
   })

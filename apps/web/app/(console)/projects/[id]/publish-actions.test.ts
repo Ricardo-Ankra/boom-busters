@@ -2,6 +2,7 @@
 
 import {
   channelForProject,
+  castMembers,
   createCase,
   createChannel,
   createProjectFromCase,
@@ -664,6 +665,9 @@ describeDb('the search brief in titles, description and tags', () => {
     await seed(db)
     await db.delete(publishRecords)
     await db.delete(vidiqCredits)
+    // Cast and a brief left by another suite would show up in the tags this suite asserts.
+    await db.delete(castMembers)
+    await setBrief(null)
     await updateWorkspace(db, DEFAULT_WORKSPACE_SETTINGS)
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     await saveChapter(db, {

@@ -5,12 +5,12 @@ import {
   deleteCase,
   getCase,
   requireTestDatabase,
-  saveBibleVersion,
   seed,
   setCaseFormat,
   truncateRunMirror,
   updateWorkspace,
   vidiqCredits,
+  withTemporaryBible,
   writeCaseResearchJob,
 } from '@boom-busters/db'
 import type { AngleOption, CaseResearchJob, ChannelFormat } from '@boom-busters/schemas'
@@ -401,18 +401,15 @@ describeDb('case-researcher (mock mode)', () => {
       formatKey: string | null,
       check: () => Promise<void>,
     ) {
-      await saveBibleVersion(
+      await withTemporaryBible(
         db,
         FIRST_CHANNEL_ID,
         { ...FIRST_CHANNEL_BIBLE, formats },
-        'Formats for a test',
+        async () => {
+          await setCaseFormat(db, caseId, formatKey)
+          await check()
+        },
       )
-      try {
-        await setCaseFormat(db, caseId, formatKey)
-        await check()
-      } finally {
-        await saveBibleVersion(db, FIRST_CHANNEL_ID, FIRST_CHANNEL_BIBLE, 'Restored after a test')
-      }
     }
 
     /** Records each matching-terms search the run makes. */

@@ -8,15 +8,20 @@ import {
   insertTimeline,
   renders,
   requireTestDatabase,
-  saveBibleVersion,
   seed,
   setProjectStage,
   timelines,
   truncateRunMirror,
   updateWorkspace,
+  withTemporaryBible,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, defaultFormat, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  defaultFormat,
+  FIRST_CHANNEL_ID,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -228,25 +233,21 @@ describeDb('render-runner', () => {
         // Ruling 18: the switch is read from the channel's current bible.
         const channelId = FIRST_CHANNEL_ID
         const bible = (await currentBible(db, channelId)).bible
-        await saveBibleVersion(
+        // `seed` leaves the bible alone, so the helper puts it back for the tests after.
+        await withTemporaryBible(
           db,
           channelId,
           { ...bible, formats: [{ ...defaultFormat('Main'), shorts: false }] },
-          'Shorts off',
+          async () => {
+            const { result, ctx } = await engine.execute({ events: approvedEvent() })
+
+            expect(result).toMatchObject({ outcome: 'master-ready' })
+            const project = await getProject(db, FIXTURE_PROJECT_ID)
+            expect(project?.stage).toBe('publish')
+            expect(project?.stageStatus).toBe('awaiting_review')
+            expect(ctx.step.sendEvent).not.toHaveBeenCalled()
+          },
         )
-
-        try {
-          const { result, ctx } = await engine.execute({ events: approvedEvent() })
-
-          expect(result).toMatchObject({ outcome: 'master-ready' })
-          const project = await getProject(db, FIXTURE_PROJECT_ID)
-          expect(project?.stage).toBe('publish')
-          expect(project?.stageStatus).toBe('awaiting_review')
-          expect(ctx.step.sendEvent).not.toHaveBeenCalled()
-        } finally {
-          // `seed` leaves the bible alone, so put it back for the tests after.
-          await saveBibleVersion(db, channelId, bible, 'Shorts back on')
-        }
       },
     )
 
