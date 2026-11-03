@@ -1,7 +1,11 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
-import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  FIRST_CHANNEL_BIBLE,
+  FIRST_CHANNEL_ID as CHANNEL_ID,
+  defaultFormat,
+} from '@boom-busters/schemas'
 import type { Notice, SearchBrief } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
@@ -22,6 +26,7 @@ const actions = vi.hoisted(() => ({
   caseResearchEstimate: vi.fn(),
   chooseAngleAction: vi.fn(),
   setTargetKeywordAction: vi.fn(),
+  setCaseFormatAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 // The notice's Dismiss is a server action whose module loads next-auth,
@@ -419,6 +424,8 @@ const BRIEF: SearchBrief = {
     },
   ],
   chosenAngle: 1,
+  formatKey: null,
+  fit: null,
 }
 
 function researched(over: Partial<CaseSummary> = {}) {
@@ -767,5 +774,70 @@ describe('New project and a stale brief', () => {
     const row = renderRow(researched({ subject: 'We Company', searchBrief: OLD_BRIEF }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('the case format picker', () => {
+  const sleep = {
+    ...defaultFormat('Sleep'),
+    key: 'sleep',
+    primary: false,
+    keywords: ['sleep documentary'],
+  }
+  const two = [defaultFormat('Main'), sleep]
+
+  function renderWith(formats: typeof two, item: CaseSummary) {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+  }
+
+  it('shows no picker for a channel with one format', () => {
+    const row = renderWith([defaultFormat('Main')], kase({ status: 'shortlisted' }))
+    expect(within(row).queryByLabelText('Format')).not.toBeInTheDocument()
+  })
+
+  it('shows a Format select with an option per format, and choosing saves it', async () => {
+    actions.setCaseFormatAction.mockResolvedValue({ ok: true })
+    const row = renderWith(two, kase({ status: 'shortlisted' }))
+    const select = within(row).getByLabelText('Format')
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Main', 'Sleep'])
+    expect(select).toHaveValue('main')
+    await userEvent.selectOptions(select, 'sleep')
+    await waitFor(() => expect(actions.setCaseFormatAction).toHaveBeenCalledWith(WIRECARD, 'sleep'))
+  })
+
+  it('shows the primary selected when the stored key is no longer in the bible', () => {
+    const row = renderWith(two, kase({ status: 'shortlisted', formatKey: 'gone' }))
+    expect(within(row).getByLabelText('Format')).toHaveValue('main')
+  })
+
+  it('labels the research button 25 credits when the selected format has a lead keyword', () => {
+    const withSeed = renderWith(
+      two,
+      kase({ status: 'shortlisted', subject: 'Iomega', formatKey: 'sleep' }),
+    )
+    expect(
+      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 25 credits)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps 20 credits when the selected format has no keyword', () => {
+    const row = renderWith(two, kase({ status: 'shortlisted', subject: 'Iomega' }))
+    expect(
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+    ).toBeInTheDocument()
   })
 })

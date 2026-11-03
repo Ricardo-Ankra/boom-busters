@@ -347,6 +347,8 @@ describeDb('dossier-reviser', () => {
           toldAlready: [],
           angleOptions: [],
           chosenAngle: null,
+          formatKey: null,
+          fit: null,
         },
       }),
     }

@@ -9,6 +9,7 @@ import {
   deleteCase,
   getCase,
   markCaseInProduction,
+  setCaseFormat,
   setCaseStatus,
   setCaseTargetKeyword,
   setProjectStage,
@@ -16,18 +17,21 @@ import {
   writeCaseResearchJob,
 } from '@boom-busters/db'
 import type { CaseStatus } from '@boom-busters/db'
+import type { ChannelFormat } from '@boom-busters/schemas'
 import {
   CASE_PEOPLE_MAX,
-  CASE_RESEARCH_CREDITS,
   CASE_PERSON_MAX,
   CASE_SOURCE_LINKS_MAX,
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
   EXAMPLE_SLOT_IDS,
   UlidSchema,
+  caseResearchCredits,
   caseResearchJobIsRunning,
   isBibleComplete,
   keywordHasFigure,
+  leadKeyword,
+  resolveFormat,
   serialiseError,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -311,13 +315,25 @@ async function researchableCase(id: string) {
   if (existing.status === 'retired') {
     return { ok: false as const, error: 'That case is retired. Move it back to shortlisted first.' }
   }
-  const refusal = writeRefusalFor((await channelForCase(db, id)) ?? null)
+  const channel = (await channelForCase(db, id)) ?? null
+  const refusal = writeRefusalFor(channel)
   if (refusal) return refusal
   const subject = existing.subject?.trim() ?? ''
   if (subject === '') {
     return { ok: false as const, error: 'Give the case a subject before researching it' }
   }
-  return { ok: true as const, existing, subject }
+  return { ok: true as const, existing, subject, credits: researchCredits(channel, existing) }
+}
+
+/** What a run costs: more when the case's format (against the channel's current bible) has a lead keyword. */
+function researchCredits(
+  channel: { bible: { formats: readonly ChannelFormat[] } } | null,
+  existing: { formatKey: string | null },
+): number {
+  const formats = channel?.bible.formats ?? []
+  const hasFormatSeed =
+    formats.length > 0 && leadKeyword(resolveFormat(formats, existing.formatKey)) !== null
+  return caseResearchCredits(hasFormatSeed)
 }
 
 export type CaseResearchEstimate =
@@ -331,12 +347,14 @@ export type CaseResearchEstimate =
 export async function caseResearchEstimate(caseId: string): Promise<CaseResearchEstimate> {
   await requireOwner()
   if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
-  if (!(await getCase(db, caseId))) return { ok: false, error: 'That case no longer exists' }
-  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  const existing = await getCase(db, caseId)
+  if (!existing) return { ok: false, error: 'That case no longer exists' }
+  const credits = researchCredits((await channelForCase(db, caseId)) ?? null, existing)
+  const budget = await checkVidiqBudget(credits)
   if (!budget.ok) return budget
   return {
     ok: true,
-    credits: CASE_RESEARCH_CREDITS,
+    credits,
     capLeft: budget.capLeft,
     balance: budget.balance,
   }
@@ -353,7 +371,7 @@ export async function researchCaseAction(caseId: string): Promise<ActionResult> 
   const checked = await researchableCase(caseId)
   if (!checked.ok) return checked
 
-  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  const budget = await checkVidiqBudget(checked.credits)
   if (!budget.ok) return budget
 
   if (checked.existing.searchJob && caseResearchJobIsRunning(checked.existing.searchJob)) {
@@ -447,6 +465,25 @@ export async function setTargetKeywordAction(
       error: error instanceof Error ? error.message : 'Could not set the target keyword',
     }
   }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** The format picker: which of the channel's formats this case is made as. */
+export async function setCaseFormatAction(
+  caseId: string,
+  formatKey: string | null,
+): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  const channel = (await channelForCase(db, caseId)) ?? null
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  const refusal = writeRefusalFor(channel)
+  if (refusal) return refusal
+  if (formatKey !== null && !channel.bible.formats.some((f) => f.key === formatKey)) {
+    return { ok: false, error: "That format is not in the channel's bible" }
+  }
+  await setCaseFormat(db, caseId, formatKey)
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

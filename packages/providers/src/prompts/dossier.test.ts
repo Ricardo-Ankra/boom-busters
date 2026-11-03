@@ -149,6 +149,8 @@ describe('the research prompts', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   }
 
   it('adds the search lines to every pass header, and the brief rule to the brief pass, only with a search brief', () => {

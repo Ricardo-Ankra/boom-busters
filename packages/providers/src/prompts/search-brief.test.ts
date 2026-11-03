@@ -118,6 +118,8 @@ describe('the winners caps follow the brief schema', () => {
     toldAlready: winners.toldAlready,
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   })
 
   it.each([0, 1, 5, 20])('an answer %i over the caps still fits the brief', (extra) => {

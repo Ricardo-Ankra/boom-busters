@@ -2,22 +2,25 @@
 
 import type { CaseSummary } from '@boom-busters/db'
 import {
-  CASE_RESEARCH_CREDITS,
   briefIsStale,
+  caseResearchCredits,
   caseResearchJobIsRunning,
   keywordHasFigure,
+  leadKeyword,
+  resolveFormat,
 } from '@boom-busters/schemas'
-import type { SearchBrief, SearchKeyword } from '@boom-busters/schemas'
+import type { ChannelFormat, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/input'
+import { Label, Select } from '@/components/ui/input'
 import { channelHref } from '@/lib/channel-href'
 import {
   caseResearchEstimate,
   chooseAngleAction,
   researchCaseAction,
+  setCaseFormatAction,
   setTargetKeywordAction,
   startProjectFromCase,
 } from './actions'
@@ -72,12 +75,56 @@ export function researchStepLabel(step: string | null): string {
   return label ?? 'Researching'
 }
 
-const researchLabel = (again: boolean): string =>
-  `${again ? 'Research again' : 'Research'} with VidIQ (about ${CASE_RESEARCH_CREDITS} credits)`
+/** The channel's current formats, for the picker and the estimate; empty reads as no formats. */
+export const FormatsContext = React.createContext<readonly ChannelFormat[]>([])
+
+/** Whether the case's format, resolved against the current bible, has a lead keyword to search. */
+function useFormatSeed(item: CaseSummary): boolean {
+  const formats = React.useContext(FormatsContext)
+  return formats.length > 0 && leadKeyword(resolveFormat(formats, item.formatKey)) !== null
+}
+
+const researchLabel = (again: boolean, credits: number): string =>
+  `${again ? 'Research again' : 'Research'} with VidIQ (about ${credits} credits)`
+
+/** `Format`: which of the channel's formats this case is made as; hidden for a one-format channel. */
+export function FormatPicker({ item, run }: { item: CaseSummary; run: Run }) {
+  const formats = React.useContext(FormatsContext)
+  const [busy, setBusy] = React.useState(false)
+  if (formats.length < 2) return null
+  // A stored key the bible no longer has reads as the primary, as the pipeline resolves it.
+  const selected = resolveFormat(formats, item.formatKey).key
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={`format-${item.id}`}>Format</Label>
+      <Select
+        id={`format-${item.id}`}
+        value={selected}
+        disabled={busy}
+        onChange={async (event) => {
+          setBusy(true)
+          try {
+            await run(() => setCaseFormatAction(item.id, event.target.value), 'Format updated')
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="w-40"
+      >
+        {formats.map((format) => (
+          <option key={format.key} value={format.key}>
+            {format.name}
+          </option>
+        ))}
+      </Select>
+    </div>
+  )
+}
 
 /** The research button, or what the run is doing, or why it failed with Try again. */
 export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) {
   const router = useRouter()
+  const credits = caseResearchCredits(useFormatSeed(item))
   const [estimate, setEstimate] = React.useState<CaseResearchEstimate | null>(null)
   const job = item.searchJob
   const running = job !== null && job.state === 'running' && caseResearchJobIsRunning(job)
@@ -119,7 +166,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
         <p className="text-[13px] text-[var(--color-danger)]">Research failed: {failure}</p>
       )}
       <ConfirmButton
-        label={failure === null ? researchLabel(hasBrief) : 'Try again'}
+        label={failure === null ? researchLabel(hasBrief, credits) : 'Try again'}
         confirmLabel="Start research"
         confirmVariant="primary"
         consequence={consequence}
@@ -151,6 +198,7 @@ export function NewProjectButton({
   run: Run
 }) {
   const router = useRouter()
+  const credits = caseResearchCredits(useFormatSeed(item))
   const [busy, setBusy] = React.useState(false)
   const [asking, setAsking] = React.useState(false)
   const brief = item.searchBrief
@@ -190,7 +238,7 @@ export function NewProjectButton({
             }
           }}
         >
-          Refresh research (about {CASE_RESEARCH_CREDITS} credits)
+          Refresh research (about {credits} credits)
         </Button>
         <Button variant="outline" busy={busy} onClick={start}>
           Start without refreshing

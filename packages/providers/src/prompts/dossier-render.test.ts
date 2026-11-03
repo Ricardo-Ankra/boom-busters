@@ -98,6 +98,8 @@ describe('renderDossierMarkdown search section', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
     ...over,
   })
 

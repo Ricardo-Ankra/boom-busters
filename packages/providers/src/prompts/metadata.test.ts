@@ -541,6 +541,8 @@ describe('metadata prompts with a search brief', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
     ...over,
   })
   const titlesInput = {

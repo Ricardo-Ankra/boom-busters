@@ -37,6 +37,14 @@ export type AngleOption = z.infer<typeof AngleOptionSchema>
 export const TITLE_PATTERNS_MAX = 5
 export const TOLD_ALREADY_MAX = 8
 
+/** Whether the subject fits the channel's scope, and the pillar it belongs to. */
+export const BriefFitSchema = z.object({
+  inScope: z.boolean(),
+  pillarKey: z.string().nullable(),
+  reason: z.string().max(300),
+})
+export type BriefFit = z.infer<typeof BriefFitSchema>
+
 export const SearchBriefSchema = z.object({
   subject: z.string(),
   measuredAt: z.string().datetime(),
@@ -48,6 +56,9 @@ export const SearchBriefSchema = z.object({
   toldAlready: z.array(z.string()).max(TOLD_ALREADY_MAX),
   angleOptions: z.array(AngleOptionSchema).max(3),
   chosenAngle: z.number().nullable(),
+  /** The format the research ran as; null in a brief saved before formats. */
+  formatKey: z.string().nullable().default(null),
+  fit: BriefFitSchema.nullable().default(null),
 })
 export type SearchBrief = z.infer<typeof SearchBriefSchema>
 
@@ -65,6 +76,13 @@ export type CaseResearchJob = z.infer<typeof CaseResearchJobSchema>
 export const SEARCH_BRIEF_STALE_DAYS = 30
 /** The estimate shown before a case research run spends VidIQ credits. */
 export const CASE_RESEARCH_CREDITS = 20
+/** The extra VidIQ call a format's lead keyword adds to a research run. */
+const FORMAT_SEED_CREDITS = 5
+
+/** The estimate for a run: 20, and 5 more when the case's format has a lead keyword to search. */
+export function caseResearchCredits(hasFormatSeed: boolean): number {
+  return CASE_RESEARCH_CREDITS + (hasFormatSeed ? FORMAT_SEED_CREDITS : 0)
+}
 
 const JOB_STALE_MS = 30 * 60_000
 const DAY_MS = 86_400_000

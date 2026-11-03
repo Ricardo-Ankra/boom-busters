@@ -606,6 +606,8 @@ describeDb('the search brief in titles, description and tags', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   }
   const TITLES = JSON.stringify({
     titles: ['One title here', 'Two title here', 'Three title here', 'Four title here'],

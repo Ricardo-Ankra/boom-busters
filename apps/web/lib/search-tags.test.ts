@@ -33,6 +33,8 @@ const brief = (over: Partial<SearchBrief> = {}): SearchBrief => ({
   toldAlready: [],
   angleOptions: [],
   chosenAngle: null,
+  formatKey: null,
+  fit: null,
   ...over,
 })
 

@@ -310,6 +310,8 @@ suite('cases', () => {
         },
       ],
       chosenAngle: null,
+      formatKey: null,
+      fit: null,
       ...over,
     })
     const job = (startedAt: string, over: Partial<CaseResearchJob> = {}): CaseResearchJob => ({

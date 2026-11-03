@@ -2,7 +2,7 @@
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { noticesFor } from '@boom-busters/schemas'
-import type { Notice } from '@boom-busters/schemas'
+import type { ChannelFormat, Notice } from '@boom-busters/schemas'
 import { Check, Pencil, Plus, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -19,7 +19,13 @@ import { caseCategoryLabel } from '@/lib/case-category'
 import { channelHref } from '@/lib/channel-href'
 import { acceptCase, addCase, dismissCase, editCase, setStatus } from './actions'
 import { joinPeople, joinSourceLinks, splitPeople, splitSourceLinks } from './case-details'
-import { NewProjectButton, ResearchControl, SearchBriefPanel } from './search-brief-panel'
+import {
+  FormatPicker,
+  FormatsContext,
+  NewProjectButton,
+  ResearchControl,
+  SearchBriefPanel,
+} from './search-brief-panel'
 
 /**
  * The Case Library table and its triage controls.
@@ -58,6 +64,7 @@ export function CaseLibrary({
   slug,
   channelId,
   categories,
+  formats = [],
   cases,
   sort,
   notices = [],
@@ -70,6 +77,8 @@ export function CaseLibrary({
   channelId: string
   /** The channel bible's case categories (key and label). */
   categories: readonly CaseCategoryOption[]
+  /** The channel bible's formats; a picker shows on each row when there is more than one. */
+  formats?: readonly ChannelFormat[]
   cases: CaseSummary[]
   sort: CaseSort
   /** The cases' open notices (decision 293); each row shows its own. */
@@ -106,82 +115,84 @@ export function CaseLibrary({
 
   return (
     <CategoriesContext.Provider value={categories}>
-      <div className="flex flex-col gap-4">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-[20px] font-semibold">Case Library</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <AddCaseButton channelId={channelId} run={run} disabled={archived} />
-          </div>
-        </header>
+      <FormatsContext.Provider value={formats}>
+        <div className="flex flex-col gap-4">
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-[20px] font-semibold">Case Library</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <AddCaseButton channelId={channelId} run={run} disabled={archived} />
+            </div>
+          </header>
 
-        {blockedReason === null ? null : (
-          <p
-            role="status"
-            className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
-          >
-            <span>{blockedReason}.</span>
-            {archived ? null : (
-              <Button asChild variant="outline">
-                <Link href={channelHref(slug, '/settings', { tab: 'bible' })}>
-                  Open the Bible tab
-                </Link>
-              </Button>
-            )}
-          </p>
-        )}
-
-        {suggestions.length > 0 ? (
-          <section className="flex flex-col gap-2">
-            <h2 className="text-[15px] font-medium">
-              Suggested — {suggestions.length} waiting on you
-            </h2>
-            <p className="text-[13px] text-[var(--color-text-secondary)]">
-              Nothing here is in the backlog yet. Accept what is worth making; dismiss the rest.
+          {blockedReason === null ? null : (
+            <p
+              role="status"
+              className="flex flex-wrap items-center gap-3 rounded-[8px] border border-[var(--color-warning)]/40 p-3 text-[13px]"
+            >
+              <span>{blockedReason}.</span>
+              {archived ? null : (
+                <Button asChild variant="outline">
+                  <Link href={channelHref(slug, '/settings', { tab: 'bible' })}>
+                    Open the Bible tab
+                  </Link>
+                </Button>
+              )}
             </p>
-            <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-warning)]/40">
-              {suggestions.map((item) => (
-                <li key={item.id}>
-                  <SuggestionRow
-                    item={item}
-                    run={run}
-                    notices={noticesFor(notices, 'case', item.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-
-        <section className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-[15px] font-medium">Backlog</h2>
-            <SortControls slug={slug} active={sort} />
-          </div>
-
-          {backlog.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-                <p className="text-[15px]">No cases yet.</p>
-                <p className="text-[13px] text-[var(--color-text-muted)]">Add one yourself.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
-              {backlog.map((item) => (
-                <li key={item.id}>
-                  <BacklogRow
-                    slug={slug}
-                    blocked={blockedReason}
-                    item={item}
-                    run={run}
-                    notices={noticesFor(notices, 'case', item.id)}
-                  />
-                </li>
-              ))}
-            </ul>
           )}
-        </section>
-      </div>
+
+          {suggestions.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[15px] font-medium">
+                Suggested — {suggestions.length} waiting on you
+              </h2>
+              <p className="text-[13px] text-[var(--color-text-secondary)]">
+                Nothing here is in the backlog yet. Accept what is worth making; dismiss the rest.
+              </p>
+              <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-warning)]/40">
+                {suggestions.map((item) => (
+                  <li key={item.id}>
+                    <SuggestionRow
+                      item={item}
+                      run={run}
+                      notices={noticesFor(notices, 'case', item.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <section className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[15px] font-medium">Backlog</h2>
+              <SortControls slug={slug} active={sort} />
+            </div>
+
+            {backlog.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+                  <p className="text-[15px]">No cases yet.</p>
+                  <p className="text-[13px] text-[var(--color-text-muted)]">Add one yourself.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <ul className="flex flex-col divide-y divide-[var(--color-border)] rounded-[8px] border border-[var(--color-border)]">
+                {backlog.map((item) => (
+                  <li key={item.id}>
+                    <BacklogRow
+                      slug={slug}
+                      blocked={blockedReason}
+                      item={item}
+                      run={run}
+                      notices={noticesFor(notices, 'case', item.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </FormatsContext.Provider>
     </CategoriesContext.Provider>
   )
 }
@@ -445,6 +456,8 @@ function BacklogRow({
             </option>
           ))}
         </Select>
+
+        <FormatPicker item={item} run={run} />
 
         {item.status !== 'retired' ? <ResearchControl item={item} run={run} /> : null}
 

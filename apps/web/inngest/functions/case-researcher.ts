@@ -363,6 +363,8 @@ export const caseResearcher = inngest.createFunction(
         toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
         angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
         chosenAngle: null,
+        formatKey: null,
+        fit: null,
       })
       // A retry would fail the same way, so the run stops with a reason the owner can read.
       if (!parsed.success) {

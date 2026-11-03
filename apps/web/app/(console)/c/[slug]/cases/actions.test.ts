@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CaseResearchJob } from '@boom-busters/schemas'
 import {
   EMPTY_BIBLE,
+  defaultFormat,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID as CHANNEL_ID,
 } from '@boom-busters/schemas'
@@ -14,6 +15,7 @@ import {
   chooseAngleAction,
   editCase,
   researchCaseAction,
+  setCaseFormatAction,
   setTargetKeywordAction,
   startProjectFromCase,
 } from './actions'
@@ -30,6 +32,7 @@ const store = vi.hoisted(() => ({
   caseSubjectTaken: vi.fn(),
   chooseCaseAngle: vi.fn(),
   setCaseTargetKeyword: vi.fn(),
+  setCaseFormat: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -430,6 +433,76 @@ describe('researchCaseAction and caseResearchEstimate', () => {
       ok: false,
       error: 'That case no longer exists',
     })
+  })
+})
+
+describe('setCaseFormatAction and the estimate by format', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+  const sleep = {
+    ...defaultFormat('Sleep'),
+    key: 'sleep',
+    primary: false,
+    keywords: ['sleep documentary'],
+  }
+  const bible = { ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat('Main'), sleep] }
+  const channel = (archivedAt: Date | null = null) => ({ id: CHANNEL_ID, bible, archivedAt })
+
+  beforeEach(() => {
+    store.setCaseFormat.mockReset().mockResolvedValue(undefined)
+    store.channelForCase.mockReset().mockResolvedValue(channel())
+    store.getCase
+      .mockReset()
+      .mockResolvedValue({ id: CASE_ID, subject: 'WeWork', status: 'shortlisted', formatKey: null })
+    checkVidiqBudget.mockReset().mockResolvedValue({ ok: true, balance: 1443, capLeft: 1000 })
+  })
+
+  it('stores a key the bible has, and clears with null', async () => {
+    expect(await setCaseFormatAction(CASE_ID, 'sleep')).toEqual({ ok: true })
+    expect(store.setCaseFormat).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, 'sleep')
+    expect(await setCaseFormatAction(CASE_ID, null)).toEqual({ ok: true })
+    expect(store.setCaseFormat).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, null)
+  })
+
+  it("refuses a key the channel's bible lacks, writing nothing", async () => {
+    expect(await setCaseFormatAction(CASE_ID, 'gone')).toEqual({
+      ok: false,
+      error: "That format is not in the channel's bible",
+    })
+    expect(store.setCaseFormat).not.toHaveBeenCalled()
+  })
+
+  it('refuses a bad id, a missing case and an archived channel', async () => {
+    expect((await setCaseFormatAction('nope', 'sleep')).ok).toBe(false)
+    store.channelForCase.mockResolvedValue(null)
+    expect((await setCaseFormatAction(CASE_ID, 'sleep')).ok).toBe(false)
+    store.channelForCase.mockResolvedValue(channel(new Date()))
+    expect((await setCaseFormatAction(CASE_ID, 'sleep')).ok).toBe(false)
+    expect(store.setCaseFormat).not.toHaveBeenCalled()
+  })
+
+  it('the estimate and the run cost 25 when the case format has a lead keyword', async () => {
+    store.getCase.mockResolvedValue({
+      id: CASE_ID,
+      subject: 'WeWork',
+      status: 'shortlisted',
+      searchJob: null,
+      formatKey: 'sleep',
+    })
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 25 })
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(25)
+    store.writeCaseResearchJob.mockImplementation(async (_db, _id, update) => update(null))
+    await researchCaseAction(CASE_ID)
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(25)
+  })
+
+  it('a stored key no longer in the bible costs the primary format price', async () => {
+    store.getCase.mockResolvedValue({
+      id: CASE_ID,
+      subject: 'WeWork',
+      status: 'shortlisted',
+      formatKey: 'gone',
+    })
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 20 })
   })
 })
 

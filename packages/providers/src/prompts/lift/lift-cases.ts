@@ -1168,6 +1168,8 @@ const CASE_SEARCH = {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   } satisfies SearchBrief,
 }
 
