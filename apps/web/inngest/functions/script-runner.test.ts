@@ -540,6 +540,31 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       })
     })
 
+    it('asks the outline for the words the fixed lines leave', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      const askedWords = async (patch: Record<string, string>): Promise<number> => {
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+        const restore = await withFormat(patch)
+        try {
+          await engine.executeStep('outline', {
+            events: approved(),
+            steps: throughSelfCheck().slice(0, 1),
+          })
+          const sent = callLlm.mock.calls[0]![0] as { system: string }
+          return Number(/totalling about (\d+) words/.exec(sent.system)?.[1])
+        } finally {
+          restore()
+        }
+      }
+      const bare = await askedWords({ introLine: '', outroLine: '' })
+      const fixed = await askedWords({
+        introLine: 'one two three four five six seven eight nine ten',
+        outroLine: 'one two three four five',
+      })
+      expect(bare - fixed).toBe(15)
+    })
+
     it('leaves the fixed lines out of the self-check', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       callLlm.mockReset()

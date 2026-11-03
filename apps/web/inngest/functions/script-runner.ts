@@ -276,6 +276,8 @@ export const scriptRunner = inngest.createFunction(
             wordsPerMinute: channel.format.wordsPerMinute,
             introRule: channel.format.introRule,
             intent: channel.format.intent,
+            introLine: channel.format.introLine,
+            outroLine: channel.format.outroLine,
           })
           // After parsing, in the step: a model that fills the tension fields of a
           // calm telling anyway must not leak them into the direction, Shorts or teaser prompts.

@@ -114,6 +114,25 @@ describe('buildOutlineRequest', () => {
     expect(at(150)).toBe(at())
   })
 
+  it("counts the format's fixed lines inside the word budget", () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+    }
+    const plain = buildOutlineRequest(base).system
+    expect(plain).toMatch(/about 2138 words/)
+    expect(buildOutlineRequest({ ...base, introLine: '', outroLine: '  ' }).system).toBe(plain)
+    const fixed = buildOutlineRequest({
+      ...base,
+      introLine: 'one two three four five six seven eight nine ten',
+      outroLine: 'one two three four five',
+    }).system
+    expect(fixed).toMatch(/about 2123 words/)
+  })
+
   it("replaces the opening chapter's rule with the format's intro rule", () => {
     const base = {
       bible: FIRST_CHANNEL_IN_USE,

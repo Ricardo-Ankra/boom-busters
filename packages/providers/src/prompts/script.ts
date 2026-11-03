@@ -281,10 +281,18 @@ export function buildOutlineRequest(input: {
   introRule?: string
   /** The format's intent; absent or 'tension' is the documentary playbook. */
   intent?: ScriptIntent
+  /** The format's fixed opening and closing lines: their words count inside the budget. */
+  introLine?: string
+  outroLine?: string
 }): LLMTaskRequest {
   const calm = input.intent === 'calm'
-  // The voice's words per minute, minus a little for pacing beats.
-  const targetWords = Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95)
+  // The voice's words per minute, minus a little for pacing beats, minus the
+  // fixed lines the owner wrote, which are part of the runtime and not the model's to write.
+  const fixedWords = countWords(input.introLine ?? '') + countWords(input.outroLine ?? '')
+  const targetWords = Math.max(
+    0,
+    Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95) - fixedWords,
+  )
 
   return {
     task: 'scripting',
