@@ -27,6 +27,7 @@ import {
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
   bibleDraftUnits,
+  defaultFormat,
 } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -668,6 +669,34 @@ describeDb('copying the bible from another channel', () => {
     expect(draft.bible.youtubeCategoryId).toBe('27')
     expect(draft.statuses.publishing).toBe('approved')
     expect(result.draft).toEqual(draft)
+  })
+
+  it('copies formats, the channel hashtag and the footer', async () => {
+    const source = await makeChannel('Source')
+    await saveBibleVersion(
+      db,
+      source.id,
+      {
+        ...ChannelBibleSchema.parse({}),
+        formats: [{ ...defaultFormat('Sleep'), keywords: ['sleep'] }],
+        channelHashtag: 'SleepWell',
+        channelFooter: 'Sweet dreams.',
+      },
+      'v2',
+    )
+    const target = await makeChannel('Target')
+
+    const result = await copyBibleFromChannelAction(target.id, source.id, [
+      'formats',
+      'search',
+      'publishing',
+    ])
+    expect(result.ok).toBe(true)
+    const draft = (await getBibleDraft(db, target.id))!
+    expect(draft.bible.formats).toEqual([{ ...defaultFormat('Sleep'), keywords: ['sleep'] }])
+    expect(draft.bible.channelHashtag).toBe('SleepWell')
+    expect(draft.bible.channelFooter).toBe('Sweet dreams.')
+    expect(draft.statuses.formats).toBe('drafted')
   })
 
   it('copies the source current version, not an older one', async () => {

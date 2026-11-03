@@ -61,7 +61,7 @@ const FIELD_NOTES: Record<keyof ChannelBible, string> = {
   youtubeCategoryId: 'string of one to three digits, or null',
   auditionLine: 'string: a sample opening line of narration, up to 400 characters',
   caseCategories:
-    'array of at least two { key: lower-case slug, label: string up to 40 characters, keywords: up to 6 search phrases for that pillar }: the kinds of film the channel makes',
+    'array of at least two { key: lower-case slug, label: string up to 40 characters, keywords: up to 6 search phrases for that pillar }: the pillars (kinds of film) the channel makes',
   scriptRulesMd: 'string: extra rules for the script writer, in markdown; empty when none',
   directionRulesMd: 'string: extra rules for the picture department, in markdown; empty when none',
 }
