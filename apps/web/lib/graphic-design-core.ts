@@ -36,6 +36,7 @@ import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
 import {
   FramesUnavailable,
+  INSPECT_MAX_MS,
   type FrameShot,
   type FramesResult,
   type GraphicFrames,
@@ -155,6 +156,13 @@ const MIN_CALL_MS = 15_000
  * review writes a whole component again, as long as the first call took.
  */
 export const REVIEW_MIN_MS = 90_000
+/**
+ * What an inspection leaves of the deadline, for the step to write its
+ * outcome; with less than `FRAMES_MIN_MS` to spend, no inspection starts and
+ * the design is kept on the dry run's word.
+ */
+const FRAMES_MARGIN_MS = 20_000
+const FRAMES_MIN_MS = 10_000
 
 const frameLabel = (shot: FrameShot) =>
   `${shot.orientation === 'landscape' ? '16:9' : '9:16'} at ${(shot.atMs / 1000).toFixed(1)} s`
@@ -297,12 +305,15 @@ export async function designGraphicWith(
   let framesDown = !options.frames
   const inspect = async (code: GraphicCode, shots: boolean): Promise<FramesResult | null> => {
     if (framesDown || !options.frames) return null
+    const left = deadline - Date.now() - FRAMES_MARGIN_MS
+    if (left < FRAMES_MIN_MS) return null
     try {
       return await options.frames.inspect({
         compiled: code.compiled,
         props: dryRunProps(context, checkSlot, options.brand),
         durationMs: slot.durationMs,
         shots,
+        timeoutMs: Math.min(INSPECT_MAX_MS, left),
       })
     } catch (error) {
       if (!(error instanceof FramesUnavailable)) throw error

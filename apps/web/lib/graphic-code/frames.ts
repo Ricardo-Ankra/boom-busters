@@ -53,6 +53,8 @@ export interface FramesInput {
   durationMs: number
   /** Photograph the review's moments as well as measuring them. */
   shots: boolean
+  /** The longest the whole inspection may take; `INSPECT_MAX_MS` when not given. */
+  timeoutMs?: number
 }
 
 export interface FramesResult {
@@ -68,6 +70,33 @@ export interface GraphicFrames {
 
 /** The browser could not be started or driven: the design keeps what the dry run found. */
 export class FramesUnavailable extends Error {}
+
+/**
+ * The longest an inspection may take, launch included. A browser that dies
+ * under Playwright can leave its promises unsettled rather than rejected (the
+ * first redesign after decision 389's deploy ran into Vercel's 300 s limit so),
+ * so every stage is raced against a clock and a stall becomes `FramesUnavailable`.
+ */
+export const INSPECT_MAX_MS = 45_000
+const LAUNCH_MAX_MS = 20_000
+const CLOSE_MAX_MS = 5_000
+
+/** `work`, or `FramesUnavailable` naming `what` once `ms` have passed. */
+function withinTime<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new FramesUnavailable(
+            `the designer's frames: ${what} did not finish in ${Math.round(ms / 1000)} s`,
+          ),
+        ),
+      ms,
+    )
+  })
+  return Promise.race([work, late]).finally(() => clearTimeout(timer))
+}
 
 // ---------------------------------------------------------------------------
 // The moments
@@ -320,16 +349,21 @@ async function launchBrowser(): Promise<Browser> {
   const { chromium } = await loadModule('playwright-core', () => import('playwright-core'))
   const own = process.env['GRAPHIC_CHROMIUM_PATH']
   try {
-    if (own) return await chromium.launch({ executablePath: own, headless: true })
+    if (own)
+      return await chromium.launch({ executablePath: own, headless: true, timeout: LAUNCH_MAX_MS })
     if (process.env['VERCEL'] || process.env['AWS_LAMBDA_FUNCTION_NAME']) {
       const packaged = await loadModule('@sparticuz/chromium', () => import('@sparticuz/chromium'))
       return await chromium.launch({
         executablePath: await packaged.default.executablePath(),
         args: packaged.default.args,
         headless: true,
+        timeout: LAUNCH_MAX_MS,
       })
     }
-    return await chromium.launch({ headless: true })
+    // GRAPHIC_CHROMIUM_ARGS adds flags to a local launch, so Vercel's
+    // packaged browser (single-process, no zygote) can be reproduced here.
+    const extra = (process.env['GRAPHIC_CHROMIUM_ARGS'] ?? '').split(' ').filter(Boolean)
+    return await chromium.launch({ headless: true, args: extra, timeout: LAUNCH_MAX_MS })
   } catch (error) {
     throw new FramesUnavailable(
       `the designer's frames cannot start a browser: ${error instanceof Error ? error.message : String(error)}`,
@@ -340,9 +374,10 @@ async function launchBrowser(): Promise<Browser> {
 /** The swap of one moment's markup into the page, then a wait for its faces. */
 async function showMoment(page: Page, markup: string): Promise<void> {
   const blanked = markup.replace(/src="mock:\/\/logo\/[^"]*"/g, `src="${BLANK_IMAGE}"`)
+  // The faces get three seconds: a font that never arrives is measured in the fallback, not waited on.
   await page.evaluate(async (html) => {
     document.getElementById('frame')!.innerHTML = html
-    await document.fonts.ready
+    await Promise.race([document.fonts.ready, new Promise((done) => setTimeout(done, 3000))])
   }, blanked)
 }
 
@@ -351,6 +386,15 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
   const moments = restMoments(input.props.words, input.durationMs)
   const wanted = input.shots ? shotMoments(moments) : { landscape: [], portrait: [] }
   const shots: FrameShot[] = []
+  // One page for both frame sizes, resized between them. Vercel's packaged
+  // Chromium runs as a single process, and closing its last page closes the
+  // browser: a page per size lost the browser before the 9:16 frame.
+  // Half the frame's pixels for the pictures; the measurements are in CSS pixels either way.
+  const first = FRAME_SIZES[0]
+  const page = await browser.newPage({
+    viewport: { width: first.width, height: first.height },
+    deviceScaleFactor: 0.5,
+  })
   for (const size of FRAME_SIZES) {
     const times = [...new Set([...moments, ...wanted[size.orientation]])].sort((a, b) => a - b)
     const rendered = graphicMarkupAt(
@@ -359,37 +403,29 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
       times,
     )
     if (rendered.issue !== null) return { layoutIssue: rendered.issue, shots }
-    // Half the frame's pixels for the pictures; the measurements are in CSS pixels either way.
-    const page = await browser.newPage({
-      viewport: { width: size.width, height: size.height },
-      deviceScaleFactor: 0.5,
+    await page.setViewportSize({ width: size.width, height: size.height })
+    await page.setContent(frameDocument(size, input.props.brand), {
+      waitUntil: 'load',
+      timeout: 15_000,
     })
-    try {
-      await page.setContent(frameDocument(size, input.props.brand), {
-        waitUntil: 'load',
-        timeout: 15_000,
-      })
-      for (const sample of rendered.samples) {
-        await showMoment(page, sample.markup)
-        if (moments.includes(sample.atMs)) {
-          const issue = layoutIssueIn(
-            (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[],
-            size,
-            sample.atMs,
-          )
-          if (issue !== null) return { layoutIssue: issue, shots }
-        }
-        if (wanted[size.orientation].includes(sample.atMs)) {
-          const jpeg = await page.screenshot({ type: 'jpeg', quality: 72 })
-          shots.push({
-            orientation: size.orientation,
-            atMs: sample.atMs,
-            jpeg: jpeg.toString('base64'),
-          })
-        }
+    for (const sample of rendered.samples) {
+      await showMoment(page, sample.markup)
+      if (moments.includes(sample.atMs)) {
+        const issue = layoutIssueIn(
+          (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[],
+          size,
+          sample.atMs,
+        )
+        if (issue !== null) return { layoutIssue: issue, shots }
       }
-    } finally {
-      await page.close()
+      if (wanted[size.orientation].includes(sample.atMs)) {
+        const jpeg = await page.screenshot({ type: 'jpeg', quality: 72 })
+        shots.push({
+          orientation: size.orientation,
+          atMs: sample.atMs,
+          jpeg: jpeg.toString('base64'),
+        })
+      }
     }
   }
   return { layoutIssue: null, shots }
@@ -399,16 +435,31 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
 export function browserFrames(): GraphicFrames {
   return {
     async inspect(input) {
-      const browser = await launchBrowser()
+      const budget = input.timeoutMs ?? INSPECT_MAX_MS
+      const started = Date.now()
+      const launching = launchBrowser()
+      const browser = await withinTime(
+        launching,
+        Math.min(budget, LAUNCH_MAX_MS),
+        'the launch',
+      ).catch((error: unknown) => {
+        // A browser that starts after its launch was given up on closes itself.
+        launching.then((late) => late.close()).catch(() => undefined)
+        throw error
+      })
       try {
-        return await inspectWith(browser, input)
+        return await withinTime(
+          inspectWith(browser, input),
+          Math.max(1, budget - (Date.now() - started)),
+          'the inspection',
+        )
       } catch (error) {
         if (error instanceof FramesUnavailable) throw error
         throw new FramesUnavailable(
           `the designer's frames failed: ${error instanceof Error ? error.message : String(error)}`,
         )
       } finally {
-        await browser.close().catch(() => undefined)
+        await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
       }
     },
   }

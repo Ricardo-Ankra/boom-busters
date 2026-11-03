@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import { compileGraphicSource } from './compile'
 import { DRY_RUN_BRAND } from './check'
@@ -227,6 +227,34 @@ describe.skipIf(!(await browserAvailable()))(
     it('reads text under a blur as moving, and blur(0px) as at rest', async () => {
       expect((await inspectOverlap("filter: 'blur(4px)'")).layoutIssue).toBeNull()
       expect((await inspectOverlap("filter: 'blur(0px)'")).layoutIssue).toMatch(/overlap/)
+    }, 60_000)
+
+    it("survives Vercel's single-process Chromium, which closes with its last page", async () => {
+      vi.stubEnv('GRAPHIC_CHROMIUM_ARGS', '--single-process --no-zygote --no-sandbox')
+      try {
+        const result = await browserFrames().inspect({
+          compiled: stored(twoLines(40)),
+          props,
+          durationMs: 3000,
+          shots: true,
+        })
+        expect(result.layoutIssue).toBeNull()
+        expect(result.shots.filter((shot) => shot.orientation === 'portrait')).toHaveLength(2)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    }, 60_000)
+
+    it('gives up as unavailable, never hangs, when an inspection outlasts its time', async () => {
+      await expect(
+        browserFrames().inspect({
+          compiled: stored(twoLines(40)),
+          props,
+          durationMs: 3000,
+          shots: true,
+          timeoutMs: 1,
+        }),
+      ).rejects.toThrow(/did not finish in/)
     }, 60_000)
 
     it('refuses two lines pulled over each other, by what the page measured', async () => {
