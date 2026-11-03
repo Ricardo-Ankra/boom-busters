@@ -219,6 +219,35 @@ describe('parseAngleOptions figures, keywords and answers', () => {
   })
 })
 
+describe('with no measured keyword', () => {
+  const bare = { ...angleInput(), targetKeyword: null, secondaryKeywords: [] }
+  const good = option('A look at the lease structure that made growth look cheaper than it was.')
+
+  it('asks the model for an empty keyword, and only then', () => {
+    const line = 'always an empty string'
+    expect(buildAngleOptionsRequest(bare).system).toContain(line)
+    expect(buildAngleOptionsRequest(angleInput()).system).not.toContain(line)
+  })
+
+  it('forces the keyword to empty whatever the model returns', () => {
+    const text = JSON.stringify({
+      options: [
+        { ...good, keyword: 'wework collapse explained' },
+        { ...good, keyword: 'another invented phrase' },
+      ],
+    })
+    const out = parseAngleOptions(text, bare)
+    expect(out).toHaveLength(2)
+    expect(out.every((o) => o.keyword === '')).toBe(true)
+  })
+
+  it('the mock leaves it empty and its own output parses', () => {
+    const options = mockAngleOptions(bare)
+    expect(options.every((o) => o.keyword === '')).toBe(true)
+    expect(parseAngleOptions(JSON.stringify({ options }), bare)).toEqual(options)
+  })
+})
+
 describe('other people text stays quoted', () => {
   it('keeps a description with a newline inside its quoted field', () => {
     const request = buildWinnersRequest({
