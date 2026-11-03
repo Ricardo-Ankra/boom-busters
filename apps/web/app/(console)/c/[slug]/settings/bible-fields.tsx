@@ -22,6 +22,8 @@ import { BIBLE_TEXT_FIELDS } from '@/lib/bible-fields'
 import { ExamplesEditor, ExamplesView } from './bible-examples'
 import { KeywordWithReading } from './bible-measurements'
 import type { KeywordReadings } from './bible-measurements'
+import { FormatSearchSpace, SearchSpaceButton } from './bible-search-space'
+import type { SearchSpaceView } from './bible-search-space'
 
 /**
  * The bible's fields, edited and shown by kind: text in a textarea, a list of
@@ -321,6 +323,7 @@ export function SectionView({
   disabled,
   onDraftSlot,
   readings = NO_READINGS,
+  space,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -329,6 +332,8 @@ export function SectionView({
   onDraftSlot: (slotId: string) => void
   /** The latest VidIQ reading of each keyword, by lower-cased keyword. */
   readings?: KeywordReadings
+  /** Each format's search-space readings and the Analyse button; absent shows neither. */
+  space?: SearchSpaceView
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -347,7 +352,14 @@ export function SectionView({
           )
         }
         if (meta.kind === 'formats') {
-          return <FormatsView key={key} formats={bible.formats} readings={readings} />
+          return (
+            <FormatsView
+              key={key}
+              formats={bible.formats}
+              readings={readings}
+              {...(space ? { space } : {})}
+            />
+          )
         }
         return (
           <div key={key} className="flex flex-col gap-1">
@@ -1056,9 +1068,11 @@ function FormatsEditor({
 function FormatsView({
   formats,
   readings,
+  space,
 }: {
   formats: ChannelFormat[]
   readings: KeywordReadings
+  space?: SearchSpaceView
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -1107,6 +1121,19 @@ function FormatsView({
                 </p>
               ),
             )}
+            {space ? (
+              <>
+                <FormatSearchSpace keywords={format.keywords} readings={space.readings} />
+                <div>
+                  <SearchSpaceButton
+                    count={space.counts[format.key] ?? 0}
+                    disabled={space.disabled}
+                    unavailable={!space.ready}
+                    onAnalyse={() => space.onAnalyse(format.key)}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
         )
       })}

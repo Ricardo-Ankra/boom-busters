@@ -14,6 +14,7 @@ import {
   PublishRequestedSchema,
   RenderDraftRequestedSchema,
   RenderSettledSchema,
+  SearchSpaceAnalyseSchema,
   ShortsRenderRequestedSchema,
   ShortsPointBuildRequestedSchema,
   ShortsPointsRequestedSchema,
@@ -152,6 +153,9 @@ export const events = {
   }),
 
   keywordsMeasure: eventType('channel/keywords.measure', { schema: KeywordsMeasureSchema }),
+  searchSpaceAnalyse: eventType('channel/search-space.analyse', {
+    schema: SearchSpaceAnalyseSchema,
+  }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),
 } as const

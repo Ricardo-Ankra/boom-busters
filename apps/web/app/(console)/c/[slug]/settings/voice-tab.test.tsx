@@ -45,6 +45,7 @@ vi.mock('./bible-actions', () => ({
   viewBibleVersionAction: vi.fn(),
   previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
   measureKeywordsAction: vi.fn(),
+  analyseSearchSpaceAction: vi.fn(),
 }))
 vi.mock('./channel-actions', () => ({
   createChannelAction: vi.fn(),

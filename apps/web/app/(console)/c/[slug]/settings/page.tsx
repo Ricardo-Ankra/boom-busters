@@ -5,7 +5,9 @@ import {
   getWorkspace,
   hasCredential,
   keywordsToMeasure,
+  searchSpaceKeywords,
   latestKeywordMeasurements,
+  latestSearchSpace,
   listBibleVersions,
   listChannels,
   listLogos,
@@ -60,6 +62,7 @@ export default async function SettingsPage({
     current,
     vidiqKey,
     latestReadings,
+    latestSpace,
   ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
@@ -73,6 +76,7 @@ export default async function SettingsPage({
     currentBible(db, channel.id),
     hasCredential(db, 'vidiq'),
     latestKeywordMeasurements(db, channel.id),
+    latestSearchSpace(db, channel.id),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -111,6 +115,25 @@ export default async function SettingsPage({
     latestReadings,
     new Date(),
   ).length
+
+  // Each format keyword's latest search-space analysis, and per format how many
+  // of its keywords the button would buy: counted over the draft, as the action does.
+  const searchSpace = Object.fromEntries(
+    [...latestSpace].map(([key, row]) => [
+      key,
+      {
+        measuredAt: row.measuredAt.toISOString(),
+        titlePatterns: row.titlePatterns,
+        durations: row.durations,
+      },
+    ]),
+  )
+  const searchSpaceCounts = Object.fromEntries(
+    (draft?.bible ?? current.bible).formats.map((format) => [
+      format.key,
+      searchSpaceKeywords(format.keywords, latestSpace, new Date()).length,
+    ]),
+  )
 
   const modelOptions = await loadModelOptions({
     routing: settings.modelRouting,
@@ -192,6 +215,8 @@ export default async function SettingsPage({
         vidiqReady={mockProvidersEnabled() || vidiqKey}
         keywordReadings={keywordReadings}
         measureCount={measureCount}
+        searchSpace={searchSpace}
+        searchSpaceCounts={searchSpaceCounts}
       />
     </div>
   )

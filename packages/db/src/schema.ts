@@ -347,6 +347,51 @@ export const keywordMeasurements = pgTable(
 export type KeywordMeasurementRow = typeof keywordMeasurements.$inferSelect
 export type NewKeywordMeasurement = typeof keywordMeasurements.$inferInsert
 
+/** One winning video kept with a search-space reading. */
+export interface SearchSpaceOutlier {
+  videoId: string
+  title: string
+  channel: string | null
+  views: number | null
+  breakoutScore: number | null
+  /** From the YouTube Data API; null when it could not be read. */
+  durationSec: number | null
+}
+
+/** How long the winners run, in seconds. */
+export interface SearchSpaceDurations {
+  minSec: number
+  medianSec: number
+  maxSec: number
+}
+
+/**
+ * What winning in one format keyword looks like: the top VidIQ outliers, the
+ * title patterns they share and how long they run. One row per analysis, so
+ * the history stays; the latest per channel and keyword is what the Bible tab
+ * shows. Display only: no prompt reads it.
+ */
+export const channelSearchSpace = pgTable(
+  'channel_search_space',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    keyword: text('keyword').notNull(),
+    measuredAt: timestamp('measured_at', { withTimezone: true }).notNull(),
+    outliers: jsonb('outliers').notNull().$type<SearchSpaceOutlier[]>(),
+    titlePatterns: jsonb('title_patterns').notNull().$type<string[]>(),
+    durations: jsonb('durations').$type<SearchSpaceDurations | null>(),
+    credits: integer('credits').notNull(),
+  },
+  (t) => [
+    index('channel_search_space_channel_keyword_idx').on(t.channelId, t.keyword, t.measuredAt),
+  ],
+)
+export type SearchSpaceRow = typeof channelSearchSpace.$inferSelect
+export type NewSearchSpaceRow = typeof channelSearchSpace.$inferInsert
+
 /**
  * Exactly one row: what belongs to the owner rather than to a channel, the
  * model price overrides and the monthly budget, plus the channel the console

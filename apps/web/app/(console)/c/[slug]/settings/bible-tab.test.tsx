@@ -15,6 +15,7 @@ const editBibleSectionAction = vi.fn()
 const saveBibleAction = vi.fn()
 const copyBibleFromChannelAction = vi.fn()
 const measureKeywordsAction = vi.fn()
+const analyseSearchSpaceAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: (...args: unknown[]) => approveBibleSectionAction(...args),
   discardBibleDraftAction: (...args: unknown[]) => discardBibleDraftAction(...args),
@@ -25,6 +26,7 @@ vi.mock('./bible-actions', () => ({
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
   copyBibleFromChannelAction: (...args: unknown[]) => copyBibleFromChannelAction(...args),
   measureKeywordsAction: (...args: unknown[]) => measureKeywordsAction(...args),
+  analyseSearchSpaceAction: (...args: unknown[]) => analyseSearchSpaceAction(...args),
   restoreBibleVersionAction: vi.fn(),
   viewBibleVersionAction: vi.fn(),
   previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
@@ -1136,6 +1138,113 @@ describe('BibleTab, keyword measurements', () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Could not measure',
+        description: 'Over the cap',
+        variant: 'error',
+      }),
+    )
+  })
+})
+
+describe('BibleTab, search space', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString()
+  const format = FIRST_CHANNEL_BIBLE.formats[0]!
+  const bible = {
+    ...FIRST_CHANNEL_BIBLE,
+    formats: [{ ...format, keywords: ['heist stories', 'never analysed'] }],
+  }
+
+  function renderSpace(
+    over: { counts?: Record<string, number>; vidiqReady?: boolean; stale?: boolean } = {},
+  ) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady={over.vidiqReady ?? true}
+        archived={false}
+        copySources={[]}
+        searchSpace={{
+          'heist stories': {
+            measuredAt: over.stale ? ago(40) : '2026-11-02T09:00:00.000Z',
+            titlePatterns: ['The Heist That {figure}', 'How {subject} Got Away'],
+            durations: { minSec: 6000, medianSec: 7500, maxSec: 11400 },
+          },
+        }}
+        searchSpaceCounts={over.counts ?? { [format.key]: 1 }}
+      />,
+    )
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-03T12:00:00Z') })
+  })
+
+  it('shows the duration spread, the title patterns and the date beside the keyword', () => {
+    renderSpace()
+    const formats = within(card('Formats'))
+    expect(
+      formats.getByText('Winning videos run 1 h 40 to 3 h 10, median 2 h 05'),
+    ).toBeInTheDocument()
+    expect(formats.getByText('The Heist That {figure}')).toBeInTheDocument()
+    expect(formats.getByText('How {subject} Got Away')).toBeInTheDocument()
+    expect(formats.getByText('Analysed 2 Nov')).toBeInTheDocument()
+    expect(formats.queryByText(/days ago/)).toBeNull()
+  })
+
+  it('adds a muted stale note past 30 days', () => {
+    renderSpace({ stale: true })
+    const note = within(card('Formats')).getByText('Analysed 40 days ago, older than 30 days')
+    expect(note.className).toContain('text-[var(--color-text-muted)]')
+  })
+
+  it('offers Analyse search space with the credits at 10 a keyword, and hides it with none to do', () => {
+    const { unmount } = renderSpace({ counts: { [format.key]: 2 } })
+    expect(
+      within(card('Formats')).getByRole('button', {
+        name: 'Analyse search space (about 20 credits)',
+      }),
+    ).toBeEnabled()
+    unmount()
+    renderSpace({ counts: { [format.key]: 0 } })
+    expect(screen.queryByRole('button', { name: /Analyse search space/ })).toBeNull()
+  })
+
+  it('holds the button without a VidIQ key', () => {
+    renderSpace({ vidiqReady: false })
+    expect(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    ).toBeDisabled()
+  })
+
+  it('asks for the analysis of that format and says what it will cost', async () => {
+    vi.useRealTimers()
+    analyseSearchSpaceAction.mockResolvedValue({ ok: true, credits: 10 })
+    renderSpace()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    )
+    expect(analyseSearchSpaceAction).toHaveBeenCalledWith(CHANNEL.id, format.key)
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Analysing the search space',
+        description: expect.stringContaining('10 credits'),
+      }),
+    )
+  })
+
+  it('shows the refusal when the analysis cannot start', async () => {
+    vi.useRealTimers()
+    analyseSearchSpaceAction.mockResolvedValue({ ok: false, error: 'Over the cap' })
+    renderSpace()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    )
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not analyse',
         description: 'Over the cap',
         variant: 'error',
       }),

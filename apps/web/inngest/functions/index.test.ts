@@ -66,6 +66,8 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - keyword-measurer is queued per channel (`concurrency` keyed on the channel):
   //   a second press waits its turn and skips keywords the first already read,
   //   and a cancel would drop paid readings.
+  // - search-space-analyser is queued per channel the same way: a second press
+  //   skips keywords the first already analysed, and a cancel would drop paid work.
   // - bible-drafter is queued per channel the same way: a redraft waits for the
   //   run before it, never cancels a run that is mid-answer.
   // - stretch-replanner queues one chapter's stretches behind each other
@@ -87,6 +89,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'bible-researcher': null,
   'case-researcher': null,
   'keyword-measurer': null,
+  'search-space-analyser': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
   'teaser-shot-fetcher': null,

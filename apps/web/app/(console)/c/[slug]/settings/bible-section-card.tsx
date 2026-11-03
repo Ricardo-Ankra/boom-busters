@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { MeasureButton } from './bible-measure-button'
 import type { KeywordReadings } from './bible-measurements'
+import type { SearchSpaceView } from './bible-search-space'
 import {
   NO_ISSUES,
   SectionEditor,
@@ -65,6 +66,7 @@ export function BibleSectionCard({
   onProblems,
   readings,
   measure,
+  space,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -85,6 +87,8 @@ export function BibleSectionCard({
   readings?: KeywordReadings
   /** The Measure in VidIQ button: given on the cards that hold keywords. */
   measure?: { count: number; ready: boolean; onMeasure: () => void }
+  /** The formats card's search-space readings and Analyse button. */
+  space?: SearchSpaceView
 }) {
   const label = sectionStatusLabel(bible, section, status)
   const ChipIcon = CHIP_ICON[label]
@@ -246,6 +250,7 @@ export function BibleSectionCard({
             disabled={disabled}
             onDraftSlot={onDraftSlot}
             {...(readings ? { readings } : {})}
+            {...(space ? { space } : {})}
           />
         )}
       </div>

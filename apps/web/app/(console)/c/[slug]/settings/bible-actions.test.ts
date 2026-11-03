@@ -3,6 +3,7 @@
 import {
   archiveChannel,
   bibleDrafts,
+  channelSearchSpace,
   createChannel,
   getBibleDraft,
   keywordMeasurements,
@@ -13,6 +14,7 @@ import {
   recordVidiqCredits,
   requireTestDatabase,
   saveBibleVersion,
+  saveSearchSpace,
   seed,
   setCredential,
   updateWorkspace,
@@ -35,6 +37,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
+  analyseSearchSpaceAction,
   approveBibleSectionAction,
   copyBibleFromChannelAction,
   discardBibleDraftAction,
@@ -688,6 +691,120 @@ describeDb('the bible edit, approve, save and discard actions', () => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
       const result = await measureKeywordsAction(FIRST_CHANNEL_ID)
       expect(result.ok).toBe(false)
+    })
+  })
+
+  describe('analyseSearchSpaceAction', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    const formatDraft = async (keywords: string[]) => {
+      await openBibleDraft(db, FIRST_CHANNEL_ID)
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+        ...draft,
+        bible: {
+          ...draft.bible,
+          formats: draft.bible.formats.map((format, i) =>
+            i === 0 ? { ...format, keywords } : format,
+          ),
+        },
+      }))
+      return (await getBibleDraft(db, FIRST_CHANNEL_ID))!.bible.formats[0]!.key
+    }
+
+    beforeEach(async () => {
+      await db.delete(channelSearchSpace)
+      await db.delete(vidiqCredits)
+    })
+
+    it('sends the format keywords not analysed in 30 days and returns 10 credits each', async () => {
+      const key = await formatDraft(['alpha', 'beta', 'Alpha'])
+      await saveSearchSpace(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'beta',
+        measuredAt: new Date(Date.now() - 10 * DAY),
+        outliers: [],
+        titlePatterns: [],
+        durations: null,
+        credits: 10,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: true,
+        credits: 10,
+      })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'channel/search-space.analyse',
+          data: { channelId: FIRST_CHANNEL_ID, keywords: ['alpha'] },
+        }),
+      )
+    })
+
+    it('refuses over the cap with the cap numbers and sends nothing', async () => {
+      const key = await formatDraft(['alpha', 'beta'])
+      await recordVidiqCredits(db, {
+        channelId: FIRST_CHANNEL_ID,
+        purpose: 'bible-research',
+        tool: 'vidiq_outliers',
+        args: {},
+        credits: 985,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: false,
+        error: "This run needs about 20 credits; 15 are left of this month's cap of 1000.",
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('says so plainly when every keyword was analysed lately', async () => {
+      const key = await formatDraft(['alpha'])
+      await saveSearchSpace(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'Alpha',
+        measuredAt: new Date(Date.now() - 2 * DAY),
+        outliers: [],
+        titlePatterns: [],
+        durations: null,
+        credits: 10,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: false,
+        error: 'Every keyword of this format was analysed in the last 30 days',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses a format with no keywords, an unknown format, an unknown channel', async () => {
+      const key = await formatDraft([])
+      expect((await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).ok).toBe(false)
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, 'no-such-format')).toEqual({
+        ok: false,
+        error: 'Unknown format',
+      })
+      expect(await analyseSearchSpaceAction('not-an-id', key)).toEqual({
+        ok: false,
+        error: 'Unknown channel',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses an archived channel', async () => {
+      const channel = await createChannel(db, {
+        name: 'Old',
+        handle: null,
+        slug: `old-space-${Date.now()}`,
+        settings: DEFAULT_SETTINGS,
+        bible: ChannelBibleSchema.parse({}),
+      })
+      await archiveChannel(db, channel.id)
+      const result = await analyseSearchSpaceAction(channel.id, 'main')
+      expect(result.ok === false && result.error).toMatch(/archived/i)
+    })
+
+    it('says so when Inngest cannot be reached', async () => {
+      const key = await formatDraft(['alpha'])
+      inngestMock.send.mockRejectedValueOnce(new Error('down'))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      expect((await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).ok).toBe(false)
     })
   })
 

@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/toast'
 import { errorSection, flagSection } from '@/lib/bible-draft-keys'
 import type { ActionResult } from './actions'
 import {
+  analyseSearchSpaceAction,
   approveBibleSectionAction,
   discardBibleDraftAction,
   draftBibleAction,
@@ -25,6 +26,7 @@ import {
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
 import type { KeywordReadings } from './bible-measurements'
+import type { SearchSpaceReadings } from './bible-search-space'
 import { BiblePreview } from './bible-preview'
 import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
@@ -60,6 +62,8 @@ export function BibleTab({
   copySources = [],
   readings,
   measureCount = 0,
+  searchSpace,
+  searchSpaceCounts,
 }: {
   channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
@@ -77,6 +81,10 @@ export function BibleTab({
   readings?: KeywordReadings
   /** How many format and pillar keywords have no reading from the last 30 days. */
   measureCount?: number
+  /** The latest search-space analysis of each format keyword, by lower-cased keyword. */
+  searchSpace?: SearchSpaceReadings
+  /** Per format key, how many of its keywords have no analysis from the last 30 days. */
+  searchSpaceCounts?: Record<string, number>
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -140,6 +148,23 @@ export function BibleTab({
       toast({
         title: 'Measuring in VidIQ',
         description: `About ${result.credits} credits. The readings appear here as they arrive; refresh the page to see them.`,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const analyseSearchSpace = async (formatKey: string) => {
+    setBusy(true)
+    try {
+      const result = await analyseSearchSpaceAction(channel.id, formatKey)
+      if (!result.ok) {
+        toast({ title: 'Could not analyse', description: result.error, variant: 'error' })
+        return
+      }
+      toast({
+        title: 'Analysing the search space',
+        description: `About ${result.credits} credits. The results appear here as they arrive; refresh the page to see them.`,
       })
     } finally {
       setBusy(false)
@@ -343,6 +368,17 @@ export function BibleTab({
           disabled={locked}
           onProblems={setProblems}
           {...(readings ? { readings } : {})}
+          {...(section === 'formats' && searchSpace
+            ? {
+                space: {
+                  readings: searchSpace,
+                  counts: searchSpaceCounts ?? {},
+                  ready: vidiqReady,
+                  disabled: locked,
+                  onAnalyse: (formatKey: string) => void analyseSearchSpace(formatKey),
+                },
+              }
+            : {})}
           {...(section === 'formats' || section === 'identity'
             ? {
                 measure: {

@@ -431,6 +431,16 @@ export const KeywordsMeasureSchema = z.object({
 })
 
 /**
+ * Analyse the search space of these format keywords: the winners' title
+ * patterns and how long they run. The action checked the cap and chose the
+ * keywords; the run skips any analysed inside the stale window.
+ */
+export const SearchSpaceAnalyseSchema = z.object({
+  channelId: UlidSchema,
+  keywords: z.array(z.string().trim().min(1).max(120)).min(1).max(100),
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -481,6 +491,7 @@ export const EVENT_SCHEMAS = {
   'case/research.requested': CaseResearchRequestedSchema,
 
   'channel/keywords.measure': KeywordsMeasureSchema,
+  'channel/search-space.analyse': SearchSpaceAnalyseSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

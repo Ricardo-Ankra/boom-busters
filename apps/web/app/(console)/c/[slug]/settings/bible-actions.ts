@@ -11,9 +11,11 @@ import {
   getBibleDraft,
   keywordsToMeasure,
   latestKeywordMeasurements,
+  latestSearchSpace,
   openBibleDraft,
   restoreBibleVersion,
   saveBibleDraft,
+  searchSpaceKeywords,
   writeBibleDraft,
 } from '@boom-busters/db'
 import { composeStagePrompt } from '@boom-busters/providers/preview'
@@ -650,6 +652,62 @@ export async function measureKeywordsAction(
       ok: false,
       error:
         'Could not reach Inngest to start the measurement. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true, credits }
+}
+
+/**
+ * Analyse one format's search space in VidIQ: outliers for each of its
+ * keywords (the draft's when one is open, else the current version's), leaving
+ * out any analysed within the stale window. The cap and the balance are
+ * checked first; the results arrive as the run finishes. Returns the credits
+ * the run is expected to cost.
+ */
+export async function analyseSearchSpaceAction(
+  channelId: string,
+  formatKey: string,
+): Promise<{ ok: true; credits: number } | { ok: false; error: string }> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+
+  const draft = await getBibleDraft(db, channelId)
+  const bible = draft?.bible ?? (await currentBible(db, channelId)).bible
+  const format = bible.formats.find((candidate) => candidate.key === formatKey)
+  if (!format) return { ok: false, error: 'Unknown format' }
+
+  const keywords = searchSpaceKeywords(
+    format.keywords,
+    await latestSearchSpace(db, channelId),
+    new Date(),
+  )
+  if (keywords.length === 0) {
+    return {
+      ok: false,
+      error:
+        format.keywords.length === 0
+          ? 'This format has no keywords to analyse'
+          : `Every keyword of this format was analysed in the last ${SEARCH_BRIEF_STALE_DAYS} days`,
+    }
+  }
+
+  // Outliers, then the top ten's details.
+  const credits = keywords.length * (VIDIQ_CREDIT_COST.outliers + VIDIQ_CREDIT_COST.getVideosByIds)
+  const budget = await checkVidiqBudget(credits)
+  if (!budget.ok) return budget
+
+  try {
+    await inngest.send(events.searchSpaceAnalyse.create({ channelId, keywords }))
+  } catch (error) {
+    console.error('[bible] could not send the search-space analysis', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to start the analysis. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
     }
   }

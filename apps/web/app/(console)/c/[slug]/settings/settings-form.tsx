@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BibleTab, type BibleVersionView } from './bible-tab'
 import type { KeywordReadings } from './bible-measurements'
+import type { SearchSpaceReadings } from './bible-search-space'
 import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
@@ -72,6 +73,8 @@ export function SettingsForm({
   copySources = [],
   keywordReadings,
   measureCount = 0,
+  searchSpace,
+  searchSpaceCounts,
 }: {
   initialSettings: Settings
   /** This channel's YouTube connection, masked. */
@@ -109,6 +112,10 @@ export function SettingsForm({
   /** Every other channel, archived ones included, for the Bible tab's copy. */
   copySources?: CopySource[]
   keywordReadings?: KeywordReadings
+  /** The latest search-space analysis of each format keyword, by lower-cased keyword. */
+  searchSpace?: SearchSpaceReadings
+  /** Per format key, how many of its keywords have no analysis from the last 30 days. */
+  searchSpaceCounts?: Record<string, number>
   measureCount?: number
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
@@ -237,6 +244,8 @@ export function SettingsForm({
               copySources={copySources}
               {...(keywordReadings ? { readings: keywordReadings } : {})}
               measureCount={measureCount}
+              {...(searchSpace ? { searchSpace } : {})}
+              {...(searchSpaceCounts ? { searchSpaceCounts } : {})}
             />
           </Lock>
         </TabsContent>
