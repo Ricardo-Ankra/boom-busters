@@ -513,6 +513,14 @@ suite('cases', () => {
         expect(got.demandNotes).toBe('Owner note about the audience')
       })
 
+      it('leaves notes the owner edited after choosing an angle alone', async () => {
+        const id = await researched()
+        await chooseCaseAngle(db, id, { option: 0 })
+        await updateCase(db, id, { demandNotes: 'Owner note about the audience' })
+        const got = await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        expect(got.demandNotes).toBe('Owner note about the audience')
+      })
+
       it('refuses a keyword with a figure, and one that is not a secondary', async () => {
         const id = await researched()
         await expect(setCaseTargetKeyword(db, id, 'wework $47 billion')).rejects.toThrow(/figure/)

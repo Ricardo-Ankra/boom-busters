@@ -336,13 +336,13 @@ export async function setCaseTargetKeyword(
         ...(brief.targetKeyword ? [brief.targetKeyword] : []),
       ],
     }
-    // Notes written from the brief (an angle was chosen) name the old target, so they follow it.
-    // Notes the owner wrote by hand stay as they are.
+    // Notes still exactly as chooseCaseAngle wrote them name the old target, so they follow it.
+    // Notes the owner wrote or edited by hand stay as they are.
     const [row] = await tx
       .select({ demandNotes: cases.demandNotes })
       .from(cases)
       .where(eq(cases.id, caseId))
-    const fromBrief = brief.chosenAngle !== null || row?.demandNotes === briefDemandNotes(brief)
+    const fromBrief = row?.demandNotes === briefDemandNotes(brief)
     await tx
       .update(cases)
       .set({
