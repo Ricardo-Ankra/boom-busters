@@ -43,9 +43,20 @@ describe('ChannelFormatSchema', () => {
   test.each([
     ['min below the outer floor', { default: 2, min: 2, max: 60 }],
     ['default above max', { default: 70, min: 3, max: 60 }],
-    ['max above the outer ceiling', { default: 15, min: 3, max: 241 }],
+    ['max above the outer ceiling', { default: 15, min: 3, max: 181 }],
   ])('refuses runtime: %s', (_label, runtime) => {
     expect(ChannelFormatSchema.safeParse(base({ runtime })).success).toBe(false)
+  })
+
+  test('accepts a longest runtime of 180 minutes and names 180 in the refusal of 181', () => {
+    expect(
+      ChannelFormatSchema.safeParse(base({ runtime: { default: 60, min: 3, max: 180 } })).success,
+    ).toBe(true)
+    const refused = ChannelFormatSchema.safeParse(
+      base({ runtime: { default: 15, min: 3, max: 181 } }),
+    )
+    expect(refused.success).toBe(false)
+    expect(JSON.stringify(refused.error?.issues)).toContain('<= 180')
   })
 
   test.each([79, 201])('refuses wordsPerMinute %i', (wordsPerMinute) => {

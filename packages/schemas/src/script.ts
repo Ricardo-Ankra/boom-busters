@@ -34,7 +34,7 @@ export const MAX_CHAPTER_WORDS = 4000
 export const LONG_SCRIPT_WORDS = 12_000
 export const LONG_CHAPTER_WORDS = 1000
 
-/** The most chapters an outline may hold: 240 minutes at 200 words a minute, in chapters of 800 words. */
+/** The most chapters an outline may hold: 180 minutes at 200 words a minute is about 43 chapters of 800 words; the cap leaves room above that. */
 export const OUTLINE_MAX_CHAPTERS = 60
 
 /**

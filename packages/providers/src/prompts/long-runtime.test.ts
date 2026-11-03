@@ -4,13 +4,13 @@ import { MAX_OUTPUT_TOKENS, THINKING_HEADROOM_TOKENS } from '../llm/types'
 import { buildOutlineRequest } from './script'
 
 /**
- * What a 240-minute run asks of the script stage (spec section 8). Two
+ * What a 180-minute run asks of the script stage (spec section 8). Two
  * formats the owner could plan: a tension format at 150 words a minute and a
- * calm one at 130, both 240 minutes, so about 34,200 and 29,640 words.
+ * calm one at 130, both 180 minutes, so about 25,650 and 22,230 words.
  */
 const FORMATS = [
-  { name: 'tension', wordsPerMinute: 150, intent: 'tension', words: 34_200 },
-  { name: 'calm', wordsPerMinute: 130, intent: 'calm', words: 29_640 },
+  { name: 'tension', wordsPerMinute: 150, intent: 'tension', words: 25_650 },
+  { name: 'calm', wordsPerMinute: 130, intent: 'calm', words: 22_230 },
 ] as const
 
 function outlineFor(minutes: number, wordsPerMinute: number, intent: 'tension' | 'calm') {
@@ -25,10 +25,10 @@ function outlineFor(minutes: number, wordsPerMinute: number, intent: 'tension' |
   })
 }
 
-describe('the outline at 240 minutes', () => {
+describe('the outline at 180 minutes', () => {
   for (const format of FORMATS) {
     describe(format.name, () => {
-      const request = outlineFor(240, format.wordsPerMinute, format.intent)
+      const request = outlineFor(180, format.wordsPerMinute, format.intent)
 
       it('plans the length the pace gives', () => {
         expect(request.system).toContain(`about ${format.words} words`)
@@ -59,9 +59,9 @@ describe('the outline at 240 minutes', () => {
   })
 })
 
-describe('the outline answer budget at 240 minutes', () => {
+describe('the outline answer budget at 180 minutes', () => {
   it.each(FORMATS)('$name: room for every chapter of the plan', (format) => {
-    const request = outlineFor(240, format.wordsPerMinute, format.intent)
+    const request = outlineFor(180, format.wordsPerMinute, format.intent)
     const chapters = Math.ceil(format.words / 1000)
     // A chapter's plan runs about 450 tokens: the beat, the tension fields and the claims.
     const needed = chapters * 450
@@ -70,8 +70,8 @@ describe('the outline answer budget at 240 minutes', () => {
   })
 
   it('still fits under the ceiling at the longest runtime and fastest pace', () => {
-    const request = outlineFor(240, 200, 'tension')
+    const request = outlineFor(180, 200, 'tension')
     expect(request.maxTokens).toBeLessThanOrEqual(MAX_OUTPUT_TOKENS)
-    expect(request.maxTokens).toBeGreaterThanOrEqual(Math.ceil(45_600 / 1000) * 450 + 4000)
+    expect(request.maxTokens).toBeGreaterThanOrEqual(Math.ceil(34_200 / 1000) * 450 + 4000)
   })
 })

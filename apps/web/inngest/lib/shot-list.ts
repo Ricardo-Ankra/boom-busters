@@ -347,7 +347,7 @@ export const RESOLUTION_CONCURRENCY = 4
 /**
  * Slots resolved in one Inngest step on a board too long for a step apiece
  * (see `perSlotStepsFit`), in waves of `RESOLUTION_CONCURRENCY`. A
- * 240-minute run has 1,200 to 3,400 slots; eight a step keeps it near 150 to
- * 430 steps. Two waves of stills fit well inside the route's 300 s.
+ * 180-minute run has 900 to 2,600 slots; eight a step keeps it near 110 to
+ * 330 steps. Two waves of stills fit well inside the route's 300 s.
  */
 export const RESOLUTION_STEP_SLOTS = 8

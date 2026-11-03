@@ -638,7 +638,7 @@ describe('BibleTab', () => {
       expect(hold).toHaveAttribute('step', '0.5')
       expect(hold).toHaveAttribute('min', '1')
       expect(hold).toHaveAttribute('max', '4')
-      expect(within(format).getByLabelText('Longest')).toHaveAttribute('max', '240')
+      expect(within(format).getByLabelText('Longest')).toHaveAttribute('max', '180')
 
       await userEvent.selectOptions(within(format).getByLabelText('Intent'), 'calm')
       await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))

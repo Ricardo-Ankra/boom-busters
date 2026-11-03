@@ -12,7 +12,7 @@ import {
 /**
  * Inngest runs one function for up to 1,000 steps (its documented limit; the
  * repo holds no copy of it, so the owner confirms the figure). The visuals
- * runner resolves every slot and assembly ingests every stock slot, so at 240
+ * runner resolves every slot and assembly ingests every stock slot, so at 180
  * minutes the slot count decides whether a run fits.
  *
  * Ids matter as much as counts: a run parked at a gate when a deploy lands
@@ -166,16 +166,16 @@ describe('a board whose per-slot steps do not fit', () => {
 })
 
 describe('step counts', () => {
-  // Slots at 240 minutes: 13,680 s of narration over 4 to 15 s slots at hold 1
+  // Slots at 180 minutes: 10,260 s of narration over 4 to 15 s slots at hold 1
   // and 7.5 to 15 s at hold 2.5; typical is the middle of the range.
   const cases = [
-    { name: 'hold 1, shortest slots', slots: 3420 },
-    { name: 'hold 1, typical slots', slots: 1440 },
-    { name: 'hold 2.5, shortest slots', slots: 1824 },
-    { name: 'hold 2.5, typical slots', slots: 1216 },
+    { name: 'hold 1, shortest slots', slots: 2565 },
+    { name: 'hold 1, typical slots', slots: 1080 },
+    { name: 'hold 2.5, shortest slots', slots: 1368 },
+    { name: 'hold 2.5, typical slots', slots: 912 },
   ]
-  it.each(cases)('$name: a 240-minute visuals run stays under 1,000 steps', async ({ slots }) => {
-    const other = visualsOtherSteps({ chapters: 46, designedSlots: Math.round(slots / 10) })
+  it.each(cases)('$name: a 180-minute visuals run stays under 1,000 steps', async ({ slots }) => {
+    const other = visualsOtherSteps({ chapters: 35, designedSlots: Math.round(slots / 10) })
     const h = harness()
     await stepSlots(h.run, board(slots), 'resolve', {
       perSlot: perSlotStepsFit(slots, other),

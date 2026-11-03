@@ -134,6 +134,7 @@ describe('buildBibleUnitRequest', () => {
   it('guides the formats unit with the intent and pillar keyword lines', () => {
     const formats = buildBibleUnitRequest({ ...base, unit: { section: 'formats' } })
     expect(formats.messages[0]!.content).toContain('"calm" for one made to relax or fall asleep to')
+    expect(formats.messages[0]!.content).toContain('minutes between 3 and 180')
     const identity = buildBibleUnitRequest({ ...base, unit: { section: 'identity' } })
     expect(identity.messages[0]!.content).toContain(
       'keywords: up to 6 search phrases for that pillar',
