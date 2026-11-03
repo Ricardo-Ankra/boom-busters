@@ -72,6 +72,13 @@ export const GraphicCodeSchema = z.object({
     .array(z.string().trim().min(1).max(GRAPHIC_STORYBOARD_LINE_MAX))
     .max(GRAPHIC_STORYBOARD_MAX)
     .optional(),
+  /**
+   * What the review made of the design (decision 389): `kept` when the
+   * designer, shown its rendered frames, kept it (or its revision could not be
+   * kept), `revised` when the revision passed every check and replaced it.
+   * Absent when no review ran: switched off, out of time, or no browser.
+   */
+  review: z.enum(['kept', 'revised']).optional(),
 })
 export type GraphicCode = z.infer<typeof GraphicCodeSchema>
 

@@ -4534,8 +4534,14 @@ This is on master and unrelated to this work.
       reviewed on stills every 500 ms or 1 s in both frames (`9699d15`).
 - [x] The prompt's craft section and a `concept` and `storyboard` in the
       designer's answer (decision 388).
-- [ ] Owner reviews the eighteen in Settings → Exemplars.
-- [ ] Redesign a few real slots on the new prompt (paid; on the owner's word).
+- [x] Owner reviewed the eighteen ("Happy").
+- [x] The board shows a coded graphic's concept and storyboard (`54238775`).
+- [x] A layout check in a browser and the review on rendered frames, with a
+      Settings switch (decision 389).
+- [ ] After the deploy: the Vercel logs show no "[graphics] designing ...
+      without the browser" line, so Chromium starts on Vercel.
+- [ ] Redesign a few real slots on the new prompt and review (paid; on the
+      owner's word).
 
 ---
 
@@ -9451,3 +9457,61 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      migration: `code` lives in the brief's JSON column. Shipping: a Vercel
      deploy and `PUT /api/inngest`; the new prompt applies to every graphic
      designed after it, including Redesign.
+
+389. **The designer's layout is measured in a browser, and it reviews its
+     own frames** (2026-11-03, owner: "do 1,2 and 3"; rulings: Chromium in the
+     app rather than Remotion Lambda through the broker; the review behind a
+     Settings switch, on by default). The dry run sees markup, not layout, and
+     most faults found by eye in the eighteen exemplars were layout: words
+     colliding, a mark over a word, a push carrying text off the edge.
+     What shipped. `lib/graphic-code/frames.ts` takes the dry run's markup at
+     each rest moment (a word's entrance once settled, or just before the
+     next word; merged within 400 ms; at most ten; and the end), sets it in
+     headless Chromium at 1920 by 1080 and 1080 by 1920 with the channel's
+     faces from Google Fonts and Remotion's border-box reset, and measures
+     every visible run of text. Refused, inside the design's parse and so
+     retried once with the reason: two runs that overlap by more than a fifth
+     of the smaller, a run more than 24 px past the safe area, type set under
+     26 px. Only text being read counts: opacity at least 0.5 and not under a
+     blur. With the review on, the passing design's frames (up to six 16:9
+     moments, the 9:16 middle and end, JPEG at half size) go back to the
+     designer with the design as answered: `{"keep": true}` keeps it, a whole
+     design is checked like any answer, layout included, and replaces it only
+     if it passes. The design records `review: kept | revised`, and the board
+     says so under the plan, which now shows the concept and the storyboard
+     behind "Show storyboard". Settings, Models has "Review each graphic on
+     its rendered frames" under the Motion graphics route.
+     Calibration. All eighteen exemplars pass; a drum with its first, too
+     small radius is refused ("asked." and "checked." overlap at 2.4 s). Seven
+     false refusals on the first pass were fixed in the measure, not the
+     designs: a line box runs a fifth above the capitals, so a run is measured
+     on its letters' band (a fifth off the top, a tenth off the bottom) and
+     then clipped; size is the computed font size times the 2D scale, so a
+     word turned away in 3D is not "small"; the slack past the safe area is
+     24 px for the camera's push. The check found one real fault the eye
+     missed: the chapter title's waiting word sat over the line above when
+     the title wrapped in 9:16; each word is now masked at its own line.
+     Decisions made where the spec left room: the page script is JavaScript
+     text, not a serialised function, because a compiler that keeps names
+     (esbuild under tsx) wraps functions in a helper the page lacks; the
+     review is one call, no retry, and only with 90 s of the 240 s deadline
+     left, and nothing it does can lose a passing design (a failed call, a
+     budget stop or the clock keeps the design unmarked); a browser that
+     cannot start leaves the design on the dry run's word and logs
+     "[graphics] designing ... without the browser" once, rather than failing
+     designs; mock mode runs no browser and no review; the layout check also
+     runs in `exemplar:check` where a browser starts; the web tests run with
+     `GRAPHIC_FRAMES=off` so the runners' tests never start Chromium, and the
+     designer's own tests stub it; `callForAnswer` takes an async parse. Not
+     checked: overlap during motion, which the review sees in its frames.
+     Packaging: `playwright-core` (1.62.1, matching e2e, so local runs use the
+     Chromium e2e installs) and `@sparticuz/chromium` (153) are server
+     externals; the Inngest route's trace was checked after a production
+     build: Chromium's compressed browser, fonts and libraries, `tar-fs`, and
+     all of `playwright-core` (316 files, shipped whole because it loads parts
+     of itself lazily). Whether Chromium starts on Vercel is only proven by
+     the first design after the deploy: the log line above says if not.
+     Cost: the review is a second graphics-route call with about eight
+     images per graphic, roughly doubling a graphic's cost; the layout check
+     is free. Shipping: a Vercel deploy and `PUT /api/inngest`. No migration,
+     no Remotion or broker deploy.

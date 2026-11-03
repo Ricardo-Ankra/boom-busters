@@ -159,6 +159,16 @@ describe('routing the set sheet generator (decision 275)', () => {
   })
 })
 
+it('switches the graphics review off and on beside the Motion graphics route, on by default (decision 389)', async () => {
+  renderModelsTab()
+  const review = screen.getByRole('switch', { name: 'Review each graphic on its rendered frames' })
+  expect(review).toBeChecked()
+  await userEvent.click(review)
+  expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+    features: { graphicReview: false },
+  })
+})
+
 it('offers a Motion graphics route (decision 289)', () => {
   renderModelsTab()
   expect(screen.getByRole('combobox', { name: 'Motion graphics model' })).toHaveValue(

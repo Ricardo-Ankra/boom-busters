@@ -65,8 +65,12 @@ type Attempt<T> =
 
 type AnswerInput<T> = {
   request: LLMTaskRequest
-  /** Repairs (reporting each through `note`), then validates; throws `ValidationError` for an answer it cannot use. */
-  parse: (text: string, note: Note) => T
+  /**
+   * Repairs (reporting each through `note`), then validates; throws (or
+   * rejects with) `ValidationError` for an answer it cannot use. It may be
+   * async: the graphics designer's layout check renders in a browser.
+   */
+  parse: (text: string, note: Note) => T | Promise<T>
   complete: AnswerComplete
   /** Rebuilds the request for the retry after a refusal; by default the reason is added last. */
   retryWithReason?: (reason: string) => LLMTaskRequest
@@ -110,7 +114,7 @@ async function attempt<T>(
   if (input.truncatedIsCutOff && reply.truncated === true) return refused(ANSWER_CUT_OFF, true)
   const repairs: Repair[] = []
   try {
-    const value = input.parse(reply.text, (repair) => {
+    const value = await input.parse(reply.text, (repair) => {
       repairs.push(repair)
     })
     return { ok: true, value, repairs }

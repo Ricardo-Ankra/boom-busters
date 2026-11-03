@@ -622,6 +622,13 @@ export const FeatureFlagsSchema = z.object({
    * prompt is told not to emit hero slots while this is false (section 5).
    */
   heroSlots: z.boolean().default(false),
+  /**
+   * The graphics review (decision 389): once a design passes every check,
+   * the designer is shown it rendered and keeps or fixes it. A second model
+   * call with images per graphic, so it can be switched off; the free layout
+   * check in the browser runs either way.
+   */
+  graphicReview: z.boolean().default(true),
 })
 
 // ---------------------------------------------------------------------------
@@ -778,7 +785,7 @@ export const DEFAULT_SETTINGS: Settings = {
       duckDepthDb: -12,
     },
   },
-  features: { heroSlots: false },
+  features: { heroSlots: false, graphicReview: true },
 }
 
 /**

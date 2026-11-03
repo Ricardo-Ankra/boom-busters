@@ -48,6 +48,18 @@ describe('callForAnswer (decision 292)', () => {
     expect(complete).toHaveBeenCalledWith(request, 'answer')
   })
 
+  it('awaits an async parse, and retries its rejection with the reason as a thrown one is (decision 389)', async () => {
+    const complete = answers('bad', 'good')
+    const asyncParse = async (text: string) => parse(text)
+    expect(await callForAnswer({ request, parse: asyncParse, complete })).toEqual({
+      ok: true,
+      value: 'parsed',
+      calls: 2,
+    })
+    expect(complete.mock.calls[1]![1]).toBe('retry: refused')
+    expect(JSON.stringify(complete.mock.calls[1]![0])).toContain('bad answer: bad')
+  })
+
   it('asks once more at double the budget when the answer is cut off mid-JSON', async () => {
     const complete = answers('cut', 'good')
     expect(await callForAnswer({ request, parse, complete })).toEqual({

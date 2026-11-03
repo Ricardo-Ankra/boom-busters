@@ -27,5 +27,10 @@ export default defineConfig({
     // test blow Vitest's 5s default even when nothing is wrong.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    // The designer's browser (decision 389) is off: the runners' tests drive
+    // the real designer with a stubbed model and must not start Chromium. The
+    // designer's own tests turn it back on, and the frames' tests call the
+    // browser directly.
+    env: { GRAPHIC_FRAMES: 'off' },
   },
 })

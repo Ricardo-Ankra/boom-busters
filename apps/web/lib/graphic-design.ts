@@ -1,10 +1,13 @@
+import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { channelForProject } from '@boom-busters/db'
 import { requireCompleteBible } from '@/inngest/lib/channel'
 import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
+import { resolveBrandKit } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { browserFrames } from '@/lib/graphic-code/frames'
 import {
   chartData,
   designGraphicWith,
@@ -44,7 +47,8 @@ export async function designGraphic(
 ): Promise<GraphicDesignResult> {
   // Read here, inside the step that designs, so the bible is the project's frozen one and never
   // an earlier step's memoised copy. The gate sits before the mock branch.
-  const inUse = requireCompleteBible(await channelForProject(db, context.projectId))
+  const channel = await channelForProject(db, context.projectId)
+  const inUse = requireCompleteBible(channel)
   if (mockProvidersEnabled()) {
     // The fixture component (decision 295), through the same scan, compile,
     // dry run and facts as a real answer, so the runners, the retyper and the
@@ -78,7 +82,21 @@ export async function designGraphic(
       }),
     context,
     slot,
-    { ...options, bible: inUse },
+    {
+      ...options,
+      bible: inUse,
+      // The browser's layout check and, when Settings has it on, the review
+      // (decision 389), in the channel's own faces and colours. GRAPHIC_FRAMES=off
+      // designs on the dry run alone, as the runners' tests do.
+      ...(process.env['GRAPHIC_FRAMES'] === 'off' ? {} : { frames: browserFrames() }),
+      brand: graphicBrand(resolveBrandKit(channel.settings)),
+      review: channel.settings.features.graphicReview,
+      onFramesUnavailable: (error) => {
+        console.error(
+          `[graphics] designing ${slot.chapterId} without the browser: ${error.message}`,
+        )
+      },
+    },
   )
 }
 
