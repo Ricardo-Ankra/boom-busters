@@ -44,7 +44,7 @@ import {
 } from '../lib/gates'
 import { designPlannedGraphics } from '../lib/graphic-steps'
 import { chunk, withinFailureTolerance } from '../lib/narration'
-import { RESOLUTION_CONCURRENCY, timedParagraphs } from '../lib/shot-list'
+import { RESOLUTION_CONCURRENCY, resolutionBatches, timedParagraphs } from '../lib/shot-list'
 import { timingFindings } from '../lib/timing-findings'
 
 /**
@@ -415,53 +415,62 @@ export const visualsRunner = inngest.createFunction(
 
     const outcomes: SlotOutcome[] = []
 
-    for (const batch of chunk(board, RESOLUTION_CONCURRENCY)) {
-      const results = await Promise.all(
-        batch.map((slot) =>
-          step.run(`resolve-${slot.id}`, async (): Promise<SlotOutcome> => {
-            try {
-              const brief = ShotBriefSchema.parse(slot.brief)
-              const route = StillRouteSchema.nullable().safeParse(slot.route)
-              const resolution = await resolveSlotBrief({
-                projectId,
-                brief,
-                route: route.success ? route.data : null,
-              })
-              await setSlotResolution(
-                db,
-                slot.id,
-                resolution.status === 'resolved'
-                  ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
-                  : resolution,
-              )
-              return { ok: true, status: resolution.status }
-            } catch (error) {
-              if (error instanceof BudgetExceededError) {
-                return { ok: false, gate: budgetGateData(error) }
-              }
-              if (error instanceof ContentPolicyError) {
-                // The image model declined the prompt (decision 252): a
-                // placeholder with the refusal ON THE ROW, so the card can
-                // offer the two ways out instead of a generic "nothing found".
-                await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
-                await setSlotRefusal(db, slot.id, {
-                  reason: error.message,
-                  at: new Date().toISOString(),
+    // One step per few slots, not per slot: a 240-minute run has more slots than
+    // one function run has steps. Within a step the slots go in bounded waves.
+    for (const { stepId, slots } of resolutionBatches(board)) {
+      const results = await step.run(stepId, async (): Promise<SlotOutcome[]> => {
+        const settled: SlotOutcome[] = []
+        for (const wave of chunk(slots, RESOLUTION_CONCURRENCY)) {
+          const done = await Promise.all(
+            wave.map(async (slot): Promise<SlotOutcome> => {
+              try {
+                const brief = ShotBriefSchema.parse(slot.brief)
+                const route = StillRouteSchema.nullable().safeParse(slot.route)
+                const resolution = await resolveSlotBrief({
+                  projectId,
+                  brief,
+                  route: route.success ? route.data : null,
                 })
-                return { ok: false, error: error.message }
+                await setSlotResolution(
+                  db,
+                  slot.id,
+                  resolution.status === 'resolved'
+                    ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+                    : resolution,
+                )
+                return { ok: true, status: resolution.status }
+              } catch (error) {
+                if (error instanceof BudgetExceededError) {
+                  return { ok: false, gate: budgetGateData(error) }
+                }
+                if (error instanceof ContentPolicyError) {
+                  // The image model declined the prompt (decision 252): a
+                  // placeholder with the refusal ON THE ROW, so the card can
+                  // offer the two ways out instead of a generic "nothing found".
+                  await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+                  await setSlotRefusal(db, slot.id, {
+                    reason: error.message,
+                    at: new Date().toISOString(),
+                  })
+                  return { ok: false, error: error.message }
+                }
+                /**
+                 * Swallowed for the same reason the voice fan-out swallows: the
+                 * tolerance needs per-item outcomes, and one thrown step would
+                 * take down siblings that succeeded. The slot is marked
+                 * `placeholder` so the board shows exactly what needs a human.
+                 */
+                await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+                return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
               }
-              /**
-               * Swallowed for the same reason the voice fan-out swallows: the
-               * tolerance needs per-item outcomes, and one thrown step would
-               * take down siblings that succeeded. The slot is marked
-               * `placeholder` so the board shows exactly what needs a human.
-               */
-              await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
-              return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
-            }
-          }),
-        ),
-      )
+            }),
+          )
+          settled.push(...done)
+          // A cap hit means every slot after it would hit it too.
+          if (done.some((result) => !result.ok && 'gate' in result)) break
+        }
+        return settled
+      })
 
       outcomes.push(...results)
 
