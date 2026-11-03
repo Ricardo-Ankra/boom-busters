@@ -38,6 +38,15 @@ describe('GraphicPlan (decision 388)', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
+  it('says what the review made of the design, when one ran (decision 389)', () => {
+    const { rerender } = render(
+      <GraphicPlan code={{ concept: 'one bar per year', review: 'revised' }} />,
+    )
+    expect(screen.getByText('Reviewed on its rendered frames: revised.')).toBeVisible()
+    rerender(<GraphicPlan code={{ review: 'kept' }} />)
+    expect(screen.getByText('Reviewed on its rendered frames: kept as designed.')).toBeVisible()
+  })
+
   it('shows nothing for a design stored before the plan', () => {
     const { container } = render(<GraphicPlan code={{}} />)
     expect(container).toBeEmptyDOMElement()
