@@ -4518,7 +4518,8 @@ This is on master and unrelated to this work.
 > any code, every moment built out of the last rather than added or swapped,
 > motion blur that follows speed, a camera that never stops, and frames
 > checked by eye. Branch `exemplars-transform`; decision 387. The other
-> fifteen, the prompt and the answer schema wait on the owner's verdict.
+> fifteen followed on branch `exemplars-rest`, with the designer's prompt and
+> answer (decision 388).
 
 ### Deliverables
 
@@ -4527,10 +4528,14 @@ This is on master and unrelated to this work.
       `graphics-exemplar-*` lift fixtures follow.
 - [x] Owner's first review: notches off the stat counter, bars rising from
       the baseline again on the bar chart.
-- [ ] Owner compares the revised three in Settings → Exemplars.
-- [ ] The other fifteen exemplars.
-- [ ] The prompt's craft section and a `concept` and `storyboard` in the
-      designer's answer.
+- [x] Owner approved the revised three ("Happy lets proceed to the next
+      steps").
+- [x] The other fifteen exemplars, each passing `exemplar:check` and
+      reviewed on stills every 500 ms or 1 s in both frames (`9699d15`).
+- [x] The prompt's craft section and a `concept` and `storyboard` in the
+      designer's answer (decision 388).
+- [ ] Owner reviews the eighteen in Settings → Exemplars.
+- [ ] Redesign a few real slots on the new prompt (paid; on the owner's word).
 
 ---
 
@@ -9402,3 +9407,47 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      rule went (minor marks on an axis read as clutter), and the bar chart's
      travelling bar went back to bars rising from the baseline (the bars
      rising out of the x-axis were what worked in the old design).
+
+388. **The designer plans a concept and a storyboard, and is taught to
+     transform** (2026-11-03, owner: "Happy lets proceed to the next steps"
+     after decision 387). The answer gains `concept` (one line, at most 200
+     characters) and `storyboard` (one line per change on the slot's clock,
+     at most 16 of 200 characters), asked for first, so the plan is written
+     before the code; both are stored on the design for the board to show
+     later. Both are optional in the schema, so a design stored before them
+     still parses and an answer that leaves them out is not refused; an
+     over-long concept or line is trimmed and a long storyboard capped, each
+     reported, as an over-long title already is. The craft section now leads
+     with a concept found in the slot's own words and each moment made out of
+     the one before, a hook in the first half second, a change about every
+     1.5 s under a camera push that never stops, blur that follows speed, 3D
+     only when it carries meaning, a ban list (glows, particle bursts, lens
+     flares, camera shake, RGB split, whole-layout crossfades, decorative
+     gradients, drop shadows) and, from the owner's review of 387, charts kept
+     conventional: bars rise from the baseline, lines draw on, no gridlines or
+     minor ticks, no bar that travels between values. The house-motion line
+     "a change within a beat is an exit, a gap, then an entrance" became a
+     transformation of what is on screen, with exit and gap kept for what
+     must leave. The exemplar block says to take an exemplar for its
+     mechanics, timing and standard and find the slot's own concept rather
+     than reuse its layout.
+     The other fifteen exemplars were rewritten to the same standard. Charts
+     changed least: no gridlines, the hero on the spring, the slow push, and
+     one honest emphasis each (the line chart's area filled behind the pen,
+     the comparison chart's gap as a dashed outline, the donut's slice pulled
+     out on "gone", the racing chart's year as a rolling reel). The type
+     techniques changed most: kpi figures dock into a row, the typed line is
+     selected, one marker stroke runs under the phrase, the quote mark settles
+     into the margin, one marker travels the list, the bar draws the lower
+     third's name, the chapter rule becomes the title's edge, doors open on
+     the logo, the pivot word collapses into the split screen's divider.
+     Decisions made where the spec left room: the fields are optional rather
+     than required, since a refusal costs a paid retry and the prompt asks
+     for them first (cost if wrong: a design without a plan, still checked);
+     the board does not show them yet (cost if wrong: none; a later card
+     change); a full-width layout pushes 2% from the centre, a left-aligned
+     one 3% from its left edge, so neither pushes text past the inset. Every
+     designer prompt's lift fixture changed (24), and nothing else. No
+     migration: `code` lives in the brief's JSON column. Shipping: a Vercel
+     deploy and `PUT /api/inngest`; the new prompt applies to every graphic
+     designed after it, including Redesign.

@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import type { ChartBrief, GraphicBrief, PlannedGraphicCode } from '@boom-busters/schemas'
+import type {
+  ChartBrief,
+  GraphicBrief,
+  GraphicCode,
+  PlannedGraphicCode,
+} from '@boom-busters/schemas'
 import { GRAPHIC_CODE_FIXTURE_SOURCE } from '@boom-busters/providers'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
@@ -266,6 +271,22 @@ describe('graphicCodeIssue (decision 295)', () => {
     expect(code.compiled.startsWith(`${MOTION_PREAMBLE}\n`)).toBe(true)
     expect(code.compiled.slice(MOTION_PREAMBLE.length + 1)).toContain('function Graphic()')
     expect(code.motion).toBe(1)
+  })
+
+  it('stores the concept and the storyboard with the design, and leaves them out when the answer has none (decision 388)', () => {
+    const planned = answer({
+      concept: 'the count is the story',
+      storyboard: ['0.2 s the figure counts up', '1.2 s it lands on its claim'],
+    })
+    const kept = graphicCodeIssue(planned, CONTEXT, slot(GRAPHIC)) as { code: GraphicCode }
+    expect(kept.code.concept).toBe('the count is the story')
+    expect(kept.code.storyboard).toEqual([
+      '0.2 s the figure counts up',
+      '1.2 s it lands on its claim',
+    ])
+    const bare = graphicCodeIssue(answer(), CONTEXT, slot(GRAPHIC)) as { code: GraphicCode }
+    expect(bare.code).not.toHaveProperty('concept')
+    expect(bare.code).not.toHaveProperty('storyboard')
   })
 
   it('runs the dry run with the tokens in scope: a design on motion.ms and motion.ease passes', () => {
