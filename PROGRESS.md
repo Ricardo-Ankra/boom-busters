@@ -4525,7 +4525,9 @@ This is on master and unrelated to this work.
 - [x] `kinetic-word-stack`, `stat-counter` and `bar-chart` rewritten, each
       passing `exemplar:check`; manifest descriptions and the three
       `graphics-exemplar-*` lift fixtures follow.
-- [ ] Owner compares old and new in Settings → Exemplars.
+- [x] Owner's first review: notches off the stat counter, bars rising from
+      the baseline again on the bar chart.
+- [ ] Owner compares the revised three in Settings → Exemplars.
 - [ ] The other fifteen exemplars.
 - [ ] The prompt's craft section and a `concept` and `storyboard` in the
       designer's answer.
@@ -9376,12 +9378,12 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      centred column whose parts fade and rise in and stay; none used 3D.
      The rewrites: `stat-counter` has the sentence part and the figure rise
      out of it on the hero spring, pushing the lead-in up into its label,
-     and the rule under it becomes the year, a notch per month;
+     while the rule under it fills with the count;
      `kinetic-word-stack` builds the repeated "Nobody" once and rolls the
      verdicts past it on a CSS 3D drum, the earlier ones turned up and back
-     (down in portrait, where the anchor stacks above); `bar-chart` has one
-     bar per series travel from year to year, leaving its old heights as
-     footprints, then a line across the tops. Each opens with a concept line
+     (down in portrait, where the anchor stacks above); `bar-chart` raises
+     each year's bar out of the baseline as the year is spoken, the last on
+     the hero spring, then draws a line across the tops. Each opens with a concept line
      and a storyboard on the narration's clock in its header comment, blurs
      a fast move by its speed (`filter: blur`, from the frame before), and
      keeps a slow camera push to the last frame.
@@ -9396,3 +9398,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      value as the data states it ("4", never "4.0") and rolls at the data's
      precision only while moving, which the facts check requires. No
      migration, no deploy beyond Vercel: exemplars ship in the web bundle.
+     Owner's review, the same day: the month notches on the stat counter's
+     rule went (minor marks on an axis read as clutter), and the bar chart's
+     travelling bar went back to bars rising from the baseline (the bars
+     rising out of the x-axis were what worked in the old design).

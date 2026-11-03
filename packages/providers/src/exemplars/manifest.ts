@@ -78,7 +78,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     id: 'stat-counter',
     technique: 'stat-counter',
     description:
-      'the sentence parts and one large figure rises out of it, counting to its mark on a rule that becomes the time it covers',
+      'the sentence parts and one large figure rises out of it, counting to its mark as the rule beneath it fills',
     source: rve('templates/stat-counter.tsx'),
     slot: {
       durationMs: 6000,
@@ -101,7 +101,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     id: 'bar-chart',
     technique: 'bar-chart',
     description:
-      'one bar per series travelling from year to year as each is spoken, leaving its old heights behind, a line across the tops',
+      'bars rising out of the baseline as their years are spoken, the last in the accent, then a line across the tops',
     source: rendercomp('src/components/bar-chart-anim/BarChartAnim.tsx'),
     chart: { kind: 'bar' },
     slot: {
