@@ -7,6 +7,7 @@ import {
   latestTimeline,
   setProjectStage,
   setTimelineKey,
+  shortsEnabledForProject,
   updateRender,
 } from '@boom-busters/db'
 import { release, reserve, round4, settle } from '@boom-busters/cost'
@@ -67,6 +68,24 @@ const QC_TIMEOUT = '30m'
 
 /** Two ffmpeg passes over the master's audio; the video stream is copied. */
 const LOUDNORM_TIMEOUT = '20m'
+
+/**
+ * Where the project goes once the master is done. A format with Shorts off
+ * skips the Shorts stage for Publish, the stage `advanceToPublish` lands on;
+ * the switch is read from the channel's current bible (ruling 18), inside
+ * the step that calls this.
+ */
+async function leaveMaster(projectId: string): Promise<{ shorts: boolean }> {
+  const shorts = await shortsEnabledForProject(db, projectId)
+  await setProjectStage(
+    db,
+    projectId,
+    shorts
+      ? { stage: 'shorts', stageStatus: 'queued' }
+      : { stage: 'publish', stageStatus: 'awaiting_review' },
+  )
+  return { shorts }
+}
 
 export const renderRunner = inngest.createFunction(
   {
@@ -180,7 +199,7 @@ export const renderRunner = inngest.createFunction(
         issues: [],
       }
 
-      await step.run('local-master-ready', async () => {
+      const localReady = await step.run('local-master-ready', async () => {
         await updateRender(db, setup.renderId, {
           status: 'done',
           progressPct: 100,
@@ -188,12 +207,15 @@ export const renderRunner = inngest.createFunction(
           qcReport,
           completedAt: new Date(),
         })
-        await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'queued' })
+        return leaveMaster(projectId)
       })
 
-      await step.sendEvent('emit-master-ready', [
-        events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
-      ])
+      // A result stored before the switch existed has no field: Shorts on.
+      if (localReady?.shorts !== false) {
+        await step.sendEvent('emit-master-ready', [
+          events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
+        ])
+      }
 
       return { projectId, outcome: 'master-ready' as const, renderId: setup.renderId }
     }
@@ -422,18 +444,20 @@ export const renderRunner = inngest.createFunction(
     // from a measured one with findings.
     const qcReport = QcReportSchema.parse(qcDone.data.result)
 
-    await step.run('master-ready', async () => {
+    const ready = await step.run('master-ready', async () => {
       await updateRender(db, setup.renderId, {
         status: 'done',
         qcReport,
         completedAt: new Date(),
       })
-      await setProjectStage(db, projectId, { stage: 'shorts', stageStatus: 'queued' })
+      return leaveMaster(projectId)
     })
 
-    await step.sendEvent('emit-master-ready', [
-      events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
-    ])
+    if (ready?.shorts !== false) {
+      await step.sendEvent('emit-master-ready', [
+        events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
+      ])
+    }
 
     return {
       projectId,

@@ -30,7 +30,14 @@ describe('ChannelFormatSchema', () => {
       introRule: '',
       introLine: '',
       outroLine: '',
+      shorts: true,
     })
+  })
+
+  test('a stored format without shorts parses to true, and false is kept', () => {
+    const { shorts: _shorts, ...stored } = defaultFormat()
+    expect(ChannelFormatSchema.parse(stored).shorts).toBe(true)
+    expect(ChannelFormatSchema.parse({ ...stored, shorts: false }).shorts).toBe(false)
   })
 
   test.each([
@@ -102,6 +109,7 @@ describe('helpers', () => {
     expect(formatIsDefault(defaultFormat('Documentary'))).toBe(true)
     expect(formatIsDefault(sleep)).toBe(true)
     expect(formatIsDefault(base({ keywords: ['a'] }))).toBe(false)
+    expect(formatIsDefault(base({ shorts: false }))).toBe(false)
     expect(formatIsDefault(base({ runtime: { default: 15, min: 3, max: 61 } }))).toBe(false)
   })
 })

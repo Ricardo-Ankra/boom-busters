@@ -564,6 +564,46 @@ describe('BibleTab', () => {
       expect(patch.formats.filter((f) => f.primary)).toHaveLength(1)
     })
 
+    it('toggles Shorts per format with a labelled button, and saves the value', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      const on = within(format).getByRole('button', { name: 'Shorts: on' })
+      expect(on).toHaveAttribute('aria-pressed', 'true')
+
+      await userEvent.click(on)
+      const off = within(format).getByRole('button', { name: 'Shorts: off' })
+      expect(off).toHaveAttribute('aria-pressed', 'false')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as { formats: { shorts: boolean }[] }
+      expect(patch.formats[0]!.shorts).toBe(false)
+    })
+
+    it('lists Shorts off in the read view only for a format with them off', () => {
+      const { unmount } = renderTab(null)
+      expect(screen.queryByText('Shorts off')).toBeNull()
+      unmount()
+
+      const bible = {
+        ...FIRST_CHANNEL_BIBLE,
+        formats: FIRST_CHANNEL_BIBLE.formats.map((f) => ({ ...f, shorts: false })),
+      }
+      render(
+        <BibleTab
+          channel={CHANNEL}
+          draft={null}
+          versions={[]}
+          currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+          vidiqReady={false}
+          archived={false}
+          copySources={SOURCES}
+        />,
+      )
+      expect(screen.getByText('Shorts off')).toBeInTheDocument()
+    })
+
     it('refuses to remove the primary format and removes another', async () => {
       renderTab(null)
       await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))

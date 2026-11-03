@@ -52,6 +52,8 @@ export const ChannelFormatSchema = z
     introRule: z.string().max(1000).default(''),
     introLine: z.string().max(400).default(''),
     outroLine: z.string().max(400).default(''),
+    /** False for a format that makes no Shorts, such as a sleep format. */
+    shorts: z.boolean().default(true),
   })
   .refine((f) => f.titleRequiredSlots.every((slot) => f.titleTemplate.includes(`{${slot}}`)), {
     message: 'Every required title slot must appear in the template as {slot}',
@@ -87,6 +89,7 @@ export function defaultFormat(name = 'Main'): ChannelFormat {
     introRule: '',
     introLine: '',
     outroLine: '',
+    shorts: true,
   }
 }
 
@@ -119,6 +122,7 @@ export function formatIsDefault(format: ChannelFormat): boolean {
     format.titleRequiredSlots.length === 0 &&
     format.introRule === d.introRule &&
     format.introLine === d.introLine &&
-    format.outroLine === d.outroLine
+    format.outroLine === d.outroLine &&
+    format.shorts === d.shorts
   )
 }

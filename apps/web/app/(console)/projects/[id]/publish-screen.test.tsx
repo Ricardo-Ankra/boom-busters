@@ -148,16 +148,38 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
   }
 }
 
-function renderScreen(overrides: Partial<PublishModel> = {}, live = false, canFinish = false) {
+function renderScreen(
+  overrides: Partial<PublishModel> = {},
+  live = false,
+  canFinish = false,
+  shortsOff = false,
+) {
   return render(
     <PublishScreen
       projectId={PROJECT}
       model={model(overrides)}
       live={live}
       canFinish={canFinish}
+      shortsOff={shortsOff}
     />,
   )
 }
+
+describe('PublishScreen when the format has Shorts off', () => {
+  it('leaves the Short slots out of the calendar when the project has no Shorts', () => {
+    renderScreen({}, false, false, true)
+    expect(screen.queryAllByText(/· Short$/)).toHaveLength(0)
+    expect(screen.getAllByText(/· long-form/).length).toBeGreaterThan(0)
+  })
+
+  it('keeps them when the project has Shorts rows, and when the format makes Shorts', () => {
+    const { unmount } = renderScreen({ items: [masterItem(), shortItem()] }, false, false, true)
+    expect(screen.getAllByText(/· Short$/).length).toBeGreaterThan(0)
+    unmount()
+    renderScreen()
+    expect(screen.getAllByText(/· Short$/).length).toBeGreaterThan(0)
+  })
+})
 
 describe('PublishScreen', () => {
   it('shows the private-until-audit checklist, ending in the Studio step', () => {

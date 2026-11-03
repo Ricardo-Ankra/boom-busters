@@ -42,7 +42,8 @@ import { markShortsStep, readMarkedShorts, scriptRunner } from './script-runner'
  * test database, since the run mirror writes there.
  */
 
-vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
+const notify = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notify', () => ({ notify }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 const { recordRepairs, recordStop } = vi.hoisted(() => ({
@@ -53,14 +54,17 @@ vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop }))
 // The real query unless a test hands in its own claims.
 const scriptableClaims = vi.hoisted(() => vi.fn())
 const channelForProject = vi.hoisted(() => vi.fn())
+const shortsEnabledForProject = vi.hoisted(() => vi.fn())
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const actual = await importOriginal<typeof Db>()
   scriptableClaims.mockImplementation(actual.scriptableClaims)
   channelForProject.mockImplementation(actual.channelForProject)
+  shortsEnabledForProject.mockImplementation(actual.shortsEnabledForProject)
   return {
     ...actual,
     scriptableClaims: (...args: unknown[]) => scriptableClaims(...args),
     channelForProject: (...args: unknown[]) => channelForProject(...args),
+    shortsEnabledForProject: (...args: unknown[]) => shortsEnabledForProject(...args),
   }
 })
 
@@ -586,6 +590,68 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(ctx.step.run).toHaveBeenCalledWith('shorts-over-budget', expect.any(Function))
     expect(ctx.step.run).not.toHaveBeenCalledWith('finish-draft', expect.any(Function))
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+  })
+
+  describe('a format with Shorts off (ruling 18)', () => {
+    const off = () => shortsEnabledForProject.mockResolvedValue(false)
+    afterEach(() => {
+      shortsEnabledForProject.mockImplementation(async (...args: unknown[]) => {
+        const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+        return actual.shortsEnabledForProject(args[0] as never, args[1] as string)
+      })
+    })
+
+    it('makes no marking call and stores no candidates, live', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      off()
+
+      const { result } = await engine.executeStep('mark-shorts', {
+        events: approved(),
+        steps: throughSelfCheck(),
+      })
+
+      expect(result).toEqual({ ok: true, candidates: [] })
+      expect(callLlm).not.toHaveBeenCalled()
+    })
+
+    it('marks nothing in mock mode either, and the run summary says so', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '1')
+      off()
+
+      const { result } = await engine.execute({
+        events: approved(),
+        steps: [
+          ...throughSelfCheck(),
+          { id: 'advance-to-voice', handler: () => undefined },
+        ],
+      })
+
+      expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 0, shortsOff: true })
+      expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([])
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('Shorts off for this format') }),
+      )
+      expect(notify).not.toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('Shorts candidates') }),
+      )
+    })
+
+    it('still counts candidates when the format makes Shorts', async () => {
+      const { result } = await engine.execute({
+        events: approved(),
+        steps: [
+          ...throughSelfCheck(),
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [candidate] }) },
+          { id: 'advance-to-voice', handler: () => undefined },
+        ],
+      })
+
+      expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 1, shortsOff: false })
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('1 Shorts candidates') }),
+      )
+    })
   })
 
   it('stores the bare list a run parked before decision 293 replays', async () => {

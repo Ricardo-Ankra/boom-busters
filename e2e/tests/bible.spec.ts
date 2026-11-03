@@ -355,6 +355,14 @@ test.describe('a second channel’s bible', () => {
     await longest.fill('60')
     await page.getByRole('button', { name: 'Add keyword' }).click()
     await page.getByLabel('Keyword 2', { exact: true }).fill('mind explained')
+    // Shorts are a visible labelled switch per format; turning it off is what saves with the rest.
+    const shorts = page.getByRole('button', { name: 'Shorts: on', exact: true })
+    await expect(shorts).toHaveAttribute('aria-pressed', 'true')
+    await shorts.click()
+    await expect(page.getByRole('button', { name: 'Shorts: off', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
     await page.getByRole('button', { name: 'Done editing Formats', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled({
       timeout: 15_000,
@@ -364,6 +372,7 @@ test.describe('a second channel’s bible', () => {
     await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible({
       timeout: 15_000,
     })
+    await expect(page.getByText('Shorts off', { exact: true })).toBeVisible()
     await openHistory(page)
     await expect(page.getByText('Version 3', { exact: true })).toBeVisible()
   })

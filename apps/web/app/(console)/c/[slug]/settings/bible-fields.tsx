@@ -1041,6 +1041,20 @@ function FormatsEditor({
               />
               <FieldIssues messages={issuesAt(issues, `${path}.outroLine`)} />
             </div>
+            <div className="flex flex-col items-start gap-1.5">
+              <Button
+                variant={format.shorts ? 'selected' : 'outline'}
+                aria-pressed={format.shorts}
+                disabled={disabled}
+                onClick={() => setFormat(index, { shorts: !format.shorts })}
+              >
+                {format.shorts ? 'Shorts: on' : 'Shorts: off'}
+              </Button>
+              <p className={mutedClass}>
+                Off, a project in this format goes from its master straight to Publish: no talking
+                points, no Shorts, no Shorts marking in the script.
+              </p>
+            </div>
           </fieldset>
         )
       })}
@@ -1103,6 +1117,7 @@ function FormatsView({
           ['Intro rule', format.introRule],
           ['Fixed opening line', format.introLine],
           ['Fixed closing line', format.outroLine],
+          ['Shorts', format.shorts ? '' : 'Shorts off'],
         ]
         return (
           <div

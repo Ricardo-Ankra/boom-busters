@@ -173,3 +173,41 @@ describe('the format fixed lines in the chapter editor', () => {
     expect(screen.queryByText('Fixed line from the bible')).toBeNull()
   })
 })
+
+describe('the Shorts strip when the format has Shorts off', () => {
+  const chapter = {
+    id: '01J000000000000000000000C1',
+    index: 0,
+    title: 'The audit',
+    contentMd: 'EY refused to sign the accounts.',
+    warnings: [],
+    estRuntimeSec: 12,
+  } as never
+
+  const studio = (shorts: (typeof candidate)[], shortsOff: boolean) => (
+    <ScriptStudio
+      channelId="01J000000000000000000000H1"
+      projectId="01J0000000000000000000000P"
+      scriptId="01J000000000000000000000S1"
+      chapters={[chapter]}
+      targetRuntimeMin={10}
+      shorts={shorts}
+      usedFallbackModel={false}
+      notices={[notice('01J000000000000000000000S1', 'stopped', STOPPED)]}
+      shortsOff={shortsOff}
+    />
+  )
+
+  it('hides the strip, notices and all, when off and no candidates exist', () => {
+    render(studio([], true))
+    expect(screen.queryByText(STOPPED)).toBeNull()
+  })
+
+  it('still shows the strip when off but candidates exist, and when on', () => {
+    const { unmount } = render(studio([candidate], true))
+    expect(screen.getByText(STOPPED)).toBeInTheDocument()
+    unmount()
+    render(studio([], false))
+    expect(screen.getByText(STOPPED)).toBeInTheDocument()
+  })
+})

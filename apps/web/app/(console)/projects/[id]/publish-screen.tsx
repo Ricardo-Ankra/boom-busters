@@ -159,12 +159,15 @@ export function PublishScreen({
   model,
   live,
   canFinish = false,
+  shortsOff = false,
 }: {
   projectId: string
   model: PublishModel
   live: boolean
   /** True while the project is ON the publish stage with nothing running. */
   canFinish?: boolean
+  /** The format makes no Shorts: their calendar slots show only if the project has Shorts. */
+  shortsOff?: boolean
 }) {
   const { act, busy, pressed } = useAction()
   const [selectedKey, setSelectedKey] = React.useState<string | null>(() => {
@@ -186,7 +189,15 @@ export function PublishScreen({
   React.useEffect(() => {
     if (suggestedIso) setCustomTime(toLocalInput(new Date(suggestedIso)))
   }, [selectedKey, suggestedIso])
-  const days = React.useMemo(() => upcomingDays(model.slots, now), [model.slots, now])
+  const hideShortSlots = shortsOff && !model.items.some((item) => item.targetType === 'short')
+  const days = React.useMemo(
+    () =>
+      upcomingDays(
+        hideShortSlots ? model.slots.filter((slot) => slot.kind !== 'short') : model.slots,
+        now,
+      ),
+    [model.slots, hideShortSlots, now],
+  )
   const scheduledAt = new Map(
     model.items
       .filter((item) => item.record?.publishAtIso && item.record.status !== 'failed')

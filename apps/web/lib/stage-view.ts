@@ -32,6 +32,8 @@ export type StageAvailability =
   | 'stale'
   /** Has output whose provenance predates version tracking. */
   | 'unknown-provenance'
+  /** The project's format makes no Shorts, so this stage will not run. */
+  | 'off'
 
 export interface StageView {
   stage: ProjectStage
@@ -69,6 +71,12 @@ export interface StageInputs {
    * `builtFromDossierVersion` does one stage up.
    */
   voice?: { takes: number; builtFromScriptVersion: number | null } | undefined
+  /**
+   * The project's format has Shorts off. The Shorts view is then `off`, unless
+   * the project is on that stage; a caller whose project already has Shorts
+   * does not pass it.
+   */
+  shortsOff?: boolean
 }
 
 /**
@@ -184,7 +192,9 @@ export function stageViews(input: StageInputs): StageView[] {
           ? scriptView(input)
           : stage === 'voice'
             ? voiceView(input)
-            : // M5 onwards. Until a stage has a runner it can only be described
+            : stage === 'shorts' && input.shortsOff && !current
+              ? { availability: 'off' }
+              : // M5 onwards. Until a stage has a runner it can only be described
               // by where the project has got to, which is what position gives.
               { availability: index < currentIndex ? 'ready' : 'upcoming' }
 
@@ -196,7 +206,7 @@ export function stageViews(input: StageInputs): StageView[] {
       live: current && (input.liveRun ?? false),
       // The current stage is always worth opening, even with nothing in it —
       // that is where the run's status and its controls live.
-      viewable: current || derived.availability !== 'upcoming',
+      viewable: current || (derived.availability !== 'upcoming' && derived.availability !== 'off'),
       ...(derived.staleReason ? { staleReason: derived.staleReason } : {}),
     }
   })
@@ -217,12 +227,18 @@ export function stageViewsForProject(
     scriptBuiltFromDossierVersion: number | null
     voiceTakes: number
     voiceBuiltFromScriptVersion: number | null
+    /** Set once the Shorts stage has proposed points: the project has Shorts to show. */
+    shortsPhase?: 'points' | 'review' | null
   },
   liveRun = false,
+  /** The format's switch, read from the channel's current bible. */
+  shortsOff = false,
 ): StageView[] {
   return stageViews({
     project: { stage: project.stage, stageStatus: project.stageStatus },
     liveRun,
+    // A project that already began its Shorts keeps showing them.
+    ...(shortsOff && !project.shortsPhase ? { shortsOff: true } : {}),
     ...(project.dossierVersion === null ? {} : { dossier: { version: project.dossierVersion } }),
     ...(project.hasScript
       ? {
@@ -271,6 +287,7 @@ export function downstreamOf(stage: ProjectStage, views: readonly StageView[]): 
     (view) =>
       PIPELINE_STAGES.indexOf(view.stage) > index &&
       view.stage !== 'done' &&
-      view.availability !== 'upcoming',
+      view.availability !== 'upcoming' &&
+      view.availability !== 'off',
   )
 }

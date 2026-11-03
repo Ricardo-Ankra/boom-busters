@@ -1,12 +1,14 @@
 // @vitest-environment node
 
 import {
+  currentBible,
   FIXTURE_PROJECT_ID,
   getProject,
   getRender,
   insertTimeline,
   renders,
   requireTestDatabase,
+  saveBibleVersion,
   seed,
   setProjectStage,
   timelines,
@@ -14,7 +16,7 @@ import {
   updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, defaultFormat, FIRST_CHANNEL_ID, resolveBrandKit } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -207,6 +209,64 @@ describeDb('render-runner', () => {
         const project = await getProject(db, FIXTURE_PROJECT_ID)
         expect(project?.stage).toBe('shorts')
         expect(project?.stageStatus).toBe('queued')
+
+        expect(ctx.step.sendEvent).toHaveBeenCalledWith(
+          'emit-master-ready',
+          expect.arrayContaining([expect.objectContaining({ name: 'project/master.ready' })]),
+        )
+      },
+    )
+
+    it(
+      'goes straight to Publish and sends no master.ready when the format has Shorts off',
+      { timeout: 120_000 },
+      async () => {
+        localRender.renderFixtureLocally.mockImplementation(
+          (input: { renderId: string }): Promise<{ outputKey: string }> =>
+            Promise.resolve({ outputKey: `local://${input.renderId}.mp4` }),
+        )
+        // Ruling 18: the switch is read from the channel's current bible.
+        const channelId = FIRST_CHANNEL_ID
+        const bible = (await currentBible(db, channelId)).bible
+        await saveBibleVersion(
+          db,
+          channelId,
+          { ...bible, formats: [{ ...defaultFormat('Main'), shorts: false }] },
+          'Shorts off',
+        )
+
+        try {
+          const { result, ctx } = await engine.execute({ events: approvedEvent() })
+
+          expect(result).toMatchObject({ outcome: 'master-ready' })
+          const project = await getProject(db, FIXTURE_PROJECT_ID)
+          expect(project?.stage).toBe('publish')
+          expect(project?.stageStatus).toBe('awaiting_review')
+          expect(ctx.step.sendEvent).not.toHaveBeenCalled()
+        } finally {
+          // `seed` leaves the bible alone, so put it back for the tests after.
+          await saveBibleVersion(db, channelId, bible, 'Shorts back on')
+        }
+      },
+    )
+
+    it(
+      'treats a stored step result without the field as Shorts on',
+      { timeout: 120_000 },
+      async () => {
+        localRender.renderFixtureLocally.mockImplementation(
+          (input: { renderId: string }): Promise<{ outputKey: string }> =>
+            Promise.resolve({ outputKey: `local://${input.renderId}.mp4` }),
+        )
+
+        // A run parked before this deploy replays a step result with no `shorts`.
+        const { ctx } = await engine.execute({
+          events: approvedEvent(),
+          steps: [
+            { id: 'local-master-ready', handler: () => undefined },
+            { id: 'emit-master-ready', handler: () => undefined },
+          ],
+        })
 
         expect(ctx.step.sendEvent).toHaveBeenCalledWith(
           'emit-master-ready',

@@ -13,6 +13,7 @@ import {
   setChapterWarnings,
   setProjectStage,
   setScriptStatus,
+  shortsEnabledForProject,
 } from '@boom-busters/db'
 import {
   mockChapter,
@@ -409,6 +410,8 @@ export const scriptRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
 
     const marking = await step.run('mark-shorts', async (): Promise<MarkedShorts> => {
+      // A format with Shorts off pays for no marking, mock or live (ruling 18).
+      if (!(await shortsEnabledForProject(db, projectId))) return { ok: true, candidates: [] }
       if (mocked) {
         // A landed answer retires the strip's old notes, in mock mode too.
         await recordRepairs({ projectId, subject: 'script', subjectId: null })
@@ -443,12 +446,15 @@ export const scriptRunner = inngest.createFunction(
           (latest?.chapters.reduce((total, c) => total + c.estRuntimeSec, 0) ?? 0) / 60,
         ),
         shorts: shorts.length,
+        // Read here, inside the step; a result stored before the switch has none.
+        shortsOff: !(await shortsEnabledForProject(db, projectId)),
       }
     })
 
     const gateSummary =
       `Script ready · ${summary.chapters} chapters · ~${summary.runtimeMin} min · ` +
-      `${summary.warnings} warnings · ${summary.shorts} Shorts candidates`
+      `${summary.warnings} warnings · ` +
+      (summary.shortsOff ? 'Shorts off for this format' : `${summary.shorts} Shorts candidates`)
 
     /**
      * Exception-based gating (decision, 2026-08-16): the self-check is the

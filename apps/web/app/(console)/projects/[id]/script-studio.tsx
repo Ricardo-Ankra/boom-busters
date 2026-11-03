@@ -98,6 +98,7 @@ export function ScriptStudio({
   usedFallbackModel,
   notices = [],
   fixedLines = NO_FIXED_LINES,
+  shortsOff = false,
 }: {
   channelId: string
   projectId: string
@@ -110,6 +111,8 @@ export function ScriptStudio({
   notices?: readonly Notice[]
   /** The project's format's fixed opening and closing lines; shown read-only in the chapters that hold them. */
   fixedLines?: FixedLines
+  /** The format makes no Shorts: the strip stays away unless candidates already exist. */
+  shortsOff?: boolean
 }) {
   const [activeIndex, setActiveIndex] = React.useState(0)
   const active = chapters[activeIndex]
@@ -174,11 +177,13 @@ export function ScriptStudio({
               chapter={active}
               fixedLines={fixedLines}
             />
-            <ShortsStrip
-              key={`shorts-${active.id}`}
-              shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
-              notices={notices}
-            />
+            {shortsOff && shorts.length === 0 ? null : (
+              <ShortsStrip
+                key={`shorts-${active.id}`}
+                shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
+                notices={notices}
+              />
+            )}
           </div>
         ) : (
           <Card>
