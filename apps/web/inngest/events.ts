@@ -7,6 +7,7 @@ import {
   MediaJobCompletedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
+  KeywordsMeasureSchema,
   ProjectCancelledSchema,
   ProjectCreatedSchema,
   ProjectMasterReadySchema,
@@ -149,6 +150,8 @@ export const events = {
   caseResearchRequested: eventType('case/research.requested', {
     schema: CaseResearchRequestedSchema,
   }),
+
+  keywordsMeasure: eventType('channel/keywords.measure', { schema: KeywordsMeasureSchema }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),
 } as const

@@ -14,6 +14,7 @@ const startBibleResearchAction = vi.fn()
 const editBibleSectionAction = vi.fn()
 const saveBibleAction = vi.fn()
 const copyBibleFromChannelAction = vi.fn()
+const measureKeywordsAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: (...args: unknown[]) => approveBibleSectionAction(...args),
   discardBibleDraftAction: (...args: unknown[]) => discardBibleDraftAction(...args),
@@ -23,6 +24,7 @@ vi.mock('./bible-actions', () => ({
   editBibleSectionAction: (...args: unknown[]) => editBibleSectionAction(...args),
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
   copyBibleFromChannelAction: (...args: unknown[]) => copyBibleFromChannelAction(...args),
+  measureKeywordsAction: (...args: unknown[]) => measureKeywordsAction(...args),
   restoreBibleVersionAction: vi.fn(),
   viewBibleVersionAction: vi.fn(),
   previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
@@ -1025,4 +1027,113 @@ describe('BibleTab, the tool row', () => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('BibleTab, keyword measurements', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString()
+
+  const bible = {
+    ...FIRST_CHANNEL_BIBLE,
+    formats: FIRST_CHANNEL_BIBLE.formats.map((format, i) =>
+      i === 0
+        ? { ...format, keywords: ['wework documentary', 'wework podcast', 'new term'] }
+        : format,
+    ),
+    caseCategories: [{ key: 'con', label: 'Con', keywords: ['Old Reading'] }],
+  }
+
+  function renderMeasured(over: { measureCount?: number; vidiqReady?: boolean } = {}) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady={over.vidiqReady ?? true}
+        archived={false}
+        copySources={[]}
+        readings={{
+          'wework documentary': {
+            volume: 64,
+            competition: 38,
+            measuredAt: '2026-11-02T09:00:00.000Z',
+          },
+          'wework podcast': { volume: null, competition: 39, measuredAt: ago(1) },
+          'old reading': { volume: 5, competition: 5, measuredAt: ago(34) },
+        }}
+        measureCount={over.measureCount ?? 2}
+      />,
+    )
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-03T12:00:00Z') })
+  })
+
+  it('shows the latest reading beside a format keyword, and Not measured without one', () => {
+    renderMeasured()
+    const formats = within(card('Formats'))
+    expect(formats.getByText('Volume 64, competition 38, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('Volume unknown, competition 39, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('Not measured')).toBeInTheDocument()
+  })
+
+  it('shows a pillar keyword read more than 30 days ago as measured so many days ago, muted', () => {
+    renderMeasured()
+    const stale = within(card('Identity')).getByText('Measured 34 days ago')
+    expect(stale.className).toContain('text-[var(--color-text-muted)]')
+  })
+
+  it('offers Measure in VidIQ on the Formats and Identity cards with the credits at 5 a keyword', () => {
+    renderMeasured({ measureCount: 3 })
+    for (const label of ['Formats', 'Identity']) {
+      expect(
+        within(card(label)).getByRole('button', { name: 'Measure in VidIQ (about 15 credits)' }),
+      ).toBeEnabled()
+    }
+    expect(within(card('Voice')).queryByRole('button', { name: /Measure in VidIQ/ })).toBeNull()
+  })
+
+  it('hides the button when nothing is left to measure', () => {
+    renderMeasured({ measureCount: 0 })
+    expect(screen.queryByRole('button', { name: /Measure in VidIQ/ })).toBeNull()
+  })
+
+  it('holds the button without a VidIQ key', () => {
+    renderMeasured({ vidiqReady: false })
+    expect(within(card('Formats')).getByRole('button', { name: /Measure in VidIQ/ })).toBeDisabled()
+  })
+
+  it('asks for the measurement and says what it will cost', async () => {
+    vi.useRealTimers()
+    measureKeywordsAction.mockResolvedValue({ ok: true, credits: 10 })
+    renderMeasured()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: 'Measure in VidIQ (about 10 credits)' }),
+    )
+    expect(measureKeywordsAction).toHaveBeenCalledWith(CHANNEL.id)
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Measuring in VidIQ',
+        description: expect.stringContaining('10 credits'),
+      }),
+    )
+  })
+
+  it('shows the refusal when the measurement cannot start', async () => {
+    vi.useRealTimers()
+    measureKeywordsAction.mockResolvedValue({ ok: false, error: 'Over the cap' })
+    renderMeasured()
+    await userEvent.click(
+      within(card('Identity')).getByRole('button', { name: /Measure in VidIQ/ }),
+    )
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not measure',
+        description: 'Over the cap',
+        variant: 'error',
+      }),
+    )
+  })
 })

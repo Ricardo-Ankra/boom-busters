@@ -9,13 +9,15 @@ import {
   currentBible,
   discardBibleDraft,
   getBibleDraft,
+  keywordsToMeasure,
+  latestKeywordMeasurements,
   openBibleDraft,
   restoreBibleVersion,
   saveBibleDraft,
   writeBibleDraft,
 } from '@boom-busters/db'
 import { composeStagePrompt } from '@boom-busters/providers/preview'
-import { estimateResearchCredits } from '@boom-busters/providers/vidiq'
+import { VIDIQ_CREDIT_COST, estimateResearchCredits } from '@boom-busters/providers/vidiq'
 import {
   BIBLE_SECTIONS,
   BIBLE_SECTION_ORDER,
@@ -24,6 +26,7 @@ import {
   EXAMPLE_SLOT_IDS,
   EXAMPLE_SLOTS,
   PREVIEW_STAGES,
+  SEARCH_BRIEF_STALE_DAYS,
   UlidSchema,
   bibleDraftUnits,
   jobIsRunning,
@@ -605,4 +608,51 @@ export async function previewStagePromptAction(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not compose' }
   }
+}
+
+/**
+ * Measure the bible's format and pillar keywords in VidIQ: the draft's when one
+ * is open, else the current version's, leaving out any keyword read within the
+ * stale window. The cap and the balance are checked first; the readings arrive
+ * as the run finishes. Returns the credits the run is expected to cost.
+ */
+export async function measureKeywordsAction(
+  channelId: string,
+): Promise<{ ok: true; credits: number } | { ok: false; error: string }> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(channelId).success) return { ok: false, error: 'Unknown channel' }
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
+
+  const draft = await getBibleDraft(db, channelId)
+  const bible = draft?.bible ?? (await currentBible(db, channelId)).bible
+  const keywords = keywordsToMeasure(
+    bible,
+    await latestKeywordMeasurements(db, channelId),
+    new Date(),
+  )
+  if (keywords.length === 0) {
+    return {
+      ok: false,
+      error: `Every keyword was measured in the last ${SEARCH_BRIEF_STALE_DAYS} days`,
+    }
+  }
+
+  const credits = keywords.length * VIDIQ_CREDIT_COST.keywordResearch
+  const budget = await checkVidiqBudget(credits)
+  if (!budget.ok) return budget
+
+  try {
+    await inngest.send(events.keywordsMeasure.create({ channelId, keywords }))
+  } catch (error) {
+    console.error('[bible] could not send the keyword measurement', error)
+    return {
+      ok: false,
+      error:
+        'Could not reach Inngest to start the measurement. ' +
+        'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true, credits }
 }

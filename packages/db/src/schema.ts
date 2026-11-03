@@ -319,6 +319,35 @@ export const vidiqCredits = pgTable(
 )
 
 /**
+ * One VidIQ reading of a keyword for a channel's bible (a format's or a
+ * pillar's). One row per measurement, so the history stays; the latest per
+ * channel and keyword is what the Bible tab shows. Not part of a bible version:
+ * measuring is data, not identity. The figures are nullable as VidIQ returns
+ * them (null is unknown, not zero).
+ */
+export const keywordMeasurements = pgTable(
+  'keyword_measurements',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    keyword: text('keyword').notNull(),
+    volume: integer('volume'),
+    competition: integer('competition'),
+    overall: integer('overall'),
+    estimatedMonthlySearch: integer('estimated_monthly_search'),
+    credits: integer('credits').notNull(),
+    measuredAt: timestamp('measured_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index('keyword_measurements_channel_keyword_idx').on(t.channelId, t.keyword, t.measuredAt),
+  ],
+)
+export type KeywordMeasurementRow = typeof keywordMeasurements.$inferSelect
+export type NewKeywordMeasurement = typeof keywordMeasurements.$inferInsert
+
+/**
  * Exactly one row: what belongs to the owner rather than to a channel, the
  * model price overrides and the monthly budget, plus the channel the console
  * opens on.

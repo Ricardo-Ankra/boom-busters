@@ -8,6 +8,7 @@ import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
+import { keywordMeasurer } from './keyword-measurer'
 import { pointShortRunner } from './point-short-runner'
 import { pointStudioRunner } from './point-studio-runner'
 import { publishRunner } from './publish-runner'
@@ -56,6 +57,7 @@ export const functions = [
   bibleDrafter,
   bibleResearcher,
   caseResearcher,
+  keywordMeasurer,
   cancellationMirror,
   cancelReconciler,
   dossierRunner,
@@ -95,6 +97,7 @@ export {
   cancellationMirror,
   cancelReconciler,
   draftRunner,
+  keywordMeasurer,
   pointShortRunner,
   pointStudioRunner,
   publishRunner,

@@ -72,7 +72,7 @@ async function openClient(): Promise<VidiqClient> {
 export interface VidiqSpendInput {
   channelId: string
   projectId?: string
-  purpose: 'bible-research' | 'case-research' | 'title-score'
+  purpose: 'bible-research' | 'case-research' | 'keyword-measure' | 'title-score'
   /** The VidIQ tool the call uses, as the ledger names it. */
   tool: string
   /** What the call is expected to cost, for the cap check made before it. */

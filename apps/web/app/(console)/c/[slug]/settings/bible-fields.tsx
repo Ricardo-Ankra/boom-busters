@@ -20,6 +20,8 @@ import { Button } from '@/components/ui/button'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { BIBLE_TEXT_FIELDS } from '@/lib/bible-fields'
 import { ExamplesEditor, ExamplesView } from './bible-examples'
+import { KeywordWithReading } from './bible-measurements'
+import type { KeywordReadings } from './bible-measurements'
 
 /**
  * The bible's fields, edited and shown by kind: text in a textarea, a list of
@@ -284,6 +286,8 @@ const MAX_ENTRIES = 12
 const MAX_FORMATS = 6
 const MAX_FORMAT_KEYWORDS = 6
 
+const NO_READINGS: KeywordReadings = {}
+
 export const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
 
 /** "Too close to its source", with the words they share and where they are from. */
@@ -316,12 +320,15 @@ export function SectionView({
   flags,
   disabled,
   onDraftSlot,
+  readings = NO_READINGS,
 }: {
   section: BibleSection
   bible: ChannelBible
   flags: TooCloseFlags
   disabled: boolean
   onDraftSlot: (slotId: string) => void
+  /** The latest VidIQ reading of each keyword, by lower-cased keyword. */
+  readings?: KeywordReadings
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -340,7 +347,7 @@ export function SectionView({
           )
         }
         if (meta.kind === 'formats') {
-          return <FormatsView key={key} formats={bible.formats} />
+          return <FormatsView key={key} formats={bible.formats} readings={readings} />
         }
         return (
           <div key={key} className="flex flex-col gap-1">
@@ -361,7 +368,7 @@ export function SectionView({
                 ))
               )
             ) : (
-              <ValueView kind={meta.kind} value={value} />
+              <ValueView kind={meta.kind} value={value} readings={readings} />
             )}
           </div>
         )
@@ -370,7 +377,15 @@ export function SectionView({
   )
 }
 
-function ValueView({ kind, value }: { kind: Kind; value: unknown }) {
+function ValueView({
+  kind,
+  value,
+  readings,
+}: {
+  kind: Kind
+  value: unknown
+  readings: KeywordReadings
+}) {
   const none = <p className={mutedClass}>Not set</p>
   if (kind === 'lines') {
     const lines = value as string[]
@@ -404,7 +419,13 @@ function ValueView({ kind, value }: { kind: Kind; value: unknown }) {
           <li key={i}>
             <span className="font-mono">{category.key}</span>: {category.label}
             {category.keywords.length > 0 ? (
-              <span className={mutedClass}> ({category.keywords.join(', ')})</span>
+              <ul className="mt-0.5 flex list-none flex-col gap-0.5 pl-3">
+                {category.keywords.map((keyword) => (
+                  <li key={keyword}>
+                    <KeywordWithReading keyword={keyword} readings={readings} />
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </li>
         ))}
@@ -1032,13 +1053,18 @@ function FormatsEditor({
 }
 
 /** The formats, read-only: each with its keywords, length, pace, title and lines. */
-function FormatsView({ formats }: { formats: ChannelFormat[] }) {
+function FormatsView({
+  formats,
+  readings,
+}: {
+  formats: ChannelFormat[]
+  readings: KeywordReadings
+}) {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">Formats</span>
       {formats.map((format) => {
         const rows: [string, string][] = [
-          ['Keywords', format.keywords.join(', ')],
           ['Intent', INTENT_LABELS[format.intent]],
           [
             'Length',
@@ -1061,6 +1087,18 @@ function FormatsView({ formats }: { formats: ChannelFormat[] }) {
               {format.name}
               {format.primary ? <span className={`${mutedClass} ml-2`}>Primary</span> : null}
             </p>
+            {format.keywords.length > 0 ? (
+              <div className="flex flex-col gap-0.5 text-[13px]">
+                <span className="text-[var(--color-text-secondary)]">Keywords:</span>
+                <ul className="flex list-none flex-col gap-0.5 pl-3">
+                  {format.keywords.map((keyword, k) => (
+                    <li key={k}>
+                      <KeywordWithReading keyword={keyword} readings={readings} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {rows.map(([label, text]) =>
               text === '' ? null : (
                 <p key={label} className="text-[13px]">

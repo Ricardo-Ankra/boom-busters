@@ -4,6 +4,8 @@ import {
   getChannelSettings,
   getWorkspace,
   hasCredential,
+  keywordsToMeasure,
+  latestKeywordMeasurements,
   listBibleVersions,
   listChannels,
   listLogos,
@@ -57,6 +59,7 @@ export default async function SettingsPage({
     versions,
     current,
     vidiqKey,
+    latestReadings,
   ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
@@ -69,6 +72,7 @@ export default async function SettingsPage({
     listBibleVersions(db, channel.id),
     currentBible(db, channel.id),
     hasCredential(db, 'vidiq'),
+    latestKeywordMeasurements(db, channel.id),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -89,6 +93,24 @@ export default async function SettingsPage({
         youtubeChannelTitle: connectionRow.youtubeChannelTitle,
       }
     : undefined
+
+  // Each format and pillar keyword's latest VidIQ reading, and how many the
+  // button would buy: counted over the draft when one is open, as the action does.
+  const keywordReadings = Object.fromEntries(
+    [...latestReadings].map(([key, row]) => [
+      key,
+      {
+        volume: row.volume,
+        competition: row.competition,
+        measuredAt: row.measuredAt.toISOString(),
+      },
+    ]),
+  )
+  const measureCount = keywordsToMeasure(
+    draft?.bible ?? current.bible,
+    latestReadings,
+    new Date(),
+  ).length
 
   const modelOptions = await loadModelOptions({
     routing: settings.modelRouting,
@@ -168,6 +190,8 @@ export default async function SettingsPage({
         }))}
         currentVersion={{ id: current.id, version: current.version, bible: current.bible }}
         vidiqReady={mockProvidersEnabled() || vidiqKey}
+        keywordReadings={keywordReadings}
+        measureCount={measureCount}
       />
     </div>
   )

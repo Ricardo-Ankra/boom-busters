@@ -20,9 +20,11 @@ import {
   discardBibleDraftAction,
   draftBibleAction,
   editBibleSectionAction,
+  measureKeywordsAction,
   saveBibleAction,
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
+import type { KeywordReadings } from './bible-measurements'
 import { BiblePreview } from './bible-preview'
 import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
@@ -56,6 +58,8 @@ export function BibleTab({
   vidiqReady,
   archived,
   copySources = [],
+  readings,
+  measureCount = 0,
 }: {
   channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
@@ -69,6 +73,10 @@ export function BibleTab({
   archived: boolean
   /** Every other channel the bible can be copied from, archived ones included. */
   copySources?: CopySource[]
+  /** The latest VidIQ reading of each format and pillar keyword, by lower-cased keyword. */
+  readings?: KeywordReadings
+  /** How many format and pillar keywords have no reading from the last 30 days. */
+  measureCount?: number
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -116,6 +124,23 @@ export function BibleTab({
       if (result.draft) setDraft(result.draft)
       router.refresh()
       return true
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const measureKeywords = async () => {
+    setBusy(true)
+    try {
+      const result = await measureKeywordsAction(channel.id)
+      if (!result.ok) {
+        toast({ title: 'Could not measure', description: result.error, variant: 'error' })
+        return
+      }
+      toast({
+        title: 'Measuring in VidIQ',
+        description: `About ${result.credits} credits. The readings appear here as they arrive; refresh the page to see them.`,
+      })
     } finally {
       setBusy(false)
     }
@@ -317,6 +342,16 @@ export function BibleTab({
             .map(([, message]) => message)}
           disabled={locked}
           onProblems={setProblems}
+          {...(readings ? { readings } : {})}
+          {...(section === 'formats' || section === 'identity'
+            ? {
+                measure: {
+                  count: measureCount,
+                  ready: vidiqReady,
+                  onMeasure: () => void measureKeywords(),
+                },
+              }
+            : {})}
           onEdit={(target, patch) =>
             act(
               () => editBibleSectionAction(channel.id, target, patch),

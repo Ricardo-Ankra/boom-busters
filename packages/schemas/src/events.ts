@@ -421,6 +421,16 @@ export const CaseResearchRequestedSchema = z.object({
 })
 
 /**
+ * Measure these keywords in VidIQ, one volume and competition reading each. The
+ * action checked the cap and chose the keywords; the run buys one reading per
+ * keyword it has not already got.
+ */
+export const KeywordsMeasureSchema = z.object({
+  channelId: UlidSchema,
+  keywords: z.array(z.string().trim().min(1).max(120)).min(1).max(100),
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -469,6 +479,8 @@ export const EVENT_SCHEMAS = {
   'bible/draft.requested': BibleDraftRequestedSchema,
 
   'case/research.requested': CaseResearchRequestedSchema,
+
+  'channel/keywords.measure': KeywordsMeasureSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

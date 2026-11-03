@@ -11,6 +11,8 @@ import { Check, Circle, CircleDot } from 'lucide-react'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
+import { MeasureButton } from './bible-measure-button'
+import type { KeywordReadings } from './bible-measurements'
 import {
   NO_ISSUES,
   SectionEditor,
@@ -61,6 +63,8 @@ export function BibleSectionCard({
   onRedraft,
   onDraftSlot,
   onProblems,
+  readings,
+  measure,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -77,6 +81,10 @@ export function BibleSectionCard({
   onDraftSlot: (slotId: string) => void
   /** What the open form says is wrong with it, for the save bar; empty once it closes. */
   onProblems?: (section: BibleSection, problems: string[]) => void
+  /** The latest VidIQ reading of each keyword, by lower-cased keyword. */
+  readings?: KeywordReadings
+  /** The Measure in VidIQ button: given on the cards that hold keywords. */
+  measure?: { count: number; ready: boolean; onMeasure: () => void }
 }) {
   const label = sectionStatusLabel(bible, section, status)
   const ChipIcon = CHIP_ICON[label]
@@ -149,6 +157,14 @@ export function BibleSectionCard({
           >
             Approve
           </Button>
+          {measure && !editing ? (
+            <MeasureButton
+              count={measure.count}
+              disabled={disabled || !measure.ready}
+              unavailable={!measure.ready}
+              onMeasure={measure.onMeasure}
+            />
+          ) : null}
           {editing ? (
             <>
               <Button
@@ -229,6 +245,7 @@ export function BibleSectionCard({
             flags={flags}
             disabled={disabled}
             onDraftSlot={onDraftSlot}
+            {...(readings ? { readings } : {})}
           />
         )}
       </div>
