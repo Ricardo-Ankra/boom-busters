@@ -105,7 +105,8 @@ describe('parseWinners', () => {
 })
 
 describe('the winners caps follow the brief schema', () => {
-  const many = (n: number, make: (i: number) => string) => Array.from({ length: n }, (_, i) => make(i))
+  const many = (n: number, make: (i: number) => string) =>
+    Array.from({ length: n }, (_, i) => make(i))
   const briefWith = (winners: ReturnType<typeof parseWinners>) => ({
     subject: 'WeWork',
     measuredAt: '2026-01-01T00:00:00.000Z',
@@ -122,7 +123,10 @@ describe('the winners caps follow the brief schema', () => {
   it.each([0, 1, 5, 20])('an answer %i over the caps still fits the brief', (extra) => {
     const out = parseWinners(
       JSON.stringify({
-        titlePatterns: many(TITLE_PATTERNS_MAX + extra, (i) => `Pattern ${'x'.repeat(i)} {subject}`),
+        titlePatterns: many(
+          TITLE_PATTERNS_MAX + extra,
+          (i) => `Pattern ${'x'.repeat(i)} {subject}`,
+        ),
         toldAlready: many(TOLD_ALREADY_MAX + extra, (i) => `beat ${'y'.repeat(i)}`),
       }),
     )

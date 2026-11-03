@@ -227,7 +227,11 @@ describeDb('case-researcher (mock mode)', () => {
       keywordResearch: async (_subject: string, options: { mode: string }) => ({
         data:
           options.mode === 'questions'
-            ? [row('why did wework fail', 1), row('Why did WeWork fail', 1), row('is wework dead', 1)]
+            ? [
+                row('why did wework fail', 1),
+                row('Why did WeWork fail', 1),
+                row('is wework dead', 1),
+              ]
             : [
                 row('wework documentary', 60),
                 row('WeWork Documentary', 99),
