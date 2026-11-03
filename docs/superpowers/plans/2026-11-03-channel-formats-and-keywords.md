@@ -26,7 +26,7 @@ App Router server actions, Vitest, Playwright.
 - VidIQ credits shown before spending and checked against the monthly cap (`checkVidiqBudget`, `spendVidiq`).
 - Anything an Inngest run reads that this work adds is read inside a `step.run`; a run parked before a deploy must not crash on a missing field.
 - `'use server'` files export only async functions.
-- Format runtime limits: `3 ≤ min ≤ default ≤ max ≤ 180` (owner, 2026-11-03; was 240); the start limit is 60 until Task 20.
+- Format runtime limits: `3 ≤ min ≤ default ≤ max ≤ 180` (owner, 2026-11-03; was 240); the start limit is 60 until Task 20, then 30 (spec section 8).
 - `wordsPerMinute` 80 to 200, default 150. `shotHold` 1 to 4 in steps of 0.5, default 1.
 - Up to 6 formats; up to 6 keywords per format and per pillar, 60 characters each.
 - Channel tags may use at most 150 of the 500 tag characters. `HASHTAGS_MAX` stays 3.
@@ -707,13 +707,23 @@ Added 2026-11-03: the owner lowered the longest video from 240 to 180 minutes ("
 - [ ] **Step 4: Run to see them pass, every consuming package's suite, and the lift fixtures.** Expected: PASS, fixtures untouched.
 - [ ] **Step 5: Commit** `fix(formats): the longest video is 180 minutes`
 
-### Task 20: One approved long render, then the limit rises
+### Task 20: The start limit is 30 minutes
 
-- [ ] **Step 1: Stop and ask the owner** to approve one real long Lambda render, showing its estimated cost from Task 19. Without approval, stop here.
-- [ ] **Step 2: Run the approved render;** record duration, chunks, cost and any failure in PROGRESS.md.
-- [ ] **Step 3: Write the failing test:** `startProjectFromCase` accepts the new start limit on a 60-to-180 format, and refuses one minute more.
-- [ ] **Step 4: Raise `RUNTIME_START_MAX` to the limit the render proved safe, at most 180;** the panel's "not supported yet" note goes when it reaches 180.
-- [ ] **Step 5: Run to see it pass;** per-package suites.
-- [ ] **Step 6: Commit** `feat(projects): longer videos, up to <limit> minutes`
+Rewritten 2026-11-03 from the evidence in spec section 8: the approved test render was not run (ledger Ruling 24), and the owner agreed the start limit is 30 minutes, with 180 reached later by a separate "long renders in parts" project.
+
+**Files:**
+- Modify: `packages/schemas/src/formats.ts` (`RUNTIME_START_MAX = 30`; the format runtime default stays `{ default: 15, min: 3, max: RUNTIME_START_MAX }`, so it becomes 15 / 3 / 30)
+- Modify: every other place that caps a project's target runtime at start (grep `targetRuntimeMin`, `RUNTIME_START_MAX` and any literal 60 that means the same limit, in schemas, server actions, forms and e2e), so no path starts a project above 30
+- Modify: the tests and fixtures that start projects or assert the default format at 60
+- Test: `formats.test.ts`, `channels.test.ts` (upgraded default format), the cases `actions.test.ts` (`startProjectFromCase`), `search-brief-panel.test.tsx`, e2e that start a project
+
+**Interfaces:**
+- Produces: `RUNTIME_START_MAX = 30`; `defaultFormat().runtime` is `{ default: 15, min: 3, max: 30 }`.
+
+- [ ] **Step 1: Write the failing tests:** `startProjectFromCase` accepts 30 on a 3-to-180 format and refuses 31 with "Videos longer than 30 minutes are not supported yet"; a stored bible without formats upgrades to a default format of 15 / 3 / 30; the start panel offers at most 30 and shows the note for a format whose default or maximum is above 30.
+- [ ] **Step 2: Run to see them fail.** Expected: FAIL.
+- [ ] **Step 3: Implement.** Existing projects are untouched; a stored format with `max` 60 still parses (the outer limit is 180).
+- [ ] **Step 4: Run to see them pass, every consuming package's suite, the e2e specs that start projects, and the lift fixtures.** Expected: PASS, fixtures untouched.
+- [ ] **Step 5: Commit** `fix(projects): videos start at up to 30 minutes until long renders come in parts`
 
 **Phase 5 exit:** PROGRESS.md; merge.

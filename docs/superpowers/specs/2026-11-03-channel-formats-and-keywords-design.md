@@ -110,7 +110,7 @@ What the code does today:
 | `primary` | boolean | exactly one true |
 | `keywords` | up to 6 phrases, 60 characters each, ordered | no format keyword rules |
 | `intent` | `tension` or `calm` | `tension` (today's outline) |
-| `runtime` | `{ default, min, max }` minutes, `3 ≤ min ≤ default ≤ max ≤ 180` | 15, 3, 60 |
+| `runtime` | `{ default, min, max }` minutes, `3 ≤ min ≤ default ≤ max ≤ 180` | 15, 3, 30 (the start limit) |
 | `wordsPerMinute` | 80 to 200, the rate the channel's voice actually speaks | 150 |
 | `shotHold` | multiplier on `MIN_SHOT_SECONDS`, 1 to 4 in steps of 0.5 | 1 |
 | `titleTemplate` | up to 200 characters, slots `{topic}` `{formatKeyword}` `{pillar}` `{runtime}` | today's title rules |
@@ -258,9 +258,9 @@ a note when it differs from the format the brief was researched for) and a
 runtime field limited to that format's range, defaulting to its default. Before starting it shows an estimated
 cost for the chosen length (always shown, my call). `startProjectFromCase` stores
 `format_key` and validates the runtime against the format and against the
-code's current outer limit: 3 to 60 until phase 5 lands, then 3 to 180. A bible
-may already hold a format up to 180; until phase 5 the start control offers at
-most 60 and says plainly that longer videos are not yet supported.
+code's start limit: 3 to 60 until phase 5, then 3 to 30 (section 8). A bible
+may hold a format up to 180; the start control offers at
+most the start limit and says plainly that longer videos are not yet supported.
 
 ### 6.3 Script
 
@@ -452,6 +452,31 @@ and the limits it left open (render chunk time, file size against loudnorm's
 disk, QC decode time, upload time) are smaller at 180, not gone. The start limit
 rises only as far as the approved render shows is safe, at most 180.
 
+**What the evidence showed (2026-11-03), and the owner's decision.** The approved
+test render was not run: the live configuration and Remotion's own records of
+two real 16.6-minute masters answered the question without spending anything,
+and a render of placeholder images would have passed misleadingly.
+
+- Each master: 29,963 frames in 150 chunks of 200 frames; 1.59 seconds a frame
+  typical, 2.06 at the slowest chunk (409 s); about 7 minutes from start to
+  finish; 742 MB (about 6 Mbps); $1.00 by Remotion's own figure.
+- A chunk must finish inside the function's 900 seconds, so about 350 frames a
+  chunk at the slowest rate with a margin. At the broker's fan-out of 150 that
+  is about 29 minutes of video in one render, 39 at Remotion's cap of 200
+  functions a render. A 60-minute video would put 720 frames in each chunk and
+  time out.
+- Combining the chunks, and loudnorm afterwards, need twice the file on a 10 GB
+  disk, which caps a single render near 112 minutes whatever the fan-out.
+- The app's render cost formula ($0.25 per 900 s) is about 3.6 times low; a
+  180-minute master would cost about $11 to render.
+
+The owner agreed: **the start limit is 30 minutes**, the outer limit a bible may
+hold stays 180, and reaching 180 is a separate project, **long renders in
+parts**: the master rendered as parts of about 15 minutes, joined without the
+whole file on one disk, loudnorm and QC part by part, and a YouTube upload that
+resumes across invocations. A format whose default or maximum is above 30 keeps
+the start control's "not supported yet" note until that project lands.
+
 ## 9. Delivery
 
 One spec, five phases, each its own plan section, merged when green:
@@ -467,7 +492,7 @@ One spec, five phases, each its own plan section, merged when green:
    format pace and measured pace; shot hold; intro rule and fixed lines; the
    calm playbook.
 5. **Long runtimes.** The checks in section 8, one approved paid long render,
-   and the outer limit raised to 180.
+   the outer limit set to 180, and the start limit set to 30 from the evidence.
 
 ## 10. Constraints
 
