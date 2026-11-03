@@ -24,9 +24,9 @@ What the code does today:
   and `channelTags` (up to 15). Nothing reads either: no prompt, runner or
   publish step (`packages/schemas/src/channels.ts:94-95`).
 - Each case's VidIQ search brief (spec 2026-10-28) is seeded with the subject
-  alone and feeds the dossier, outline, titles, description and tags. It has no
-  channel layer; that spec's section 9 expected the bible to tell the angle step
-  what the channel covers, and it was never wired.
+  alone and feeds the dossier, outline, titles, description and tags. Only its
+  angle step reads the channel (the bible's subject and audience); its keywords
+  and the later stages have no channel layer.
 - Length is per project: `startProjectFromCase` defaults to 15 minutes and
   accepts 3 to 60 (`apps/web/app/(console)/c/[slug]/cases/actions.ts:252`), and
   the only caller passes none (`search-brief-panel.tsx:163`), so every project
@@ -132,9 +132,9 @@ characters each, default empty). The UI and the prompts call them **pillars**
 (my call: renaming the key would touch every case reader for no change in
 behaviour). The rule of at least two stays.
 
-A case needs a pillar before **Research with VidIQ** runs: the button is
-disabled with the reason shown until the case has one. All seven production
-cases already do.
+A case needs a pillar before **Research with VidIQ** runs. The database
+already guarantees it (`cases.category` is not null and never empty), and all
+seven production cases have one.
 
 ### 4.3 Channel publishing fields
 
@@ -240,8 +240,12 @@ Two additions to `case-researcher`:
    warns when `inScope` is false or `pillarKey` differs from the case's pillar,
    with the reason. The owner can ignore it.
 
-The angle step receives the channel's subject and pillars, which closes spec
-2026-10-28 section 9.
+The angle step already receives the channel's subject and audience; it also
+receives the pillars and their keywords when any pillar has keywords, so a
+channel without them composes the same prompt as today.
+
+Every case already has a pillar: `cases.category` is not null and a check
+refuses an empty one, so the gate in 4.2 needs no new code.
 
 ### 6.2 Project start
 
