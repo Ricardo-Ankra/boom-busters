@@ -1,12 +1,13 @@
 'use client'
 
-import { BIBLE_SECTION_LABELS, sectionIsEmpty } from '@boom-busters/schemas'
+import { BIBLE_SECTION_LABELS, sectionIsEmpty, sectionProgress } from '@boom-busters/schemas'
 import type {
   BibleSection,
   BibleSectionStatus,
   ChannelBible,
   TooCloseFlags,
 } from '@boom-busters/schemas'
+import { Check, Circle, CircleDot } from 'lucide-react'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
@@ -27,6 +28,12 @@ export function sectionStatusLabel(
   if (sectionIsEmpty(bible, section)) return 'Empty'
   return status === 'approved' ? 'Approved' : 'Drafted, not approved'
 }
+
+const CHIP_ICON = {
+  Approved: Check,
+  'Drafted, not approved': CircleDot,
+  Empty: Circle,
+} as const
 
 const CHIP_CLASS = {
   Approved: 'text-[var(--color-success)]',
@@ -67,6 +74,7 @@ export function BibleSectionCard({
   onDraftSlot: (slotId: string) => void
 }) {
   const label = sectionStatusLabel(bible, section, status)
+  const ChipIcon = CHIP_ICON[label]
   const flagged = Object.keys(flags).length > 0
   const [editing, setEditing] = React.useState(false)
   const [steering, setSteering] = React.useState(false)
@@ -92,8 +100,14 @@ export function BibleSectionCard({
       className="rounded-[8px] border border-[var(--color-border)]"
     >
       <summary className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3">
-        <span className="text-[15px] font-medium">{BIBLE_SECTION_LABELS[section]}</span>
-        <span className={`text-[13px] ${CHIP_CLASS[label]}`}>{label}</span>
+        <h3 className="text-[15px] font-medium">{BIBLE_SECTION_LABELS[section]}</h3>
+        <span className={`inline-flex items-center gap-1 text-[13px] ${CHIP_CLASS[label]}`}>
+          <ChipIcon size={14} aria-hidden="true" />
+          {label}
+        </span>
+        <span className="text-[13px] text-[var(--color-text-muted)]">
+          {sectionProgress(bible, section)}
+        </span>
       </summary>
       <div className="flex flex-col gap-3 border-t border-[var(--color-border)] p-4">
         {errors.map((error) => (

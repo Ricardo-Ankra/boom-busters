@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EXAMPLE_SLOTS } from './bible-slots'
+import { EXAMPLE_SLOTS, examplesWritten } from './bible-slots'
 import { CAST_GUARDRAIL_MAX, DEFAULT_GUARDRAIL_SUFFIX } from './cast'
 import { BIBLE_SECTIONS, ChannelBibleSchema } from './channels'
 import type { BibleSection, ChannelBible } from './channels'
@@ -52,6 +52,36 @@ export function sectionIsEmpty(bible: ChannelBible, section: BibleSection): bool
     }
     return valueIsEmpty(value)
   })
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+/**
+ * What a section holds, for its card: examples written out of the slots there
+ * are, the hooks, openings and titles counted, or fields filled. A field is
+ * filled when the chip would not call it empty.
+ */
+export function sectionProgress(bible: ChannelBible, section: BibleSection): string {
+  if (section === 'examples') {
+    return `${examplesWritten(bible.examples)} of ${EXAMPLE_SLOTS.length} examples written`
+  }
+  if (section === 'hooks') {
+    return [
+      plural(bible.hooks.length, 'hook', 'hooks'),
+      plural(bible.openings.length, 'opening', 'openings'),
+      plural(bible.titles.length, 'title', 'titles'),
+    ].join(', ')
+  }
+  const keys = BIBLE_SECTIONS[section]
+  const filled = keys.filter((key) => {
+    if (key === 'subjectNoun') {
+      return bible.subjectNoun.singular !== '' || bible.subjectNoun.plural !== ''
+    }
+    return !valueIsEmpty(bible[key])
+  }).length
+  return `${filled} of ${keys.length} filled`
 }
 
 /**

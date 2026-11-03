@@ -617,6 +617,13 @@ describe('BibleTab', () => {
     expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  it('heads each card with its name and says what it holds', () => {
+    renderTab(null)
+    expect(screen.getByRole('heading', { level: 2, name: 'Channel bible' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'Examples' })).toBeInTheDocument()
+    expect(within(card('Examples')).getByText('44 of 44 examples written')).toBeInTheDocument()
+  })
 })
 
 describe('BibleTab, copy from another channel', () => {

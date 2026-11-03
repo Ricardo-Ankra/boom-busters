@@ -194,6 +194,7 @@ export function BibleTab({
 
   return (
     <div className="flex flex-col gap-3">
+      <h2 className="sr-only">Channel bible</h2>
       <BibleToolbar
         version={currentVersion.version}
         panel={panel}
