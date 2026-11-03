@@ -26,7 +26,7 @@ App Router server actions, Vitest, Playwright.
 - VidIQ credits shown before spending and checked against the monthly cap (`checkVidiqBudget`, `spendVidiq`).
 - Anything an Inngest run reads that this work adds is read inside a `step.run`; a run parked before a deploy must not crash on a missing field.
 - `'use server'` files export only async functions.
-- Format runtime limits: `3 ≤ min ≤ default ≤ max ≤ 240`; the start limit is 60 until Task 20.
+- Format runtime limits: `3 ≤ min ≤ default ≤ max ≤ 180` (owner, 2026-11-03; was 240); the start limit is 60 until Task 20.
 - `wordsPerMinute` 80 to 200, default 150. `shotHold` 1 to 4 in steps of 0.5, default 1.
 - Up to 6 formats; up to 6 keywords per format and per pillar, 60 characters each.
 - Channel tags may use at most 150 of the 500 tag characters. `HASHTAGS_MAX` stays 3.
@@ -687,13 +687,33 @@ Added 2026-11-03 at the owner's request (spec 6.10, ledger Ruling 18).
 - [ ] **Step 2: For each breakage, a failing test, the fix, the passing test, a commit** (`fix(long-runtime): …`).
 - [ ] **Step 3: Check the start cost estimate** against the mock run's ledger rows.
 
+### Task 19b: The ceiling is 180 minutes
+
+Added 2026-11-03: the owner lowered the longest video from 240 to 180 minutes ("the longest should be 3 hours").
+
+**Files:**
+- Modify: `packages/schemas/src/formats.ts` (`RUNTIME_OUTER_MAX = 180`)
+- Modify: `packages/providers/src/prompts/bible-draft.ts` (the formats line says "between 3 and 180")
+- Modify: every test, fixture and UI text that names the outer limit as 240 (grep `240` and `RUNTIME_OUTER_MAX`; leave unrelated 240s alone: decision numbers, pixels, frames, stock prices, durations in seconds)
+- Modify: Task 19's long-runtime tests (`packages/providers/src/prompts/long-runtime.test.ts`, `apps/web/inngest/lib/long-runtime-steps.test.ts`) so their long formats run at the real ceiling, 180 / 60 / 180; keep any assertion that also pins behaviour above it only if it still describes something reachable
+- Test: `formats.test.ts`, `channels.test.ts`, the bible editor test, `bible-draft` test
+
+**Interfaces:**
+- Produces: `RUNTIME_OUTER_MAX = 180`. Nothing else changes shape.
+
+- [ ] **Step 1: Write the failing tests:** a format with `runtime.max` 180 parses and 181 is refused with the message naming 180; the bible-draft prompt says "between 3 and 180"; the editor shows the 180 limit.
+- [ ] **Step 2: Run to see them fail.** Expected: FAIL.
+- [ ] **Step 3: Implement.** No stored bible can hold a format above 180: formats exist only on this unmerged branch. Do not add an upgrade clamp.
+- [ ] **Step 4: Run to see them pass, every consuming package's suite, and the lift fixtures.** Expected: PASS, fixtures untouched.
+- [ ] **Step 5: Commit** `fix(formats): the longest video is 180 minutes`
+
 ### Task 20: One approved long render, then the limit rises
 
 - [ ] **Step 1: Stop and ask the owner** to approve one real long Lambda render, showing its estimated cost from Task 19. Without approval, stop here.
 - [ ] **Step 2: Run the approved render;** record duration, chunks, cost and any failure in PROGRESS.md.
-- [ ] **Step 3: Write the failing test:** `startProjectFromCase` accepts 180 on a 60-to-240 format.
-- [ ] **Step 4: Raise `RUNTIME_START_MAX` to 240;** the panel's "not supported yet" note goes.
+- [ ] **Step 3: Write the failing test:** `startProjectFromCase` accepts the new start limit on a 60-to-180 format, and refuses one minute more.
+- [ ] **Step 4: Raise `RUNTIME_START_MAX` to the limit the render proved safe, at most 180;** the panel's "not supported yet" note goes when it reaches 180.
 - [ ] **Step 5: Run to see it pass;** per-package suites.
-- [ ] **Step 6: Commit** `feat(projects): videos up to 240 minutes`
+- [ ] **Step 6: Commit** `feat(projects): longer videos, up to <limit> minutes`
 
 **Phase 5 exit:** PROGRESS.md; merge.

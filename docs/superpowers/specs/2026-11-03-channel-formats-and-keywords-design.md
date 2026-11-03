@@ -110,7 +110,7 @@ What the code does today:
 | `primary` | boolean | exactly one true |
 | `keywords` | up to 6 phrases, 60 characters each, ordered | no format keyword rules |
 | `intent` | `tension` or `calm` | `tension` (today's outline) |
-| `runtime` | `{ default, min, max }` minutes, `3 ≤ min ≤ default ≤ max ≤ 240` | 15, 3, 60 |
+| `runtime` | `{ default, min, max }` minutes, `3 ≤ min ≤ default ≤ max ≤ 180` | 15, 3, 60 |
 | `wordsPerMinute` | 80 to 200, the rate the channel's voice actually speaks | 150 |
 | `shotHold` | multiplier on `MIN_SHOT_SECONDS`, 1 to 4 in steps of 0.5 | 1 |
 | `titleTemplate` | up to 200 characters, slots `{topic}` `{formatKeyword}` `{pillar}` `{runtime}` | today's title rules |
@@ -258,8 +258,8 @@ a note when it differs from the format the brief was researched for) and a
 runtime field limited to that format's range, defaulting to its default. Before starting it shows an estimated
 cost for the chosen length (always shown, my call). `startProjectFromCase` stores
 `format_key` and validates the runtime against the format and against the
-code's current outer limit: 3 to 60 until phase 5 lands, then 3 to 240. A bible
-may already hold a format up to 240; until phase 5 the start control offers at
+code's current outer limit: 3 to 60 until phase 5 lands, then 3 to 180. A bible
+may already hold a format up to 180; until phase 5 the start control offers at
 most 60 and says plainly that longer videos are not yet supported.
 
 ### 6.3 Script
@@ -428,9 +428,9 @@ What it does not do:
 
 ## 8. Long runtimes (phase 5)
 
-**The owner's ruling:** the raise from 60 to 240 minutes is part of this work,
+**The owner's ruling:** the raise from 60 to 180 minutes is part of this work,
 as its last phase. Before the outer limit rises, the builder checks and fixes
-what a 240-minute run would break, and records each in PROGRESS.md:
+what a long run would break, and records each in PROGRESS.md:
 
 - the outline's output budget (`outputBudget(4000)`) and chapter count;
 - voice synthesis cost and any per-request length limits;
@@ -444,6 +444,13 @@ Proving it needs at least one real long Lambda render, which costs money even
 with mock providers. That run is asked for separately when phase 5 reaches it,
 with its estimated cost shown; nothing paid runs without that approval. Until
 every check passes, the outer limit stays 60.
+
+On 2026-11-03 the owner lowered the ceiling from 240 to 180 minutes: "We don't
+need videos that are that long, the longest should be 3 hours." The phase 5
+audit ran at 240 minutes before that change; every fix it made holds at 180,
+and the limits it left open (render chunk time, file size against loudnorm's
+disk, QC decode time, upload time) are smaller at 180, not gone. The start limit
+rises only as far as the approved render shows is safe, at most 180.
 
 ## 9. Delivery
 
@@ -460,7 +467,7 @@ One spec, five phases, each its own plan section, merged when green:
    format pace and measured pace; shot hold; intro rule and fixed lines; the
    calm playbook.
 5. **Long runtimes.** The checks in section 8, one approved paid long render,
-   and the outer limit raised to 240.
+   and the outer limit raised to 180.
 
 ## 10. Constraints
 
