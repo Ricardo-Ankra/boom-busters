@@ -24,9 +24,10 @@ import { NewProjectButton, ResearchControl, SearchBriefPanel } from './search-br
 /**
  * The Case Library table and its triage controls.
  *
- * Suggestions arrive as `idea` rows and are visually separated from the real
- * backlog, because the difference between "a model proposed this" and "I
- * decided to make this" is the entire point of the triage step. An accepted
+ * A row still at the `idea` status is a suggestion left from before Suggest
+ * cases was retired; nothing creates one now. It stays visually separated from
+ * the real backlog, because the difference between "a model proposed this" and
+ * "I decided to make this" is the point of the triage step. An accepted
  * suggestion moves down into the backlog; a dismissed one disappears.
  */
 
