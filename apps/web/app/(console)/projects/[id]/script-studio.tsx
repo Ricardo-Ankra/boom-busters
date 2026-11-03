@@ -377,7 +377,11 @@ function ChapterEditor({
   const [text, setText] = React.useState(chapter.contentMd)
   // The format's fixed lines are shown beside the editor, never inside it: the
   // owner edits the narration between them and the lines stay as the bible has them.
-  const parts = splitFixedParagraphs(text, fixedLines)
+  // The editable body is its own state, joined to the fixed head and tail only
+  // for `text`: re-splitting the joined text would collapse a trailing or
+  // leading blank line next to a fixed paragraph and swallow the Enter key.
+  const [parts] = React.useState(() => splitFixedParagraphs(chapter.contentMd, fixedLines))
+  const [body, setBody] = React.useState(parts.body)
   const [state, setState] = React.useState<SaveState>('idle')
   const [selection, setSelection] = React.useState('')
   const [proposal, setProposal] = React.useState<{ diff: ScriptDiff; note: string } | null>(null)
@@ -443,6 +447,7 @@ function ChapterEditor({
               const result = await applyRegeneratedText(projectId, chapter.id, next, proposal.note)
               if (result.ok) {
                 setText(next)
+                setBody(splitFixedParagraphs(next, fixedLines).body)
                 setProposal(null)
                 setSelection('')
                 setState('saved')
@@ -458,9 +463,10 @@ function ChapterEditor({
             <FixedLineBlocks lines={parts.head} />
             <ProseEditor
               label={`${chapter.title} narration`}
-              value={parts.body}
+              value={body}
               warnedSentences={placed.filter((w) => w.start >= 0).map((w) => w.sentence)}
               onChange={(next) => {
+                setBody(next)
                 setText(joinFixedParagraphs({ ...parts, body: next }))
                 setState('dirty')
               }}

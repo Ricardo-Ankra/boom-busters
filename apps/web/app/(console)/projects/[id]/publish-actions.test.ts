@@ -293,6 +293,42 @@ describeDb('the search description (decision 303)', () => {
     })
   })
 
+  it("sends the description no fixed line of the project's format", async () => {
+    const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const format = { ...bible.formats[0]!, introLine: 'Settle in.', outroLine: 'Sleep well.' }
+    const channel = await createChannel(db, {
+      name: 'Fixed-line description channel',
+      handle: null,
+      slug: `fixed-desc-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...bible, formats: [format] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Wirecard',
+      category: 'collapse',
+    })
+    const projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+    const script = await createScriptVersion(db, projectId)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'Settle in.\n\nA billion euros was never there.\n\nSleep well.',
+      estRuntimeSec: 12,
+    })
+    await insertTimeline(db, { projectId, json: masterTimeline(chapter.id), s3Key: '' })
+    callLlm.mockResolvedValueOnce({ text: DESCRIPTION })
+
+    expect(await generateDescription('master', projectId)).toEqual({ ok: true })
+
+    const request = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    const sent = request.messages.map((m) => m.content).join('\n')
+    expect(sent).toContain('A billion euros was never there.')
+    expect(sent).not.toContain('Settle in.')
+    expect(sent).not.toContain('Sleep well.')
+  })
+
   it("writes a Short's titles and description from the clip, not the film's opening", async () => {
     const short = await insertShort(db, {
       projectId: FIXTURE_PROJECT_ID,

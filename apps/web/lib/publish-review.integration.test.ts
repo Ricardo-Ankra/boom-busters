@@ -330,24 +330,25 @@ describeDb('publishModel cohesion', () => {
 })
 
 describe('spokenIntro', () => {
+  const none = { introLine: '', outroLine: '' }
   const md = ['# The rise', 'One two [pause] three four.', 'Five six seven eight nine ten.'].join(
     '\n\n',
   )
 
   it('takes round(30 x wordsPerMinute / 60) words, skipping headings and markup', () => {
     // 120 wpm: 60 words, so the whole chapter; 8 words at 16 wpm.
-    expect(spokenIntro(md, 120)).toBe('One two three four. Five six seven eight nine ten.')
-    expect(spokenIntro(md, 16)).toBe('One two three four. Five six seven eight')
+    expect(spokenIntro(md, 120, none)).toBe('One two three four. Five six seven eight nine ten.')
+    expect(spokenIntro(md, 16, none)).toBe('One two three four. Five six seven eight')
   })
 
   it('is empty for an empty chapter', () => {
-    expect(spokenIntro('', 150)).toBe('')
+    expect(spokenIntro('', 150, none)).toBe('')
   })
 
   it("starts after the format's fixed opening line", () => {
     const withLine = ['Settle in.', md].join('\n\n')
     const format = { introLine: 'Settle in.', outroLine: '' }
     expect(spokenIntro(withLine, 16, format)).toBe('One two three four. Five six seven eight')
-    expect(spokenIntro(withLine, 16)).toBe('Settle in. One two three four. Five six')
+    expect(spokenIntro(withLine, 16, none)).toBe('Settle in. One two three four. Five six')
   })
 })

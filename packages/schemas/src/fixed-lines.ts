@@ -51,7 +51,7 @@ export function dropFixedParagraphs(text: string, format: FixedLines): string {
 /**
  * A chapter's text split around the fixed paragraphs that open and close it,
  * for an editor that shows those read-only: `body` is what can be edited and
- * `compose` puts the pieces back, blank lines between.
+ * `joinFixedParagraphs` puts the pieces back, blank lines between.
  */
 export function splitFixedParagraphs(
   text: string,

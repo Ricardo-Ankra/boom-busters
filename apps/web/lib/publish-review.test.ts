@@ -117,6 +117,7 @@ describe('deriveIngredients sources (decision 303)', () => {
 
   it("labels each source with the outlet's own headline on file, else the outlet or host alone", () => {
     const { sources } = deriveIngredients({
+      format: { introLine: '', outroLine: '' },
       master: null,
       scriptChapters: [],
       claims: [

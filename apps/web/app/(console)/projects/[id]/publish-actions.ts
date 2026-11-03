@@ -32,6 +32,7 @@ import {
   HASHTAGS_MAX,
   fillTitleTemplate,
   leadKeyword,
+  dropFixedParagraphs,
   missingTitleSlots,
   normaliseHashtag,
   OutlineSchema,
@@ -310,19 +311,21 @@ export async function generateDescription(
     descriptionIngredients(db, projectId),
     latestScriptParagraphSources(db, projectId),
   ])
+  const { bible, format } = bibleGate.frozen
   const textOf = new Map(sources.chapters.map((chapter) => [chapter.id, chapter.contentMd]))
+  // The format's fixed lines are the owner's words, not the film's content: the
+  // description never sees them. `textOf` stays whole for the Short's paragraph indexes.
   const chapters =
     type === 'master'
       ? ingredients.chapters.map((chapter) => ({
           title: chapter.title,
-          text: textOf.get(chapter.id) ?? '',
+          text: dropFixedParagraphs(textOf.get(chapter.id) ?? '', format),
         }))
       : []
   const shortText = type === 'short' ? await shortNarration(targetId, textOf) : undefined
 
   // The format's keywords, then the pillar's, once each: what a master's body and
   // tags are asked to carry.
-  const { bible, format } = bibleGate.frozen
   const pillarKeywords = pillarOf(bible, project?.caseCategory)?.keywords ?? []
   const channelKeywords = uniqueNoCase([...format.keywords, ...pillarKeywords])
 

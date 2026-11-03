@@ -252,7 +252,7 @@ export function deriveIngredients(input: {
   /** What the article records read, by normalised URL (decision 303). */
   articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
   /** The project's format: its fixed lines are not the hook. */
-  format?: FixedLines
+  format: FixedLines
 }): {
   chapters: { id: string; title: string; startMs: number }[]
   sources: DescriptionSource[]
@@ -297,10 +297,7 @@ export function deriveIngredients(input: {
   const firstChapter = input.scriptChapters[0]
   const hook = firstChapter
     ? stripNarrationMarkup(
-        (input.format
-          ? dropFixedParagraphs(firstChapter.contentMd, input.format)
-          : firstChapter.contentMd
-        )
+        dropFixedParagraphs(firstChapter.contentMd, input.format)
           .split(/\n{2,}/)
           .map((paragraph) => paragraph.trim())
           .find((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#')) ?? '',
@@ -330,16 +327,12 @@ export function openingIsStale(input: {
 
 /**
  * The words the first thirty seconds of narration carry, with the markup
- * stripped. With a format, the first thirty seconds after its fixed lines.
+ * stripped: the first thirty seconds after the format's fixed lines.
  */
-export function spokenIntro(
-  chapterMd: string,
-  wordsPerMinute: number,
-  format?: FixedLines,
-): string {
+export function spokenIntro(chapterMd: string, wordsPerMinute: number, format: FixedLines): string {
   const count = Math.round((30 * wordsPerMinute) / 60)
   return stripNarrationMarkup(
-    (format ? dropFixedParagraphs(chapterMd, format) : chapterMd)
+    dropFixedParagraphs(chapterMd, format)
       .split(/\n{2,}/)
       .map((paragraph) => paragraph.trim())
       .filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#'))
