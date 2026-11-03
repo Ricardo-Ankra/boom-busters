@@ -355,11 +355,12 @@ export const RESOLUTION_STEP_SLOTS = 8
 /** The slots cut into steps of `RESOLUTION_STEP_SLOTS`, each named by its first slot. */
 export function resolutionBatches<T extends { id: string }>(
   board: readonly T[],
+  prefix = 'resolve',
 ): { stepId: string; slots: T[] }[] {
   const batches: { stepId: string; slots: T[] }[] = []
   for (let i = 0; i < board.length; i += RESOLUTION_STEP_SLOTS) {
     const slots = board.slice(i, i + RESOLUTION_STEP_SLOTS)
-    batches.push({ stepId: `resolve-${slots[0]!.id}`, slots })
+    batches.push({ stepId: `${prefix}-${slots[0]!.id}`, slots })
   }
   return batches
 }

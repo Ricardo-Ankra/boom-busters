@@ -48,6 +48,8 @@ import {
   slotPlan,
   timelineKey,
 } from '../lib/assembly'
+import { chunk } from '../lib/narration'
+import { RESOLUTION_CONCURRENCY, resolutionBatches } from '../lib/shot-list'
 
 /**
  * assembly-runner (build spec section 7.5).
@@ -158,15 +160,32 @@ export const assemblyRunner = inngest.createFunction(
     const ingested: Record<string, { r2Key: string; assetId?: string; previewR2Key?: string }> = {}
     const unusable: Record<string, string> = {}
     if (!mocked && storageConfigured()) {
-      for (const slot of setup.slots.filter(needsStockIngest)) {
-        const outcome = await step.run(`ingest-stock-${slot.id}`, () => ingestSlotStock(slot))
-        if (outcome.ok) {
-          ingested[slot.id] = {
-            r2Key: outcome.r2Key,
-            ...(outcome.assetId !== undefined ? { assetId: outcome.assetId } : {}),
-            ...(outcome.previewR2Key !== undefined ? { previewR2Key: outcome.previewR2Key } : {}),
+      // Eight slots to a step, in waves of four: a 240-minute board has more
+      // stock slots than one function run has steps.
+      for (const { stepId, slots } of resolutionBatches(
+        setup.slots.filter(needsStockIngest),
+        'ingest-stock',
+      )) {
+        const outcomes = await step.run(stepId, async () => {
+          const settled: { id: string; outcome: Awaited<ReturnType<typeof ingestSlotStock>> }[] = []
+          for (const wave of chunk(slots, RESOLUTION_CONCURRENCY)) {
+            settled.push(
+              ...(await Promise.all(
+                wave.map(async (slot) => ({ id: slot.id, outcome: await ingestSlotStock(slot) })),
+              )),
+            )
           }
-        } else unusable[slot.id] = outcome.reason
+          return settled
+        })
+        for (const { id, outcome } of outcomes) {
+          if (outcome.ok) {
+            ingested[id] = {
+              r2Key: outcome.r2Key,
+              ...(outcome.assetId !== undefined ? { assetId: outcome.assetId } : {}),
+              ...(outcome.previewR2Key !== undefined ? { previewR2Key: outcome.previewR2Key } : {}),
+            }
+          } else unusable[id] = outcome.reason
+        }
       }
     }
 

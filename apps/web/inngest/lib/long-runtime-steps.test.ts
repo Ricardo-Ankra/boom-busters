@@ -48,3 +48,24 @@ describe('slot resolution steps at 240 minutes', () => {
     ])
   })
 })
+
+/**
+ * Assembly opens a step per stock slot to copy its bytes into R2 (live runs
+ * only), so the same arithmetic applies to it. Stock and archival slots are
+ * most of a board's slots, so the whole slot count is the safe figure.
+ */
+describe('stock ingest steps at 240 minutes', () => {
+  it.each(cases)('$name: the run stays under the step limit', ({ slotSeconds }) => {
+    const board = Array.from({ length: Math.ceil(NARRATION_SECONDS / slotSeconds) }, (_, i) => ({
+      id: `slot-${i}`,
+    }))
+    // The load, the compile, the store and the gate are a dozen steps; paragraphs
+    // carry stored timings from the voice, so no whisper step is opened for them.
+    expect(resolutionBatches(board, 'ingest-stock').length + 20).toBeLessThan(STEP_LIMIT)
+  })
+
+  it('names an ingest step by its first slot', () => {
+    const batches = resolutionBatches([{ id: 'a' }], 'ingest-stock')
+    expect(batches.map((b) => b.stepId)).toEqual(['ingest-stock-a'])
+  })
+})
