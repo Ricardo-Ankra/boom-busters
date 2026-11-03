@@ -211,7 +211,7 @@ test.describe('case research', () => {
     )
     expect(stored[0]?.angle).toBe(FIRST_ANGLE)
     expect(stored[0]?.demand_notes).toContain(`${TARGET}: 61 volume, competition 28`)
-    expect(stored[0]?.demand_notes).toContain('1 winning videos')
+    expect(stored[0]?.demand_notes).toMatch(/; 1 winning video(?!s)/)
   })
 
   test('Make target promotes a secondary keyword', async ({ page }) => {

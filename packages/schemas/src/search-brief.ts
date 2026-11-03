@@ -136,7 +136,7 @@ export function chooseTargetKeyword(
 /** One line of demand evidence for prompts: the target keyword and the best outlier. */
 export function briefDemandNotes(brief: SearchBrief): string {
   const n = brief.outliers.length
-  const videos = `${n} winning videos`
+  const videos = `${n} winning ${n === 1 ? 'video' : 'videos'}`
   const target = brief.targetKeyword
   if (!target) return `No searched keyword measured; ${videos}`
   const measures = [

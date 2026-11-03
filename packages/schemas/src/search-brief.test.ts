@@ -124,6 +124,18 @@ describe('briefDemandNotes', () => {
       'No searched keyword measured; 6 winning videos',
     )
   })
+  test('says "video" for exactly one winner', () => {
+    const one = fixture({ outliers: fixture().outliers.slice(0, 1) })
+    expect(briefDemandNotes(one)).toContain('; 1 winning video,')
+    expect(briefDemandNotes({ ...one, targetKeyword: null })).toBe(
+      'No searched keyword measured; 1 winning video',
+    )
+  })
+  test('keeps the plural for none', () => {
+    expect(briefDemandNotes(fixture({ outliers: [], targetKeyword: null }))).toBe(
+      'No searched keyword measured; 0 winning videos',
+    )
+  })
 })
 
 describe('briefIsStale', () => {
