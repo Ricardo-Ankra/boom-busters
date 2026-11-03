@@ -23,6 +23,7 @@ import {
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
+  defaultFormat,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   PUBLISH_DISCLAIMER,
@@ -241,6 +242,51 @@ describeDb('publishModel search brief fields', () => {
       })
     } finally {
       await db.update(projects).set({ searchBrief: null })
+    }
+  })
+})
+
+describeDb('publishModel cohesion', () => {
+  async function projectOn(keywords: string[], title: string) {
+    const channel = await createChannel(db, {
+      name: 'Cohesion channel',
+      handle: null,
+      slug: `cohesion-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...EMPTY_BIBLE, formats: [{ ...defaultFormat('Main'), keywords }] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Cleopatra',
+      category: 'con',
+    })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'Cleopatra' })
+    const record = await ensurePublishRecord(db, 'master', project.id)
+    await updatePublishRecord(db, record.id, { metadata: { title, titleOptions: [title] } })
+    return project
+  }
+
+  it('reports a miss in the format column when the title lacks the lead keyword', async () => {
+    await seed(db)
+    const project = await projectOn(['documentary'], 'Cleopatra and the asp')
+    const { cohesion } = (await publishModel(db, project.id, { presign: null })).items[0]!
+    expect(cohesion?.cells.title.format).toBe('miss')
+    expect(cohesion?.cells.title.topic).toBe('hit')
+  })
+
+  it('reports the format column as not set, with a gap, on a default format', async () => {
+    await seed(db)
+    const project = await projectOn([], 'Cleopatra and the asp')
+    const { cohesion } = (await publishModel(db, project.id, { presign: null })).items[0]!
+    expect(cohesion?.cells.title.format).toBe('none')
+    expect(cohesion?.gaps).toContain('No format keywords set')
+  })
+
+  it('has no report for a Short', async () => {
+    await seed(db)
+    const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+    for (const item of model.items.filter((i) => i.targetType === 'short')) {
+      expect(item.cohesion).toBeNull()
     }
   })
 })

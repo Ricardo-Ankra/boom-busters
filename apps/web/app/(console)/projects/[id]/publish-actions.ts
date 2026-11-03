@@ -65,6 +65,7 @@ import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtu
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
+import { pillarOf } from '@/lib/pillar'
 import { searchTags } from '@/lib/search-tags'
 import { unscoredDistinctTitles } from '@/lib/title-scores'
 import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
@@ -201,14 +202,6 @@ export async function savePublishDraft(
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
-}
-
-/** The case's pillar in a bible, by the case's category key. */
-function pillarOf(
-  bible: { caseCategories: readonly { key: string; label: string; keywords: string[] }[] },
-  category: string | undefined,
-): { key: string; label: string; keywords: string[] } | undefined {
-  return bible.caseCategories.find((pillar) => pillar.key === category)
 }
 
 /** Each text once, case-insensitively, the first spelling kept. */

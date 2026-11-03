@@ -18,6 +18,7 @@ import {
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
+  cohesionReport,
   nameMatches,
   normaliseArticleUrl,
   PublishDraftSchema,
@@ -29,9 +30,15 @@ import {
   TimelineSchema,
   timelineDurationMs,
 } from '@boom-busters/schemas'
-import type { DescriptionSource, ScheduleSlot, TitleSlot } from '@boom-busters/schemas'
+import type {
+  CohesionReport,
+  DescriptionSource,
+  ScheduleSlot,
+  TitleSlot,
+} from '@boom-busters/schemas'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
+import { pillarOf } from './pillar'
 import { shortSlotsAfter } from './schedule-slots'
 
 /**
@@ -104,6 +111,11 @@ export interface PublishItemModel {
    * from the same visuals.
    */
   syntheticLikenesses: string[]
+  /**
+   * Where the topic, format and pillar keywords show up across the master's
+   * copy. Information only. Null for a Short.
+   */
+  cohesion: CohesionReport | null
   /**
    * When an unscheduled point Short would take the next Short slot after its
    * long form (design section 8). A suggestion only: the owner's Schedule
@@ -298,6 +310,22 @@ export function openingIsStale(input: {
   return input.bodyScriptVersion === undefined || input.bodyScriptVersion < input.scriptVersion
 }
 
+/** The words the first thirty seconds of narration carry, with the markup stripped. */
+export function spokenIntro(chapterMd: string, wordsPerMinute: number): string {
+  const count = Math.round((30 * wordsPerMinute) / 60)
+  return stripNarrationMarkup(
+    chapterMd
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#'))
+      .join(' '),
+  )
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, count)
+    .join(' ')
+}
+
 /** What the article records hold for these sources, by normalised URL. */
 async function articlesFor(
   db: Database,
@@ -482,6 +510,31 @@ export async function publishModel(
     masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
   ])
 
+  // The master's copy against the topic, the format and the pillar, from the
+  // frozen bible. The opening is the saved body: the description starts with it.
+  const masterCohesion = (): CohesionReport => {
+    const draft = masterRecord ? toRecordProp(masterRecord, [], current) : null
+    const brief = project.searchBrief
+    const target = brief?.targetKeyword?.keyword
+    const pillar = pillarOf(channel.bible, project.caseCategory)
+    return cohesionReport({
+      title: draft?.title ?? draft?.titleOptions[0] ?? '',
+      description: draft?.descriptionBody ?? hook,
+      tags: draft?.tags ?? [],
+      hashtags: draft?.hashtags ?? [],
+      spokenIntro: spokenIntro(
+        scriptSources.chapters[0]?.contentMd ?? '',
+        channel.format.wordsPerMinute,
+      ),
+      topic: [target, brief?.subject ?? project.caseTitle].filter(
+        (text): text is string => typeof text === 'string' && text.trim() !== '',
+      ),
+      formatKeywords: channel.format.keywords,
+      pillar: pillar ? { label: pillar.label, keywords: pillar.keywords } : null,
+      channelHashtag: channel.bible.channelHashtag,
+    })
+  }
+
   const items: PublishItemModel[] = [
     {
       targetType: 'master',
@@ -496,6 +549,7 @@ export async function publishModel(
       relatedLinkChecked: null,
       record: masterRecord ? toRecordProp(masterRecord, masterThumbs, current) : null,
       syntheticLikenesses: likenesses,
+      cohesion: masterCohesion(),
     },
   ]
 
@@ -520,6 +574,7 @@ export async function publishModel(
       relatedLinkChecked: short.relatedLinkChecked,
       record: record ? toRecordProp(record, await thumbsFor(record), current) : null,
       syntheticLikenesses: likenesses,
+      cohesion: null,
     })
   }
 

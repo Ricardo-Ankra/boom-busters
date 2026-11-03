@@ -22,6 +22,7 @@ import {
   publishStatusInFlight,
   type PublishStatus,
 } from '@/lib/publish-status'
+import { CohesionPanel } from './cohesion-panel'
 import { RetentionOverlay } from './retention-overlay'
 import {
   generateDescription,
@@ -174,6 +175,7 @@ export function PublishScreen({
   const [customTime, setCustomTime] = React.useState('')
 
   const selected = model.items.find((item) => keyOf(item) === selectedKey) ?? null
+  const masterCohesion = model.items.find((item) => item.targetType === 'master')?.cohesion ?? null
 
   // A point Short's suggested slot (design section 8) is put in the custom
   // time field when it is selected: a pre-fill, so the Schedule click is
@@ -431,6 +433,9 @@ export function PublishScreen({
       {/* The item editor                                                     */}
       {/* ------------------------------------------------------------------ */}
       {selected ? <ItemEditor key={selectedKey} item={selected} model={model} live={live} /> : null}
+
+      {/* Where the keywords land in the master's copy: information only, above the calendar. */}
+      {masterCohesion ? <CohesionPanel report={masterCohesion} /> : null}
 
       {/* ------------------------------------------------------------------ */}
       {/* The calendar                                                        */}
