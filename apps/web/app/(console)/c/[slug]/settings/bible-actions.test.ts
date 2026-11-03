@@ -733,7 +733,7 @@ describeDb('the bible edit, approve, save and discard actions', () => {
       })
       expect(inngestMock.send).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'channel/search-space.analyse',
+          name: 'channel/search_space.analyse',
           data: { channelId: FIRST_CHANNEL_ID, keywords: ['alpha'] },
         }),
       )

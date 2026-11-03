@@ -17,7 +17,7 @@ const caseId = fixtureId('case', 1)
 describe('event registry', () => {
   it('names every event `<domain>/<subject>[.<verb>]`, per spec section 7', () => {
     for (const name of EVENT_NAMES) {
-      expect(name).toMatch(/^[a-z]+\/[a-z_-]+(\.[a-z_]+){0,2}$/)
+      expect(name).toMatch(/^[a-z]+\/[a-z_]+(\.[a-z_]+){0,2}$/)
     }
   })
 

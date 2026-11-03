@@ -491,7 +491,7 @@ export const EVENT_SCHEMAS = {
   'case/research.requested': CaseResearchRequestedSchema,
 
   'channel/keywords.measure': KeywordsMeasureSchema,
-  'channel/search-space.analyse': SearchSpaceAnalyseSchema,
+  'channel/search_space.analyse': SearchSpaceAnalyseSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
 } as const

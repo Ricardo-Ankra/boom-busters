@@ -74,7 +74,7 @@ export const searchSpaceAnalyser = inngest.createFunction(
     triggers: [events.searchSpaceAnalyse],
   },
   async ({ event, step }) => {
-    const { channelId, keywords } = parseEventData('channel/search-space.analyse', event.data)
+    const { channelId, keywords } = parseEventData('channel/search_space.analyse', event.data)
 
     const asked = new Map<string, string>()
     for (const keyword of keywords) {
@@ -83,6 +83,26 @@ export const searchSpaceAnalyser = inngest.createFunction(
     }
 
     const complete = completeFor(channelId)
+    const readWinners = async (
+      keyword: string,
+      top: SearchOutlier[],
+      details: Details,
+    ): Promise<Winners> => {
+      if (mockProvidersEnabled()) return mockWinners()
+      const winning = top.map((outlier) => ({
+        ...outlier,
+        tags: details[outlier.videoId]?.tags ?? [],
+      }))
+      const descriptions = Object.fromEntries(
+        Object.entries(details).map(([videoId, detail]) => [videoId, detail.description]),
+      )
+      const answer = await callForAnswer({
+        request: buildWinnersRequest({ subject: keyword, outliers: winning, descriptions }),
+        parse: (text, note) => parseWinners(text, note),
+        complete,
+      })
+      return answerOrStop(answer, 'The winning-video patterns could not be read')
+    }
     let analysed = 0
     let credits = 0
     let index = 0
@@ -162,11 +182,24 @@ export const searchSpaceAnalyser = inngest.createFunction(
         top.length === 0
           ? {}
           : await step.run(`durations-${n}`, async () => {
-              const sources = mockProvidersEnabled() ? mockResearchSources() : liveResearchSources()
-              // Without a key on file there is no reading: every duration is unknown.
-              const videos = sources.youtube
-                ? await sources.youtube.details(top.map((outlier) => outlier.videoId))
-                : []
+              // The VidIQ credits are spent by now: a failed read (no contact email, a quota
+              // or HTTP error) leaves every duration unknown rather than losing the row.
+              let videos: { id: string; durationSec: number }[] = []
+              try {
+                const sources = mockProvidersEnabled()
+                  ? mockResearchSources()
+                  : liveResearchSources()
+                // Without a key on file there is no reading: every duration is unknown.
+                videos = sources.youtube
+                  ? await sources.youtube.details(top.map((outlier) => outlier.videoId))
+                  : []
+              } catch (error) {
+                console.error(
+                  '[search-space-analyser] could not read the durations',
+                  keyword,
+                  error,
+                )
+              }
               // A video YouTube omits, or gives no length (a live stream), is unknown.
               const byId = new Map(videos.map((video) => [video.id, video.durationSec]))
               return Object.fromEntries(
@@ -182,20 +215,13 @@ export const searchSpaceAnalyser = inngest.createFunction(
         top.length === 0
           ? { titlePatterns: [], toldAlready: [] }
           : await step.run(`winners-${n}`, async () => {
-              if (mockProvidersEnabled()) return mockWinners()
-              const winning = top.map((outlier) => ({
-                ...outlier,
-                tags: details[outlier.videoId]?.tags ?? [],
-              }))
-              const descriptions = Object.fromEntries(
-                Object.entries(details).map(([videoId, detail]) => [videoId, detail.description]),
-              )
-              const answer = await callForAnswer({
-                request: buildWinnersRequest({ subject: keyword, outliers: winning, descriptions }),
-                parse: (text, note) => parseWinners(text, note),
-                complete,
-              })
-              return answerOrStop(answer, 'The winning-video patterns could not be read')
+              // Same loss as above: a failed model call saves the row without patterns.
+              try {
+                return await readWinners(keyword, top, details)
+              } catch (error) {
+                console.error('[search-space-analyser] could not read the patterns', keyword, error)
+                return { titlePatterns: [], toldAlready: [] }
+              }
             })
 
       // 5. The row, written once the readings are in.

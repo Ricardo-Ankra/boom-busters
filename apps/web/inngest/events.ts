@@ -153,7 +153,7 @@ export const events = {
   }),
 
   keywordsMeasure: eventType('channel/keywords.measure', { schema: KeywordsMeasureSchema }),
-  searchSpaceAnalyse: eventType('channel/search-space.analyse', {
+  searchSpaceAnalyse: eventType('channel/search_space.analyse', {
     schema: SearchSpaceAnalyseSchema,
   }),
 
