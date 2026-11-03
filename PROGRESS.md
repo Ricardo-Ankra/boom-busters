@@ -4427,7 +4427,7 @@ Then:
 > measures the subject, writes a search brief and offers up to three angles;
 > the owner picks the angle, and the brief freezes onto the project. The
 > dossier, outline, metadata and publish screen then work from the brief.
-> Branch `vidiq-case-research`; decisions 372 to 384. One migration
+> Branch `vidiq-case-research`; decisions 372 to 385. One migration
 > (`0043_safe_tusk`), a new Inngest function (`case-researcher`), and nothing
 > under `packages/providers/src/prompts/lift/__fixtures__/` changes except
 > the new search fixtures.
@@ -9300,3 +9300,17 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      e2e-tested. `qidOf` moved to `sources/wikidata.ts` because the dossier
      discovery path still uses it. No lift fixtures existed for the deleted
      builders.
+
+385. **The brief schema sets the list caps; no keyword, no "Searched as"**
+     (2026-11-03). The final review found the winners parser allowing 6
+     title patterns and 10 told-already entries while `SearchBriefSchema`
+     holds 5 and 8, so a full model answer parsed and then failed the save on
+     every retry after the credits were spent. The schema is the authority:
+     it exports `TITLE_PATTERNS_MAX` and `TOLD_ALREADY_MAX`, and the parser
+     and its prompt read them. `save-brief` also cuts each list to its limit,
+     and a result that still cannot fit stops with a plain reason and no
+     retry. The `search-winners` lift fixture was edited by hand to "5 patterns
+     and 8 told-already". When no keyword was measured, the angle prompt asks
+     for an empty `keyword`, the parser and the mock force it, and the panel
+     hides "Searched as" for an empty one, so the brief never implies demand
+     that was not measured.
