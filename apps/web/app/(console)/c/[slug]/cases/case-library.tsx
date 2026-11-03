@@ -437,6 +437,7 @@ function BacklogRow({
   run: Run
   notices: readonly Notice[]
 }) {
+  const categories = React.useContext(CategoriesContext)
   return (
     <div className="flex flex-wrap items-center gap-4 p-4">
       <CaseFacts item={item} />
@@ -477,7 +478,7 @@ function BacklogRow({
         />
       </div>
       <EditDetails item={item} run={run} />
-      <SearchBriefPanel item={item} run={run} />
+      <SearchBriefPanel item={item} run={run} pillars={categories} />
       <RowNotices notices={notices} />
     </div>
   )

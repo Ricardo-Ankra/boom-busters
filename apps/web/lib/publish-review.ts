@@ -31,6 +31,7 @@ import {
   timelineDurationMs,
 } from '@boom-busters/schemas'
 import type {
+  BriefFit,
   CohesionReport,
   DescriptionSource,
   ScheduleSlot,
@@ -116,6 +117,16 @@ export interface PublishItemModel {
    * copy. Information only. Null for a Short.
    */
   cohesion: CohesionReport | null
+  /**
+   * The frozen brief's channel fit with what the panel needs to word it: the
+   * case's pillar key and the bible's pillars. Master only; absent when the
+   * project froze no fit.
+   */
+  briefFit?: {
+    fit: BriefFit
+    casePillarKey: string
+    pillars: { key: string; label: string }[]
+  } | null
   /**
    * When an unscheduled point Short would take the next Short slot after its
    * long form (design section 8). A suggestion only: the owner's Schedule
@@ -551,6 +562,13 @@ export async function publishModel(
       record: masterRecord ? toRecordProp(masterRecord, masterThumbs, current) : null,
       syntheticLikenesses: likenesses,
       cohesion: masterCohesion(),
+      briefFit: project.searchBrief?.fit
+        ? {
+            fit: project.searchBrief.fit,
+            casePillarKey: project.caseCategory,
+            pillars: channel.bible.caseCategories.map(({ key, label }) => ({ key, label })),
+          }
+        : null,
     },
   ]
 

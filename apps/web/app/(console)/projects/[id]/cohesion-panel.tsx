@@ -1,5 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { fitWarning } from '@/lib/brief-fit'
 import type {
+  BriefFit,
   CohesionCell,
   CohesionColumn,
   CohesionReport,
@@ -32,7 +34,19 @@ const WORDS: Record<CohesionCell, { text: string; colour: string }> = {
   none: { text: 'Not set', colour: 'text-[var(--color-text-muted)]' },
 }
 
-export function CohesionPanel({ report }: { report: CohesionReport }) {
+export function CohesionPanel({
+  report,
+  fit = null,
+  casePillarKey = null,
+  pillars = [],
+}: {
+  report: CohesionReport
+  /** The project's frozen brief's channel fit: shown above the gaps, in the case row's words. */
+  fit?: BriefFit | null
+  casePillarKey?: string | null
+  pillars?: readonly { key: string; label: string }[]
+}) {
+  const fitText = fitWarning(fit, casePillarKey, pillars)
   return (
     <Card>
       <CardHeader>
@@ -43,6 +57,7 @@ export function CohesionPanel({ report }: { report: CohesionReport }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {fitText ? <p className="text-[12px] text-[var(--color-warning)]">{fitText}</p> : null}
         {report.gaps.length > 0 ? (
           <ul className="flex flex-col gap-1 text-[12px] text-[var(--color-warning)]">
             {report.gaps.map((gap) => (

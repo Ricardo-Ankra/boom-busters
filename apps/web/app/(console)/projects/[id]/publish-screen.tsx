@@ -175,7 +175,8 @@ export function PublishScreen({
   const [customTime, setCustomTime] = React.useState('')
 
   const selected = model.items.find((item) => keyOf(item) === selectedKey) ?? null
-  const masterCohesion = model.items.find((item) => item.targetType === 'master')?.cohesion ?? null
+  const master = model.items.find((item) => item.targetType === 'master')
+  const masterCohesion = master?.cohesion ?? null
 
   // A point Short's suggested slot (design section 8) is put in the custom
   // time field when it is selected: a pre-fill, so the Schedule click is
@@ -435,7 +436,14 @@ export function PublishScreen({
       {selected ? <ItemEditor key={selectedKey} item={selected} model={model} live={live} /> : null}
 
       {/* Where the keywords land in the master's copy: information only, above the calendar. */}
-      {masterCohesion ? <CohesionPanel report={masterCohesion} /> : null}
+      {masterCohesion ? (
+        <CohesionPanel
+          report={masterCohesion}
+          fit={master?.briefFit?.fit ?? null}
+          casePillarKey={master?.briefFit?.casePillarKey ?? null}
+          pillars={master?.briefFit?.pillars ?? []}
+        />
+      ) : null}
 
       {/* ------------------------------------------------------------------ */}
       {/* The calendar                                                        */}

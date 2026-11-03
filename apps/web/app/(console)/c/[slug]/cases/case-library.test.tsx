@@ -533,7 +533,9 @@ describe('Research with VidIQ', () => {
     const steps = {
       load: 'Starting',
       'keywords-terms': 'Finding search terms',
+      'keywords-format': 'Finding search terms for the format',
       'keywords-filter': 'Keeping the terms about the subject',
+      fit: 'Checking the subject fits the channel',
       'keywords-questions': 'Finding the questions people search',
       outliers: 'Finding the winning videos',
       'outlier-details': 'Reading the winning videos',
@@ -839,5 +841,29 @@ describe('the case format picker', () => {
     expect(
       within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('the channel fit on the case row', () => {
+  const fitted = (fit: NonNullable<typeof BRIEF.fit>, category = 'con') =>
+    researched({ category, searchBrief: { ...BRIEF, fit } })
+
+  it('warns when the subject is outside the pillars, with the reason', () => {
+    const row = renderRow(
+      fitted({ inScope: false, pillarKey: null, reason: 'It is a sleep guide.' }),
+    )
+    expect(row).toHaveTextContent("Outside this channel's pillars: It is a sleep guide.")
+  })
+
+  it("names the better pillar by its label when it is not the case's own", () => {
+    const row = renderRow(fitted({ inScope: true, pillarKey: 'collapse', reason: 'A slow fall.' }))
+    expect(row).toHaveTextContent('Fits Collapse better: A slow fall.')
+  })
+
+  it("says nothing when the fit is the case's own pillar, and blocks nothing", () => {
+    const row = renderRow(fitted({ inScope: true, pillarKey: 'con', reason: 'A con.' }))
+    expect(row).not.toHaveTextContent('better')
+    expect(row).not.toHaveTextContent('Outside this channel')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
   })
 })

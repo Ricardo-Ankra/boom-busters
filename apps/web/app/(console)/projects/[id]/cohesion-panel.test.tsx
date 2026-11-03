@@ -43,3 +43,40 @@ describe('CohesionPanel', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 })
+
+describe('CohesionPanel fit', () => {
+  const pillars = [
+    { key: 'con', label: 'Con' },
+    { key: 'collapse', label: 'Collapse' },
+  ]
+
+  it('shows nothing about fit without one', () => {
+    render(<CohesionPanel report={report} />)
+    expect(screen.queryByText(/Outside this channel/)).toBeNull()
+    expect(screen.queryByText(/better:/)).toBeNull()
+  })
+
+  it('warns when the subject is outside the pillars', () => {
+    render(
+      <CohesionPanel
+        report={report}
+        fit={{ inScope: false, pillarKey: null, reason: 'It is a sleep guide.' }}
+        casePillarKey="con"
+        pillars={pillars}
+      />,
+    )
+    expect(screen.getByText("Outside this channel's pillars: It is a sleep guide.")).toBeTruthy()
+  })
+
+  it('names the pillar it fits better', () => {
+    render(
+      <CohesionPanel
+        report={report}
+        fit={{ inScope: true, pillarKey: 'collapse', reason: 'A slow fall.' }}
+        casePillarKey="con"
+        pillars={pillars}
+      />,
+    )
+    expect(screen.getByText('Fits Collapse better: A slow fall.')).toBeTruthy()
+  })
+})

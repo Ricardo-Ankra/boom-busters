@@ -5,21 +5,25 @@ import {
   deleteCase,
   getCase,
   requireTestDatabase,
+  saveBibleVersion,
   seed,
+  setCaseFormat,
   truncateRunMirror,
   updateWorkspace,
   vidiqCredits,
   writeCaseResearchJob,
 } from '@boom-busters/db'
-import type { AngleOption, CaseResearchJob } from '@boom-busters/schemas'
+import type { AngleOption, CaseResearchJob, ChannelFormat } from '@boom-busters/schemas'
 import type * as ProvidersModule from '@boom-busters/providers'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
 import {
   CASE_RESEARCH_CREDITS,
   DEFAULT_WORKSPACE_SETTINGS,
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
   SearchBriefSchema,
   caseResearchJobIsRunning,
+  defaultFormat,
 } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -378,6 +382,89 @@ describeDb('case-researcher (mock mode)', () => {
         state: 'failed',
         error: 'VidIQ did not answer',
         startedAt,
+      })
+    })
+  })
+
+  describe('the format seed and the fit', () => {
+    const sleep = {
+      ...defaultFormat('Sleep'),
+      key: 'sleep',
+      primary: false,
+      keywords: ['history for sleep'],
+    }
+    const main = { ...defaultFormat('Main'), keywords: [] as string[] }
+
+    /** Runs with the channel's bible holding these formats, then puts the first channel's bible back. */
+    async function withFormats(
+      formats: ChannelFormat[],
+      formatKey: string | null,
+      check: () => Promise<void>,
+    ) {
+      await saveBibleVersion(
+        db,
+        FIRST_CHANNEL_ID,
+        { ...FIRST_CHANNEL_BIBLE, formats },
+        'Formats for a test',
+      )
+      try {
+        await setCaseFormat(db, caseId, formatKey)
+        await check()
+      } finally {
+        await saveBibleVersion(db, FIRST_CHANNEL_ID, FIRST_CHANNEL_BIBLE, 'Restored after a test')
+      }
+    }
+
+    /** Records each matching-terms search the run makes. */
+    function recordSearches(): string[] {
+      const searched: string[] = []
+      type Real = {
+        keywordResearch: (subject: string, options: { mode: string }) => Promise<unknown>
+      }
+      seams.clientOverride = (real) => ({
+        ...(real as object),
+        keywordResearch: async (subject: string, options: { mode: string }) => {
+          if (options.mode === 'matching_terms') searched.push(subject)
+          return (real as Real).keywordResearch(subject, options)
+        },
+      })
+      return searched
+    }
+
+    it('a format with a lead keyword makes a second matching-terms spend and saves formatKey and fit', async () => {
+      const searched = recordSearches()
+      await withFormats([main, sleep], 'sleep', async () => {
+        const { result } = await engine.execute(request())
+        expect(result).toMatchObject({ outcome: 'researched' })
+        expect(searched).toEqual([SUBJECT, `${SUBJECT} history for sleep`])
+        const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+        expect(brief.formatKey).toBe('sleep')
+        expect(brief.fit).toMatchObject({ inScope: true, reason: 'Mock fit.' })
+        const rows = await db.select().from(vidiqCredits)
+        expect(rows).toHaveLength(5)
+        expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(CASE_RESEARCH_CREDITS + 5)
+      })
+    })
+
+    it('a format without keywords makes the one matching-terms spend it always did', async () => {
+      const searched = recordSearches()
+      await withFormats([main, sleep], 'main', async () => {
+        await engine.execute(request())
+        expect(searched).toEqual([SUBJECT])
+        const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+        expect(brief.formatKey).toBe('main')
+        expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+      })
+    })
+
+    it('a stale case key resolves to the primary', async () => {
+      const searched = recordSearches()
+      const primary = { ...sleep, primary: true }
+      await withFormats([{ ...main, primary: false }, primary], 'gone', async () => {
+        await engine.execute(request())
+        expect(searched).toEqual([SUBJECT, `${SUBJECT} history for sleep`])
+        const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+        expect(brief.formatKey).toBe('sleep')
       })
     })
   })

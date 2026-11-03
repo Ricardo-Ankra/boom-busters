@@ -15,6 +15,7 @@ import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Label, Select } from '@/components/ui/input'
+import { fitWarning } from '@/lib/brief-fit'
 import { channelHref } from '@/lib/channel-href'
 import {
   caseResearchEstimate,
@@ -61,7 +62,9 @@ export function briefMatchesSubject(brief: SearchBrief, subject: string | null):
 const STEP_LABELS: Record<string, string> = {
   load: 'Starting',
   'keywords-terms': 'Finding search terms',
+  'keywords-format': 'Finding search terms for the format',
   'keywords-filter': 'Keeping the terms about the subject',
+  fit: 'Checking the subject fits the channel',
   'keywords-questions': 'Finding the questions people search',
   outliers: 'Finding the winning videos',
   'outlier-details': 'Reading the winning videos',
@@ -298,7 +301,16 @@ const measuredOn = (iso: string): string =>
   })
 
 /** The row's `Search brief`: collapsed, with the choices the owner makes from it. */
-export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run }) {
+export function SearchBriefPanel({
+  item,
+  run,
+  pillars = [],
+}: {
+  item: CaseSummary
+  run: Run
+  /** The channel's pillars, so a fit that names another one can say its label. */
+  pillars?: readonly { key: string; label: string }[]
+}) {
   const brief = item.searchBrief
   const [writing, setWriting] = React.useState(false)
   const [own, setOwn] = React.useState(item.angle ?? '')
@@ -322,9 +334,15 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
   }
 
   const current = briefMatchesSubject(brief, item.subject)
+  const fit = fitWarning(brief.fit, item.category, pillars)
 
   return (
     <div className="flex w-full flex-col gap-2">
+      {fit ? (
+        <p role="status" className="text-[13px] text-[var(--color-warning)]">
+          {fit}
+        </p>
+      ) : null}
       {current ? null : (
         <p role="status" className="text-[13px] text-[var(--color-warning)]">
           This research is for {brief.subject}. Research again for {item.subject?.trim() ?? ''}.
