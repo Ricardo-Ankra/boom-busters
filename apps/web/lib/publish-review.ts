@@ -511,7 +511,8 @@ export async function publishModel(
   ])
 
   // The master's copy against the topic, the format and the pillar, from the
-  // frozen bible. The opening is the saved body: the description starts with it.
+  // frozen bible. The opening is the saved body alone (the description starts
+  // with it): an unwritten one is not credited with the generated hook.
   const masterCohesion = (): CohesionReport => {
     const draft = masterRecord ? toRecordProp(masterRecord, [], current) : null
     const brief = project.searchBrief
@@ -519,7 +520,7 @@ export async function publishModel(
     const pillar = pillarOf(channel.bible, project.caseCategory)
     return cohesionReport({
       title: draft?.title ?? draft?.titleOptions[0] ?? '',
-      description: draft?.descriptionBody ?? hook,
+      description: draft?.descriptionBody?.trim() ? draft.descriptionBody : '',
       tags: draft?.tags ?? [],
       hashtags: draft?.hashtags ?? [],
       spokenIntro: spokenIntro(

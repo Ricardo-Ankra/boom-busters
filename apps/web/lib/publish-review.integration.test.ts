@@ -31,7 +31,7 @@ import {
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { descriptionIngredients, publishModel } from './publish-review'
+import { descriptionIngredients, publishModel, spokenIntro } from './publish-review'
 
 /**
  * The Publish screen's "x of N upload starts" must use the budget of the
@@ -282,11 +282,48 @@ describeDb('publishModel cohesion', () => {
     expect(cohesion?.gaps).toContain('No format keywords set')
   })
 
+  it('does not credit an unwritten description with the generated hook', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const { hook } = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+    const lead = hook.split(/\s+/)[0]!
+    const original = await currentBible(db, FIRST_CHANNEL_ID)
+    const frozen = await saveBibleVersion(
+      db,
+      FIRST_CHANNEL_ID,
+      { ...original.bible, formats: [{ ...original.bible.formats[0]!, keywords: [lead] }] },
+      'Lead keyword from the hook',
+    )
+    await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
+    try {
+      const { cohesion } = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items[0]!
+      expect(cohesion?.cells.descriptionOpening.format).toBe('miss')
+    } finally {
+      await moveProjectBible(db, FIXTURE_PROJECT_ID, original.id)
+    }
+  })
+
   it('has no report for a Short', async () => {
     await seed(db)
     const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
     for (const item of model.items.filter((i) => i.targetType === 'short')) {
       expect(item.cohesion).toBeNull()
     }
+  })
+})
+
+describe('spokenIntro', () => {
+  const md = ['# The rise', 'One two [pause] three four.', 'Five six seven eight nine ten.'].join(
+    '\n\n',
+  )
+
+  it('takes round(30 x wordsPerMinute / 60) words, skipping headings and markup', () => {
+    // 120 wpm: 60 words, so the whole chapter; 8 words at 16 wpm.
+    expect(spokenIntro(md, 120)).toBe('One two three four. Five six seven eight nine ten.')
+    expect(spokenIntro(md, 16)).toBe('One two three four. Five six seven eight')
+  })
+
+  it('is empty for an empty chapter', () => {
+    expect(spokenIntro('', 150)).toBe('')
   })
 })
