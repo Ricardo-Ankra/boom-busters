@@ -28,6 +28,7 @@ test.setTimeout(180_000)
 
 const SECTION_LABELS = [
   'Identity',
+  'Formats',
   'Voice',
   'Look',
   'Examples',
@@ -103,7 +104,14 @@ async function leaveDraftedBible(): Promise<void> {
         if (!draft.inputs) throw new Error('the Start press did not save the inputs')
         return {
           ...draft,
-          bible: mock.bible,
+          // The mock draft leaves the starting format untouched, which reads Empty; name a keyword.
+          bible: {
+            ...mock.bible,
+            formats: mock.bible.formats.map((format) => ({
+              ...format,
+              keywords: ['psychology cases'],
+            })),
+          },
           statuses: {
             identity: 'drafted',
             formats: 'drafted',
@@ -333,6 +341,21 @@ test.describe('a second channel’s bible', () => {
     const hedging = page.getByLabel('Hedging rules')
     await hedging.fill(`${await hedging.inputValue()}${VOICE_EDIT}`)
     await page.getByRole('button', { name: 'Done editing Voice', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled({
+      timeout: 15_000,
+    })
+
+    // A runtime that runs the wrong way is refused in words and holds Save; fixed, it saves.
+    await openCard(page, 'Formats')
+    await page.getByRole('button', { name: 'Edit Formats', exact: true }).click()
+    const longest = page.getByLabel('Longest')
+    await longest.fill('2')
+    await expect(page.getByText(/Runtime needs/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+    await longest.fill('60')
+    await page.getByRole('button', { name: 'Add keyword' }).click()
+    await page.getByLabel('Keyword 2', { exact: true }).fill('mind explained')
+    await page.getByRole('button', { name: 'Done editing Formats', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled({
       timeout: 15_000,
     })

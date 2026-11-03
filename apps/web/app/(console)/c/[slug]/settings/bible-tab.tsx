@@ -77,6 +77,16 @@ export function BibleTab({
   const [note, setNote] = React.useState('')
   const [retryToken, setRetryToken] = React.useState(0)
   const [panel, setPanel] = React.useState<BiblePanel>(null)
+  const [editProblems, setEditProblems] = React.useState<Partial<Record<BibleSection, string[]>>>(
+    {},
+  )
+  const setProblems = React.useCallback((section: BibleSection, problems: string[]) => {
+    setEditProblems((current) => {
+      const had = current[section] ?? []
+      if (had.length === problems.length && had.every((p, i) => p === problems[i])) return current
+      return { ...current, [section]: problems }
+    })
+  }, [])
 
   // The server's draft wins whenever the page refreshes.
   React.useEffect(() => setDraft(initialDraft), [initialDraft])
@@ -89,7 +99,9 @@ export function BibleTab({
   }, [running, router])
 
   const bible = draft?.bible ?? currentVersion.bible
-  const blockers = draft ? bibleSaveBlockers(draft) : []
+  // What the open section forms say is wrong with them also stops Save.
+  const formProblems = Object.values(editProblems).flat()
+  const blockers = draft ? [...bibleSaveBlockers(draft), ...formProblems] : []
   const locked = archived || running || busy
 
   /** Runs an action, shows its refusal, takes the draft it returns and refreshes the page. */
@@ -304,6 +316,7 @@ export function BibleTab({
             .filter(([key]) => errorSection(key) === section)
             .map(([, message]) => message)}
           disabled={locked}
+          onProblems={setProblems}
           onEdit={(target, patch) =>
             act(
               () => editBibleSectionAction(channel.id, target, patch),

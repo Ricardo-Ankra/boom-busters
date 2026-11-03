@@ -15,6 +15,7 @@ import {
 import type { BibleDraft, BibleSectionStatus } from './bible-draft'
 import { CAST_GUARDRAIL_MAX, DEFAULT_GUARDRAIL_SUFFIX } from './cast'
 import { EXAMPLE_SLOTS } from './bible-slots'
+import { defaultFormat } from './formats'
 import {
   BIBLE_SECTIONS,
   ChannelBibleReadSchema,
@@ -263,5 +264,22 @@ describe('sectionProgress', () => {
         'examples',
       ),
     ).toBe('44 of 44 examples written')
+  })
+
+  test('counts formats, and agrees with the empty chip about an untouched default', () => {
+    expect(sectionIsEmpty({ ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat()] }, 'formats')).toBe(
+      true,
+    )
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat()] }, 'formats')).toBe(
+      '0 formats',
+    )
+    const tuned = { ...defaultFormat(), keywords: ['ancient history'] }
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [tuned] }, 'formats')).toBe(
+      '1 format',
+    )
+    const second = { ...tuned, key: 'sleep', primary: false }
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [tuned, second] }, 'formats')).toBe(
+      '2 formats',
+    )
   })
 })

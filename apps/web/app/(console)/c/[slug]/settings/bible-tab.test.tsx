@@ -535,6 +535,131 @@ describe('BibleTab', () => {
     })
   })
 
+  describe('formats, pillar keywords, hashtag and footer', () => {
+    it('edits formats as cards: add, make primary, and save two with one primary', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+
+      expect(screen.getAllByRole('group', { name: 'Documentary' })).toHaveLength(1)
+      await userEvent.click(screen.getByRole('button', { name: 'Add format' }))
+      const second = screen.getByRole('group', { name: 'New format' })
+      expect(within(second).queryByText('Primary')).toBeNull()
+
+      await userEvent.click(within(second).getByRole('button', { name: /^Make .* primary$/ }))
+      expect(within(second).getByText('Primary')).toBeInTheDocument()
+      expect(
+        within(screen.getByRole('group', { name: 'Documentary' })).queryByText('Primary'),
+      ).toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        formats: { primary: boolean }[]
+      }
+      expect(patch.formats).toHaveLength(2)
+      expect(patch.formats.filter((f) => f.primary)).toHaveLength(1)
+    })
+
+    it('refuses to remove the primary format and removes another', async () => {
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add format' }))
+      const first = screen.getByRole('group', { name: 'Documentary' })
+      await userEvent.click(within(first).getByRole('button', { name: /^Remove format/ }))
+      expect(screen.getByText('Make another format primary first')).toBeInTheDocument()
+      expect(screen.getAllByRole('group', { name: /Documentary|New format/ })).toHaveLength(2)
+
+      const second = screen.getByRole('group', { name: 'New format' })
+      await userEvent.click(within(second).getByRole('button', { name: /^Remove format/ }))
+      expect(screen.queryByRole('group', { name: 'New format' })).toBeNull()
+    })
+
+    it('edits a format keyword by keyword, with the schema limits on the numbers', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      await userEvent.click(within(format).getByRole('button', { name: 'Add keyword' }))
+      await userEvent.type(within(format).getByLabelText('Keyword 1'), 'ancient history')
+      await userEvent.click(within(format).getByRole('button', { name: 'Add keyword' }))
+      await userEvent.type(within(format).getByLabelText('Keyword 2'), 'sleep')
+      await userEvent.click(within(format).getByRole('button', { name: 'Remove keyword 2' }))
+      expect(within(format).queryByLabelText('Keyword 2')).toBeNull()
+
+      const pace = within(format).getByLabelText('Narration pace (words a minute)')
+      expect(pace).toHaveAttribute('type', 'number')
+      expect(pace).toHaveAttribute('min', '80')
+      expect(pace).toHaveAttribute('max', '200')
+      const hold = within(format).getByLabelText('Picture pace (hold multiplier)')
+      expect(hold).toHaveAttribute('step', '0.5')
+      expect(hold).toHaveAttribute('min', '1')
+      expect(hold).toHaveAttribute('max', '4')
+      expect(within(format).getByLabelText('Longest')).toHaveAttribute('max', '240')
+
+      await userEvent.selectOptions(within(format).getByLabelText('Intent'), 'calm')
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        formats: { keywords: string[]; intent: string }[]
+      }
+      expect(patch.formats[0]).toMatchObject({ keywords: ['ancient history'], intent: 'calm' })
+    })
+
+    it('shows schema errors under the field, holds Done and adds to the save bar', async () => {
+      renderTab(draftOf())
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      const longest = within(format).getByLabelText('Longest')
+      await userEvent.clear(longest)
+      await userEvent.type(longest, '5')
+      expect(within(format).getByText(/Runtime needs/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Done editing Formats' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      expect(screen.getByText(/1 thing to fix before saving/)).toBeInTheDocument()
+
+      await userEvent.clear(longest)
+      await userEvent.type(longest, '60')
+      expect(within(format).queryByText(/Runtime needs/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+
+      await userEvent.click(within(format).getByRole('checkbox', { name: 'topic' }))
+      expect(
+        within(format).getByText('Every required title slot must appear in the template as {slot}'),
+      ).toBeInTheDocument()
+      await userEvent.type(within(format).getByLabelText('Title pattern'), 'The {{topic} case')
+      expect(within(format).queryByText(/Every required title slot/)).toBeNull()
+    })
+
+    it('shows the hashtag error, blocks Save, and takes the footer', async () => {
+      renderTab(draftOf())
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Search' }))
+      const tag = screen.getByLabelText('Channel hashtag')
+      await userEvent.type(tag, '#history')
+      expect(screen.getByText('Letters and digits only, without #')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      await userEvent.clear(tag)
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Publishing' }))
+      expect(screen.getByLabelText('Channel footer')).toBeInTheDocument()
+    })
+
+    it('edits each pillar keywords as one comma-separated line', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Identity' }))
+      const first = screen.getByLabelText('Category 1 keywords')
+      await userEvent.clear(first)
+      await userEvent.type(first, 'ancient egypt, egypt history')
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Identity' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        caseCategories: { keywords: string[] }[]
+      }
+      expect(patch.caseCategories[0]!.keywords).toEqual(['ancient egypt', 'egypt history'])
+      expect(screen.queryByText('Keyword context')).toBeNull()
+    })
+  })
+
   describe('adding and removing hooks, openings and titles', () => {
     const entry = (text: string) => ({ text, note: '', drawnFrom: [] })
     const withLists = (hooks: number, titles = 0) =>

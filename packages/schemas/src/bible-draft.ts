@@ -81,6 +81,9 @@ export function sectionProgress(bible: ChannelBible, section: BibleSection): str
       plural(bible.titles.length, 'title', 'titles'),
     ].join(', ')
   }
+  if (section === 'formats') {
+    return plural(sectionIsEmpty(bible, section) ? 0 : bible.formats.length, 'format', 'formats')
+  }
   const keys = BIBLE_SECTIONS[section]
   const filled = keys.filter((key) => {
     if (key === 'subjectNoun') {

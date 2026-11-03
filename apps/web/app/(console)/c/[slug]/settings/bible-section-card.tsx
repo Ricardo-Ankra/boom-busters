@@ -12,10 +12,12 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import {
+  NO_ISSUES,
   SectionEditor,
   SectionView,
   formPatch,
   initialFormValues,
+  sectionIssues,
   type FormValues,
 } from './bible-fields'
 
@@ -58,6 +60,7 @@ export function BibleSectionCard({
   onApprove,
   onRedraft,
   onDraftSlot,
+  onProblems,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -72,6 +75,8 @@ export function BibleSectionCard({
   onApprove: (section: BibleSection) => void
   onRedraft: (section: BibleSection, steer?: string) => void
   onDraftSlot: (slotId: string) => void
+  /** What the open form says is wrong with it, for the save bar; empty once it closes. */
+  onProblems?: (section: BibleSection, problems: string[]) => void
 }) {
   const label = sectionStatusLabel(bible, section, status)
   const ChipIcon = CHIP_ICON[label]
@@ -82,6 +87,17 @@ export function BibleSectionCard({
   const [values, setValues] = React.useState<FormValues>({})
   // Open when the section needs the owner; the owner's own toggling wins after that.
   const [open, setOpen] = React.useState(label !== 'Approved' || errors.length > 0)
+
+  // The schema's verdict on the form as it stands, shown under its fields and in the save bar.
+  const issues = React.useMemo(
+    () => (editing ? sectionIssues(section, values) : NO_ISSUES),
+    [editing, section, values],
+  )
+  const problemKey = issues.messages.join('\n')
+  React.useEffect(() => {
+    onProblems?.(section, problemKey === '' ? [] : problemKey.split('\n'))
+    return () => onProblems?.(section, [])
+  }, [problemKey, section, onProblems])
 
   const startEditing = () => {
     setValues(initialFormValues(section, bible))
@@ -137,7 +153,7 @@ export function BibleSectionCard({
             <>
               <Button
                 variant="primary"
-                disabled={disabled}
+                disabled={disabled || issues.messages.length > 0}
                 aria-label={`Done editing ${BIBLE_SECTION_LABELS[section]}`}
                 onClick={() => void done()}
               >
@@ -202,6 +218,7 @@ export function BibleSectionCard({
             section={section}
             values={values}
             flags={flags}
+            issues={issues}
             disabled={disabled}
             onChange={(key, value) => setValues((current) => ({ ...current, [key]: value }))}
           />
