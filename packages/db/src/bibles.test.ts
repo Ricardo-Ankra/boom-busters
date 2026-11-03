@@ -185,6 +185,57 @@ suite('bible versions', () => {
     }
   })
 
+  it('a bible stored with keywordContext and no formats reads back with a formats array, and a save drops keywordContext', async () => {
+    const channel = await createChannel(db, channelInput('legacy'))
+    const legacy = { ...EMPTY_BIBLE, keywordContext: 'documentary' } as Record<string, unknown>
+    delete legacy.formats
+    const [row] = await db
+      .insert(channelBibles)
+      .values({
+        channelId: channel.id,
+        version: 2,
+        bible: legacy as never,
+        slotIds: [],
+        complete: false,
+        note: 'Legacy',
+      })
+      .returning()
+    await db.update(channels).set({ currentBibleId: row!.id }).where(eq(channels.id, channel.id))
+
+    const current = await currentBible(db, channel.id)
+    expect(current.bible.formats[0]?.name).toBe('Documentary')
+
+    const saved = await saveBibleVersion(db, channel.id, current.bible, 'Edited in Settings')
+    const [raw] = await db.select().from(channelBibles).where(eq(channelBibles.id, saved.id))
+    const stored = raw!.bible as Record<string, unknown>
+    expect(Array.isArray(stored.formats)).toBe(true)
+    expect(stored).not.toHaveProperty('keywordContext')
+  })
+
+  it('createProjectFromCase stores the main format by default and a given key; channelForProject resolves it', async () => {
+    const channel = await createChannel(db, channelInput('fmt'))
+    const kase = await createCase(db, {
+      title: 'Enron',
+      category: 'collapse',
+      channelId: channel.id,
+    })
+
+    const plain = await createProjectFromCase(db, { caseId: kase.id, title: 'A' })
+    expect(plain.formatKey).toBe('main')
+    const sleep = await createProjectFromCase(db, {
+      caseId: kase.id,
+      title: 'B',
+      formatKey: 'sleep',
+    })
+    expect(sleep.formatKey).toBe('sleep')
+
+    // The frozen bible has no 'sleep' format, so the primary answers.
+    const resolved = await channelForProject(db, sleep.id)
+    expect(resolved.formatKey).toBe('sleep')
+    expect(resolved.format).toEqual(resolved.bible.formats[0])
+    expect((await channelForProject(db, plain.id)).formatKey).toBe('main')
+  })
+
   it('a save for an unknown channel throws and writes nothing', async () => {
     await expect(
       saveBibleVersion(db, '01BB0000000000000000000009', EMPTY_BIBLE, 'Edited in Settings'),

@@ -488,7 +488,13 @@ export function nextStage(stage: ProjectStage): ProjectStage | null {
  */
 export async function createProjectFromCase(
   db: Database,
-  input: { caseId: string; title: string; targetRuntimeMin?: number; bibleId?: string },
+  input: {
+    caseId: string
+    title: string
+    targetRuntimeMin?: number
+    bibleId?: string
+    formatKey?: string
+  },
 ): Promise<ProjectRow> {
   if (input.bibleId !== undefined) {
     const [kase] = await db
@@ -535,6 +541,7 @@ export async function createProjectFromCase(
         stage: 'dossier',
         stageStatus: 'queued',
         searchBrief: frozen,
+        ...(input.formatKey === undefined ? {} : { formatKey: input.formatKey }),
         ...(input.targetRuntimeMin === undefined
           ? {}
           : { targetRuntimeMin: input.targetRuntimeMin }),

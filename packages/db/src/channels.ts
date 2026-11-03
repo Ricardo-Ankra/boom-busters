@@ -11,8 +11,9 @@ import {
   FIRST_CHANNEL_NAME,
   FIRST_CHANNEL_SLUG,
   ProjectNotFoundError,
+  resolveFormat,
 } from '@boom-busters/schemas'
-import type { ChannelBible, Settings, SettingsPatch } from '@boom-busters/schemas'
+import type { ChannelBible, ChannelFormat, Settings, SettingsPatch } from '@boom-busters/schemas'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { appendBibleVersion } from './bibles'
@@ -284,9 +285,11 @@ export async function channelForProject(
   slotIds: string[]
   bibleId: string
   bibleVersion: number
+  formatKey: string
+  format: ChannelFormat
 }> {
   const [row] = await db
-    .select({ channel: channels, version: channelBibles })
+    .select({ channel: channels, version: channelBibles, formatKey: projects.formatKey })
     .from(projects)
     .innerJoin(channels, eq(channels.id, projects.channelId))
     .innerJoin(channelBibles, eq(channelBibles.id, projects.bibleId))
@@ -305,6 +308,8 @@ export async function channelForProject(
     slotIds: channel.slotIds,
     bibleId: channel.bibleId,
     bibleVersion: channel.bibleVersion,
+    formatKey: row.formatKey,
+    format: resolveFormat(channel.bible.formats, row.formatKey),
   }
 }
 

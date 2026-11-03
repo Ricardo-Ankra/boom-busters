@@ -14,6 +14,7 @@ import {
   listCases,
   markCaseInProduction,
   saveCaseSearchBrief,
+  setCaseFormat,
   setCaseStatus,
   setCaseTargetKeyword,
   truncateCases,
@@ -559,5 +560,14 @@ suite('cases', () => {
         expect((await getProject(db, project.id))?.searchBrief).toBeNull()
       })
     })
+  })
+
+  it('setCaseFormat stores and clears the format key', async () => {
+    const kase = await createCase(db, { channelId, title: 'Fmt', category: 'collapse' })
+    expect((await getCase(db, kase.id))?.formatKey).toBeNull()
+    await setCaseFormat(db, kase.id, 'sleep')
+    expect((await getCase(db, kase.id))?.formatKey).toBe('sleep')
+    await setCaseFormat(db, kase.id, null)
+    expect((await getCase(db, kase.id))?.formatKey).toBeNull()
   })
 })

@@ -458,6 +458,8 @@ export const cases = pgTable(
     searchBrief: jsonb('search_brief').$type<SearchBrief>(),
     /** The case research run in flight or last finished (`CaseResearchJobSchema`). */
     searchJob: jsonb('search_job').$type<CaseResearchJob>(),
+    /** The channel format (a key in the bible's `formats`) this case is made as; null means the primary. */
+    formatKey: text('format_key'),
     priorityScore: integer('priority_score').notNull().default(0),
     status: caseStatusEnum('status').notNull().default('idea'),
     createdAt: createdAt(),
@@ -488,6 +490,8 @@ export const projects = pgTable(
     stage: projectStageEnum('stage').notNull().default('dossier'),
     stageStatus: stageStatusEnum('stage_status').notNull().default('queued'),
     targetRuntimeMin: integer('target_runtime_min').notNull().default(18),
+    /** The format the project is made as, a key in its frozen bible's `formats`; an unknown key resolves to the primary. */
+    formatKey: text('format_key').notNull().default('main'),
     inngestRunId: text('inngest_run_id'),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     /**
