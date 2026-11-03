@@ -632,6 +632,10 @@ export default async function ProjectPage({
           shorts={script.script.shortsCandidates}
           usedFallbackModel={usedFallbackModel}
           notices={noticesFor(notices, 'script')}
+          fixedLines={{
+            introLine: channel.format.introLine,
+            outroLine: channel.format.outroLine,
+          }}
         />
       ) : showDossier ? (
         <DossierReview

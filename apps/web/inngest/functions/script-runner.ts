@@ -26,10 +26,12 @@ import type { Repair, ScriptClaim } from '@boom-busters/providers'
 import type { NoticeTarget, Outline, ShortsCandidate } from '@boom-busters/schemas'
 import {
   BudgetExceededError,
+  dropFixedParagraphs,
   estimateRuntimeSec,
   findRepeats,
   parseEventData,
   serialiseError,
+  withFixedLines,
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
@@ -115,9 +117,15 @@ export async function markShortsStep(
   let marked: Awaited<ReturnType<typeof markShortsWith>>
   try {
     // The bible is read here, inside the step, as every request-building step does.
+    const channel = await channelForProject(db, projectId)
     marked = await markShortsWith(completeForProject(projectId), {
       ...input,
-      bible: requireCompleteBible(await channelForProject(db, projectId)),
+      // A Short is never cut from the format's fixed lines.
+      chapters: input.chapters.map((chapter) => ({
+        ...chapter,
+        contentMd: dropFixedParagraphs(chapter.contentMd, channel.format),
+      })),
+      bible: requireCompleteBible(channel),
     })
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
@@ -141,6 +149,20 @@ export async function markShortsStep(
   // already paid for, nor be reported as the marking stopping.
   await recordRepairs(target, [...priorRepairs, ...marked.repairs])
   return { ok: true, candidates: marked.candidates }
+}
+
+/**
+ * One chapter's text with the format's fixed lines, as the whole script would
+ * hold them: the opening line on chapter 0, the closing line on the last.
+ */
+function placeFixedLines(
+  contentMd: string,
+  index: number,
+  chapterCount: number,
+  format: Parameters<typeof withFixedLines>[1],
+): string {
+  const slots = Array.from({ length: chapterCount }, (_, at) => (at === index ? contentMd : ''))
+  return withFixedLines(slots, format)[index] ?? contentMd
 }
 
 export const scriptRunner = inngest.createFunction(
@@ -237,6 +259,7 @@ export const scriptRunner = inngest.createFunction(
             targetRuntimeMin: setup.targetRuntimeMin,
             searchBrief,
             wordsPerMinute: channel.format.wordsPerMinute,
+            introRule: channel.format.introRule,
           })
           return { ok: true, ...drafted }
         } catch (error) {
@@ -308,6 +331,10 @@ export const scriptRunner = inngest.createFunction(
             }
           }
 
+          // The format's fixed lines are placed here, in the step that stores the
+          // chapter, so a run parked before the format had any replays without them.
+          contentMd = placeFixedLines(contentMd, index, outline.chapters.length, channel.format)
+
           const row = await saveChapter(db, {
             scriptId: setup.scriptId,
             index,
@@ -347,13 +374,16 @@ export const scriptRunner = inngest.createFunction(
 
     for (const chapter of written) {
       await step.run(`self-check-${chapter.index}`, async () => {
-        const frozen = requireCompleteBible(await channelForProject(db, projectId))
+        const channel = await channelForProject(db, projectId)
+        const frozen = requireCompleteBible(channel)
+        // The fixed lines are the owner's words, not claims: the check never sees them.
+        const checked = dropFixedParagraphs(chapter.contentMd, channel.format)
         const check = mocked
-          ? mockSelfCheck(chapter.contentMd)
+          ? mockSelfCheck(checked)
           : await selfCheckWith(completeForProject(projectId), {
               bible: frozen,
               chapterTitle: chapter.title,
-              contentMd: chapter.contentMd,
+              contentMd: checked,
               claims: setup.claims,
             })
 

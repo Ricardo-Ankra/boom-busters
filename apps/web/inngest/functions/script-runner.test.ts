@@ -70,6 +70,7 @@ const describeDb = requireTestDatabase() ? describe : describe.skip
 const PROJECT = FIXTURE_PROJECT_ID
 const SCRIPT_NOTICES = { projectId: PROJECT, subject: 'script', subjectId: null }
 
+const FIXED_LINES = ['Settle in.', 'Sleep well.'] as const
 const chapters = [
   {
     index: 0,
@@ -77,6 +78,11 @@ const chapters = [
     contentMd: 'EY refused to sign the accounts. The shares collapsed in nine days.',
   },
 ]
+
+// The first chapter as the script stores it under a format with both fixed lines.
+const fixedChapter = [FIXED_LINES[0], chapters[0]!.contentMd, FIXED_LINES[1]].join(
+  String.fromCharCode(10, 10),
+)
 
 const candidate = {
   chapterIndex: 0,
@@ -152,6 +158,35 @@ describeDb('markShortsStep (decision 293)', () => {
       'Shorts marking stopped: The model returned no JSON for Shorts candidates. It answered: not json at all. The Shorts stage will mark them again.',
     )
     expect(recordRepairs).not.toHaveBeenCalled()
+  })
+
+  it("never offers a Short the format's fixed lines", async () => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return {
+        ...channel,
+        format: { ...channel.format, introLine: 'Settle in.', outroLine: 'Sleep well.' },
+      }
+    })
+    try {
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify({ candidates: [candidate] }) })
+      await markShortsStep(PROJECT, {
+        chapters: [
+          {
+            index: 0,
+            title: 'The audit',
+            contentMd: fixedChapter,
+          },
+        ],
+      })
+      const sent = JSON.stringify(callLlm.mock.calls[0]![0])
+      expect(sent).toContain('EY refused to sign the accounts.')
+      expect(sent).not.toContain('Settle in.')
+      expect(sent).not.toContain('Sleep well.')
+    } finally {
+      channelForProject.mockImplementation(actual.channelForProject)
+    }
   })
 
   it('hands a budget stop back for the run to park, with no notice', async () => {
@@ -327,6 +362,80 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     } finally {
       channelForProject.mockImplementation(actual.channelForProject)
     }
+  })
+
+  describe("a format's intro rule and fixed lines", () => {
+    const withFormat = async (patch: Record<string, string>) => {
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      channelForProject.mockImplementation(async (...args: unknown[]) => {
+        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+        return { ...channel, format: { ...channel.format, ...patch } }
+      })
+      return () => channelForProject.mockImplementation(actual.channelForProject)
+    }
+
+    it('stores the opening and closing lines in the chapter step, once', async () => {
+      const restore = await withFormat({ introLine: 'Settle in.', outroLine: 'Sleep well.' })
+      try {
+        const { result } = await engine.executeStep('draft-chapter-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 3),
+        })
+        const { chapterId, contentMd } = result as { chapterId: string; contentMd: string }
+        const paragraphs = contentMd.split(/\n{2,}/)
+        expect(paragraphs[0]).toBe('Settle in.')
+        expect(paragraphs.at(-1)).toBe('Sleep well.')
+        expect((await getChapter(db, chapterId))?.contentMd).toBe(contentMd)
+      } finally {
+        restore()
+      }
+    })
+
+    it('puts the intro rule in the outline request', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ introRule: 'The opening names tonight and settles in.' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('The opening names tonight and settles in.')
+        expect(sent.system).not.toContain('glimpse of the consequence')
+      } finally {
+        restore()
+      }
+    })
+
+    it('leaves the fixed lines out of the self-check', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      const restore = await withFormat({ introLine: 'Settle in.', outroLine: 'Sleep well.' })
+      try {
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: [
+            ...throughSelfCheck().slice(0, 3),
+            {
+              id: 'draft-chapter-0',
+              handler: () => ({
+                ok: true,
+                chapterId: 'chapter-0',
+                contentMd: fixedChapter,
+              }),
+            },
+          ],
+        })
+        const sent = JSON.stringify(callLlm.mock.calls[0]![0])
+        expect(sent).toContain('EY refused to sign the accounts.')
+        expect(sent).not.toContain('Settle in.')
+        expect(sent).not.toContain('Sleep well.')
+      } finally {
+        restore()
+      }
+    })
   })
 
   it("reads the project's search brief inside the outline step, never from an earlier step", async () => {

@@ -343,4 +343,11 @@ describe('spokenIntro', () => {
   it('is empty for an empty chapter', () => {
     expect(spokenIntro('', 150)).toBe('')
   })
+
+  it("starts after the format's fixed opening line", () => {
+    const withLine = ['Settle in.', md].join('\n\n')
+    const format = { introLine: 'Settle in.', outroLine: '' }
+    expect(spokenIntro(withLine, 16, format)).toBe('One two three four. Five six seven eight')
+    expect(spokenIntro(withLine, 16)).toBe('Settle in. One two three four. Five six')
+  })
 })

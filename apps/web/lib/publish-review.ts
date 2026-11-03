@@ -19,6 +19,7 @@ import {
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
   cohesionReport,
+  dropFixedParagraphs,
   nameMatches,
   normaliseArticleUrl,
   PublishDraftSchema,
@@ -34,6 +35,7 @@ import type {
   BriefFit,
   CohesionReport,
   DescriptionSource,
+  FixedLines,
   ScheduleSlot,
   TitleSlot,
 } from '@boom-busters/schemas'
@@ -249,6 +251,8 @@ export function deriveIngredients(input: {
   claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
   /** What the article records read, by normalised URL (decision 303). */
   articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
+  /** The project's format: its fixed lines are not the hook. */
+  format?: FixedLines
 }): {
   chapters: { id: string; title: string; startMs: number }[]
   sources: DescriptionSource[]
@@ -293,7 +297,10 @@ export function deriveIngredients(input: {
   const firstChapter = input.scriptChapters[0]
   const hook = firstChapter
     ? stripNarrationMarkup(
-        firstChapter.contentMd
+        (input.format
+          ? dropFixedParagraphs(firstChapter.contentMd, input.format)
+          : firstChapter.contentMd
+        )
           .split(/\n{2,}/)
           .map((paragraph) => paragraph.trim())
           .find((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#')) ?? '',
@@ -321,11 +328,18 @@ export function openingIsStale(input: {
   return input.bodyScriptVersion === undefined || input.bodyScriptVersion < input.scriptVersion
 }
 
-/** The words the first thirty seconds of narration carry, with the markup stripped. */
-export function spokenIntro(chapterMd: string, wordsPerMinute: number): string {
+/**
+ * The words the first thirty seconds of narration carry, with the markup
+ * stripped. With a format, the first thirty seconds after its fixed lines.
+ */
+export function spokenIntro(
+  chapterMd: string,
+  wordsPerMinute: number,
+  format?: FixedLines,
+): string {
   const count = Math.round((30 * wordsPerMinute) / 60)
   return stripNarrationMarkup(
-    chapterMd
+    (format ? dropFixedParagraphs(chapterMd, format) : chapterMd)
       .split(/\n{2,}/)
       .map((paragraph) => paragraph.trim())
       .filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#'))
@@ -396,6 +410,7 @@ export async function descriptionIngredients(
       scriptChapters: scriptSources.chapters,
       claims,
       articles: await articlesFor(db, claims),
+      format: channel.format,
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
     disclaimer: channel.bible.disclaimer,
@@ -480,6 +495,7 @@ export async function publishModel(
     scriptChapters: scriptSources.chapters,
     claims: dossier?.claims ?? [],
     articles: await articlesFor(db, dossier?.claims ?? []),
+    format: channel.format,
   })
   const current = { hook, scriptVersion: scriptSources.scriptVersion }
 
@@ -537,6 +553,7 @@ export async function publishModel(
       spokenIntro: spokenIntro(
         scriptSources.chapters[0]?.contentMd ?? '',
         channel.format.wordsPerMinute,
+        channel.format,
       ),
       topic: [target, brief?.subject ?? project.caseTitle].filter(
         (text): text is string => typeof text === 'string' && text.trim() !== '',

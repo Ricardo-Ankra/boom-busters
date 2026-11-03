@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ShortsStrip } from './script-studio'
+import { ScriptStudio, ShortsStrip } from './script-studio'
 
 vi.mock('./actions', () => ({
   applyRegeneratedText: vi.fn(),
@@ -97,5 +97,41 @@ describe('the Shorts strip (decision 293)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000S1')
+  })
+})
+
+describe('the format fixed lines in the chapter editor', () => {
+  const chapter = {
+    id: '01J000000000000000000000C1',
+    index: 0,
+    title: 'The audit',
+    contentMd: 'Settle in.\n\nEY refused to sign the accounts.\n\nSleep well.',
+    warnings: [],
+    estRuntimeSec: 12,
+  } as never
+
+  const studio = (fixedLines?: { introLine: string; outroLine: string }) => (
+    <ScriptStudio
+      channelId="01J000000000000000000000H1"
+      projectId="01J0000000000000000000000P"
+      scriptId="01J000000000000000000000S1"
+      chapters={[chapter]}
+      targetRuntimeMin={10}
+      shorts={[]}
+      usedFallbackModel={false}
+      {...(fixedLines ? { fixedLines } : {})}
+    />
+  )
+
+  it('shows each fixed line read-only, labelled', () => {
+    render(studio({ introLine: 'Settle in.', outroLine: 'Sleep well.' }))
+    expect(screen.getAllByText('Fixed line from the bible')).toHaveLength(2)
+    expect(screen.getByText('Settle in.')).toBeInTheDocument()
+    expect(screen.getByText('Sleep well.')).toBeInTheDocument()
+  })
+
+  it('shows none for a format without fixed lines', () => {
+    render(studio())
+    expect(screen.queryByText('Fixed line from the bible')).toBeNull()
   })
 })

@@ -176,6 +176,16 @@ const openingExamples = (inUse: BibleInUse): string =>
 // Outline
 // ---------------------------------------------------------------------------
 
+/** The opening chapter's rule: the format's own when it has one, else the documentary glimpse. */
+const openingRule = (introRule: string | undefined): string =>
+  introRule && introRule.trim() !== ''
+    ? literalBibleText(introRule.trim())
+    : `The opening chapter is a glimpse of the consequence in a few sentences, most
+of its detail withheld. The opening chapter owns none of the claims of the
+moment it glimpses: the chapter where the chronology returns to that moment
+owns them, opens with one line of callback, and narrates only the claims it
+owns.`
+
 /** Third-party search text as one quoted line, literal to `fillSlots`: it can neither start a line nor a bible marker. */
 const quotedSearch = (text: string): string =>
   literalBibleText(JSON.stringify(searchBriefLine(text)))
@@ -223,6 +233,8 @@ export function buildOutlineRequest(input: {
   searchBrief?: SearchBrief | null
   /** The rate the channel's voice speaks at (the project's format); 150 when absent. */
   wordsPerMinute?: number
+  /** The format's intro rule; when non-empty it replaces the opening chapter's rule. */
+  introRule?: string
 }): LLMTaskRequest {
   // The voice's words per minute, minus a little for pacing beats.
   const targetWords = Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95)
@@ -282,11 +294,7 @@ larger or more personal than the last.${outlineSearchRules(input.searchBrief)}
 The close is the one place the film says what it thinks. It is never a recap
 of the chapters.
 
-The opening chapter is a glimpse of the consequence in a few sentences, most
-of its detail withheld. The opening chapter owns none of the claims of the
-moment it glimpses: the chapter where the chronology returns to that moment
-owns them, opens with one line of callback, and narrates only the claims it
-owns.${openingExamples(input.bible)}`,
+${openingRule(input.introRule)}${openingExamples(input.bible)}`,
       input.bible,
     ),
     messages: [

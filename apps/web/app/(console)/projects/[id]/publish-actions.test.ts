@@ -812,6 +812,44 @@ describeDb('the search brief in titles, description and tags', () => {
     })
   })
 
+  it("writes titles and the description from the first paragraph after the format's fixed line", async () => {
+    const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const format = { ...bible.formats[0]!, introLine: 'Settle in.', outroLine: 'Sleep well.' }
+    const channel = await createChannel(db, {
+      name: 'Fixed-line channel',
+      handle: null,
+      slug: `fixed-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...bible, formats: [format] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Wirecard',
+      category: 'collapse',
+    })
+    const projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+    const script = await createScriptVersion(db, projectId)
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'Settle in.\n\nA billion euros was never there.\n\nSleep well.',
+      estRuntimeSec: 12,
+    })
+
+    callLlm.mockResolvedValueOnce({ text: TITLES })
+    expect(await generateTitles('master', projectId)).toEqual({ ok: true })
+    const request = JSON.stringify(callLlm.mock.calls[0]![0])
+    expect(request).toContain('A billion euros was never there.')
+    expect(request).not.toContain('Settle in.')
+
+    // The description's seed is the same hook.
+    const { descriptionIngredients } = await import('@/lib/publish-review')
+    expect((await descriptionIngredients(db, projectId)).hook).toBe(
+      'A billion euros was never there.',
+    )
+  })
+
   describe('title scores (mock VidIQ)', () => {
     beforeEach(() => {
       vi.stubEnv('MOCK_PROVIDERS', '1')

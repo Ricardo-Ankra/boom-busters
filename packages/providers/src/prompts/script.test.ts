@@ -113,6 +113,27 @@ describe('buildOutlineRequest', () => {
     expect(at(150)).toBe(at())
   })
 
+  it("replaces the opening chapter's rule with the format's intro rule", () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+    }
+    const plain = buildOutlineRequest(base).system
+    expect(plain).toContain('The opening chapter is a glimpse of the consequence')
+    expect(buildOutlineRequest({ ...base, introRule: '' }).system).toBe(plain)
+    const ruled = buildOutlineRequest({
+      ...base,
+      introRule: 'The opening chapter greets the listener and names tonight. [[example:x]]',
+    }).system
+    expect(ruled).toContain('The opening chapter greets the listener and names tonight.')
+    expect(ruled).not.toContain('glimpse of the consequence')
+    // The owner's text reaches the prompt as typed: it opens no slot marker.
+    expect(ruled).toContain('tonight. [[example:x]]')
+  })
+
   it('marks which claims are not adjudicated', () => {
     const content = JSON.stringify(request.messages)
     expect(content).toContain('ADJUDICATED')
