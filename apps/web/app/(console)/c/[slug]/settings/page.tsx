@@ -9,6 +9,7 @@ import {
   latestKeywordMeasurements,
   latestSearchSpace,
   listBibleVersions,
+  measuredPace,
   listChannels,
   listLogos,
   maskKey,
@@ -63,6 +64,7 @@ export default async function SettingsPage({
     vidiqKey,
     latestReadings,
     latestSpace,
+    pace,
   ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
@@ -77,6 +79,7 @@ export default async function SettingsPage({
     hasCredential(db, 'vidiq'),
     latestKeywordMeasurements(db, channel.id),
     latestSearchSpace(db, channel.id),
+    measuredPace(db, channel.id),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -217,6 +220,7 @@ export default async function SettingsPage({
         measureCount={measureCount}
         searchSpace={searchSpace}
         searchSpaceCounts={searchSpaceCounts}
+        measuredPace={pace}
       />
     </div>
   )

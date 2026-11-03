@@ -614,7 +614,10 @@ export function resolveCandidateSegment(
   return { chapterId: chapter.id, fromParagraph, toParagraph: fromParagraph + relative }
 }
 
-/** Words per minute of narration, for the runtime estimate on each chapter. */
+/**
+ * The default words per minute of narration. Not the rate: the rate is the
+ * project's format (`ChannelFormat.wordsPerMinute`), which every reader passes.
+ */
 export const NARRATION_WPM = 150
 
 export function countWords(text: string): number {
@@ -625,6 +628,6 @@ export function countWords(text: string): number {
   return words === '' ? 0 : words.split(/\s+/).length
 }
 
-export function estimateRuntimeSec(text: string): number {
-  return Math.round((countWords(text) / NARRATION_WPM) * 60)
+export function estimateRuntimeSec(text: string, wordsPerMinute = NARRATION_WPM): number {
+  return Math.round((countWords(text) / wordsPerMinute) * 60)
 }

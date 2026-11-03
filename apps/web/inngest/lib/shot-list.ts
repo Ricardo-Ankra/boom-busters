@@ -37,10 +37,10 @@ export interface TimedParagraph {
   words: AnchorWord[]
 }
 
-/** ~150 words a minute — the fallback when a paragraph has no measured take. */
-function estimateParagraphMs(text: string): number {
+/** The fallback when a paragraph has no measured take: the format's pace (150 by default). */
+export function estimateParagraphMs(text: string, wordsPerMinute = 150): number {
   const words = text.split(/\s+/).filter(Boolean).length
-  return Math.max(2_000, words * 400)
+  return Math.max(2_000, words * (60_000 / wordsPerMinute))
 }
 
 export interface TakeDuration {
@@ -65,6 +65,8 @@ export interface TakeDuration {
 export function timedParagraphs(input: {
   chapters: readonly { id: string; title: string; contentMd: string }[]
   takes: readonly TakeDuration[]
+  /** The project format's narration pace, for a paragraph without a take. */
+  wordsPerMinute?: number
 }): TimedParagraph[] {
   const current = latestTakes(
     input.takes.map((take) => ({
@@ -92,7 +94,7 @@ export function timedParagraphs(input: {
   return narrationUnits({ chapters: input.chapters }).map((unit) => {
     const key = `${unit.chapterId}:${unit.unitIndex}`
     const measured = durations.get(key)
-    const durationMs = measured ?? estimateParagraphMs(unit.text)
+    const durationMs = measured ?? estimateParagraphMs(unit.text, input.wordsPerMinute)
     const paragraph: TimedParagraph = {
       chapterId: unit.chapterId,
       index: unit.unitIndex,

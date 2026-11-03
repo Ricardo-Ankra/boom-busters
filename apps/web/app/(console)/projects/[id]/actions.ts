@@ -195,11 +195,12 @@ export async function saveChapterText(
     return { ok: false, error: 'That chapter is not part of this project' }
   }
 
+  const { format } = await channelForProject(db, projectId)
   const updated = await editChapter(db, {
     chapterId,
     afterText: parsed.data,
     editType: 'human',
-    estRuntimeSec: estimateRuntimeSec(parsed.data),
+    estRuntimeSec: estimateRuntimeSec(parsed.data, format.wordsPerMinute),
   })
   if (!updated) return { ok: false, error: 'That chapter no longer exists' }
 
@@ -299,12 +300,13 @@ export async function applyRegeneratedText(
     return { ok: false, error: 'That chapter is not part of this project' }
   }
 
+  const { format } = await channelForProject(db, projectId)
   const updated = await editChapter(db, {
     chapterId,
     afterText: parsed.data,
     editType: 'regenerate',
     note: note.trim() || null,
-    estRuntimeSec: estimateRuntimeSec(parsed.data),
+    estRuntimeSec: estimateRuntimeSec(parsed.data, format.wordsPerMinute),
   })
   if (!updated) return { ok: false, error: 'That chapter no longer exists' }
 

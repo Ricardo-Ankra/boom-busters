@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BibleTab, type BibleVersionView } from './bible-tab'
 import type { KeywordReadings } from './bible-measurements'
+import type { MeasuredPaceView } from './bible-fields'
 import type { SearchSpaceReadings } from './bible-search-space'
 import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
@@ -75,6 +76,7 @@ export function SettingsForm({
   measureCount = 0,
   searchSpace,
   searchSpaceCounts,
+  measuredPace,
 }: {
   initialSettings: Settings
   /** This channel's YouTube connection, masked. */
@@ -116,6 +118,8 @@ export function SettingsForm({
   searchSpace?: SearchSpaceReadings
   /** Per format key, how many of its keywords have no analysis from the last 30 days. */
   searchSpaceCounts?: Record<string, number>
+  /** The pace the channel's voice measured at; null when no take qualifies. */
+  measuredPace?: MeasuredPaceView | null
   measureCount?: number
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
@@ -246,6 +250,7 @@ export function SettingsForm({
               measureCount={measureCount}
               {...(searchSpace ? { searchSpace } : {})}
               {...(searchSpaceCounts ? { searchSpaceCounts } : {})}
+              {...(measuredPace !== undefined ? { measuredPace } : {})}
             />
           </Lock>
         </TabsContent>

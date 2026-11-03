@@ -43,6 +43,8 @@ export interface SynthesisInput {
   projectId?: string
   /** Overrides the configured voice — the audition panel's whole purpose. */
   voiceOverride?: { provider: TtsProvider; voiceId: string }
+  /** The project format's narration pace; only the mock voice reads it. */
+  wordsPerMinute?: number
   signal?: AbortSignal
 }
 
@@ -112,6 +114,7 @@ export async function synthesise(input: SynthesisInput, settings: Settings): Pro
     phonemeHints: voice.phonemeHints,
     idempotencyKey: input.idempotencyKey,
     stability: voice.stability,
+    ...(input.wordsPerMinute ? { wordsPerMinute: input.wordsPerMinute } : {}),
   }
 
   /**

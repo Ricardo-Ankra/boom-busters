@@ -148,12 +148,13 @@ export async function rereadParagraph(takeId: string, text: string): Promise<Act
     }
   }
 
+  const { format } = await channelForProject(db, take.projectId)
   await editChapter(db, {
     chapterId: take.chapterId,
     afterText: contentMd,
     editType: 'human',
     note: `Re-read of paragraph ${take.paragraphIndex + 1}`,
-    estRuntimeSec: estimateRuntimeSec(contentMd),
+    estRuntimeSec: estimateRuntimeSec(contentMd, format.wordsPerMinute),
   })
 
   return enqueueRetake(take.projectId, takeId, 'Re-read after an edit')

@@ -324,6 +324,7 @@ export function SectionView({
   onDraftSlot,
   readings = NO_READINGS,
   space,
+  pace,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -334,6 +335,8 @@ export function SectionView({
   readings?: KeywordReadings
   /** Each format's search-space readings and the Analyse button; absent shows neither. */
   space?: SearchSpaceView
+  /** The channel voice's measured pace; null reads "Not measured yet", absent shows nothing. */
+  pace?: MeasuredPaceView | null
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -358,6 +361,7 @@ export function SectionView({
               formats={bible.formats}
               readings={readings}
               {...(space ? { space } : {})}
+              {...(pace !== undefined ? { pace } : {})}
             />
           )
         }
@@ -1064,15 +1068,23 @@ function FormatsEditor({
   )
 }
 
+/** The pace the channel's voice measured at, from its recent takes. */
+export interface MeasuredPaceView {
+  wordsPerMinute: number
+  takes: number
+}
+
 /** The formats, read-only: each with its keywords, length, pace, title and lines. */
 function FormatsView({
   formats,
   readings,
   space,
+  pace,
 }: {
   formats: ChannelFormat[]
   readings: KeywordReadings
   space?: SearchSpaceView
+  pace?: MeasuredPaceView | null
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -1121,6 +1133,13 @@ function FormatsView({
                 </p>
               ),
             )}
+            {pace !== undefined ? (
+              <p className="text-[13px]">
+                {pace === null
+                  ? 'Not measured yet'
+                  : `Your voice's measured pace: ${pace.wordsPerMinute} words a minute, from ${pace.takes} ${pace.takes === 1 ? 'take' : 'takes'}`}
+              </p>
+            ) : null}
             {space ? (
               <>
                 <FormatSearchSpace keywords={format.keywords} readings={space.readings} />

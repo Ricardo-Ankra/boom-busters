@@ -98,6 +98,21 @@ describe('buildOutlineRequest', () => {
     expect(request.system).toMatch(/about 2565 words/)
   })
 
+  it('sizes the script from the voice pace when one is given', () => {
+    const at = (wordsPerMinute?: number) =>
+      buildOutlineRequest({
+        bible: FIRST_CHANNEL_IN_USE,
+        caseTitle: 'Enron',
+        dossierMd: '# Enron',
+        claims,
+        targetRuntimeMin: 15,
+        ...(wordsPerMinute === undefined ? {} : { wordsPerMinute }),
+      }).system
+    expect(at(120)).toMatch(/about 1710 words/)
+    expect(at()).toMatch(/about 2138 words/)
+    expect(at(150)).toBe(at())
+  })
+
   it('marks which claims are not adjudicated', () => {
     const content = JSON.stringify(request.messages)
     expect(content).toContain('ADJUDICATED')

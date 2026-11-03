@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { MeasureButton } from './bible-measure-button'
 import type { KeywordReadings } from './bible-measurements'
+import type { MeasuredPaceView } from './bible-fields'
 import type { SearchSpaceView } from './bible-search-space'
 import {
   NO_ISSUES,
@@ -67,6 +68,7 @@ export function BibleSectionCard({
   readings,
   measure,
   space,
+  pace,
 }: {
   section: BibleSection
   bible: ChannelBible
@@ -89,6 +91,8 @@ export function BibleSectionCard({
   measure?: { count: number; ready: boolean; onMeasure: () => void }
   /** The formats card's search-space readings and Analyse button. */
   space?: SearchSpaceView
+  /** The formats card's measured narration pace; null when no take qualifies. */
+  pace?: MeasuredPaceView | null
 }) {
   const label = sectionStatusLabel(bible, section, status)
   const ChipIcon = CHIP_ICON[label]
@@ -251,6 +255,7 @@ export function BibleSectionCard({
             onDraftSlot={onDraftSlot}
             {...(readings ? { readings } : {})}
             {...(space ? { space } : {})}
+            {...(pace !== undefined ? { pace } : {})}
           />
         )}
       </div>

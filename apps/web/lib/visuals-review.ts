@@ -859,7 +859,12 @@ export async function visualsReviewModel(
    * `timedParagraphs` over the same chapters and takes. Recomputed here rather
    * than stored, so an edited script shows its drift instead of hiding it.
    */
-  const paragraphs = timedParagraphs({ chapters: sources.chapters, takes })
+  const { format: paceFormat } = await channelForProject(db, projectId)
+  const paragraphs = timedParagraphs({
+    chapters: sources.chapters,
+    takes,
+    wordsPerMinute: paceFormat.wordsPerMinute,
+  })
 
   /**
    * And the slots are put on the words they cover, the same way and with the

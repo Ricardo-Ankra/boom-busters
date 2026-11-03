@@ -296,7 +296,7 @@ export async function loadGraphicContextFrom(
 ): Promise<GraphicDesignContext> {
   const project = await getProject(database, projectId)
   if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
-  const { channelId } = await channelForProject(database, projectId)
+  const { channelId, format } = await channelForProject(database, projectId)
   const [sources, takes, claims, logos] = await Promise.all([
     latestScriptParagraphSources(database, projectId),
     listVoiceTakes(database, projectId),
@@ -322,7 +322,11 @@ export async function loadGraphicContextFrom(
       width: row.width,
       height: row.height,
     })),
-    paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
+    paragraphs: timedParagraphs({
+      chapters: sources.chapters,
+      takes,
+      wordsPerMinute: format.wordsPerMinute,
+    }),
     chapterTitle: chapter?.title ?? '',
   }
 }

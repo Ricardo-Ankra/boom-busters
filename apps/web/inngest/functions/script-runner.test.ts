@@ -6,6 +6,7 @@ import {
   createProjectFromCase,
   createScriptVersion,
   FIXTURE_PROJECT_ID,
+  getChapter,
   getProject,
   latestShortsCandidates,
   projects,
@@ -20,10 +21,11 @@ import type { ClaimRow } from '@boom-busters/db'
 import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
+  estimateRuntimeSec,
   EMPTY_BIBLE,
   TransientProviderError,
 } from '@boom-busters/schemas'
-import { mockOutline } from '@boom-busters/providers'
+import { mockChapter, mockOutline } from '@boom-busters/providers'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
@@ -50,10 +52,16 @@ const { recordRepairs, recordStop } = vi.hoisted(() => ({
 vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop }))
 // The real query unless a test hands in its own claims.
 const scriptableClaims = vi.hoisted(() => vi.fn())
+const channelForProject = vi.hoisted(() => vi.fn())
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const actual = await importOriginal<typeof Db>()
   scriptableClaims.mockImplementation(actual.scriptableClaims)
-  return { ...actual, scriptableClaims: (...args: unknown[]) => scriptableClaims(...args) }
+  channelForProject.mockImplementation(actual.channelForProject)
+  return {
+    ...actual,
+    scriptableClaims: (...args: unknown[]) => scriptableClaims(...args),
+    channelForProject: (...args: unknown[]) => channelForProject(...args),
+  }
 })
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -297,6 +305,28 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(result).toMatchObject({ ok: true, contentMd: 'A whole chapter.' })
     const sent = callLlm.mock.calls[0]![0] as { system: string }
     expect(sent.system).toContain('a documentary channel about\ncorporate collapses, frauds')
+  })
+
+  it("stores each chapter's estRuntimeSec at the project format's pace", async () => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    const real = await actual.channelForProject(db, FIXTURE_PROJECT_ID)
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return { ...channel, format: { ...channel.format, wordsPerMinute: 120 } }
+    })
+    try {
+      const { result } = await engine.executeStep('draft-chapter-0', {
+        events: approved(),
+        steps: throughSelfCheck().slice(0, 3),
+      })
+      const { chapterId } = result as { chapterId: string }
+      const row = await getChapter(db, chapterId)
+      const text = mockChapter('The audit')
+      expect(row?.estRuntimeSec).toBe(estimateRuntimeSec(text, 120))
+      expect(row?.estRuntimeSec).not.toBe(estimateRuntimeSec(text, real.format.wordsPerMinute))
+    } finally {
+      channelForProject.mockImplementation(actual.channelForProject)
+    }
   })
 
   it("reads the project's search brief inside the outline step, never from an earlier step", async () => {

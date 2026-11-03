@@ -223,7 +223,8 @@ export const scriptRunner = inngest.createFunction(
         // Read here, in the step that builds the request, never from an
         // earlier step's memoised output: a run parked before the bible
         // existed replays those without it. The gate sits before the mock branch.
-        const frozen = requireCompleteBible(await channelForProject(db, projectId))
+        const channel = await channelForProject(db, projectId)
+        const frozen = requireCompleteBible(channel)
         if (mocked) return { ok: true, outline: mockOutline(setup.targetRuntimeMin), repairs: [] }
         // The brief is read here too: a run parked before it existed replays no brief.
         const searchBrief = (await getProject(db, projectId))?.searchBrief ?? null
@@ -235,6 +236,7 @@ export const scriptRunner = inngest.createFunction(
             claims: setup.claims,
             targetRuntimeMin: setup.targetRuntimeMin,
             searchBrief,
+            wordsPerMinute: channel.format.wordsPerMinute,
           })
           return { ok: true, ...drafted }
         } catch (error) {
@@ -274,7 +276,8 @@ export const scriptRunner = inngest.createFunction(
           | { ok: true; chapterId: string; contentMd: string }
           | { ok: false; gate: Record<string, unknown> }
         > => {
-          const frozen = requireCompleteBible(await channelForProject(db, projectId))
+          const channel = await channelForProject(db, projectId)
+          const frozen = requireCompleteBible(channel)
           let contentMd: string
           if (mocked) {
             contentMd = mockChapter(chapter.title)
@@ -310,7 +313,7 @@ export const scriptRunner = inngest.createFunction(
             index,
             title: chapter.title,
             contentMd,
-            estRuntimeSec: estimateRuntimeSec(contentMd),
+            estRuntimeSec: estimateRuntimeSec(contentMd, channel.format.wordsPerMinute),
           })
 
           return { ok: true, chapterId: row.id, contentMd }

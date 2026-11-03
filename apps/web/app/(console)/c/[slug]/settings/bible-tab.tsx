@@ -26,6 +26,7 @@ import {
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
 import type { KeywordReadings } from './bible-measurements'
+import type { MeasuredPaceView } from './bible-fields'
 import type { SearchSpaceReadings } from './bible-search-space'
 import { BiblePreview } from './bible-preview'
 import { BibleSaveBar } from './bible-save-bar'
@@ -64,6 +65,7 @@ export function BibleTab({
   measureCount = 0,
   searchSpace,
   searchSpaceCounts,
+  measuredPace,
 }: {
   channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
@@ -85,6 +87,8 @@ export function BibleTab({
   searchSpace?: SearchSpaceReadings
   /** Per format key, how many of its keywords have no analysis from the last 30 days. */
   searchSpaceCounts?: Record<string, number>
+  /** The pace the channel's voice measured at; null when no take qualifies. */
+  measuredPace?: MeasuredPaceView | null
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -368,6 +372,7 @@ export function BibleTab({
           disabled={locked}
           onProblems={setProblems}
           {...(readings ? { readings } : {})}
+          {...(section === 'formats' && measuredPace !== undefined ? { pace: measuredPace } : {})}
           {...(section === 'formats' && searchSpace
             ? {
                 space: {

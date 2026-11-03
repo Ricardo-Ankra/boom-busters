@@ -40,6 +40,8 @@ export interface TTSRequest {
   idempotencyKey: string
   /** `settings.tts.stability` — Eleven v3's three-way delivery control. */
   stability?: StabilityTier
+  /** The format's narration pace. Only the mock voice reads it; a real voice speaks at its own rate. */
+  wordsPerMinute?: number
 }
 
 export interface TTSResult {

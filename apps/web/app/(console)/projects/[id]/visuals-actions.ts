@@ -2222,9 +2222,11 @@ export async function replanStretchAction(
   // with a row missing, or spread over chapters, gets the neighbours copy from
   // `cutStretch` itself (the first row's chapter is the one it cuts).
   const sources = await latestScriptParagraphSources(db, projectId)
+  const { format } = await channelForProject(db, projectId)
   const paragraphs = timedParagraphs({
     chapters: sources.chapters,
     takes: await listVoiceTakes(db, projectId),
+    wordsPerMinute: format.wordsPerMinute,
   })
   const chapterId = selected[0]?.chapterId ?? ''
   const cut = cutStretch({

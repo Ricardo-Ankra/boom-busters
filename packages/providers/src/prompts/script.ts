@@ -221,9 +221,11 @@ export function buildOutlineRequest(input: {
   targetRuntimeMin: number
   /** The case's search brief, when it has one; absent or null changes nothing in the prompt. */
   searchBrief?: SearchBrief | null
+  /** The rate the channel's voice speaks at (the project's format); 150 when absent. */
+  wordsPerMinute?: number
 }): LLMTaskRequest {
-  // 150 words per minute of narration, minus a little for pacing beats.
-  const targetWords = Math.round(input.targetRuntimeMin * 150 * 0.95)
+  // The voice's words per minute, minus a little for pacing beats.
+  const targetWords = Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95)
 
   return {
     task: 'scripting',

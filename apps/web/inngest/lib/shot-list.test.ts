@@ -2,6 +2,7 @@ import type { PlannedSlot } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   anchoredTimes,
+  estimateParagraphMs,
   MIN_SLOT_MS,
   plannedToRows,
   promptParagraphs,
@@ -54,6 +55,21 @@ describe('timedParagraphs', () => {
     })
     expect(timeline[0]?.durationMs).toBeGreaterThanOrEqual(2000)
     expect(timeline[1]?.startMs).toBe(timeline[0]!.durationMs)
+  })
+})
+
+describe('estimateParagraphMs', () => {
+  const ten = Array(10).fill('word').join(' ')
+
+  it('is 400 ms a word at the default pace and 500 ms at 120 words a minute', () => {
+    expect(estimateParagraphMs(ten)).toBe(4000)
+    expect(estimateParagraphMs(ten, 120)).toBe(5000)
+  })
+
+  it('takes the project pace through timedParagraphs for a paragraph with no take', () => {
+    const chapters = [{ id: 'ch-a', title: 'A', contentMd: ten }]
+    expect(timedParagraphs({ chapters, takes: [], wordsPerMinute: 120 })[0]?.durationMs).toBe(5000)
+    expect(timedParagraphs({ chapters, takes: [] })[0]?.durationMs).toBe(4000)
   })
 })
 

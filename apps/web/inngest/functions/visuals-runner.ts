@@ -132,7 +132,7 @@ export const visualsRunner = inngest.createFunction(
         // `load-cast-and-sets`: drafting the book is what seeds them.
         // The logo library (decision 268, Plan B): titles name the marks in the
         // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
-        const { channelId } = await channelForProject(db, projectId)
+        const { channelId, format } = await channelForProject(db, projectId)
         const logos = await listLogos(db, channelId)
 
         await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
@@ -140,7 +140,11 @@ export const visualsRunner = inngest.createFunction(
         return {
           caseTitle: project.title,
           chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
-          paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
+          paragraphs: timedParagraphs({
+            chapters: sources.chapters,
+            takes,
+            wordsPerMinute: format.wordsPerMinute,
+          }),
           claims: claims.map((claim) => ({
             id: claim.id,
             text: claim.text,

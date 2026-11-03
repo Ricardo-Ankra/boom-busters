@@ -1145,6 +1145,49 @@ describe('BibleTab, keyword measurements', () => {
   })
 })
 
+describe('BibleTab, measured pace', () => {
+  const format = FIRST_CHANNEL_BIBLE.formats[0]!
+  const bible = { ...FIRST_CHANNEL_BIBLE, formats: [format] }
+
+  function renderPace(measuredPace: { wordsPerMinute: number; takes: number } | null) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady
+        archived={false}
+        copySources={[]}
+        measuredPace={measuredPace}
+      />,
+    )
+  }
+
+  it("shows the voice's measured pace and how many takes it comes from", () => {
+    renderPace({ wordsPerMinute: 138, takes: 40 })
+    expect(
+      within(card('Formats')).getByText(
+        "Your voice's measured pace: 138 words a minute, from 40 takes",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says "1 take" for one', () => {
+    renderPace({ wordsPerMinute: 150, takes: 1 })
+    expect(
+      within(card('Formats')).getByText(
+        "Your voice's measured pace: 150 words a minute, from 1 take",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says it is not measured yet when no take qualifies', () => {
+    renderPace(null)
+    expect(within(card('Formats')).getByText('Not measured yet')).toBeInTheDocument()
+  })
+})
+
 describe('BibleTab, search space', () => {
   const DAY = 24 * 60 * 60 * 1000
   const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString()
