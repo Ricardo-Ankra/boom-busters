@@ -166,6 +166,20 @@ function placeFixedLines(
   return withFixedLines(slots, format)[index] ?? contentMd
 }
 
+/** A calm telling's outline with every tension field blank: nothing planted, held back or left open. */
+function withoutTension(outline: Outline): Outline {
+  return {
+    ...outline,
+    chapters: outline.chapters.map((chapter) => ({
+      ...chapter,
+      question: '',
+      withhold: '',
+      reveals: '',
+    })),
+    ...(outline.close ? { close: { ...outline.close, openThread: '' } } : {}),
+  }
+}
+
 export const scriptRunner = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -263,7 +277,14 @@ export const scriptRunner = inngest.createFunction(
             introRule: channel.format.introRule,
             intent: channel.format.intent,
           })
-          return { ok: true, ...drafted }
+          // After parsing, in the step: a model that fills the tension fields of a
+          // calm telling anyway must not leak them into the direction, Shorts or teaser prompts.
+          return {
+            ok: true,
+            ...drafted,
+            outline:
+              channel.format.intent === 'calm' ? withoutTension(drafted.outline) : drafted.outline,
+          }
         } catch (error) {
           if (error instanceof BudgetExceededError)
             return { ok: false, gate: budgetGateData(error) }

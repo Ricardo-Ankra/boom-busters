@@ -447,6 +447,99 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       }
     })
 
+    it("sends the calm playbook in the chapter step when the format's intent is calm", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: 'A whole chapter.' })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine.executeStep('draft-chapter-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 3),
+        })
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('# Script craft: how a calm telling settles')
+        // The chapter's own contract rides in a later message, not the system prompt.
+        expect(JSON.stringify(sent)).toContain('The calm contract for this chapter')
+      } finally {
+        restore()
+      }
+    })
+
+    it("sends the calm playbook in the self-check step when the format's intent is calm", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 4),
+        })
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('checking the narration of a calm telling')
+      } finally {
+        restore()
+      }
+    })
+
+    describe('the outline of a calm format holds no tension', () => {
+      const tensionOutline = () => {
+        const outline = mockOutline(10)
+        outline.chapters[0]!.reveals = 'A leaked reveal'
+        return outline
+      }
+      const outlineOf = async () => {
+        const { result } = await engine.executeStep('outline', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 1),
+        })
+        return (
+          result as {
+            outline: {
+              chapters: { question?: string; withhold?: string; reveals?: string }[]
+              close: { openThread?: string }
+            }
+          }
+        ).outline
+      }
+
+      it('blanks question, withhold, reveals and the open thread when the model fills them', async () => {
+        vi.stubEnv('MOCK_PROVIDERS', '')
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(tensionOutline()) })
+        const restore = await withFormat({ intent: 'calm' })
+        try {
+          const outline = await outlineOf()
+          expect(outline.chapters.length).toBeGreaterThan(1)
+          for (const chapter of outline.chapters) {
+            expect(chapter.question ?? '').toBe('')
+            expect(chapter.withhold ?? '').toBe('')
+            expect(chapter.reveals ?? '').toBe('')
+          }
+          expect(outline.close.openThread ?? '').toBe('')
+        } finally {
+          restore()
+        }
+      })
+
+      it('leaves a tension outline as the model wrote it', async () => {
+        vi.stubEnv('MOCK_PROVIDERS', '')
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(tensionOutline()) })
+        const restore = await withFormat({ intent: 'tension' })
+        try {
+          const outline = await outlineOf()
+          expect(outline.chapters[0]!.question).toBe('Mock open question 1')
+          expect(outline.chapters[0]!.withhold).toBe('Mock withheld fact 1')
+          expect(outline.chapters[0]!.reveals).toBe('A leaked reveal')
+          expect(outline.close.openThread).toBe('Mock open thread.')
+        } finally {
+          restore()
+        }
+      })
+    })
+
     it('leaves the fixed lines out of the self-check', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       callLlm.mockReset()
@@ -621,10 +714,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
 
       const { result } = await engine.execute({
         events: approved(),
-        steps: [
-          ...throughSelfCheck(),
-          { id: 'advance-to-voice', handler: () => undefined },
-        ],
+        steps: [...throughSelfCheck(), { id: 'advance-to-voice', handler: () => undefined }],
       })
 
       expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 0, shortsOff: true })
