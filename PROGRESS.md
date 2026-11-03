@@ -4511,6 +4511,25 @@ This is on master and unrelated to this work.
       History, Copy, then Draft with AI in turn (`c159bb4`). The Impeccable
       detector reports no findings on the Bible tab files.
 
+## Exemplars that transform (2026-11-03)
+
+> The first three exemplars rewritten to a motion-design standard taken from
+> a showreel prompt the owner shared: a named concept and a storyboard before
+> any code, every moment built out of the last rather than added or swapped,
+> motion blur that follows speed, a camera that never stops, and frames
+> checked by eye. Branch `exemplars-transform`; decision 387. The other
+> fifteen, the prompt and the answer schema wait on the owner's verdict.
+
+### Deliverables
+
+- [x] `kinetic-word-stack`, `stat-counter` and `bar-chart` rewritten, each
+      passing `exemplar:check`; manifest descriptions and the three
+      `graphics-exemplar-*` lift fixtures follow.
+- [ ] Owner compares old and new in Settings → Exemplars.
+- [ ] The other fifteen exemplars.
+- [ ] The prompt's craft section and a `concept` and `storyboard` in the
+      designer's answer.
+
 ---
 
 # Decisions made
@@ -9349,3 +9368,31 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      decision 357's skip is retired. Saved versions keep their stamped slot
      ids, and an Examples edit rechecks registered slots only, so a retired
      key is neither flagged nor kept.
+
+387. **Three exemplars rewritten to transform, not stack** (2026-11-03, owner:
+     "Proceed" on rewriting three exemplars before the rest). Since decision
+     386 a slot's exemplar is the only design the designer sees, so it sets
+     the look more than the prompt does. Seventeen of the eighteen were a
+     centred column whose parts fade and rise in and stay; none used 3D.
+     The rewrites: `stat-counter` has the sentence part and the figure rise
+     out of it on the hero spring, pushing the lead-in up into its label,
+     and the rule under it becomes the year, a notch per month;
+     `kinetic-word-stack` builds the repeated "Nobody" once and rolls the
+     verdicts past it on a CSS 3D drum, the earlier ones turned up and back
+     (down in portrait, where the anchor stacks above); `bar-chart` has one
+     bar per series travel from year to year, leaving its old heights as
+     footprints, then a line across the tops. Each opens with a concept line
+     and a storyboard on the narration's clock in its header comment, blurs
+     a fast move by its speed (`filter: blur`, from the frame before), and
+     keeps a slow camera push to the last frame.
+     Decisions made where the spec left room: the concept and storyboard
+     live in the source comment for now, since the answer schema has no
+     field for them (cost if wrong: none; they move when the schema does);
+     each design was reviewed on stills rendered every 500 ms through the
+     real `GraphicCode` composition in both frames, with a scratch harness
+     not committed (cost if wrong: none); the camera push is anchored at the
+     content's left edge in landscape, since a push about any other point
+     carried left-aligned text past the inset; a bar label at rest shows its
+     value as the data states it ("4", never "4.0") and rolls at the data's
+     precision only while moving, which the facts check requires. No
+     migration, no deploy beyond Vercel: exemplars ship in the web bundle.

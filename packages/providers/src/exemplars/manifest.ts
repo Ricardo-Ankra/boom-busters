@@ -77,7 +77,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'stat-counter',
     technique: 'stat-counter',
-    description: 'one large figure counting up to its mark, a label beneath, held',
+    description:
+      'the sentence parts and one large figure rises out of it, counting to its mark on a rule that becomes the time it covers',
     source: rve('templates/stat-counter.tsx'),
     slot: {
       durationMs: 6000,
@@ -99,7 +100,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'bar-chart',
     technique: 'bar-chart',
-    description: 'bars drawn on one by one as their years are spoken, the last in the accent',
+    description:
+      'one bar per series travelling from year to year as each is spoken, leaving its old heights behind, a line across the tops',
     source: rendercomp('src/components/bar-chart-anim/BarChartAnim.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -298,7 +300,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'kinetic-word-stack',
     technique: 'kinetic-word-stack',
-    description: 'words stacking in as they are spoken, the last one the biggest',
+    description:
+      'a repeated word built once and kept, what changes after it rolling past on a 3D drum, the last in the accent',
     source: rendercomp('src/components/kinetic-word-stack/KineticWordStack.tsx'),
     slot: {
       durationMs: 6000,
