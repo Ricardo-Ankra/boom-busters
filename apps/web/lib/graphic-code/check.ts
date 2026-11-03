@@ -1,4 +1,5 @@
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
+import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { MOTION_PREAMBLE, MOTION_VERSION } from '@boom-busters/compositions/motion-tokens'
 import {
   codeLogoLibrary,
@@ -51,7 +52,7 @@ function withMotionPreamble(compiled: string): string {
  * digits, none of which a colour changes; the real brand reaches the render
  * through the timeline, as it always has.
  */
-const DRY_RUN_BRAND = graphicBrand(resolveBrandKit(DEFAULT_SETTINGS))
+export const DRY_RUN_BRAND = graphicBrand(resolveBrandKit(DEFAULT_SETTINGS))
 
 /**
  * Every mark the library holds, keyed by title (ruling 5), as the assembly and
@@ -95,6 +96,39 @@ function seriesText(brief: ChartBrief): string {
     .join('\n')
 }
 
+/**
+ * The props the dry run hands the code (decision 295), less the safe area,
+ * which each frame size sets for itself. The browser's layout check and the
+ * review's frames (decision 389) render with these too, given the project's
+ * own brand in place of the house one.
+ */
+export function dryRunProps(
+  context: GraphicDesignContext,
+  slot: {
+    brief: DesignableBrief
+    durationMs: number
+    words: readonly { text: string; atMs: number }[]
+  },
+  brand: GraphicProps['brand'] = DRY_RUN_BRAND,
+): Omit<GraphicProps, 'safeArea'> {
+  const { brief } = slot
+  return {
+    brand,
+    words: slot.words,
+    durationMs: slot.durationMs,
+    logos: placeholderLogos(context),
+    ...(brief.type === 'chart'
+      ? {
+          data: {
+            series: brief.series,
+            takeaway: brief.takeaway,
+            ...(brief.annotations ? { annotations: brief.annotations } : {}),
+          },
+        }
+      : {}),
+  }
+}
+
 export function graphicCodeIssue(
   answer: PlannedGraphicCode,
   context: GraphicDesignContext,
@@ -114,21 +148,7 @@ export function graphicCodeIssue(
   const run = dryRunGraphic({
     compiled: stored,
     durationMs: slot.durationMs,
-    props: {
-      brand: DRY_RUN_BRAND,
-      words: slot.words,
-      durationMs: slot.durationMs,
-      logos: placeholderLogos(context),
-      ...(brief.type === 'chart'
-        ? {
-            data: {
-              series: brief.series,
-              takeaway: brief.takeaway,
-              ...(brief.annotations ? { annotations: brief.annotations } : {}),
-            },
-          }
-        : {}),
-    },
+    props: dryRunProps(context, slot),
   })
   if (run.issue !== null) return { issue: run.issue }
 

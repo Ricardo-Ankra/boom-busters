@@ -145,13 +145,13 @@ export interface DryRunResult {
   textSamples: { landscape: string[]; portrait: string[] }
 }
 
-const FRAME_SIZES = [
+export const FRAME_SIZES = [
   { orientation: 'landscape', width: 1920, height: 1080 },
   { orientation: 'portrait', width: 1080, height: 1920 },
 ] as const
-type FrameSize = (typeof FRAME_SIZES)[number]
+export type FrameSize = (typeof FRAME_SIZES)[number]
 
-type Sample = { atMs: number; markup: string }
+export type Sample = { atMs: number; markup: string }
 type Run = { samples: Sample[]; failure: string | null }
 type GraphicFactory = (
   react: typeof ReactModule,
@@ -334,7 +334,23 @@ function markupIssue(samples: readonly Sample[], size: FrameSize): string | null
 function runFrameSize(
   input: DryRunInput,
   size: FrameSize,
+  loaded: DryRunRuntime,
+): { issue: string | null; samples: Sample[] } {
+  const rendered = renderSamples(input, size, loaded, sampleTimes(input.durationMs))
+  if (rendered.issue !== null) return rendered
+  return { issue: markupIssue(rendered.samples, size), samples: rendered.samples }
+}
+
+/**
+ * The code's markup at each of `times` in one frame size, in the dry run's
+ * sandbox: the vm context, its timeout and the per-frame limit. A failure is
+ * the issue that names it, with the samples drawn before it.
+ */
+function renderSamples(
+  input: DryRunInput,
+  size: FrameSize,
   { React, sandboxReact, renderToStaticMarkup, FrameContext, oneFrameScope }: DryRunRuntime,
+  times: readonly number[],
 ): { issue: string | null; samples: Sample[] } {
   const durationInFrames = Math.max(1, Math.round((input.durationMs * GRAPHIC_FPS) / 1000))
   const props: GraphicProps = { ...input.props, safeArea: safeInsets(size) }
@@ -370,7 +386,7 @@ function runFrameSize(
     if (typeof Graphic !== 'function') {
       return { samples, failure: 'the code does not run: Graphic is not a function' }
     }
-    for (const atMs of sampleTimes(input.durationMs)) {
+    for (const atMs of times) {
       const frame = Math.min(durationInFrames - 1, Math.round((atMs * GRAPHIC_FPS) / 1000))
       const started = performance.now()
       let markup: string
@@ -409,8 +425,7 @@ function runFrameSize(
       samples: [],
     }
   }
-  if (run.failure !== null) return { issue: run.failure, samples: run.samples }
-  return { issue: markupIssue(run.samples, size), samples: run.samples }
+  return { issue: run.failure, samples: run.samples }
 }
 
 /** Landscape, then portrait; the first issue found stops the run. */
@@ -423,4 +438,18 @@ export function dryRunGraphic(input: DryRunInput): DryRunResult {
     if (issue !== null) return { issue, textSamples }
   }
   return { issue: null, textSamples }
+}
+
+/**
+ * The code's markup at chosen moments in one frame size (decision 389), for
+ * the browser's layout check and the review's frames: the dry run's sandbox,
+ * handed the project's own brand, so the type is measured in the faces the
+ * film sets it in. It runs no check of its own; the dry run has passed first.
+ */
+export function graphicMarkupAt(
+  input: DryRunInput,
+  size: FrameSize,
+  times: readonly number[],
+): { issue: string | null; samples: Sample[] } {
+  return renderSamples(input, size, loadRuntime(), times)
 }

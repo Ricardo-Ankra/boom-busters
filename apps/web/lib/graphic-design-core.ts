@@ -9,13 +9,16 @@ import {
 import type { Database } from '@boom-busters/db'
 import {
   buildGraphicRequest,
+  buildGraphicReviewRequest,
   estimatedWords,
   exemplarFor,
   parseGraphicCode,
+  parseGraphicReview,
   techniqueFor,
   wordsInSlot,
   type GraphicDesignInput,
   type LLMTaskRequest,
+  type ReviewFrame,
   type ScriptClaim,
 } from '@boom-busters/providers'
 import { BudgetExceededError, graphicIntentOf, ValidationError } from '@boom-busters/schemas'
@@ -25,10 +28,18 @@ import type {
   DesignableBrief,
   GraphicCode,
   LogoIndex,
+  PlannedGraphicCode,
 } from '@boom-busters/schemas'
+import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
-import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
+import {
+  FramesUnavailable,
+  type FrameShot,
+  type FramesResult,
+  type GraphicFrames,
+} from '@/lib/graphic-code/frames'
 import { ensureGraphicCompiler } from '@/lib/graphic-code/compile'
 import { ensureDryRunRuntime } from '@/lib/graphic-code/dry-run'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
@@ -139,6 +150,25 @@ function currentDesign(code: GraphicCode): NonNullable<GraphicDesignInput['curre
 export const GRAPHIC_DESIGN_DEADLINE_MS = 240_000
 /** Less than this left: a call would only be aborted, so none is started. */
 const MIN_CALL_MS = 15_000
+/**
+ * Less than this left once a design passes: no review (decision 389). The
+ * review writes a whole component again, as long as the first call took.
+ */
+export const REVIEW_MIN_MS = 90_000
+
+const frameLabel = (shot: FrameShot) =>
+  `${shot.orientation === 'landscape' ? '16:9' : '9:16'} at ${(shot.atMs / 1000).toFixed(1)} s`
+
+/** The facts as the designer cites them, by number in the claim list, from the ids a design stores. */
+function plannedFacts(
+  code: GraphicCode,
+  context: GraphicDesignContext,
+): PlannedGraphicCode['facts'] {
+  return code.facts.map((fact) => ({
+    text: fact.text,
+    claim: context.claims.findIndex((claim) => claim.id === fact.claimId) + 1,
+  }))
+}
 
 const CUT_OFF_ISSUE = "the designer's answer was cut off at its length limit"
 // A graphic's card says Redesign graphic and a chart's Redesign chart.
@@ -179,7 +209,23 @@ export async function designGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; guidance?: string; redesign?: boolean },
+  options: {
+    bible: BibleInUse
+    guidance?: string
+    redesign?: boolean
+    /**
+     * The browser (decision 389): with it, a design must also pass the layout
+     * check, and the review can see it. Without it, or when it cannot start,
+     * the design is kept on the dry run's word, as before.
+     */
+    frames?: GraphicFrames
+    /** The project's brand, so the browser measures the type in the film's faces; the house brand otherwise. */
+    brand?: GraphicProps['brand']
+    /** Run the paid review once a design passes (Settings, Models). */
+    review?: boolean
+    /** Told once when the browser cannot be used, so the app can log it. */
+    onFramesUnavailable?: (error: FramesUnavailable) => void
+  },
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
   // compile with esbuild's native binary. A host that cannot do either is
@@ -246,23 +292,47 @@ export async function designGraphicWith(
     })
   }
 
+  const checkSlot = { brief, durationMs: slot.durationMs, words }
+  // The browser, until it fails once: then the rest of this design goes on without it.
+  let framesDown = !options.frames
+  const inspect = async (code: GraphicCode, shots: boolean): Promise<FramesResult | null> => {
+    if (framesDown || !options.frames) return null
+    try {
+      return await options.frames.inspect({
+        compiled: code.compiled,
+        props: dryRunProps(context, checkSlot, options.brand),
+        durationMs: slot.durationMs,
+        shots,
+      })
+    } catch (error) {
+      if (!(error instanceof FramesUnavailable)) throw error
+      framesDown = true
+      options.onFramesUnavailable?.(error)
+      return null
+    }
+  }
+  // What the passing answer was, and its frames, for the review.
+  let passed: { planned: PlannedGraphicCode; shots: FrameShot[] } | null = null
+
   try {
     // At most two calls (decision 292): the checks refuse a design inside the
-    // parse (scan, compile, dry run, facts; decision 295), so a refusal is
-    // retried once with its reason and a cut-off once at double the budget,
-    // then the design stops. A trimmed title is reported through `note`
-    // (decision 293).
+    // parse (scan, compile, dry run, facts; decision 295; then the browser's
+    // layout, decision 389), so a refusal is retried once with its reason and
+    // a cut-off once at double the budget, then the design stops. A trimmed
+    // title is reported through `note` (decision 293).
     const answer = await callForAnswer({
       request: buildGraphicRequest(base),
-      parse: (text, note) => {
-        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, {
-          brief,
-          durationMs: slot.durationMs,
-          words,
-        })
+      parse: async (text, note) => {
+        const planned = parseGraphicCode(text, note)
+        const checked = graphicCodeIssue(planned, context, checkSlot)
         if ('issue' in checked) {
           throw new ValidationError(checked.issue, { field: 'graphic code' })
         }
+        const inspected = await inspect(checked.code, options.review === true)
+        if (inspected?.layoutIssue) {
+          throw new ValidationError(inspected.layoutIssue, { field: 'graphic code' })
+        }
+        passed = { planned, shots: inspected?.shots ?? [] }
         return checked.code
       },
       complete: call,
@@ -271,7 +341,11 @@ export async function designGraphicWith(
       retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
       cutOffIssue: CUT_OFF_ISSUE,
     })
-    return answer.ok ? { ok: true, code: answer.value } : { ok: false, issue: answer.issue }
+    if (!answer.ok) return { ok: false, issue: answer.issue }
+    const kept = passed as { planned: PlannedGraphicCode; shots: FrameShot[] } | null
+    if (!options.review || !kept || kept.shots.length === 0) return { ok: true, code: answer.value }
+    if (deadline - Date.now() < REVIEW_MIN_MS) return { ok: true, code: answer.value }
+    return { ok: true, code: await reviewed(answer.value, kept.planned, kept.shots) }
   } catch (error) {
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
     // A budget stop parks the run whenever it comes. Anything else once the
@@ -281,6 +355,40 @@ export async function designGraphicWith(
     if (Date.now() >= deadline) return { ok: false, issue: TOO_LONG_ISSUE }
     // Inside the deadline any other failure (provider, a rejected key) goes through.
     throw error
+  }
+
+  /**
+   * The review (decision 389): one call, shown the passing design's frames.
+   * A keep, or a revision that fails any check, keeps the design; a revision
+   * that passes every check, the layout included, replaces it. Nothing the
+   * review does can lose a passing design: a failed call, a budget stop or the
+   * clock running out keeps it, unmarked.
+   */
+  async function reviewed(
+    code: GraphicCode,
+    planned: PlannedGraphicCode,
+    shots: FrameShot[],
+  ): Promise<GraphicCode> {
+    const frames: ReviewFrame[] = shots.map((shot) => ({
+      label: frameLabel(shot),
+      image: { mimeType: 'image/jpeg', data: shot.jpeg },
+    }))
+    const shown: PlannedGraphicCode = { ...planned, facts: plannedFacts(code, context) }
+    try {
+      const reply = await complete(buildGraphicReviewRequest(base, shown, frames), {
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        purpose: 'review',
+      })
+      const verdict = parseGraphicReview(reply.text)
+      if (verdict.keep) return { ...code, review: 'kept' }
+      const checked = graphicCodeIssue(verdict.design, context, checkSlot)
+      if ('issue' in checked) return { ...code, review: 'kept' }
+      const inspected = await inspect(checked.code, false)
+      if (inspected?.layoutIssue) return { ...code, review: 'kept' }
+      return { ...checked.code, review: 'revised' }
+    } catch {
+      return code
+    }
   }
 }
 
