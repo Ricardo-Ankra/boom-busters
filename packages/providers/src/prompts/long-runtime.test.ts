@@ -1,6 +1,6 @@
 import { FIRST_CHANNEL_IN_USE, OutlineSchema } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { THINKING_HEADROOM_TOKENS } from '../llm/types'
+import { MAX_OUTPUT_TOKENS, THINKING_HEADROOM_TOKENS } from '../llm/types'
 import { buildOutlineRequest } from './script'
 
 /**
@@ -56,5 +56,22 @@ describe('the outline at 240 minutes', () => {
     const longest = outlineFor(60, 200, 'tension')
     expect(longest.system).not.toContain('chapters of about')
     expect(longest.maxTokens).toBe(4000 + THINKING_HEADROOM_TOKENS)
+  })
+})
+
+describe('the outline answer budget at 240 minutes', () => {
+  it.each(FORMATS)('$name: room for every chapter of the plan', (format) => {
+    const request = outlineFor(240, format.wordsPerMinute, format.intent)
+    const chapters = Math.ceil(format.words / 1000)
+    // A chapter's plan runs about 450 tokens: the beat, the tension fields and the claims.
+    const needed = chapters * 450
+    expect(request.maxTokens).toBeGreaterThanOrEqual(needed + THINKING_HEADROOM_TOKENS)
+    expect(request.maxTokens).toBeLessThanOrEqual(MAX_OUTPUT_TOKENS)
+  })
+
+  it('still fits under the ceiling at the longest runtime and fastest pace', () => {
+    const request = outlineFor(240, 200, 'tension')
+    expect(request.maxTokens).toBeLessThanOrEqual(MAX_OUTPUT_TOKENS)
+    expect(request.maxTokens).toBeGreaterThanOrEqual(Math.ceil(45_600 / 1000) * 450 + 4000)
   })
 })

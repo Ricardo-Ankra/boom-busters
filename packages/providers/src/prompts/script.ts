@@ -247,6 +247,26 @@ function chapterSizeRule(targetWords: number): string {
   return `, in chapters of about 800 to ${LONG_CHAPTER_WORDS.toLocaleString('en-US')} words each (about ${chapters} chapters)`
 }
 
+/**
+ * The answer-token budget for an outline. A chapter's plan runs about 450
+ * tokens (the beat, the tension fields, the claim numbers), and the flat 4,000
+ * held about nine of them. A long script is cut in chapters of about a
+ * thousand words, so the budget follows the chapter count; anything up to the
+ * old limit keeps its 4,000.
+ */
+const OUTLINE_FLOOR_TOKENS = 4000
+const OUTLINE_TOKENS_PER_CHAPTER = 450
+const OUTLINE_FRAME_TOKENS = 1000
+
+export function outlineAnswerTokens(targetWords: number): number {
+  if (targetWords <= LONG_SCRIPT_WORDS) return OUTLINE_FLOOR_TOKENS
+  const chapters = Math.ceil(targetWords / LONG_CHAPTER_WORDS)
+  return Math.max(
+    OUTLINE_FLOOR_TOKENS,
+    chapters * OUTLINE_TOKENS_PER_CHAPTER + OUTLINE_FRAME_TOKENS,
+  )
+}
+
 export function buildOutlineRequest(input: {
   bible: BibleInUse
   caseTitle: string
@@ -356,7 +376,7 @@ ${openingRule(input.introRule, input.intent)}${openingExamples(input.bible)}`,
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
       { role: 'user', content: `Outline it for roughly ${input.targetRuntimeMin} minutes.` },
     ],
-    maxTokens: outputBudget(4000),
+    maxTokens: outputBudget(outlineAnswerTokens(targetWords)),
   }
 }
 
