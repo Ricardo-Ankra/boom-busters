@@ -234,9 +234,10 @@ export const caseResearcher = inngest.createFunction(
       return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
     })
 
-    // 1b. The terms that contain the subject and the format's lead keyword. Skipped without one.
+    // 1b. The terms that contain the subject and the format's lead keyword. Skipped without one
+    // (a `load` memoised before the deploy has none, and must not spend on "<subject> undefined").
     const formatTerms: SearchKeyword[] =
-      loaded.leadKeyword === null
+      !loaded.leadKeyword
         ? []
         : await step.run('keywords-format', async () => {
             await beat(caseId, jobStartedAt, 'keywords-format')
@@ -428,7 +429,7 @@ export const caseResearcher = inngest.createFunction(
         toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
         angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
         chosenAngle: null,
-        formatKey: loaded.formatKey,
+        formatKey: loaded.formatKey ?? null,
         fit,
       })
       // A retry would fail the same way, so the run stops with a reason the owner can read.

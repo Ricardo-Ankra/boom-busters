@@ -457,6 +457,28 @@ describeDb('case-researcher (mock mode)', () => {
       })
     })
 
+    it('a load result memoised before the deploy (no leadKeyword, no formatKey) buys no format search and saves a null key', async () => {
+      const searched = recordSearches()
+      const { result } = await engine.execute({
+        ...request(),
+        steps: [
+          {
+            id: 'load',
+            handler: () => ({
+              channelId: FIRST_CHANNEL_ID,
+              subject: SUBJECT,
+              angleIdea: null,
+            }),
+          },
+        ],
+      })
+      expect(result).toMatchObject({ outcome: 'researched' })
+      expect(searched).toEqual([SUBJECT])
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.formatKey).toBeNull()
+      expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+    })
+
     it('a stale case key resolves to the primary', async () => {
       const searched = recordSearches()
       const primary = { ...sleep, primary: true }
