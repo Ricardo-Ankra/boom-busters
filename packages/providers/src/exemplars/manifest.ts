@@ -89,7 +89,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'kpi-counter',
     technique: 'kpi-counter',
-    description: 'three figures counting up side by side, each with its label, the hero last',
+    description:
+      'each figure lands large and counts, then docks into a row above as the next is introduced, the last left large',
     source: rendercomp('src/components/kpi-counter/KpiCounter.tsx'),
     slot: {
       durationMs: 8000,
@@ -137,7 +138,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'line-chart',
     technique: 'line-chart',
-    description: 'a line drawn across the frame point by point, the last value called out',
+    description:
+      'a line drawn year by year with the ground under it filling behind the pen, the last value landing large beside its point',
     source: rendercomp('src/components/line-chart-anim/LineChartAnim.tsx'),
     chart: { kind: 'line' },
     slot: {
@@ -174,7 +176,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'racing-chart',
     technique: 'racing-chart',
-    description: 'horizontal bars that grow and reorder as the years pass, the leader on top',
+    description:
+      'horizontal bars that grow and overtake as the years are read, the year rolling on like a reel, the leader lit at the close',
     source: rendercomp('src/components/racing-chart/RacingChart.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -226,7 +229,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'comparison-chart',
     technique: 'comparison-chart',
-    description: 'two series side by side per year, the gap between them the point',
+    description:
+      'two series rising side by side per year, the gap drawn as an empty outline on top of the shorter bar',
     source: rve('templates/comparison-chart.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -263,7 +267,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'donut-chart',
     technique: 'donut-chart',
-    description: 'a ring that fills to a percentage, the figure counting up inside it',
+    description:
+      'a ring that sweeps to a percentage as the figure inside counts, the slice pulling out when the narration says it went',
     source: rve('templates/donut-chart.tsx'),
     slot: {
       durationMs: 6000,
@@ -274,7 +279,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'progress-bars',
     technique: 'progress-bars',
-    description: 'labelled bars filling to their share, one after another',
+    description:
+      'labelled bars filling to their share on equal tracks, one after another, the largest share on the hero spring',
     source: rve('templates/progress-bars.tsx'),
     slot: {
       durationMs: 7000,
@@ -285,7 +291,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'progress-steps',
     technique: 'progress-steps',
-    description: 'numbered steps lighting up in turn along a line',
+    description:
+      'steps lit in turn along a line drawn from one to the next, the walked steps stepping back, the last in the accent',
     source: rve('templates/progress-steps.tsx'),
     slot: {
       durationMs: 8000,
@@ -312,7 +319,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'typewriter',
     technique: 'typewriter',
-    description: 'a line typed out character by character with a cursor, then held',
+    description:
+      'a line typed out word by word as it is spoken, then swept with a selection as if about to be acted on',
     source: rendercomp('src/components/typewriter/Typewriter.tsx'),
     slot: {
       durationMs: 6000,
@@ -323,7 +331,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'text-highlight',
     technique: 'text-highlight',
-    description: 'one phrase in a sentence swept with a highlight as it is said',
+    description:
+      'one phrase marked with a single unbroken stroke as it is said, the rest of the sentence stepping back',
     source: rve('templates/text-highlight.tsx'),
     slot: {
       durationMs: 5000,
@@ -334,7 +343,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'quote-card',
     technique: 'quote-card',
-    description: 'a quotation in large type with its attribution beneath, entering as it is read',
+    description:
+      'a large opening mark that settles into the margin as the quotation builds, the attribution drawn off it by a rule',
     source: rve('templates/quote-card.tsx'),
     slot: {
       durationMs: 7000,
@@ -345,7 +355,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'animated-list',
     technique: 'animated-list',
-    description: 'a list whose items enter one at a time with a marker',
+    description:
+      'items entering one at a time beside a single marker that travels down to each, the earlier items stepping back',
     source: rve('templates/animated-list.tsx'),
     slot: {
       durationMs: 7000,
@@ -356,7 +367,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'lower-third',
     technique: 'lower-third',
-    description: 'a name and a role in a band at the bottom of the frame, sliding in and holding',
+    description:
+      'an accent bar that stands up first, the name sliding out from behind it and the role building on a widening band',
     source: rve('templates/lower-third.tsx'),
     slot: {
       durationMs: 5000,
@@ -367,7 +379,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'chapter-title',
     technique: 'chapter-title',
-    description: 'a chapter number and its title, the rule drawing between them',
+    description:
+      "the chapter label over a rule that draws out to the title's width, the title words dropping out from under it",
     source: rendercomp('src/components/chapter-title/ChapterTitle.tsx'),
     slot: {
       durationMs: 5000,
@@ -378,7 +391,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'logo-reveal',
     technique: 'logo-reveal',
-    description: 'a mark revealed from a split, its name settling beneath it',
+    description:
+      'a lockup behind a pair of doors that slide apart as the name is said, its tracking settling, the line beneath',
     source: rendercomp('src/components/logo-split-reveal/LogoSplitReveal.tsx'),
     slot: {
       durationMs: 5000,
@@ -389,7 +403,8 @@ export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'split-screen',
     technique: 'split-screen',
-    description: 'two halves of the frame, one claim each, the divider drawn between them',
+    description:
+      'one claim centred, then the pivot word lands and collapses into the divider that splits the frame for the second',
     source: rve('templates/split-screen.tsx'),
     slot: {
       durationMs: 6000,
