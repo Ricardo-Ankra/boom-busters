@@ -116,6 +116,7 @@ function descriptionSearchRules(
   brief: SearchBrief | null | undefined,
   target: 'master' | 'short',
   channelKeywords: readonly string[] = [],
+  intent?: 'tension' | 'calm',
 ): string {
   const channelKeywordList = target === 'master' ? quotedList(channelKeywords, ', ') : ''
   const channelLine =
@@ -149,7 +150,10 @@ function descriptionSearchRules(
       : []),
     ...(target === 'master'
       ? [
-          '- "body" follows the shape the winning videos on this subject share: an opening dated scene with one figure taken from the claims, a line saying this is the full story, and a closing question that invites a comment.',
+          '- "body" follows the shape the winning videos on this subject share: an opening dated scene with one figure taken from the claims, a line saying this is the full story, and ' +
+            (intent === 'calm'
+              ? 'a closing line saying what the telling covers.'
+              : 'a closing question that invites a comment.'),
         ]
       : []),
     ...channelLine,
@@ -204,8 +208,8 @@ export function buildTitlesRequest(input: {
   searchBrief?: SearchBrief | null
   /** The format's title pattern, filled, for a master; absent changes nothing in the prompt. */
   titleFrame?: { pattern: string; required: readonly string[] }
-  /** Reserved for the intent a title is written for. */
-  intent?: string
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: 'tension' | 'calm'
 }): LLMTaskRequest {
   const shape = `Return JSON: {"titles": ["...", ...]} — exactly ${TITLE_OPTION_COUNT} strings.`
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -241,7 +245,9 @@ Rules:
 ${
   input.target === 'short'
     ? '- These are for a vertical Short cut from the full video: punchier, front-loaded, the payoff visible in the first five words.'
-    : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
+    : input.intent === 'calm'
+      ? '- These are for the full telling: they can breathe, but name the topic plainly; no cliffhanger, shock or urgency words.'
+      : '- These are for the full documentary: they can breathe, but the stakes must be in the first half.'
 }${titleSearchRules(input.searchBrief, input.target)}${input.target === 'master' ? titleFrameRules(input.titleFrame) : ''}${exampleEntriesBlock("The channel's own titles, for the style", input.bible.bible.titles)}`,
       input.bible,
     ),
@@ -317,6 +323,8 @@ export function buildDescriptionRequest(input: {
   searchBrief?: SearchBrief | null
   /** The format's and pillar's keywords; a master is asked to work one in early. Absent or empty changes nothing. */
   channelKeywords?: readonly string[]
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: 'tension' | 'calm'
 }): LLMTaskRequest {
   const glossCount = input.target === 'master' ? input.chapters.length : 0
   const clip = input.target === 'short' && input.shortText ? spokenExcerpt(input.shortText) : null
@@ -353,7 +361,7 @@ Rules:
   first${clip ? ', then what this Short is about' : ''}.
 - "tags": 8 to ${TAGS_COUNT_MAX} search phrases, each under 30 characters: [[example:metadata-tag-kinds]]${
         clip ? ', leading with the ones this Short names' : ''
-      }.${descriptionSearchRules(input.searchBrief, input.target, input.channelKeywords)}`,
+      }.${descriptionSearchRules(input.searchBrief, input.target, input.channelKeywords, input.intent)}`,
       input.bible,
     ),
     messages: clip

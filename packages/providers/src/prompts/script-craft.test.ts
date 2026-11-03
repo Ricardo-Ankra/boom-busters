@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { buildChapterRequest } from './script'
-import { SCRIPT_CRAFT } from './script-craft'
+import { SCRIPT_CRAFT, SCRIPT_CRAFT_CALM } from './script-craft'
 
 describe('SCRIPT_CRAFT', () => {
   it('is byte-identical to script-craft.md, the human-editable source', () => {
@@ -60,5 +60,34 @@ describe('SCRIPT_CRAFT', () => {
     expect(SCRIPT_CRAFT).toContain('an echo of the opening')
     expect(SCRIPT_CRAFT).toContain('the open thread')
     expect(SCRIPT_CRAFT).toContain('except the final chapter')
+  })
+})
+
+describe('SCRIPT_CRAFT_CALM', () => {
+  it('is byte-identical to script-craft-calm.md, the human-editable source', () => {
+    const markdown = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'script-craft-calm.md'),
+      'utf8',
+    )
+    expect(SCRIPT_CRAFT_CALM.replace(/\r\n/g, '\n')).toBe(markdown.replace(/\r\n/g, '\n'))
+  })
+
+  it('keeps the hard rules the tension craft keeps', () => {
+    expect(SCRIPT_CRAFT_CALM).toContain('claim list does not')
+    expect(SCRIPT_CRAFT_CALM).toContain('[[example:script-hedge-kind]]')
+    expect(SCRIPT_CRAFT_CALM).toContain('## One home per fact')
+    expect(SCRIPT_CRAFT_CALM).toContain('## Callbacks, not recaps')
+    expect(SCRIPT_CRAFT_CALM).toContain('[[example:script-legal-care]]')
+  })
+
+  it('swaps the tension mechanics for settling ones, and names no channel', () => {
+    expect(SCRIPT_CRAFT_CALM).toContain('## Each chapter settles its own thread')
+    expect(SCRIPT_CRAFT_CALM).toContain('## The close')
+    expect(SCRIPT_CRAFT_CALM).toContain('[pause]')
+    expect(SCRIPT_CRAFT_CALM).toContain('[long pause]')
+    expect(SCRIPT_CRAFT_CALM).not.toContain('The question engine')
+    expect(SCRIPT_CRAFT_CALM).not.toContain('## Withholding')
+    expect(SCRIPT_CRAFT_CALM).not.toContain('## Escalation')
+    expect(SCRIPT_CRAFT_CALM).not.toMatch(/Rome|Boom/i)
   })
 })

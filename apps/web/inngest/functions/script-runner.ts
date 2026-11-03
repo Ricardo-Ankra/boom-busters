@@ -260,6 +260,7 @@ export const scriptRunner = inngest.createFunction(
             searchBrief,
             wordsPerMinute: channel.format.wordsPerMinute,
             introRule: channel.format.introRule,
+            intent: channel.format.intent,
           })
           return { ok: true, ...drafted }
         } catch (error) {
@@ -321,6 +322,7 @@ export const scriptRunner = inngest.createFunction(
                   chapterIndex: index,
                   previousChapters: written.map(({ title, contentMd }) => ({ title, contentMd })),
                   claims: setup.claims,
+                  intent: channel.format.intent,
                 },
               )
             } catch (error) {
@@ -385,6 +387,7 @@ export const scriptRunner = inngest.createFunction(
               chapterTitle: chapter.title,
               contentMd: checked,
               claims: setup.claims,
+              intent: channel.format.intent,
             })
 
         const own = repeats

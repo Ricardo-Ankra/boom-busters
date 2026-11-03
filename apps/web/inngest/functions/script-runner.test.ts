@@ -408,6 +408,41 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       }
     })
 
+    it("sends the calm playbook when the format's intent is calm, read inside the step", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('# Script craft: how a calm telling settles')
+        expect(sent.system).toContain('The calm contract, per chapter')
+        expect(sent.system).not.toContain('The tension contract')
+      } finally {
+        restore()
+      }
+    })
+
+    it('sends the documentary playbook when the intent is tension', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ intent: 'tension' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('The tension contract, per chapter')
+        expect(sent.system).not.toContain('how a calm telling settles')
+      } finally {
+        restore()
+      }
+    })
+
     it('leaves the fixed lines out of the self-check', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       callLlm.mockReset()

@@ -702,3 +702,60 @@ describe('metadata prompts with a search brief', () => {
     expect(system).toContain('"Why? [[example:metadata-tag-kinds]]"')
   })
 })
+
+describe('metadata prompts for a calm format', () => {
+  const titles = {
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
+    caseTitle: 'Case',
+    hook: 'Hook.',
+    target: 'master' as const,
+    workingTitle: 'Working',
+  }
+
+  it('titles name the topic plainly in place of putting the stakes first', () => {
+    const calm = buildTitlesRequest({ ...titles, intent: 'calm' }).system
+    expect(calm).toContain('name the topic plainly; no cliffhanger, shock or urgency words')
+    expect(calm).not.toContain('the stakes must be in the first half')
+    expect(buildTitlesRequest(titles).system).toContain('the stakes must be in the first half.')
+    expect(buildTitlesRequest({ ...titles, intent: 'tension' })).toEqual(buildTitlesRequest(titles))
+  })
+
+  it("a Short's titles are untouched by intent", () => {
+    const short = { ...titles, target: 'short' as const }
+    expect(buildTitlesRequest({ ...short, intent: 'calm' })).toEqual(buildTitlesRequest(short))
+  })
+
+  it('the description closes on a line saying what the telling covers, not a comment question', () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      target: 'master' as const,
+      claims: [CLAIM],
+      chapters: [{ title: 'The audit', text: 'EY refused to sign.' }],
+      searchBrief: {
+        subject: 'Wirecard',
+        measuredAt: '2026-11-02T12:00:00.000Z',
+        targetKeyword: null,
+        secondaryKeywords: [],
+        searchedQuestions: [],
+        outliers: [],
+        titlePatterns: [],
+        toldAlready: [],
+        angleOptions: [],
+        chosenAngle: null,
+        formatKey: null,
+        fit: null,
+      } satisfies SearchBrief,
+    }
+    const calm = buildDescriptionRequest({ ...base, intent: 'calm' }).system
+    expect(calm).toContain('a closing line saying what the telling covers')
+    expect(calm).not.toContain('a closing question that invites a comment')
+    expect(buildDescriptionRequest(base).system).toContain(
+      'a closing question that invites a comment',
+    )
+    expect(buildDescriptionRequest({ ...base, intent: 'tension' })).toEqual(
+      buildDescriptionRequest(base),
+    )
+  })
+})

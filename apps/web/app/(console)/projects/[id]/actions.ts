@@ -249,7 +249,8 @@ export async function regenerateSection(
 
   try {
     // Read here, in the action that builds the request, before any mock branch.
-    const frozen = requireCompleteBible(await channelForProject(db, projectId))
+    const channel = await channelForProject(db, projectId)
+    const frozen = requireCompleteBible(channel)
     if (mockProvidersEnabled()) {
       return { ok: true, proposal: mockRegeneratedSection(selection, note) }
     }
@@ -263,6 +264,7 @@ export async function regenerateSection(
         selection,
         note,
         claims,
+        intent: channel.format.intent,
       }),
       complete: completeForProject(projectId),
     })
