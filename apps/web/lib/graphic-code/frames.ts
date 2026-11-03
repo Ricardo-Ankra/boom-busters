@@ -51,8 +51,10 @@ export interface FramesInput {
   compiled: string
   props: Omit<GraphicProps, 'safeArea'>
   durationMs: number
-  /** Photograph the review's moments as well as measuring them. */
+  /** Photograph the review's moments. */
   shots: boolean
+  /** Measure the layout at every rest moment; false photographs only. True when not given. */
+  measure?: boolean
   /** The longest the whole inspection may take; `INSPECT_MAX_MS` when not given. */
   timeoutMs?: number
 }
@@ -385,6 +387,7 @@ async function showMoment(page: Page, markup: string): Promise<void> {
 async function inspectWith(browser: Browser, input: FramesInput): Promise<FramesResult> {
   const moments = restMoments(input.props.words, input.durationMs)
   const wanted = input.shots ? shotMoments(moments) : { landscape: [], portrait: [] }
+  const measured = input.measure === false ? [] : moments
   const shots: FrameShot[] = []
   // One page for both frame sizes, resized between them. Vercel's packaged
   // Chromium runs as a single process, and closing its last page closes the
@@ -396,7 +399,7 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
     deviceScaleFactor: 0.5,
   })
   for (const size of FRAME_SIZES) {
-    const times = [...new Set([...moments, ...wanted[size.orientation]])].sort((a, b) => a - b)
+    const times = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
     const rendered = graphicMarkupAt(
       { compiled: input.compiled, props: input.props, durationMs: input.durationMs },
       size,
@@ -410,7 +413,7 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
     })
     for (const sample of rendered.samples) {
       await showMoment(page, sample.markup)
-      if (moments.includes(sample.atMs)) {
+      if (measured.includes(sample.atMs)) {
         const issue = layoutIssueIn(
           (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[],
           size,

@@ -4541,8 +4541,12 @@ This is on master and unrelated to this work.
 - [x] First production redesign (2026-11-03): the logs showed Chromium
       launching on Vercel and then failing, and a 300 s timeout before it;
       fixed the same day (decision 389, the follow-up).
-- [ ] After the follow-up's deploy: a redesign leaves no "[graphics]
-      designing ... without the browser" line in the logs.
+- [x] After the follow-up's deploy: two redesigns (2026-11-03) ran with no
+      browser failure and no timeout, but neither was reviewed.
+- [x] The review moved to a step of its own, and the designer logs
+      (decision 389, the second follow-up).
+- [ ] After that deploy: a redesign's card says "Reviewed on its rendered
+      frames", and the logs carry its `[graphics]` lines.
 - [ ] Redesign a few real slots on the new prompt and review (paid; on the
       owner's word).
 
@@ -9536,3 +9540,28 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      its launch was given up on closes itself. `GRAPHIC_CHROMIUM_ARGS` adds
      flags to a local launch, so a test runs the single-process browser. The
      timed-out attempt's model calls were paid again by the retry.
+     Second follow-up, 2026-11-04 (owner: "proceed"). The two redesigns after
+     the browser fix were read from production in a read-only transaction:
+     both designs were stored with their concept and storyboard, neither had
+     a `review`, and the ledger held four graphics calls and no review call.
+     Each first answer was refused and retried; one design used about 190 s
+     of the 240 s step budget, below the 90 s the review needed, and the
+     other left about 110 s yet showed no review, its failure swallowed by
+     the catch that keeps a design (a failed call also deletes its ledger
+     reservation), so nothing recorded why. A design call takes 80 to 110 s,
+     so the review cannot share the design's step. Now: `reviewGraphicWith`
+     reviews a stored design with its own 240 s deadline, photographing it
+     without measuring (a design stored before the layout check is still
+     shown its frames); `designGraphicWith` no longer reviews. The visuals
+     run reviews each landed design in `<id>-review`; Redesign (with its
+     steer) and retype run `review-graphic` through `reviewStoredGraphic`,
+     which lands only on the design it reviewed (a newer one wins) and never
+     reviews a design twice. Every refusal, review outcome, skip and failure
+     is one `[graphics] <project> <chapter> at <s>: ...` line, error level
+     for failures and warning level otherwise (the lint allows no other).
+     Decisions made where the spec left room: a skipped review leaves the
+     design unmarked; Redesign clears its "drafting" marker before the review
+     step, so the card shows the new design while the review runs and changes
+     if it is revised (cost if wrong: a card that changes once more); a run
+     parked before the deploy replays no `designed` on the Redesign step and
+     skips the review.

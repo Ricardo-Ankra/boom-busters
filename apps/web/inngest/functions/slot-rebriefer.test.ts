@@ -22,6 +22,7 @@ import {
   setVisualsPhase,
   shotSlots,
   truncateRunMirror,
+  updateSlotBrief,
 } from '@boom-busters/db'
 import { BudgetExceededError, ContentPolicyError, noticesFor } from '@boom-busters/schemas'
 import type { ChartBrief, GraphicBrief, ShotBrief } from '@boom-busters/schemas'
@@ -259,6 +260,58 @@ describeDb('slot-rebriefer (mock mode)', () => {
     expect(brief.takeaway).toBe(chartBrief.takeaway)
     expect(brief.code?.title).toMatch(/^\[mock\]/)
     expect(slot?.retype).toBeNull()
+  })
+
+  it('reviews the redesign in a step of its own, with the steer, and stores what it made of it (decision 389)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const review = vi
+      .spyOn(design, 'reviewGraphic')
+      .mockImplementationOnce(async (_context, slot) => ({
+        outcome: 'revised',
+        code: { ...slot.brief.code!, title: 'Reviewed on its frames', review: 'revised' },
+      }))
+    try {
+      const chartSlot = await seedSlot(chartBrief)
+      const { result } = await engine.execute({
+        events: rebriefEvent(chartSlot, 'The whole decade, not just the crash.'),
+      })
+      expect(result).toMatchObject({ outcome: 'rebriefed' })
+      expect(review).toHaveBeenCalledTimes(1)
+      expect(review.mock.calls[0]![2]).toEqual({
+        guidance: 'The whole decade, not just the crash.',
+      })
+      const brief = (await getShotSlot(db, chartSlot))?.brief as {
+        code?: { title: string; review?: string }
+      }
+      expect(brief.code).toMatchObject({ title: 'Reviewed on its frames', review: 'revised' })
+    } finally {
+      review.mockRestore()
+    }
+  })
+
+  it('never lays a review over a newer design that landed while it ran (decision 389)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const chartSlot = await seedSlot(chartBrief)
+    const review = vi
+      .spyOn(design, 'reviewGraphic')
+      .mockImplementationOnce(async (_context, slot) => {
+        // A second redesign lands while this review is out.
+        await updateSlotBrief(db, chartSlot, {
+          ...chartBrief,
+          code: { ...STORED_CODE, title: 'Newer' },
+        })
+        return { outcome: 'revised', code: { ...slot.brief.code!, review: 'revised' } }
+      })
+    try {
+      await engine.execute({ events: rebriefEvent(chartSlot) })
+      const brief = (await getShotSlot(db, chartSlot))?.brief as {
+        code?: { title: string; review?: string }
+      }
+      expect(brief.code?.title).toBe('Newer')
+      expect(brief.code?.review).toBeUndefined()
+    } finally {
+      review.mockRestore()
+    }
   })
 
   it('keeps the chart and the design it has when the redesign is refused (decision 295)', async () => {

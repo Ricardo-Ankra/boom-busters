@@ -38,7 +38,7 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
-import { designableBrief } from '../lib/graphic-steps'
+import { designableBrief, reviewStoredGraphic } from '../lib/graphic-steps'
 
 /**
  * slot-retyper (staged-visuals design, 2026-08-26).
@@ -331,6 +331,8 @@ export const slotRetyper = inngest.createFunction(
         )
         return { projectId, slotId, outcome: 'over-budget' as const }
       }
+      // The new design is reviewed in a step of its own (decision 389).
+      await step.run('review-graphic', () => reviewStoredGraphic(projectId, slotId))
     }
 
     // Board phase: the owner is looking at candidate strips — resolve the

@@ -1,7 +1,15 @@
+import { getShotSlot, updateSlotBrief } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import { BudgetExceededError, ChartBriefSchema, GraphicBriefSchema } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
-import { designGraphic, withDesign, type GraphicDesignContext } from '@/lib/graphic-design'
+import { db } from '@/lib/db'
+import {
+  designGraphic,
+  loadGraphicContext,
+  reviewGraphic,
+  withDesign,
+  type GraphicDesignContext,
+} from '@/lib/graphic-design'
 import { budgetGateData } from './gates'
 
 /** `step.run`, as the helper needs it; the runners pass `(id, fn) => step.run(id, fn)`. */
@@ -36,6 +44,10 @@ export function designableBrief(row: { type: string; brief: unknown }): Designab
  * graphic step it already holds against the row it belongs to. A result
  * replayed from before the deploy carries a scene, not code, so the count of
  * undesigned rows reads `designIssue`, which both kinds of result set alike.
+ *
+ * Each design that lands is then reviewed in a step of its own
+ * (`<id>-review`, decision 389), with that step's whole time to itself; a
+ * skipped review leaves the design as it was.
  */
 export async function designPlannedGraphics(
   run: StepRunner,
@@ -84,7 +96,52 @@ export async function designPlannedGraphics(
     })
     if (!outcome.ok) return { ok: false, gate: outcome.gate }
     if (outcome.brief.designIssue !== undefined) undesigned += 1
-    rows.push({ ...row, brief: outcome.brief })
+    let designed = outcome.brief
+    if (designed.code && !designed.code.review) {
+      const timing = { chapterId: row.chapterId, startMs: row.startMs, durationMs: row.durationMs }
+      const reviewed = await run(`${id}-review`, async () => {
+        const result = await reviewGraphic(
+          { ...input.context, chapterTitle: input.chapterTitle },
+          { ...timing, brief: designed },
+        )
+        return result.outcome === 'skipped'
+          ? null
+          : withDesign(designed, { ok: true, code: result.code })
+      })
+      if (reviewed) designed = reviewed
+    }
+    rows.push({ ...row, brief: designed })
   }
   return { ok: true, rows, undesigned }
+}
+
+/**
+ * The review of a design already stored on its slot (decision 389), for the
+ * side jobs (Redesign, retype) to run in a step after the design's own. It
+ * lands only on the design it reviewed: a newer redesign or retype in the
+ * meantime wins, and a design already reviewed is left alone, so a retried
+ * step never reviews twice.
+ */
+export async function reviewStoredGraphic(
+  projectId: string,
+  slotId: string,
+  options: { guidance?: string } = {},
+): Promise<{ outcome: 'kept' | 'revised' | 'skipped' | 'superseded' }> {
+  const slot = await getShotSlot(db, slotId)
+  const brief = slot ? designableBrief(slot) : null
+  if (!slot || !brief?.code || brief.code.review) return { outcome: 'skipped' }
+  const context = await loadGraphicContext(projectId, slot.chapterId)
+  const result = await reviewGraphic(
+    context,
+    { chapterId: slot.chapterId, startMs: slot.startMs, durationMs: slot.durationMs, brief },
+    options,
+  )
+  if (result.outcome === 'skipped') return { outcome: 'skipped' }
+  const latest = await getShotSlot(db, slotId)
+  const now = latest ? designableBrief(latest) : null
+  if (!latest || latest.type !== slot.type || now?.code?.source !== brief.code.source) {
+    return { outcome: 'superseded' }
+  }
+  await updateSlotBrief(db, slotId, withDesign(now, { ok: true, code: result.code }))
+  return { outcome: result.outcome }
 }
