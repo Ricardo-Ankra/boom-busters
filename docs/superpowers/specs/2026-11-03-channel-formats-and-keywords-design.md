@@ -80,7 +80,9 @@ What the code does today:
 - YouTube Studio channel description or channel keywords.
 - Pillar playlists (the next task).
 - Post-publish search traffic per keyword.
-- Changing Shorts. They keep today's rules (my call).
+- Changing how Shorts are made. They keep today's rules (my call). The one
+  exception, added at the owner's request on 2026-11-03, is that a format can
+  turn Shorts off altogether (section 6.10).
 
 **Anti-goals** (failure even if it works)
 
@@ -115,6 +117,7 @@ What the code does today:
 | `titleRequiredSlots` | subset of the four slot names, each present in the template | nothing checked |
 | `introRule` | up to 1,000 characters of prose | today's opening rules |
 | `introLine`, `outroLine` | up to 400 characters each, fixed narration | none |
+| `shorts` | boolean, whether this format's videos get Shorts | `true` (today's pipeline) |
 
 The first keyword is the format's **lead keyword**: titles use it for
 `{formatKeyword}`. The rest go to the description, tags and the cohesion
@@ -363,6 +366,45 @@ chosen title, description's first 150 characters, tags, hashtags, spoken intro
 format keywords, pillar (label or keywords). Each cell shows hit or miss. Above
 it: the case's fit from 6.1 and any empty channel fields ("No format keywords
 set"). Warn only.
+
+### 6.10 Shorts on or off
+
+Added 2026-11-03 at the owner's request: "For certain channels we should have
+the option to turn shorts on and off. For example, a sleep channel won't have
+shorts." The switch sits on the format, not the channel (owner's choice), so a
+channel with one format gets a channel switch, and a channel that runs a calm
+format beside a tension one can keep Shorts for the second only.
+
+With `shorts: false`:
+
+- **Script.** The script run makes no Shorts marking call and stores no
+  candidates. Script Studio shows no Shorts strip.
+- **After the master.** When the master render finishes, the project moves
+  straight to `publish` (`awaiting_review`) and `project/master.ready` is not
+  sent. No talking points, point Shorts, excerpts or teaser are made, so none is
+  paid for.
+- **Pipeline rail.** The Shorts segment reads "off for this format" instead of
+  "not started", with its own icon and text, never colour alone.
+- **Publish.** The screen lists the long video only. Short slots are only ever
+  proposed for Shorts that exist, so the calendar books none without any change.
+- **Bible tab.** Each format card has a labelled on/off button for Shorts. The
+  read view says "Shorts off" for a format that has them off.
+
+What it does not do:
+
+- It never deletes. A project that already has Shorts rows keeps them on the
+  Shorts and Publish screens, whatever its format now says.
+- A project already in the Shorts stage carries on, including its Restart
+  button. The switch is read when the master finishes, inside the step that
+  sets the next stage, so a run parked before the deploy reads `true` from the
+  default and behaves as today.
+- Unlike every other format field, the switch is read from the channel's
+  **current** bible (the format with the project's key, resolved as
+  `resolveFormat` does), not the version the project froze at start (my call).
+  It is a switch to stop spending, so turning it off should reach videos
+  already in progress. Nothing in the narration or the master depends on it.
+- Turning Shorts back on later does not reach back to projects that skipped
+  them. There is no "make Shorts for this video" button (out of scope).
 
 ## 7. Bible tab, Draft with AI, Copy
 

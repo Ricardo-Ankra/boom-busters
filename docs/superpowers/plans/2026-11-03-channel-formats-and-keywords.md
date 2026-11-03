@@ -32,7 +32,7 @@ App Router server actions, Vitest, Playwright.
 - Channel tags may use at most 150 of the 500 tag characters. `HASHTAGS_MAX` stays 3.
 - `channelHashtag`: letters and digits only, up to 30, stored without `#`. `channelFooter`: up to 1,000 characters.
 - Staleness of VidIQ data: `SEARCH_BRIEF_STALE_DAYS` (30). Nothing is cleared.
-- Shorts are unchanged.
+- Shorts are unchanged, except that a format can turn them off (Task 18b, spec 6.10).
 - PROGRESS.md: one section for this work with a checklist per phase; decision numbers taken after `git fetch` of origin/master at merge.
 - Verification per package, never one whole `pnpm test` (600 s watchdog). Every Bash call that runs tests uses `timeout: 600000`.
 - Before each commit: `git ls-files -z -- . ':!docs' | xargs -0 -n 80 pnpm exec prettier --check --ignore-unknown`, `pnpm lint`, `pnpm typecheck`.
@@ -638,6 +638,34 @@ The calm craft text is drafted from how sleep history narration works and **show
 - [ ] **Step 5: Run to see them pass, and the lift fixtures.** Expected: PASS, fixtures untouched.
 
 - [ ] **Step 6: Commit** `feat(script): the calm playbook`
+
+### Task 18b: Shorts on or off per format
+
+Added 2026-11-03 at the owner's request (spec 6.10, ledger Ruling 18).
+
+**Files:**
+- Modify: `packages/schemas/src/formats.ts` (`shorts: z.boolean().default(true)` on `ChannelFormatSchema`; `defaultFormat()` carries `true`)
+- Create: in `packages/db/src` beside `channelForProject`, `shortsEnabledForProject(db: Database, projectId: string): Promise<boolean>`: the channel's **current** bible (`currentBible`), `resolveFormat(current.formats, project.formatKey).shorts`
+- Modify: `apps/web/inngest/functions/render-runner.ts` (both the `local-master-ready` and `master-ready` steps: read the switch inside the step; on `false` set `{ stage: 'publish', stageStatus: 'awaiting_review' }` instead of `shorts`/`queued`; the step returns `{ shorts: boolean }` and `emit-master-ready` is sent only when it is `true`; a stored step result without the field counts as `true`)
+- Modify: `apps/web/inngest/functions/script-runner.ts` (the `mark-shorts` step reads the switch inside the step; on `false` it returns `{ ok: true, candidates: [] }` without calling the model, mock or live; the run summary says "Shorts off for this format" in place of the candidate count)
+- Modify: `apps/web/lib/stage-view.ts` (`StageInputs` and `stageViewsForProject` take `shortsOff?: boolean`; with it, the `shorts` view has availability `'off'` unless the project is on the `shorts` stage or has Shorts rows), `apps/web/components/pipeline-rail.tsx` (segment state `'off'`, label "off for this format", its own icon; the mini rail too), and their callers (`projects/[id]/page.tsx`, `c/[slug]/projects/page.tsx`; the list page resolves each project's switch from the channel's current bible it already holds, without a query per project)
+- Modify: `apps/web/app/(console)/projects/[id]/script-studio.tsx` (no Shorts strip when the switch is off and there are no candidates) and `publish-screen.tsx` (no Shorts section when the switch is off and the project has no Shorts rows)
+- Modify: `apps/web/app/(console)/c/[slug]/settings/bible-fields.tsx` (format card: a labelled button "Shorts: on" / "Shorts: off" with `aria-pressed`; the read view lists "Shorts off" for a format with them off)
+- Test: `formats.test.ts`, the db helper's integration test, `render-runner.test.ts`, `script-runner.test.ts`, the stage-view and rail tests, `script-studio.test.tsx`, `publish-screen.test.tsx`, the bible-fields or bible-tab test, `e2e/tests/bible.spec.ts` (the button is visible and saves)
+
+**Interfaces:**
+- Consumes: `resolveFormat`, `currentBible`, `channelForProject`.
+- Produces: `ChannelFormat.shorts: boolean`; `shortsEnabledForProject`; `SegmentState` gains `'off'`; `StageAvailability` gains `'off'`.
+
+- [ ] **Step 1: Write the failing tests:** a stored format without `shorts` parses to `true`; `shortsEnabledForProject` reads the current bible (a project frozen on a version with Shorts on, whose channel's current version has them off, gives `false`; an unknown key falls back to the primary's value); the render runner with Shorts off sets `publish`/`awaiting_review` and sends no `project/master.ready`, and with Shorts on is unchanged; the script runner with Shorts off makes no marking call and stores no candidates; the rail shows "off for this format" for the Shorts segment and still shows the real state when the project is on `shorts` or has Shorts rows; the studio and publish screen hide their Shorts parts only when off and empty; the bible editor's button toggles and the value saves.
+
+- [ ] **Step 2: Run to see them fail.** Expected: FAIL.
+
+- [ ] **Step 3: Implement.** Nothing is deleted. The Shorts stage's own runners (`shorts-runner`, talking points, point builds, teaser) are not changed, so a project already in that stage, and its Restart button, behave as today.
+
+- [ ] **Step 4: Run to see them pass, every consuming package's suite (`packages/schemas`, `packages/db`, `packages/providers`, `apps/web`), and the lift fixtures.** Expected: PASS, fixtures untouched.
+
+- [ ] **Step 5: Commit** `feat(shorts): a format can turn Shorts off`
 
 **Phase 4 exit:** per-package suites, the full e2e suite in batches; PROGRESS.md; journal check; merge.
 
