@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   EXAMPLE_SLOT_IDS,
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_IN_USE,
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import {
-  GRAPHIC_EXAMPLE_CHART,
-  GRAPHIC_EXAMPLE_CHART_DATA,
-  GRAPHIC_EXAMPLE_TYPE,
-} from './lift/graphic-examples'
 import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildGraphicRequest,
@@ -139,7 +135,7 @@ describe('the designer prompt (decision 295)', () => {
 
   it('keeps the hooks at the top of Graphic, out of every helper', () => {
     expect(rules).toContain(
-      'Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a helper the frame and fps as arguments, as both examples do.',
+      'Call Remotion.useCurrentFrame(), Remotion.useVideoConfig() and React.useMemo only at the top of Graphic, never inside a helper or a condition; hand a helper the frame and fps as arguments.',
     )
   })
 
@@ -278,62 +274,28 @@ describe('the designer prompt (decision 295)', () => {
     )
     expect(rules).not.toContain('Remotion.Easing.out(Remotion.Easing.poly(4))')
     expect(rules).not.toContain('16 to 24 px rise')
-    for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
-      expect(example).not.toMatch(/\bEasing\b/)
-      expect(example).toContain('easing: motion.ease.')
-      expect(example).toContain('motion.frames(')
-      expect(example).toContain('motion.ms.')
-      expect(example).toContain(
-        '// Every length and every curve is a token; positions follow the narration.',
-      )
-    }
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain('config: motion.spring.hero')
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain('motion.px.rise')
-    // The hero's overshoot shows on the rise, where a few pixels past the mark read.
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain("'translateY(' + (1 - pop) * 2 * motion.px.rise * unit")
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
-      'It rises twice motion.px.rise, so the overshoot has room to read; a plain fade keeps the single rise.',
-    )
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain(
-      "// The strike is the figure's payoff, so it takes the emphasis curve.",
-    )
-    expect(GRAPHIC_EXAMPLE_CHART).toContain(
-      'noteAtMs: lands[last] + motion.ms.draw + motion.ms.gap',
-    )
-    expect(GRAPHIC_EXAMPLE_CHART).toContain(
-      'motion.ms.enter + index * (motion.ms.draw + motion.ms.gap)',
-    )
-    expect(GRAPHIC_EXAMPLE_CHART).not.toContain('spring')
-    expect(GRAPHIC_EXAMPLE_CHART).toContain('motion.stagger(')
-    expect(GRAPHIC_EXAMPLE_CHART).toContain(
-      '// The title arrives first and the subtitle one stagger step after it: motion.order (title, then body), shown on a pair.',
-    )
   })
 
   it("carries Remotion's own rules, pinned to the vendored files (decision 301)", () => {
     expect(system).toContain(REMOTION_RULES)
-    expect(system.indexOf(REMOTION_RULES)).toBeLessThan(
-      system.indexOf('Example 1, a text-only beat.'),
-    )
   })
 
-  it('shows the two worked examples whole, written only against the sandbox', () => {
-    expect(system).toContain(GRAPHIC_EXAMPLE_TYPE)
-    expect(system).toContain(GRAPHIC_EXAMPLE_CHART)
-    expect(system).toContain(JSON.stringify(GRAPHIC_EXAMPLE_CHART_DATA))
-    for (const example of [GRAPHIC_EXAMPLE_TYPE, GRAPHIC_EXAMPLE_CHART]) {
-      expect(example).toMatch(/^function Graphic\(props\) \{$/m)
-      expect(example).not.toMatch(
-        /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(|\bDate\b|Math\.random|\bimport\b|\bexport\b|\buseState\b/,
-      )
-      expect(example).toContain('props.safeArea')
-      expect(example).toContain('Remotion.useVideoConfig()')
-      // A helper is called, never rendered: no capitalised JSX tag but Remotion's own.
-      expect(example).not.toMatch(/<(?!Remotion\.)[A-Z]/)
+  it('carries no worked example: the slot exemplar is the only design shown (decision 386)', () => {
+    const text = buildGraphicRequest(input()).system
+    expect(text).not.toContain('Example 1, a text-only beat')
+    expect(text).not.toContain('Example 2, a chart slot')
+    expect(text).not.toContain('both examples')
+    expect(text).toContain('Answer with JSON only:')
+  })
+
+  it('composes for a bible that still holds the retired keys', () => {
+    const old = {
+      ...FIRST_CHANNEL_BIBLE,
+      examples: { ...FIRST_CHANNEL_BIBLE.examples, 'graphics-worked-beat': 'old' },
     }
-    expect(GRAPHIC_EXAMPLE_TYPE).toContain('props.words')
-    expect(GRAPHIC_EXAMPLE_TYPE).not.toContain('props.data')
-    expect(GRAPHIC_EXAMPLE_CHART).toContain('props.data.series')
+    expect(() =>
+      buildGraphicRequest(input({ bible: { bible: old, slotIds: EXAMPLE_SLOT_IDS } })),
+    ).not.toThrow()
   })
 
   it('writes no dash a reader would see', () => {
@@ -352,15 +314,7 @@ describe('the designer prompt reads the channel bible', () => {
     )
     expect(other).toContain('a film about real ideas and real people')
     expect(other).toContain('A logo earns its place when the idea or person is the subject')
-    expect(other).toContain(PSYCHOLOGY_TEST_BIBLE.examples['graphics-worked-beat']!)
-    expect(other).toContain(PSYCHOLOGY_TEST_BIBLE.examples['graphics-worked-chart']!)
     expect(other).not.toContain('Wirecard')
-  })
-
-  it("derives the exported examples from the first channel's slots", () => {
-    expect(GRAPHIC_EXAMPLE_TYPE.startsWith('// Kinetic type:')).toBe(true)
-    expect(GRAPHIC_EXAMPLE_CHART.startsWith('// A chart from props.data:')).toBe(true)
-    expect(GRAPHIC_EXAMPLE_CHART_DATA.series[0]!.points).toHaveLength(4)
   })
 })
 

@@ -134,12 +134,38 @@ describe('BibleTab', () => {
     renderTab(drafted)
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('Voice is drafted, not approved')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Approve Voice' }))
     expect(approveBibleSectionAction).toHaveBeenCalledWith(CHANNEL.id, 'voice')
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
     expect(screen.queryByText('Voice is drafted, not approved')).toBeNull()
+  })
+
+  it('keeps the draft bar along the bottom with the next version number', () => {
+    renderTab(draftOf())
+    const bar = screen.getByRole('region', { name: 'Unsaved draft' })
+    expect(bar.className).toContain('sticky')
+    expect(within(bar).getByText(/Saving makes version 4/)).toBeInTheDocument()
+  })
+
+  it('counts what stops Save and lists it on request', async () => {
+    renderTab(draftOf({ statuses: { ...draftOf().statuses, voice: 'drafted', look: 'drafted' } }))
+    expect(screen.getByText(/2 things to fix before saving/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
+    expect(screen.getByText('Voice is drafted, not approved')).toBeVisible()
+  })
+
+  it('holds Save, Discard and the note on an archived channel', () => {
+    renderTab(draftOf(), { archived: true })
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(screen.getByLabelText('Version note')).toBeDisabled()
+  })
+
+  it('says one thing in the singular', () => {
+    renderTab(draftOf({ statuses: { ...draftOf().statuses, voice: 'drafted' } }))
+    expect(screen.getByText(/1 thing to fix before saving\./)).toBeInTheDocument()
   })
 
   it('saves with the note and clears the draft', async () => {
@@ -153,7 +179,7 @@ describe('BibleTab', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
   })
 
-  it('disables Approve on a flagged field and shows the shared run and its source', () => {
+  it('disables Approve on a flagged field and shows the shared run and its source', async () => {
     renderTab(
       draftOf({
         statuses: { ...draftOf().statuses, examples: 'drafted' },
@@ -164,7 +190,21 @@ describe('BibleTab', () => {
     const note = within(card('Examples')).getByText(/Too close to its source/)
     expect(note).toHaveTextContent('one two three')
     expect(note).toHaveTextContent('Alpha: A title')
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('examples.' + SLOT.id + ' is too close to its source')).toBeVisible()
+  })
+
+  it('ignores a stored flag on a retired example slot: Approve stays enabled and no blocker names it', async () => {
+    renderTab(
+      draftOf({
+        statuses: { ...draftOf().statuses, examples: 'drafted' },
+        tooClose: { 'examples.graphics-worked-beat': { source: 'Alpha: A title', run: 'one two' } },
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'Approve Examples' })).toBeEnabled()
+    expect(within(card('Examples')).queryByText(/Too close to its source/)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
+    expect(screen.queryByText(/graphics-worked-beat/)).toBeNull()
   })
 
   it('gives every button the 40 px target', () => {
@@ -185,13 +225,10 @@ describe('BibleTab', () => {
     draftBibleAction.mockResolvedValue({ ok: true })
     renderTab(draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, examples: {} } }))
     const examples = card('Examples')
-    expect(within(examples).getAllByText('New slot, needs an example')).toHaveLength(
-      EXAMPLE_SLOTS.length,
-    )
-    expect(within(examples).getAllByText(`In: ${SLOT.source}`).length).toBeGreaterThan(0)
+    expect(within(examples).getAllByText('No example yet')).toHaveLength(EXAMPLE_SLOTS.length)
     expect(within(examples).getAllByText(SLOT.teaches).length).toBeGreaterThan(0)
 
-    await userEvent.click(within(examples).getByRole('button', { name: `Draft ${SLOT.id}` }))
+    await userEvent.click(within(examples).getByRole('button', { name: `Draft ${SLOT.title}` }))
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, { slotId: SLOT.id })
   })
 
@@ -270,6 +307,28 @@ describe('BibleTab', () => {
     expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, {
       sections: ['voice'],
       steer: 'more clinical',
+    })
+  })
+
+  it('tries again for a single retired slot as the Examples section, keeping the steer', async () => {
+    draftBibleAction.mockResolvedValue({ ok: true })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'draft',
+          state: 'failed',
+          current: null,
+          error: 'The model is down',
+          startedAt: '2026-10-30T08:00:00.000Z',
+          units: [{ section: 'examples', slotId: 'graphics-worked-beat' }],
+          steer: 'plainer',
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(draftBibleAction).toHaveBeenCalledWith(CHANNEL.id, {
+      sections: ['examples'],
+      steer: 'plainer',
     })
   })
 
@@ -594,6 +653,13 @@ describe('BibleTab', () => {
     expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
+
+  it('heads each card with its name and says what it holds', () => {
+    renderTab(null)
+    expect(screen.getByRole('heading', { level: 2, name: 'Channel bible' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'Examples' })).toBeInTheDocument()
+    expect(within(card('Examples')).getByText('44 of 44 examples written')).toBeInTheDocument()
+  })
 })
 
 describe('BibleTab, copy from another channel', () => {
@@ -680,6 +746,7 @@ describe('BibleTab, copy from another channel', () => {
     expect(screen.getByLabelText('Version note')).toHaveValue(
       'Copied from Boom & Busters version 4',
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Show what to fix' }))
     expect(screen.getByText('Voice is drafted, not approved')).toBeInTheDocument()
     // The panel closes.
     expect(screen.queryByLabelText('Channel to copy from')).toBeNull()
@@ -738,6 +805,96 @@ describe('BibleTab, copy from another channel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByLabelText('Channel to copy from')).toBeNull()
     expect(copyBibleFromChannelAction).not.toHaveBeenCalled()
+  })
+})
+
+describe('BibleTab, the tool row', () => {
+  const emptyExamples = {
+    id: 'x',
+    version: 1,
+    bible: { ...FIRST_CHANNEL_BIBLE, examples: {} },
+  }
+  const startTab = (over: { archived?: boolean } = {}) => (
+    <BibleTab
+      channel={CHANNEL}
+      draft={null}
+      versions={[]}
+      currentVersion={emptyExamples}
+      vidiqReady={false}
+      archived={over.archived ?? false}
+      copySources={SOURCES}
+    />
+  )
+  const DESCRIBE = 'Describe the channel in a few lines'
+
+  it('opens one tool panel at a time', async () => {
+    renderTab(null)
+    await userEvent.click(screen.getByRole('button', { name: 'History' }))
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Copy from another channel' }))
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(screen.getByLabelText('Channel to copy from')).toBeInTheDocument()
+  })
+
+  it('closes the open panel when its button is pressed again', async () => {
+    renderTab(null)
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.queryByLabelText(DESCRIBE)).toBeNull()
+  })
+
+  it('offers a start block for an unfinished bible with no draft', () => {
+    render(startTab())
+    expect(screen.getByRole('heading', { level: 3, name: 'Start here' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Draft with AI' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Copy from another channel' })).toHaveLength(1)
+  })
+
+  it('opens the same panel from the start block and hides the block meanwhile', async () => {
+    render(startTab())
+    await userEvent.click(screen.getByRole('button', { name: 'Draft with AI' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+  })
+
+  it('shows no start block on a finished bible, with a draft, or when archived', () => {
+    const first = renderTab(null)
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+    first.unmount()
+    const second = renderTab(draftOf({ bible: { ...FIRST_CHANNEL_BIBLE, examples: {} } }))
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+    second.unmount()
+    render(startTab({ archived: true }))
+    expect(screen.queryByRole('heading', { name: 'Start here' })).toBeNull()
+  })
+
+  it('reopens Draft with AI when a failed research is tried again', async () => {
+    estimateBibleResearchAction.mockResolvedValue({ ok: true, estimate: 10, balance: 100 })
+    renderTab(
+      draftOf({
+        job: {
+          kind: 'research',
+          state: 'failed',
+          current: null,
+          error: 'VidIQ refused',
+          startedAt: new Date().toISOString(),
+        },
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(screen.getByLabelText(DESCRIBE)).toBeInTheDocument()
+  })
+
+  it('keeps History off while a draft exists and Copy off an archived channel', () => {
+    const first = renderTab(draftOf())
+    expect(screen.getByRole('button', { name: 'History' })).toBeDisabled()
+    first.unmount()
+    renderTab(null, { archived: true })
+    expect(screen.queryByRole('button', { name: 'Copy from another channel' })).toBeNull()
   })
 })
 

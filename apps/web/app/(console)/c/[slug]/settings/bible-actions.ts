@@ -22,10 +22,12 @@ import {
   BibleDraftInputsSchema,
   ChannelBibleSchema,
   EXAMPLE_SLOT_IDS,
+  EXAMPLE_SLOTS,
   PREVIEW_STAGES,
   UlidSchema,
   bibleDraftUnits,
   jobIsRunning,
+  liveFlags,
 } from '@boom-busters/schemas'
 import type {
   BibleDraft,
@@ -329,12 +331,15 @@ async function recheckedFlags(
   const sources = await overlapSources(channelId, draft)
   const fields: [string, string][] =
     section === 'examples'
-      ? Object.entries(bible.examples).map(([id, text]) => [`examples.${id}`, text])
+      ? EXAMPLE_SLOTS.filter((slot) => slot.id in bible.examples).map((slot): [string, string] => [
+          `examples.${slot.id}`,
+          bible.examples[slot.id]!,
+        ])
       : BIBLE_ENTRY_LISTS.flatMap((list) =>
           bible[list].map((entry, i): [string, string] => [`${list}.${i}`, entry.text]),
         )
   for (const [path, text] of fields) {
-    const found = overlapFlag(path, text, sources)
+    const found = overlapFlag(text, sources)
     if (found) flags[path] = found
   }
   return flags
@@ -471,7 +476,7 @@ export async function approveBibleSectionAction(
   if (!BIBLE_SECTION_ORDER.includes(section)) return { ok: false, error: 'Unknown section' }
   const open = await openForChange(channelId)
   if (!open.ok) return open
-  if (Object.keys(open.draft.tooClose).some((path) => flagSection(path) === section)) {
+  if (Object.keys(liveFlags(open.draft.tooClose)).some((path) => flagSection(path) === section)) {
     return { ok: false, error: 'Change the lines that are too close to their source first' }
   }
   return writeChange(channelId, (draft) => ({

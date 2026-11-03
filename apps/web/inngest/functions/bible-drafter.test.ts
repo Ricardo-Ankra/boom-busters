@@ -314,7 +314,7 @@ describeDb('bible-drafter (mock mode)', () => {
     expect((await draftOf(FIRST_CHANNEL_ID)).tooClose).toEqual({})
   })
 
-  it('does not compare a worked slot with Boom & Busters, but still compares a line or passage', async () => {
+  it('compares every slot kind with Boom & Busters, the craft wording aside', async () => {
     const copyOf = (kind: string) => {
       const slot = EXAMPLE_SLOTS.find(
         (s) =>
@@ -322,16 +322,20 @@ describeDb('bible-drafter (mock mode)', () => {
       )!
       return { slot, copy: firstWords(FIRST_CHANNEL_BIBLE.examples[slot.id]!, 10) }
     }
-    const worked = copyOf('worked')
     const passage = copyOf('passage')
     const line = copyOf('line')
+    const direction = EXAMPLE_SLOTS.find((s) => s.id === 'direction-worked-example')!
+    const worked = {
+      slot: direction,
+      copy: firstWords(FIRST_CHANNEL_BIBLE.examples[direction.id]!, 10),
+    }
     await prepare(channelId)
     for (const { slot, copy } of [worked, passage, line]) {
       seams.answers = [() => ({ examples: { [slot.id]: copy } })]
       await engine.execute(request(channelId, [{ section: 'examples', slotId: slot.id }]))
     }
     const flags = (await draftOf()).tooClose
-    expect(flags[`examples.${worked.slot.id}`]).toBeUndefined()
+    expect(flags[`examples.${worked.slot.id}`]).toMatchObject({ source: 'Boom & Busters' })
     expect(flags[`examples.${passage.slot.id}`]).toMatchObject({ source: 'Boom & Busters' })
     expect(flags[`examples.${line.slot.id}`]).toMatchObject({ source: 'Boom & Busters' })
   })

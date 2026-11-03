@@ -1,17 +1,17 @@
 'use client'
 
-import { BIBLE_SECTIONS, EXAMPLE_SLOTS } from '@boom-busters/schemas'
+import { BIBLE_SECTIONS } from '@boom-busters/schemas'
 import type {
   BibleExampleEntry,
   BibleSection,
   ChannelBible,
-  ExampleSlot,
   TooCloseFlags,
 } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input, Label } from '@/components/ui/input'
 import { BIBLE_TEXT_FIELDS } from '@/lib/bible-fields'
+import { ExamplesEditor, ExamplesView } from './bible-examples'
 
 /**
  * The bible's fields, edited and shown by kind: text in a textarea, a list of
@@ -139,7 +139,7 @@ export function formPatch(section: BibleSection, values: FormValues): Record<str
   return patch
 }
 
-const textareaClass =
+export const textareaClass =
   'min-h-24 w-full rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] ' +
   'px-3 py-2 text-[14px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] ' +
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ' +
@@ -148,26 +148,16 @@ const textareaClass =
 /** The most hooks, openings or titles a bible holds (the schema's limit). */
 const MAX_ENTRIES = 12
 
-const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
+export const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
 
 /** "Too close to its source", with the words they share and where they are from. */
-function FlagNote({ flags, path }: { flags: TooCloseFlags; path: string }) {
+export function FlagNote({ flags, path }: { flags: TooCloseFlags; path: string }) {
   const flag = flags[path]
   if (!flag) return null
   return (
     <p role="alert" className="text-[13px] text-[var(--color-warning)]">
       Too close to its source: &ldquo;{flag.run}&rdquo; ({flag.source})
     </p>
-  )
-}
-
-function SlotHeader({ slot }: { slot: ExampleSlot }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-[12px]">{slot.id}</span>
-      <span className={mutedClass}>{slot.teaches}</span>
-      <span className={mutedClass}>In: {slot.source}</span>
-    </div>
   )
 }
 
@@ -204,34 +194,13 @@ export function SectionView({
         const value = bible[key]
         if (meta.kind === 'examples') {
           return (
-            <div key={key} className="flex flex-col gap-3">
-              {EXAMPLE_SLOTS.map((slot) => {
-                const text = bible.examples[slot.id]
-                return (
-                  <div key={slot.id} className="flex flex-col gap-1">
-                    <SlotHeader slot={slot} />
-                    {text ? (
-                      <p className="text-[14px] whitespace-pre-wrap">{text}</p>
-                    ) : (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] text-[var(--color-warning)]">
-                          New slot, needs an example
-                        </span>
-                        <Button
-                          variant="outline"
-                          disabled={disabled}
-                          aria-label={`Draft ${slot.id}`}
-                          onClick={() => onDraftSlot(slot.id)}
-                        >
-                          Draft
-                        </Button>
-                      </div>
-                    )}
-                    <FlagNote flags={flags} path={`examples.${slot.id}`} />
-                  </div>
-                )
-              })}
-            </div>
+            <ExamplesView
+              key={key}
+              examples={bible.examples}
+              flags={flags}
+              disabled={disabled}
+              onDraftSlot={onDraftSlot}
+            />
           )
         }
         return (
@@ -399,28 +368,14 @@ export function SectionEditor({
         }
 
         if (meta.kind === 'examples') {
-          const examples = value as Record<string, string>
           return (
-            <div key={key} className="flex flex-col gap-3">
-              {EXAMPLE_SLOTS.map((slot) => (
-                <div key={slot.id} className="flex flex-col gap-1.5">
-                  <SlotHeader slot={slot} />
-                  <textarea
-                    aria-label={`Example ${slot.id}`}
-                    className={textareaClass}
-                    value={examples[slot.id] ?? ''}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onChange(key, { ...examples, [slot.id]: event.target.value })
-                    }
-                  />
-                  <p className={mutedClass}>
-                    {(examples[slot.id] ?? '').length} of {slot.maxLength} characters
-                  </p>
-                  <FlagNote flags={flags} path={`examples.${slot.id}`} />
-                </div>
-              ))}
-            </div>
+            <ExamplesEditor
+              key={key}
+              examples={value as Record<string, string>}
+              flags={flags}
+              disabled={disabled}
+              onChange={(next) => onChange(key, next)}
+            />
           )
         }
 

@@ -3,10 +3,12 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   ChannelBibleReadSchema,
+  type ChannelBible,
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_BIBLE_ID,
   FIRST_CHANNEL_ID,
+  RETIRED_SLOT_IDS,
   UlidSchema,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -41,8 +43,10 @@ describe('migration 0039', () => {
     const literal = /'(\{.*?\})'::jsonb/s.exec(insert)?.[1]
     expect(literal).toBeDefined()
     // SQL doubles a single quote inside a string literal.
-    const stored = JSON.parse(literal!.replaceAll("''", "'"))
+    // The migration is applied and not edited: the retired slots stay in its literal.
+    const stored = JSON.parse(literal!.replaceAll("''", "'")) as ChannelBible
     expect(stored).toHaveProperty('keywordContext', 'documentary')
+    for (const id of RETIRED_SLOT_IDS) delete stored.examples[id]
     expect(ChannelBibleReadSchema.parse(stored)).toEqual(FIRST_CHANNEL_BIBLE)
   })
 
@@ -59,7 +63,9 @@ describe('migration 0039', () => {
       const array = /ARRAY\[(.*?)\]::text\[\]/s.exec(insert)?.[1]
       expect(array).toBeDefined()
       const ids = [...array!.matchAll(/'([^']*)'/g)].map((match) => match[1])
-      expect(ids).toEqual([...EXAMPLE_SLOT_IDS])
+      expect(ids.filter((id) => !(RETIRED_SLOT_IDS as readonly string[]).includes(id!))).toEqual([
+        ...EXAMPLE_SLOT_IDS,
+      ])
     }
   })
 

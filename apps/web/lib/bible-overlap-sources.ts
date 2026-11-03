@@ -16,11 +16,6 @@ const FIRST_CHANNEL_LABEL = 'Boom & Busters'
 /** Craft sentences the slots' `teaches` lines quote: every channel keeps them word for word. */
 const CRAFT_TEXTS: readonly string[] = EXAMPLE_SLOTS.map((slot) => slot.teaches)
 
-/** Worked examples share their scaffolding (headers, component code) with every channel's: not compared. */
-const WORKED_PATHS: ReadonlySet<string> = new Set(
-  EXAMPLE_SLOTS.filter((slot) => slot.kind === 'worked').map((slot) => `examples.${slot.id}`),
-)
-
 export interface OverlapSources {
   /** Other creators' research quotes: no exemption. */
   digest: OverlapSource[]
@@ -55,10 +50,7 @@ export async function overlapSources(
   return sources
 }
 
-/** The overlap flag for the text at a field path (`examples.<id>`, `hooks.<i>`), or null. */
-export function overlapFlag(path: string, text: string, sources: OverlapSources): TooClose | null {
-  return (
-    tooCloseTo(text, sources.digest) ??
-    (WORKED_PATHS.has(path) ? null : tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS))
-  )
+/** The overlap flag for a field's text, or null. */
+export function overlapFlag(text: string, sources: OverlapSources): TooClose | null {
+  return tooCloseTo(text, sources.digest) ?? tooCloseTo(text, sources.firstChannel, 8, CRAFT_TEXTS)
 }
