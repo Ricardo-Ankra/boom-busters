@@ -252,7 +252,7 @@ describe('sectionProgress', () => {
       sectionProgress({ ...FIRST_CHANNEL_BIBLE, hooks: [], openings: [], titles: [] }, 'hooks'),
     ).toBe('0 hooks, 0 openings, 0 titles')
     expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, channelTags: [] }, 'search')).toBe(
-      '3 of 4 filled',
+      '2 of 4 filled',
     )
     expect(
       sectionProgress(
