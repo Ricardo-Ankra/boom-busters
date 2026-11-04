@@ -64,4 +64,20 @@ describeDb('callLlm routes by channel', () => {
     expect(forB?.meta['model']).toBe('claude-haiku-4-5-20251001')
     expect(forA?.meta['model']).toBe('claude-sonnet-5')
   })
+
+  it("writes the call's meta onto the ledger row", async () => {
+    const jobId = newId()
+    await callLlm(request, {
+      channelId: FIRST_CHANNEL_ID,
+      purpose: 'critic',
+      meta: { jobId, technique: 'stat-counter' },
+    })
+    const [row] = await listLedger(db, { channelId: FIRST_CHANNEL_ID, limit: 1 })
+    expect(row?.meta).toMatchObject({
+      task: 'scripting',
+      purpose: 'critic',
+      jobId,
+      technique: 'stat-counter',
+    })
+  })
 })

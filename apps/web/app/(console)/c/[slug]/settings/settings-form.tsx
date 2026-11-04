@@ -24,6 +24,9 @@ import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
+import type { ChannelExemplarView } from '@/lib/exemplar-channel-views'
+import type { DerivationEstimateTable } from '@/lib/derivation-estimate'
+import type { DerivationView } from './exemplar-actions'
 import { ExemplarsTab } from './exemplars-tab'
 import { MotionTab, type TechniqueOption } from './motion-tab'
 import type { ReferenceView } from './references-section'
@@ -74,6 +77,10 @@ export function SettingsForm({
   storageReady = false,
   readingEstimateUsd = 0,
   draftEstimateUsd = 0,
+  channelExemplars = [],
+  derivation = null,
+  jobRunning = false,
+  estimateTable,
   draft = null,
   versions = [],
   currentVersion,
@@ -118,6 +125,14 @@ export function SettingsForm({
   readingEstimateUsd?: number
   /** What one identity draft costs on the graphics route, in dollars. */
   draftEstimateUsd?: number
+  /** The channel's own exemplar versions, per technique (spec 2026-11-04, section 11.4). */
+  channelExemplars?: readonly ChannelExemplarView[]
+  /** The latest derivation, for the Motion tab's Derive section (section 11.3). */
+  derivation?: DerivationView | null
+  /** A derivation is running on this channel: Derive, Refine and Copy wait. */
+  jobRunning?: boolean
+  /** The derivation's prices on the channel's routes; absent, Derive and Copy are not shown. */
+  estimateTable?: DerivationEstimateTable
   /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
   exemplarLogo?: ExemplarLogo | null
   /** The bible's working draft, or null when there is none. */
@@ -301,6 +316,17 @@ export function SettingsForm({
               storageReady={storageReady}
               readingEstimateUsd={readingEstimateUsd}
               draftEstimateUsd={draftEstimateUsd}
+              derivation={derivation}
+              jobRunning={jobRunning}
+              {...(estimateTable ? { estimateTable } : {})}
+              approvedTechniques={channelExemplars
+                .filter((view) => view.approved !== null)
+                .map((view) => view.technique)}
+              copySources={copySources.map((source) => ({
+                id: source.id,
+                name: source.name,
+                archived: source.archived,
+              }))}
             />
           </Lock>
         </TabsContent>
@@ -337,6 +363,24 @@ export function SettingsForm({
               exemplars={exemplars}
               brand={settings.brandKit}
               exemplarLogo={exemplarLogo}
+              {...(estimateTable
+                ? {
+                    channelId,
+                    channel: channelExemplars,
+                    archived: channel.archived,
+                    jobRunning,
+                    techniqueOptions,
+                    estimateTable,
+                    storageReady,
+                    lastRun:
+                      derivation && derivation.state !== 'running'
+                        ? derivation.progress.map((entry) => ({
+                            technique: entry.technique,
+                            costUsd: entry.costUsd,
+                          }))
+                        : null,
+                  }
+                : {})}
             />
           </Lock>
         </TabsContent>

@@ -16,13 +16,18 @@ import { getObjectBytes, storageConfigured } from '@/lib/storage'
 
 export const CRITIC_REFERENCES_MAX = 2
 
-export async function criticReferencesFor(channelId: string): Promise<CriticReference[]> {
+export async function criticReferencesFor(
+  channelId: string,
+  /** The titles a derivation's plan leans on (spec 9.2, step 4): shown first, whatever their purpose. */
+  titles: readonly string[] = [],
+): Promise<CriticReference[]> {
   if (!storageConfigured()) return []
   const rows = await listMotionReferences(db, channelId)
+  const named = rows.filter((row) => titles.includes(row.title))
+  const looks = rows.filter((row) => row.purpose === 'look' && !named.includes(row))
   const references: CriticReference[] = []
-  for (const row of rows) {
+  for (const row of [...named, ...looks]) {
     if (references.length >= CRITIC_REFERENCES_MAX) break
-    if (row.purpose !== 'look') continue
     const key = row.kind === 'image' ? row.frames.dense[0]?.r2Key : row.denseSheetKey
     if (!key) continue
     try {

@@ -9,6 +9,8 @@ import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
 import { keywordMeasurer } from './keyword-measurer'
+import { motionDerivationCancelled, motionExemplarDeriver } from './motion-exemplar-deriver'
+import { motionExemplarRefiner } from './motion-exemplar-refiner'
 import { motionReferenceReader } from './motion-reference-reader'
 import { searchSpaceAnalyser } from './search-space-analyser'
 import { pointShortRunner } from './point-short-runner'
@@ -60,6 +62,9 @@ export const functions = [
   bibleResearcher,
   caseResearcher,
   keywordMeasurer,
+  motionDerivationCancelled,
+  motionExemplarDeriver,
+  motionExemplarRefiner,
   motionReferenceReader,
   searchSpaceAnalyser,
   cancellationMirror,
@@ -102,6 +107,9 @@ export {
   cancelReconciler,
   draftRunner,
   keywordMeasurer,
+  motionDerivationCancelled,
+  motionExemplarDeriver,
+  motionExemplarRefiner,
   motionReferenceReader,
   searchSpaceAnalyser,
   pointShortRunner,

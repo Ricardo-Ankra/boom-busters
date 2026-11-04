@@ -43,6 +43,10 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'slot-rebriefer': { key: 'event.data.slotId', mode: 'cancel' },
   // One read per reference; a re-mark or a second Read cancels the older run (spec 2026-11-04, 7.3).
   'motion-reference-reader': { key: 'event.data.referenceId', mode: 'cancel' },
+  // A derivation runs one per channel at a time (spec 9.1); the launch action refuses while one runs.
+  'motion-exemplar-deriver': { key: 'event.data.channelId', mode: 'cancel' },
+  'motion-exemplar-refiner': { key: 'event.data.parentId', mode: 'cancel' },
+  'motion-derivation-cancelled': null,
   'slot-redirector': { key: 'event.data.slotId', mode: 'cancel' },
   'visuals-replanner': { key: 'event.data.projectId', mode: 'cancel' },
   'short-render-runner': { key: 'event.data.shortId', mode: 'cancel' },

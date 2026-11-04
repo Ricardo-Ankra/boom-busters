@@ -17,8 +17,17 @@ import type {
   PointPlanRecord,
   PointScriptRecord,
   PointVoiceRecord,
+  CriticReport,
+  CriticVerify,
+  DerivationProgress,
+  ExemplarFrames,
+  ExemplarPlan,
+  GraphicCode,
+  MotionMetrics,
+  PairwiseOutcome,
   ReferenceFrames,
   ReferenceReading,
+  Technique,
   SearchBrief,
   CaseResearchJob,
   Series,
@@ -169,6 +178,21 @@ export const socialPostStatusEnum = pgEnum('social_post_status', ['fetched', 'ma
 
 export const assetKindEnum = pgEnum('asset_kind', ['image', 'video', 'music', 'logo'])
 export const referencePurposeEnum = pgEnum('reference_purpose', ['mechanism', 'look', 'pacing'])
+export const exemplarStatusEnum = pgEnum('exemplar_status', ['draft', 'approved', 'retired'])
+export const derivationStateEnum = pgEnum('derivation_state', [
+  'running',
+  'done',
+  'stopped',
+  'failed',
+])
+export const verdictKindEnum = pgEnum('verdict_kind', [
+  'approve',
+  'keep-approved',
+  'prefer',
+  'revise',
+  'steer',
+  'redesign',
+])
 export const referenceReadStateEnum = pgEnum('reference_read_state', [
   'unread',
   'reading',
@@ -1041,6 +1065,89 @@ export const motionReferences = pgTable(
   ],
 )
 
+/**
+ * A channel's exemplar versions (spec 2026-11-04, sections 5.6 and 9): one
+ * row per version of one technique, with the plan the storyboard wrote,
+ * the code the build passed, the critic's last report, the verify verdict,
+ * the pairwise outcome, the measured metrics, the frames' keys, the parent
+ * and the steer that made it. `technique` is text validated in code so a
+ * channel-only key needs no migration. One approved row per technique.
+ */
+export const channelExemplars = pgTable(
+  'channel_exemplars',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    technique: text('technique').notNull().$type<Technique>(),
+    version: integer('version').notNull(),
+    status: exemplarStatusEnum('status').notNull().default('draft'),
+    parentId: text('parent_id'),
+    steer: text('steer'),
+    plan: jsonb('plan').notNull().$type<ExemplarPlan>(),
+    code: jsonb('code').notNull().$type<GraphicCode>(),
+    critique: jsonb('critique').$type<CriticReport>(),
+    verify: jsonb('verify').$type<CriticVerify>(),
+    pairwise: jsonb('pairwise').$type<PairwiseOutcome>(),
+    metrics: jsonb('metrics').$type<MotionMetrics>(),
+    frames: jsonb('frames').$type<ExemplarFrames>(),
+    derivationId: text('derivation_id'),
+    copiedFrom: text('copied_from'),
+    costUsd: usd('cost_usd'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('channel_exemplars_version_key').on(t.channelId, t.technique, t.version),
+    uniqueIndex('channel_exemplars_approved_key')
+      .on(t.channelId, t.technique)
+      .where(sql`status = 'approved'`),
+    index('channel_exemplars_channel_idx').on(t.channelId),
+  ],
+)
+
+/** One launch of the derivation (section 9.1): what was asked, the progress per technique, the spend. */
+export const motionDerivations = pgTable(
+  'motion_derivations',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    techniques: jsonb('techniques').notNull().$type<Technique[]>(),
+    rounds: integer('rounds').notNull(),
+    capUsd: usd('cap_usd').notNull(),
+    state: derivationStateEnum('state').notNull().default('running'),
+    progress: jsonb('progress').notNull().$type<DerivationProgress>(),
+    spentUsd: usd('spent_usd').notNull().default('0'),
+    error: text('error'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('motion_derivations_channel_idx').on(t.channelId)],
+)
+
+/** The preference ledger (section 11): every verdict the owner gives, with what it was given on. */
+export const motionVerdicts = pgTable(
+  'motion_verdicts',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    kind: verdictKindEnum('kind').notNull(),
+    exemplarId: text('exemplar_id'),
+    slotId: text('slot_id'),
+    comparison: jsonb('comparison').$type<{ a: string; b: string }>(),
+    steer: text('steer'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('motion_verdicts_channel_idx').on(t.channelId)],
+)
+
 export const shotSlots = pgTable(
   'shot_slots',
   {
@@ -1752,6 +1859,9 @@ export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
 export type MotionReferenceRow = typeof motionReferences.$inferSelect
 export type ReferenceReadState = (typeof referenceReadStateEnum.enumValues)[number]
+export type ChannelExemplarRow = typeof channelExemplars.$inferSelect
+export type MotionDerivationRow = typeof motionDerivations.$inferSelect
+export type MotionVerdictRow = typeof motionVerdicts.$inferSelect
 export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type ShortRow = typeof shorts.$inferSelect

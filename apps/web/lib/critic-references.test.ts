@@ -132,4 +132,21 @@ describe('criticReferencesFor', () => {
     expect(String(warned.mock.calls[0]![0])).toMatch(/Gone/)
     warned.mockRestore()
   })
+
+  it('hands the critic the references the plan named first, then look references, two in all', async () => {
+    listMotionReferences.mockResolvedValue([
+      row({ id: 'a', title: 'First look', denseSheetKey: 'sheets/a/dense-sheet.jpg' }),
+      row({ id: 'b', title: 'Second look', denseSheetKey: 'sheets/b/dense-sheet.jpg' }),
+      row({
+        id: 'c',
+        purpose: 'mechanism',
+        title: 'The drum',
+        denseSheetKey: 'sheets/c/dense-sheet.jpg',
+      }),
+    ])
+    const named = await criticReferencesFor('ch', ['The drum', 'Not in the pack'])
+    expect(named.map((reference) => reference.title)).toEqual(['The drum', 'First look'])
+    const none = await criticReferencesFor('ch', [])
+    expect(none.map((reference) => reference.title)).toEqual(['First look', 'Second look'])
+  })
 })

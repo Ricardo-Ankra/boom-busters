@@ -1,11 +1,19 @@
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
-import { channelForProject } from '@boom-busters/db'
+import { approvedExemplar, channelForProject } from '@boom-busters/db'
 import { requireCompleteBible } from '@/inngest/lib/channel'
-import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
+import {
+  exemplarFor,
+  MANIFEST,
+  mockGraphicCode,
+  mockProvidersEnabled,
+  type Exemplar,
+  type Technique,
+} from '@boom-busters/providers'
 import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { criticReferencesFor } from '@/lib/critic-references'
+import { slotTechnique } from '@/lib/graphic-design-core'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
@@ -39,6 +47,7 @@ export {
   designGraphicWith,
   GRAPHIC_DESIGN_DEADLINE_MS,
   reviewGraphicWith,
+  slotTechnique,
   type GraphicCompleteFn,
   type GraphicDesignContext,
   type GraphicDesignResult,
@@ -68,6 +77,27 @@ function ledgered(projectId: string, channelId: string): GraphicCompleteFn {
 
 /** The browser, unless GRAPHIC_FRAMES=off (the runners' tests). */
 const framesOn = () => process.env['GRAPHIC_FRAMES'] !== 'off'
+
+/**
+ * The exemplar the designer is shown for a technique (spec 2026-11-04,
+ * section 8.3): the channel's approved version when it has one, with the
+ * mechanisms its plan named, else the house design.
+ */
+export async function channelExemplarFor(
+  channelId: string,
+  technique: Technique,
+): Promise<Exemplar | undefined> {
+  const approved = await approvedExemplar(db, channelId, technique)
+  if (!approved) return exemplarFor(technique)
+  const entry = MANIFEST.find((candidate) => candidate.technique === technique)
+  return {
+    technique,
+    description: entry?.description ?? technique,
+    mechanisms: approved.plan.mechanisms,
+    title: approved.code.title,
+    source: approved.code.source,
+  }
+}
 
 export async function designGraphic(
   context: GraphicDesignContext,
@@ -103,10 +133,15 @@ export async function designGraphic(
       : { ok: false, issue: checked.issue }
   }
 
+  const motion = resolveMotionIdentity(channel.settings)
   return designGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
-    motion: resolveMotionIdentity(channel.settings),
+    motion,
+    exemplar: await channelExemplarFor(
+      inUse.channelId,
+      slotTechnique(context, slot, motion, options.guidance),
+    ),
     // The browser's layout check (decision 389), in the channel's own faces
     // and colours. The review is a step of its own: `reviewGraphic`.
     ...(framesOn() ? { frames: browserFrames() } : {}),
@@ -138,10 +173,15 @@ export async function reviewGraphic(
   if (mockProvidersEnabled()) return { outcome: 'skipped', reason: 'mock providers' }
   if (!channel.settings.features.graphicReview) return skipped('switched off in Settings')
   if (!framesOn()) return skipped('the browser is off')
+  const motion = resolveMotionIdentity(channel.settings)
   return reviewGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
-    motion: resolveMotionIdentity(channel.settings),
+    motion,
+    exemplar: await channelExemplarFor(
+      inUse.channelId,
+      slotTechnique(context, slot, motion, options.guidance),
+    ),
     references: await criticReferencesFor(inUse.channelId),
     frames: browserFrames(),
     brand: graphicBrand(resolveBrandKit(channel.settings)),

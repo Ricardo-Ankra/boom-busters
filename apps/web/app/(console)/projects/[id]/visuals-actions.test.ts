@@ -85,6 +85,7 @@ import {
   showSetPhotoAction,
   unlinkCastHandleAction,
   unlinkSlotReuseAction,
+  rebriefSlotAction,
 } from './visuals-actions'
 
 /**
@@ -213,6 +214,23 @@ describeDb('reusing a shot (decision 261)', () => {
     const slots = await listShotSlots(db, FIXTURE_PROJECT_ID)
     ids = { a: slots[0]!.id, b: slots[1]!.id, c: slots[2]!.id, chart: slots[3]!.id }
     await setVisualsPhase(db, FIXTURE_PROJECT_ID, 'plan')
+  })
+
+  it('a redesign on a graphic or chart slot records a redesign verdict with its steer', async () => {
+    const { listVerdicts, channelForProject } = await import('@boom-busters/db')
+    const { channelId } = await channelForProject(db, FIXTURE_PROJECT_ID)
+    await db.delete((await import('@boom-busters/db')).motionVerdicts)
+    const chart = await rebriefSlotAction(FIXTURE_PROJECT_ID, ids.chart, 'slower, one figure')
+    expect(chart.ok).toBe(true)
+    const [verdict] = await listVerdicts(db, channelId)
+    expect(verdict).toMatchObject({
+      kind: 'redesign',
+      slotId: ids.chart,
+      steer: 'slower, one figure',
+    })
+    // A stock slot is not motion taste: no row.
+    await rebriefSlotAction(FIXTURE_PROJECT_ID, ids.a, '')
+    expect(await listVerdicts(db, channelId)).toHaveLength(1)
   })
 
   it('links in plan phase with nothing to copy, and Fetch owes the slot nothing', async () => {

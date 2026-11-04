@@ -5,8 +5,13 @@ import { describe, expect, it } from 'vitest'
 import {
   CRITIC_OUTPUT_TOKENS,
   buildCriticRequest,
+  buildPairwiseRequest,
   mockCriticReport,
+  mockCriticVerify,
+  mockPairwise,
   parseCriticReport,
+  parseCriticVerify,
+  parsePairwise,
   type CriticInput,
   type CriticReference,
 } from './critic'
@@ -259,5 +264,86 @@ describe('motionIdentityBlock', () => {
       styleGuideMd: 'Slow and dark.',
     })
     expect(guided).toContain('Slow and dark.')
+  })
+})
+
+describe('the previous version, verify and pairwise (spec 9.2, steps 4 and 7)', () => {
+  const PREVIOUS = {
+    sheets: { landscape: image('EEEE'), portrait: image('FFFF') },
+    label: 'round 1',
+  }
+
+  it("shows the previous version's sheets after the design's and asks which it prefers", () => {
+    const request = buildCriticRequest({ ...INPUT, previous: PREVIOUS })
+    const ask = request.messages[2]!
+    const images = ask.images ?? []
+    // The references, the two sheets, the frame, then the previous version's two sheets.
+    expect(images).toHaveLength(7)
+    expect(images.slice(-2).map((i) => i.data)).toEqual(['EEEE', 'FFFF'])
+    expect(ask.content).toContain('Previous version (B), 16:9')
+    expect(ask.content).toContain('the design under review is A')
+    expect(ask.content).toContain('"prefers"')
+    expect(request.messages[0]!.content).toBe(buildCriticRequest(INPUT).messages[0]!.content)
+    expect(buildCriticRequest(INPUT).messages[2]!.content).not.toContain('"prefers"')
+  })
+
+  it('asks the verify question with the prior defects numbered', () => {
+    const prior = {
+      ...REPORT,
+      defects: [
+        { atMs: 1350, orientation: 'landscape' as const, text: 'the label clips' },
+        { atMs: 2000, orientation: 'portrait' as const, text: 'the figure is small' },
+      ],
+    }
+    const request = buildCriticRequest({
+      ...INPUT,
+      verify: { prior, brief: "The producer's steer: slower." },
+    })
+    const ask = request.messages[2]!.content
+    expect(ask).toContain("The producer's steer: slower.")
+    expect(ask).toContain('1. at 1.4 s in landscape: the label clips')
+    expect(ask).toContain('2. at 2.0 s in portrait: the figure is small')
+    expect(ask).toContain('"priorDefects"')
+    expect(ask).toContain('"verdict"')
+    expect(request.task).toBe('critic')
+  })
+
+  it('runs on the graphics route when strong', () => {
+    expect(buildCriticRequest({ ...INPUT, strong: true }).task).toBe('graphics')
+  })
+
+  it('the pairwise request carries two pairs of sheets and nothing else', () => {
+    const request = buildPairwiseRequest({
+      motion: INPUT.motion,
+      plan: INPUT.plan,
+      a: { landscape: SHEET_L, portrait: SHEET_P },
+      b: PREVIOUS.sheets,
+    })
+    expect(request.task).toBe('critic')
+    expect(request.cacheablePrefixMessages).toBe(1)
+    expect(request.messages[0]!.content).toBe(buildCriticRequest(INPUT).messages[0]!.content)
+    const ask = request.messages[request.messages.length - 1]!
+    expect((ask.images ?? []).map((i) => i.data)).toEqual(['AAAA', 'BBBB', 'EEEE', 'FFFF'])
+    expect(ask.content).toContain('"prefers"')
+    expect(ask.content).not.toContain('"scores"')
+    expect(request.messages).toHaveLength(2)
+  })
+
+  it('parses a verify report and a pairwise answer, defaulting a missing verdict to one more pass', () => {
+    const verify = parseCriticVerify(
+      JSON.stringify({ ...REPORT, priorDefects: [{ index: 1, state: 'fixed' }], verdict: 'ready' }),
+    )
+    expect(verify.verdict).toBe('ready')
+    expect(verify.priorDefects).toEqual([{ index: 1, state: 'fixed' }])
+    const bare = parseCriticVerify(JSON.stringify(REPORT))
+    expect(bare.verdict).toBe('one-more-pass')
+    expect(bare.priorDefects).toEqual([])
+    const prefers = Object.fromEntries(CRITIC_AXES.map((axis) => [axis, 'A']))
+    expect(parsePairwise(JSON.stringify({ prefers })).craft).toBe('A')
+    expect(() => parsePairwise(JSON.stringify({ prefers: { ...prefers, craft: 'C' } }))).toThrow()
+    const mock = mockCriticVerify(INPUT.plan)
+    expect(mock.verdict).toBe('ready')
+    expect(mock.scores.craft.score).toBe(8)
+    expect(mockPairwise().engagement).toBe('same')
   })
 })

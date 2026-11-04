@@ -18,7 +18,9 @@ import {
   wordsInSlot,
   type CriticPlan,
   type CriticReference,
+  type Exemplar,
   type GraphicDesignInput,
+  type Technique,
   type LLMTaskRequest,
   type MsgImage,
   type ReviewFrame,
@@ -34,6 +36,7 @@ import type {
   BibleInUse,
   CriticReport,
   MotionIdentity,
+  MotionMetrics,
   ChartBrief,
   DesignableBrief,
   GraphicCode,
@@ -214,11 +217,50 @@ export function slotIntent(
   return { intent, intentRefs }
 }
 
+/**
+ * The slot's technique (decision 305; spec 2026-11-04, section 8.3): the
+ * steer first, then the brief's rules in order, skipping a technique the
+ * channel has switched off. Exported so the app can pick the channel's own
+ * exemplar for it before the call.
+ */
+export function slotTechnique(
+  context: GraphicDesignContext,
+  slot: { brief: DesignableBrief },
+  motion: MotionIdentity,
+  guidance?: string,
+): Technique {
+  const { brief } = slot
+  const { intent } = slotIntent(context, brief)
+  return techniqueFor({
+    type: brief.type,
+    ...(brief.type === 'chart'
+      ? {
+          chartKind: brief.chartKind,
+          seriesCount: brief.series.length,
+          xLabels: brief.series[0]?.points.map((point) => point.x) ?? [],
+        }
+      : {}),
+    intent,
+    description: brief.description,
+    coversText: brief.coversText,
+    logos: context.logos.map((logo) => logo.title),
+    techniques: motion.techniques,
+    ...(guidance ? { guidance } : {}),
+  })
+}
+
 /** What every graphics call shares for a slot: the request's base and what the checks read. */
 function designInput(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; motion?: MotionIdentity; guidance?: string; redesign?: boolean },
+  options: {
+    bible: BibleInUse
+    motion?: MotionIdentity
+    guidance?: string
+    redesign?: boolean
+    /** The exemplar to show: given, used as is (null for none); absent, the house one for the slot's technique. */
+    exemplar?: Exemplar | null
+  },
 ): {
   base: GraphicDesignInput
   checkSlot: { brief: DesignableBrief; durationMs: number; words: { text: string; atMs: number }[] }
@@ -230,26 +272,13 @@ function designInput(
   // The same words the prompt lists, as the dry run hands them to the code.
   const words = narration.words.map((word) => ({ text: word.text, atMs: word.offsetMs }))
 
-  // The slot's exemplar (decision 305): the technique from the brief, the
-  // logo titles and the steer; absent while the corpus holds no design for it.
-  const exemplar = exemplarFor(
-    techniqueFor({
-      type: brief.type,
-      ...(brief.type === 'chart'
-        ? {
-            chartKind: brief.chartKind,
-            seriesCount: brief.series.length,
-            xLabels: brief.series[0]?.points.map((point) => point.x) ?? [],
-          }
-        : {}),
-      intent,
-      description: brief.description,
-      coversText: brief.coversText,
-      logos: context.logos.map((logo) => logo.title),
-      techniques: motion.techniques,
-      ...(options.guidance ? { guidance: options.guidance } : {}),
-    }),
-  )
+  // The slot's exemplar (decision 305): the caller's when it gave one (the
+  // channel's approved version, plan 4), else the house design for the
+  // slot's technique; absent while the corpus holds no design for it.
+  const exemplar =
+    options.exemplar !== undefined
+      ? (options.exemplar ?? undefined)
+      : exemplarFor(slotTechnique(context, slot, motion, options.guidance))
 
   const base: GraphicDesignInput = {
     bible: options.bible,
@@ -351,6 +380,8 @@ export async function designGraphicWith(
     motion?: MotionIdentity
     guidance?: string
     redesign?: boolean
+    /** The exemplar to show the designer; absent, the house one for the slot's technique. */
+    exemplar?: Exemplar | null
   } & FramesOptions,
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
@@ -425,6 +456,52 @@ export type { CriticReference }
 /** The fix call starts only with this much of the deadline left: a designer's answer takes a minute or more. */
 const FIX_MIN_MS = 60_000
 
+/** The design as the critic reads it: the designer's own plan, claims by number. */
+export function criticPlanOf(code: GraphicCode, context: GraphicDesignContext): CriticPlan {
+  return {
+    ...(code.concept ? { concept: code.concept } : {}),
+    ...(code.storyboard ? { storyboard: code.storyboard } : {}),
+    title: code.title,
+    facts: plannedFacts(code, context),
+    ...(code.mechanisms ? { mechanisms: code.mechanisms } : {}),
+  }
+}
+
+/**
+ * The design photographed for the critic (spec 10.2 and 10.4): the rest
+ * moments, the dense moments given, both sheets, the findings and the
+ * measured motion. Null when the browser is off, cannot start, or returns
+ * no rest shot; the dense set and the sheets are best effort.
+ */
+export async function photographForCritic(
+  context: GraphicDesignContext,
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
+  code: GraphicCode,
+  options: FramesOptions & { motion: MotionIdentity; dense: readonly number[]; deadline: number },
+): Promise<{ photographed: FramesResult; metrics: MotionMetrics | null } | null> {
+  const words = slotWords(context, slot)
+  const inspect = inspector(
+    context,
+    slot,
+    { brief: slot.brief, durationMs: slot.durationMs, words },
+    options,
+    options.deadline,
+  )
+  const photographed = await inspect(code, {
+    shots: true,
+    measure: 'findings',
+    dense: options.dense,
+    sheets: true,
+  })
+  if (!photographed || photographed.shots.length === 0) return null
+  const metrics = await motionMetrics(
+    photographed.dense,
+    slot.durationMs,
+    options.motion.stillMaxMs,
+  )
+  return { photographed, metrics }
+}
+
 /** The producer's steer for the fix: the redesign's own steer first, then the critic's fixes in order. */
 export function criticSteer(fixes: readonly string[], guidance?: string): string {
   const listed = fixes.map((fix, index) => `${index + 1}. ${fix}`).join(' ')
@@ -455,6 +532,8 @@ export async function reviewGraphicWith(
     guidance?: string
     /** The channel's look references the critic is shown, at most two, loaded by the app. */
     references?: readonly CriticReference[]
+    /** The exemplar the fix is shown; absent, the house one for the slot's technique. */
+    exemplar?: Exemplar | null
   } & FramesOptions,
 ): Promise<GraphicReviewResult> {
   const skipped = (reason: string): GraphicReviewResult => {
@@ -479,25 +558,19 @@ export async function reviewGraphicWith(
     // Photographed only: a design stored before the layout check is still
     // shown its frames, and the review is where it gets fixed. The dense set
     // and the sheets are best effort; the rest shots are what the critic needs.
-    const photographed = await inspect(code, {
-      shots: true,
-      measure: 'findings',
+    const shot = await photographForCritic(context, slot, code, {
+      ...options,
+      motion,
       dense: denseMoments(slot.durationMs),
-      sheets: true,
+      deadline,
     })
-    if (!photographed || photographed.shots.length === 0) return skipped('no frames to show')
-    const metrics = await motionMetrics(photographed.dense, slot.durationMs, motion.stillMaxMs)
+    if (!shot) return skipped('no frames to show')
+    const { photographed, metrics } = shot
     const frames: ReviewFrame[] = photographed.shots.map((shot) => ({
       label: frameLabel(shot),
       image: image(shot.jpeg),
     }))
-    const plan: CriticPlan = {
-      ...(code.concept ? { concept: code.concept } : {}),
-      ...(code.storyboard ? { storyboard: code.storyboard } : {}),
-      title: code.title,
-      facts: plannedFacts(code, context),
-      ...(code.mechanisms ? { mechanisms: code.mechanisms } : {}),
-    }
+    const plan = criticPlanOf(code, context)
     let remaining = deadline - Date.now()
     if (remaining < MIN_CALL_MS) return skipped('no time left for the call')
     const reply = await complete(

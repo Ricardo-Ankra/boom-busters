@@ -5,6 +5,8 @@ import {
   BudgetApprovedSchema,
   CaseResearchRequestedSchema,
   MediaJobCompletedSchema,
+  MotionExemplarRefineSchema,
+  MotionExemplarsDeriveSchema,
   MotionReferenceIngestedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
@@ -162,6 +164,12 @@ export const events = {
 
   motionReferenceIngested: eventType('motion/reference.ingested', {
     schema: MotionReferenceIngestedSchema,
+  }),
+  motionExemplarsDerive: eventType('motion/exemplars.derive', {
+    schema: MotionExemplarsDeriveSchema,
+  }),
+  motionExemplarRefine: eventType('motion/exemplar.refine', {
+    schema: MotionExemplarRefineSchema,
   }),
 } as const
 

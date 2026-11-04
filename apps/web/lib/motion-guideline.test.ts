@@ -12,6 +12,17 @@ describe('the motion guideline on the tab (spec 2026-11-04, section 6)', () => {
     expect(MOTION_GUIDELINE_SHORT[0]).toMatch(/^Four to eight references/)
   })
 
+  it('says what Derive, Refine, Versions and Copy do (spec 2026-11-04, section 9)', () => {
+    const last = MOTION_GUIDELINE_FULL.at(-1)!
+    expect(last.heading).toBe('What the tool does with them')
+    const text = last.lines.join('\n')
+    expect(text).toContain('"Derive exemplars"')
+    expect(text).toContain('nothing is approved for you')
+    expect(text).toContain('"Refine"')
+    expect(text).toContain('"Versions"')
+    expect(text).toContain('"Copy motion from another channel"')
+  })
+
   it('writes no dash a reader would see', () => {
     const text = [
       ...MOTION_GUIDELINE_SHORT,

@@ -11,7 +11,11 @@ import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { CopyMotion } from './copy-motion'
+import { DeriveSection } from './derive-section'
+import type { DerivationView } from './exemplar-actions'
 import { IdentityDraft } from './identity-draft'
+import type { DerivationEstimateTable } from '@/lib/derivation-estimate'
 import { ReferencesSection, type ReferenceView } from './references-section'
 
 /**
@@ -42,6 +46,16 @@ interface MotionTabProps {
   readingEstimateUsd: number
   /** What one identity draft costs on the graphics route, in dollars. */
   draftEstimateUsd: number
+  /** The latest derivation (spec 2026-11-04, section 11.3); null before one ran. */
+  derivation?: DerivationView | null
+  /** A derivation is running: Derive and Copy wait. */
+  jobRunning?: boolean
+  /** The derivation's prices; absent, the Derive section and Copy are not shown. */
+  estimateTable?: DerivationEstimateTable
+  /** The techniques with an approved version, so Derive ticks the rest by default. */
+  approvedTechniques?: readonly Technique[]
+  /** Every other channel, for Copy motion. */
+  copySources?: readonly { id: string; name: string; archived: boolean }[]
 }
 
 const STYLE_GUIDE_MAX = 4000
@@ -68,6 +82,11 @@ export function MotionTab({
   storageReady,
   readingEstimateUsd,
   draftEstimateUsd,
+  derivation = null,
+  jobRunning = false,
+  estimateTable,
+  approvedTechniques = [],
+  copySources = [],
 }: MotionTabProps) {
   const motion = settings.motion
   // Typed text is held locally until blur, so a keystroke does not save a patch.
@@ -405,6 +424,25 @@ export function MotionTab({
         readingEstimateUsd={readingEstimateUsd}
         archived={archived}
       />
+      {estimateTable ? (
+        <>
+          <DeriveSection
+            channelId={channelId}
+            derivation={derivation}
+            jobRunning={jobRunning}
+            techniques={techniqueOptions}
+            defaults={motion.techniques.filter((key) => !approvedTechniques.includes(key))}
+            estimateTable={estimateTable}
+            storageReady={storageReady}
+            archived={archived}
+          />
+          <CopyMotion
+            channelId={channelId}
+            sources={copySources}
+            disabled={archived || jobRunning}
+          />
+        </>
+      ) : null}
     </div>
   )
 }

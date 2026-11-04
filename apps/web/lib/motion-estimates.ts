@@ -1,11 +1,18 @@
 import { estimateLlmUsd } from '@boom-busters/cost'
 import {
+  CRITIC_OUTPUT_TOKENS,
   DRAFT_OUTPUT_TOKENS,
+  GRAPHIC_ANSWER_TOKENS,
   READING_INPUT_TOKENS,
   READING_OUTPUT_TOKENS,
+  STORYBOARD_INPUT_TOKENS,
+  STORYBOARD_OUTPUT_TOKENS,
 } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
 import type { Settings, WorkspaceSettings } from '@boom-busters/schemas'
+import { derivationEstimateUsd, type DerivationEstimateTable } from '@/lib/derivation-estimate'
+
+export { derivationEstimateUsd, type DerivationEstimateTable }
 
 /**
  * What the Motion tab says a paid call will cost (spec 2026-11-04, sections
@@ -35,6 +42,52 @@ function graphicsEstimate(
 
 export function readingEstimateUsd(settings: Settings, workspace: WorkspaceSettings): number {
   return graphicsEstimate(settings, workspace, READING_INPUT_TOKENS, READING_OUTPUT_TOKENS)
+}
+
+/**
+ * A derivation's calls (spec 2026-11-04, sections 9.1 and 12.2) with fixed
+ * token counts: the storyboard, the build, the fix and the verify on the
+ * graphics route; the critic and the pairwise on the critic route.
+ */
+export const DERIVE_TOKENS = {
+  storyboard: { in: STORYBOARD_INPUT_TOKENS, out: STORYBOARD_OUTPUT_TOKENS },
+  build: { in: 9000, out: GRAPHIC_ANSWER_TOKENS },
+  critic: { in: 14_000, out: CRITIC_OUTPUT_TOKENS },
+  pairwise: { in: 5000, out: 200 },
+  fix: { in: GRAPHIC_ANSWER_TOKENS, out: GRAPHIC_ANSWER_TOKENS },
+  verify: { in: 14_000, out: CRITIC_OUTPUT_TOKENS },
+} as const
+
+function routeEstimate(
+  settings: Settings,
+  workspace: WorkspaceSettings,
+  task: 'graphics' | 'critic',
+  tokens: { in: number; out: number },
+): number {
+  const route = settings.modelRouting[task]
+  return estimateLlmUsd({
+    provider: route.provider,
+    model: canonicalModelId(route.provider, route.model),
+    inputTokens: tokens.in,
+    outputTokens: tokens.out,
+    prices: workspace.modelPrices,
+  })
+}
+
+export function derivationEstimateTable(
+  settings: Settings,
+  workspace: WorkspaceSettings,
+): DerivationEstimateTable {
+  const on = (task: 'graphics' | 'critic', tokens: { in: number; out: number }) =>
+    routeEstimate(settings, workspace, task, tokens)
+  return {
+    perTechniqueFixed:
+      on('graphics', DERIVE_TOKENS.storyboard) +
+      on('graphics', DERIVE_TOKENS.build) +
+      on('graphics', DERIVE_TOKENS.verify),
+    perRound: on('critic', DERIVE_TOKENS.critic) + on('graphics', DERIVE_TOKENS.fix),
+    perPairwise: on('critic', DERIVE_TOKENS.pairwise),
+  }
 }
 
 export function identityDraftEstimateUsd(

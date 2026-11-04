@@ -35,6 +35,7 @@ import {
   unlinkSlotReuse,
   updateSlotBrief,
   upsertAssetByHash,
+  recordVerdict,
 } from '@boom-busters/db'
 import { imageGenModel } from '@boom-busters/providers'
 import {
@@ -840,6 +841,17 @@ export async function rebriefSlotAction(
       error:
         'Could not reach Inngest to draft a new brief. ' +
         'Start the dev server with `npx inngest-cli@latest dev`, or check INNGEST_EVENT_KEY.',
+    }
+  }
+  // A redesign of a graphic or a chart is a verdict on motion (spec 2026-11-04,
+  // section 11): the preference ledger records it with the steer. The
+  // redesign has been sent, so a failed row is logged, never surfaced.
+  if (current.data.type === 'graphic' || current.data.type === 'chart') {
+    try {
+      const { channelId } = await channelForProject(db, projectId)
+      await recordVerdict(db, { channelId, kind: 'redesign', slotId, steer: steer ?? null })
+    } catch (error) {
+      console.error('[visuals] could not record the redesign verdict', error)
     }
   }
   refresh(projectId)

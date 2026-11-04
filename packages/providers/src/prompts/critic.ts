@@ -6,7 +6,9 @@ import {
   CRITIC_FIXES_MAX,
   CRITIC_LINE_MAX,
   CriticReportSchema,
+  CriticVerifySchema,
   MECHANISM_KEYS,
+  PairwiseAnswerSchema,
   MECHANISMS,
   MECHANISMS_PER_DESIGN_MAX,
   ValidationError,
@@ -15,7 +17,9 @@ import {
 import type {
   CriticAxis,
   CriticReport,
+  CriticVerify,
   Mechanism,
+  PairwiseAnswer,
   MotionIdentity,
   MotionMetrics,
   ReferencePurpose,
@@ -75,7 +79,26 @@ export interface CriticInput {
   sheets: { landscape?: MsgImage; portrait?: MsgImage }
   frames: readonly ReviewFrame[]
   references: readonly CriticReference[]
+  /**
+   * A previous version's sheets (spec 9.2, step 4, from round two): shown
+   * after the design's, with the pairwise question. The design under review
+   * is A and the previous version B; the caller asks again with the order
+   * swapped through `buildPairwiseRequest`.
+   */
+  previous?: { sheets: { landscape?: MsgImage; portrait?: MsgImage }; label: string }
+  /** The verify ask (step 7): the prior report's defects marked one by one, and a verdict. */
+  verify?: { prior: CriticReport; brief: string }
+  /** The strong route (spec 12.2): the one verify call that ends a technique runs on `graphics`. */
+  strong?: boolean
 }
+
+const PAIRWISE_SHAPE = `{"prefers": {"engagement": "A", "intent": "A", "composition": "B", "temporal": "same", "craft": "A"}}`
+const PAIRWISE_ASK =
+  'Then, on each of the five axes, which of the two you prefer: "A", "B" or "same". Add it to the same JSON as\n' +
+  `"prefers": ${PAIRWISE_SHAPE.slice('{"prefers": '.length, -1)}`
+const VERIFY_ASK =
+  'Add to the same JSON "priorDefects": [{"index": 1, "state": "fixed"}], one entry per prior defect by its number, ' +
+  '"state" one of "fixed", "partly" or "present"; and "verdict": "ready" when nothing worth a call remains, else "one-more-pass".'
 
 const AXIS_LINES: Record<CriticAxis, string> = {
   engagement: 'does it hold the eye from the first half second and earn each next second',
@@ -175,12 +198,32 @@ export function buildCriticRequest(input: CriticInput): LLMTaskRequest {
     images.push(frame.image)
     labels.push(`Frame ${index + 1}: ${frame.label}, at rest`)
   })
+  if (input.previous) {
+    for (const [orientation, label] of [
+      ['landscape', '16:9'],
+      ['portrait', '9:16'],
+    ] as const) {
+      const sheet = input.previous.sheets[orientation]
+      if (!sheet) continue
+      images.push(sheet)
+      labels.push(`Previous version (B), ${label}: ${input.previous.label}, its contact sheet`)
+    }
+  }
+  const extra = [
+    input.previous
+      ? `A previous version is shown last: the design under review is A, the previous version B. ${PAIRWISE_ASK}`
+      : '',
+    input.verify ? verifyLines(input.verify) : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   const ask =
     `The pictures, in this order:\n${labels.join('\n')}\n` +
     'Logos are drawn as empty boxes; the film shows the marks.\n\n' +
-    'Judge the design as a viewer would, against its plan and the channel’s motion, and answer the report.'
+    'Judge the design as a viewer would, against its plan and the channel’s motion, and answer the report.' +
+    (extra ? `\n\n${extra}` : '')
   return {
-    task: 'critic',
+    task: input.strong ? 'graphics' : 'critic',
     system: SYSTEM,
     messages: [
       { role: 'user', content: head },
@@ -190,6 +233,102 @@ export function buildCriticRequest(input: CriticInput): LLMTaskRequest {
     cacheablePrefixMessages: 1,
     maxTokens: outputBudget(CRITIC_OUTPUT_TOKENS),
   }
+}
+
+function verifyLines(verify: NonNullable<CriticInput['verify']>): string {
+  const defects = verify.prior.defects.map(
+    (defect, index) =>
+      `${index + 1}. at ${seconds(defect.atMs)} in ${defect.orientation}: ${defect.text}`,
+  )
+  return [
+    `This is a verify round. ${verify.brief}`,
+    defects.length > 0
+      ? `The prior report's defects, by number:\n${defects.join('\n')}`
+      : 'The prior report named no defect.',
+    VERIFY_ASK,
+  ].join('\n')
+}
+
+/**
+ * The pairwise question alone (spec 9.2, step 4, the second ask with the
+ * order swapped): the two versions' sheets and nothing else, so the swap
+ * costs the sheets and not the whole review.
+ */
+export function buildPairwiseRequest(input: {
+  motion: MotionIdentity
+  plan: CriticPlan
+  a: CriticInput['sheets']
+  b: CriticInput['sheets']
+}): LLMTaskRequest {
+  const head = `${motionIdentityBlock(input.motion).trim()}\n\n${MECHANISMS_LIST}`
+  const images: MsgImage[] = []
+  const labels: string[] = []
+  for (const [name, sheets] of [
+    ['A', input.a],
+    ['B', input.b],
+  ] as const) {
+    for (const [orientation, label] of [
+      ['landscape', '16:9'],
+      ['portrait', '9:16'],
+    ] as const) {
+      const sheet = sheets[orientation]
+      if (!sheet) continue
+      images.push(sheet)
+      labels.push(`Version ${name}, ${label}: its contact sheet, the design through its moves`)
+    }
+  }
+  const ask = [
+    `Two versions of one design for the same plan, "${input.plan.title}"${input.plan.concept ? ` (${input.plan.concept})` : ''}.`,
+    `The pictures, in this order:\n${labels.join('\n')}`,
+    'On each of the five axes, which of the two you prefer: "A", "B" or "same".',
+    `Answer with JSON only: ${PAIRWISE_SHAPE}`,
+  ].join('\n\n')
+  return {
+    task: 'critic',
+    system: SYSTEM,
+    messages: [
+      { role: 'user', content: head },
+      { role: 'user', content: ask, images },
+    ],
+    cacheablePrefixMessages: 1,
+    maxTokens: outputBudget(300),
+  }
+}
+
+/** The verify report: the report's parser plus the two fields; absent, no defect is marked and the verdict asks one more pass. */
+export function parseCriticVerify(text: string, note: Note = ignoreRepairs): CriticVerify {
+  const report = parseCriticReport(text, note)
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'critic report')
+  const parsed = CriticVerifySchema.safeParse({
+    ...report,
+    priorDefects: capList(raw['priorDefects'] ?? [], CRITIC_DEFECTS_MAX, 'the prior defects', note),
+    verdict: raw['verdict'] ?? 'one-more-pass',
+  })
+  if (!parsed.success) {
+    throw new ValidationError(`The verify report is malformed: ${formatIssues(parsed.error)}`, {
+      field: 'critic report',
+    })
+  }
+  return parsed.data
+}
+
+export function parsePairwise(text: string): PairwiseAnswer {
+  return parseJsonCompletion(text, z.object({ prefers: PairwiseAnswerSchema }), 'pairwise answer')
+    .prefers
+}
+
+/** Mock mode's verify: the mock report, every prior defect fixed, ready. */
+export function mockCriticVerify(plan: CriticPlan, prior?: CriticReport): CriticVerify {
+  return {
+    ...mockCriticReport(plan),
+    priorDefects: (prior?.defects ?? []).map((_, index) => ({ index: index + 1, state: 'fixed' })),
+    verdict: 'ready',
+  }
+}
+
+/** Mock mode's pairwise answer: no preference on any axis. */
+export function mockPairwise(): PairwiseAnswer {
+  return Object.fromEntries(CRITIC_AXES.map((axis) => [axis, 'same'])) as PairwiseAnswer
 }
 
 const isMechanism = (value: unknown): value is Mechanism =>

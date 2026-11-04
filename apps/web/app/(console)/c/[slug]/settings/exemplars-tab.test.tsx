@@ -1,8 +1,22 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CRITIC_AXES, DEFAULT_SETTINGS } from '@boom-busters/schemas'
+import type { ChannelExemplarVersionView, ChannelExemplarView } from '@/lib/exemplar-channel-views'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { ExemplarsTab } from './exemplars-tab'
+
+const actions = vi.hoisted(() => ({
+  approveExemplarVersionAction: vi.fn(),
+  keepApprovedAction: vi.fn(),
+  restoreExemplarVersionAction: vi.fn(),
+  refineExemplarAction: vi.fn(),
+  deriveExemplarsAction: vi.fn(),
+}))
+vi.mock('./exemplar-actions', () => actions)
+const toast = vi.fn()
+vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast }) }))
+const refresh = vi.fn()
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
 const TEMPLATE = {
   name: 'stat-counter',
@@ -74,5 +88,181 @@ describe('ExemplarsTab (decision 305)', () => {
     const card = screen.getByRole('region', { name: 'Typewriter' })
     expect(within(card).getByRole('status')).toHaveTextContent(/does not compile/)
     expect(within(card).queryByRole('button', { name: 'Play example' })).not.toBeInTheDocument()
+  })
+})
+
+const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemplarVersionView => ({
+  id: 'v',
+  version: 1,
+  status: 'approved',
+  parentId: null,
+  steer: null,
+  concept: 'the channel concept',
+  storyboard: ['0.0 s a'],
+  mechanisms: ['drum'],
+  scores: Object.fromEntries(
+    CRITIC_AXES.map((axis) => [axis, { score: 9, line: `${axis} good` }]),
+  ) as ChannelExemplarVersionView['scores'],
+  verdict: 'ready',
+  metrics: null,
+  code: { ...WRITTEN.code!, title: 'The channel version' },
+  createdAt: '2026-11-04T10:00:00.000Z',
+  approvedAt: '2026-11-04T10:00:00.000Z',
+  copiedFrom: null,
+  ...over,
+})
+
+const channelView = (over: Partial<ChannelExemplarView>): ChannelExemplarView => ({
+  technique: 'stat-counter',
+  approved: null,
+  pendingDraft: null,
+  versions: [],
+  ...over,
+})
+
+const channelProps = {
+  channelId: '01J00000000000000000000CH1',
+  archived: false,
+  jobRunning: false,
+  techniqueOptions: [{ technique: 'stat-counter' as const, description: WRITTEN.description }],
+  estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 },
+  storageReady: true,
+  lastRun: null,
+}
+
+describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', () => {
+  beforeEach(() => {
+    actions.approveExemplarVersionAction.mockReset()
+    actions.refineExemplarAction.mockReset()
+    actions.restoreExemplarVersionAction.mockReset()
+    toast.mockReset()
+    refresh.mockReset()
+  })
+
+  it('shows the house exemplar when the channel has no version', () => {
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[channelView({})]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    expect(within(card).getByText('House exemplar')).toBeInTheDocument()
+    expect(within(card).getByText('The 1.2bn raised')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Derive this one' })).toBeEnabled()
+    expect(within(card).queryByRole('button', { name: 'Refine' })).toBeNull()
+  })
+
+  it("shows the approved version's player, scores and Refine", async () => {
+    actions.refineExemplarAction.mockResolvedValue({ ok: true })
+    const approved = channelVersion({ id: 'v1' })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[channelView({ approved, versions: [approved] })]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    expect(within(card).getByText(/Approved v1, derived/)).toBeInTheDocument()
+    expect(within(card).getByText('The channel version')).toBeInTheDocument()
+    expect(within(card).getByText('the channel concept')).toBeInTheDocument()
+    expect(within(card).getByText('Reviewed by the critic: ready.')).toBeInTheDocument()
+    expect(
+      within(card).getByText('Engagement 9 · Intent 9 · Composition 9 · Temporal 9 · Craft 9'),
+    ).toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: 'Show review' }))
+    expect(within(card).getByText('Engagement 9: engagement good')).toBeInTheDocument()
+    fireEvent.change(within(card).getByLabelText(/Refine with a steer/), {
+      target: { value: 'slower' },
+    })
+    fireEvent.click(within(card).getByRole('button', { name: 'Refine' }))
+    await waitFor(() =>
+      expect(actions.refineExemplarAction).toHaveBeenCalledWith(
+        '01J00000000000000000000CH1',
+        'v1',
+        'slower',
+      ),
+    )
+    expect(within(card).getByRole('button', { name: 'Refining' })).toBeDisabled()
+  })
+
+  it('shows the side by side with Approve this, Keep the approved one and Refine again when a draft has a parent', async () => {
+    actions.approveExemplarVersionAction.mockResolvedValue({ ok: true })
+    const approved = channelVersion({ id: 'v1' })
+    const draft = channelVersion({
+      id: 'v2',
+      version: 2,
+      status: 'draft',
+      parentId: 'v1',
+      steer: 'slower',
+      approvedAt: null,
+      concept: 'the refined concept',
+    })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[channelView({ approved, pendingDraft: draft, versions: [draft, approved] })]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    expect(within(card).getByRole('heading', { name: 'New' })).toBeInTheDocument()
+    expect(within(card).getByText('the refined concept')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Keep the approved one' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Refine again' })).toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: 'Approve this' }))
+    await waitFor(() =>
+      expect(actions.approveExemplarVersionAction).toHaveBeenCalledWith(
+        '01J00000000000000000000CH1',
+        'v2',
+      ),
+    )
+    expect(refresh).toHaveBeenCalled()
+  })
+
+  it('lists the versions behind Versions with Restore on a retired one', async () => {
+    actions.restoreExemplarVersionAction.mockResolvedValue({ ok: true })
+    const retired = channelVersion({ id: 'v1', status: 'retired', approvedAt: null })
+    const approved = channelVersion({ id: 'v2', version: 2 })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[channelView({ approved, versions: [approved, retired] })]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Versions' }))
+    const items = within(card).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    fireEvent.click(within(items[1]!).getByRole('button', { name: 'Restore' }))
+    await waitFor(() =>
+      expect(actions.restoreExemplarVersionAction).toHaveBeenCalledWith(
+        '01J00000000000000000000CH1',
+        'v1',
+      ),
+    )
+  })
+
+  it('disables Refine and Derive while a job runs', () => {
+    const approved = channelVersion({ id: 'v1' })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        jobRunning
+        channel={[channelView({ approved, versions: [approved] })]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    expect(within(card).getByRole('button', { name: 'Refine' })).toBeDisabled()
+    expect(within(card).getByRole('button', { name: 'Derive this one' })).toBeDisabled()
   })
 })
