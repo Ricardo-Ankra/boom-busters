@@ -61,3 +61,6 @@ It reads each window into a one-page reading the owner can correct, builds the
 channel's motion identity from the readings and the owner's words, derives an
 exemplar per technique the channel uses, and shows those on the board for
 approval and steering. The references' pixels never enter a film.
+
+A reference is read only on "Save and read" or "Read", never on the upload
+alone, and the reading can be edited on its card.
