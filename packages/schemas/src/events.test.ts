@@ -302,3 +302,21 @@ describe('motion/reference.ingested (spec 2026-11-04, section 7.2)', () => {
     expect(EVENT_NAMES).toContain('motion/reference.ingested')
   })
 })
+
+describe('motion/exemplars.derive and motion/exemplar.refine (spec 2026-11-04, section 9)', () => {
+  it('a derivation names the channel and its derivation row', () => {
+    const data = { channelId: fixtureId('channel', 1), derivationId: newId() }
+    expect(parseEventData('motion/exemplars.derive', data)).toEqual(data)
+    expect(() =>
+      parseEventData('motion/exemplars.derive', { channelId: fixtureId('channel', 1) }),
+    ).toThrow()
+  })
+
+  it('a refine names the parent version and holds the steer to 500 characters', () => {
+    const data = { channelId: fixtureId('channel', 1), parentId: newId(), steer: 'slower' }
+    expect(parseEventData('motion/exemplar.refine', data)).toEqual(data)
+    expect(() =>
+      parseEventData('motion/exemplar.refine', { ...data, steer: 'a'.repeat(501) }),
+    ).toThrow()
+  })
+})

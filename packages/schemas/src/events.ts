@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BibleDraftUnitSchema } from './bible-draft'
+import { ExemplarSteerSchema } from './channel-exemplars'
 import { UlidSchema } from './ids'
 import { ShotSlotTypeSchema } from './visuals'
 
@@ -451,6 +452,23 @@ export const MotionReferenceIngestedSchema = z.object({
 })
 
 /**
+ * A derivation (spec 2026-11-04, section 9.1): the row the launch created
+ * carries the techniques, the rounds and the cap; the job is a singleton
+ * per channel and a second launch while one runs is skipped.
+ */
+export const MotionExemplarsDeriveSchema = z.object({
+  channelId: UlidSchema,
+  derivationId: UlidSchema,
+})
+
+/** A refine (section 9.3): one build from the parent version under the steer. */
+export const MotionExemplarRefineSchema = z.object({
+  channelId: UlidSchema,
+  parentId: UlidSchema,
+  steer: ExemplarSteerSchema,
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -506,6 +524,8 @@ export const EVENT_SCHEMAS = {
   'demo/pipeline.requested': DemoRequestedSchema,
 
   'motion/reference.ingested': MotionReferenceIngestedSchema,
+  'motion/exemplars.derive': MotionExemplarsDeriveSchema,
+  'motion/exemplar.refine': MotionExemplarRefineSchema,
 } as const
 
 export type EventName = keyof typeof EVENT_SCHEMAS

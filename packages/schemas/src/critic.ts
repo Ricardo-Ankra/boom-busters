@@ -57,6 +57,51 @@ export function criticPasses(report: CriticReport): boolean {
 }
 
 /**
+ * The verify ask (spec 9.2, step 7): the report again, with each of the
+ * prior report's defects marked by its number, and a verdict.
+ */
+export const PRIOR_DEFECT_STATES = ['fixed', 'partly', 'present'] as const
+export const CriticVerifySchema = CriticReportSchema.extend({
+  priorDefects: z
+    .array(z.object({ index: z.number().int().min(1), state: z.enum(PRIOR_DEFECT_STATES) }))
+    .max(CRITIC_DEFECTS_MAX),
+  verdict: z.enum(['ready', 'one-more-pass']),
+})
+export type CriticVerify = z.infer<typeof CriticVerifySchema>
+
+/**
+ * The pairwise question (spec 9.2, step 4): which of two versions the critic
+ * prefers on each axis. Asked twice with the order swapped; `pairwiseOutcome`
+ * folds the two answers, a flip reading as a tie.
+ */
+export const PAIRWISE_ANSWERS = ['A', 'B', 'same'] as const
+const axisAnswers = <T extends z.ZodTypeAny>(value: T) =>
+  z.object({
+    engagement: value,
+    intent: value,
+    composition: value,
+    temporal: value,
+    craft: value,
+  })
+export const PairwiseAnswerSchema = axisAnswers(z.enum(PAIRWISE_ANSWERS))
+export type PairwiseAnswer = z.infer<typeof PairwiseAnswerSchema>
+
+export const PAIRWISE_OUTCOMES = ['new', 'previous', 'tie'] as const
+export const PairwiseOutcomeSchema = axisAnswers(z.enum(PAIRWISE_OUTCOMES))
+export type PairwiseOutcome = z.infer<typeof PairwiseOutcomeSchema>
+
+/** `first` was asked with A the new version; `swapped` with B the new version. */
+export function pairwiseOutcome(first: PairwiseAnswer, swapped: PairwiseAnswer): PairwiseOutcome {
+  const outcome = {} as PairwiseOutcome
+  for (const axis of CRITIC_AXES) {
+    const a = first[axis]
+    const b = swapped[axis]
+    outcome[axis] = a === 'A' && b === 'B' ? 'new' : a === 'B' && b === 'A' ? 'previous' : 'tie'
+  }
+  return outcome
+}
+
+/**
  * Measured motion (spec 10.1): what the browser's dense shots show when
  * compared neighbour to neighbour, handed to the critic as numbers.
  */
