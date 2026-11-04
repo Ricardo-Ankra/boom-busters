@@ -12,7 +12,7 @@ import type {
   StillBrief,
 } from '@boom-busters/schemas'
 import { DEFAULT_MOTION_IDENTITY, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
-import { exemplarFor, exemplars } from '../../exemplars/index'
+import { MANIFEST, exemplarFor, exemplars } from '../../exemplars/index'
 import type { LLMTaskRequest } from '../../llm/types'
 import { buildCastIdentityRequest } from '../cast-identity'
 import { buildDigestRequest } from '../digest'
@@ -24,7 +24,7 @@ import {
   buildClaimsRequest,
   buildScenesRequest,
 } from '../dossier'
-import { buildCriticRequest } from '../critic'
+import { buildCriticRequest, buildPairwiseRequest } from '../critic'
 import { buildGraphicRequest } from '../graphics'
 import type { GraphicDesignInput } from '../graphics'
 import { buildDescriptionRequest, buildTitlesRequest } from '../metadata'
@@ -32,6 +32,7 @@ import { buildRebriefRequest } from '../rebrief'
 import { buildRedirectRequest } from '../redirect'
 import { buildRetypeRequest } from '../retype'
 import { buildScoringRequest } from '../scoring'
+import { buildStoryboardRequest } from '../storyboard'
 import {
   buildChapterRequest,
   buildOutlineRequest,
@@ -1150,6 +1151,123 @@ const graphicsCases: LiftCase[] = [
           image: { mimeType: 'image/jpeg', data: 'DDDD' },
         },
       ],
+    }),
+  ),
+  // The storyboard (spec 9.2, step 1): the identity and the style guide
+  // cached first, then the technique, its synthetic slot and the readings.
+  liftAware('graphics-storyboard', () =>
+    buildStoryboardRequest({
+      motion: { ...DEFAULT_MOTION_IDENTITY, styleGuideMd: 'Dark, slow, one figure at a time.' },
+      brand: { colors: { background: '#0b0b0f', accent: '#e63946' }, fonts: { display: 'Inter' } },
+      entry: MANIFEST.find((entry) => entry.id === 'stat-counter')!,
+      house: {
+        title: 'Raised in one round',
+        concept: 'the sentence parts for the figure',
+        storyboard: ['0.0 s the sentence lands', '1.5 s the figure rises'],
+      },
+      readings: [
+        {
+          title: 'Numeral over a changing background',
+          purpose: 'look',
+          negative: false,
+          carryOver: 'borrow the held numeral, not the story',
+          avoid: '',
+          reading: {
+            medium: 'flat typography',
+            palette: ['#111', '#eee'],
+            type: 'grotesk, heavy',
+            enters: 'rises',
+            exits: 'cuts',
+            motion: 'one numeral holds while the ground changes',
+            absent: 'no glow, no particles',
+            notes: '',
+            readAt: '2026-11-04T00:00:00.000Z',
+            model: 'lift/model',
+          },
+        },
+        {
+          title: 'Jittery count',
+          purpose: 'pacing',
+          negative: true,
+          carryOver: 'not this pace',
+          avoid: 'the jitter',
+          reading: null,
+        },
+      ],
+    }),
+  ),
+  // The critic's verify ask with a previous version (spec 9.2, steps 4 and 7).
+  liftAware('graphics-critic-verify', () =>
+    buildCriticRequest({
+      motion: DEFAULT_MOTION_IDENTITY,
+      plan: {
+        concept: 'the floor gives way',
+        storyboard: ['0.0 s the baseline draws', '2.0 s "2019": the first point lands'],
+        title: 'The fall',
+        facts: [{ text: '2022', claim: 1 }],
+        mechanisms: ['rise-from-baseline'],
+      },
+      slot: {
+        durationMs: 6000,
+        intent: 'The fall from 104.5 to 1.28 euros in nine days is the story.',
+        words: [
+          { text: 'The', offsetMs: 0 },
+          { text: 'share', offsetMs: 300 },
+        ],
+      },
+      metrics: null,
+      findings: [],
+      sheets: {
+        landscape: { mimeType: 'image/jpeg', data: 'AAAA' },
+        portrait: { mimeType: 'image/jpeg', data: 'BBBB' },
+      },
+      frames: [{ label: '16:9 at 0.9 s', image: { mimeType: 'image/jpeg', data: 'CCCC' } }],
+      references: [],
+      previous: {
+        sheets: {
+          landscape: { mimeType: 'image/jpeg', data: 'EEEE' },
+          portrait: { mimeType: 'image/jpeg', data: 'FFFF' },
+        },
+        label: 'round 1',
+      },
+      verify: {
+        prior: {
+          scores: {
+            engagement: { score: 7, line: 'slow to start' },
+            intent: { score: 8, line: 'the fall reads' },
+            composition: { score: 8, line: 'one thing biggest' },
+            temporal: { score: 6, line: 'the ending drops' },
+            craft: { score: 8, line: 'clean' },
+          },
+          defects: [
+            { atMs: 1350, orientation: 'landscape', text: 'the label clips the safe area' },
+            {
+              atMs: 5500,
+              orientation: 'portrait',
+              text: 'the last figure fades before the slot ends',
+            },
+          ],
+          fixes: ['hold the final figure for the last second'],
+          mechanisms: [{ key: 'rise-from-baseline', present: true }],
+          keep: false,
+        },
+        brief: 'The derivation is over; is it ready?',
+      },
+      strong: true,
+    }),
+  ),
+  liftAware('graphics-pairwise', () =>
+    buildPairwiseRequest({
+      motion: DEFAULT_MOTION_IDENTITY,
+      plan: { title: 'The fall', concept: 'the floor gives way', facts: [] },
+      a: {
+        landscape: { mimeType: 'image/jpeg', data: 'EEEE' },
+        portrait: { mimeType: 'image/jpeg', data: 'FFFF' },
+      },
+      b: {
+        landscape: { mimeType: 'image/jpeg', data: 'AAAA' },
+        portrait: { mimeType: 'image/jpeg', data: 'BBBB' },
+      },
     }),
   ),
   liftAware('graphics-retry-after-refusal', (bible) =>
