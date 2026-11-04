@@ -27,3 +27,19 @@ export function completeForProject(
     })
   }
 }
+
+/**
+ * `completeForProject` for a call charged to a channel and no project: the
+ * Motion tab's reading and identity draft (spec 2026-11-04), as the bible
+ * drafter's calls are.
+ */
+export function completeForChannel(
+  channelId: string,
+  firstCall: { estimateOutputTokens?: number } = {},
+): AnswerComplete {
+  return async (request, call) =>
+    callLlm(request, {
+      channelId,
+      ...(call === 'answer' ? firstCall : { purpose: call }),
+    })
+}
