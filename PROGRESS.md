@@ -9868,3 +9868,22 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      `channel-actions.test.ts` ("copies another channel's voice") fails on
      master as well, on a leftover `youtube_connections` row in the shared
      test database; not this change.
+     Final review (fresh reviewer, Opus), all seven findings fixed: a
+     stored clip played without `crossOrigin` tainted the canvas, so every
+     Re-mark would have failed in production (now `anonymous`, the bucket's
+     CORS already allows it); the sheets were keyed by content hash, so two
+     references cut from one clip shared one sheet (now keyed by reference
+     id); the pack-full refusal deleted the original even when another
+     reference held the same bytes (now only when no reference does); the
+     asset upsert could rename and resize one of the channel's logos (now
+     guarded by kind, and such bytes are refused in words); a row could wedge
+     in "Reading..." when the Inngest send failed (now put back, and a read
+     silent for ten minutes counts as stalled, shows "Reading stalled" and
+     may be asked for again); a re-mark or a reading edit during a read could
+     bring back the old window's reading (now refused while a read is in
+     flight, and the buttons hold); a still over 5 MB could never be read on
+     the default route (every image is now held to 1600 px as a JPEG before
+     the call); and the marker uploaded the original before taking a single
+     frame (now the frames come first, a full pack is refused before any
+     bytes travel, and Add reference is disabled at twelve). Deferred minors
+     are in the ledger and the hand-over.
