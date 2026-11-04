@@ -1,0 +1,13 @@
+{
+  "scores": {
+    "engagement": { "score": 8, "line": "[mock] engagement at the bar for \"The fall\"" },
+    "intent": { "score": 8, "line": "[mock] intent at the bar for \"The fall\"" },
+    "composition": { "score": 8, "line": "[mock] composition at the bar for \"The fall\"" },
+    "temporal": { "score": 8, "line": "[mock] temporal at the bar for \"The fall\"" },
+    "craft": { "score": 8, "line": "[mock] craft at the bar for \"The fall\"" }
+  },
+  "defects": [],
+  "fixes": [],
+  "mechanisms": [{ "key": "drum", "present": true }],
+  "keep": true
+}

@@ -24,6 +24,7 @@ import {
   buildClaimsRequest,
   buildScenesRequest,
 } from '../dossier'
+import { buildCriticRequest } from '../critic'
 import { buildGraphicRequest, buildGraphicReviewRequest } from '../graphics'
 import type { GraphicDesignInput } from '../graphics'
 import { buildDescriptionRequest, buildTitlesRequest } from '../metadata'
@@ -1123,6 +1124,55 @@ const graphicsCases: LiftCase[] = [
         { label: '9:16 at 5.9 s', image: { mimeType: 'image/jpeg', data: 'BBBB' } },
       ],
     ),
+  ),
+  // The critic (spec 2026-11-04, section 10.4): the identity's head, the
+  // plan and the numbers, then the references, the sheets and the frames.
+  // Bible-aware only through nothing: it reads no bible, but it is a prompt
+  // the lift sweep should see, so it is listed with the graphics cases.
+  liftAware('graphics-critic', () =>
+    buildCriticRequest({
+      motion: DEFAULT_MOTION_IDENTITY,
+      plan: {
+        concept: 'the floor gives way',
+        storyboard: ['0.0 s the baseline draws', '2.0 s "2019": the first point lands'],
+        title: 'The fall',
+        facts: [{ text: '2022', claim: 1 }],
+        mechanisms: ['rise-from-baseline'],
+      },
+      slot: {
+        durationMs: 6000,
+        intent: 'The fall from 104.5 to 1.28 euros in nine days is the story.',
+        words: [
+          { text: 'The', offsetMs: 0 },
+          { text: 'share', offsetMs: 300 },
+        ],
+      },
+      metrics: {
+        frozenMs: 1000,
+        longestFrozenMs: 500,
+        frozenCritical: false,
+        simultaneity: 0.75,
+        holdAfterLastMs: 1000,
+        speedProfile: [
+          { atMs: 500, change: 0 },
+          { atMs: 1000, change: 30 },
+        ],
+      },
+      findings: ['while moving, at 1.3 s in landscape, "2019" and "2022" overlap'],
+      sheets: {
+        landscape: { mimeType: 'image/jpeg', data: 'AAAA' },
+        portrait: { mimeType: 'image/jpeg', data: 'BBBB' },
+      },
+      frames: [{ label: '16:9 at 0.9 s', image: { mimeType: 'image/jpeg', data: 'CCCC' } }],
+      references: [
+        {
+          title: 'Numeral over a changing background',
+          purpose: 'look',
+          carryOver: 'borrow the held numeral, not the story',
+          image: { mimeType: 'image/jpeg', data: 'DDDD' },
+        },
+      ],
+    }),
   ),
   liftAware('graphics-retry-after-refusal', (bible) =>
     buildGraphicRequest(

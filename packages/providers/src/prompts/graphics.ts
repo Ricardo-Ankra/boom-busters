@@ -182,6 +182,29 @@ function channelMotion(motion: MotionIdentity): string {
   return `\n\nThis channel's motion:\n${lines.join('\n')}`
 }
 
+/**
+ * The identity said whole, house values included (spec 2026-11-04, section
+ * 10.4): for a prompt with no craft section of its own, the critic's, so it
+ * judges against the channel's taste and not its own. The designer's prompt
+ * says the house values in its craft section and takes `channelMotion`.
+ */
+export function motionIdentityBlock(motion: MotionIdentity): string {
+  const numbers = motionNumbers(motion)
+  const lengths = Object.entries(numbers.ms)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ')
+  const lines = [
+    `- The curves are ${EASE_WORDS[motion.signatureEase]}.`,
+    `- Things arrive by ${motion.entrance}; overshoot: ${motion.overshoot}.`,
+    `- Lengths in milliseconds: ${lengths}.`,
+    craftFromIdentity(motion),
+    `- Nothing may stay still longer than ${secondsWord(motion.stillMaxMs)}.`,
+  ]
+  const guide = motion.styleGuideMd.trim()
+  if (guide.length > 0) lines.push(guide)
+  return `This channel's motion:\n${lines.join('\n')}`
+}
+
 const systemTemplate = (
   bible: ChannelBible,
   motion: MotionIdentity,
