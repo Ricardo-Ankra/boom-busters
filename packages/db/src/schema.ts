@@ -17,6 +17,8 @@ import type {
   PointPlanRecord,
   PointScriptRecord,
   PointVoiceRecord,
+  ReferenceFrames,
+  ReferenceReading,
   SearchBrief,
   CaseResearchJob,
   Series,
@@ -166,6 +168,13 @@ export const shotStatusEnum = pgEnum('shot_status', ['unresolved', 'resolved', '
 export const socialPostStatusEnum = pgEnum('social_post_status', ['fetched', 'manual', 'failed'])
 
 export const assetKindEnum = pgEnum('asset_kind', ['image', 'video', 'music', 'logo'])
+export const referencePurposeEnum = pgEnum('reference_purpose', ['mechanism', 'look', 'pacing'])
+export const referenceReadStateEnum = pgEnum('reference_read_state', [
+  'unread',
+  'reading',
+  'read',
+  'failed',
+])
 
 export const renderKindEnum = pgEnum('render_kind', ['master', 'short', 'draft'])
 export const renderStatusEnum = pgEnum('render_status', [
@@ -984,6 +993,54 @@ export const assets = pgTable(
   ],
 )
 
+/**
+ * A channel's motion references (spec 2026-11-04, section 7.1): one uploaded
+ * still or clip, the window the owner marked, the frames the browser took,
+ * the model's reading and the two sheets. Ordered by `position` among live
+ * rows; archiving keeps the row and its files. The bytes are an `assets`
+ * row of kind image or video with `channelId` set, as a logo's are.
+ */
+export const motionReferences = pgTable(
+  'motion_references',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'restrict' }),
+    assetId: text('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'restrict' }),
+    kind: assetKindEnum('kind').notNull(),
+    title: text('title').notNull(),
+    /** Provenance only: never fetched. */
+    sourceUrl: text('source_url'),
+    rights: text('rights').notNull(),
+    purpose: referencePurposeEnum('purpose').notNull(),
+    /** A clip that shows what the channel must not do. */
+    negative: boolean('negative').notNull().default(false),
+    windowStartMs: integer('window_start_ms'),
+    windowEndMs: integer('window_end_ms'),
+    carryOver: text('carry_over').notNull(),
+    avoid: text('avoid').notNull().default(''),
+    frames: jsonb('frames').notNull().$type<ReferenceFrames>(),
+    reading: jsonb('reading').$type<ReferenceReading>(),
+    contactSheetKey: text('contact_sheet_key'),
+    denseSheetKey: text('dense_sheet_key'),
+    readState: referenceReadStateEnum('read_state').notNull().default('unread'),
+    readError: text('read_error'),
+    position: integer('position').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('motion_references_channel_position_key')
+      .on(t.channelId, t.position)
+      .where(sql`archived_at is null`),
+    index('motion_references_channel_idx').on(t.channelId),
+  ],
+)
+
 export const shotSlots = pgTable(
   'shot_slots',
   {
@@ -1693,6 +1750,8 @@ export type VoiceTakeRow = typeof voiceTakes.$inferSelect
 export type VoiceAuditionRow = typeof voiceAuditions.$inferSelect
 export type ShotSlotRow = typeof shotSlots.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
+export type MotionReferenceRow = typeof motionReferences.$inferSelect
+export type ReferenceReadState = (typeof referenceReadStateEnum.enumValues)[number]
 export type TimelineRow = typeof timelines.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type ShortRow = typeof shorts.$inferSelect

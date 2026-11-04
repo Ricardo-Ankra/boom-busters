@@ -330,6 +330,13 @@
       "when": 1793716401453,
       "tag": "0046_lonely_hellcat",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793790337787,
+      "tag": "0047_nifty_roulette",
+      "breakpoints": true
     }
   ]
 }
