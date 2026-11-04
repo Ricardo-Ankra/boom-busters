@@ -12,6 +12,7 @@ import type {
   ChartBrief,
   GraphicBrief,
   GraphicCode,
+  MotionIdentity,
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import type * as Providers from '@boom-busters/providers'
@@ -29,6 +30,8 @@ vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) 
 // The review is off unless a test turns it on (decision 389), so the two-call
 // ladder below is the design's own.
 let reviewSetting = false
+// The channel's motion identity (spec 2026-11-04): the house one unless a test sets it.
+let motionSetting: Partial<MotionIdentity> = {}
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const schemas = await import('@boom-busters/schemas')
   return {
@@ -39,6 +42,7 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
       settings: {
         ...schemas.DEFAULT_SETTINGS,
         features: { ...schemas.DEFAULT_SETTINGS.features, graphicReview: reviewSetting },
+        motion: { ...schemas.DEFAULT_MOTION_IDENTITY, ...motionSetting },
       },
       ...schemas.FIRST_CHANNEL_IN_USE,
     }),
@@ -234,6 +238,7 @@ beforeEach(() => {
   mock = false
   exemplarStub = null
   reviewSetting = false
+  motionSetting = {}
   // The config turns the browser off for every other file; this one stubs it.
   vi.stubEnv('GRAPHIC_FRAMES', 'on')
   inspect.mockReset()
@@ -472,6 +477,34 @@ describe('designGraphic (decisions 289, 295)', () => {
     })
     expect(sent()).toContain('Four billion in a year.')
     expect(sent()).toContain('USD bn')
+  })
+
+  it('designs with the channel identity: the prompt, the checks and the technique list (spec 2026-11-04)', async () => {
+    motionSetting = {
+      changeEveryMs: 6000,
+      stillMaxMs: 9000,
+      ms: { enter: 900 },
+      techniques: ['kinetic-word-stack', 'bar-chart'],
+    }
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    if (!result.ok) throw new Error(result.issue)
+    expect(callLlm.mock.calls[0]![0].system).toContain('about every 6 seconds')
+    expect(callLlm.mock.calls[0]![0].system).toContain('more than 9 seconds is refused')
+    // One figure in the intent is a stat counter by the rules; switched off, the word stack stands in.
+    expect(sent()).toContain('(kinetic-word-stack:')
+    expect(sent()).not.toContain('(stat-counter:')
+    expect(result.code.compiled).toContain('"enter":900')
+    expect(result.code.motion).toBe(2)
+  })
+
+  it('checks the mock design against the channel identity (spec 2026-11-04)', async () => {
+    mock = true
+    motionSetting = { changeEveryMs: 6000, stillMaxMs: 9000, ms: { enter: 900 } }
+    const result = await designGraphic(CONTEXT, SLOT)
+    if (!result.ok) throw new Error(result.issue)
+    expect(result.code.compiled).toContain('"enter":900')
+    expect(result.code.motion).toBe(2)
   })
 
   it('makes no call in mock mode, and the fixture passes every check (decision 295)', async () => {

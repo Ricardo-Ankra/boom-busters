@@ -21,9 +21,15 @@ import {
   type ReviewFrame,
   type ScriptClaim,
 } from '@boom-busters/providers'
-import { BudgetExceededError, graphicIntentOf, ValidationError } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  DEFAULT_MOTION_IDENTITY,
+  graphicIntentOf,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type {
   BibleInUse,
+  MotionIdentity,
   ChartBrief,
   DesignableBrief,
   GraphicCode,
@@ -206,12 +212,13 @@ export function slotIntent(
 function designInput(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; guidance?: string; redesign?: boolean },
+  options: { bible: BibleInUse; motion?: MotionIdentity; guidance?: string; redesign?: boolean },
 ): {
   base: GraphicDesignInput
   checkSlot: { brief: DesignableBrief; durationMs: number; words: { text: string; atMs: number }[] }
 } {
   const { brief } = slot
+  const motion = options.motion ?? DEFAULT_MOTION_IDENTITY
   const { intent, intentRefs } = slotIntent(context, brief)
   const narration = slotNarration(context, slot)
   // The same words the prompt lists, as the dry run hands them to the code.
@@ -233,12 +240,14 @@ function designInput(
       description: brief.description,
       coversText: brief.coversText,
       logos: context.logos.map((logo) => logo.title),
+      techniques: motion.techniques,
       ...(options.guidance ? { guidance: options.guidance } : {}),
     }),
   )
 
   const base: GraphicDesignInput = {
     bible: options.bible,
+    motion,
     caseTitle: context.caseTitle,
     claims: context.claims,
     logos: context.logos.map((logo) => logo.title),
@@ -325,7 +334,13 @@ export async function designGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; guidance?: string; redesign?: boolean } & FramesOptions,
+  options: {
+    bible: BibleInUse
+    /** The channel's motion identity (spec 2026-11-04): the prompt's taste, the tokens and the still limit; the house one when absent. */
+    motion?: MotionIdentity
+    guidance?: string
+    redesign?: boolean
+  } & FramesOptions,
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
   // compile with esbuild's native binary. A host that cannot do either is
@@ -363,7 +378,9 @@ export async function designGraphicWith(
     const answer = await callForAnswer({
       request: buildGraphicRequest(base),
       parse: async (text, note) => {
-        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot)
+        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot, {
+          motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
+        })
         if ('issue' in checked) return refuse(checked.issue)
         const inspected = await inspect(checked.code, { shots: false, measure: true })
         if (inspected?.layoutIssue) return refuse(inspected.layoutIssue)
@@ -405,7 +422,7 @@ export async function reviewGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; guidance?: string } & FramesOptions,
+  options: { bible: BibleInUse; motion?: MotionIdentity; guidance?: string } & FramesOptions,
 ): Promise<GraphicReviewResult> {
   const skipped = (reason: string): GraphicReviewResult => {
     options.log?.(`review skipped: ${reason}`)
@@ -451,7 +468,9 @@ export async function reviewGraphicWith(
       return { outcome: 'kept', code: { ...code, review: 'kept' } }
     }
     if (verdict.keep) return kept('the designer kept it')
-    const checked = graphicCodeIssue(verdict.design, context, checkSlot)
+    const checked = graphicCodeIssue(verdict.design, context, checkSlot, {
+      motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
+    })
     if ('issue' in checked) return kept(`the revision was refused: ${checked.issue}`)
     const inspected = await inspect(checked.code, { shots: false, measure: true })
     if (inspected?.layoutIssue) return kept(`the revision was refused: ${inspected.layoutIssue}`)
