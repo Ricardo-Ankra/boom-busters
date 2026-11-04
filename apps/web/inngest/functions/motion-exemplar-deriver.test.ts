@@ -19,6 +19,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { derivedContext } from '@/lib/exemplar-derive'
+import type * as Cost from '@boom-busters/cost'
 import type * as Frames from '@/lib/graphic-code/frames'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { motionExemplarDeriver } from './motion-exemplar-deriver'
@@ -71,7 +72,7 @@ vi.mock('@/lib/graphic-code/motion-metrics', () => ({ motionMetrics: async () =>
 // The job's spend so far: nothing unless a test raises it.
 const jobSpend = vi.fn(async () => 0)
 vi.mock('@boom-busters/cost', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@boom-busters/cost')>()),
+  ...(await importOriginal<typeof Cost>()),
   jobSpendUsd: () => jobSpend(),
 }))
 

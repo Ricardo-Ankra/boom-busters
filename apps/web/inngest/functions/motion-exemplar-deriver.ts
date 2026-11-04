@@ -123,9 +123,15 @@ async function readingsFor(channelId: string): Promise<ReadingForDraft[]> {
 type TechniqueOutcome = Pick<TechniqueProgress, 'state' | 'reason' | 'versionId'>
 
 /** The whole loop for one technique; every paid step named `<technique>/<step>`. */
+/** What the loop reads of the derivation: a step's output is JSON, so no dates. */
+type DerivationAsked = Pick<
+  MotionDerivationRow,
+  'id' | 'channelId' | 'techniques' | 'rounds' | 'capUsd'
+>
+
 async function deriveTechnique(
   step: StepTools,
-  derivation: MotionDerivationRow,
+  derivation: DerivationAsked,
   technique: Technique,
 ): Promise<TechniqueOutcome> {
   const { channelId } = derivation
