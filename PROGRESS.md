@@ -4669,9 +4669,14 @@ Final review and fixes:
 - [x] Plan 3: measured motion (frozen time, simultaneity, contrast), the layout
       check through transitions, the critic that replaces the self-review
       (branch `motion-critic`, decision 397).
-- [ ] Plan 4: derivation per channel through the critic loop, refine by steer
+- [x] Plan 4: derivation per channel through the critic loop, refine by steer
       with the side by side, versions, copy from another channel, the
-      preference ledger.
+      preference ledger (branch `motion-derivation`, decision 398).
+- [ ] Plan 5, open: channel-only techniques (spec 8.5, second paragraph): a
+      technique the derivation proposes from a mechanism reference, stored as
+      a channel exemplar under a new key, reached by steer phrase. Needs the
+      identity's `techniques` enum, the designer's answer schema and the
+      steer phrases to accept a key that is not in `TECHNIQUES`.
 
 ### Next project
 
@@ -9952,3 +9957,67 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      a mechanisms label that is not a list no longer refuses a design, and a
      fix call that fails keeps the design with its critique. Deferred minors
      are in the ledger and the hand-over.
+
+398. **Derivation per channel, refine, versions and copy** (2026-11-04,
+     owner: "Native" on plan 4 of the channel motion references design,
+     branch `motion-derivation`). What shipped. Three tables: a channel's
+     exemplar versions (`channel_exemplars`: the plan the storyboard wrote,
+     the code, the critic's report, the verify verdict, the pairwise
+     outcome, the measured metrics, the frames' keys, the parent and the
+     steer, a status of draft, approved or retired, one approved per
+     technique), the derivations (`motion_derivations`: what was asked, the
+     progress per technique, the spend) and the preference ledger
+     (`motion_verdicts`: approve, keep-approved, prefer, steer, redesign;
+     `revise` reserved). A storyboard prompt on the graphics route writes
+     the plan for one technique: the catalogue's synthetic slot rewritten
+     into the channel's register within bounds (the clock, a third of the
+     words, a chart's series and points), the concept, the storyboard, the
+     mechanisms and the references leaned on. `motion-exemplar-deriver`
+     runs the loop a step per call per technique: storyboard, build (the
+     designer with the plan as the steer and the house exemplar pinned for
+     mechanics), frames (four a frame apart from each storyboard moment,
+     stored to R2 under the version's round), critic, fix, stopping early at
+     the bar, then the verify on the graphics route; every paid step first
+     sums the job's ledger rows (`meta.jobId`) against the cap the owner
+     typed, and over it the technique keeps what it has as a draft and the
+     rest stop at once. From round two the critic is shown the round before
+     and asked which it prefers, then asked again in a light call with the
+     order swapped; a flip is a tie. `motion-exemplar-refiner` builds one
+     version from the approved one under the owner's steer and runs one
+     verify round against the parent. The Exemplars tab is per channel: the
+     approved version or the house example, the critic's scores behind Show
+     review, Refine, Derive this one, Versions with Restore, and the side by
+     side after a refine with Approve this, Keep the approved one and Refine
+     again; every button writes its verdict. The Motion tab gains Derive
+     (the dialogue with the techniques, the rounds in words, the cap red
+     above $20 and the estimate, the progress per technique and the last
+     run's cost) and Copy motion from another channel (the identity, the
+     references over the shared asset rows, the approved exemplars as
+     approved versions, a fork). The designer's per-shot call is shown the
+     channel's approved exemplar for the slot's technique in place of the
+     house one; the board's Redesign on a graphic or chart writes a redesign
+     verdict with its steer.
+     Decisions made where the spec left room: channel-only techniques (spec
+     8.5) are plan 5, since the techniques list is an enum through the
+     identity, the designer's answer and the steer phrases; mock mode runs
+     the whole flow on fixtures (spec 4 and 13 over 9.1's older refusal),
+     the house design checked under the channel's identity as the draft with
+     the mock report and a ready verdict; one version per technique per
+     derivation, the fix replacing the draft's code in place; the pairwise
+     swap is a light call of the two sheets; verify runs the critic's prompt
+     on the graphics route (spec 12.2); the critic sees at most two
+     references per call (12.2 over 9.2's three), the plan's named ones
+     first; frames go to R2 and the critic reads them back, so a parked run
+     carries keys, not images, and a channel without storage still gets a
+     playable draft stored without a report; the jobs' singletons run in
+     mode cancel, not the spec's skip, because a stale lock can swallow a
+     relaunch (decision 233) and the actions refuse a launch while a
+     derivation runs; a refused refine inserts nothing and leaves a heads-up;
+     copy refuses a target with live references so the pack never exceeds
+     twelve; the e2e drives the UI and the database (an approved version and
+     a refined draft written first) and presses neither Start deriving nor
+     Refine, since the harness runs no Inngest server; the jobs are covered
+     by the test engine. Cost: a technique pays the storyboard, the build,
+     one critic call and one fix per round, the pairwise from round two and
+     the verify, all against the cap; the dialogue prices it on the two
+     routes and shows the last run's figures. Migration 0048.

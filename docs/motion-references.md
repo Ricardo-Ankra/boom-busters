@@ -61,8 +61,18 @@ pacing.
 
 It reads each window into a one-page reading the owner can correct, builds the
 channel's motion identity from the readings and the owner's words, derives an
-exemplar per technique the channel uses, and shows those on the board for
-approval and steering. The references' pixels never enter a film.
+exemplar per technique the channel uses, and shows those on the Exemplars tab
+for approval and steering. The references' pixels never enter a film.
 
 A reference is read only on "Save and read" or "Read", never on the upload
 alone, and the reading can be edited on its card.
+
+"Derive exemplars" on the Motion tab plans each technique from the readings,
+builds it, has the critic judge and fix it round by round under a cap you
+type, and stores the result as a draft version; nothing is approved for you.
+Each technique on the Exemplars tab shows its approved version or the house
+example, and "Refine" builds one new version from the approved one under a
+plain-words steer, shown beside it with "Approve this" and "Keep the approved
+one"; every version stays under "Versions" and a retired one can be restored.
+"Copy motion from another channel" forks that channel's identity, references
+and approved exemplars into this one.

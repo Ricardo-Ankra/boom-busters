@@ -10,6 +10,9 @@ import {
 } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
 import type { Settings, WorkspaceSettings } from '@boom-busters/schemas'
+import { derivationEstimateUsd, type DerivationEstimateTable } from '@/lib/derivation-estimate'
+
+export { derivationEstimateUsd, type DerivationEstimateTable }
 
 /**
  * What the Motion tab says a paid call will cost (spec 2026-11-04, sections
@@ -55,15 +58,6 @@ export const DERIVE_TOKENS = {
   verify: { in: 14_000, out: CRITIC_OUTPUT_TOKENS },
 } as const
 
-export interface DerivationEstimateTable {
-  /** The storyboard, the build and the verify: paid once per technique. */
-  perTechniqueFixed: number
-  /** One critic call and one fix: paid per round. */
-  perRound: number
-  /** The pairwise ask with the order swapped: paid from round two. */
-  perPairwise: number
-}
-
 function routeEstimate(
   settings: Settings,
   workspace: WorkspaceSettings,
@@ -94,18 +88,6 @@ export function derivationEstimateTable(
     perRound: on('critic', DERIVE_TOKENS.critic) + on('graphics', DERIVE_TOKENS.fix),
     perPairwise: on('critic', DERIVE_TOKENS.pairwise),
   }
-}
-
-/** The dialogue's figure: pure, so it follows the ticks and the rounds as the owner changes them. */
-export function derivationEstimateUsd(
-  table: DerivationEstimateTable,
-  input: { techniques: number; rounds: number },
-): number {
-  const perTechnique =
-    table.perTechniqueFixed +
-    input.rounds * table.perRound +
-    Math.max(0, input.rounds - 1) * table.perPairwise
-  return input.techniques * perTechnique
 }
 
 export function identityDraftEstimateUsd(

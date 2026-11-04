@@ -15,7 +15,7 @@ import { CopyMotion } from './copy-motion'
 import { DeriveSection } from './derive-section'
 import type { DerivationView } from './exemplar-actions'
 import { IdentityDraft } from './identity-draft'
-import type { DerivationEstimateTable } from '@/lib/motion-estimates'
+import type { DerivationEstimateTable } from '@/lib/derivation-estimate'
 import { ReferencesSection, type ReferenceView } from './references-section'
 
 /**

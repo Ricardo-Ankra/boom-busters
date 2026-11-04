@@ -226,6 +226,11 @@ export default async function globalSetup(): Promise<void> {
       await connection.sql`update channels set current_bible_id = null where slug = ${slug}`
       await connection.sql`delete from channel_bibles where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from youtube_connections where channel_id in (select id from channels where slug = ${slug})`
+      // The motion tables restrict too (spec 2026-11-04): a copied exemplar, a derivation or a verdict holds the channel.
+      await connection.sql`delete from channel_exemplars where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from motion_derivations where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from motion_verdicts where channel_id in (select id from channels where slug = ${slug})`
+      await connection.sql`delete from motion_references where channel_id in (select id from channels where slug = ${slug})`
       await connection.sql`delete from channels where slug = ${slug}`
     }
     await createChannel(connection.db, {

@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Label, NumberInput, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { derivationEstimateUsd, type DerivationEstimateTable } from '@/lib/motion-estimates'
+import { derivationEstimateUsd, type DerivationEstimateTable } from '@/lib/derivation-estimate'
 import { deriveExemplarsAction } from './exemplar-actions'
 import type { TechniqueOption } from './motion-tab'
 
