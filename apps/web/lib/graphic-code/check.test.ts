@@ -316,6 +316,15 @@ describe('graphicCodeIssue (decision 295)', () => {
     expect(bare.code).not.toHaveProperty('storyboard')
   })
 
+  it("keeps the design's mechanisms on the stored code, and none when it named none (spec 2026-11-04, section 8.5)", () => {
+    const named = graphicCodeIssue(answer({ mechanisms: ['drum'] }), CONTEXT, slot(GRAPHIC)) as {
+      code: GraphicCode
+    }
+    expect(named.code.mechanisms).toEqual(['drum'])
+    const bare = graphicCodeIssue(answer(), CONTEXT, slot(GRAPHIC)) as { code: GraphicCode }
+    expect(bare.code).not.toHaveProperty('mechanisms')
+  })
+
   it('runs the dry run with the tokens in scope: a design on motion.ms and motion.ease passes', () => {
     const source = `function Graphic() {
   const frame = Remotion.useCurrentFrame()

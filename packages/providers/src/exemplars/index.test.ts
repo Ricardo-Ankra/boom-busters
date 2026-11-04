@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DESIGNS } from './designs/index'
+import { MECHANISM_KEYS } from '@boom-busters/schemas'
 import { exemplarFor, exemplars, MANIFEST, TECHNIQUES, techniqueFor, vendoredPath } from './index'
 
 const HERE = new URL('./', import.meta.url)
@@ -10,6 +11,21 @@ describe('the exemplar manifest (decision 305)', () => {
   it('has exactly one entry per technique, under the technique as its id', () => {
     expect(MANIFEST.map((entry) => entry.technique).sort()).toEqual([...TECHNIQUES].sort())
     for (const entry of MANIFEST) expect(entry.id).toBe(entry.technique)
+  })
+
+  it('names one to four mechanisms from the list on every entry (spec 2026-11-04, section 8.5)', () => {
+    for (const entry of MANIFEST) {
+      expect(entry.mechanisms.length, entry.id).toBeGreaterThanOrEqual(1)
+      expect(entry.mechanisms.length, entry.id).toBeLessThanOrEqual(4)
+      expect(new Set(entry.mechanisms).size).toBe(entry.mechanisms.length)
+      for (const key of entry.mechanisms) expect(MECHANISM_KEYS).toContain(key)
+    }
+    expect(MANIFEST.find((entry) => entry.id === 'bar-chart')!.mechanisms).toContain(
+      'rise-from-baseline',
+    )
+    expect(MANIFEST.find((entry) => entry.id === 'kinetic-word-stack')!.mechanisms).toContain(
+      'drum',
+    )
   })
 
   it('names a vendored file that exists, beside its licence', () => {
@@ -92,9 +108,11 @@ describe('the exemplar manifest (decision 305)', () => {
       if (stored === undefined) {
         expect(found).toBeUndefined()
       } else {
+        const entry = MANIFEST.find((candidate) => candidate.technique === technique)!
         expect(found).toEqual({
           technique,
-          description: MANIFEST.find((entry) => entry.technique === technique)!.description,
+          description: entry.description,
+          mechanisms: entry.mechanisms,
           title: stored.title,
           source: stored.source,
         })

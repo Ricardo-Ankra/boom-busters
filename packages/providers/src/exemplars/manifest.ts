@@ -1,4 +1,4 @@
-import type { ChartKind, ChartSeries, Technique } from '@boom-busters/schemas'
+import type { ChartKind, ChartSeries, Mechanism, Technique } from '@boom-busters/schemas'
 
 /**
  * The exemplar corpus (decision 305): one hand-written entry per technique
@@ -33,6 +33,8 @@ export interface ExemplarEntry {
   technique: Technique
   /** One line the prompt shows beside the technique's name. */
   description: string
+  /** The moves the design is built on (spec 2026-11-04, section 8.5), one to four from the list. */
+  mechanisms: readonly Mechanism[]
   source: { repo: 'rendercomp' | 'rve'; path: string; commit: string }
   /** A chart technique: its slot carries data and its brief is a chart brief. */
   chart?: { kind: ChartKind }
@@ -62,6 +64,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'stat-counter',
     description:
       'the sentence parts and one large figure rises out of it, counting to its mark as the rule beneath it fills',
+    mechanisms: ['word-splits-open', 'drum', 'draw-on'],
     source: rve('templates/stat-counter.tsx'),
     slot: {
       durationMs: 6000,
@@ -74,6 +77,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'kpi-counter',
     description:
       'each figure lands large and counts, then docks into a row above as the next is introduced, the last left large',
+    mechanisms: ['drum', 'docking', 'cause-to-effect'],
     source: rendercomp('src/components/kpi-counter/KpiCounter.tsx'),
     slot: {
       durationMs: 8000,
@@ -86,6 +90,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'bar-chart',
     description:
       'bars rising out of the baseline as their years are spoken, the last in the accent, then a line across the tops',
+    mechanisms: ['rise-from-baseline', 'draw-on'],
     source: rendercomp('src/components/bar-chart-anim/BarChartAnim.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -123,6 +128,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'line-chart',
     description:
       'a line drawn year by year with the ground under it filling behind the pen, the last value landing large beside its point',
+    mechanisms: ['draw-on', 'docking'],
     source: rendercomp('src/components/line-chart-anim/LineChartAnim.tsx'),
     chart: { kind: 'line' },
     slot: {
@@ -161,6 +167,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'racing-chart',
     description:
       'horizontal bars that grow and overtake as the years are read, the year rolling on like a reel, the leader lit at the close',
+    mechanisms: ['reel', 'rise-from-baseline', 'persistent-actor'],
     source: rendercomp('src/components/racing-chart/RacingChart.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -214,6 +221,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'comparison-chart',
     description:
       'two series rising side by side per year, the gap drawn as an empty outline on top of the shorter bar',
+    mechanisms: ['rise-from-baseline', 'draw-on'],
     source: rve('templates/comparison-chart.tsx'),
     chart: { kind: 'bar' },
     slot: {
@@ -252,6 +260,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'donut-chart',
     description:
       'a ring that sweeps to a percentage as the figure inside counts, the slice pulling out when the narration says it went',
+    mechanisms: ['draw-on', 'drum', 'cause-to-effect'],
     source: rve('templates/donut-chart.tsx'),
     slot: {
       durationMs: 6000,
@@ -264,6 +273,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'progress-bars',
     description:
       'labelled bars filling to their share on equal tracks, one after another, the largest share on the hero spring',
+    mechanisms: ['draw-on', 'tally'],
     source: rve('templates/progress-bars.tsx'),
     slot: {
       durationMs: 7000,
@@ -276,6 +286,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'progress-steps',
     description:
       'steps lit in turn along a line drawn from one to the next, the walked steps stepping back, the last in the accent',
+    mechanisms: ['draw-on', 'tally', 'density-from-hierarchy'],
     source: rve('templates/progress-steps.tsx'),
     slot: {
       durationMs: 8000,
@@ -292,6 +303,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'kinetic-word-stack',
     description:
       'a repeated word built once and kept, what changes after it rolling past on a 3D drum, the last in the accent',
+    mechanisms: ['persistent-actor', 'drum', 'density-from-hierarchy'],
     source: rendercomp('src/components/kinetic-word-stack/KineticWordStack.tsx'),
     slot: {
       durationMs: 6000,
@@ -304,6 +316,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'typewriter',
     description:
       'a line typed out word by word as it is spoken, then swept with a selection as if about to be acted on',
+    mechanisms: ['draw-on', 'marker-stroke'],
     source: rendercomp('src/components/typewriter/Typewriter.tsx'),
     slot: {
       durationMs: 6000,
@@ -316,6 +329,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'text-highlight',
     description:
       'one phrase marked with a single unbroken stroke as it is said, the rest of the sentence stepping back',
+    mechanisms: ['marker-stroke', 'density-from-hierarchy'],
     source: rve('templates/text-highlight.tsx'),
     slot: {
       durationMs: 5000,
@@ -328,6 +342,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'quote-card',
     description:
       'a large opening mark that settles into the margin as the quotation builds, the attribution drawn off it by a rule',
+    mechanisms: ['foreground-becomes-transition', 'draw-on'],
     source: rve('templates/quote-card.tsx'),
     slot: {
       durationMs: 7000,
@@ -340,6 +355,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'animated-list',
     description:
       'items entering one at a time beside a single marker that travels down to each, the earlier items stepping back',
+    mechanisms: ['tally', 'persistent-actor', 'density-from-hierarchy'],
     source: rve('templates/animated-list.tsx'),
     slot: {
       durationMs: 7000,
@@ -352,6 +368,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'lower-third',
     description:
       'an accent bar that stands up first, the name sliding out from behind it and the role building on a widening band',
+    mechanisms: ['door', 'cause-to-effect'],
     source: rve('templates/lower-third.tsx'),
     slot: {
       durationMs: 5000,
@@ -364,6 +381,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'chapter-title',
     description:
       "the chapter label over a rule that draws out to the title's width, the title words dropping out from under it",
+    mechanisms: ['draw-on', 'cause-to-effect'],
     source: rendercomp('src/components/chapter-title/ChapterTitle.tsx'),
     slot: {
       durationMs: 5000,
@@ -376,6 +394,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'logo-reveal',
     description:
       'a lockup behind a pair of doors that slide apart as the name is said, its tracking settling, the line beneath',
+    mechanisms: ['door', 'docking'],
     source: rendercomp('src/components/logo-split-reveal/LogoSplitReveal.tsx'),
     slot: {
       durationMs: 5000,
@@ -388,6 +407,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     technique: 'split-screen',
     description:
       'one claim centred, then the pivot word lands and collapses into the divider that splits the frame for the second',
+    mechanisms: ['foreground-becomes-transition', 'word-splits-open', 'cause-to-effect'],
     source: rve('templates/split-screen.tsx'),
     slot: {
       durationMs: 6000,

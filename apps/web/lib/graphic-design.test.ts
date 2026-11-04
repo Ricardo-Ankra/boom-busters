@@ -660,6 +660,7 @@ describe('designGraphicWith (the model call is injected)', () => {
     const STORED: Providers.Exemplar = {
       technique: 'stat-counter',
       description: 'one large figure counting up to its mark, a label beneath, held',
+      mechanisms: ['drum'],
       title: 'T',
       source: 'function Graphic(props) {\n  return null\n}',
     }

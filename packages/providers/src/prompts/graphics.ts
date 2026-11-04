@@ -6,6 +6,10 @@ import {
   GRAPHIC_STORYBOARD_LINE_MAX,
   GRAPHIC_STORYBOARD_MAX,
   GRAPHIC_TITLE_MAX,
+  MECHANISM_KEYS,
+  MECHANISMS,
+  MECHANISMS_PER_DESIGN_MAX,
+  mechanismName,
   motionNeverList,
   motionNumbers,
   PlannedGraphicCodeSchema,
@@ -25,7 +29,7 @@ import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
 import type { Exemplar } from '../exemplars/index'
 import { formatIssues, parseJsonCompletion } from './json'
-import { capList, ignoreRepairs, trimField, type Note } from './repair'
+import { capList, dropItems, ignoreRepairs, trimField, type Note } from './repair'
 import { outputBudget, type LLMTaskRequest, type MsgImage } from '../llm/types'
 
 export { GRAPHIC_CODE_FIXTURE_SOURCE }
@@ -220,19 +224,24 @@ away) and the claims it rests on. A chart slot also carries its data.
 
 Answer with JSON only, its keys in this order, so the concept and the storyboard are settled
 before the code is written:
-{"concept": "...", "storyboard": ["...", "..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
+{"concept": "...", "storyboard": ["...", "..."], "mechanisms": ["..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
 - "concept": the one idea the graphic is made of, in one line of at most ${GRAPHIC_CONCEPT_MAX} characters:
   what the picture is and how it changes ("the sentence parts and the figure rises out of
   it"), found in this slot's own words.
 - "storyboard": the graphic moment by moment on the slot's clock, one entry per change, each
   starting with its time (2.0 s, on "1.2bn": the figure rises out of the gap, pushing the
   lead-in up into its label), at most ${GRAPHIC_STORYBOARD_MAX} entries. Then write the code to it.
+- "mechanisms": the moves the design is built on, as keys from the list below and no other,
+  at most ${MECHANISMS_PER_DESIGN_MAX}; leave it out when none fits. The critic checks that each one is on the frames.
 - "title": the slot card's name for the graphic, one line of at most ${GRAPHIC_TITLE_MAX} characters.
 - "facts": every number and every quoted phrase the graphic shows, each with the NUMBER
   of the claim it comes from. A year is a number. At most 40 entries: more is refused, not
   cut. A chart's digits read off props.data need no entry.
 - "source": the component, at most ${GRAPHIC_SOURCE_MAX} characters, as one JSON string. Escape
   its double quotes and line breaks as JSON requires.
+
+The mechanisms, by key:
+${MECHANISMS.map((m) => `- ${m.key}, ${mechanismName(m.key)}: ${m.definition}.`).join('\n')}
 
 The sandbox your code runs in:
 - Declare function Graphic(props) at the top level; helper functions and constants
@@ -513,7 +522,11 @@ export function parseGraphicReview(text: string, note: Note = ignoreRepairs): Gr
 function exemplarBlock(exemplar: Exemplar): string {
   return (
     `A passing design of this technique (${exemplar.technique}: ${exemplar.description}), in this ` +
-    'sandbox and on the tokens, for its mechanics, its timing and its standard. Its concept came ' +
+    'sandbox and on the tokens, for its mechanics, its timing and its standard. ' +
+    (exemplar.mechanisms.length > 0
+      ? `It uses: ${exemplar.mechanisms.map(mechanismName).join(', ')}. `
+      : '') +
+    'Its concept came ' +
     "from its own narration: find this slot's own rather than reusing its layout. Its words and " +
     'figures are its own; yours come from this slot and its claims:\n' +
     '````jsx\n' +
@@ -559,8 +572,24 @@ export function parseGraphicCode(text: string, note: Note = ignoreRepairs): Plan
     "the graphic's storyboard",
     note,
   )
+  // A mechanism not in the list is dropped, never refused: it is a label, not the design.
+  const mechanisms = capList(
+    dropItems(
+      raw['mechanisms'],
+      (item) =>
+        typeof item === 'string' && (MECHANISM_KEYS as readonly string[]).includes(item)
+          ? null
+          : 'not a mechanism in the list',
+      (item, index) => `mechanism ${index + 1} (${String(item)})`,
+      note,
+    ),
+    MECHANISMS_PER_DESIGN_MAX,
+    "the design's mechanisms",
+    note,
+  )
   const parsed = PlannedGraphicCodeSchema.safeParse({
     ...raw,
+    ...(mechanisms === undefined ? {} : { mechanisms }),
     title: trimField(raw['title'], GRAPHIC_TITLE_MAX, "the graphic's title", note),
     concept: trimField(raw['concept'], GRAPHIC_CONCEPT_MAX, "the graphic's concept", note),
     ...(Array.isArray(storyboard)

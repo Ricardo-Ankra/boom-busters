@@ -2,14 +2,20 @@ import { DESIGNS } from './designs/index'
 import type { ExemplarDesign } from './designs/index'
 import { MANIFEST, TECHNIQUES } from './manifest'
 import type { ExemplarEntry, ExemplarSlot, Technique } from './manifest'
+import type { Mechanism } from '@boom-busters/schemas'
 
 export { DESIGNS, MANIFEST, TECHNIQUES }
 export type { ExemplarDesign, ExemplarEntry, ExemplarSlot, Technique }
+// The mechanisms live beside the technique keys in the schemas package (spec 8.5); re-exported here with them.
+export { MECHANISM_KEYS, MECHANISMS, MechanismSchema } from '@boom-busters/schemas'
+export type { Mechanism }
 
 /** What the slot message shows: the technique, its one-line description, and the stored design. */
 export interface Exemplar {
   technique: Technique
   description: string
+  /** What the design is built on, so the slot message can say "it uses: ..." (spec 8.5). */
+  mechanisms: readonly Mechanism[]
   title: string
   source: string
 }
@@ -33,6 +39,7 @@ export function exemplarFor(technique: Technique): Exemplar | undefined {
   return {
     technique,
     description: entry.description,
+    mechanisms: entry.mechanisms,
     title: entry.design.title,
     source: entry.design.source,
   }
