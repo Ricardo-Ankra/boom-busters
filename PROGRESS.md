@@ -4663,8 +4663,9 @@ Final review and fixes:
 - [x] Plan 1: the motion identity in settings, tokens and checks built from it,
       the channel-agnostic designer prompt, techniques per channel, the Motion
       tab, the reference guideline (`docs/motion-references.md`).
-- [ ] Plan 2: references uploaded and marked in the browser, read into
-      readings, the Motion tab's reference list, "Draft motion identity".
+- [x] Plan 2: references uploaded and marked in the browser, read into
+      readings, the Motion tab's reference list, "Draft motion identity"
+      (branch `motion-references`, decision 396).
 - [ ] Plan 3: measured motion (frozen time, simultaneity, contrast), the layout
       check through transitions, the critic that replaces the self-review.
 - [ ] Plan 4: derivation per channel through the critic loop, refine by steer
@@ -9823,3 +9824,66 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      is said to the designer as "Allowed on this channel"; spec 8.1's
      both-lists rule is dropped). Deferred minors are in the ledger and the
      hand-over.
+396. **Motion references: ingest, readings and the identity draft**
+     (2026-11-04, owner: "Proceed to next phase", "Proceed with native"; plan 2
+     of the channel motion references design, branch `motion-references`). A
+     `motion_references` table (migration 0047) holds each reference's form,
+     the frames the owner's browser took, the reading and the two sheets. The
+     Motion tab gains a References section: the guideline's short form with
+     the full text in a dialog, "Add reference" (a still, or a clip with a
+     window of one to four seconds marked by buttons and number fields, the
+     dense set every 1/12 s across the window and the overview every 0.5 s
+     across the clip taken in the browser and PUT frame by frame on presigned
+     URLs), cards with Edit, Re-mark, Read, Archive and Details (the sheets
+     and the reading, editable in place). The finalise recomputes the frame
+     set from the window and refuses a list that differs, HEADs every key,
+     and refuses the thirteenth live reference. The reader
+     (`motion-reference-reader`, singleton per reference, cancel) renders
+     the dense and contact sheets in the app's Chromium at 1600 px, six
+     columns with a timecode under each tile, then makes one vision call on
+     the graphics route shown the dense sheet and four frames spread across
+     the window; the reading is stored with its provenance. "Draft motion
+     identity" takes a brief, the readings, the brand's colours and faces and
+     the catalogue, and proposes the whole identity through one call; the
+     tab shows it as a diff against the current identity with its why, and
+     Apply writes it as one `motion` patch. Mock mode returns fixtures for
+     both calls, so the e2e suite reaches the draft and the Apply.
+     Decisions made where the spec left room: `readState` and `readError`
+     columns beyond spec 7.1, so a card can say what the reader is doing and
+     why it stopped; the draft is held in the client until Apply, not stored;
+     the sheets render whenever storage is configured (Chromium costs
+     nothing) and only the model call is mocked; a budget stop in the reader
+     marks the row failed with the budget's own words, since a channel job
+     has no project to park; the frame keys are computed on the server from
+     the hash, the set and the time; a still's one frame is the still itself;
+     the pack is ordered by insertion with no reorder button; a re-mark leaves
+     the old frame objects in R2; the guideline's text in the app is a typed
+     copy kept in step with `docs/motion-references.md` by a test; the
+     reading's estimate beside "Save and read" uses fixed token counts on the
+     graphics route; the web binding of `motion/reference.ingested` landed
+     with the schema so the events drift test never went red; the brand's
+     nested colours and typography are flattened into name and value pairs
+     for the draft prompt; `workspace-form.test.tsx` renders `SettingsForm`
+     too and mocks the motion actions as the seven channel tests do.
+     `channel-actions.test.ts` ("copies another channel's voice") fails on
+     master as well, on a leftover `youtube_connections` row in the shared
+     test database; not this change.
+     Final review (fresh reviewer, Opus), all seven findings fixed: a
+     stored clip played without `crossOrigin` tainted the canvas, so every
+     Re-mark would have failed in production (now `anonymous`, the bucket's
+     CORS already allows it); the sheets were keyed by content hash, so two
+     references cut from one clip shared one sheet (now keyed by reference
+     id); the pack-full refusal deleted the original even when another
+     reference held the same bytes (now only when no reference does); the
+     asset upsert could rename and resize one of the channel's logos (now
+     guarded by kind, and such bytes are refused in words); a row could wedge
+     in "Reading..." when the Inngest send failed (now put back, and a read
+     silent for ten minutes counts as stalled, shows "Reading stalled" and
+     may be asked for again); a re-mark or a reading edit during a read could
+     bring back the old window's reading (now refused while a read is in
+     flight, and the buttons hold); a still over 5 MB could never be read on
+     the default route (every image is now held to 1600 px as a JPEG before
+     the call); and the marker uploaded the original before taking a single
+     frame (now the frames come first, a full pack is refused before any
+     bytes travel, and Add reference is disabled at twelve). Deferred minors
+     are in the ledger and the hand-over.

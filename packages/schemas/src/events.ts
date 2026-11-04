@@ -441,6 +441,16 @@ export const SearchSpaceAnalyseSchema = z.object({
 })
 
 /**
+ * Read one motion reference (spec 2026-11-04, section 7.2): sent on "Save and
+ * read" or "Read", never on the upload alone. The reader is a singleton per
+ * reference, so a re-mark during a read cancels the older run.
+ */
+export const MotionReferenceIngestedSchema = z.object({
+  channelId: UlidSchema,
+  referenceId: UlidSchema,
+})
+
+/**
  * Every event the system sends, by name. This object is the single source the
  * Inngest client's `EventSchemas` is built from, so an event that is not here
  * cannot be sent in typed code at all.
@@ -494,6 +504,8 @@ export const EVENT_SCHEMAS = {
   'channel/search_space.analyse': SearchSpaceAnalyseSchema,
 
   'demo/pipeline.requested': DemoRequestedSchema,
+
+  'motion/reference.ingested': MotionReferenceIngestedSchema,
 } as const
 
 export type EventName = keyof typeof EVENT_SCHEMAS

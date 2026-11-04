@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
+import { fingerprint } from '@/lib/client-hash'
 import { readImageSize, toUploadableLogo } from '@/lib/client-image'
 import {
   addLogoFromUrlAction,
@@ -47,14 +48,6 @@ function nameFromFile(fileName: string): string {
     .replace(/[-_]+/g, ' ')
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
-async function fingerprint(file: File): Promise<string> {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
 }
 
 export function LogosTab({

@@ -35,6 +35,18 @@ vi.mock('./channel-actions', () => ({
   updateChannelAction: vi.fn(),
   archiveChannelAction: vi.fn(),
 }))
+const motionActions = vi.hoisted(() => ({ draftMotionIdentityAction: vi.fn() }))
+vi.mock('./motion-actions', () => ({
+  createReferenceUploadAction: vi.fn(),
+  createReferenceFrameUploadsAction: vi.fn(),
+  finaliseReferenceAction: vi.fn(),
+  updateReferenceAction: vi.fn(),
+  remarkReferenceAction: vi.fn(),
+  readReferenceAction: vi.fn(),
+  saveReadingAction: vi.fn(),
+  archiveReferenceAction: vi.fn(),
+  draftMotionIdentityAction: motionActions.draftMotionIdentityAction,
+}))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
@@ -151,6 +163,26 @@ describe('the Motion tab (spec 2026-11-04)', () => {
     expect(wordStack.checked).toBe(true)
     expect(wordStack.disabled).toBe(true)
     expect((screen.getByLabelText('bar-chart') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('applies a drafted identity through one motion patch (spec 8.4)', async () => {
+    const identity = {
+      ...DEFAULT_SETTINGS.motion,
+      overshoot: 'none' as const,
+      styleGuideMd: 'Slow.',
+    }
+    motionActions.draftMotionIdentityAction.mockResolvedValue({
+      ok: true,
+      draft: { identity, why: 'The readings never overshoot.' },
+    })
+    const user = userEvent.setup()
+    await openMotionTab()
+    await user.type(screen.getByLabelText(/What this channel should move like/), 'slow')
+    await user.click(screen.getByRole('button', { name: 'Draft motion identity' }))
+    await user.click(await screen.findByRole('button', { name: 'Apply' }))
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', { motion: identity })
+    expect((screen.getByLabelText('Overshoot') as HTMLSelectElement).value).toBe('none')
   })
 
   it('shows the refusal when the action refuses', async () => {

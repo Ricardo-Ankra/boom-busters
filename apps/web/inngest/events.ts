@@ -5,6 +5,7 @@ import {
   BudgetApprovedSchema,
   CaseResearchRequestedSchema,
   MediaJobCompletedSchema,
+  MotionReferenceIngestedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
   KeywordsMeasureSchema,
@@ -158,6 +159,10 @@ export const events = {
   }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),
+
+  motionReferenceIngested: eventType('motion/reference.ingested', {
+    schema: MotionReferenceIngestedSchema,
+  }),
 } as const
 
 /** Every event name bound above, for the drift test. */

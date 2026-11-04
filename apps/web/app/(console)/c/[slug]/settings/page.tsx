@@ -11,7 +11,9 @@ import {
   listBibleVersions,
   measuredPace,
   listChannels,
+  getAsset,
   listLogos,
+  listMotionReferences,
   maskKey,
   channelYoutubeConnection,
 } from '@boom-busters/db'
@@ -23,12 +25,17 @@ import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
 import { MANIFEST } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
+import { identityDraftEstimateUsd, readingEstimateUsd } from '@/lib/motion-estimates'
 import { presignGet, storageConfigured } from '@/lib/storage'
+import type { ReferenceView } from './references-section'
 import { exemplarLogoFor } from './exemplar-logo'
 import { SettingsForm } from './settings-form'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
+
+/** A read that has answered nothing for this long has stalled (final review, issue 4); the actions use the same bound. */
+const READ_STALE_MS = 10 * 60_000
 
 const TABS = [
   'channel',
@@ -58,6 +65,7 @@ export default async function SettingsPage({
     workspace,
     connectionRow,
     logos,
+    references,
     allChannels,
     params,
     draft,
@@ -72,6 +80,7 @@ export default async function SettingsPage({
     getWorkspace(db),
     channelYoutubeConnection(db, channel.id),
     listLogos(db, channel.id),
+    listMotionReferences(db, channel.id),
     listChannels(db, { includeArchived: true }),
     searchParams,
     // Never opened here: a draft exists once the owner changes something.
@@ -159,6 +168,42 @@ export default async function SettingsPage({
     })),
   )
 
+  // The reference pack's cards: the first frame, the sheets and, for a clip,
+  // the original, each presigned when storage holds it (spec 2026-11-04, 11.2).
+  const sign = async (key: string | null | undefined) =>
+    key && storageConfigured() && !key.startsWith('mock://') ? await presignGet(key) : null
+  const referenceViews: ReferenceView[] = await Promise.all(
+    references.map(async (row) => {
+      const asset = await getAsset(db, row.assetId)
+      return {
+        id: row.id,
+        kind: row.kind === 'video' ? ('video' as const) : ('image' as const),
+        title: row.title,
+        sourceUrl: row.sourceUrl,
+        rights: row.rights,
+        purpose: row.purpose,
+        negative: row.negative,
+        windowStartMs: row.windowStartMs,
+        windowEndMs: row.windowEndMs,
+        carryOver: row.carryOver,
+        avoid: row.avoid,
+        readState: row.readState,
+        readStale:
+          row.readState === 'reading' && Date.now() - row.updatedAt.getTime() > READ_STALE_MS,
+        readError: row.readError,
+        reading: row.reading ?? null,
+        thumbUrl: await sign(row.frames.dense[0]?.r2Key),
+        denseSheetUrl: await sign(row.denseSheetKey),
+        contactSheetUrl: await sign(row.contactSheetKey),
+        clipUrl: row.kind === 'video' ? await sign(asset?.r2Key) : null,
+        contentHash: asset?.contentHash ?? '',
+        durationMs: asset?.durationMs ?? null,
+        width: asset?.width ?? 1,
+        height: asset?.height ?? 1,
+      }
+    }),
+  )
+
   // Every checklist and cross-link in the app addresses a tab as `?tab=`;
   // until this was honoured, all of them landed on Models.
   const requested = typeof params['tab'] === 'string' ? params['tab'] : undefined
@@ -213,6 +258,10 @@ export default async function SettingsPage({
           description: entry.description,
         }))}
         exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
+        references={referenceViews}
+        storageReady={storageConfigured()}
+        readingEstimateUsd={readingEstimateUsd(settings, workspace.settings)}
+        draftEstimateUsd={identityDraftEstimateUsd(settings, workspace.settings, references.length)}
         draft={draft}
         versions={versions.map((row) => ({
           id: row.id,

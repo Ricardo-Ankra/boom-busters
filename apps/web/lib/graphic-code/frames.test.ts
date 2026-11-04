@@ -11,6 +11,7 @@ import {
   FramesUnavailable,
   layoutIssueIn,
   restMoments,
+  screenshotDocument,
   shotMoments,
   type TextBox,
 } from './frames'
@@ -177,6 +178,17 @@ async function browserAvailable(): Promise<boolean> {
 describe.skipIf(!(await browserAvailable()))(
   'browserFrames in a real browser (decision 389)',
   () => {
+    it('screenshots a document at the width asked', async () => {
+      const jpeg = await screenshotDocument({
+        html: '<html><body style="margin:0;width:1600px;height:300px;background:#123"></body></html>',
+        width: 1600,
+      })
+      expect(jpeg.length).toBeGreaterThan(1000)
+      // A JPEG's magic number.
+      expect(jpeg[0]).toBe(0xff)
+      expect(jpeg[1]).toBe(0xd8)
+    }, 60_000)
+
     it('passes two lines set apart, and photographs the moments the review reads', async () => {
       const result = await browserFrames().inspect({
         compiled: stored(twoLines(40)),
