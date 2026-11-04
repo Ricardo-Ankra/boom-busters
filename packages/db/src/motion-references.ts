@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { REFERENCE_PACK_MAX, ValidationError } from '@boom-busters/schemas'
 import type { ReferenceFrames, ReferencePurpose, ReferenceReading } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -19,6 +19,9 @@ const REFERENCE_LICENCE = 'Uploaded by owner, reference only'
  * The channel's copy of an uploaded still or clip. The same bytes uploaded
  * twice refresh the title and the measurements rather than storing a second
  * row; the conflict target is the per-channel partial index, as `insertLogo`.
+ * Only a row that is itself a still or a clip is updated: the same bytes as
+ * one of the channel's marks come back null and nothing is touched, so a
+ * reference can never rename a logo or point at its row (final review, issue 3).
  */
 export async function upsertChannelAsset(
   db: Database,
@@ -32,7 +35,7 @@ export async function upsertChannelAsset(
     durationMs?: number | null
     title: string
   },
-): Promise<AssetRow> {
+): Promise<AssetRow | null> {
   const title = input.title.trim()
   const [row] = await db
     .insert(assets)
@@ -57,10 +60,19 @@ export async function upsertChannelAsset(
         durationMs: input.durationMs ?? null,
         updatedAt: new Date(),
       },
+      setWhere: inArray(assets.kind, ['image', 'video']),
     })
     .returning()
-  if (!row) throw new Error('The asset row was not written')
-  return row
+  return row ?? null
+}
+
+/** How many references, archived ones included, hold this asset: its bytes are theirs too. */
+export async function referencesUsingAsset(db: Database, assetId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(motionReferences)
+    .where(eq(motionReferences.assetId, assetId))
+  return row?.count ?? 0
 }
 
 /** The live pack, in order. */
@@ -177,10 +189,12 @@ export async function setReferenceReadState(
   id: string,
   state: ReferenceReadState,
   error: string | null = null,
+  /** When the state was set; the actions read a stale "reading" from it. */
+  at: Date = new Date(),
 ): Promise<MotionReferenceRow | null> {
   const [row] = await db
     .update(motionReferences)
-    .set({ readState: state, readError: error, updatedAt: new Date() })
+    .set({ readState: state, readError: error, updatedAt: at })
     .where(eq(motionReferences.id, id))
     .returning()
   return row ?? null

@@ -23,10 +23,14 @@ export function referenceFrameKey(input: {
   return `${R2_PREFIX}/references/${input.channelId}/${input.contentHash}/${input.set}/${input.atMs}.jpg`
 }
 
+/**
+ * The sheets are keyed by the reference, not the bytes: two references cut
+ * from one clip have two windows and two sheets (final review, issue 2).
+ */
 export function referenceSheetKey(input: {
   channelId: string
-  contentHash: string
+  referenceId: string
   sheet: 'dense' | 'contact'
 }) {
-  return `${R2_PREFIX}/references/${input.channelId}/${input.contentHash}/${input.sheet}-sheet.jpg`
+  return `${R2_PREFIX}/references/${input.channelId}/sheets/${input.referenceId}/${input.sheet}-sheet.jpg`
 }

@@ -2,12 +2,14 @@ import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import type { ReferenceFrames, ReferenceReading } from '@boom-busters/schemas'
 import { ensureFirstChannel } from './channels'
+import { insertLogo } from './logos'
 import { createDb } from './client'
 import {
   archiveMotionReference,
   insertMotionReference,
   listMotionReferences,
   motionReferenceById,
+  referencesUsingAsset,
   remarkMotionReference,
   setReferenceReading,
   setReferenceReadState,
@@ -76,7 +78,7 @@ suite('motion references', () => {
   }
 
   async function aReference(n: number) {
-    const asset = await anAsset(`hash-${n}`)
+    const asset = (await anAsset(`hash-${n}`))!
     return insertMotionReference(db, channelId, {
       assetId: asset.id,
       kind: 'video',
@@ -135,10 +137,54 @@ suite('motion references', () => {
   it('stores the same bytes once per channel and refreshes the title', async () => {
     const one = await anAsset('same', 'First name')
     const two = await anAsset('same', 'Second name')
-    expect(two.id).toBe(one.id)
-    expect(two.title).toBe('Second name')
-    expect(two.kind).toBe('video')
-    expect(two.durationMs).toBe(10_000)
+    expect(two!.id).toBe(one!.id)
+    expect(two!.title).toBe('Second name')
+    expect(two!.kind).toBe('video')
+    expect(two!.durationMs).toBe(10_000)
+  })
+
+  it('never turns a mark into a reference: the same bytes as a logo come back null (final review, issue 3)', async () => {
+    const logo = await insertLogo(db, channelId, {
+      r2Key: 'boom-busters/logos/mark.png',
+      contentHash: 'mark',
+      title: 'Acme',
+      width: 100,
+      height: 40,
+    })
+    const asset = await upsertChannelAsset(db, channelId, {
+      kind: 'image',
+      r2Key: 'boom-busters/references/c/mark.png',
+      contentHash: 'mark',
+      width: 100,
+      height: 40,
+      title: 'A reference',
+    })
+    expect(asset).toBeNull()
+    const [row] = await db.select().from(assets)
+    expect(row?.id).toBe(logo!.id)
+    expect(row?.title).toBe('Acme')
+    expect(row?.kind).toBe('logo')
+  })
+
+  it('counts the references that hold an asset, archived ones included', async () => {
+    const asset = (await anAsset('shared'))!
+    expect(await referencesUsingAsset(db, asset.id)).toBe(0)
+    const first = await insertMotionReference(db, channelId, {
+      assetId: asset.id,
+      kind: 'video',
+      title: 'A',
+      sourceUrl: null,
+      rights: 'Reference only',
+      purpose: 'look',
+      negative: false,
+      windowStartMs: 0,
+      windowEndMs: 2000,
+      carryOver: 'x',
+      avoid: '',
+      frames: FRAMES,
+    })
+    await archiveMotionReference(db, first.id)
+    expect(await referencesUsingAsset(db, asset.id)).toBe(1)
   })
 
   it('a reading sets the state read and clears an old error', async () => {

@@ -29,6 +29,7 @@ vi.mock('@/lib/client-image', () => ({
 
 const grabber = vi.hoisted(() => ({
   seeks: [] as number[],
+  failAt: null as number | null,
 }))
 vi.mock('@/lib/client-video', async (importOriginal) => {
   const original = await importOriginal<typeof ClientVideo>()
@@ -37,6 +38,9 @@ vi.mock('@/lib/client-video', async (importOriginal) => {
     readVideoMeta: async () => ({ durationMs: 10_000, width: 1920, height: 1080 }),
     browserGrabber: () => ({
       async seek(atMs: number) {
+        if (grabber.failAt !== null && grabber.seeks.length >= grabber.failAt) {
+          throw new Error('the clip did not seek')
+        }
         grabber.seeks.push(atMs)
       },
       async draw() {
@@ -76,6 +80,7 @@ async function fillWords() {
 beforeEach(() => {
   vi.clearAllMocks()
   grabber.seeks = []
+  grabber.failAt = null
   vi.stubGlobal('fetch', fetchMock)
   vi.stubGlobal('crypto', webcrypto)
   vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:clip', revokeObjectURL: () => {} })
@@ -196,6 +201,59 @@ describe('ReferenceMarker', () => {
       input: expect.objectContaining({ kind: 'video', windowStartMs: 1000, windowEndMs: 3500 }),
     })
     expect(actions.finaliseReferenceAction.mock.calls[0]![1].frames).toHaveLength(50)
+  })
+
+  it('takes the frames before anything is uploaded, so a stalled clip costs no upload (final review, issue 7)', async () => {
+    grabber.failAt = 7
+    renderMarker()
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(
+      input,
+      new File([new Uint8Array([1])], 'reel.mp4', { type: 'video/mp4' }),
+    )
+    await fillWords()
+    await screen.findByLabelText('Window start (s)')
+    await userEvent.click(screen.getByRole('button', { name: 'Save without reading' }))
+    expect(await screen.findByText(/Only 7 of 24 frames could be taken/)).toBeInTheDocument()
+    expect(actions.createReferenceUploadAction).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('plays a stored clip with crossOrigin anonymous so its frames can be drawn (final review, issue 1)', async () => {
+    renderMarker({
+      mode: {
+        kind: 'remark',
+        reference: {
+          id: '01J000000000000000000000R1',
+          kind: 'video',
+          title: 'A reel',
+          sourceUrl: null,
+          rights: 'Reference only',
+          purpose: 'mechanism',
+          negative: false,
+          windowStartMs: 1000,
+          windowEndMs: 3000,
+          carryOver: 'borrow the hold',
+          avoid: '',
+          readState: 'read',
+          readStale: false,
+          readError: null,
+          reading: null,
+          thumbUrl: null,
+          denseSheetUrl: null,
+          contactSheetUrl: null,
+          clipUrl: 'https://r2.example/clip.mp4?signed',
+          contentHash: 'a'.repeat(64),
+          durationMs: 10_000,
+          width: 1920,
+          height: 1080,
+        },
+      },
+    })
+    const video = screen.getByLabelText('The clip') as HTMLVideoElement
+    expect(video).toHaveAttribute('crossorigin', 'anonymous')
+    expect(video).toHaveAttribute('src', 'https://r2.example/clip.mp4?signed')
+    expect(screen.getByRole('dialog', { name: 'Re-mark reference' })).toBeInTheDocument()
   })
 
   it('disables saving without storage and says why', () => {

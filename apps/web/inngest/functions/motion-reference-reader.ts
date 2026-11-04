@@ -1,5 +1,4 @@
 import {
-  getAsset,
   getChannelSettings,
   motionReferenceById,
   setReferenceReading,
@@ -14,11 +13,12 @@ import {
   parseReferenceReading,
   READING_OUTPUT_TOKENS,
 } from '@boom-busters/providers'
-import type { MsgImage, ReferenceForReading } from '@boom-busters/providers'
+import type { ReferenceForReading } from '@boom-busters/providers'
 import { BudgetExceededError, parseEventData, serialiseError } from '@boom-busters/schemas'
 import { callForAnswer } from '@/lib/answer'
 import { completeForChannel } from '@/lib/answer-call'
 import { db } from '@/lib/db'
+import { imageForModel } from '@/lib/reference-images'
 import { renderSheets } from '@/lib/reference-sheets'
 import { getObjectBytes, storageConfigured } from '@/lib/storage'
 import { inngest } from '../client'
@@ -59,14 +59,6 @@ function referenceForReading(row: MotionReferenceRow): ReferenceForReading {
   }
 }
 
-function asImage(object: { bytes: Uint8Array; contentType: string }): MsgImage {
-  const mimeType =
-    object.contentType === 'image/png' || object.contentType === 'image/webp'
-      ? object.contentType
-      : 'image/jpeg'
-  return { mimeType, data: Buffer.from(object.bytes).toString('base64') }
-}
-
 export const motionReferenceReader = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -91,12 +83,7 @@ export const motionReferenceReader = inngest.createFunction(
       if (!row || row.archivedAt !== null) return { gone: true as const }
       if (row.kind === 'image') return { skipped: 'no sheets for a still' }
       if (!storageConfigured()) return { skipped: 'no storage' }
-      const asset = await getAsset(db, row.assetId)
-      const result = await renderSheets({
-        channelId,
-        contentHash: asset?.contentHash ?? '',
-        frames: row.frames,
-      })
+      const result = await renderSheets({ channelId, referenceId, frames: row.frames })
       await setReferenceSheets(db, referenceId, {
         contactSheetKey: result.contactSheetKey,
         denseSheetKey: result.denseSheetKey,
@@ -121,13 +108,18 @@ export const motionReferenceReader = inngest.createFunction(
       }
 
       try {
+        // Every image is held to the model width: a still's one frame is its
+        // original, stored up to 8 MB, and the API refuses images over 5 MB.
         const denseSheet = row.denseSheetKey
-          ? asImage(await getObjectBytes(row.denseSheetKey))
+          ? await imageForModel(await getObjectBytes(row.denseSheetKey))
           : null
         const frames = await Promise.all(
           framesToShow(row.frames.dense).map(async (index) => {
             const frame = row.frames.dense[index]!
-            return { atMs: frame.atMs, image: asImage(await getObjectBytes(frame.r2Key)) }
+            return {
+              atMs: frame.atMs,
+              image: await imageForModel(await getObjectBytes(frame.r2Key)),
+            }
           }),
         )
         const answer = await callForAnswer({

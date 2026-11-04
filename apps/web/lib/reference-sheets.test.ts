@@ -43,7 +43,7 @@ describe('renderSheets', () => {
     storage.configured = false
     const result = await renderSheets({
       channelId: '01BB0000000000000000000001',
-      contentHash: 'abc',
+      referenceId: '01J000000000000000000000R1',
       frames: {
         dense: [{ atMs: 0, r2Key: 'k', width: 640, height: 360 }],
         overview: [],

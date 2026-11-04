@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  REFERENCE_PACK_MAX,
   REFERENCE_PURPOSES,
   type ReferencePurpose,
   type ReferenceReading,
@@ -46,6 +47,8 @@ export interface ReferenceView {
   carryOver: string
   avoid: string
   readState: 'unread' | 'reading' | 'read' | 'failed'
+  /** A read that has answered nothing for ten minutes: it may be asked for again. */
+  readStale: boolean
   readError: string | null
   reading: ReferenceReading | null
   /** The first dense frame, presigned; null without storage. */
@@ -62,6 +65,7 @@ export interface ReferenceView {
 
 const POLL_MS = 4000
 const STORAGE_LINE = 'Reference uploads need R2 configured; there is nowhere to store them.'
+const PACK_FULL_LINE = 'This channel already holds twelve references. Archive one first.'
 const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
 const textareaClass =
   'min-h-[56px] w-full rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50'
@@ -79,7 +83,9 @@ function readStateLine(reference: ReferenceView): {
     case 'unread':
       return { text: 'Unread', tone: 'muted' }
     case 'reading':
-      return { text: 'Reading...', tone: 'warning' }
+      return reference.readStale
+        ? { text: 'Reading stalled', tone: 'danger' }
+        : { text: 'Reading...', tone: 'warning' }
     case 'read':
       return { text: 'Read', tone: 'success' }
     case 'failed':
@@ -402,6 +408,10 @@ function ReferenceCard({
   const [editing, setEditing] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const state = readStateLine(reference)
+  // A read in flight holds the row: a re-mark or a reading edit would race it (final review, issue 5).
+  const held = reference.readState === 'reading' && !reference.readStale
+  const readable =
+    reference.readState === 'unread' || reference.readState === 'failed' || reference.readStale
 
   const read = async () => {
     setBusy(true)
@@ -471,11 +481,11 @@ function ReferenceCard({
             Edit
           </Button>
           {reference.kind === 'video' ? (
-            <Button variant="outline" disabled={disabled || busy} onClick={onRemark}>
+            <Button variant="outline" disabled={disabled || busy || held} onClick={onRemark}>
               Re-mark
             </Button>
           ) : null}
-          {reference.readState === 'unread' || reference.readState === 'failed' ? (
+          {readable ? (
             <Button
               variant="outline"
               disabled={disabled || busy}
@@ -518,7 +528,7 @@ function ReferenceCard({
           <ReadingBlock
             channelId={channelId}
             reference={reference}
-            disabled={disabled}
+            disabled={disabled || held}
             onSaved={() => router.refresh()}
           />
         </div>
@@ -544,7 +554,10 @@ export function ReferencesSection({
   const [guideline, setGuideline] = React.useState(false)
   const [marker, setMarker] = React.useState<MarkerMode | null>(null)
 
-  const reading = references.some((reference) => reference.readState === 'reading')
+  const reading = references.some(
+    (reference) => reference.readState === 'reading' && !reference.readStale,
+  )
+  const full = references.length >= REFERENCE_PACK_MAX
   React.useEffect(() => {
     if (!reading) return
     const timer = setInterval(() => router.refresh(), POLL_MS)
@@ -569,7 +582,7 @@ export function ReferencesSection({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="primary"
-            disabled={archived || !storageReady}
+            disabled={archived || !storageReady || full}
             onClick={() => setMarker({ kind: 'add' })}
           >
             Add reference
@@ -578,6 +591,7 @@ export function ReferencesSection({
             Read the full guideline
           </Button>
           {!storageReady ? <span className={mutedClass}>{STORAGE_LINE}</span> : null}
+          {full ? <span className={mutedClass}>{PACK_FULL_LINE}</span> : null}
         </div>
         {references.length === 0 ? (
           <p className={mutedClass}>No references yet.</p>

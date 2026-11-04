@@ -43,6 +43,7 @@ function view(over: Partial<ReferenceView> = {}): ReferenceView {
     carryOver: 'borrow the held numeral, not the story',
     avoid: 'not the glow',
     readState: 'reading',
+    readStale: false,
     readError: null,
     reading: null,
     thumbUrl: 'https://r2.example/thumb.jpg',
@@ -189,6 +190,25 @@ describe('ReferencesSection', () => {
       id: READ.id,
       input: expect.objectContaining({ title: 'Renamed', purpose: 'mechanism' }),
     })
+  })
+
+  it('disables Add reference at twelve and says why (final review, issue 7)', () => {
+    renderSection(Array.from({ length: 12 }, (_, n) => view({ id: `r${n}`, readState: 'read' })))
+    expect(screen.getByRole('button', { name: 'Add reference' })).toBeDisabled()
+    expect(screen.getByText(/already holds twelve references/)).toBeInTheDocument()
+  })
+
+  it('holds Re-mark and the reading edit while a read is in flight, and offers Read once it has stalled (final review, issues 4 and 5)', async () => {
+    renderSection([
+      view({ id: 'busy', readState: 'reading' }),
+      view({ id: 'stale', readState: 'reading', readStale: true }),
+    ])
+    const [busyRemark, staleRemark] = screen.getAllByRole('button', { name: 'Re-mark' })
+    expect(busyRemark).toBeDisabled()
+    expect(staleRemark).toBeEnabled()
+    expect(screen.getByText('Reading...')).toBeInTheDocument()
+    expect(screen.getByText('Reading stalled')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Read' })).toHaveLength(1)
   })
 
   it('disables every button on an archived channel', () => {

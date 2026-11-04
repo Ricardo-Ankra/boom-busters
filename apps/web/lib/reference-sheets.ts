@@ -77,7 +77,7 @@ export interface SheetsResult {
 /** Both sheets rendered and stored, or the reason they were not. Never throws. */
 export async function renderSheets(reference: {
   channelId: string
-  contentHash: string
+  referenceId: string
   frames: ReferenceFrames
 }): Promise<SheetsResult> {
   if (!storageConfigured())
@@ -99,7 +99,7 @@ export async function renderSheets(reference: {
       })
       const key = referenceSheetKey({
         channelId: reference.channelId,
-        contentHash: reference.contentHash,
+        referenceId: reference.referenceId,
         sheet,
       })
       await putObject(key, jpeg, 'image/jpeg')

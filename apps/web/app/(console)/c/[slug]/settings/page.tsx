@@ -34,6 +34,9 @@ import { SettingsForm } from './settings-form'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings · Boom-Busters' }
 
+/** A read that has answered nothing for this long has stalled (final review, issue 4); the actions use the same bound. */
+const READ_STALE_MS = 10 * 60_000
+
 const TABS = [
   'channel',
   'bible',
@@ -185,6 +188,8 @@ export default async function SettingsPage({
         carryOver: row.carryOver,
         avoid: row.avoid,
         readState: row.readState,
+        readStale:
+          row.readState === 'reading' && Date.now() - row.updatedAt.getTime() > READ_STALE_MS,
         readError: row.readError,
         reading: row.reading ?? null,
         thumbUrl: await sign(row.frames.dense[0]?.r2Key),

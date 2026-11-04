@@ -17,6 +17,7 @@ import {
   insertMotionReference,
   listMotionReferences,
   motionReferenceById,
+  referencesUsingAsset,
   remarkMotionReference,
   setReferenceReading,
   setReferenceReadState,
@@ -41,6 +42,7 @@ import {
   overviewFrameTimes,
   REFERENCE_CLIP_MAX_MS,
   REFERENCE_IMAGE_MAX_BYTES,
+  REFERENCE_PACK_MAX,
   REFERENCE_VIDEO_MAX_BYTES,
   ReferenceMimeSchema,
   ReferenceReadingEditSchema,
@@ -89,7 +91,19 @@ const FRAMES_MISMATCH: ActionResult = {
   ok: false,
   error: 'The frames do not match the window. Mark it again.',
 }
+const NOT_A_REFERENCE: ActionResult = {
+  ok: false,
+  error:
+    'Those exact bytes are already stored as a mark in the logo library. Upload a different file.',
+}
+const PACK_FULL: ActionResult = {
+  ok: false,
+  error: 'This channel already holds twelve references. Archive one first.',
+}
+const BEING_READ: ActionResult = { ok: false, error: 'This reference is being read.' }
 const BRIEF_MAX = 1000
+/** A read that has answered nothing for this long has stalled and may be asked for again. */
+const READ_STALE_MS = 10 * 60_000
 /** HEADs in flight at once when a finalise verifies a clip's frames. */
 const HEAD_BATCH = 8
 
@@ -109,6 +123,16 @@ async function ownReference(channelId: string, id: string) {
   if (!UlidSchema.safeParse(id).success) return null
   const row = await motionReferenceById(db, id)
   return row && row.channelId === channelId && row.archivedAt === null ? row : null
+}
+
+/** A read in flight that has not stalled: the row holds still while it runs (final review, issues 4 and 5). */
+function beingRead(row: { readState: string; updatedAt: Date }): boolean {
+  return row.readState === 'reading' && Date.now() - row.updatedAt.getTime() < READ_STALE_MS
+}
+
+/** Whether the pack has room for one more live reference. */
+async function packFull(channelId: string): Promise<boolean> {
+  return (await listMotionReferences(db, channelId)).length >= REFERENCE_PACK_MAX
 }
 
 interface FrameUpload {
@@ -186,6 +210,8 @@ export async function createReferenceUploadAction(
     return { ok: false, error: 'That clip is over 90 seconds. Trim it first.' }
   }
   if (!HEX_64.test(input.contentHash)) return BAD_HASH
+  // Refused before the bytes travel, not after a 100 MB upload (final review, issue 7).
+  if (await packFull(channelId)) return PACK_FULL
   if (!storageConfigured()) return NO_STORAGE
   const key = referenceKey({
     channelId,
@@ -289,6 +315,7 @@ export async function finaliseReferenceAction(
     durationMs: kind === 'video' ? Math.round(input.durationMs ?? 0) : null,
     title: form.data.title,
   })
+  if (!asset) return NOT_A_REFERENCE
   const { kind: _kind, windowStartMs, windowEndMs, ...words } = form.data
   let row
   try {
@@ -305,18 +332,43 @@ export async function finaliseReferenceAction(
     })
   } catch (error) {
     if (!(error instanceof ValidationError)) throw error
-    // The pack is full: the bytes just uploaded have no row to belong to.
-    await deleteObject(key).catch(() => undefined)
+    // The pack is full: the bytes just uploaded have no row to belong to,
+    // unless another reference already holds the same bytes (final review, issue 2).
+    if ((await referencesUsingAsset(db, asset.id)) === 0) {
+      await deleteObject(key).catch(() => undefined)
+    }
     return { ok: false, error: error.message }
   }
-  if (input.read) await startReading(channelId, row.id)
+  if (input.read) {
+    const queued = await startReading(channelId, row.id, row.readState)
+    if (!queued.ok) return { ...queued, id: row.id }
+  }
   refresh()
   return { ok: true, id: row.id }
 }
 
-async function startReading(channelId: string, referenceId: string): Promise<void> {
+/**
+ * The row says "reading" and the reader is sent for. A send that fails puts
+ * the state back, so a card never says "Reading..." for a run that was never
+ * queued (final review, issue 4).
+ */
+async function startReading(
+  channelId: string,
+  referenceId: string,
+  previous: 'unread' | 'reading' | 'read' | 'failed',
+): Promise<ActionResult> {
   await setReferenceReadState(db, referenceId, 'reading')
-  await inngest.send(events.motionReferenceIngested.create({ channelId, referenceId }))
+  try {
+    await inngest.send(events.motionReferenceIngested.create({ channelId, referenceId }))
+  } catch {
+    await setReferenceReadState(
+      db,
+      referenceId,
+      previous === 'reading' ? 'failed' : previous,
+    ).catch(() => undefined)
+    return { ok: false, error: 'The read could not be queued. Try again.' }
+  }
+  return { ok: true }
 }
 
 /** The text fields on the card. */
@@ -352,6 +404,7 @@ export async function remarkReferenceAction(
   const row = await ownReference(channelId, input.id)
   if (!row) return UNKNOWN_REFERENCE
   if (row.kind !== 'video') return { ok: false, error: 'A still has no window to mark.' }
+  if (beingRead(row)) return BEING_READ
   const window = MotionReferenceInputSchema.safeParse({
     kind: 'video',
     title: row.title,
@@ -382,7 +435,10 @@ export async function remarkReferenceAction(
     frames,
   })
   if (!marked) return UNKNOWN_REFERENCE
-  if (input.read) await startReading(channelId, row.id)
+  if (input.read) {
+    const queued = await startReading(channelId, row.id, 'unread')
+    if (!queued.ok) return queued
+  }
   refresh()
   return { ok: true }
 }
@@ -393,8 +449,9 @@ export async function readReferenceAction(channelId: string, id: string): Promis
   if (refusal) return refusal
   const row = await ownReference(channelId, id)
   if (!row) return UNKNOWN_REFERENCE
-  if (row.readState === 'reading') return { ok: false, error: 'This reference is being read.' }
-  await startReading(channelId, row.id)
+  if (beingRead(row)) return BEING_READ
+  const queued = await startReading(channelId, row.id, row.readState)
+  if (!queued.ok) return queued
   refresh()
   return { ok: true }
 }
@@ -408,6 +465,7 @@ export async function saveReadingAction(
   if (refusal) return refusal
   const row = await ownReference(channelId, input.id)
   if (!row) return UNKNOWN_REFERENCE
+  if (beingRead(row)) return BEING_READ
   if (!row.reading) return { ok: false, error: 'This reference has no reading to edit yet.' }
   const edit = ReferenceReadingEditSchema.safeParse(input.reading)
   if (!edit.success) return { ok: false, error: settingsErrorMessage(edit.error) }

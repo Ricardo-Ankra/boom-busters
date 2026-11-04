@@ -202,8 +202,10 @@ export function ReferenceMarker({
     windowEndMs: kind === 'video' ? endMs : null,
   })
 
-  /** The dense and overview frames, taken in this browser and PUT one by one. */
-  const takeAndUploadFrames = async (contentHash: string) => {
+  type Taken = { set: 'dense' | 'overview'; frame: GrabbedFrame }[]
+
+  /** The dense and overview frames, taken in this browser before anything is uploaded. */
+  const takeFrames = async (): Promise<Taken> => {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas || !meta || !sets) throw new Error('The clip is not ready to mark.')
@@ -230,6 +232,15 @@ export function ReferenceMarker({
         report()
       },
     )
+    return [
+      ...dense.map((frame) => ({ set: 'dense' as const, frame })),
+      ...overview.map((frame) => ({ set: 'overview' as const, frame })),
+    ]
+  }
+
+  /** The taken frames PUT one by one on their presigned URLs. */
+  const uploadFrames = async (contentHash: string, frames: Taken) => {
+    if (!sets) throw new Error('The clip is not ready to mark.')
     const created = await createReferenceFrameUploadsAction(channelId, {
       contentHash,
       dense: sets.dense,
@@ -238,10 +249,6 @@ export function ReferenceMarker({
     if (!created.ok || !created.uploads) {
       throw new Error(created.error ?? 'The frame uploads could not be prepared. Try again.')
     }
-    const frames: { set: 'dense' | 'overview'; frame: GrabbedFrame }[] = [
-      ...dense.map((frame) => ({ set: 'dense' as const, frame })),
-      ...overview.map((frame) => ({ set: 'overview' as const, frame })),
-    ]
     let uploaded = 0
     for (let at = 0; at < frames.length; at += PUT_BATCH) {
       await Promise.all(
@@ -267,7 +274,8 @@ export function ReferenceMarker({
     setGrabError(null)
     try {
       if (remark) {
-        const frames = await takeAndUploadFrames(remark.contentHash)
+        const taken = await takeFrames()
+        const frames = await uploadFrames(remark.contentHash, taken)
         const result = await remarkReferenceAction(channelId, {
           id: remark.id,
           windowStartMs: startMs,
@@ -288,6 +296,8 @@ export function ReferenceMarker({
           return
         }
         const bytes = ready.file
+        // The frames first: a clip that will not seek costs no upload (final review, issue 7).
+        const taken = fileKind === 'video' ? await takeFrames() : []
         setProgress('Fingerprinting')
         const contentHash = await fingerprint(bytes)
         const created = await createReferenceUploadAction(channelId, {
@@ -306,7 +316,7 @@ export function ReferenceMarker({
         }
         setProgress('Uploading the file')
         await putBlob(created.url, bytes, bytes.type)
-        const frames = fileKind === 'video' ? await takeAndUploadFrames(contentHash) : []
+        const frames = fileKind === 'video' ? await uploadFrames(contentHash, taken) : []
         const size = fileKind === 'image' ? await readImageSize(bytes) : meta!
         setProgress('Saving')
         const result = await finaliseReferenceAction(channelId, {
@@ -394,6 +404,9 @@ export function ReferenceMarker({
             <video
               ref={videoRef}
               src={clipUrl ?? undefined}
+              // A stored clip plays from another origin; without this the
+              // canvas it is drawn to is tainted and no frame can be encoded.
+              crossOrigin={remark ? 'anonymous' : undefined}
               controls
               muted
               playsInline

@@ -3,12 +3,14 @@
 import {
   assets,
   getChannelSettings,
+  insertLogo,
   insertMotionReference,
   listMotionReferences,
   motionReferences,
   requireTestDatabase,
   seed,
   setReferenceReading,
+  setReferenceReadState,
   upsertChannelAsset,
 } from '@boom-busters/db'
 import { denseFrameTimes, FIRST_CHANNEL_ID, overviewFrameTimes } from '@boom-busters/schemas'
@@ -22,6 +24,7 @@ import {
   draftMotionIdentityAction,
   finaliseReferenceAction,
   readReferenceAction,
+  remarkReferenceAction,
   saveReadingAction,
   updateReferenceAction,
 } from './motion-actions'
@@ -233,16 +236,17 @@ describeDb('motion reference actions', () => {
     expect(await listMotionReferences(db, channelId)).toHaveLength(2)
   })
 
-  it('deletes the upload when the pack is full', async () => {
-    const asset = await upsertChannelAsset(db, channelId, {
+  /** `count` references over other bytes, so the pack is full (or nearly). */
+  async function fillPack(count = 12) {
+    const asset = (await upsertChannelAsset(db, channelId, {
       kind: 'image',
       r2Key: 'boom-busters/references/x/y.png',
       contentHash: 'y',
       width: 10,
       height: 10,
       title: 'y',
-    })
-    for (let n = 0; n < 12; n += 1) {
+    }))!
+    for (let n = 0; n < count; n += 1) {
       await insertMotionReference(db, channelId, {
         assetId: asset.id,
         kind: 'image',
@@ -258,6 +262,10 @@ describeDb('motion reference actions', () => {
         frames: { dense: [], overview: [] },
       })
     }
+  }
+
+  it('deletes the upload when the pack is full', async () => {
+    await fillPack()
     const r = await finaliseReferenceAction(channelId, {
       contentHash: HASH,
       fileType: 'image/png',
@@ -346,6 +354,119 @@ describeDb('motion reference actions', () => {
     const long = await draftMotionIdentityAction(channelId, { brief: 'x'.repeat(1001) })
     expect(long.ok).toBe(false)
     expect(long.error).toMatch(/1000 characters/)
+  })
+
+  it('refuses an upload when the pack is already full (final review, issue 7)', async () => {
+    await fillPack()
+    const r = await createReferenceUploadAction(channelId, {
+      fileType: 'image/png',
+      fileSize: 1000,
+      contentHash: HASH,
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/twelve references/)
+  })
+
+  it('keeps the original when another reference holds the same bytes and the pack is full (final review, issue 2)', async () => {
+    // The first reference stores these bytes; eleven more fill the pack.
+    await finaliseReferenceAction(channelId, {
+      contentHash: HASH,
+      fileType: 'image/png',
+      width: 10,
+      height: 10,
+      frames: [],
+      input: still,
+      read: false,
+    })
+    await fillPack(11)
+    const r = await finaliseReferenceAction(channelId, {
+      contentHash: HASH,
+      fileType: 'image/png',
+      width: 10,
+      height: 10,
+      frames: [],
+      input: { ...still, title: 'Again' },
+      read: false,
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/twelve references/)
+    expect(storage.deleted).toEqual([])
+  })
+
+  it("refuses bytes that are already one of the channel's marks (final review, issue 3)", async () => {
+    await insertLogo(db, channelId, {
+      r2Key: 'boom-busters/logos/mark.png',
+      contentHash: HASH,
+      title: 'Acme',
+      width: 100,
+      height: 40,
+    })
+    const r = await finaliseReferenceAction(channelId, {
+      contentHash: HASH,
+      fileType: 'image/png',
+      width: 100,
+      height: 40,
+      frames: [],
+      input: still,
+      read: false,
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/already stored as a mark/)
+    expect(await listMotionReferences(db, channelId)).toEqual([])
+  })
+
+  it('refuses a re-mark and a reading edit while the reference is being read, and reads again once the read has stalled (final review, issues 4 and 5)', async () => {
+    const window = { startMs: 1000, endMs: 3000 }
+    await finaliseReferenceAction(channelId, {
+      contentHash: HASH,
+      fileType: 'video/mp4',
+      width: 1920,
+      height: 1080,
+      durationMs: 10_000,
+      frames: clipFrames(window, 10_000),
+      input: { ...still, kind: 'video', windowStartMs: 1000, windowEndMs: 3000 },
+      read: true,
+    })
+    const [row] = await listMotionReferences(db, channelId)
+    const id = row!.id
+    expect(row?.readState).toBe('reading')
+    const remark = await remarkReferenceAction(channelId, {
+      id,
+      windowStartMs: 2000,
+      windowEndMs: 4000,
+      frames: clipFrames({ startMs: 2000, endMs: 4000 }, 10_000),
+      read: false,
+    })
+    expect(remark.ok).toBe(false)
+    expect(remark.error).toMatch(/being read/)
+    const edit = await saveReadingAction(channelId, { id, reading: {} })
+    expect(edit.ok).toBe(false)
+    expect(edit.error).toMatch(/being read/)
+    expect((await readReferenceAction(channelId, id)).error).toMatch(/being read/)
+
+    // Ten minutes on with no answer: the read has stalled and may be asked for again.
+    await setReferenceReadState(db, id, 'reading', null, new Date(Date.now() - 11 * 60_000))
+    sent.send.mockClear()
+    expect((await readReferenceAction(channelId, id)).ok).toBe(true)
+    expect(sent.send).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts the state back when the read cannot be queued (final review, issue 4)', async () => {
+    await finaliseReferenceAction(channelId, {
+      contentHash: HASH,
+      fileType: 'image/png',
+      width: 10,
+      height: 10,
+      frames: [],
+      input: still,
+      read: false,
+    })
+    const [row] = await listMotionReferences(db, channelId)
+    sent.send.mockRejectedValueOnce(new Error('Inngest is down'))
+    const r = await readReferenceAction(channelId, row!.id)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/could not be queued/)
+    expect((await listMotionReferences(db, channelId))[0]?.readState).toBe('unread')
   })
 
   it('says why uploads need storage', async () => {

@@ -59,7 +59,7 @@ describeDb('motion-reference-reader (mock mode)', () => {
       title: 'A board of type',
     })
     return insertMotionReference(db, FIRST_CHANNEL_ID, {
-      assetId: asset.id,
+      assetId: asset!.id,
       kind: 'image',
       title: 'A board of type',
       sourceUrl: null,
