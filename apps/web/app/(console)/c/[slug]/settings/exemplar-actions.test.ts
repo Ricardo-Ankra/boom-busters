@@ -29,7 +29,7 @@ import {
   newId,
 } from '@boom-busters/schemas'
 import type { ExemplarPlan, GraphicCode } from '@boom-busters/schemas'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
   approveExemplarVersionAction,
@@ -86,6 +86,16 @@ describeDb('the exemplar actions', () => {
     await db.delete(motionDerivations)
     await db.delete(motionVerdicts)
     await db.delete(motionReferences)
+  })
+
+  // The rows are this file's alone and the first channel's motion goes back
+  // to the house: another file's test reads both (the shared test database).
+  afterEach(async () => {
+    await db.delete(channelExemplars)
+    await db.delete(motionDerivations)
+    await db.delete(motionVerdicts)
+    await db.delete(motionReferences)
+    await updateChannelSettings(db, channelId, { motion: DEFAULT_SETTINGS.motion })
   })
 
   const aVersion = (patch: Partial<Parameters<typeof insertExemplarVersion>[1]> = {}) =>

@@ -13,7 +13,9 @@ import {
   listChannels,
   getAsset,
   listLogos,
+  latestDerivation,
   listMotionReferences,
+  runningDerivation,
   maskKey,
   channelYoutubeConnection,
 } from '@boom-busters/db'
@@ -25,7 +27,12 @@ import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
 import { MANIFEST } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
-import { identityDraftEstimateUsd, readingEstimateUsd } from '@/lib/motion-estimates'
+import { channelExemplarViews } from '@/lib/exemplar-channel-views'
+import {
+  derivationEstimateTable,
+  identityDraftEstimateUsd,
+  readingEstimateUsd,
+} from '@/lib/motion-estimates'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import type { ReferenceView } from './references-section'
 import { exemplarLogoFor } from './exemplar-logo'
@@ -75,6 +82,9 @@ export default async function SettingsPage({
     latestReadings,
     latestSpace,
     pace,
+    channelExemplars,
+    derivationRow,
+    runningRow,
   ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
@@ -91,6 +101,9 @@ export default async function SettingsPage({
     latestKeywordMeasurements(db, channel.id),
     latestSearchSpace(db, channel.id),
     measuredPace(db, channel.id),
+    channelExemplarViews(db, channel.id),
+    latestDerivation(db, channel.id),
+    runningDerivation(db, channel.id),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -262,6 +275,25 @@ export default async function SettingsPage({
         storageReady={storageConfigured()}
         readingEstimateUsd={readingEstimateUsd(settings, workspace.settings)}
         draftEstimateUsd={identityDraftEstimateUsd(settings, workspace.settings, references.length)}
+        channelExemplars={channelExemplars}
+        derivation={
+          derivationRow
+            ? {
+                id: derivationRow.id,
+                state: derivationRow.state,
+                techniques: derivationRow.techniques,
+                rounds: derivationRow.rounds,
+                capUsd: Number(derivationRow.capUsd),
+                spentUsd: Number(derivationRow.spentUsd),
+                progress: derivationRow.progress,
+                error: derivationRow.error,
+                createdAt: derivationRow.createdAt.toISOString(),
+                finishedAt: derivationRow.finishedAt?.toISOString() ?? null,
+              }
+            : null
+        }
+        jobRunning={runningRow !== null}
+        estimateTable={derivationEstimateTable(settings, workspace.settings)}
         draft={draft}
         versions={versions.map((row) => ({
           id: row.id,

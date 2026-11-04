@@ -31,6 +31,15 @@ vi.mock('./channel-actions', () => ({
   updateChannelAction: vi.fn(),
   archiveChannelAction: vi.fn(),
 }))
+vi.mock('./exemplar-actions', () => ({
+  deriveExemplarsAction: vi.fn(),
+  refineExemplarAction: vi.fn(),
+  approveExemplarVersionAction: vi.fn(),
+  keepApprovedAction: vi.fn(),
+  restoreExemplarVersionAction: vi.fn(),
+  copyMotionFromChannelAction: vi.fn(),
+  latestDerivationAction: vi.fn(async () => ({ ok: true })),
+}))
 vi.mock('./motion-actions', () => ({
   createReferenceUploadAction: vi.fn(),
   createReferenceFrameUploadsAction: vi.fn(),
