@@ -4550,6 +4550,116 @@ This is on master and unrelated to this work.
 - [ ] Redesign a few real slots on the new prompt and review (paid; on the
       owner's word).
 
+## Channel formats and keywords (2026-11-03 to 2026-11-04)
+
+> Each channel's bible now steers research, scripting and publishing for any
+> channel, not only Boom & Busters: formats (a name, keywords, a script
+> playbook, a runtime range, a narration pace, a shot hold, a title template,
+> an intro rule, fixed opening and closing lines, and Shorts on or off),
+> pillar keywords, a channel hashtag and a channel footer. Branch
+> `channel-formats`; decisions 390 to 394. Spec
+> `docs/superpowers/specs/2026-11-03-channel-formats-and-keywords-design.md`,
+> plan `docs/superpowers/plans/2026-11-03-channel-formats-and-keywords.md`.
+> Migrations `0044_amazing_shiva`, `0045_eager_warbird`, `0046_lonely_hellcat`.
+> Boom & Busters reads as one "Documentary" format with no keywords and
+> composes every prompt byte for byte as before (the lift fixtures, 379
+> cases, are unchanged).
+
+### Deliverables
+
+Phase 1, structure:
+
+- [x] Format schema and helpers (`66d1a9a6`); the bible gains formats,
+      pillar keywords, hashtag and footer, with old versions upgraded on read
+      (`ba4bc748`).
+- [x] `cases.format_key` and `projects.format_key` (`72aaa451`).
+- [x] Draft with AI and Copy cover the new fields (`fdf48e3d`).
+- [x] Bible tab editors, after the Bible tab rework reached master
+      (`f5fdccae`, `e69ccda8`).
+
+Phase 2, publishing:
+
+- [x] Title template, runtime words and the cohesion report (`8aeebf68`);
+      titles follow the format's template (`fcc636ba`).
+- [x] Channel footer, tag order and channel hashtag; the fixed "business
+      documentary" tag goes (`fce58dc8`).
+- [x] Cohesion panel on the publish screen (`0b145874`, `60ea8a26`).
+
+Phase 3, research:
+
+- [x] A case's format and the brief's fit fields (`cd963149`); the format
+      keyword seed and the channel fit step (`38f96a37`).
+- [x] Keyword measurements in VidIQ (`6ad1f8d1`, `e7c63593`).
+- [x] A format's search space (`d89f0ac3`, `b29cb89d`).
+
+Phase 4, production:
+
+- [x] Start control with format, runtime and cost estimate (`4fbf3e77`,
+      `3736f8dc`).
+- [x] Narration pace from the format, and the measured pace (`43f7fbec`,
+      `42571e56`); shot hold (`74b3f51b`).
+- [x] Intro rule and fixed lines (`4c8c6d4b`, `5a8320c9`).
+- [x] The calm playbook, `script-craft-calm.md`, approved by the owner
+      ("Proceed") (`1481f883`).
+- [x] Shorts on or off per format (owner: "a sleep channel wont have
+      shorts") (`060fa220`).
+
+Phase 5, long runtimes:
+
+- [x] Audit of what a long run breaks, with fixes for the outline budget,
+      chapter size, slot batching, assembly batching and the YouTube upload
+      (`17cb30a4` to `1658765d`; decision 393).
+- [x] The longest video is 180 minutes (owner: "the longest should be 3
+      hours") (`19a040d0`).
+- [x] The start limit is 30 minutes, from the render evidence (owner:
+      "agree and proceed") (`d310f521`; decision 394).
+
+Final review and fixes:
+
+- [x] A project starts in the format actually chosen, not the column
+      default `main` (`ff6853f3`).
+- [x] A research run parked before the deploy buys no format search
+      (`3eacb91d`); the shot-list ceiling follows the hold (`1a754da0`); the
+      render cost estimate follows Remotion's reported cost (`fe436a55`); a
+      calm outline holds no tension (`8cf0ab8b`); fixed lines count inside
+      the word budget (`bfc6292c`); the start control notes a brief
+      researched for another format (`d8cfe624`); tests restore the bible
+      they change (`07d63236`, `a352c9b0`).
+- [x] Merged with master's decision 389: the visuals step count takes two
+      steps per designed graphic, the design and its review.
+
+### Owner actions at deploy
+
+1. Migrations 0044 to 0046 (nullable `cases.format_key`, `projects.format_key`
+   not null backfilled `main`, and the `keyword_measurements` and
+   `channel_search_space` tables). Master's last migration is 0043; no
+   collision. Applied by `scripts/deploy-migrate.mjs` on the production build.
+2. `PUT /api/inngest` after the Vercel deploy, so Inngest registers
+   `channel/search_space.analyse` and the changed runners.
+3. `deploy:stacks boom-busters-broker`, so the broker's render cost estimate
+   uses the new figure (it bundles `packages/schemas` at deploy).
+4. `deploy:stacks boom-busters-media-utils`, so the YouTube upload reads the
+   master in 8 MB ranges. Not needed at 30 minutes; needed before long renders
+   in parts.
+5. YouTube Studio: Settings, Channel, Feature eligibility, "Intermediate
+   features" must show verified for any upload over 15 minutes.
+
+### Not verified
+
+- A live long run of any stage. Every limit in decision 393 marked "owner to
+  confirm" is a vendor figure or a derived one.
+- A calm voice's real pace: the voice has no speed setting, so a calm script
+  may run 15 to 20% short of its runtime until the format's measured pace is
+  set from a real take.
+- Any live VidIQ, model, voice or render call. Every test uses mock providers.
+
+### Next project
+
+- [ ] **Long renders in parts**, to reach 180 minutes: the master rendered as
+      parts of about 15 minutes, joined without the whole file on one disk,
+      loudnorm and QC part by part, the transcription fallback batched, and a
+      YouTube upload that resumes across invocations (decision 394).
+
 ---
 
 # Decisions made
@@ -9565,3 +9675,85 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      if it is revised (cost if wrong: a card that changes once more); a run
      parked before the deploy replays no `designed` on the Redesign step and
      skips the review.
+
+### Channel formats and keywords
+
+390. **A channel's bible holds formats, pillar keywords, a hashtag and a
+     footer** (2026-11-03, spec sections 4 and 5). A format carries its key,
+     name, up to six keywords (the first is the lead keyword), a playbook
+     (`tension` or `calm`), a runtime range, a narration pace, a shot hold, a
+     title template, an intro rule, fixed opening and closing lines, and
+     Shorts on or off. Old versions are upgraded on read, never rewritten: one
+     format `main`, named from the old `keywordContext` but with no keywords
+     (owner's ruling), so no rule switches on for an existing channel.
+     Projects run in their frozen bible's format; a key the frozen bible
+     lacks falls back to its primary. `startProjectFromCase` always stores
+     the format it resolved, so a channel whose primary is not `main` never
+     starts in `main` by the column default (final review, `ff6853f3`).
+     Decisions made where the spec left room: Shorts off reads the channel's
+     current bible, not the project's frozen one, so turning them off
+     reaches videos in progress (cost if wrong: an in-flight project changes
+     Shorts mid-way); `caseCategories` keeps its key
+     and is called "pillars" only in the UI and prompts; the Draft with AI
+     note for categories ends "the pillars (kinds of film) the channel
+     makes"; tests that save a bible version use `withTemporaryBible`
+     (`packages/db`), which restores the channel's current bible, re-points
+     projects and drafts, and deletes only the versions above the original.
+     Note: a bible saved on this branch with an explicit format of the old
+     default (maximum 60) now reads as changed; none can exist in production.
+391. **Publishing follows the format** (2026-11-03, spec 6.5 to 6.9). Titles
+     follow the format's template and required slots; the description gets
+     the channel footer by code; tags go in a fixed order with the channel's
+     tags on every upload, capped at 150 characters; the channel hashtag is
+     added; the fixed "business documentary" tag goes. The cohesion panel
+     shows where each keyword lands. Decisions made where the spec left
+     room: `runtimeWords` under 60 seconds says "Under a Minute"; a keyword
+     hits a field when the normalised field contains the normalised keyword;
+     the tags row is the tags joined by ", "; a hashtag hits when it contains
+     the keyword with spaces removed; the panel checks only the saved
+     description.
+392. **Research knows the case's format** (2026-11-03, spec 6.1, 5 and 7).
+     When the format has a lead keyword, research buys one more VidIQ search
+     on "subject lead keyword" (5 credits, shown in the estimate), and a free
+     model step checks the case against the channel's pillars. A run parked
+     before the deploy has no lead keyword in its memoised load and buys
+     nothing extra (`3eacb91d`). Keyword measurements and a format's search
+     space are bought from the Bible tab, each with its cost shown. Decisions
+     made where the spec left room: a measurement searches as wide as the
+     case researcher and keeps the exact match; a phrase with no data shows
+     "No VidIQ data for this phrase" and is not re-bought for 30 days; the
+     event is `channel/search_space.analyse`; a search space keeps every paid
+     reading when YouTube or the model fails, saving empty patterns or
+     durations rather than nothing.
+393. **What a long run breaks, and what was fixed** (2026-11-03, spec 8). The
+     audit ran at 240 minutes before the owner's 180 ceiling; every fix holds
+     at 180. Fixed: the outline asks for chapters of 800 to 1,000 words with
+     the count named (schema maximum 60) and a budget that grows with the
+     count; fixed lines count inside the word budget; slots resolve and
+     stock ingests in batches of eight only when one step a slot would not
+     fit Inngest's 1,000 steps (slots, the run's own other steps and a margin
+     of 20; visuals counts two steps per designed graphic since decision
+     389), under ids no older run used (`resolve-batch-<n>`,
+     `ingest-stock-batch-<n>`), so a run parked at a gate replays exactly and
+     a retried batch buys nothing twice; the YouTube upload reads the master
+     in checked 8 MB ranges; the shot-list ceiling scales with the hold.
+     Left, with figures in the task report: the outline step's 300 s route
+     limit near 16k answer tokens, the 4 MB step output at the extreme slot
+     count, loudnorm needing twice the file on a 10 GB disk, a full QC decode
+     inside 900 s, the upload inside 15 minutes, the transcription fallback
+     unbatched, and the channel's long-upload permission. All are smaller at
+     30 minutes than the limits they meet.
+394. **The start limit is 30 minutes; 180 waits for long renders in parts**
+     (2026-11-03, owner: "agree and proceed"; the approved $7 test render was
+     not run and the approval is unused). Remotion's own records of two real
+     16.6-minute masters (`u9pq9hoy9c`, `ja7mt6pz2e`: 29,963 frames in 150
+     chunks of 200, 41 to 409 s a chunk, about 7 minutes, 742 MB, $1.00)
+     settled it without spending: a chunk must finish inside 900 s, so about
+     350 frames a chunk, which is about 29 minutes of video at the broker's
+     fan-out of 150 (39 at Remotion's cap of 200 functions); a 60-minute
+     video would time out, and the disk caps a single render near 112
+     minutes. The render cost estimate was about 3.6 times low and is now
+     $1.00 per 996 seconds of video (`fe436a55`), so a 180-minute master
+     would cost about $11. A bible may hold formats up to 180 minutes; the
+     start control offers at most 30 and says longer videos are not yet
+     supported.
