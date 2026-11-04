@@ -1,0 +1,122 @@
+import { MANIFEST } from '@boom-busters/providers'
+import type { ExemplarPlan } from '@boom-busters/schemas'
+import { describe, expect, it } from 'vitest'
+import { DENSE_SHOTS_MAX, denseMoments } from './graphic-code/frames'
+import {
+  derivedBrief,
+  derivedContext,
+  derivedSlot,
+  planBounds,
+  planSteer,
+  refineSteer,
+  storyboardMoments,
+} from './exemplar-derive'
+
+const stat = MANIFEST.find((entry) => entry.id === 'stat-counter')!
+const bar = MANIFEST.find((entry) => entry.id === 'bar-chart')!
+
+const PLAN: ExemplarPlan = {
+  slot: {
+    intent: 'The 40 minutes is the whole story of the night.',
+    words: [
+      { text: 'She', atMs: 200 },
+      { text: 'slept', atMs: 650 },
+      { text: '40', atMs: 1100 },
+      { text: 'minutes', atMs: 1550 },
+      { text: 'and', atMs: 2000 },
+      { text: 'lost', atMs: 2450 },
+      { text: '$2bn', atMs: 2900 },
+    ],
+  },
+  concept: 'the sentence parts for the figure',
+  storyboard: ['0.0 s the sentence lands', '2.0 s the figure rises', '4.5 s the rule fills'],
+  mechanisms: ['word-splits-open', 'drum'],
+  leansOn: [{ title: 'Numeral over a changing background', why: 'the held numeral' }],
+}
+
+describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
+  it('derives one claim per figure the plan speaks and per charted point', () => {
+    const context = derivedContext(stat, PLAN)
+    expect(context.claims.map((claim) => claim.text)).toEqual([
+      'The figure is 40.',
+      'The figure is $2bn.',
+    ])
+    expect(context.chapterTitle).toBe('stat-counter')
+    expect(context.paragraphs).toEqual([])
+    const chartPlan: ExemplarPlan = {
+      ...PLAN,
+      slot: {
+        ...PLAN.slot,
+        data: {
+          series: [
+            {
+              label: 'Hours slept',
+              unit: 'h',
+              points: [
+                { x: '2019', y: 7 },
+                { x: '2020', y: 5 },
+              ],
+            },
+          ],
+          takeaway: 'down',
+        },
+      },
+    }
+    const chartContext = derivedContext(bar, chartPlan)
+    expect(chartContext.claims.map((claim) => claim.text)).toContain('In 2019 the value was 7 h.')
+  })
+
+  it("the brief carries the plan's intent, words and data", () => {
+    const context = derivedContext(stat, PLAN)
+    const brief = derivedBrief(stat, PLAN, context)
+    expect(brief.type).toBe('graphic')
+    if (brief.type === 'graphic') {
+      expect(brief.intent).toBe(PLAN.slot.intent)
+      expect(brief.coversText).toBe('She slept 40 minutes and lost $2bn')
+      expect(brief.intentClaimIds).toEqual(context.claims.map((claim) => claim.id))
+    }
+    const slot = derivedSlot(stat, PLAN, context)
+    expect(slot).toMatchObject({ chapterId: 'exemplar', startMs: 0, durationMs: 6000 })
+    expect(slot.brief).toEqual(brief)
+    expect(planBounds(stat)).toEqual({ durationMs: 6000, wordCount: stat.slot.words.length })
+    expect(planBounds(bar)).toEqual({
+      durationMs: bar.slot.durationMs,
+      wordCount: bar.slot.words.length,
+      chart: { series: 1, points: bar.slot.data!.series[0]!.points.length },
+    })
+  })
+
+  it('storyboardMoments takes four shots a frame apart from each timed line, inside the slot, at most 24', () => {
+    expect(storyboardMoments(PLAN.storyboard, 6000)).toEqual([
+      0, 42, 83, 125, 2000, 2042, 2083, 2125, 4500, 4542, 4583, 4625,
+    ])
+    expect(storyboardMoments(['5.95 s the end'], 6000)).toEqual([5950, 5992])
+    const many = Array.from({ length: 10 }, (_, i) => `${i * 0.5} s beat ${i}`)
+    expect(storyboardMoments(many, 6000)).toHaveLength(DENSE_SHOTS_MAX)
+    expect(storyboardMoments(['2 s twice', '2.0 s again'], 6000)).toEqual([2000, 2042, 2083, 2125])
+  })
+
+  it('falls back to the even set when no line is timed', () => {
+    expect(storyboardMoments(['the sentence lands', 'the figure rises'], 6000)).toEqual(
+      denseMoments(6000),
+    )
+  })
+
+  it('the steers carry the plan and the refine keeps what is not named', () => {
+    const steer = planSteer(PLAN)
+    expect(steer).toContain(
+      'The plan to build, as agreed: concept the sentence parts for the figure',
+    )
+    expect(steer).toContain('1. 0.0 s the sentence lands')
+    expect(steer).toContain('built on: word splits open, drum')
+    expect(steer).toContain('Keep to it.')
+    const refined = refineSteer('slower', PLAN)
+    expect(refined.startsWith("The producer's steer: slower\n")).toBe(true)
+    expect(refined).toContain('What the steer does not name is kept exactly as it is.')
+    expect(refined.endsWith(steer)).toBe(true)
+  })
+
+  it('writes no dash', () => {
+    expect(planSteer(PLAN) + refineSteer('x', PLAN)).not.toMatch(/[–—]/)
+  })
+})

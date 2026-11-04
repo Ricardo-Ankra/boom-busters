@@ -44,6 +44,11 @@ export interface CallOptions {
    * retries cost shows on the Costs screen.
    */
   purpose?: string
+  /**
+   * More for the ledger row's `meta`: a derivation's job id and technique
+   * (spec 2026-11-04, section 9.2), so the job can sum its own spend.
+   */
+  meta?: Record<string, unknown>
   signal?: AbortSignal
 }
 
@@ -106,6 +111,7 @@ export async function callLlm(
         task: request.task,
         model: choice.model,
         ...(options.purpose ? { purpose: options.purpose } : {}),
+        ...(options.meta ?? {}),
       },
     },
     async () => {

@@ -68,6 +68,19 @@ export async function monthSpendUsd(
 }
 
 /**
+ * A job's spend so far (spec 2026-11-04, section 9.2): every row whose
+ * `meta.jobId` is the id, a reserved row counted at its estimate until it
+ * settles, so a derivation can hold itself to its cap before each call.
+ */
+export async function jobSpendUsd(db: DbLike, jobId: string): Promise<number> {
+  const [row] = await db
+    .select({ total: spendExpr })
+    .from(costLedger)
+    .where(sql`${costLedger.meta} ->> 'jobId' = ${jobId}`)
+  return round4(toUsd(row?.total ?? 0))
+}
+
+/**
  * This month's spend for every provider that has any. Feeds the Costs bars.
  * Given a channel, only that channel's rows; without one, the workspace's.
  */

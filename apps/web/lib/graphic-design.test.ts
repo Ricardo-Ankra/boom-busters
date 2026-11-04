@@ -48,8 +48,13 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
       },
       ...schemas.FIRST_CHANNEL_IN_USE,
     }),
+    // The channel's approved exemplar version for a technique (spec 8.3): none unless a test sets one.
+    approvedExemplar: async () => approvedStub,
   }
 })
+
+// A `channel_exemplars` row, as `channelExemplarFor` reads it; null is "no approved version".
+let approvedStub: Partial<Db.ChannelExemplarRow> | null = null
 
 // The browser (decision 389): every inspection passes and photographs nothing
 // unless a test hands it answers of its own.
@@ -116,7 +121,8 @@ vi.mock('./graphic-code/compile', async (importOriginal) => {
 })
 
 import { graphicCodeIssue } from './graphic-code/check'
-import { slotIntent } from './graphic-design-core'
+import { criticPlanOf, photographForCritic, slotIntent, slotTechnique } from './graphic-design-core'
+import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import {
   designGraphic,
   reviewGraphic,
@@ -259,6 +265,7 @@ beforeEach(() => {
   callLlm.mockReset()
   mock = false
   exemplarStub = null
+  approvedStub = null
   reviewSetting = false
   motionSetting = {}
   // The config turns the browser off for every other file; this one stubs it.
@@ -274,6 +281,42 @@ afterEach(() => {
 
 const CUT_OFF = "the designer's answer was cut off at its length limit"
 const TOO_LONG = 'the designer took too long; press Redesign to try again'
+
+describe("the channel's exemplar in the per-shot call (spec 2026-11-04, section 8.3)", () => {
+  const slotMessage = (call: number) =>
+    (callLlm.mock.calls[call]![0].messages as { content: string }[])[1]!.content
+
+  it("shows the designer the channel's approved exemplar for the slot's technique", async () => {
+    approvedStub = {
+      technique: 'stat-counter',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['0.0 s c'],
+        mechanisms: ['drum', 'reel'],
+        leansOn: [],
+      },
+      code: {
+        title: "The channel's own",
+        source: 'function Graphic(props) {\n  return "approved"\n}',
+      },
+    } as Partial<Db.ChannelExemplarRow>
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(slotMessage(0)).toContain('A passing design of this technique (text-highlight:')
+    expect(slotMessage(0)).toContain('return "approved"')
+    expect(slotMessage(0)).toContain('It uses: drum, reel.')
+  })
+
+  it('shows the house exemplar when the channel has no approved version', async () => {
+    const providers = await import('@boom-busters/providers')
+    const house = providers.exemplarFor(slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY))!
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT)
+    expect(slotMessage(0)).toContain(house.source)
+  })
+})
 
 describe('designGraphic (decisions 289, 295)', () => {
   it('stores code that passes every check, compiled, its facts on claim ids and its words on the slot clock', async () => {
@@ -613,6 +656,94 @@ describe('withDesign', () => {
     expect(parsed.designIssue!.length).toBeLessThanOrEqual(500)
     expect(parsed.designIssue!.endsWith('…')).toBe(true)
     expect(issue.startsWith(parsed.designIssue!.slice(0, -1))).toBe(true)
+  })
+})
+
+describe('the exemplar handed in, and the photograph for the critic (plan 4)', () => {
+  const GIVEN: Providers.Exemplar = {
+    technique: 'stat-counter',
+    description: 'one figure',
+    mechanisms: ['drum'],
+    title: 'Given by the caller',
+    source: 'function Graphic(props) {\n  return "given"\n}',
+  }
+
+  it('uses the exemplar it is given and none when given null', async () => {
+    const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+    await designGraphicWith(complete, CONTEXT, SLOT, {
+      bible: FIRST_CHANNEL_IN_USE,
+      exemplar: GIVEN,
+    })
+    const first = complete.mock.calls[0]![0].messages as { content: string }[]
+    expect(first[1]!.content).toContain('return "given"')
+
+    complete.mockClear()
+    await designGraphicWith(complete, CONTEXT, SLOT, {
+      bible: FIRST_CHANNEL_IN_USE,
+      exemplar: null,
+    })
+    const second = complete.mock.calls[0]![0].messages as { content: string }[]
+    expect(second[1]!.content).not.toContain('A passing design of this technique')
+    const providers = await import('@boom-busters/providers')
+    expect(slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY)).toBe(
+      providers.techniqueFor({
+        type: 'graphic',
+        intent: SLOT.brief.type === 'graphic' ? SLOT.brief.intent : '',
+        description: SLOT.brief.description,
+        coversText: SLOT.brief.coversText,
+        logos: CONTEXT.logos.map((logo) => logo.title),
+        techniques: DEFAULT_MOTION_IDENTITY.techniques,
+      }),
+    )
+  })
+
+  it('photographForCritic returns the shots and the metrics, null without a browser', async () => {
+    const code = (await designGraphicWith(
+      vi.fn().mockResolvedValue(answer('$4bn')),
+      CONTEXT,
+      SLOT,
+      {
+        bible: FIRST_CHANNEL_IN_USE,
+      },
+    )) as { ok: true; code: GraphicCode }
+    const shot = { orientation: 'landscape' as const, atMs: 900, jpeg: 'AAAA' }
+    inspect.mockResolvedValueOnce({
+      layoutIssue: null,
+      shots: [shot],
+      dense: [shot],
+      sheets: { landscape: 'SHEET' },
+      findings: ['while moving, at 1.3 s in landscape, "a" and "b" overlap'],
+    })
+    motionMetrics.mockResolvedValueOnce({
+      frozenMs: 0,
+      longestFrozenMs: 0,
+      frozenCritical: false,
+      simultaneity: 0.2,
+      holdAfterLastMs: 500,
+      speedProfile: [],
+    })
+    const photographed = await photographForCritic(CONTEXT, SLOT, code.code, {
+      frames: { inspect },
+      motion: DEFAULT_MOTION_IDENTITY,
+      dense: [100, 200],
+      deadline: Date.now() + 240_000,
+    })
+    expect(photographed?.photographed.shots).toEqual([shot])
+    expect(photographed?.photographed.findings).toHaveLength(1)
+    expect(photographed?.metrics?.simultaneity).toBe(0.2)
+    expect(inspect.mock.calls[0]![0]).toMatchObject({
+      shots: true,
+      measure: 'findings',
+      dense: [100, 200],
+      sheets: true,
+    })
+    const none = await photographForCritic(CONTEXT, SLOT, code.code, {
+      motion: DEFAULT_MOTION_IDENTITY,
+      dense: [],
+      deadline: Date.now() + 240_000,
+    })
+    expect(none).toBeNull()
+    expect(criticPlanOf(code.code, CONTEXT)).toMatchObject({ title: code.code.title })
   })
 })
 
@@ -981,6 +1112,32 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
     expect(last.images[0]).toEqual(REF.image)
     expect(last.images).toHaveLength(4)
     expect(last.content).toContain('Reference 1: Kaye reel (look): one actor')
+  })
+
+  it('the review passes the same exemplar to the fix', async () => {
+    approvedStub = {
+      technique: 'stat-counter',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['0.0 s c'],
+        mechanisms: ['drum'],
+        leansOn: [],
+      },
+      code: {
+        title: "The channel's own",
+        source: 'function Graphic(props) {\n  return "approved"\n}',
+      },
+    } as Partial<Db.ChannelExemplarRow>
+    const slot = await stored()
+    inspect.mockResolvedValueOnce(photographed()).mockResolvedValueOnce(framed({}))
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: ['Hold the figure a second longer.'] }))
+      .mockResolvedValueOnce({ text: JSON.stringify(planned('$4bn')) })
+    await reviewGraphic(CONTEXT, slot)
+    const fix = callLlm.mock.calls[1]![0]
+    expect(fix.messages[1]!.content).toContain('return "approved"')
+    expect(callLlm.mock.calls[1]![1]).toMatchObject({ purpose: 'fix' })
   })
 
   it('applies the three fixes as the steer of one designer call and takes a revision that passes', async () => {
