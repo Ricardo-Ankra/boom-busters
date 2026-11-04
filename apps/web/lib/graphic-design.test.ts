@@ -19,6 +19,7 @@ import type * as Providers from '@boom-busters/providers'
 import type * as Compile from './graphic-code/compile'
 import type * as DryRun from './graphic-code/dry-run'
 import type * as Frames from './graphic-code/frames'
+import type * as MotionMetricsModule from './graphic-code/motion-metrics'
 import { NonRetriableError } from 'inngest'
 import type * as Db from '@boom-busters/db'
 
@@ -52,6 +53,12 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
 // The browser (decision 389): every inspection passes and photographs nothing
 // unless a test hands it answers of its own.
 const inspect = vi.fn<Frames.GraphicFrames['inspect']>()
+// The measured motion (spec 2026-11-04, section 10.1): the stub's dense shots are not JPEGs, so the numbers are given.
+const motionMetrics = vi.fn<typeof MotionMetricsModule.motionMetrics>()
+vi.mock('./graphic-code/motion-metrics', () => ({
+  motionMetrics: (...args: Parameters<typeof MotionMetricsModule.motionMetrics>) =>
+    motionMetrics(...args),
+}))
 /** An inspection's result with the critic's fields empty unless a test fills them. */
 const framed = (over: Partial<Frames.FramesResult>): Frames.FramesResult => ({
   layoutIssue: null,
@@ -872,8 +879,37 @@ describe('the layout check in the design (decision 389)', () => {
   })
 })
 
-describe('reviewGraphic, a step of its own (decision 389)', () => {
+describe('reviewGraphic, the critic in a step of its own (decision 389, spec 2026-11-04 section 10.4)', () => {
   const SHOT = { orientation: 'landscape' as const, atMs: 1600, jpeg: '/9j/AAAA' }
+  const DENSE = [
+    { orientation: 'landscape' as const, atMs: 250, jpeg: 'D1' },
+    { orientation: 'landscape' as const, atMs: 500, jpeg: 'D2' },
+  ]
+  const SHEETS = { landscape: 'AAAA', portrait: 'BBBB' }
+  const FINDING =
+    'while moving, at 1.3 s in landscape, "a" and "b" overlap; give each its own place'
+  const METRICS = {
+    frozenMs: 1000,
+    longestFrozenMs: 500,
+    frozenCritical: false,
+    simultaneity: 0.75,
+    holdAfterLastMs: 1000,
+    speedProfile: [{ atMs: 500, change: 0 }],
+  }
+  const AXES = ['engagement', 'intent', 'composition', 'temporal', 'craft'] as const
+  const FIXES = ['bigger type', 'hold the end', 'one spring']
+  const report = (over: Record<string, unknown> = {}) => ({
+    text: JSON.stringify({
+      scores: Object.fromEntries(AXES.map((axis) => [axis, { score: 8, line: 'fine' }])),
+      defects: [],
+      fixes: [],
+      mechanisms: [],
+      keep: true,
+      ...over,
+    }),
+  })
+  const photographed = () =>
+    framed({ shots: [SHOT], dense: DENSE, sheets: SHEETS, findings: [FINDING] })
   const LAYOUT =
     'at 1.6 s in landscape, "Raised in one round" and "$4bn" overlap; give each its own place, or let one leave before the other lands'
   /** The slot with a stored design, as the review step reads it. */
@@ -888,71 +924,142 @@ describe('reviewGraphic, a step of its own (decision 389)', () => {
   beforeEach(() => {
     reviewSetting = true
     callLlm.mockResolvedValueOnce(answer('$4bn'))
+    motionMetrics.mockReset()
+    motionMetrics.mockResolvedValue(METRICS)
   })
 
-  it('photographs the stored design, shows it the frames, and marks a keep', async () => {
+  it('photographs the design through its moves, measures it, and asks the critic', async () => {
     const slot = await stored()
-    inspect.mockResolvedValueOnce(framed({ layoutIssue: null, shots: [SHOT] }))
-    callLlm.mockResolvedValueOnce({ text: '{"keep": true}' })
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm.mockResolvedValueOnce(report())
     const result = await reviewGraphic(CONTEXT, slot)
     expect(result).toMatchObject({
       outcome: 'kept',
-      code: { source: figureSource('$4bn'), review: 'kept' },
+      code: { source: figureSource('$4bn'), review: 'kept', critique: { keep: true } },
     })
     // Photographed only, so a design stored before the layout check is still shown its frames.
-    expect(inspect.mock.calls[0]![0]).toMatchObject({ shots: true, measure: false })
+    const asked = inspect.mock.calls[0]![0]
+    expect(asked).toMatchObject({ shots: true, measure: false, sheets: true })
+    expect(asked.dense).toHaveLength(23)
+    expect(motionMetrics).toHaveBeenCalledWith(DENSE, 6000, 6000)
     const [request, options] = callLlm.mock.calls[0]!
-    expect(options).toMatchObject({ purpose: 'review' })
+    expect(request.task).toBe('critic')
+    expect(options).toMatchObject({ purpose: 'critic' })
+    expect(request.messages[1].content).toContain('Longest frozen run 500 ms (limit 6000 ms)')
+    expect(request.messages[1].content).toContain(`1. ${FINDING}`)
+    // The plan as the designer answered it, claims by number.
+    expect(request.messages[1].content).toContain('"claim": 1')
     const last = request.messages.at(-1)
-    expect(last.images).toEqual([{ mimeType: 'image/jpeg', data: '/9j/AAAA' }])
+    expect(last.images).toEqual([
+      { mimeType: 'image/jpeg', data: 'AAAA' },
+      { mimeType: 'image/jpeg', data: 'BBBB' },
+      { mimeType: 'image/jpeg', data: '/9j/AAAA' },
+    ])
     expect(last.content).toContain('Frame 1: 16:9 at 1.6 s')
-    // The design is shown citing claims by number, as the designer answered it.
-    expect(last.content).toContain('"claim": 1')
   })
 
-  it('takes a revision that passes every check, the layout included', async () => {
+  it('applies the three fixes as the steer of one designer call and takes a revision that passes', async () => {
     const slot = await stored()
-    inspect
-      .mockResolvedValueOnce(framed({ layoutIssue: null, shots: [SHOT] }))
-      .mockResolvedValueOnce(framed({ layoutIssue: null, shots: [] }))
+    inspect.mockResolvedValueOnce(photographed()).mockResolvedValueOnce(framed({}))
     const revised = { ...planned('$4bn'), title: 'Four billion, one round' }
-    callLlm.mockResolvedValueOnce({ text: JSON.stringify(revised) })
-    const result = await reviewGraphic(CONTEXT, slot)
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: FIXES }))
+      .mockResolvedValueOnce({ text: JSON.stringify(revised) })
+    const result = await reviewGraphic(CONTEXT, slot, { guidance: 'Slower.' })
     expect(result).toMatchObject({
       outcome: 'revised',
-      code: { title: 'Four billion, one round', review: 'revised' },
+      code: { title: 'Four billion, one round', review: 'revised', critique: { keep: false } },
     })
+    const [fix, fixOptions] = callLlm.mock.calls[1]!
+    expect(fix.task).toBe('graphics')
+    expect(fixOptions).toMatchObject({ purpose: 'fix' })
+    expect(fix.messages.at(-1).content).toBe(
+      "The producer's steer: Slower.\nThe critic's fixes, in order: 1. bigger type 2. hold the end 3. one spring",
+    )
+    expect(
+      fix.messages.some((m: { content: string }) => m.content.includes('The current design')),
+    ).toBe(true)
     expect(inspect.mock.calls[1]![0]).toMatchObject({ shots: false, measure: true })
   })
 
-  it('keeps the design when the revision fails a check or the browser', async () => {
+  it('keeps the design with its critique when the fix is refused by a check or the layout', async () => {
     const slot = await stored()
-    inspect.mockResolvedValueOnce(framed({ layoutIssue: null, shots: [SHOT] }))
-    callLlm.mockResolvedValueOnce(answer('$7bn'))
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: FIXES }))
+      .mockResolvedValueOnce(answer('$7bn'))
     expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
       outcome: 'kept',
-      code: { source: figureSource('$4bn'), review: 'kept' },
+      code: { source: figureSource('$4bn'), review: 'kept', critique: { keep: false } },
     })
 
     inspect
-      .mockResolvedValueOnce(framed({ layoutIssue: null, shots: [SHOT] }))
-      .mockResolvedValueOnce(framed({ layoutIssue: LAYOUT, shots: [] }))
+      .mockResolvedValueOnce(photographed())
+      .mockResolvedValueOnce(framed({ layoutIssue: LAYOUT }))
     const revised = { ...planned('$4bn'), title: 'Four billion, one round' }
-    callLlm.mockResolvedValueOnce({ text: JSON.stringify(revised) })
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: FIXES }))
+      .mockResolvedValueOnce({ text: JSON.stringify(revised) })
     expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
       outcome: 'kept',
-      code: { title: 'Raised in one round', review: 'kept' },
+      code: { title: 'Raised in one round', review: 'kept', critique: { fixes: FIXES } },
     })
   })
 
-  it('skips, saying why at error level, when the review call fails or the budget stops it', async () => {
+  it("keeps the design and logs when the critic's report is malformed", async () => {
+    const slot = await stored()
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm.mockResolvedValueOnce({ text: '{"keep": true}' })
+    const result = await reviewGraphic(CONTEXT, slot)
+    expect(result).toMatchObject({ outcome: 'kept', code: { review: 'kept' } })
+    expect((result as { code: { critique?: unknown } }).code.critique).toBeUndefined()
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect(String(logged.mock.calls.at(-1)![0])).toMatch(/the critic's report was malformed/)
+    logged.mockRestore()
+  })
+
+  it('runs the critic without metrics when the dense set is empty', async () => {
+    const slot = await stored()
+    inspect.mockResolvedValueOnce(
+      framed({ shots: [SHOT], findings: ['the dense set was cut short at 0 of 46 shots'] }),
+    )
+    motionMetrics.mockResolvedValue(null)
+    callLlm.mockResolvedValueOnce(report())
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({ outcome: 'kept' })
+    const [request] = callLlm.mock.calls[0]!
+    expect(request.messages[1].content).toContain('No motion was measured.')
+    expect(request.messages[1].content).toContain('cut short')
+    expect(request.messages.at(-1).images).toEqual([{ mimeType: 'image/jpeg', data: '/9j/AAAA' }])
+  })
+
+  it('keeps the design when the fix would not fit the deadline', async () => {
+    const slot = await stored()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      inspect.mockResolvedValueOnce(photographed())
+      callLlm.mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + 200_000)
+        return report({ keep: false, fixes: FIXES })
+      })
+      expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+        outcome: 'kept',
+        code: { review: 'kept', critique: { keep: false } },
+      })
+      expect(callLlm).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('skips, saying why at error level, when the critic call fails or the budget stops it', async () => {
     const slot = await stored()
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    inspect.mockResolvedValueOnce(framed({ layoutIssue: null, shots: [SHOT] }))
+    inspect.mockResolvedValueOnce(photographed())
     callLlm.mockRejectedValueOnce(
       new BudgetExceededError({
         provider: 'anthropic',
-        operation: 'llm.graphics',
+        operation: 'llm.critic',
         budgetUsd: 10,
         monthSpendUsd: 10,
         estimateUsd: 0.1,
@@ -966,7 +1073,7 @@ describe('reviewGraphic, a step of its own (decision 389)', () => {
 
   it('skips with no frames to show, and when Settings has it off, without a call', async () => {
     const slot = await stored()
-    inspect.mockResolvedValueOnce(framed({ layoutIssue: null, shots: [] }))
+    inspect.mockResolvedValueOnce(framed({}))
     expect(await reviewGraphic(CONTEXT, slot)).toEqual({
       outcome: 'skipped',
       reason: 'no frames to show',

@@ -64,7 +64,11 @@ export interface CriticPlan {
 export interface CriticInput {
   motion: MotionIdentity
   plan: CriticPlan
-  slot: { durationMs: number; intent: string; words: { text: string; offsetMs: number }[] }
+  slot: {
+    durationMs: number
+    intent: string
+    words: readonly { text: string; offsetMs: number }[]
+  }
   metrics: MotionMetrics | null
   findings: readonly string[]
   sheets: { landscape?: MsgImage; portrait?: MsgImage }

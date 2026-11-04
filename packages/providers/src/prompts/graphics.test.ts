@@ -10,8 +10,6 @@ import {
 import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildGraphicRequest,
-  buildGraphicReviewRequest,
-  parseGraphicReview,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
   GRAPHIC_CODE_FIXTURE_SOURCE,
@@ -533,48 +531,6 @@ describe('buildGraphicRequest (decision 295)', () => {
     expect(request.messages[2]!.content).toBe(
       'The current design, which the producer wants changed:\nTitle: Old title\n```jsx\nfunction Graphic(props) {\n  return null\n}\n```\nThis design was written before the motion tokens: move every curve onto motion.ease, every spring onto motion.spring, and every length onto motion.ms, keeping what the producer has not asked to change.',
     )
-  })
-})
-
-describe('the review (decision 389)', () => {
-  const design = {
-    concept: 'the count is the story',
-    storyboard: ['0.3 s the figure counts up'],
-    title: 'Raised in one round',
-    facts: [{ text: '$4bn', claim: 1 }],
-    source: 'function Graphic(props) {\n  return null\n}',
-  }
-  const frames = [
-    { label: '16:9 at 0.9 s', image: { mimeType: 'image/jpeg' as const, data: 'AAAA' } },
-    { label: '9:16 at 5.9 s', image: { mimeType: 'image/jpeg' as const, data: 'BBBB' } },
-  ]
-
-  it("shares the design's cached start, drops the old design and the refusal, and ends on the frames", () => {
-    const base = input({
-      current: { source: 'function Graphic() { return null }', title: 'Old', motion: 1 },
-      rejection: 'refused once',
-      guidance: 'Bigger type.',
-    })
-    const review = buildGraphicReviewRequest(base, design, frames)
-    const design0 = buildGraphicRequest(base)
-    expect(review.system).toBe(design0.system)
-    expect(review.cacheablePrefixMessages).toBe(1)
-    expect(review.messages[0]).toEqual(design0.messages[0])
-    const texts = review.messages.map((message) => message.content).join('\n')
-    expect(texts).not.toContain('The current design')
-    expect(texts).not.toContain('refused once')
-    expect(texts).toContain("The producer's steer: Bigger type.")
-    const last = review.messages.at(-1)!
-    expect(last.images).toEqual(frames.map((frame) => frame.image))
-    expect(last.content).toContain('Frame 1: 16:9 at 0.9 s\nFrame 2: 9:16 at 5.9 s')
-    expect(last.content).toContain('"concept": "the count is the story"')
-    expect(last.content).toContain('answer {"keep": true} and nothing else')
-  })
-
-  it('reads a keep, and reads anything else as a whole design', () => {
-    expect(parseGraphicReview('{"keep": true}')).toEqual({ keep: true })
-    expect(parseGraphicReview(JSON.stringify(design))).toEqual({ keep: false, design })
-    expect(() => parseGraphicReview('{"keep": false}')).toThrow(/^The graphic answer is malformed/)
   })
 })
 

@@ -25,7 +25,7 @@ import {
   buildScenesRequest,
 } from '../dossier'
 import { buildCriticRequest } from '../critic'
-import { buildGraphicRequest, buildGraphicReviewRequest } from '../graphics'
+import { buildGraphicRequest } from '../graphics'
 import type { GraphicDesignInput } from '../graphics'
 import { buildDescriptionRequest, buildTitlesRequest } from '../metadata'
 import { buildRebriefRequest } from '../rebrief'
@@ -1101,28 +1101,6 @@ const graphicsCases: LiftCase[] = [
       graphicInput(bible, {
         current: { title: 'The fall', source: 'function Graphic(props) {\n  return null\n}' },
       }),
-    ),
-  ),
-  // The review (decision 389): a redesign's steer kept, its old design and
-  // any refusal dropped, the frames on the last message.
-  liftAware('graphics-review', (bible) =>
-    buildGraphicReviewRequest(
-      graphicInput(bible, {
-        current: { title: 'The fall', source: 'function Graphic() {\n  return null\n}', motion: 1 },
-        rejection: 'an earlier refusal',
-        guidance: 'Slower, and bigger type.',
-      }),
-      {
-        concept: 'the floor gives way',
-        storyboard: ['0.0 s the baseline draws', '2.0 s "2019": the first point lands'],
-        title: 'The fall',
-        facts: [{ text: '2022', claim: 1 }],
-        source: 'function Graphic(props) {\n  return null\n}',
-      },
-      [
-        { label: '16:9 at 0.9 s', image: { mimeType: 'image/jpeg', data: 'AAAA' } },
-        { label: '9:16 at 5.9 s', image: { mimeType: 'image/jpeg', data: 'BBBB' } },
-      ],
     ),
   ),
   // The critic (spec 2026-11-04, section 10.4): the identity's head, the

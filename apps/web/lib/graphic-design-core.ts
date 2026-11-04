@@ -8,16 +8,19 @@ import {
 } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import {
+  buildCriticRequest,
   buildGraphicRequest,
-  buildGraphicReviewRequest,
   estimatedWords,
   exemplarFor,
+  parseCriticReport,
   parseGraphicCode,
-  parseGraphicReview,
   techniqueFor,
   wordsInSlot,
+  type CriticPlan,
+  type CriticReference,
   type GraphicDesignInput,
   type LLMTaskRequest,
+  type MsgImage,
   type ReviewFrame,
   type ScriptClaim,
 } from '@boom-busters/providers'
@@ -29,6 +32,7 @@ import {
 } from '@boom-busters/schemas'
 import type {
   BibleInUse,
+  CriticReport,
   MotionIdentity,
   ChartBrief,
   DesignableBrief,
@@ -41,12 +45,14 @@ import { NonRetriableError } from 'inngest'
 import { callForAnswer, type AnswerComplete } from '@/lib/answer'
 import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
 import {
+  denseMoments,
   FramesUnavailable,
   INSPECT_MAX_MS,
   type FrameShot,
   type FramesResult,
   type GraphicFrames,
 } from '@/lib/graphic-code/frames'
+import { motionMetrics } from '@/lib/graphic-code/motion-metrics'
 import { ensureGraphicCompiler } from '@/lib/graphic-code/compile'
 import { ensureDryRunRuntime } from '@/lib/graphic-code/dry-run'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
@@ -300,7 +306,7 @@ function inspector(
   let framesDown = !options.frames
   return async (
     code: GraphicCode,
-    mode: { shots: boolean; measure: boolean },
+    mode: { shots: boolean; measure: boolean; dense?: readonly number[]; sheets?: boolean },
   ): Promise<FramesResult | null> => {
     if (framesDown || !options.frames) return null
     const left = deadline - Date.now() - FRAMES_MARGIN_MS
@@ -409,20 +415,42 @@ export async function designGraphicWith(
 export type GraphicReviewResult =
   { outcome: 'kept' | 'revised'; code: GraphicCode } | { outcome: 'skipped'; reason: string }
 
+export type { CriticReference }
+
+/** The fix call starts only with this much of the deadline left: a designer's answer takes a minute or more. */
+const FIX_MIN_MS = 60_000
+
+/** The producer's steer for the fix: the redesign's own steer first, then the critic's fixes in order. */
+export function criticSteer(fixes: readonly string[], guidance?: string): string {
+  const listed = fixes.map((fix, index) => `${index + 1}. ${fix}`).join(' ')
+  const critic = `The critic's fixes, in order: ${listed}`
+  return guidance ? `${guidance}\n${critic}` : critic
+}
+
 /**
- * The review (decision 389), in a step of its own after the design is
- * stored: the design photographed in the browser at the moments a viewer
- * reads it, then one call shown the frames. A keep, or a revision that fails
- * any check (the layout included), keeps the design, marked `kept`; a
- * revision that passes every check replaces it, marked `revised`. Nothing
- * here can lose a stored design: no browser, a failed call, a budget stop or
- * the clock leave it as it was, and the reason is logged and returned.
+ * The review (decision 389), a critic since spec 2026-11-04 section 10.4,
+ * in a step of its own after the design is stored: the design photographed
+ * in the browser at the moments a viewer reads it and through its moves,
+ * its motion measured, then one call to the critic on its own route, shown
+ * the plan, the numbers, the findings, the channel's look references and
+ * the pictures. A keep stores the report; a report with fixes is applied by
+ * one designer call with the fixes as the producer's steer, checked as any
+ * design is (the layout included), and replaces the design only if it
+ * passes, marked `revised`. Nothing here can lose a stored design: no
+ * browser, a failed call, a malformed report, a budget stop or the clock
+ * leave it as it was, and the reason is logged and returned.
  */
 export async function reviewGraphicWith(
   complete: GraphicCompleteFn,
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { bible: BibleInUse; motion?: MotionIdentity; guidance?: string } & FramesOptions,
+  options: {
+    bible: BibleInUse
+    motion?: MotionIdentity
+    guidance?: string
+    /** The channel's look references the critic is shown, at most two, loaded by the app. */
+    references?: readonly CriticReference[]
+  } & FramesOptions,
 ): Promise<GraphicReviewResult> {
   const skipped = (reason: string): GraphicReviewResult => {
     options.log?.(`review skipped: ${reason}`)
@@ -436,46 +464,92 @@ export async function reviewGraphicWith(
   } catch (error) {
     return skipped(error instanceof Error ? error.message : String(error))
   }
+  const motion = options.motion ?? DEFAULT_MOTION_IDENTITY
   const { base, checkSlot } = designInput(context, slot, options)
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
   const inspect = inspector(context, slot, checkSlot, options, deadline)
+  const image = (data: string): MsgImage => ({ mimeType: 'image/jpeg', data })
 
   try {
     // Photographed only: a design stored before the layout check is still
-    // shown its frames, and the review is where it gets fixed.
-    const photographed = await inspect(code, { shots: true, measure: false })
+    // shown its frames, and the review is where it gets fixed. The dense set
+    // and the sheets are best effort; the rest shots are what the critic needs.
+    const photographed = await inspect(code, {
+      shots: true,
+      measure: false,
+      dense: denseMoments(slot.durationMs),
+      sheets: true,
+    })
     if (!photographed || photographed.shots.length === 0) return skipped('no frames to show')
+    const metrics = await motionMetrics(photographed.dense, slot.durationMs, motion.stillMaxMs)
     const frames: ReviewFrame[] = photographed.shots.map((shot) => ({
       label: frameLabel(shot),
-      image: { mimeType: 'image/jpeg', data: shot.jpeg },
+      image: image(shot.jpeg),
     }))
-    const shown: PlannedGraphicCode = {
+    const plan: CriticPlan = {
       ...(code.concept ? { concept: code.concept } : {}),
       ...(code.storyboard ? { storyboard: code.storyboard } : {}),
       title: code.title,
       facts: plannedFacts(code, context),
-      source: code.source,
+      ...(code.mechanisms ? { mechanisms: code.mechanisms } : {}),
     }
-    const remaining = deadline - Date.now()
+    let remaining = deadline - Date.now()
     if (remaining < MIN_CALL_MS) return skipped('no time left for the call')
-    const reply = await complete(buildGraphicReviewRequest(base, shown, frames), {
-      signal: AbortSignal.timeout(remaining),
-      purpose: 'review',
-    })
-    const verdict = parseGraphicReview(reply.text)
-    const kept = (why: string): GraphicReviewResult => {
-      options.log?.(`review kept the design: ${why}`)
+    const reply = await complete(
+      buildCriticRequest({
+        motion,
+        plan,
+        slot: { durationMs: slot.durationMs, intent: base.intent, words: base.words },
+        metrics,
+        findings: photographed.findings,
+        sheets: {
+          ...(photographed.sheets.landscape
+            ? { landscape: image(photographed.sheets.landscape) }
+            : {}),
+          ...(photographed.sheets.portrait
+            ? { portrait: image(photographed.sheets.portrait) }
+            : {}),
+        },
+        frames,
+        references: options.references ?? [],
+      }),
+      { signal: AbortSignal.timeout(remaining), purpose: 'critic' },
+    )
+    let report: CriticReport
+    try {
+      report = parseCriticReport(reply.text)
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error
+      options.log?.(`review kept the design: the critic's report was malformed: ${error.message}`)
       return { outcome: 'kept', code: { ...code, review: 'kept' } }
     }
-    if (verdict.keep) return kept('the designer kept it')
-    const checked = graphicCodeIssue(verdict.design, context, checkSlot, {
-      motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
-    })
-    if ('issue' in checked) return kept(`the revision was refused: ${checked.issue}`)
+    const kept = (why: string): GraphicReviewResult => {
+      options.log?.(`review kept the design: ${why}`)
+      return { outcome: 'kept', code: { ...code, review: 'kept', critique: report } }
+    }
+    if (report.keep || report.fixes.length === 0) return kept('the critic kept it')
+    remaining = deadline - Date.now()
+    if (remaining < FIX_MIN_MS) return kept('no time left for the fix')
+    const fixReply = await complete(
+      buildGraphicRequest({
+        ...base,
+        current: currentDesign(code),
+        guidance: criticSteer(report.fixes, options.guidance),
+      }),
+      { signal: AbortSignal.timeout(remaining), purpose: 'fix' },
+    )
+    let checked: ReturnType<typeof graphicCodeIssue>
+    try {
+      checked = graphicCodeIssue(parseGraphicCode(fixReply.text), context, checkSlot, { motion })
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error
+      return kept(`the fix was refused: ${error.message}`)
+    }
+    if ('issue' in checked) return kept(`the fix was refused: ${checked.issue}`)
     const inspected = await inspect(checked.code, { shots: false, measure: true })
-    if (inspected?.layoutIssue) return kept(`the revision was refused: ${inspected.layoutIssue}`)
+    if (inspected?.layoutIssue) return kept(`the fix was refused: ${inspected.layoutIssue}`)
     options.log?.('review revised the design')
-    return { outcome: 'revised', code: { ...checked.code, review: 'revised' } }
+    return { outcome: 'revised', code: { ...checked.code, review: 'revised', critique: report } }
   } catch (error) {
     return skipped(`the review failed: ${error instanceof Error ? error.message : String(error)}`)
   }
