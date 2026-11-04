@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_MOTION_IDENTITY,
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_IN_USE,
@@ -244,6 +245,54 @@ describe('the designer prompt (decision 295)', () => {
     expect(rules).toContain(
       'Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one whole layout to another, decorative gradients, drop shadows for depth.',
     )
+  })
+
+  it('fills the craft from the channel identity and keeps the house words at the defaults (spec 2026-11-04)', () => {
+    expect(system).toContain('about every 1.5 seconds')
+    expect(system).toContain('more than 6 seconds is refused')
+    expect(system).toContain('Never: glows, particle bursts')
+    expect(system).not.toContain("This channel's motion:")
+    const sleepy = buildGraphicRequest(
+      input({
+        motion: {
+          ...DEFAULT_MOTION_IDENTITY,
+          changeEveryMs: 6000,
+          stillMaxMs: 9000,
+          allow: ['glows'],
+          threeD: 'never',
+          blurFollowsSpeed: false,
+          chartsConventional: false,
+          cameraRule: 'never moves',
+          ms: { enter: 900 },
+          styleGuideMd: 'Slow and dark.',
+        },
+      }),
+    ).system
+    expect(sleepy).toContain('about every 6 seconds')
+    expect(sleepy).toContain('more than 9 seconds is refused')
+    expect(sleepy).not.toMatch(/Never:.*glows/)
+    expect(sleepy).toContain('Never: particle bursts')
+    expect(sleepy).toContain('No 3D')
+    expect(sleepy).not.toContain('Blur follows speed')
+    expect(sleepy).not.toContain('Charts stay honest and conventional')
+    expect(sleepy).toContain('and the camera never moves.')
+    expect(sleepy).toContain("This channel's motion:")
+    expect(sleepy).toContain('Slow and dark.')
+    expect(sleepy).toContain('entrances take 900 ms')
+    expect(sleepy).not.toContain('—')
+    const bare = buildGraphicRequest(
+      input({ motion: { ...DEFAULT_MOTION_IDENTITY, never: [], allow: [] } }),
+    ).system
+    expect(bare).not.toContain('Never:')
+  })
+
+  it('says nothing about the tokens to a design stored with motion 1 (spec review focus 4)', () => {
+    const request = buildGraphicRequest(
+      input({
+        current: { title: 'Old', source: 'function Graphic() { return null }', motion: 1 },
+      }),
+    )
+    expect(request.messages[2]!.content).not.toContain('written before the motion tokens')
   })
 
   it('teaches the craft, and carries none of the old grid', () => {

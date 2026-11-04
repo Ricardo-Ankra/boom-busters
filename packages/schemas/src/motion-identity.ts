@@ -26,8 +26,9 @@ export const HOUSE_NEVER: readonly string[] = [
   'drop shadows for depth',
 ]
 
+/** Completes the sentence "Something changes about every X, and the camera ...". */
 export const HOUSE_CAMERA_RULE =
-  'a slow push over the whole slot, 2 to 4% on motion.ease.move, anchored so nothing leaves the safe area'
+  "never stops: a slow push over the whole slot (a scale of 2 to 4% on motion.ease.move), anchored at the content's edge or centre so nothing is pushed out of the safe area"
 
 const Phrase = z.string().trim().min(1).max(60)
 const PhraseList = z.array(Phrase).max(16)

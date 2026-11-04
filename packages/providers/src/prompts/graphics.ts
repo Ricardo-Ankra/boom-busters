@@ -1,11 +1,12 @@
 import {
+  DEFAULT_MOTION_IDENTITY,
   figureDigitGroups,
   GRAPHIC_CONCEPT_MAX,
   GRAPHIC_SOURCE_MAX,
   GRAPHIC_STORYBOARD_LINE_MAX,
   GRAPHIC_STORYBOARD_MAX,
-  GRAPHIC_STILL_MAX_MS,
   GRAPHIC_TITLE_MAX,
+  motionNeverList,
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -13,6 +14,7 @@ import type {
   BibleInUse,
   ChannelBible,
   ChartSeries,
+  MotionIdentity,
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
@@ -84,10 +86,97 @@ export interface GraphicDesignInput {
   exemplar?: Exemplar
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
+  /** The channel's motion identity (spec 2026-11-04); the house identity when absent. */
+  motion?: MotionIdentity
+}
+
+/** A millisecond count as the prompt says it: "1.5 seconds", "6 seconds", "900 ms". */
+const secondsWord = (ms: number) => {
+  const s = ms / 1000
+  return `${Number.isInteger(s) ? s : s.toFixed(1)} seconds`
+}
+
+/**
+ * The craft lines a channel sets (spec 2026-11-04, section 8.2): each is a
+ * function of the identity, and at the house identity reads as it always did.
+ */
+const CRAFT_THREE_D: Record<MotionIdentity['threeD'], string> = {
+  never: '- No 3D: no perspective, rotateX or rotateY; depth comes from scale and order.',
+  whenMeaningful:
+    '- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a\n  card, never a spin for its own sake.',
+  welcome:
+    '- 3D is welcome where it reads: perspective with rotateX or rotateY for a drum, a turn, a\n  card or a reveal, never a spin for its own sake.',
+}
+
+function craftFromIdentity(motion: MotionIdentity): string {
+  const never = motionNeverList(motion)
+  return [
+    `- Something changes about every ${secondsWord(motion.changeEveryMs)}, and the camera ${motion.cameraRule}.`,
+    motion.blurFollowsSpeed
+      ? '- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far\n  it moved since the frame before (compute its place at frame - 1), and none at rest.'
+      : null,
+    CRAFT_THREE_D[motion.threeD],
+    motion.chartsConventional
+      ? '- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring\n  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to\n  the next. The invention goes into the type, the framing and the hand-offs, never the data\n  marks.'
+      : null,
+    never.length > 0 ? `- Never: ${never.join(', ')}.` : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n')
+}
+
+const EASE_WORDS: Record<MotionIdentity['signatureEase'], string> = {
+  soft: 'soft (arrivals settle long, moves ease both ways)',
+  crisp: 'crisp (arrivals snap in, moves ease hard both ways)',
+  gentle: 'gentle (sine curves, nothing abrupt)',
+}
+const OVERSHOOT_WORDS: Record<MotionIdentity['overshoot'], string> = {
+  none: 'nothing passes its mark: the hero spring settles without overshoot',
+  hair: 'only the one hero spring of a beat passes its mark, and snap by a hair on small things',
+  welcome: 'overshoot is welcome: the hero and snap springs are loose',
+}
+
+/**
+ * The channel's block after the craft: its constants in words and its style
+ * guide. Empty at the house identity, so the house prompt reads as it did.
+ */
+function channelMotion(motion: MotionIdentity): string {
+  const lines: string[] = []
+  if (motion.signatureEase !== DEFAULT_MOTION_IDENTITY.signatureEase) {
+    lines.push(`- The curves are ${EASE_WORDS[motion.signatureEase]}.`)
+  }
+  if (motion.entrance !== DEFAULT_MOTION_IDENTITY.entrance) {
+    lines.push(
+      `- Things arrive by ${motion.entrance}: motion.px.rise and motion.scale.enter are set for it.`,
+    )
+  }
+  if (motion.overshoot !== DEFAULT_MOTION_IDENTITY.overshoot) {
+    lines.push(`- ${OVERSHOOT_WORDS[motion.overshoot]}.`)
+  }
+  const lengths = Object.entries(motion.ms).filter(([, value]) => value !== undefined)
+  if (lengths.length > 0) {
+    const named: Record<string, string> = {
+      enter: 'entrances take',
+      exit: 'exits take',
+      reveal: 'wipes take',
+      draw: 'bars and lines draw on over',
+      count: 'counts run',
+      move: 'moves take',
+      gap: 'the gap between an exit and its replacement is',
+    }
+    lines.push(
+      `- Lengths: ${lengths.map(([key, value]) => `${named[key]} ${value} ms`).join('; ')}; motion.ms holds them.`,
+    )
+  }
+  const guide = motion.styleGuideMd.trim()
+  if (guide.length > 0) lines.push(guide)
+  if (lines.length === 0) return ''
+  return `\n\nThis channel's motion:\n${lines.join('\n')}`
 }
 
 const systemTemplate = (
   bible: ChannelBible,
+  motion: MotionIdentity,
 ): string => `You write ONE motion graphic for a documentary about [[example:direction-premise]], as a React
 component. The narration is recorded; your graphic plays over it in the 16:9 film and in
 the 9:16 Short, and it lands the beat the narrator is speaking.
@@ -201,8 +290,8 @@ The rules. Each one is checked, and a graphic that breaks one is refused:
    no randomness, no state, nothing that runs after the render.
 4. Timing to the narration. Each new thing said gets its own change on screen, landing as
    it is said: a figure as its number is spoken, a name as it is named, a bar as its year
-   is read. Dead air is the failure to avoid: a graphic in which nothing changes for more
-   than ${GRAPHIC_STILL_MAX_MS / 1000} seconds is refused.
+   is read. Dead air is the failure to avoid: a graphic in which nothing changes for
+   more than ${secondsWord(motion.stillMaxMs)} is refused.
 5. Both frames. Lay out from useVideoConfig()'s width and height: the 16:9 frame and the
    9:16 frame are both rendered and both checked.
 6. Safe area. Everything sits inside props.safeArea at every frame, entrances included.
@@ -230,19 +319,7 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
 - One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
-- Something changes about every 1.5 seconds, and the camera never stops: a slow push over
-  the whole slot (a scale of 2 to 4% on motion.ease.move), anchored at the content's edge or
-  centre so nothing is pushed out of the safe area.
-- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far
-  it moved since the frame before (compute its place at frame - 1), and none at rest.
-- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a
-  card, never a spin for its own sake.
-- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring
-  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to
-  the next. The invention goes into the type, the framing and the hand-offs, never the data
-  marks.
-- Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one
-  whole layout to another, decorative gradients, drop shadows for depth.
+${craftFromIdentity(motion)}
 - Entrances, exits and moves come from the tokens, in the house motion below. Nothing
   passes its mark except the one hero spring of a beat and snap's hair of overshoot on
   small things; nothing spins.
@@ -255,7 +332,7 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
 - A logo earns its place when the ${literalBibleText(noun(bible, 'singular'))} or person is the subject, not because they
   are mentioned.
 - A chart draws every point of props.data, labels each value as its claim states it, and
-  says its takeaway.
+  says its takeaway.${channelMotion(motion)}
 
 The house motion. The scan holds the curve and the spring config: every interpolate names
 a motion.ease, every spring a motion.spring. Which curve, which preset, hero once per beat
@@ -314,7 +391,10 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 
   return {
     task: 'graphics',
-    system: fillSlots(systemTemplate(input.bible.bible), input.bible),
+    system: fillSlots(
+      systemTemplate(input.bible.bible, input.motion ?? DEFAULT_MOTION_IDENTITY),
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: film },
       { role: 'user', content: slot },
