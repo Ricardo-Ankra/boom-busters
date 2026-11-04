@@ -1,3 +1,4 @@
+import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import { Easing } from 'remotion'
 import { describe, expect, it } from 'vitest'
 import {
@@ -7,6 +8,8 @@ import {
   MOTION_SPRING_NAMES,
   MOTION_VERSION,
   motionFrames,
+  motionNumbers,
+  motionPreamble,
   motionStagger,
   motionTokens,
 } from './motion-tokens'
@@ -32,7 +35,7 @@ function objectsIn(value: unknown, found: object[] = []): object[] {
 
 describe('motion tokens (decision 301)', () => {
   it('declares in the preamble the numbers the typed object holds', () => {
-    expect(MOTION_VERSION).toBe(1)
+    expect(MOTION_VERSION).toBe(2)
     expect(evaluated.ms).toEqual(typed.ms)
     expect(evaluated.ms).toEqual({
       micro: 120,
@@ -122,5 +125,74 @@ describe('motion tokens (decision 301)', () => {
       .filter((line) => !line.trimStart().startsWith('//'))
       .join('\n')
     expect(code).not.toMatch(/\b(props|React|window|require|import)\b/)
+  })
+
+  describe('built from a channel identity (spec 2026-11-04, section 8.1)', () => {
+    const evaluate = (preamble: string) =>
+      new Function(
+        'Remotion',
+        `"use strict";
+${preamble}
+return motion`,
+      )({ Easing }) as MotionTokens
+
+    it('builds the house preamble from the house identity, at version 2', () => {
+      expect(motionPreamble()).toBe(MOTION_PREAMBLE)
+      expect(motionPreamble(motionNumbers(DEFAULT_MOTION_IDENTITY))).toBe(MOTION_PREAMBLE)
+      expect(MOTION_PREAMBLE).toContain('version 2')
+    })
+
+    it('writes a channel overshoot of none as critically damped hero and snap, and welcome as looser', () => {
+      const none = motionNumbers({ ...DEFAULT_MOTION_IDENTITY, overshoot: 'none' })
+      expect(none.spring.hero).toEqual({ damping: 200 })
+      expect(none.spring.snap).toEqual({ damping: 200 })
+      const welcome = motionNumbers({ ...DEFAULT_MOTION_IDENTITY, overshoot: 'welcome' })
+      expect(welcome.spring.hero).toEqual({ damping: 10, stiffness: 120 })
+      expect(welcome.spring.snap).toEqual({ damping: 14, stiffness: 200 })
+      expect(evaluate(motionPreamble(none)).spring).toEqual(none.spring)
+    })
+
+    it('overlays a channel length and an entrance of scale', () => {
+      const numbers = motionNumbers({
+        ...DEFAULT_MOTION_IDENTITY,
+        ms: { enter: 900 },
+        entrance: 'scale',
+      })
+      expect(numbers.ms.enter).toBe(900)
+      expect(numbers.ms.exit).toBe(300)
+      expect(numbers.px.rise).toBe(0)
+      expect(numbers.scale.enter).toBe(0.9)
+      const fade = motionNumbers({ ...DEFAULT_MOTION_IDENTITY, entrance: 'fade' })
+      expect(fade.px.rise).toBe(0)
+      expect(fade.scale.enter).toBe(0.96)
+      const built = evaluate(motionPreamble(numbers))
+      expect(built.ms).toEqual(numbers.ms)
+      expect(built.px).toEqual(numbers.px)
+      expect(built.scale).toEqual(numbers.scale)
+    })
+
+    it('declares the same curves in both forms for every curve set, and only enter and move change', () => {
+      for (const signatureEase of ['soft', 'crisp', 'gentle'] as const) {
+        const numbers = motionNumbers({ ...DEFAULT_MOTION_IDENTITY, signatureEase })
+        const built = evaluate(motionPreamble(numbers))
+        const own = motionTokens(Easing, numbers)
+        for (const name of MOTION_EASE_NAMES) {
+          expect(SAMPLES.map(built.ease[name])).toEqual(SAMPLES.map(own.ease[name]))
+        }
+        expect(own.ease.enter(0)).toBeCloseTo(0, 2)
+        expect(own.ease.enter(1)).toBeCloseTo(1, 2)
+        expect(own.ease.enter(0.5)).toBeGreaterThan(0.6)
+        expect(own.ease.move(0.5)).toBeCloseTo(0.5, 5)
+        for (const name of ['exit', 'emphasis', 'linear'] as const) {
+          expect(SAMPLES.map(own.ease[name])).toEqual(SAMPLES.map(typed.ease[name]))
+        }
+      }
+      expect(
+        motionTokens(
+          Easing,
+          motionNumbers({ ...DEFAULT_MOTION_IDENTITY, signatureEase: 'crisp' }),
+        ).ease.enter(0.3),
+      ).not.toBeCloseTo(typed.ease.enter(0.3), 3)
+    })
   })
 })
