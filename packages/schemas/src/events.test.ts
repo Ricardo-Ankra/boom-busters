@@ -294,3 +294,11 @@ describe('playbook Shorts events', () => {
     ).toThrow()
   })
 })
+
+describe('motion/reference.ingested (spec 2026-11-04, section 7.2)', () => {
+  it('registers the reference ingest event', () => {
+    const data = { channelId: fixtureId('channel', 1), referenceId: newId() }
+    expect(EVENT_SCHEMAS['motion/reference.ingested'].parse(data)).toEqual(data)
+    expect(EVENT_NAMES).toContain('motion/reference.ingested')
+  })
+})
