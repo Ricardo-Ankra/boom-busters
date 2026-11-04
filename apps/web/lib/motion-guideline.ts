@@ -20,7 +20,7 @@ export const MOTION_GUIDELINE_FULL: readonly { heading: string; lines: readonly 
     lines: [
       'Four to eight references per channel; twelve at most. Each teaches one thing, and is tagged with it.',
       'Mechanism: one move. A word that splits open to show a figure. A numeral that stays while the background changes. Bars rising as years are spoken.',
-      'Look: palette, type, texture, the weight and spacing of letters. Stills are good for look and useless for motion.',
+      'Look: palette, type, texture, the weight and spacing of letters. Stills are good for look and useless for motion. The critic that reviews each graphic is shown the first two look references, so put the two that matter most first.',
       'Pacing: how long things hold, how fast they leave, how much is on screen at once.',
       'Have at least one of each. Up to two references may be negatives: a clip that shows what the channel must not do, with the avoid line saying what.',
     ],

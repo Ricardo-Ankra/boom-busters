@@ -4666,8 +4666,9 @@ Final review and fixes:
 - [x] Plan 2: references uploaded and marked in the browser, read into
       readings, the Motion tab's reference list, "Draft motion identity"
       (branch `motion-references`, decision 396).
-- [ ] Plan 3: measured motion (frozen time, simultaneity, contrast), the layout
-      check through transitions, the critic that replaces the self-review.
+- [x] Plan 3: measured motion (frozen time, simultaneity, contrast), the layout
+      check through transitions, the critic that replaces the self-review
+      (branch `motion-critic`, decision 397).
 - [ ] Plan 4: derivation per channel through the critic loop, refine by steer
       with the side by side, versions, copy from another channel, the
       preference ledger.
@@ -9887,3 +9888,50 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      frame (now the frames come first, a full pack is refused before any
      bytes travel, and Add reference is disabled at twelve). Deferred minors
      are in the ledger and the hand-over.
+
+397. **Measured motion and the critic review** (2026-11-04, owner: "Native" on
+     plan 3 of the channel motion references design, branch `motion-critic`).
+     What shipped. The per-shot review is a critic on a route of its own
+     (`critic`, default `claude-sonnet-5`: the owner's ruling for a cheaper
+     judge, spec 12.2), never the designer judging itself: the self-review
+     path, its prompt, its parser and its lift case are gone (spec 12.1).
+     `frames.ts` photographs a dense set through the moves (evenly across the
+     slot, at most 24 per orientation), measures the layout in flight and the
+     settled text's contrast (under 3:1, or 4.5:1 for type under 24 px,
+     against the nearest painted ancestor or the brand background), and lays
+     each orientation's dense shots on a contact sheet in the same page;
+     faults in flight and contrast are findings for the critic, never
+     refusals, so every design that passed before still passes.
+     `motion-metrics.ts` decodes the landscape dense shots with sharp at
+     160 px greyscale: frozen time and the longest frozen run against the
+     channel's still limit, the share of change inside the busiest 250 ms,
+     the change per shot, the hold after the last change. The critic is
+     shown the identity whole, the mechanisms list, the plan as the designer
+     answered it, the numbers, the findings, the channel's first two look
+     references (a clip's dense sheet, a still's original, each held to
+     1600 px), the two sheets and the rest frames, and answers five scores
+     (engagement, intent, composition, temporal, craft; bar 8), the defects,
+     at most three fixes, which named mechanisms are on the frames, and
+     keep. A keep stores the report on the design as `critique`; fixes go to
+     the designer as the producer's steer in one call, checked as any design
+     is, and replace the design only when they pass (`review: revised`). The
+     board's review line says "Reviewed by the critic" with the five scores
+     behind "Show review". Settings, Models has a Motion critic route with
+     the review switch under it. `MECHANISMS`, sixteen moves with a line
+     each, live in the schemas package beside the technique keys: every
+     house exemplar names its own in the manifest, the designer may name up
+     to six, and the slot message says what the exemplar uses.
+     Decisions made where the spec left room: sharp decodes the metrics
+     (spec 14 left the decoder to the builder); the dense set and the sheets
+     are best effort under a soft clock, so a slow host cuts them short with
+     a finding rather than skipping the review; the per-shot metrics are not
+     stored (plan 4 stores them on exemplar versions); the critic's fixed
+     head is its first message, cached as the designer's film message is;
+     mock mode still runs no browser and no review per shot (decision 389),
+     with `mockCriticReport` for the tests and for plan 4; a report the
+     parser refuses keeps the design unmarked and logs why; the fix call
+     starts only with 60 s of the 240 s deadline left; `motion_verdicts`,
+     the pairwise question and the verify round are plan 4's. Cost: a
+     reviewed graphic pays the critic call with up to five images and, on a
+     fix, a second designer call; at most two reference images, each held to
+     1600 px, so the per-shot cost does not grow with the pack.
