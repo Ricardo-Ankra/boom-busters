@@ -54,7 +54,7 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
 })
 
 // A `channel_exemplars` row, as `channelExemplarFor` reads it; null is "no approved version".
-let approvedStub: Partial<Db.ChannelExemplarRow> | null = null
+let approvedStub: Db.ChannelExemplarRow | null = null
 
 // The browser (decision 389): every inspection passes and photographs nothing
 // unless a test hands it answers of its own.
@@ -300,7 +300,7 @@ describe("the channel's exemplar in the per-shot call (spec 2026-11-04, section 
         title: "The channel's own",
         source: 'function Graphic(props) {\n  return "approved"\n}',
       },
-    } as Partial<Db.ChannelExemplarRow>
+    } as unknown as Db.ChannelExemplarRow
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphic(CONTEXT, SLOT)
     expect(result.ok).toBe(true)
@@ -688,8 +688,8 @@ describe('the exemplar handed in, and the photograph for the critic (plan 4)', (
     expect(slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY)).toBe(
       providers.techniqueFor({
         type: 'graphic',
-        intent: SLOT.brief.type === 'graphic' ? SLOT.brief.intent : '',
-        description: SLOT.brief.description,
+        intent: slotIntent(CONTEXT, SLOT.brief).intent,
+        description: SLOT.brief.description ?? '',
         coversText: SLOT.brief.coversText,
         logos: CONTEXT.logos.map((logo) => logo.title),
         techniques: DEFAULT_MOTION_IDENTITY.techniques,
@@ -1128,7 +1128,7 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
         title: "The channel's own",
         source: 'function Graphic(props) {\n  return "approved"\n}',
       },
-    } as Partial<Db.ChannelExemplarRow>
+    } as unknown as Db.ChannelExemplarRow
     const slot = await stored()
     inspect.mockResolvedValueOnce(photographed()).mockResolvedValueOnce(framed({}))
     callLlm
