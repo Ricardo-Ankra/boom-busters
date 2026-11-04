@@ -1,6 +1,7 @@
 'use server'
 
 import { deleteChannelYoutubeConnection, updateChannelSettings } from '@boom-busters/db'
+import { settingsErrorMessage } from '@/lib/settings-error'
 import { SettingsPatchSchema, UlidSchema } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
@@ -45,7 +46,7 @@ export async function saveSettings(channelId: string, patch: unknown): Promise<A
   try {
     await updateChannelSettings(db, channelId, parsed.data)
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Could not save settings' }
+    return { ok: false, error: settingsErrorMessage(error) }
   }
 
   revalidatePath('/c/[slug]', 'layout')

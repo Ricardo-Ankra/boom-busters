@@ -132,6 +132,8 @@ export interface DryRunInput {
   timeoutMs?: number
   /** One frame's limit, `GRAPHIC_FRAME_MAX_MS` by default; tests shorten it. */
   frameMaxMs?: number
+  /** The channel's still limit (spec 2026-11-04, section 8.1); the house `GRAPHIC_STILL_MAX_MS` by default. */
+  stillMaxMs?: number
 }
 
 export interface DryRunResult {
@@ -311,10 +313,14 @@ function longestUnchanged(samples: readonly Sample[]): { fromMs: number; toMs: n
 }
 
 /** What the samples of one frame size show wrong: dead air, an empty ending, a crop. */
-function markupIssue(samples: readonly Sample[], size: FrameSize): string | null {
+function markupIssue(
+  samples: readonly Sample[],
+  size: FrameSize,
+  stillMaxMs: number,
+): string | null {
   const where = size.orientation === 'portrait' ? ' in portrait' : ''
   const still = longestUnchanged(samples)
-  if (still.toMs - still.fromMs > GRAPHIC_STILL_MAX_MS) {
+  if (still.toMs - still.fromMs > stillMaxMs) {
     return `nothing changes between ${seconds(still.fromMs)} and ${seconds(still.toMs)}${where}`
   }
   const last = samples.at(-1)
@@ -338,7 +344,10 @@ function runFrameSize(
 ): { issue: string | null; samples: Sample[] } {
   const rendered = renderSamples(input, size, loaded, sampleTimes(input.durationMs))
   if (rendered.issue !== null) return rendered
-  return { issue: markupIssue(rendered.samples, size), samples: rendered.samples }
+  return {
+    issue: markupIssue(rendered.samples, size, input.stillMaxMs ?? GRAPHIC_STILL_MAX_MS),
+    samples: rendered.samples,
+  }
 }
 
 /**

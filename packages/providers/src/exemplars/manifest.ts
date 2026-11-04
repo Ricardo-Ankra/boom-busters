@@ -1,4 +1,4 @@
-import type { ChartKind, ChartSeries } from '@boom-busters/schemas'
+import type { ChartKind, ChartSeries, Technique } from '@boom-busters/schemas'
 
 /**
  * The exemplar corpus (decision 305): one hand-written entry per technique
@@ -9,27 +9,10 @@ import type { ChartKind, ChartSeries } from '@boom-busters/schemas'
  * `designs/`; `exemplarFor` joins the two.
  */
 
-export const TECHNIQUES = [
-  'stat-counter',
-  'kpi-counter',
-  'bar-chart',
-  'line-chart',
-  'racing-chart',
-  'comparison-chart',
-  'donut-chart',
-  'progress-bars',
-  'progress-steps',
-  'kinetic-word-stack',
-  'typewriter',
-  'text-highlight',
-  'quote-card',
-  'animated-list',
-  'lower-third',
-  'chapter-title',
-  'logo-reveal',
-  'split-screen',
-] as const
-export type Technique = (typeof TECHNIQUES)[number]
+// The technique keys live in the schemas package since spec 2026-11-04, so a
+// channel's settings can name the ones it uses; re-exported here unchanged.
+export { TECHNIQUES } from '@boom-busters/schemas'
+export type { Technique } from '@boom-busters/schemas'
 
 export interface ExemplarSlot {
   durationMs: number

@@ -4653,6 +4653,24 @@ Final review and fixes:
   set from a real take.
 - Any live VidIQ, model, voice or render call. Every test uses mock providers.
 
+## Channel motion references (2026-11-04)
+
+> Per-channel motion: references the owner uploads, a motion identity in the
+> channel's settings, and exemplars derived per channel through a critic loop.
+> Design: `docs/superpowers/specs/2026-11-04-channel-motion-references-design.md`;
+> four plans, in order. Plan 1, branch `motion-identity`, decision 395.
+
+- [x] Plan 1: the motion identity in settings, tokens and checks built from it,
+      the channel-agnostic designer prompt, techniques per channel, the Motion
+      tab, the reference guideline (`docs/motion-references.md`).
+- [ ] Plan 2: references uploaded and marked in the browser, read into
+      readings, the Motion tab's reference list, "Draft motion identity".
+- [ ] Plan 3: measured motion (frozen time, simultaneity, contrast), the layout
+      check through transitions, the critic that replaces the self-review.
+- [ ] Plan 4: derivation per channel through the critic loop, refine by steer
+      with the side by side, versions, copy from another channel, the
+      preference ledger.
+
 ### Next project
 
 - [ ] **Long renders in parts**, to reach 180 minutes: the master rendered as
@@ -9757,3 +9775,51 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      would cost about $11. A bible may hold formats up to 180 minutes; the
      start control offers at most 30 and says longer videos are not yet
      supported.
+
+395. **The channel motion identity** (2026-11-04, owner: "Happy proceed" on
+     the design, "Native" on the plan; plan 1 of the channel motion references
+     design). Every taste value the designer's prompt carried for one channel
+     (no glows, charts conventional, a change every 1.5 s, the still limit,
+     the camera push, blur that follows speed, 3D when it carries meaning)
+     moved into `settings.motion`, a `MotionIdentitySchema` with the house
+     values as defaults, so a settings row saved before it reads unchanged and
+     Boom & Busters designs as it did: the house lift fixtures changed in line
+     wrapping only. The identity's first fields change the numbers a design is
+     checked with: `signatureEase` (soft, crisp, gentle) picks the curve set
+     `motion.ease.enter` and `move` take; `ms` overlays the lengths;
+     `overshoot` (none, hair, welcome) sets the hero and snap springs;
+     `entrance` sets `motion.px.rise` and `motion.scale.enter`. The tokens
+     preamble is built from them (`motionNumbers`, `motionPreamble`,
+     `MOTION_VERSION` 2), so a stored design carries the values it was checked
+     with and a design stored at version 1 plays unchanged. The rest are words
+     in the prompt: the cadence, the still limit (now the channel's, read by
+     the dry run), the camera rule as the clause after "and the camera", the
+     never and allow lists, the style guide, 3D and blur, charts conventional.
+     `techniqueFor` skips a technique the channel switched off and takes the
+     next rule; the word stack and the bar chart are last resorts that cannot
+     be switched off; a steer naming a technique still wins. The Motion tab
+     (between Brand Kit and Voice) edits every field as a `motion` patch and
+     shows the catalogue as a checklist. `TECHNIQUES` moved to the schemas
+     package so settings can name them. The guideline on reference material is
+     `docs/motion-references.md`.
+     Decisions made where the spec left room: the identity sits in
+     `settings.motion` beside the brand kit, not in the brand tokens, so the
+     timeline snapshot and the broker's schema do not change (no redeploy);
+     the core's `motion` option is optional and defaults to the house identity
+     for the scripts and direct callers; `mergeSettings` gained a `motion`
+     line (the plan missed that the merge enumerates sections); the camera
+     rule completes a sentence so a channel can write "never moves"; the test
+     database needed the channel-formats migration before the db suite could
+     run (not this change).
+     Final review (fresh reviewer, Opus): the cadence and still-limit fields
+     saved on every keystroke and could not be typed into (now typed, saved on
+     blur); a cross-field refusal reached the owner as Zod's JSON (now "path:
+     message" through `settingsErrorMessage`); the prompt's sandbox section
+     still stated the house lengths, rise and scale-in and the house overshoot
+     for a channel with its own (now rendered from `motionNumbers`, which
+     moved to the schemas package with the token constants, and from the
+     overshoot); and the allow list could never hold a phrase the never list
+     had, so it did nothing (ruling: a phrase may sit in both, allow wins and
+     is said to the designer as "Allowed on this channel"; spec 8.1's
+     both-lists rule is dropped). Deferred minors are in the ledger and the
+     hand-over.

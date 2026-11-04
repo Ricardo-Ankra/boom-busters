@@ -25,6 +25,7 @@ import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
 import { ExemplarsTab } from './exemplars-tab'
+import { MotionTab, type TechniqueOption } from './motion-tab'
 import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
@@ -67,6 +68,7 @@ export function SettingsForm({
   modelOptions,
   exemplars = [],
   exemplarLogo = null,
+  techniqueOptions = [],
   draft = null,
   versions = [],
   currentVersion,
@@ -101,6 +103,8 @@ export function SettingsForm({
   modelOptions: ModelOptions
   /** The exemplar corpus, compiled on the server (decision 305). */
   exemplars?: ExemplarView[]
+  /** The technique catalogue, for the Motion tab's techniques in use (spec 2026-11-04). */
+  techniqueOptions?: readonly TechniqueOption[]
   /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
   exemplarLogo?: ExemplarLogo | null
   /** The bible's working draft, or null when there is none. */
@@ -215,6 +219,7 @@ export function SettingsForm({
           <TabsTrigger value="bible">Bible</TabsTrigger>
           <TabsTrigger value="models">Models</TabsTrigger>
           <TabsTrigger value="brand-kit">Brand Kit</TabsTrigger>
+          <TabsTrigger value="motion">Motion</TabsTrigger>
           <TabsTrigger value="voice">Voice</TabsTrigger>
           <TabsTrigger value="logos">Logos</TabsTrigger>
           <TabsTrigger value="exemplars">Exemplars</TabsTrigger>
@@ -266,6 +271,18 @@ export function SettingsForm({
           <Lock archived={channel.archived}>
             {' '}
             <BrandKitTab settings={settings} saving={saving} commit={commit} />
+          </Lock>
+        </TabsContent>
+
+        <TabsContent value="motion">
+          <Lock archived={channel.archived}>
+            {' '}
+            <MotionTab
+              settings={settings}
+              saving={saving}
+              commit={commit}
+              techniqueOptions={techniqueOptions}
+            />
           </Lock>
         </TabsContent>
 

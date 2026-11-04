@@ -11,7 +11,7 @@ import type {
   StockBrief,
   StillBrief,
 } from '@boom-busters/schemas'
-import { FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
+import { DEFAULT_MOTION_IDENTITY, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
 import { exemplarFor, exemplars } from '../../exemplars/index'
 import type { LLMTaskRequest } from '../../llm/types'
 import { buildCastIdentityRequest } from '../cast-identity'
@@ -1127,6 +1127,30 @@ const graphicsCases: LiftCase[] = [
   liftAware('graphics-retry-after-refusal', (bible) =>
     buildGraphicRequest(
       graphicInput(bible, { rejection: 'the source used Easing, which the scan refuses' }),
+    ),
+  ),
+  // A channel's motion identity fills the craft (spec 2026-11-04): a slow,
+  // dark channel with no 3D, glows allowed, longer entrances and a style guide.
+  liftAware('graphics-motion-identity', (bible) =>
+    buildGraphicRequest(
+      graphicInput(bible, {
+        logos: [],
+        intentRefs: [],
+        motion: {
+          ...DEFAULT_MOTION_IDENTITY,
+          signatureEase: 'gentle',
+          entrance: 'fade',
+          overshoot: 'none',
+          changeEveryMs: 6000,
+          stillMaxMs: 9000,
+          cameraRule: 'never moves',
+          threeD: 'never',
+          allow: ['glows'],
+          ms: { enter: 900, exit: 600 },
+          styleGuideMd:
+            'Slow and dark. One thing on screen at a time, held long enough to read twice.',
+        },
+      }),
     ),
   ),
   // One case per stored exemplar: the slot message carries the technique's

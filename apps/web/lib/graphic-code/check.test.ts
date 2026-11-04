@@ -6,6 +6,7 @@ import type {
   GraphicCode,
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
+import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import { GRAPHIC_CODE_FIXTURE_SOURCE } from '@boom-busters/providers'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
@@ -111,13 +112,39 @@ describe('graphicCodeIssue (decision 295)', () => {
         version: 1,
         source: planned.source,
         compiled: expect.stringContaining('function Graphic()'),
-        motion: 1,
+        motion: 2,
         title: 'Raised in one round',
         facts: [{ text: '$4bn', claimId: A }],
         words: WORDS,
         durationMs: 6000,
       },
     })
+  })
+
+  it('stores the compiled code with the channel preamble and version 2 (spec 2026-11-04)', () => {
+    const house = graphicCodeIssue(answer(), CONTEXT, slot(GRAPHIC))
+    expect('code' in house && house.code.compiled).toContain(MOTION_PREAMBLE)
+    const result = graphicCodeIssue(answer(), CONTEXT, slot(GRAPHIC), {
+      motion: { ...DEFAULT_MOTION_IDENTITY, ms: { enter: 900 } },
+    })
+    expect('code' in result && result.code.compiled).toContain('"enter":900')
+    expect('code' in result && result.code.compiled).not.toContain(MOTION_PREAMBLE)
+    expect('code' in result && result.code.motion).toBe(2)
+  })
+
+  it('refuses on the channel still limit', () => {
+    const held = answer({
+      source: `function Graphic() {
+  return <Remotion.AbsoluteFill><div>$4bn</div></Remotion.AbsoluteFill>
+}
+`,
+    })
+    expect(graphicCodeIssue(held, CONTEXT, slot(GRAPHIC, 5000))).toHaveProperty('code')
+    expect(
+      graphicCodeIssue(held, CONTEXT, slot(GRAPHIC, 5000), {
+        motion: { ...DEFAULT_MOTION_IDENTITY, changeEveryMs: 500, stillMaxMs: 3000 },
+      }),
+    ).toEqual({ issue: 'nothing changes between 0.0 s and 5.0 s' })
   })
 
   it('refuses a figure that settles on a number no cited claim holds', () => {
@@ -270,7 +297,7 @@ describe('graphicCodeIssue (decision 295)', () => {
     const { code } = result as { code: { compiled: string; motion?: number } }
     expect(code.compiled.startsWith(`${MOTION_PREAMBLE}\n`)).toBe(true)
     expect(code.compiled.slice(MOTION_PREAMBLE.length + 1)).toContain('function Graphic()')
-    expect(code.motion).toBe(1)
+    expect(code.motion).toBe(2)
   })
 
   it('stores the concept and the storyboard with the design, and leaves them out when the answer has none (decision 388)', () => {

@@ -1,11 +1,13 @@
 import {
+  DEFAULT_MOTION_IDENTITY,
   figureDigitGroups,
   GRAPHIC_CONCEPT_MAX,
   GRAPHIC_SOURCE_MAX,
   GRAPHIC_STORYBOARD_LINE_MAX,
   GRAPHIC_STORYBOARD_MAX,
-  GRAPHIC_STILL_MAX_MS,
   GRAPHIC_TITLE_MAX,
+  motionNeverList,
+  motionNumbers,
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -13,6 +15,7 @@ import type {
   BibleInUse,
   ChannelBible,
   ChartSeries,
+  MotionIdentity,
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
@@ -84,10 +87,105 @@ export interface GraphicDesignInput {
   exemplar?: Exemplar
   /** Why the previous answer to this same slot was refused. */
   rejection?: string
+  /** The channel's motion identity (spec 2026-11-04); the house identity when absent. */
+  motion?: MotionIdentity
+}
+
+/** A millisecond count as the prompt says it: "1.5 seconds", "6 seconds", "900 ms". */
+const secondsWord = (ms: number) => {
+  const s = ms / 1000
+  return `${Number.isInteger(s) ? s : s.toFixed(1)} seconds`
+}
+
+/**
+ * The craft lines a channel sets (spec 2026-11-04, section 8.2): each is a
+ * function of the identity, and at the house identity reads as it always did.
+ */
+const CRAFT_THREE_D: Record<MotionIdentity['threeD'], string> = {
+  never: '- No 3D: no perspective, rotateX or rotateY; depth comes from scale and order.',
+  whenMeaningful:
+    '- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a\n  card, never a spin for its own sake.',
+  welcome:
+    '- 3D is welcome where it reads: perspective with rotateX or rotateY for a drum, a turn, a\n  card or a reveal, never a spin for its own sake.',
+}
+
+function craftFromIdentity(motion: MotionIdentity): string {
+  const never = motionNeverList(motion)
+  return [
+    `- Something changes about every ${secondsWord(motion.changeEveryMs)}, and the camera ${motion.cameraRule}.`,
+    motion.blurFollowsSpeed
+      ? '- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far\n  it moved since the frame before (compute its place at frame - 1), and none at rest.'
+      : null,
+    CRAFT_THREE_D[motion.threeD],
+    motion.chartsConventional
+      ? '- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring\n  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to\n  the next. The invention goes into the type, the framing and the hand-offs, never the data\n  marks.'
+      : null,
+    never.length > 0 ? `- Never: ${never.join(', ')}.` : null,
+    motion.allow.length > 0 ? `- Allowed on this channel: ${motion.allow.join(', ')}.` : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n')
+}
+
+const EASE_WORDS: Record<MotionIdentity['signatureEase'], string> = {
+  soft: 'soft (arrivals settle long, moves ease both ways)',
+  crisp: 'crisp (arrivals snap in, moves ease hard both ways)',
+  gentle: 'gentle (sine curves, nothing abrupt)',
+}
+/** The craft's overshoot sentence, after "in the house motion below. "; the house one at hair. */
+const OVERSHOOT_CRAFT: Record<MotionIdentity['overshoot'], string> = {
+  none: 'Nothing passes its mark: the hero spring settles without overshoot, and nothing\n  spins.',
+  hair: "Nothing\n  passes its mark except the one hero spring of a beat and snap's hair of overshoot on\n  small things; nothing spins.",
+  welcome:
+    'The hero and snap springs are loose and pass their marks; a figure or a title may\n  overshoot once a beat; nothing spins.',
+}
+/** The house-motion spring sentence, after "and\n  nothing else: "; the house one at hair. */
+const OVERSHOOT_SPRING: Record<MotionIdentity['overshoot'], string> = {
+  none: 'settle by default, hero at most once per beat for the figure the beat is about (on\n  this channel it settles without overshoot), snap for small things only (a tick, a dot,\n  a badge), never a figure or a title.',
+  hair: 'settle by default (no overshoot), hero at most once per beat (one small\n  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,\n  a badge), never a figure or a title.',
+  welcome:
+    'settle by default, hero at most once per beat (a clear overshoot, for the figure the\n  beat is about), snap for small things (a tick, a dot, a badge) and, on this channel, a\n  figure or a title too.',
+}
+
+/**
+ * The channel's block after the craft: its constants in words and its style
+ * guide. Empty at the house identity, so the house prompt reads as it did.
+ */
+function channelMotion(motion: MotionIdentity): string {
+  const lines: string[] = []
+  if (motion.signatureEase !== DEFAULT_MOTION_IDENTITY.signatureEase) {
+    lines.push(`- The curves are ${EASE_WORDS[motion.signatureEase]}.`)
+  }
+  if (motion.entrance !== DEFAULT_MOTION_IDENTITY.entrance) {
+    lines.push(
+      `- Things arrive by ${motion.entrance}: motion.px.rise and motion.scale.enter are set for it.`,
+    )
+  }
+  const lengths = Object.entries(motion.ms).filter(([, value]) => value !== undefined)
+  if (lengths.length > 0) {
+    const named: Record<string, string> = {
+      enter: 'entrances take',
+      exit: 'exits take',
+      reveal: 'wipes take',
+      draw: 'bars and lines draw on over',
+      count: 'counts run',
+      move: 'moves take',
+      gap: 'the gap between an exit and its replacement is',
+    }
+    lines.push(
+      `- Lengths: ${lengths.map(([key, value]) => `${named[key]} ${value} ms`).join('; ')}; motion.ms holds them.`,
+    )
+  }
+  const guide = motion.styleGuideMd.trim()
+  if (guide.length > 0) lines.push(guide)
+  if (lines.length === 0) return ''
+  return `\n\nThis channel's motion:\n${lines.join('\n')}`
 }
 
 const systemTemplate = (
   bible: ChannelBible,
+  motion: MotionIdentity,
+  numbers = motionNumbers(motion),
 ): string => `You write ONE motion graphic for a documentary about [[example:direction-premise]], as a React
 component. The narration is recorded; your graphic plays over it in the 16:9 film and in
 the 9:16 Short, and it lands the beat the narrator is speaking.
@@ -136,11 +234,13 @@ The sandbox your code runs in:
 - Remotion.spring({frame, fps, delay, config}): Remotion's spring, 0 to 1 from the delay;
   its config is always a token (below).
 - motion: the house motion tokens, declared above your code and read-only. motion.ms
-  {micro 120, enter 450, exit 300, reveal 550, draw 700, count 1000, move 900, gap 120},
+  {${Object.entries(numbers.ms)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ')}},
   lengths in milliseconds. motion.frames(ms, fps), a length in whole frames, at least 1,
   and a time too: a word at 0 ms starts on frame 1. motion.ease {enter, exit, move,
   emphasis, linear}, the only curves. motion.spring {settle, hero, snap}, the only spring
-  configs. motion.px.rise (20 at 1080p; multiply by your unit). motion.scale.enter (0.96).
+  configs. motion.px.rise (${numbers.px.rise} at 1080p; multiply by your unit). motion.scale.enter (${numbers.scale.enter}).
   motion.stagger(index, fps), the frame offset of the index-th item of a group.
   motion.order ['frame', 'title', 'body', 'hero', 'note'], the entrance order.
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
@@ -201,8 +301,8 @@ The rules. Each one is checked, and a graphic that breaks one is refused:
    no randomness, no state, nothing that runs after the render.
 4. Timing to the narration. Each new thing said gets its own change on screen, landing as
    it is said: a figure as its number is spoken, a name as it is named, a bar as its year
-   is read. Dead air is the failure to avoid: a graphic in which nothing changes for more
-   than ${GRAPHIC_STILL_MAX_MS / 1000} seconds is refused.
+   is read. Dead air is the failure to avoid: a graphic in which nothing changes for
+   more than ${secondsWord(motion.stillMaxMs)} is refused.
 5. Both frames. Lay out from useVideoConfig()'s width and height: the 16:9 frame and the
    9:16 frame are both rendered and both checked.
 6. Safe area. Everything sits inside props.safeArea at every frame, entrances included.
@@ -230,22 +330,8 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
 - One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
-- Something changes about every 1.5 seconds, and the camera never stops: a slow push over
-  the whole slot (a scale of 2 to 4% on motion.ease.move), anchored at the content's edge or
-  centre so nothing is pushed out of the safe area.
-- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far
-  it moved since the frame before (compute its place at frame - 1), and none at rest.
-- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a
-  card, never a spin for its own sake.
-- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring
-  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to
-  the next. The invention goes into the type, the framing and the hand-offs, never the data
-  marks.
-- Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one
-  whole layout to another, decorative gradients, drop shadows for depth.
-- Entrances, exits and moves come from the tokens, in the house motion below. Nothing
-  passes its mark except the one hero spring of a beat and snap's hair of overshoot on
-  small things; nothing spins.
+${craftFromIdentity(motion)}
+- Entrances, exits and moves come from the tokens, in the house motion below. ${OVERSHOOT_CRAFT[motion.overshoot]}
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
@@ -255,7 +341,7 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
 - A logo earns its place when the ${literalBibleText(noun(bible, 'singular'))} or person is the subject, not because they
   are mentioned.
 - A chart draws every point of props.data, labels each value as its claim states it, and
-  says its takeaway.
+  says its takeaway.${channelMotion(motion)}
 
 The house motion. The scan holds the curve and the spring config: every interpolate names
 a motion.ease, every spring a motion.spring. Which curve, which preset, hero once per beat
@@ -266,9 +352,7 @@ and every length are judged on the board, not checked:
   pass an array of them, one fewer than the keyframes. Never pass the options through a
   variable: the check reads the call.
 - A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and
-  nothing else: settle by default (no overshoot), hero at most once per beat (one small
-  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,
-  a badge), never a figure or a title. A spring is for an arrival that should feel
+  nothing else: ${OVERSHOOT_SPRING[motion.overshoot]} A spring is for an arrival that should feel
   physical; ease everything else.
 - Lengths come from motion.ms: an entrance is motion.ms.enter, an exit motion.ms.exit
   (exits are shorter than entrances), a wipe motion.ms.reveal, a bar or a line drawn on
@@ -314,7 +398,10 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 
   return {
     task: 'graphics',
-    system: fillSlots(systemTemplate(input.bible.bible), input.bible),
+    system: fillSlots(
+      systemTemplate(input.bible.bible, input.motion ?? DEFAULT_MOTION_IDENTITY),
+      input.bible,
+    ),
     messages: [
       { role: 'user', content: film },
       { role: 'user', content: slot },

@@ -316,4 +316,55 @@ describe('techniqueFor (decision 305)', () => {
     expect(three(['1999', '2000', '2001', '2002', '2003'])).toBe('racing-chart')
     expect(three(['1011', '1012', '1013', '1014', '1015'])).toBe('comparison-chart')
   })
+
+  describe("a channel's techniques in use (spec 2026-11-04, section 8.3)", () => {
+    it('skips a switched-off technique and takes the next rule', () => {
+      const lost = graphic({
+        intent: 'The bank lost 70% of its deposits',
+        description: '',
+        coversText: '',
+        logos: [],
+      })
+      expect(techniqueFor(lost)).toBe('stat-counter')
+      expect(
+        techniqueFor({
+          ...lost,
+          techniques: ['kinetic-word-stack', 'bar-chart', 'text-highlight'],
+        }),
+      ).toBe('text-highlight')
+      expect(techniqueFor({ ...lost, techniques: ['kinetic-word-stack', 'bar-chart'] })).toBe(
+        'kinetic-word-stack',
+      )
+    })
+
+    it('falls from a racing chart to a bar chart when the race and the comparison are off', () => {
+      const race = chart({ seriesCount: 3, xLabels: ['2017', '2018', '2019', '2020', '2021'] })
+      expect(techniqueFor(race)).toBe('racing-chart')
+      expect(
+        techniqueFor({
+          ...race,
+          techniques: ['kinetic-word-stack', 'bar-chart', 'comparison-chart'],
+        }),
+      ).toBe('comparison-chart')
+      expect(techniqueFor({ ...race, techniques: ['kinetic-word-stack', 'bar-chart'] })).toBe(
+        'bar-chart',
+      )
+      expect(
+        techniqueFor({
+          ...chart({ chartKind: 'line' }),
+          techniques: ['kinetic-word-stack', 'bar-chart'],
+        }),
+      ).toBe('bar-chart')
+    })
+
+    it('lets a steer name a switched-off technique', () => {
+      expect(
+        techniqueFor({
+          ...graphic(),
+          guidance: 'as a donut',
+          techniques: ['kinetic-word-stack', 'bar-chart'],
+        }),
+      ).toBe('donut-chart')
+    })
+  })
 })

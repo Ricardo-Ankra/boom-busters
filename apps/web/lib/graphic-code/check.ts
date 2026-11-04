@@ -1,8 +1,13 @@
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
-import { MOTION_PREAMBLE, MOTION_VERSION } from '@boom-busters/compositions/motion-tokens'
+import {
+  MOTION_VERSION,
+  motionNumbers,
+  motionPreamble,
+} from '@boom-busters/compositions/motion-tokens'
 import {
   codeLogoLibrary,
+  DEFAULT_MOTION_IDENTITY,
   DEFAULT_SETTINGS,
   GRAPHIC_CODE_VERSION,
   graphicFactsIssue,
@@ -13,6 +18,7 @@ import type {
   ChartBrief,
   DesignableBrief,
   GraphicCode,
+  MotionIdentity,
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
@@ -38,13 +44,14 @@ import { scanGraphicSource } from './scan'
 const SHOWN_MIN_SAMPLES = 1000 / GRAPHIC_SAMPLE_MS
 
 /**
- * The compiled code a design is stored and run with (decision 301): the house
- * motion preamble, then the model's code. The scan has already read the
- * model's code on its own; the dry run, the board, the Player and Lambda all
- * run this text, so the tokens a design was checked against travel with it.
+ * The compiled code a design is stored and run with (decision 301): the
+ * channel's motion preamble (spec 2026-11-04; the house one by default), then
+ * the model's code. The scan has already read the model's code on its own;
+ * the dry run, the board, the Player and Lambda all run this text, so the
+ * tokens a design was checked against travel with it.
  */
-function withMotionPreamble(compiled: string): string {
-  return `${MOTION_PREAMBLE}\n${compiled}`
+function withMotionPreamble(compiled: string, motion: MotionIdentity): string {
+  return `${motionPreamble(motionNumbers(motion))}\n${compiled}`
 }
 
 /**
@@ -137,18 +144,24 @@ export function graphicCodeIssue(
     durationMs: number
     words: readonly { text: string; atMs: number }[]
   },
+  options: {
+    /** The channel's motion identity (spec 2026-11-04): its tokens and its still limit; the house one by default. */
+    motion?: MotionIdentity
+  } = {},
 ): { code: GraphicCode } | { issue: string } {
+  const motion = options.motion ?? DEFAULT_MOTION_IDENTITY
   const compiled = compileGraphicSource(answer.source)
   if (!compiled.ok) return { issue: compiled.issue }
   const scanned = scanGraphicSource(answer.source, compiled.compiled)
   if (scanned !== null) return { issue: scanned }
-  const stored = withMotionPreamble(compiled.compiled)
+  const stored = withMotionPreamble(compiled.compiled, motion)
 
   const { brief } = slot
   const run = dryRunGraphic({
     compiled: stored,
     durationMs: slot.durationMs,
     props: dryRunProps(context, slot),
+    stillMaxMs: motion.stillMaxMs,
   })
   if (run.issue !== null) return { issue: run.issue }
 

@@ -22,6 +22,12 @@ export default tseslint.config(
       'infra/cdk.out/**',
       // Vendored agent skills: third-party text pinned by skills-lock.json.
       '.agents/**',
+      // Reference material for the motion references design (spec 2026-11-04):
+      // another author's browser modules and reels, read, never run or linted.
+      'docs/references/**',
+      'docs/Claude_edit_skill/**',
+      // Another session's worktrees, when one is left behind.
+      '.claude/**',
     ],
   },
 

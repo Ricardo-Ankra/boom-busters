@@ -58,6 +58,7 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
     publish: { ...current.publish, ...patch.publish },
     brandKit: { ...current.brandKit, ...patch.brandKit },
     features: { ...current.features, ...patch.features },
+    motion: { ...current.motion, ...patch.motion },
   }
 
   return SettingsSchema.parse(merged)

@@ -2,7 +2,7 @@ import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { channelForProject } from '@boom-busters/db'
 import { requireCompleteBible } from '@/inngest/lib/channel'
 import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
-import { resolveBrandKit } from '@boom-busters/schemas'
+import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
@@ -91,11 +91,12 @@ export async function designGraphic(
       durationMs: slot.durationMs,
       ...(brief.type === 'chart' ? { data: chartData(brief) } : {}),
     })
-    const checked = graphicCodeIssue(planned, context, {
-      brief,
-      durationMs: slot.durationMs,
-      words: slotWords(context, slot),
-    })
+    const checked = graphicCodeIssue(
+      planned,
+      context,
+      { brief, durationMs: slot.durationMs, words: slotWords(context, slot) },
+      { motion: resolveMotionIdentity(channel.settings) },
+    )
     return 'code' in checked
       ? { ok: true, code: checked.code }
       : { ok: false, issue: checked.issue }
@@ -104,6 +105,7 @@ export async function designGraphic(
   return designGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
+    motion: resolveMotionIdentity(channel.settings),
     // The browser's layout check (decision 389), in the channel's own faces
     // and colours. The review is a step of its own: `reviewGraphic`.
     ...(framesOn() ? { frames: browserFrames() } : {}),
@@ -136,6 +138,7 @@ export async function reviewGraphic(
   return reviewGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
+    motion: resolveMotionIdentity(channel.settings),
     frames: browserFrames(),
     brand: graphicBrand(resolveBrandKit(channel.settings)),
     log,
