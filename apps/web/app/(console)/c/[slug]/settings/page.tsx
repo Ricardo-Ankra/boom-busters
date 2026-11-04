@@ -25,7 +25,7 @@ import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
 import { MANIFEST } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
-import { readingEstimateUsd } from '@/lib/motion-estimates'
+import { identityDraftEstimateUsd, readingEstimateUsd } from '@/lib/motion-estimates'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import type { ReferenceView } from './references-section'
 import { exemplarLogoFor } from './exemplar-logo'
@@ -256,6 +256,7 @@ export default async function SettingsPage({
         references={referenceViews}
         storageReady={storageConfigured()}
         readingEstimateUsd={readingEstimateUsd(settings, workspace.settings)}
+        draftEstimateUsd={identityDraftEstimateUsd(settings, workspace.settings, references.length)}
         draft={draft}
         versions={versions.map((row) => ({
           id: row.id,

@@ -73,6 +73,7 @@ export function SettingsForm({
   references = [],
   storageReady = false,
   readingEstimateUsd = 0,
+  draftEstimateUsd = 0,
   draft = null,
   versions = [],
   currentVersion,
@@ -115,6 +116,8 @@ export function SettingsForm({
   storageReady?: boolean
   /** What one reference reading costs on the graphics route, in dollars. */
   readingEstimateUsd?: number
+  /** What one identity draft costs on the graphics route, in dollars. */
+  draftEstimateUsd?: number
   /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
   exemplarLogo?: ExemplarLogo | null
   /** The bible's working draft, or null when there is none. */
@@ -297,6 +300,7 @@ export function SettingsForm({
               references={references}
               storageReady={storageReady}
               readingEstimateUsd={readingEstimateUsd}
+              draftEstimateUsd={draftEstimateUsd}
             />
           </Lock>
         </TabsContent>

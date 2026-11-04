@@ -11,6 +11,7 @@ import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { IdentityDraft } from './identity-draft'
 import { ReferencesSection, type ReferenceView } from './references-section'
 
 /**
@@ -39,6 +40,8 @@ interface MotionTabProps {
   storageReady: boolean
   /** What one reading costs on the graphics route, in dollars. */
   readingEstimateUsd: number
+  /** What one identity draft costs on the graphics route, in dollars. */
+  draftEstimateUsd: number
 }
 
 const STYLE_GUIDE_MAX = 4000
@@ -64,6 +67,7 @@ export function MotionTab({
   references,
   storageReady,
   readingEstimateUsd,
+  draftEstimateUsd,
 }: MotionTabProps) {
   const motion = settings.motion
   // Typed text is held locally until blur, so a keystroke does not save a patch.
@@ -347,6 +351,14 @@ export function MotionTab({
           </div>
         </CardContent>
       </Card>
+
+      <IdentityDraft
+        channelId={channelId}
+        current={motion}
+        draftEstimateUsd={draftEstimateUsd}
+        disabled={archived || saving}
+        onApply={(identity) => commit({ motion: identity }, { ...settings, motion: identity })}
+      />
 
       <Card>
         <CardHeader>
