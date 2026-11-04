@@ -161,7 +161,7 @@ describe('parseStoryboardPlan', () => {
       storyboard: ['0.0 s ' + 'x'.repeat(260)],
     }
     const parsed = parseStoryboardPlan(JSON.stringify(loose), bounds, (repair) =>
-      notes.push(repair.kind),
+      notes.push(repair.action),
     )
     expect(parsed.mechanisms).toEqual(['drum'])
     expect(parsed.storyboard[0]!.length).toBeLessThanOrEqual(200)
