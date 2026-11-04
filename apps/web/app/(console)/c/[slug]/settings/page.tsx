@@ -21,6 +21,7 @@ import { redirect } from 'next/navigation'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
+import { MANIFEST } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { exemplarLogoFor } from './exemplar-logo'
@@ -34,6 +35,7 @@ const TABS = [
   'bible',
   'models',
   'brand-kit',
+  'motion',
   'voice',
   'logos',
   'exemplars',
@@ -206,6 +208,10 @@ export default async function SettingsPage({
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}
+        techniqueOptions={MANIFEST.map((entry) => ({
+          technique: entry.technique,
+          description: entry.description,
+        }))}
         exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
         draft={draft}
         versions={versions.map((row) => ({
