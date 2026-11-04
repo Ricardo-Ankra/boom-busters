@@ -28,7 +28,7 @@ function compiled(source: string): string {
 function dryRun(
   source: string,
   durationMs = 4000,
-  limits: Pick<DryRunInput, 'timeoutMs' | 'frameMaxMs'> = {},
+  limits: Pick<DryRunInput, 'timeoutMs' | 'frameMaxMs' | 'stillMaxMs'> = {},
 ) {
   return dryRunGraphic({
     // As `graphicCodeIssue` runs it: the house motion preamble first (decision 301).
@@ -129,6 +129,17 @@ function Graphic() {
       8000,
     )
     expect(result.issue).toBe('nothing changes between 0.0 s and 8.0 s')
+  })
+
+  it('refuses a still longer than the limit it is given (spec 2026-11-04, section 8.1)', () => {
+    const held = `function Graphic() {
+  return <Remotion.AbsoluteFill><div>Raised in one round</div></Remotion.AbsoluteFill>
+}
+`
+    expect(dryRun(held, 5000).issue).toBeNull()
+    expect(dryRun(held, 5000, { stillMaxMs: 3000 }).issue).toBe(
+      'nothing changes between 0.0 s and 5.0 s',
+    )
   })
 
   it('refuses a graphic whose last second is empty', () => {

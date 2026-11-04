@@ -435,7 +435,7 @@ describe('designGraphic (decisions 289, 295)', () => {
     callLlm.mockResolvedValueOnce(answer('$4bn'))
     const designed = await designGraphic(CONTEXT, SLOT)
     if (!designed.ok) throw new Error('setup design failed')
-    expect(designed.code.motion).toBe(1)
+    expect(designed.code.motion).toBe(2)
     const { motion: _motion, ...preToken } = designed.code
     callLlm.mockReset()
     callLlm.mockResolvedValue(answer('$4bn'))
