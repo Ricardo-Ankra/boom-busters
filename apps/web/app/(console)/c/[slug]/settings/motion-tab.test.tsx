@@ -118,6 +118,20 @@ describe('the Motion tab (spec 2026-11-04)', () => {
     })
   })
 
+  it('lets the still limit be typed, and saves it once on blur (final review, issue 1)', async () => {
+    const user = userEvent.setup()
+    await openMotionTab()
+    const still = screen.getByLabelText('Still limit (ms)')
+    await user.clear(still)
+    await user.type(still, '9000')
+    expect(saveSettings).not.toHaveBeenCalled()
+    await user.tab()
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+      motion: { stillMaxMs: 9000 },
+    })
+  })
+
   it('saves an unticked technique as the list without it', async () => {
     const user = userEvent.setup()
     await openMotionTab()

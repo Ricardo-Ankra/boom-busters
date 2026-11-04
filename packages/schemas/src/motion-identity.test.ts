@@ -4,6 +4,7 @@ import {
   HOUSE_NEVER,
   MotionIdentitySchema,
   motionNeverList,
+  motionNumbers,
   resolveMotionIdentity,
 } from './motion-identity'
 import { DEFAULT_SETTINGS, SettingsPatchSchema, SettingsSchema } from './settings'
@@ -32,10 +33,18 @@ describe('the motion identity', () => {
     expect(DEFAULT_MOTION_IDENTITY.entrance).toBe('rise')
   })
 
-  it('refuses a phrase in both lists', () => {
+  it('keeps a phrase in both lists, and allow takes it out of never (final review, issue 3)', () => {
     const result = MotionIdentitySchema.safeParse({ never: ['Glows'], allow: ['glows '] })
-    expect(result.success).toBe(false)
-    expect(result.error!.issues[0]!.message).toContain('glows')
+    expect(result.success).toBe(true)
+    expect(motionNeverList(result.data!)).toEqual([])
+    expect(resolveMotionIdentity({ motion: result.data! }).allow).toEqual(['glows'])
+  })
+
+  it('turns the identity into the numbers the tokens are built from', () => {
+    expect(motionNumbers(DEFAULT_MOTION_IDENTITY).ms.enter).toBe(450)
+    expect(motionNumbers({ ...DEFAULT_MOTION_IDENTITY, overshoot: 'none' }).spring.hero).toEqual({
+      damping: 200,
+    })
   })
 
   it('refuses a still limit under the cadence', () => {
@@ -72,6 +81,7 @@ describe('the motion identity', () => {
     const resolved = resolveMotionIdentity(settings)
     expect(resolved.never).not.toContain('glows')
     expect(resolved.never).toContain('particle bursts')
+    expect(resolved.allow).toEqual(['Glows'])
     expect(motionNeverList(settings.motion)).toEqual(resolved.never)
   })
 

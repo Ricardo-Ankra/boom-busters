@@ -9811,3 +9811,15 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      rule completes a sentence so a channel can write "never moves"; the test
      database needed the channel-formats migration before the db suite could
      run (not this change).
+     Final review (fresh reviewer, Opus): the cadence and still-limit fields
+     saved on every keystroke and could not be typed into (now typed, saved on
+     blur); a cross-field refusal reached the owner as Zod's JSON (now "path:
+     message" through `settingsErrorMessage`); the prompt's sandbox section
+     still stated the house lengths, rise and scale-in and the house overshoot
+     for a channel with its own (now rendered from `motionNumbers`, which
+     moved to the schemas package with the token constants, and from the
+     overshoot); and the allow list could never hold a phrase the never list
+     had, so it did nothing (ruling: a phrase may sit in both, allow wins and
+     is said to the designer as "Allowed on this channel"; spec 8.1's
+     both-lists rule is dropped). Deferred minors are in the ledger and the
+     hand-over.

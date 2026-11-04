@@ -23,8 +23,8 @@ describe('mergeSettings', () => {
 
   it('refuses a motion patch that breaks the identity as a whole', () => {
     expect(() =>
-      mergeSettings(DEFAULT_SETTINGS, SettingsPatchSchema.parse({ motion: { allow: ['glows'] } })),
-    ).toThrow(/both lists/)
+      mergeSettings(DEFAULT_SETTINGS, SettingsPatchSchema.parse({ motion: { stillMaxMs: 1000 } })),
+    ).toThrow(/still limit/)
   })
 
   it('applies a single nested field without disturbing its siblings', () => {

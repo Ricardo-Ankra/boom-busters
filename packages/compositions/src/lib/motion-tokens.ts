@@ -1,5 +1,5 @@
-import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
-import type { MotionIdentity } from '@boom-busters/schemas'
+import { DEFAULT_MOTION_IDENTITY, motionNumbers } from '@boom-busters/schemas'
+import type { EaseSet, MotionLengths, MotionNumbers, MotionSprings } from '@boom-busters/schemas'
 import type { Easing } from 'remotion'
 
 /**
@@ -27,40 +27,25 @@ import type { Easing } from 'remotion'
 /** The preamble a stored design carries, recorded as `code.motion`. Bump it when a token's meaning changes. */
 export const MOTION_VERSION = 2
 
-/** Lengths in milliseconds. */
-export const MOTION_MS = {
-  /** A colour shift, a tick. */
-  micro: 120,
-  /** A fade with rise. */
-  enter: 450,
-  /** Exits are shorter than entrances. */
-  exit: 300,
-  /** A wipe. */
-  reveal: 550,
-  /** Bars and lines drawn on. */
-  draw: 700,
-  /** A counter. */
-  count: 1000,
-  /** A reframe, the camera. */
-  move: 900,
-  /** Between an exit and the entrance that replaces it. */
-  gap: 120,
-} as const
+// The numbers live in the schemas package (spec 8.1), so the designer's prompt
+// can state a channel's values; re-exported here for the house code that reads them.
+export {
+  MOTION_MS,
+  MOTION_PX,
+  MOTION_SCALE,
+  MOTION_SPRING,
+  MOTION_SPRING_NAMES,
+  motionNumbers,
+} from '@boom-busters/schemas'
+export type {
+  EaseSet,
+  MotionLengths,
+  MotionNumbers,
+  MotionSpringConfig,
+  MotionSpringName,
+  MotionSprings,
+} from '@boom-busters/schemas'
 
-/** Spring configs for `Remotion.spring({ config })`. */
-export const MOTION_SPRING = {
-  /** Critically damped, no overshoot; the default spring. */
-  settle: { damping: 200 },
-  /** One small overshoot, about 7%, settling under a second; once per beat. */
-  hero: { damping: 14, stiffness: 120 },
-  /** Quick, a hair of overshoot; small things. */
-  snap: { damping: 20, stiffness: 200 },
-} as const
-
-/** The rise under a fade, in pixels at 1080p; a design scales it by its unit. */
-export const MOTION_PX = { rise: 20 } as const
-/** A figure's scale-in, never from zero. */
-export const MOTION_SCALE = { enter: 0.96 } as const
 /** Entrance order: the hero finishes last. */
 export const MOTION_ORDER = ['frame', 'title', 'body', 'hero', 'note'] as const
 /** Per item of a group, and the whole group's cap. */
@@ -68,9 +53,7 @@ export const MOTION_STAGGER_MS = 75
 export const MOTION_STAGGER_MAX_MS = 600
 
 export const MOTION_EASE_NAMES = ['enter', 'exit', 'move', 'emphasis', 'linear'] as const
-export const MOTION_SPRING_NAMES = ['settle', 'hero', 'snap'] as const
 export type MotionEaseName = (typeof MOTION_EASE_NAMES)[number]
-export type MotionSpringName = (typeof MOTION_SPRING_NAMES)[number]
 
 export interface MotionTokens {
   readonly ms: MotionLengths
@@ -100,55 +83,6 @@ function deepFreeze<T>(value: T): T {
     Object.freeze(value)
   }
   return value
-}
-
-/**
- * The numbers a channel's identity sets (spec 2026-11-04, section 8.1): the
- * lengths overlaid, the springs from its overshoot, the rise and scale-in
- * from its entrance, and the curve set `enter` and `move` take. The house
- * identity gives the house numbers, so `HOUSE_NUMBERS` is what every design
- * stored before the identity was checked with.
- */
-export type EaseSet = MotionIdentity['signatureEase']
-export type MotionLengths = Readonly<Record<keyof typeof MOTION_MS, number>>
-export type MotionSpringConfig = { readonly damping: number; readonly stiffness?: number }
-export type MotionSprings = Readonly<Record<MotionSpringName, MotionSpringConfig>>
-export interface MotionNumbers {
-  readonly ms: MotionLengths
-  readonly spring: MotionSprings
-  readonly px: { readonly rise: number }
-  readonly scale: { readonly enter: number }
-  readonly easeSet: EaseSet
-}
-
-const SPRINGS: Record<MotionIdentity['overshoot'], MotionSprings> = {
-  none: { settle: MOTION_SPRING.settle, hero: MOTION_SPRING.settle, snap: MOTION_SPRING.settle },
-  hair: MOTION_SPRING,
-  welcome: {
-    settle: MOTION_SPRING.settle,
-    hero: { damping: 10, stiffness: 120 },
-    snap: { damping: 14, stiffness: 200 },
-  },
-}
-
-export function motionNumbers(identity: MotionIdentity): MotionNumbers {
-  const ms: Record<keyof typeof MOTION_MS, number> = { ...MOTION_MS }
-  for (const [key, value] of Object.entries(identity.ms)) {
-    if (value !== undefined) ms[key as keyof typeof identity.ms] = value
-  }
-  const rise = identity.entrance === 'rise' ? MOTION_PX.rise : 0
-  const enter = identity.entrance === 'scale' ? 0.9 : MOTION_SCALE.enter
-  return deepFreeze({
-    ms,
-    spring: {
-      settle: { ...SPRINGS[identity.overshoot].settle },
-      hero: { ...SPRINGS[identity.overshoot].hero },
-      snap: { ...SPRINGS[identity.overshoot].snap },
-    },
-    px: { rise },
-    scale: { enter },
-    easeSet: identity.signatureEase,
-  }) as MotionNumbers
 }
 
 export const HOUSE_NUMBERS: MotionNumbers = motionNumbers(DEFAULT_MOTION_IDENTITY)

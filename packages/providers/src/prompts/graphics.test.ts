@@ -279,6 +279,22 @@ describe('the designer prompt (decision 295)', () => {
     expect(sleepy).toContain("This channel's motion:")
     expect(sleepy).toContain('Slow and dark.')
     expect(sleepy).toContain('entrances take 900 ms')
+    // The sandbox's numbers are the channel's, not the house's (final review, issue 4).
+    expect(sleepy).toContain('{micro 120, enter 900, exit 300, reveal 550')
+    expect(sleepy).not.toContain('enter 450')
+    expect(system).toContain('{micro 120, enter 450, exit 300, reveal 550')
+    expect(system).toContain('motion.px.rise (20 at 1080p')
+    const faded = buildGraphicRequest(
+      input({ motion: { ...DEFAULT_MOTION_IDENTITY, entrance: 'fade', overshoot: 'none' } }),
+    ).system
+    expect(faded).toContain('motion.px.rise (0 at 1080p')
+    expect(faded).toContain('Nothing passes its mark: the hero spring settles without overshoot')
+    expect(faded).not.toContain("snap's hair")
+    expect(faded).not.toContain('one small overshoot')
+    expect(system).toContain("snap's hair of overshoot")
+    // Allow is said, not only subtracted (final review, issue 3).
+    expect(sleepy).toContain('Allowed on this channel: glows.')
+    expect(system).not.toContain('Allowed on this channel')
     expect(sleepy).not.toContain('—')
     const bare = buildGraphicRequest(
       input({ motion: { ...DEFAULT_MOTION_IDENTITY, never: [], allow: [] } }),

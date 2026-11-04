@@ -82,15 +82,6 @@ export const MotionIdentitySchema = z
         message: 'the still limit must be at least the change cadence',
       })
     }
-    const allowed = new Set(value.allow.map(normalise))
-    const both = value.never.find((phrase) => allowed.has(normalise(phrase)))
-    if (both !== undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['allow'],
-        message: `"${normalise(both)}" is in both lists`,
-      })
-    }
     const missing = LAST_RESORT_TECHNIQUES.filter(
       (technique) => !value.techniques.includes(technique),
     )
@@ -112,7 +103,110 @@ export function motionNeverList(identity: MotionIdentity): string[] {
   return identity.never.filter((phrase) => !allowed.has(normalise(phrase)))
 }
 
-/** The identity as the designer and the checks read it: allow folded into never. */
+/**
+ * The identity as the designer and the checks read it: allow taken out of
+ * never, and kept, since the prompt also says what the channel allows (final
+ * review of plan 1, issue 3: a phrase may sit in both lists, and allow wins).
+ */
 export function resolveMotionIdentity(settings: { motion: MotionIdentity }): MotionIdentity {
-  return { ...settings.motion, never: motionNeverList(settings.motion), allow: [] }
+  return { ...settings.motion, never: motionNeverList(settings.motion) }
+}
+
+// ---------------------------------------------------------------------------
+// The numbers the tokens are built from (decision 301; spec 8.1). Here, below
+// the compositions package, so the designer's prompt can state the channel's
+// numbers without depending on Remotion.
+// ---------------------------------------------------------------------------
+
+/** Lengths in milliseconds. */
+export const MOTION_MS = {
+  /** A colour shift, a tick. */
+  micro: 120,
+  /** A fade with rise. */
+  enter: 450,
+  /** Exits are shorter than entrances. */
+  exit: 300,
+  /** A wipe. */
+  reveal: 550,
+  /** Bars and lines drawn on. */
+  draw: 700,
+  /** A counter. */
+  count: 1000,
+  /** A reframe, the camera. */
+  move: 900,
+  /** Between an exit and the entrance that replaces it. */
+  gap: 120,
+} as const
+
+/** Spring configs for `Remotion.spring({ config })`. */
+export const MOTION_SPRING = {
+  /** Critically damped, no overshoot; the default spring. */
+  settle: { damping: 200 },
+  /** One small overshoot, about 7%, settling under a second; once per beat. */
+  hero: { damping: 14, stiffness: 120 },
+  /** Quick, a hair of overshoot; small things. */
+  snap: { damping: 20, stiffness: 200 },
+} as const
+
+/** The rise under a fade, in pixels at 1080p; a design scales it by its unit. */
+export const MOTION_PX = { rise: 20 } as const
+/** A figure's scale-in, never from zero. */
+export const MOTION_SCALE = { enter: 0.96 } as const
+export const MOTION_SPRING_NAMES = ['settle', 'hero', 'snap'] as const
+export type MotionSpringName = (typeof MOTION_SPRING_NAMES)[number]
+
+export type EaseSet = MotionIdentity['signatureEase']
+export type MotionLengths = Readonly<Record<keyof typeof MOTION_MS, number>>
+export type MotionSpringConfig = { readonly damping: number; readonly stiffness?: number }
+export type MotionSprings = Readonly<Record<MotionSpringName, MotionSpringConfig>>
+export interface MotionNumbers {
+  readonly ms: MotionLengths
+  readonly spring: MotionSprings
+  readonly px: { readonly rise: number }
+  readonly scale: { readonly enter: number }
+  readonly easeSet: EaseSet
+}
+
+const SPRINGS: Record<MotionIdentity['overshoot'], MotionSprings> = {
+  none: { settle: MOTION_SPRING.settle, hero: MOTION_SPRING.settle, snap: MOTION_SPRING.settle },
+  hair: MOTION_SPRING,
+  welcome: {
+    settle: MOTION_SPRING.settle,
+    hero: { damping: 10, stiffness: 120 },
+    snap: { damping: 14, stiffness: 200 },
+  },
+}
+
+/** `Object.freeze` on the object and on each nested object. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    for (const child of Object.values(value)) deepFreeze(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
+/**
+ * The numbers a channel's identity sets: the lengths overlaid, the springs
+ * from its overshoot, the rise and scale-in from its entrance, and the curve
+ * set `enter` and `move` take. The house identity gives the house numbers.
+ */
+export function motionNumbers(identity: MotionIdentity): MotionNumbers {
+  const ms: Record<keyof typeof MOTION_MS, number> = { ...MOTION_MS }
+  for (const [key, value] of Object.entries(identity.ms)) {
+    if (value !== undefined) ms[key as keyof typeof identity.ms] = value
+  }
+  const rise = identity.entrance === 'rise' ? MOTION_PX.rise : 0
+  const enter = identity.entrance === 'scale' ? 0.9 : MOTION_SCALE.enter
+  return deepFreeze({
+    ms,
+    spring: {
+      settle: { ...SPRINGS[identity.overshoot].settle },
+      hero: { ...SPRINGS[identity.overshoot].hero },
+      snap: { ...SPRINGS[identity.overshoot].snap },
+    },
+    px: { rise },
+    scale: { enter },
+    easeSet: identity.signatureEase,
+  }) as MotionNumbers
 }

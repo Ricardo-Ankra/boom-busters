@@ -7,6 +7,7 @@ import {
   GRAPHIC_STORYBOARD_MAX,
   GRAPHIC_TITLE_MAX,
   motionNeverList,
+  motionNumbers,
   PlannedGraphicCodeSchema,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -120,6 +121,7 @@ function craftFromIdentity(motion: MotionIdentity): string {
       ? '- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring\n  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to\n  the next. The invention goes into the type, the framing and the hand-offs, never the data\n  marks.'
       : null,
     never.length > 0 ? `- Never: ${never.join(', ')}.` : null,
+    motion.allow.length > 0 ? `- Allowed on this channel: ${motion.allow.join(', ')}.` : null,
   ]
     .filter((line): line is string => line !== null)
     .join('\n')
@@ -130,10 +132,19 @@ const EASE_WORDS: Record<MotionIdentity['signatureEase'], string> = {
   crisp: 'crisp (arrivals snap in, moves ease hard both ways)',
   gentle: 'gentle (sine curves, nothing abrupt)',
 }
-const OVERSHOOT_WORDS: Record<MotionIdentity['overshoot'], string> = {
-  none: 'nothing passes its mark: the hero spring settles without overshoot',
-  hair: 'only the one hero spring of a beat passes its mark, and snap by a hair on small things',
-  welcome: 'overshoot is welcome: the hero and snap springs are loose',
+/** The craft's overshoot sentence, after "in the house motion below. "; the house one at hair. */
+const OVERSHOOT_CRAFT: Record<MotionIdentity['overshoot'], string> = {
+  none: 'Nothing passes its mark: the hero spring settles without overshoot, and nothing\n  spins.',
+  hair: "Nothing\n  passes its mark except the one hero spring of a beat and snap's hair of overshoot on\n  small things; nothing spins.",
+  welcome:
+    'The hero and snap springs are loose and pass their marks; a figure or a title may\n  overshoot once a beat; nothing spins.',
+}
+/** The house-motion spring sentence, after "and\n  nothing else: "; the house one at hair. */
+const OVERSHOOT_SPRING: Record<MotionIdentity['overshoot'], string> = {
+  none: 'settle by default, hero at most once per beat for the figure the beat is about (on\n  this channel it settles without overshoot), snap for small things only (a tick, a dot,\n  a badge), never a figure or a title.',
+  hair: 'settle by default (no overshoot), hero at most once per beat (one small\n  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,\n  a badge), never a figure or a title.',
+  welcome:
+    'settle by default, hero at most once per beat (a clear overshoot, for the figure the\n  beat is about), snap for small things (a tick, a dot, a badge) and, on this channel, a\n  figure or a title too.',
 }
 
 /**
@@ -149,9 +160,6 @@ function channelMotion(motion: MotionIdentity): string {
     lines.push(
       `- Things arrive by ${motion.entrance}: motion.px.rise and motion.scale.enter are set for it.`,
     )
-  }
-  if (motion.overshoot !== DEFAULT_MOTION_IDENTITY.overshoot) {
-    lines.push(`- ${OVERSHOOT_WORDS[motion.overshoot]}.`)
   }
   const lengths = Object.entries(motion.ms).filter(([, value]) => value !== undefined)
   if (lengths.length > 0) {
@@ -177,6 +185,7 @@ function channelMotion(motion: MotionIdentity): string {
 const systemTemplate = (
   bible: ChannelBible,
   motion: MotionIdentity,
+  numbers = motionNumbers(motion),
 ): string => `You write ONE motion graphic for a documentary about [[example:direction-premise]], as a React
 component. The narration is recorded; your graphic plays over it in the 16:9 film and in
 the 9:16 Short, and it lands the beat the narrator is speaking.
@@ -225,11 +234,13 @@ The sandbox your code runs in:
 - Remotion.spring({frame, fps, delay, config}): Remotion's spring, 0 to 1 from the delay;
   its config is always a token (below).
 - motion: the house motion tokens, declared above your code and read-only. motion.ms
-  {micro 120, enter 450, exit 300, reveal 550, draw 700, count 1000, move 900, gap 120},
+  {${Object.entries(numbers.ms)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ')}},
   lengths in milliseconds. motion.frames(ms, fps), a length in whole frames, at least 1,
   and a time too: a word at 0 ms starts on frame 1. motion.ease {enter, exit, move,
   emphasis, linear}, the only curves. motion.spring {settle, hero, snap}, the only spring
-  configs. motion.px.rise (20 at 1080p; multiply by your unit). motion.scale.enter (0.96).
+  configs. motion.px.rise (${numbers.px.rise} at 1080p; multiply by your unit). motion.scale.enter (${numbers.scale.enter}).
   motion.stagger(index, fps), the frame offset of the index-th item of a group.
   motion.order ['frame', 'title', 'body', 'hero', 'note'], the entrance order.
 - Remotion.Sequence {from, durationInFrames}: its children show only inside that window,
@@ -320,9 +331,7 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
 ${craftFromIdentity(motion)}
-- Entrances, exits and moves come from the tokens, in the house motion below. Nothing
-  passes its mark except the one hero spring of a beat and snap's hair of overshoot on
-  small things; nothing spins.
+- Entrances, exits and moves come from the tokens, in the house motion below. ${OVERSHOOT_CRAFT[motion.overshoot]}
 - An ending that holds rather than vanishes.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
@@ -343,9 +352,7 @@ and every length are judged on the board, not checked:
   pass an array of them, one fewer than the keyframes. Never pass the options through a
   variable: the check reads the call.
 - A spring is Remotion.spring({ frame, fps, delay, config: motion.spring.<name> }) and
-  nothing else: settle by default (no overshoot), hero at most once per beat (one small
-  overshoot, for the figure the beat is about), snap for small things only (a tick, a dot,
-  a badge), never a figure or a title. A spring is for an arrival that should feel
+  nothing else: ${OVERSHOOT_SPRING[motion.overshoot]} A spring is for an arrival that should feel
   physical; ease everything else.
 - Lengths come from motion.ms: an entrance is motion.ms.enter, an exit motion.ms.exit
   (exits are shorter than entrances), a wipe motion.ms.reveal, a bar or a line drawn on

@@ -52,12 +52,23 @@ export function MotionTab({ settings, saving, commit, techniqueOptions }: Motion
   const [allow, setAllow] = React.useState(linesOf(motion.allow))
   const [guide, setGuide] = React.useState(motion.styleGuideMd)
   const [camera, setCamera] = React.useState(motion.cameraRule)
+  const [cadence, setCadence] = React.useState(String(motion.changeEveryMs))
+  const [still, setStill] = React.useState(String(motion.stillMaxMs))
   React.useEffect(() => {
     setNever(linesOf(motion.never))
     setAllow(linesOf(motion.allow))
     setGuide(motion.styleGuideMd)
     setCamera(motion.cameraRule)
+    setCadence(String(motion.changeEveryMs))
+    setStill(String(motion.stillMaxMs))
   }, [motion])
+
+  /** A typed number saved on blur, when it parses and differs from what is stored. */
+  const saveNumber = (key: 'changeEveryMs' | 'stillMaxMs', raw: string) => {
+    const value = Number(raw)
+    if (raw.trim() === '' || Number.isNaN(value)) return
+    if (value !== motion[key]) set(key, value)
+  }
 
   const set = <K extends keyof MotionIdentity>(key: K, value: MotionIdentity[K]) => {
     const next = structuredClone(settings)
@@ -171,9 +182,10 @@ export function MotionTab({ settings, saving, commit, techniqueOptions }: Motion
               min={500}
               max={10000}
               step={100}
-              value={motion.changeEveryMs}
+              value={cadence}
               disabled={saving}
-              onChange={(event) => set('changeEveryMs', Number(event.target.value))}
+              onChange={(event) => setCadence(event.target.value)}
+              onBlur={() => saveNumber('changeEveryMs', cadence)}
             />
             <p className={mutedClass}>Something changes about this often.</p>
           </div>
@@ -184,9 +196,10 @@ export function MotionTab({ settings, saving, commit, techniqueOptions }: Motion
               min={1000}
               max={20000}
               step={500}
-              value={motion.stillMaxMs}
+              value={still}
               disabled={saving}
-              onChange={(event) => set('stillMaxMs', Number(event.target.value))}
+              onChange={(event) => setStill(event.target.value)}
+              onBlur={() => saveNumber('stillMaxMs', still)}
             />
             <p className={mutedClass}>
               A graphic in which nothing changes for longer is refused. At least the cadence.
