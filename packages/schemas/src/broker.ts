@@ -84,8 +84,13 @@ export type RenderProgress = z.infer<typeof RenderProgressSchema>
 // Cost estimate
 // ---------------------------------------------------------------------------
 
-/** Spec section 8.1: a full master ≈ $0.25 for ~15 minutes of video. */
-export const ESTIMATED_COST_PER_VIDEO_SECOND_USD = 0.25 / 900
+/**
+ * A full master costs about $1.00 per 996 s (16.6 minutes), about $0.90 per
+ * 900 s: Remotion reported $1.00 for each of renders u9pq9hoy9c and
+ * ja7mt6pz2e (29,963 frames each). The spec section 8.1 figure of $0.25 per
+ * 15 minutes ran about 3.6 times low.
+ */
+export const ESTIMATED_COST_PER_VIDEO_SECOND_USD = 1.0 / 996
 
 /**
  * What a render is expected to cost, from its duration and kind. In the

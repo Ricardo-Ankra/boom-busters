@@ -11,11 +11,12 @@ import {
   FIRST_CHANNEL_NAME,
   FIRST_CHANNEL_SLUG,
   ProjectNotFoundError,
+  resolveFormat,
 } from '@boom-busters/schemas'
-import type { ChannelBible, Settings, SettingsPatch } from '@boom-busters/schemas'
+import type { ChannelBible, ChannelFormat, Settings, SettingsPatch } from '@boom-busters/schemas'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { appendBibleVersion } from './bibles'
+import { appendBibleVersion, currentBible } from './bibles'
 import { cases, channelBibles, channels, projects, workspace } from './schema'
 import type { BibleVersionRow, ChannelRow } from './schema'
 import { mergeSettings, normaliseSettings } from './settings-merge'
@@ -284,9 +285,11 @@ export async function channelForProject(
   slotIds: string[]
   bibleId: string
   bibleVersion: number
+  formatKey: string
+  format: ChannelFormat
 }> {
   const [row] = await db
-    .select({ channel: channels, version: channelBibles })
+    .select({ channel: channels, version: channelBibles, formatKey: projects.formatKey })
     .from(projects)
     .innerJoin(channels, eq(channels.id, projects.channelId))
     .innerJoin(channelBibles, eq(channelBibles.id, projects.bibleId))
@@ -305,6 +308,8 @@ export async function channelForProject(
     slotIds: channel.slotIds,
     bibleId: channel.bibleId,
     bibleVersion: channel.bibleVersion,
+    formatKey: row.formatKey,
+    format: resolveFormat(channel.bible.formats, row.formatKey),
   }
 }
 
@@ -318,4 +323,21 @@ export async function channelForCase(db: Database, caseId: string): Promise<Chan
     .where(eq(cases.id, caseId))
     .limit(1)
   return row ? toChannel(row) : undefined
+}
+
+/**
+ * Whether the project's format makes Shorts. Unlike every other format field
+ * this reads the channel's CURRENT bible, not the version the project froze
+ * (ruling 18): switching Shorts off for a format should reach projects already
+ * under way. An unknown key falls back to the primary, as `resolveFormat` does.
+ */
+export async function shortsEnabledForProject(db: Database, projectId: string): Promise<boolean> {
+  const [project] = await db
+    .select({ channelId: projects.channelId, formatKey: projects.formatKey })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project) throw new ProjectNotFoundError(projectId)
+  const current = await currentBible(db, project.channelId)
+  return resolveFormat(current.bible.formats, project.formatKey).shorts
 }

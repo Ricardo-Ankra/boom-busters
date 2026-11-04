@@ -9,6 +9,7 @@ import {
   Loader2,
   MinusCircle,
   Pause,
+  Ban,
 } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -39,6 +40,8 @@ export type SegmentState =
   | 'cancelled'
   | 'upcoming'
   | 'stale'
+  /** The project's format makes no Shorts, so the stage will not run. */
+  | 'off'
   /** The stage the project sits on, with nothing executing. */
   | 'current'
 
@@ -62,6 +65,7 @@ const STATE_LABELS: Record<SegmentState, string> = {
   cancelled: 'cancelled',
   upcoming: 'not started',
   stale: 'needs re-running',
+  off: 'off for this format',
   current: 'the current stage, nothing running',
 }
 
@@ -104,6 +108,8 @@ export function segmentState(view: StageView): SegmentState {
   }
 
   switch (view.availability) {
+    case 'off':
+      return 'off'
     case 'upcoming':
       return 'upcoming'
     case 'stale':
@@ -126,6 +132,8 @@ function StateIcon({ state }: { state: SegmentState }) {
       return <AlertCircle className="size-3.5 shrink-0" aria-hidden />
     case 'cancelled':
       return <MinusCircle className="size-3.5 shrink-0" aria-hidden />
+    case 'off':
+      return <Ban className="size-3.5 shrink-0" aria-hidden />
     case 'stale':
       return <History className="size-3.5 shrink-0" aria-hidden />
     // Solid and still: this is where the project is, and nothing is moving.
@@ -147,6 +155,8 @@ const STATE_CLASSES: Record<SegmentState, string> = {
   // Dashed, because stale is neither done nor undone: the work exists and
   // cannot be relied on.
   stale: 'border-dashed border-[var(--color-warning)] text-[var(--color-warning)]',
+  // Muted and dashed: neither waiting nor done, and nothing to do about it.
+  off: 'border-dashed border-[var(--color-border)] text-[var(--color-text-muted)]',
   // The same accent as `running`, deliberately: both mean "this is the stage
   // in play". Only the spinner separates them, and only a real run earns it.
   current: 'border-[var(--color-accent)] text-[var(--color-accent-text)]',

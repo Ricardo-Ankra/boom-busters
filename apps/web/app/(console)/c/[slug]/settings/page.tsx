@@ -4,7 +4,12 @@ import {
   getChannelSettings,
   getWorkspace,
   hasCredential,
+  keywordsToMeasure,
+  searchSpaceKeywords,
+  latestKeywordMeasurements,
+  latestSearchSpace,
   listBibleVersions,
+  measuredPace,
   listChannels,
   listLogos,
   maskKey,
@@ -57,6 +62,9 @@ export default async function SettingsPage({
     versions,
     current,
     vidiqKey,
+    latestReadings,
+    latestSpace,
+    pace,
   ] = await Promise.all([
     getChannelSettings(db, channel.id),
     getWorkspace(db),
@@ -69,6 +77,9 @@ export default async function SettingsPage({
     listBibleVersions(db, channel.id),
     currentBible(db, channel.id),
     hasCredential(db, 'vidiq'),
+    latestKeywordMeasurements(db, channel.id),
+    latestSearchSpace(db, channel.id),
+    measuredPace(db, channel.id),
   ])
 
   // The music library and the price table are the workspace's now; an old
@@ -89,6 +100,43 @@ export default async function SettingsPage({
         youtubeChannelTitle: connectionRow.youtubeChannelTitle,
       }
     : undefined
+
+  // Each format and pillar keyword's latest VidIQ reading, and how many the
+  // button would buy: counted over the draft when one is open, as the action does.
+  const keywordReadings = Object.fromEntries(
+    [...latestReadings].map(([key, row]) => [
+      key,
+      {
+        volume: row.volume,
+        competition: row.competition,
+        measuredAt: row.measuredAt.toISOString(),
+      },
+    ]),
+  )
+  const measureCount = keywordsToMeasure(
+    draft?.bible ?? current.bible,
+    latestReadings,
+    new Date(),
+  ).length
+
+  // Each format keyword's latest search-space analysis, and per format how many
+  // of its keywords the button would buy: counted over the draft, as the action does.
+  const searchSpace = Object.fromEntries(
+    [...latestSpace].map(([key, row]) => [
+      key,
+      {
+        measuredAt: row.measuredAt.toISOString(),
+        titlePatterns: row.titlePatterns,
+        durations: row.durations,
+      },
+    ]),
+  )
+  const searchSpaceCounts = Object.fromEntries(
+    (draft?.bible ?? current.bible).formats.map((format) => [
+      format.key,
+      searchSpaceKeywords(format.keywords, latestSpace, new Date()).length,
+    ]),
+  )
 
   const modelOptions = await loadModelOptions({
     routing: settings.modelRouting,
@@ -168,6 +216,11 @@ export default async function SettingsPage({
         }))}
         currentVersion={{ id: current.id, version: current.version, bible: current.bible }}
         vidiqReady={mockProvidersEnabled() || vidiqKey}
+        keywordReadings={keywordReadings}
+        measureCount={measureCount}
+        searchSpace={searchSpace}
+        searchSpaceCounts={searchSpaceCounts}
+        measuredPace={pace}
       />
     </div>
   )

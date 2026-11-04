@@ -186,10 +186,11 @@ export const voiceRunner = inngest.createFunction(
             if (claimed.kind === 'existing') return { ok: true, reused: true }
 
             try {
-              const { settings } = await channelForProject(db, projectId)
+              const { settings, format } = await channelForProject(db, projectId)
               const narration = await synthesise(
                 {
                   text: job.text,
+                  wordsPerMinute: format.wordsPerMinute,
                   // The synthesis's own identity, not the paragraph's: a retake
                   // is a different purchase of the same paragraph.
                   idempotencyKey: `${job.idempotencyKey}#${claimed.take.takeNumber}`,

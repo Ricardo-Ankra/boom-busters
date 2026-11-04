@@ -193,7 +193,7 @@ describeDb('draft-runner', () => {
         // A quarter of the master's estimate for the same 20 seconds.
         const [entry] = await listLedger(db)
         expect(entry).toMatchObject({ operation: 'render-draft', settled: false })
-        expect(Number(entry?.estimatedUsd)).toBeCloseTo(0.0014, 4)
+        expect(Number(entry?.estimatedUsd)).toBeCloseTo(0.005, 4)
         // The runner names only the project; the row carries the project's channel.
         const [row] = await db.select().from(costLedger)
         expect(row?.channelId).toBe(FIRST_CHANNEL_ID)

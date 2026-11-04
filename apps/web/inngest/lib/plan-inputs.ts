@@ -33,13 +33,18 @@ export async function loadPlanInputs(projectId: string) {
   // film's rooms, and the craft notes count how often each is used.
   const sets = await listProjectSets(db, projectId)
   // The logo library (decision 268, Plan B), threaded exactly like `sets`.
-  const { channelId } = await channelForProject(db, projectId)
+  const { channelId, format } = await channelForProject(db, projectId)
   const logos = await listLogos(db, channelId)
   return {
+    shotHold: format.shotHold,
     caseTitle: project.title,
     direction: book.success ? book.data : null,
     chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
-    paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
+    paragraphs: timedParagraphs({
+      chapters: sources.chapters,
+      takes,
+      wordsPerMinute: format.wordsPerMinute,
+    }),
     claims: claims.map((claim) => ({
       id: claim.id,
       text: claim.text,

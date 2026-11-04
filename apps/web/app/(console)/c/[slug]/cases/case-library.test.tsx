@@ -1,7 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
-import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
+import {
+  FIRST_CHANNEL_BIBLE,
+  FIRST_CHANNEL_ID as CHANNEL_ID,
+  defaultFormat,
+} from '@boom-busters/schemas'
 import type { Notice, SearchBrief } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
@@ -22,6 +26,8 @@ const actions = vi.hoisted(() => ({
   caseResearchEstimate: vi.fn(),
   chooseAngleAction: vi.fn(),
   setTargetKeywordAction: vi.fn(),
+  setCaseFormatAction: vi.fn(),
+  estimateStartCostAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 // The notice's Dismiss is a server action whose module loads next-auth,
@@ -49,6 +55,7 @@ function kase(overrides: Partial<CaseSummary>): CaseSummary {
     sourceLinks: [],
     searchBrief: null,
     searchJob: null,
+    formatKey: null,
     priorityScore: 88,
     status: 'idea',
     projectCount: 0,
@@ -70,6 +77,10 @@ const trimmed: Notice = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  actions.estimateStartCostAction.mockResolvedValue({
+    usd: null,
+    basis: 'No estimate yet: no finished projects',
+  })
 })
 
 describe('CaseLibrary notices (decision 293)', () => {
@@ -418,6 +429,8 @@ const BRIEF: SearchBrief = {
     },
   ],
   chosenAngle: 1,
+  formatKey: null,
+  fit: null,
 }
 
 function researched(over: Partial<CaseSummary> = {}) {
@@ -525,7 +538,9 @@ describe('Research with VidIQ', () => {
     const steps = {
       load: 'Starting',
       'keywords-terms': 'Finding search terms',
+      'keywords-format': 'Finding search terms for the format',
       'keywords-filter': 'Keeping the terms about the subject',
+      fit: 'Checking the subject fits the channel',
       'keywords-questions': 'Finding the questions people search',
       outliers: 'Finding the winning videos',
       'outlier-details': 'Reading the winning videos',
@@ -726,7 +741,9 @@ describe('New project and a stale brief', () => {
     actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
     const row = renderRow(kase({ status: 'shortlisted' }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
-    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 15, undefined),
+    )
     expect(push).toHaveBeenCalledWith('/c/psychology/projects')
   })
 
@@ -757,7 +774,9 @@ describe('New project and a stale brief', () => {
     const row = renderRow(researched({ searchBrief: OLD_BRIEF }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await userEvent.click(within(row).getByRole('button', { name: 'Start without refreshing' }))
-    await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 15, undefined),
+    )
     expect(actions.researchCaseAction).not.toHaveBeenCalled()
   })
 
@@ -766,5 +785,269 @@ describe('New project and a stale brief', () => {
     const row = renderRow(researched({ subject: 'We Company', searchBrief: OLD_BRIEF }))
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await waitFor(() => expect(actions.startProjectFromCase).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('the case format picker', () => {
+  const sleep = {
+    ...defaultFormat('Sleep'),
+    key: 'sleep',
+    primary: false,
+    keywords: ['sleep documentary'],
+  }
+  const two = [defaultFormat('Main'), sleep]
+
+  function renderWith(formats: typeof two, item: CaseSummary) {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+  }
+
+  it('shows no picker for a channel with one format', () => {
+    const row = renderWith([defaultFormat('Main')], kase({ status: 'shortlisted' }))
+    expect(within(row).queryByLabelText('Format')).not.toBeInTheDocument()
+  })
+
+  it('shows a Format select with an option per format, and choosing saves it', async () => {
+    actions.setCaseFormatAction.mockResolvedValue({ ok: true })
+    const row = renderWith(two, kase({ status: 'shortlisted' }))
+    const select = within(row).getByLabelText('Format')
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Main', 'Sleep'])
+    expect(select).toHaveValue('main')
+    await userEvent.selectOptions(select, 'sleep')
+    await waitFor(() => expect(actions.setCaseFormatAction).toHaveBeenCalledWith(WIRECARD, 'sleep'))
+  })
+
+  it('shows the primary selected when the stored key is no longer in the bible', () => {
+    const row = renderWith(two, kase({ status: 'shortlisted', formatKey: 'gone' }))
+    expect(within(row).getByLabelText('Format')).toHaveValue('main')
+  })
+
+  it('labels the research button 25 credits when the selected format has a lead keyword', () => {
+    const withSeed = renderWith(
+      two,
+      kase({ status: 'shortlisted', subject: 'Iomega', formatKey: 'sleep' }),
+    )
+    expect(
+      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 25 credits)' }),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps 20 credits when the selected format has no keyword', () => {
+    const row = renderWith(two, kase({ status: 'shortlisted', subject: 'Iomega' }))
+    expect(
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('the channel fit on the case row', () => {
+  const fitted = (fit: NonNullable<typeof BRIEF.fit>, category = 'con') =>
+    researched({ category, searchBrief: { ...BRIEF, fit } })
+
+  it('warns when the subject is outside the pillars, with the reason', () => {
+    const row = renderRow(
+      fitted({ inScope: false, pillarKey: null, reason: 'It is a sleep guide.' }),
+    )
+    expect(row).toHaveTextContent("Outside this channel's pillars: It is a sleep guide.")
+  })
+
+  it("names the better pillar by its label when it is not the case's own", () => {
+    const row = renderRow(fitted({ inScope: true, pillarKey: 'collapse', reason: 'A slow fall.' }))
+    expect(row).toHaveTextContent('Fits Collapse better: A slow fall.')
+  })
+
+  it("says nothing when the fit is the case's own pillar, and blocks nothing", () => {
+    const row = renderRow(fitted({ inScope: true, pillarKey: 'con', reason: 'A con.' }))
+    expect(row).not.toHaveTextContent('better')
+    expect(row).not.toHaveTextContent('Outside this channel')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
+  })
+})
+
+describe('the start control: format, length and cost', () => {
+  const long = {
+    ...defaultFormat('Long'),
+    key: 'long',
+    primary: false,
+    runtime: { default: 90, min: 3, max: 180 },
+  }
+  const short = {
+    ...defaultFormat('Short'),
+    key: 'short',
+    primary: false,
+    runtime: { default: 8, min: 5, max: 10 },
+  }
+  const formats = [defaultFormat('Main'), long, short]
+
+  function renderStart(item: CaseSummary, withFormats = formats) {
+    render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={withFormats}
+      />,
+    )
+    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+  }
+
+  it('defaults the length to the format default clamped to 30, with the not-supported note', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(30)
+    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 30, undefined),
+    )
+  })
+
+  it('shows no note for a format inside the start limit', () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'short' }))
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    expect(row).not.toHaveTextContent('not supported yet')
+  })
+
+  it('sets the field range from the format, capped at 30', () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
+    const field = within(row).getByLabelText('Length in minutes')
+    expect(field).toHaveAttribute('min', '3')
+    expect(field).toHaveAttribute('max', '30')
+  })
+
+  it('offers a start format only for more than one format, and starting with another sends its key and default', async () => {
+    actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+    const one = renderStart(kase({ status: 'shortlisted' }), [defaultFormat('Main')])
+    expect(within(one).queryByLabelText('Start format')).not.toBeInTheDocument()
+    cleanup()
+
+    const row = renderStart(kase({ status: 'shortlisted' }))
+    const select = within(row).getByLabelText('Start format')
+    expect(select).toHaveValue('main')
+    await userEvent.selectOptions(select, 'short')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
+    await waitFor(() =>
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 8, 'short'),
+    )
+  })
+
+  it('shows the estimate for the length and asks again when it changes', async () => {
+    actions.estimateStartCostAction.mockResolvedValue({
+      usd: 12.4,
+      basis: 'About $12.40, from 6 finished projects',
+    })
+    const row = renderStart(kase({ status: 'shortlisted' }))
+    await waitFor(() => expect(row).toHaveTextContent('About $12.40, from 6 finished projects'))
+    expect(actions.estimateStartCostAction).toHaveBeenLastCalledWith(CHANNEL_ID, 15)
+    const field = within(row).getByLabelText('Length in minutes')
+    await userEvent.clear(field)
+    await userEvent.type(field, '20')
+    await waitFor(() =>
+      expect(actions.estimateStartCostAction).toHaveBeenLastCalledWith(CHANNEL_ID, 20),
+    )
+  })
+
+  it('disables New project while the length is outside the range', async () => {
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'short' }))
+    const field = within(row).getByLabelText('Length in minutes')
+    await userEvent.clear(field)
+    await userEvent.type(field, '45')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(row).toHaveTextContent('This format runs 5 to 10 minutes')
+  })
+
+  it('for a format longer than the start limit disables the field and the button, showing only the note', () => {
+    const huge = {
+      ...defaultFormat('Huge'),
+      key: 'huge',
+      primary: false,
+      runtime: { default: 90, min: 90, max: 180 },
+    }
+    const row = renderStart(kase({ status: 'shortlisted', formatKey: 'huge' }), [...formats, huge])
+    const field = within(row).getByLabelText('Length in minutes')
+    expect(field).toBeDisabled()
+    expect(field).not.toHaveAttribute('min')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
+    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
+    expect(row).not.toHaveTextContent('This format runs')
+  })
+
+  describe('a brief researched for another format', () => {
+    const briefFor = (formatKey: string | null) =>
+      researched({ formatKey: null, searchBrief: { ...BRIEF, formatKey } })
+
+    it("says so in one line, naming the brief's format, and still lets the project start", async () => {
+      actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
+      const row = renderStart(briefFor('short'))
+      expect(within(row).getByLabelText('Start format')).toHaveValue('main')
+      expect(row).toHaveTextContent('Researched for the Short format.')
+      expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
+    })
+
+    it('follows the chosen format: the note goes when the start format matches the brief', async () => {
+      const row = renderStart(briefFor('short'))
+      await userEvent.selectOptions(within(row).getByLabelText('Start format'), 'short')
+      expect(row).not.toHaveTextContent('Researched for the')
+    })
+
+    it('says nothing when the brief was researched for the chosen format, or for none', () => {
+      const same = renderStart(
+        researched({ formatKey: 'short', searchBrief: { ...BRIEF, formatKey: 'short' } }),
+      )
+      expect(same).not.toHaveTextContent('Researched for the')
+      cleanup()
+      const none = renderStart(briefFor(null))
+      expect(none).not.toHaveTextContent('Researched for the')
+    })
+
+    it("names the key when the brief's format is no longer in the bible", () => {
+      const row = renderStart(briefFor('retired'))
+      expect(row).toHaveTextContent('Researched for the retired format.')
+    })
+  })
+
+  it("follows the case's format when the row picker changes it", async () => {
+    actions.setCaseFormatAction.mockResolvedValue({ ok: true })
+    const item = kase({ status: 'shortlisted', formatKey: 'short' })
+    const view = render(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[item]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    const row = screen.getByText(item.title, { selector: 'p' }).closest('li')!
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
+    view.rerender(
+      <CaseLibrary
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[{ ...item, formatKey: 'main' }]}
+        sort="newest"
+        formats={formats}
+      />,
+    )
+    expect(within(row).getByLabelText('Start format')).toHaveValue('main')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(15)
   })
 })

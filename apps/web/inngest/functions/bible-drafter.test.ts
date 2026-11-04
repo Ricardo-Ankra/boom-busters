@@ -212,6 +212,15 @@ describeDb('bible-drafter (mock mode)', () => {
     expect(draft.bible.hooks[0]?.drawnFrom.length).toBeGreaterThan(0)
   })
 
+  it('drafts the formats section and marks it drafted', async () => {
+    await prepare(channelId, mockResearchDigest(INPUTS))
+    await engine.execute(request(channelId, [{ section: 'formats' }]))
+    const draft = await draftOf()
+    expect(draft.statuses.formats).toBe('drafted')
+    expect(draft.errors).toEqual({})
+    expect(draft.bible.formats.length).toBeGreaterThan(0)
+  })
+
   it('keeps the good answer after a refused first one, and records no error', async () => {
     await prepare(channelId)
     const unit = bibleDraftUnits(['examples'])[0]!

@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { SCRIPT_CRAFT, SCRIPT_CRAFT_CALM } from './script-craft'
 import {
   buildChapterRequest,
   claimList,
@@ -96,6 +97,61 @@ describe('buildOutlineRequest', () => {
   it('sizes the script from the target runtime', () => {
     // 18 minutes at 150wpm, minus pacing headroom.
     expect(request.system).toMatch(/about 2565 words/)
+  })
+
+  it('sizes the script from the voice pace when one is given', () => {
+    const at = (wordsPerMinute?: number) =>
+      buildOutlineRequest({
+        bible: FIRST_CHANNEL_IN_USE,
+        caseTitle: 'Enron',
+        dossierMd: '# Enron',
+        claims,
+        targetRuntimeMin: 15,
+        ...(wordsPerMinute === undefined ? {} : { wordsPerMinute }),
+      }).system
+    expect(at(120)).toMatch(/about 1710 words/)
+    expect(at()).toMatch(/about 2138 words/)
+    expect(at(150)).toBe(at())
+  })
+
+  it("counts the format's fixed lines inside the word budget", () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+    }
+    const plain = buildOutlineRequest(base).system
+    expect(plain).toMatch(/about 2138 words/)
+    expect(buildOutlineRequest({ ...base, introLine: '', outroLine: '  ' }).system).toBe(plain)
+    const fixed = buildOutlineRequest({
+      ...base,
+      introLine: 'one two three four five six seven eight nine ten',
+      outroLine: 'one two three four five',
+    }).system
+    expect(fixed).toMatch(/about 2123 words/)
+  })
+
+  it("replaces the opening chapter's rule with the format's intro rule", () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+    }
+    const plain = buildOutlineRequest(base).system
+    expect(plain).toContain('The opening chapter is a glimpse of the consequence')
+    expect(buildOutlineRequest({ ...base, introRule: '' }).system).toBe(plain)
+    const ruled = buildOutlineRequest({
+      ...base,
+      introRule: 'The opening chapter greets the listener and names tonight. [[example:x]]',
+    }).system
+    expect(ruled).toContain('The opening chapter greets the listener and names tonight.')
+    expect(ruled).not.toContain('glimpse of the consequence')
+    // The owner's text reaches the prompt as typed: it opens no slot marker.
+    expect(ruled).toContain('tonight. [[example:x]]')
   })
 
   it('marks which claims are not adjudicated', () => {
@@ -190,6 +246,8 @@ describe('buildOutlineRequest with a search brief', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
     ...patch,
   })
 
@@ -1258,5 +1316,144 @@ describe("the channel's drafted hooks and openings", () => {
     })
     expect(system).not.toContain("The channel's own hooks")
     expect(system).not.toContain("The channel's own openings")
+  })
+})
+
+describe('the calm playbook', () => {
+  const calmHeading = SCRIPT_CRAFT_CALM.split('\n')[0]!
+  const tensionHeading = SCRIPT_CRAFT.split('\n')[0]!
+  const outlineBase = {
+    bible: FIRST_CHANNEL_IN_USE,
+    caseTitle: 'Enron',
+    dossierMd: '# Enron',
+    claims,
+    targetRuntimeMin: 15,
+  }
+  const chapterBase = {
+    bible: FIRST_CHANNEL_IN_USE,
+    caseTitle: 'Enron',
+    outline,
+    chapterIndex: 1,
+    previousChapters: [],
+    claims,
+  }
+  const checkBase = {
+    bible: FIRST_CHANNEL_IN_USE,
+    chapterTitle: 'The turn',
+    contentMd: 'Some narration.',
+    claims,
+  }
+
+  it('an outline for a calm format carries the calm craft and the calm contract', () => {
+    const { system } = buildOutlineRequest({ ...outlineBase, intent: 'calm' })
+    expect(system).toContain(calmHeading)
+    expect(system).toContain('The calm contract, per chapter')
+    expect(system).not.toContain('The tension contract')
+    expect(system).not.toContain(tensionHeading)
+    expect(system).toContain('"close": {"answer": string, "echo": string, "openThread": string}')
+    expect(system).toContain('"openThread": an empty string')
+  })
+
+  it('an outline with no intent, or tension, is today byte for byte', () => {
+    const plain = buildOutlineRequest(outlineBase).system
+    expect(buildOutlineRequest({ ...outlineBase, intent: 'tension' }).system).toBe(plain)
+    expect(plain).toContain(tensionHeading)
+    expect(plain).toContain('The tension contract, per chapter')
+    expect(plain).not.toContain(calmHeading)
+  })
+
+  it('the intro rule still replaces the opening chapter rule for a calm format', () => {
+    const { system } = buildOutlineRequest({
+      ...outlineBase,
+      intent: 'calm',
+      introRule: 'Greet the listener and name the night.',
+    })
+    expect(system).toContain('Greet the listener and name the night.')
+    expect(system).not.toContain('glimpse of the consequence')
+  })
+
+  it('a chapter for a calm format carries the calm craft and a calm contract', () => {
+    const { system, messages } = buildChapterRequest({ ...chapterBase, intent: 'calm' })
+    expect(system).toContain(calmHeading)
+    expect(system).not.toContain(tensionHeading)
+    const all = JSON.stringify(messages)
+    expect(all).not.toContain('The tension contract')
+    expect(all).not.toContain('Plant this question')
+    expect(all).not.toContain('Withhold entirely')
+    expect(all).not.toContain('Reveal here')
+    expect(all).toContain('The calm contract for this chapter')
+  })
+
+  it('a chapter with no intent, or tension, is today byte for byte', () => {
+    const plain = buildChapterRequest(chapterBase)
+    expect(buildChapterRequest({ ...chapterBase, intent: 'tension' })).toEqual(plain)
+    expect(plain.system).toContain(tensionHeading)
+    expect(JSON.stringify(plain.messages)).toContain('The tension contract for this chapter')
+  })
+
+  it('the calm contract leaves no open thread at the close', () => {
+    const last = tensionContract(outline, outline.chapters.length - 1, 'calm')
+    expect(last).toContain('End the telling with the close')
+    expect(last).toContain('The money never existed; the signatures did.')
+    expect(last).toContain('Echo: The auditors signed.')
+    expect(last).not.toContain('Open thread')
+    expect(last).not.toContain('has no date')
+    expect(tensionContract(outline, 0, 'calm')).toContain('Thirty thousand pensions')
+    expect(tensionContract(outline, 0, 'calm')).not.toContain('Why did the auditors keep signing?')
+    expect(tensionContract(outline, 0, 'tension')).toBe(tensionContract(outline, 0))
+  })
+
+  it('a calm self-check says it checks a calm telling; none is today byte for byte', () => {
+    const plain = buildSelfCheckRequest(checkBase)
+    expect(buildSelfCheckRequest({ ...checkBase, intent: 'tension' })).toEqual(plain)
+    const calm = buildSelfCheckRequest({ ...checkBase, intent: 'calm' })
+    expect(calm.system).not.toBe(plain.system)
+    expect(calm.system).toContain('calm telling')
+    expect(calm.system).toContain('unsourced-claim')
+    expect(calm.system).toContain('EXACTLY as it appears')
+  })
+
+  it('a regenerate for a calm format carries the calm craft', () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      chapterTitle: 'The turn',
+      contentMd: 'Some narration.',
+      selection: 'Some',
+      note: 'softer',
+      claims,
+    }
+    expect(buildRegenerateRequest({ ...base, intent: 'calm' }).system).toContain(calmHeading)
+    expect(buildRegenerateRequest(base).system).toContain(tensionHeading)
+  })
+
+  it('tensionFromOutline of a calm outline has no tension entries, and the prompts add none', () => {
+    const calm = OutlineSchema.parse({
+      chapters: [
+        {
+          title: 'One',
+          beat: 'x'.repeat(30),
+          question: '',
+          withhold: '',
+          reveals: '',
+          targetWords: 300,
+        },
+        { title: 'Two', beat: 'y'.repeat(30), question: '', withhold: '', targetWords: 300 },
+      ],
+    })
+    const tension = tensionFromOutline(calm)
+    expect(tension.centralQuestion).toBeUndefined()
+    expect(tension.chapters.every((chapter) => !chapter.question && !chapter.withhold)).toBe(true)
+    const chapters = [{ index: 0, title: 'One', contentMd: 'Text.' }]
+    const shorts = JSON.stringify(
+      buildShortsRequest({ bible: FIRST_CHANNEL_IN_USE, chapters, tension }).messages,
+    )
+    expect(shorts).not.toContain('drives on')
+    expect(shorts).not.toContain('withholds')
+    const teaser = JSON.stringify(
+      buildTeaserRequest({ bible: FIRST_CHANNEL_IN_USE, caseTitle: 'C', chapters, tension })
+        .messages,
+    )
+    expect(teaser).not.toContain('withholds')
+    expect(teaser).not.toContain('central question')
   })
 })

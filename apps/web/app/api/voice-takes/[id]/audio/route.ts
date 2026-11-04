@@ -1,4 +1,4 @@
-import { getVoiceTake, isMockKey } from '@boom-busters/db'
+import { channelForProject, getVoiceTake, isMockKey } from '@boom-busters/db'
 import {
   encodeWav,
   mockNarrationPcm,
@@ -76,10 +76,12 @@ export async function GET(
       })
     }
 
+    const { format } = await channelForProject(db, take.projectId)
     const wav = encodeWav(
       mockNarrationPcm(
         unit.text,
         mockTakeSeed(take.voiceId, `${take.idempotencyKey}#${take.takeNumber}`),
+        format.wordsPerMinute,
       ),
       { sampleRate: NARRATION_SAMPLE_RATE },
     )

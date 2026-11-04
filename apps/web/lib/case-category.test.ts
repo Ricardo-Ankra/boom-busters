@@ -7,9 +7,9 @@ import { caseCategoryLabel, caseCategoryKeys } from './case-category'
 const PSYCHOLOGY: ChannelBible = {
   ...FIRST_CHANNEL_BIBLE,
   caseCategories: [
-    { key: 'experiment', label: 'Experiment' },
-    { key: 'bias', label: 'Bias' },
-    { key: 'replication', label: 'Replication' },
+    { key: 'experiment', label: 'Experiment', keywords: [] },
+    { key: 'bias', label: 'Bias', keywords: [] },
+    { key: 'replication', label: 'Replication', keywords: [] },
   ],
 }
 

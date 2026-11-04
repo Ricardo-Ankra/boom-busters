@@ -81,6 +81,8 @@ function seededBrief(measuredAt: string): SearchBrief {
       },
     ],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   }
 }
 
@@ -144,13 +146,40 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
 
+/** The cap in force before this file ran, so afterAll can put it back. */
+let capBefore: number | null = null
+
+/**
+ * The spec presses Research with VidIQ, which refuses when the month's credits
+ * are spent. Spend left by earlier runs, or a cap another spec lowered, must
+ * not decide that: it clears this month's rows and sets the cap itself.
+ */
+async function startFromCleanCredits(): Promise<void> {
+  const { getWorkspace, updateWorkspace } = await import('@boom-busters/db')
+  await withDb(async ({ db, sql }) => {
+    capBefore ??= (await getWorkspace(db)).settings.vidiq.monthlyCreditCap
+    await sql`delete from vidiq_credits
+      where occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'`
+    await updateWorkspace(db, { vidiq: { monthlyCreditCap: 1000 } })
+  })
+}
+
+async function restoreCap(): Promise<void> {
+  if (capBefore === null) return
+  const { updateWorkspace } = await import('@boom-busters/db')
+  const cap = capBefore
+  await withDb(({ db }) => updateWorkspace(db, { vidiq: { monthlyCreditCap: cap } }))
+}
+
 // A CI retry reruns the serial group: start it from a clean slate.
 test.beforeAll(async () => {
   await removeCase()
+  await startFromCleanCredits()
 })
 
 test.afterAll(async () => {
   await removeCase()
+  await restoreCap()
 })
 
 test.describe('case research', () => {

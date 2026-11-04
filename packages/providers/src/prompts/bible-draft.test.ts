@@ -3,6 +3,7 @@ import {
   EXAMPLE_SLOTS,
   FIRST_CHANNEL_BIBLE,
   bibleDraftUnits,
+  defaultFormat,
 } from '@boom-busters/schemas'
 import type { BibleDraftInputs, ChannelBible } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
@@ -37,6 +38,12 @@ describe('bibleUnitSchema', () => {
     expect(schema.safeParse({ ...answer, subject: 'x' }).success).toBe(false)
     const { language: _language, ...missing } = answer
     expect(schema.safeParse(missing).success).toBe(false)
+  })
+
+  it('takes the formats section as a list of formats and refuses an answer without it', () => {
+    const schema = bibleUnitSchema({ section: 'formats' })
+    expect(schema.safeParse({ formats: [defaultFormat('Sleep')] }).success).toBe(true)
+    expect(schema.safeParse({}).success).toBe(false)
   })
 
   it('refuses a language that is a name, not a code, so the model is retried', () => {
@@ -122,6 +129,18 @@ describe('buildBibleUnitRequest', () => {
     expect(content).not.toContain("The owner's inputs")
     const text = (request.system + content).toLowerCase()
     for (const word of ['psycholog', 'experiment', 'volunteer']) expect(text).not.toContain(word)
+  })
+
+  it('guides the formats unit with the intent and pillar keyword lines', () => {
+    const formats = buildBibleUnitRequest({ ...base, unit: { section: 'formats' } })
+    expect(formats.messages[0]!.content).toContain('"calm" for one made to relax or fall asleep to')
+    expect(formats.messages[0]!.content).toContain('minutes between 3 and 180')
+    const identity = buildBibleUnitRequest({ ...base, unit: { section: 'identity' } })
+    expect(identity.messages[0]!.content).toContain(
+      'keywords: up to 6 search phrases for that pillar',
+    )
+    expect(identity.messages[0]!.content).toContain('the pillars (kinds of film)')
+    expect(identity.messages[0]!.content).not.toContain('keywordContext')
   })
 
   it('orders the sections as the brief lists them', () => {

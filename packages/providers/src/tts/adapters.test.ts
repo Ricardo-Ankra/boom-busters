@@ -323,6 +323,15 @@ describe('mock TTS adapter', () => {
     )
   })
 
+  it("speaks at the request's pace, so a slower format makes a longer take", async () => {
+    const text = Array(240).fill('word').join(' ')
+    const base = { ...request, text }
+    const normal = await createMockTTS().synthesise(base, { apiKey: 'k' })
+    const slow = await createMockTTS().synthesise({ ...base, wordsPerMinute: 120 }, { apiKey: 'k' })
+    expect(normal.durationMs).toBe(96_000)
+    expect(slow.durationMs).toBe(120_000)
+  })
+
   it('stands in for the narrator, so a mock run looks like a live one', async () => {
     const result = await createMockTTS().synthesise(request, { apiKey: 'k' })
     expect(result.provider).toBe('elevenlabs')

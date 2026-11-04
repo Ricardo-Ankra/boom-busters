@@ -8,6 +8,7 @@ import {
   HeadlineBriefSchema,
   HERO_SLOTS_ENABLED,
   MIN_SHOT_SECONDS,
+  minShotSeconds,
   PlannedBriefSchema,
   REUSABLE_SLOT_TYPES,
   SHOT_SLOT_TYPES,
@@ -887,6 +888,12 @@ describe('minimum seconds per shot type (the stretch re-plan design)', () => {
       graphic: 3,
       hero: 3,
     })
+  })
+
+  it('multiplies the minimum by the format shot hold', () => {
+    expect(minShotSeconds('stock', 2.5)).toBe(7.5)
+    expect(minShotSeconds('headline')).toBe(5)
+    expect(minShotSeconds('chart', 1)).toBe(MIN_SHOT_SECONDS.chart)
   })
 
   it('accepts a stretch job on a slot', () => {

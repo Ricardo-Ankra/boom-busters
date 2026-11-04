@@ -1,4 +1,6 @@
 import {
+  LONG_CHAPTER_WORDS,
+  LONG_SCRIPT_WORDS,
   OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
@@ -35,7 +37,7 @@ import { channelRulesBlock, exampleEntriesBlock, fillSlots, literalBibleText, no
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
-import { SCRIPT_CRAFT } from './script-craft'
+import { SCRIPT_CRAFT, SCRIPT_CRAFT_CALM } from './script-craft'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -176,6 +178,26 @@ const openingExamples = (inUse: BibleInUse): string =>
 // Outline
 // ---------------------------------------------------------------------------
 
+/** A format's script playbook: tension (documentary craft) or calm (a telling to relax or sleep to). */
+export type ScriptIntent = 'tension' | 'calm'
+
+/** The craft file an intent selects; absent is tension. */
+const craftFor = (intent: ScriptIntent | undefined): string =>
+  intent === 'calm' ? SCRIPT_CRAFT_CALM : SCRIPT_CRAFT
+
+/** The opening chapter's rule: the format's own when it has one, else the intent's default. */
+const openingRule = (introRule: string | undefined, intent?: ScriptIntent): string =>
+  introRule && introRule.trim() !== ''
+    ? literalBibleText(introRule.trim())
+    : intent === 'calm'
+      ? `The opening chapter sets the scene: where and when the telling begins and who is
+there, in plain, unhurried words. It glimpses no later moment and holds nothing back.`
+      : `The opening chapter is a glimpse of the consequence in a few sentences, most
+of its detail withheld. The opening chapter owns none of the claims of the
+moment it glimpses: the chapter where the chronology returns to that moment
+owns them, opens with one line of callback, and narrates only the claims it
+owns.`
+
 /** Third-party search text as one quoted line, literal to `fillSlots`: it can neither start a line nor a bible marker. */
 const quotedSearch = (text: string): string =>
   literalBibleText(JSON.stringify(searchBriefLine(text)))
@@ -213,6 +235,38 @@ function outlineSearchedQuestions(brief: SearchBrief | null | undefined): string
     : ''
 }
 
+/**
+ * How a long script is cut (spec section 8): chapters a thousand words or
+ * under, so each one drafts, self-checks and shot-plans in one step and one
+ * answer. Empty for any script the app allowed before runtimes rose past 60
+ * minutes, so those prompts are unchanged.
+ */
+function chapterSizeRule(targetWords: number): string {
+  if (targetWords <= LONG_SCRIPT_WORDS) return ''
+  const chapters = Math.ceil(targetWords / LONG_CHAPTER_WORDS)
+  return `, in chapters of about 800 to ${LONG_CHAPTER_WORDS.toLocaleString('en-US')} words each (about ${chapters} chapters)`
+}
+
+/**
+ * The answer-token budget for an outline. A chapter's plan runs about 450
+ * tokens (the beat, the tension fields, the claim numbers), and the flat 4,000
+ * held about nine of them. A long script is cut in chapters of about a
+ * thousand words, so the budget follows the chapter count; anything up to the
+ * old limit keeps its 4,000.
+ */
+const OUTLINE_FLOOR_TOKENS = 4000
+const OUTLINE_TOKENS_PER_CHAPTER = 450
+const OUTLINE_FRAME_TOKENS = 1000
+
+export function outlineAnswerTokens(targetWords: number): number {
+  if (targetWords <= LONG_SCRIPT_WORDS) return OUTLINE_FLOOR_TOKENS
+  const chapters = Math.ceil(targetWords / LONG_CHAPTER_WORDS)
+  return Math.max(
+    OUTLINE_FLOOR_TOKENS,
+    chapters * OUTLINE_TOKENS_PER_CHAPTER + OUTLINE_FRAME_TOKENS,
+  )
+}
+
 export function buildOutlineRequest(input: {
   bible: BibleInUse
   caseTitle: string
@@ -221,18 +275,33 @@ export function buildOutlineRequest(input: {
   targetRuntimeMin: number
   /** The case's search brief, when it has one; absent or null changes nothing in the prompt. */
   searchBrief?: SearchBrief | null
+  /** The rate the channel's voice speaks at (the project's format); 150 when absent. */
+  wordsPerMinute?: number
+  /** The format's intro rule; when non-empty it replaces the opening chapter's rule. */
+  introRule?: string
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: ScriptIntent
+  /** The format's fixed opening and closing lines: their words count inside the budget. */
+  introLine?: string
+  outroLine?: string
 }): LLMTaskRequest {
-  // 150 words per minute of narration, minus a little for pacing beats.
-  const targetWords = Math.round(input.targetRuntimeMin * 150 * 0.95)
+  const calm = input.intent === 'calm'
+  // The voice's words per minute, minus a little for pacing beats, minus the
+  // fixed lines the owner wrote, which are part of the runtime and not the model's to write.
+  const fixedWords = countWords(input.introLine ?? '') + countWords(input.outroLine ?? '')
+  const targetWords = Math.max(
+    0,
+    Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95) - fixedWords,
+  )
 
   return {
     task: 'scripting',
     system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${craftFor(input.intent)}${scriptRules(input.bible)}
 
-Produce a chapter plan totalling about ${targetWords} words:
+Produce a chapter plan totalling about ${targetWords} words${chapterSizeRule(targetWords)}:
 {"centralQuestion": string,
  "storylines": [string],
  "close": {"answer": string, "echo": string, "openThread": string},
@@ -253,14 +322,28 @@ The plan, per chapter:
   two to four storylines for the film ([[example:script-storyline-examples]]). A
   chapter advances one and may touch the others in a few words; a storyline
   left untouched for two chapters returns in the next.
-- "reveals": the fact an earlier chapter withheld that this chapter reveals,
-  if any. A withheld fact is revealed once.
+${
+  calm
+    ? `- "reveals": always an empty string. A calm telling withholds nothing.`
+    : `- "reveals": the fact an earlier chapter withheld that this chapter reveals,
+  if any. A withheld fact is revealed once.`
+}
 - "constraints": the wording limits for this chapter: what must stay
   attributed and to whom, what is never stated as fact, which figures are
   unsourced and must not appear. They shape the words and are never narrated.
   Put the dossier's corrections here, not in the beat.
 
-The tension contract, per chapter:
+${
+  calm
+    ? `The calm contract, per chapter:
+- "question": an empty string. A calm chapter plants no question.
+- "withhold": an empty string. A calm chapter holds nothing back.
+- "stakes": what the chapter is about, in plain words: the people, place and
+  period it takes up. Nothing is at risk and nothing escalates.
+"centralQuestion" is one plain sentence saying what the whole telling is
+about: a subject, not a puzzle. Each chapter takes up one thread, settles it
+and rests; none is larger or more urgent than the last.`
+    : `The tension contract, per chapter:
 - "question": the open question this chapter plants and must NOT answer; the
   next chapter answers it.
 - "withhold": the fact this chapter deliberately does not say, and which later
@@ -269,22 +352,28 @@ The tension contract, per chapter:
   money, dates.
 "centralQuestion" is the one question the whole film exists to answer; only
 the final chapter answers it. Design the arc so each chapter's stakes are
-larger or more personal than the last.${outlineSearchRules(input.searchBrief)}
+larger or more personal than the last.`
+}${outlineSearchRules(input.searchBrief)}
 
 "close" is how the film ends, written as the final chapter's last paragraphs:
-- "answer": the central question answered in plain words, as this channel's
+${
+  calm
+    ? `- "answer": the subject drawn together in plain words, as this channel's
+  reading of the record, [[example:script-close-hedge]].
+- "echo": one image, place or phrase from the opening chapter that the
+  ending returns to, so the telling ends where it began.
+- "openThread": an empty string. The telling leaves nothing unresolved, and
+  its last line settles.`
+    : `- "answer": the central question answered in plain words, as this channel's
   reading of the record, [[example:script-close-hedge]].
 - "echo": one image, number or phrase from the opening chapter that the
   ending returns to, so the film closes the loop it opened.
-- "openThread": the one thing still unresolved, which is the last line.
+- "openThread": the one thing still unresolved, which is the last line.`
+}
 The close is the one place the film says what it thinks. It is never a recap
 of the chapters.
 
-The opening chapter is a glimpse of the consequence in a few sentences, most
-of its detail withheld. The opening chapter owns none of the claims of the
-moment it glimpses: the chapter where the chronology returns to that moment
-owns them, opens with one line of callback, and narrates only the claims it
-owns.${openingExamples(input.bible)}`,
+${openingRule(input.introRule, input.intent)}${openingExamples(input.bible)}`,
       input.bible,
     ),
     messages: [
@@ -295,7 +384,7 @@ owns.${openingExamples(input.bible)}`,
       { role: 'user', content: `Claims available:\n${claimList(input.claims)}` },
       { role: 'user', content: `Outline it for roughly ${input.targetRuntimeMin} minutes.` },
     ],
-    maxTokens: outputBudget(4000),
+    maxTokens: outputBudget(outlineAnswerTokens(targetWords)),
   }
 }
 
@@ -403,7 +492,12 @@ function repairOutline(
  * from whatever tension fields the outline carries — an outline written
  * before the fields existed still drafts, just without the contract lines.
  */
-export function tensionContract(outline: Outline, chapterIndex: number): string {
+export function tensionContract(
+  outline: Outline,
+  chapterIndex: number,
+  intent?: ScriptIntent,
+): string {
+  if (intent === 'calm') return calmContract(outline, chapterIndex)
   const chapter = outline.chapters[chapterIndex]!
   const previous = chapterIndex > 0 ? outline.chapters[chapterIndex - 1] : undefined
   const lines: string[] = []
@@ -460,6 +554,44 @@ export function tensionContract(outline: Outline, chapterIndex: number): string 
   }
 
   return lines.length > 0 ? `The tension contract for this chapter:\n${lines.join('\n')}` : ''
+}
+
+/**
+ * The contract one chapter of a calm telling drafts under: what the telling
+ * and the chapter are about, the wording limits, and, for the final chapter,
+ * a close with no open thread. No question, withheld fact or reveal is ever
+ * carried, even by an outline that has them.
+ */
+function calmContract(outline: Outline, chapterIndex: number): string {
+  const chapter = outline.chapters[chapterIndex]!
+  const lines: string[] = [
+    `- Settle this chapter's own thread and let it rest. Plant no question, hold nothing back, and end on its last fact, said plainly.`,
+  ]
+  if (outline.centralQuestion) {
+    lines.push(`- What the whole telling is about: ${outline.centralQuestion}`)
+  }
+  if (chapter.stakes) lines.push(`- This chapter is about: ${chapter.stakes}`)
+  if (chapter.constraints) {
+    lines.push(
+      `- Wording limits for this chapter. They shape the words and are never narrated as sentences, ` +
+        `except where they ask for one in so many words: ${chapter.constraints}`,
+    )
+  }
+  const close = outline.close
+  if (chapterIndex === outline.chapters.length - 1 && close) {
+    const beats = [
+      close.answer ? `Answer, as this channel's reading: ${close.answer}` : null,
+      close.echo ? `Echo: ${close.echo}` : null,
+    ].filter((beat): beat is string => beat !== null)
+    if (beats.length > 0) {
+      lines.push(
+        `- End the telling with the close, as this chapter's last paragraphs, in this order. ` +
+          `It says what the telling comes to and returns to where it began, and leaves no open ` +
+          `thread: its last line settles. It is never a recap of the chapters.\n  ${beats.join('\n  ')}`,
+      )
+    }
+  }
+  return `The calm contract for this chapter:\n${lines.join('\n')}`
 }
 
 /**
@@ -535,6 +667,8 @@ export function buildChapterRequest(input: {
   /** Every chapter drafted so far, in order, in full (decision 296). */
   previousChapters: readonly { title: string; contentMd: string }[]
   claims: readonly ScriptClaim[]
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: ScriptIntent
 }): LLMTaskRequest {
   const chapter = input.outline.chapters[input.chapterIndex]!
   const outlineSummary = input.outline.chapters
@@ -548,14 +682,14 @@ export function buildChapterRequest(input: {
     ? `Storylines: ${input.outline.storylines.join('; ')}\n\n`
     : ''
   const ownership = ownershipBrief(input.outline, input.chapterIndex, input.claims.length)
-  const contract = tensionContract(input.outline, input.chapterIndex)
+  const contract = tensionContract(input.outline, input.chapterIndex, input.intent)
 
   return {
     task: 'scripting',
     system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${craftFor(input.intent)}${scriptRules(input.bible)}
 
 Write ONE chapter of narration as plain prose paragraphs. No headings, no
 bullet points, no lists — the words are read aloud exactly as written, and
@@ -591,12 +725,19 @@ export function buildSelfCheckRequest(input: {
   chapterTitle: string
   contentMd: string
   claims: readonly ScriptClaim[]
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: ScriptIntent
 }): LLMTaskRequest {
   return {
     task: 'editing',
     system: fillSlots(
-      `You are checking documentary narration against the claim list it
-was written from. You are not rewriting it.
+      `${
+        input.intent === 'calm'
+          ? `You are checking the narration of a calm telling against the claim list it
+was written from. You are not rewriting it.`
+          : `You are checking documentary narration against the claim list it
+was written from. You are not rewriting it.`
+      }
 
 The text may contain bracketed narration tags — [pause], [long pause],
 [sighs] and the like: direction for the narrator, not words. Ignore them
@@ -1033,13 +1174,15 @@ export function buildRegenerateRequest(input: {
   selection: string
   note: string
   claims: readonly ScriptClaim[]
+  /** The format's intent; absent or 'tension' is the documentary playbook. */
+  intent?: ScriptIntent
 }): LLMTaskRequest {
   return {
     task: 'editing',
     system: fillSlots(
       `${houseStyle(input.bible.bible)}
 
-${SCRIPT_CRAFT}${scriptRules(input.bible)}
+${craftFor(input.intent)}${scriptRules(input.bible)}
 
 You are rewriting ONE passage of an existing chapter.
 

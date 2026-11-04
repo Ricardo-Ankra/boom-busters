@@ -40,6 +40,8 @@ export interface CaseSummary {
   searchBrief: SearchBrief | null
   /** The research run in flight or last finished; null when none, or when the stored row does not parse. */
   searchJob: CaseResearchJob | null
+  /** The channel format this case is made as; null means the primary. */
+  formatKey: string | null
   priorityScore: number
   status: CaseStatus
   /** How many projects have been started from this case. */
@@ -60,6 +62,7 @@ const summaryColumns = {
   sourceLinks: cases.sourceLinks,
   searchBrief: cases.searchBrief,
   searchJob: cases.searchJob,
+  formatKey: cases.formatKey,
   priorityScore: cases.priorityScore,
   status: cases.status,
   createdAt: cases.createdAt,
@@ -355,6 +358,15 @@ export async function setCaseTargetKeyword(
   const updated = await getCase(db, caseId)
   if (!updated) throw new Error(`case ${caseId} not found`)
   return updated
+}
+
+/** Set the format a case is made as; null clears it back to the primary. */
+export async function setCaseFormat(
+  db: Database,
+  caseId: string,
+  formatKey: string | null,
+): Promise<void> {
+  await db.update(cases).set({ formatKey, updatedAt: new Date() }).where(eq(cases.id, caseId))
 }
 
 export async function setCaseStatus(

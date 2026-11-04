@@ -3,14 +3,18 @@
 import {
   archiveChannel,
   bibleDrafts,
+  channelSearchSpace,
   createChannel,
   getBibleDraft,
+  keywordMeasurements,
   listBibleVersions,
   openBibleDraft,
   providerCredentials,
+  recordKeywordMeasurement,
   recordVidiqCredits,
   requireTestDatabase,
   saveBibleVersion,
+  saveSearchSpace,
   seed,
   setCredential,
   updateWorkspace,
@@ -27,17 +31,20 @@ import {
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
   bibleDraftUnits,
+  defaultFormat,
 } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import {
+  analyseSearchSpaceAction,
   approveBibleSectionAction,
   copyBibleFromChannelAction,
   discardBibleDraftAction,
   draftBibleAction,
   editBibleSectionAction,
   estimateBibleResearchAction,
+  measureKeywordsAction,
   previewStagePromptAction,
   restoreBibleVersionAction,
   saveBibleAction,
@@ -388,13 +395,13 @@ describeDb('the bible edit, approve, save and discard actions', () => {
   it('edits a section, opens the draft, approves it and takes only that section', async () => {
     expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
     const result = await editBibleSectionAction(FIRST_CHANNEL_ID, 'search', {
-      keywordContext: 'banking collapse',
+      channelHashtag: 'BankingCollapse',
       channelTags: ['finance', 'history'],
     })
     expect(result.ok).toBe(true)
 
     const draft = await getBibleDraft(db, FIRST_CHANNEL_ID)
-    expect(draft?.bible.keywordContext).toBe('banking collapse')
+    expect(draft?.bible.channelHashtag).toBe('BankingCollapse')
     expect(draft?.bible.channelTags).toEqual(['finance', 'history'])
     expect(draft?.statuses.search).toBe('approved')
     // A field of the section the patch left out keeps its value.
@@ -572,6 +579,235 @@ describeDb('the bible edit, approve, save and discard actions', () => {
     expect(await getBibleDraft(db, channel.id)).toBeNull()
   })
 
+  describe('measureKeywordsAction', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    /** The draft's formats carry the first keyword list; the first pillar gets the second. */
+    const keywordDraft = async (formatKeywords: string[], pillarKeywords: string[]) => {
+      await openBibleDraft(db, FIRST_CHANNEL_ID)
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+        ...draft,
+        bible: {
+          ...draft.bible,
+          formats: draft.bible.formats.map((format, i) =>
+            i === 0 ? { ...format, keywords: formatKeywords } : format,
+          ),
+          caseCategories: draft.bible.caseCategories.map((category, i) =>
+            i === 0 ? { ...category, keywords: pillarKeywords } : category,
+          ),
+        },
+      }))
+    }
+
+    beforeEach(async () => {
+      await db.delete(keywordMeasurements)
+    })
+
+    it('sends the keywords not measured in 30 days and returns 5 credits each', async () => {
+      await keywordDraft(['alpha', 'beta'], ['Gamma', 'ALPHA'])
+      await recordKeywordMeasurement(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'beta',
+        volume: 1,
+        competition: 1,
+        overall: 1,
+        estimatedMonthlySearch: 1,
+        credits: 5,
+        measuredAt: new Date(Date.now() - 10 * DAY),
+      })
+      expect(await measureKeywordsAction(FIRST_CHANNEL_ID)).toEqual({ ok: true, credits: 10 })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'channel/keywords.measure',
+          data: { channelId: FIRST_CHANNEL_ID, keywords: ['alpha', 'Gamma'] },
+        }),
+      )
+    })
+
+    it('refuses over the cap with the cap numbers and sends nothing', async () => {
+      await keywordDraft(['alpha', 'beta'], [])
+      await recordVidiqCredits(db, {
+        channelId: FIRST_CHANNEL_ID,
+        purpose: 'bible-research',
+        tool: 'vidiq_outliers',
+        args: {},
+        credits: 995,
+      })
+      expect(await measureKeywordsAction(FIRST_CHANNEL_ID)).toEqual({
+        ok: false,
+        error: "This run needs about 10 credits; 5 are left of this month's cap of 1000.",
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('says so plainly, and sends nothing, when every keyword was measured lately', async () => {
+      await keywordDraft(['alpha'], [])
+      await recordKeywordMeasurement(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'Alpha',
+        volume: null,
+        competition: null,
+        overall: null,
+        estimatedMonthlySearch: null,
+        credits: 5,
+        measuredAt: new Date(Date.now() - 2 * DAY),
+      })
+      expect(await measureKeywordsAction(FIRST_CHANNEL_ID)).toEqual({
+        ok: false,
+        error: 'Every keyword was measured in the last 30 days',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('measures the current version when there is no draft', async () => {
+      expect(await getBibleDraft(db, FIRST_CHANNEL_ID)).toBeNull()
+      // The seeded bible has no keywords yet, so there is nothing to measure.
+      expect((await measureKeywordsAction(FIRST_CHANNEL_ID)).ok).toBe(false)
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses an archived channel and an unknown one', async () => {
+      const channel = await createChannel(db, {
+        name: 'Old',
+        handle: null,
+        slug: `old-measure-${Date.now()}`,
+        settings: DEFAULT_SETTINGS,
+        bible: ChannelBibleSchema.parse({}),
+      })
+      await archiveChannel(db, channel.id)
+      const result = await measureKeywordsAction(channel.id)
+      expect(result.ok).toBe(false)
+      expect(result.ok === false && result.error).toMatch(/archived/i)
+      expect(await measureKeywordsAction('not-an-id')).toEqual({
+        ok: false,
+        error: 'Unknown channel',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('says so when Inngest cannot be reached', async () => {
+      await keywordDraft(['alpha'], [])
+      inngestMock.send.mockRejectedValueOnce(new Error('down'))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const result = await measureKeywordsAction(FIRST_CHANNEL_ID)
+      expect(result.ok).toBe(false)
+    })
+  })
+
+  describe('analyseSearchSpaceAction', () => {
+    const DAY = 24 * 60 * 60 * 1000
+
+    const formatDraft = async (keywords: string[]) => {
+      await openBibleDraft(db, FIRST_CHANNEL_ID)
+      await writeBibleDraft(db, FIRST_CHANNEL_ID, (draft) => ({
+        ...draft,
+        bible: {
+          ...draft.bible,
+          formats: draft.bible.formats.map((format, i) =>
+            i === 0 ? { ...format, keywords } : format,
+          ),
+        },
+      }))
+      return (await getBibleDraft(db, FIRST_CHANNEL_ID))!.bible.formats[0]!.key
+    }
+
+    beforeEach(async () => {
+      await db.delete(channelSearchSpace)
+      await db.delete(vidiqCredits)
+    })
+
+    it('sends the format keywords not analysed in 30 days and returns 10 credits each', async () => {
+      const key = await formatDraft(['alpha', 'beta', 'Alpha'])
+      await saveSearchSpace(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'beta',
+        measuredAt: new Date(Date.now() - 10 * DAY),
+        outliers: [],
+        titlePatterns: [],
+        durations: null,
+        credits: 10,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: true,
+        credits: 10,
+      })
+      expect(inngestMock.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'channel/search_space.analyse',
+          data: { channelId: FIRST_CHANNEL_ID, keywords: ['alpha'] },
+        }),
+      )
+    })
+
+    it('refuses over the cap with the cap numbers and sends nothing', async () => {
+      const key = await formatDraft(['alpha', 'beta'])
+      await recordVidiqCredits(db, {
+        channelId: FIRST_CHANNEL_ID,
+        purpose: 'bible-research',
+        tool: 'vidiq_outliers',
+        args: {},
+        credits: 985,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: false,
+        error: "This run needs about 20 credits; 15 are left of this month's cap of 1000.",
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('says so plainly when every keyword was analysed lately', async () => {
+      const key = await formatDraft(['alpha'])
+      await saveSearchSpace(db, {
+        channelId: FIRST_CHANNEL_ID,
+        keyword: 'Alpha',
+        measuredAt: new Date(Date.now() - 2 * DAY),
+        outliers: [],
+        titlePatterns: [],
+        durations: null,
+        credits: 10,
+      })
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
+        ok: false,
+        error: 'Every keyword of this format was analysed in the last 30 days',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses a format with no keywords, an unknown format, an unknown channel', async () => {
+      const key = await formatDraft([])
+      expect((await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).ok).toBe(false)
+      expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, 'no-such-format')).toEqual({
+        ok: false,
+        error: 'Unknown format',
+      })
+      expect(await analyseSearchSpaceAction('not-an-id', key)).toEqual({
+        ok: false,
+        error: 'Unknown channel',
+      })
+      expect(inngestMock.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses an archived channel', async () => {
+      const channel = await createChannel(db, {
+        name: 'Old',
+        handle: null,
+        slug: `old-space-${Date.now()}`,
+        settings: DEFAULT_SETTINGS,
+        bible: ChannelBibleSchema.parse({}),
+      })
+      await archiveChannel(db, channel.id)
+      const result = await analyseSearchSpaceAction(channel.id, 'main')
+      expect(result.ok === false && result.error).toMatch(/archived/i)
+    })
+
+    it('says so when Inngest cannot be reached', async () => {
+      const key = await formatDraft(['alpha'])
+      inngestMock.send.mockRejectedValueOnce(new Error('down'))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      expect((await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).ok).toBe(false)
+    })
+  })
+
   describe('history and the prompt preview', () => {
     it('restores an earlier version as the next one', async () => {
       const [first] = await listBibleVersions(db, FIRST_CHANNEL_ID)
@@ -679,6 +915,34 @@ describeDb('copying the bible from another channel', () => {
     expect(draft.bible.youtubeCategoryId).toBe('27')
     expect(draft.statuses.publishing).toBe('approved')
     expect(result.draft).toEqual(draft)
+  })
+
+  it('copies formats, the channel hashtag and the footer', async () => {
+    const source = await makeChannel('Source')
+    await saveBibleVersion(
+      db,
+      source.id,
+      {
+        ...ChannelBibleSchema.parse({}),
+        formats: [{ ...defaultFormat('Sleep'), keywords: ['sleep'] }],
+        channelHashtag: 'SleepWell',
+        channelFooter: 'Sweet dreams.',
+      },
+      'v2',
+    )
+    const target = await makeChannel('Target')
+
+    const result = await copyBibleFromChannelAction(target.id, source.id, [
+      'formats',
+      'search',
+      'publishing',
+    ])
+    expect(result.ok).toBe(true)
+    const draft = (await getBibleDraft(db, target.id))!
+    expect(draft.bible.formats).toEqual([{ ...defaultFormat('Sleep'), keywords: ['sleep'] }])
+    expect(draft.bible.channelHashtag).toBe('SleepWell')
+    expect(draft.bible.channelFooter).toBe('Sweet dreams.')
+    expect(draft.statuses.formats).toBe('drafted')
   })
 
   it('copies the source current version, not an older one', async () => {

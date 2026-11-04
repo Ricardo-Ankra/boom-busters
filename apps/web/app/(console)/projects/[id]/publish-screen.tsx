@@ -22,6 +22,7 @@ import {
   publishStatusInFlight,
   type PublishStatus,
 } from '@/lib/publish-status'
+import { CohesionPanel } from './cohesion-panel'
 import { RetentionOverlay } from './retention-overlay'
 import {
   generateDescription,
@@ -54,6 +55,14 @@ import { useAction } from './project-controls'
  */
 
 const DAYS_SHOWN = 14
+
+/** What the screen calls each title slot a candidate can lack. */
+const SLOT_LABEL = {
+  topic: 'topic',
+  formatKeyword: 'format keyword',
+  pillar: 'pillar',
+  runtime: 'runtime',
+} as const
 
 // Thumbnail limits and copy come from `lib/thumbnail-rules.ts`, shared with
 // the server action; the action re-checks everything (decision 251).
@@ -150,12 +159,15 @@ export function PublishScreen({
   model,
   live,
   canFinish = false,
+  shortsOff = false,
 }: {
   projectId: string
   model: PublishModel
   live: boolean
   /** True while the project is ON the publish stage with nothing running. */
   canFinish?: boolean
+  /** The format makes no Shorts: their calendar slots show only if the project has Shorts. */
+  shortsOff?: boolean
 }) {
   const { act, busy, pressed } = useAction()
   const [selectedKey, setSelectedKey] = React.useState<string | null>(() => {
@@ -166,6 +178,8 @@ export function PublishScreen({
   const [customTime, setCustomTime] = React.useState('')
 
   const selected = model.items.find((item) => keyOf(item) === selectedKey) ?? null
+  const master = model.items.find((item) => item.targetType === 'master')
+  const masterCohesion = master?.cohesion ?? null
 
   // A point Short's suggested slot (design section 8) is put in the custom
   // time field when it is selected: a pre-fill, so the Schedule click is
@@ -175,7 +189,15 @@ export function PublishScreen({
   React.useEffect(() => {
     if (suggestedIso) setCustomTime(toLocalInput(new Date(suggestedIso)))
   }, [selectedKey, suggestedIso])
-  const days = React.useMemo(() => upcomingDays(model.slots, now), [model.slots, now])
+  const hideShortSlots = shortsOff && !model.items.some((item) => item.targetType === 'short')
+  const days = React.useMemo(
+    () =>
+      upcomingDays(
+        hideShortSlots ? model.slots.filter((slot) => slot.kind !== 'short') : model.slots,
+        now,
+      ),
+    [model.slots, hideShortSlots, now],
+  )
   const scheduledAt = new Map(
     model.items
       .filter((item) => item.record?.publishAtIso && item.record.status !== 'failed')
@@ -423,6 +445,16 @@ export function PublishScreen({
       {/* The item editor                                                     */}
       {/* ------------------------------------------------------------------ */}
       {selected ? <ItemEditor key={selectedKey} item={selected} model={model} live={live} /> : null}
+
+      {/* Where the keywords land in the master's copy: information only, above the calendar. */}
+      {masterCohesion ? (
+        <CohesionPanel
+          report={masterCohesion}
+          fit={master?.briefFit?.fit ?? null}
+          casePillarKey={master?.briefFit?.casePillarKey ?? null}
+          pillars={master?.briefFit?.pillars ?? []}
+        />
+      ) : null}
 
       {/* ------------------------------------------------------------------ */}
       {/* The calendar                                                        */}
@@ -692,6 +724,11 @@ function ItemEditor({
     .split(',')
     .map((tag) => tag.trim())
     .filter((tag) => tag !== '' && fromVidiq.has(tag.toLowerCase()))
+  const fromChannel = new Set((record?.channelTags ?? []).map((tag) => tag.toLowerCase()))
+  const channelMarked = tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag !== '' && fromChannel.has(tag.toLowerCase()))
   const [thumbError, setThumbError] = React.useState<string | null>(null)
   const [uploadingThumb, setUploadingThumb] = React.useState(false)
 
@@ -702,6 +739,7 @@ function ItemEditor({
       : [],
     sources: model.sources,
     musicAttribution: model.musicAttribution,
+    ...(isMaster ? { footer: model.footer } : {}),
     hashtags: splitHashtags(hashtags),
     disclaimer: model.disclaimer,
   })
@@ -795,6 +833,12 @@ function ItemEditor({
                     onChange={() => setTitle(option)}
                   />
                   <span>{option}</span>
+                  {(record.titleSlotMisses[option] ?? []).length > 0 ? (
+                    <span className="shrink-0 text-[12px] text-[var(--color-warning)]">
+                      Missing:{' '}
+                      {record.titleSlotMisses[option]!.map((slot) => SLOT_LABEL[slot]).join(', ')}
+                    </span>
+                  ) : null}
                   {option in titleScores ? (
                     <span className="ml-auto shrink-0 text-[12px] text-[var(--color-text-secondary)]">
                       {titleScores[option] === null
@@ -977,6 +1021,24 @@ function ItemEditor({
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {channelMarked.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Tags that came from the channel">
+              {channelMarked.map((tag) => (
+                <li key={tag}>
+                  <Badge tone="muted">
+                    {tag}
+                    <span>Channel</span>
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {(record?.channelTagsDropped ?? []).length > 0 ? (
+            <p className="text-[12px] text-[var(--color-text-secondary)]">
+              Left out to keep room: {(record?.channelTagsDropped ?? []).join(', ')}
+            </p>
           ) : null}
 
           {dirty ? (

@@ -25,6 +25,19 @@ export const MIN_CHAPTER_WORDS = 120
 export const MAX_CHAPTER_WORDS = 4000
 
 /**
+ * A script longer than any the app allowed before runtimes rose past 60
+ * minutes (60 minutes at 200 words a minute, less pacing headroom, is 11,400
+ * words) is planned in chapters of about `LONG_CHAPTER_WORDS`. A chapter is
+ * drafted, self-checked and shot-planned in one step each, and a shot list
+ * for a chapter much over a thousand words no longer fits one answer.
+ */
+export const LONG_SCRIPT_WORDS = 12_000
+export const LONG_CHAPTER_WORDS = 1000
+
+/** The most chapters an outline may hold: 180 minutes at 200 words a minute, less the 0.95 pacing headroom, is 34,200 words (180 x 200 x 0.95), about 43 chapters of 800 words; the cap leaves room above that. */
+export const OUTLINE_MAX_CHAPTERS = 60
+
+/**
  * The longest beat the outline parser keeps (decision 296). A beat is one to
  * three sentences of purpose; the facts are the claims the chapter owns. The
  * 1,300 to 1,800 character beats of the Stability script were fact lists,
@@ -126,7 +139,7 @@ export const OutlineSchema = z.object({
   centralQuestion: tensionField,
   storylines,
   close: closeFields,
-  chapters: z.array(OutlineChapterSchema).min(2).max(20),
+  chapters: z.array(OutlineChapterSchema).min(2).max(OUTLINE_MAX_CHAPTERS),
 })
 export type Outline = z.infer<typeof OutlineSchema>
 
@@ -614,7 +627,10 @@ export function resolveCandidateSegment(
   return { chapterId: chapter.id, fromParagraph, toParagraph: fromParagraph + relative }
 }
 
-/** Words per minute of narration, for the runtime estimate on each chapter. */
+/**
+ * The default words per minute of narration. Not the rate: the rate is the
+ * project's format (`ChannelFormat.wordsPerMinute`), which every reader passes.
+ */
 export const NARRATION_WPM = 150
 
 export function countWords(text: string): number {
@@ -625,6 +641,6 @@ export function countWords(text: string): number {
   return words === '' ? 0 : words.split(/\s+/).length
 }
 
-export function estimateRuntimeSec(text: string): number {
-  return Math.round((countWords(text) / NARRATION_WPM) * 60)
+export function estimateRuntimeSec(text: string, wordsPerMinute = NARRATION_WPM): number {
+  return Math.round((countWords(text) / wordsPerMinute) * 60)
 }

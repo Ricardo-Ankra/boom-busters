@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  ChannelBibleReadSchema,
   type ChannelBible,
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_BIBLE,
@@ -16,8 +17,10 @@ import { describe, expect, it } from 'vitest'
  * Migration 0039 carries the first channel's bible and the slot registry as
  * literals, because a migration cannot import TypeScript. These checks keep
  * the literals equal to what the code holds and the statements in the order
- * the data needs. If a later task corrects an entry in `FIRST_CHANNEL_BIBLE`,
- * it updates the literal in the same commit.
+ * the data needs. The literal is the version as stored: formats, the hashtag
+ * and the footer came later (the read schema upgrades it), and `keywordContext`
+ * went. If a later task corrects an entry in `FIRST_CHANNEL_BIBLE`, it updates
+ * the literal in the same commit.
  */
 
 const migration = readFileSync(
@@ -41,9 +44,10 @@ describe('migration 0039', () => {
     expect(literal).toBeDefined()
     // SQL doubles a single quote inside a string literal.
     // The migration is applied and not edited: the retired slots stay in its literal.
-    const parsed = JSON.parse(literal!.replaceAll("''", "'")) as ChannelBible
-    for (const id of RETIRED_SLOT_IDS) delete parsed.examples[id]
-    expect(parsed).toEqual(FIRST_CHANNEL_BIBLE)
+    const stored = JSON.parse(literal!.replaceAll("''", "'")) as ChannelBible
+    expect(stored).toHaveProperty('keywordContext', 'documentary')
+    for (const id of RETIRED_SLOT_IDS) delete stored.examples[id]
+    expect(ChannelBibleReadSchema.parse(stored)).toEqual(FIRST_CHANNEL_BIBLE)
   })
 
   it('writes it only when the first channel exists, so a fresh database gets nothing', () => {

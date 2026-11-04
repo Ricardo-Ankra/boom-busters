@@ -319,6 +319,80 @@ export const vidiqCredits = pgTable(
 )
 
 /**
+ * One VidIQ reading of a keyword for a channel's bible (a format's or a
+ * pillar's). One row per measurement, so the history stays; the latest per
+ * channel and keyword is what the Bible tab shows. Not part of a bible version:
+ * measuring is data, not identity. The figures are nullable as VidIQ returns
+ * them (null is unknown, not zero).
+ */
+export const keywordMeasurements = pgTable(
+  'keyword_measurements',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    keyword: text('keyword').notNull(),
+    volume: integer('volume'),
+    competition: integer('competition'),
+    overall: integer('overall'),
+    estimatedMonthlySearch: integer('estimated_monthly_search'),
+    credits: integer('credits').notNull(),
+    measuredAt: timestamp('measured_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index('keyword_measurements_channel_keyword_idx').on(t.channelId, t.keyword, t.measuredAt),
+  ],
+)
+export type KeywordMeasurementRow = typeof keywordMeasurements.$inferSelect
+export type NewKeywordMeasurement = typeof keywordMeasurements.$inferInsert
+
+/** One winning video kept with a search-space reading. */
+export interface SearchSpaceOutlier {
+  videoId: string
+  title: string
+  channel: string | null
+  views: number | null
+  breakoutScore: number | null
+  /** From the YouTube Data API; null when it could not be read. */
+  durationSec: number | null
+}
+
+/** How long the winners run, in seconds. */
+export interface SearchSpaceDurations {
+  minSec: number
+  medianSec: number
+  maxSec: number
+}
+
+/**
+ * What winning in one format keyword looks like: the top VidIQ outliers, the
+ * title patterns they share and how long they run. One row per analysis, so
+ * the history stays; the latest per channel and keyword is what the Bible tab
+ * shows. Display only: no prompt reads it.
+ */
+export const channelSearchSpace = pgTable(
+  'channel_search_space',
+  {
+    id: id(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id, { onDelete: 'cascade' }),
+    keyword: text('keyword').notNull(),
+    measuredAt: timestamp('measured_at', { withTimezone: true }).notNull(),
+    outliers: jsonb('outliers').notNull().$type<SearchSpaceOutlier[]>(),
+    titlePatterns: jsonb('title_patterns').notNull().$type<string[]>(),
+    durations: jsonb('durations').$type<SearchSpaceDurations | null>(),
+    credits: integer('credits').notNull(),
+  },
+  (t) => [
+    index('channel_search_space_channel_keyword_idx').on(t.channelId, t.keyword, t.measuredAt),
+  ],
+)
+export type SearchSpaceRow = typeof channelSearchSpace.$inferSelect
+export type NewSearchSpaceRow = typeof channelSearchSpace.$inferInsert
+
+/**
  * Exactly one row: what belongs to the owner rather than to a channel, the
  * model price overrides and the monthly budget, plus the channel the console
  * opens on.
@@ -458,6 +532,8 @@ export const cases = pgTable(
     searchBrief: jsonb('search_brief').$type<SearchBrief>(),
     /** The case research run in flight or last finished (`CaseResearchJobSchema`). */
     searchJob: jsonb('search_job').$type<CaseResearchJob>(),
+    /** The channel format (a key in the bible's `formats`) this case is made as; null means the primary. */
+    formatKey: text('format_key'),
     priorityScore: integer('priority_score').notNull().default(0),
     status: caseStatusEnum('status').notNull().default('idea'),
     createdAt: createdAt(),
@@ -488,6 +564,8 @@ export const projects = pgTable(
     stage: projectStageEnum('stage').notNull().default('dossier'),
     stageStatus: stageStatusEnum('stage_status').notNull().default('queued'),
     targetRuntimeMin: integer('target_runtime_min').notNull().default(18),
+    /** The format the project is made as, a key in its frozen bible's `formats`; an unknown key resolves to the primary. */
+    formatKey: text('format_key').notNull().default('main'),
     inngestRunId: text('inngest_run_id'),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     /**

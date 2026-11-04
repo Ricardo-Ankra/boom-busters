@@ -74,6 +74,7 @@ export async function planStretchWith(
     before: input.before,
     after: input.after,
     headlineAllowed: input.headlineAllowed,
+    ...(input.shotHold !== undefined ? { shotHold: input.shotHold } : {}),
     ...(input.note ? { note: input.note } : {}),
     ...(input.reason ? { reason: input.reason } : {}),
   })
@@ -100,6 +101,7 @@ export async function planStretchWith(
         paragraphs: input.paragraphs,
         headlineAllowed: input.headlineAllowed,
         strictTiming,
+        ...(input.shotHold !== undefined ? { shotHold: input.shotHold } : {}),
         ...(input.context ? { context: input.context } : {}),
       })
       if (issue) throw new ValidationError(issue, { field: 'stretch' })

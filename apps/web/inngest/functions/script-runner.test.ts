@@ -6,6 +6,7 @@ import {
   createProjectFromCase,
   createScriptVersion,
   FIXTURE_PROJECT_ID,
+  getChapter,
   getProject,
   latestShortsCandidates,
   projects,
@@ -20,10 +21,11 @@ import type { ClaimRow } from '@boom-busters/db'
 import {
   BudgetExceededError,
   DEFAULT_SETTINGS,
+  estimateRuntimeSec,
   EMPTY_BIBLE,
   TransientProviderError,
 } from '@boom-busters/schemas'
-import { mockOutline } from '@boom-busters/providers'
+import { mockChapter, mockOutline } from '@boom-busters/providers'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
@@ -40,7 +42,8 @@ import { markShortsStep, readMarkedShorts, scriptRunner } from './script-runner'
  * test database, since the run mirror writes there.
  */
 
-vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
+const notify = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/notify', () => ({ notify }))
 const callLlm = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/llm', () => ({ callLlm }))
 const { recordRepairs, recordStop } = vi.hoisted(() => ({
@@ -50,10 +53,19 @@ const { recordRepairs, recordStop } = vi.hoisted(() => ({
 vi.mock('@/lib/notices', () => ({ recordRepairs, recordStop }))
 // The real query unless a test hands in its own claims.
 const scriptableClaims = vi.hoisted(() => vi.fn())
+const channelForProject = vi.hoisted(() => vi.fn())
+const shortsEnabledForProject = vi.hoisted(() => vi.fn())
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const actual = await importOriginal<typeof Db>()
   scriptableClaims.mockImplementation(actual.scriptableClaims)
-  return { ...actual, scriptableClaims: (...args: unknown[]) => scriptableClaims(...args) }
+  channelForProject.mockImplementation(actual.channelForProject)
+  shortsEnabledForProject.mockImplementation(actual.shortsEnabledForProject)
+  return {
+    ...actual,
+    scriptableClaims: (...args: unknown[]) => scriptableClaims(...args),
+    channelForProject: (...args: unknown[]) => channelForProject(...args),
+    shortsEnabledForProject: (...args: unknown[]) => shortsEnabledForProject(...args),
+  }
 })
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -62,6 +74,7 @@ const describeDb = requireTestDatabase() ? describe : describe.skip
 const PROJECT = FIXTURE_PROJECT_ID
 const SCRIPT_NOTICES = { projectId: PROJECT, subject: 'script', subjectId: null }
 
+const FIXED_LINES = ['Settle in.', 'Sleep well.'] as const
 const chapters = [
   {
     index: 0,
@@ -69,6 +82,11 @@ const chapters = [
     contentMd: 'EY refused to sign the accounts. The shares collapsed in nine days.',
   },
 ]
+
+// The first chapter as the script stores it under a format with both fixed lines.
+const fixedChapter = [FIXED_LINES[0], chapters[0]!.contentMd, FIXED_LINES[1]].join(
+  String.fromCharCode(10, 10),
+)
 
 const candidate = {
   chapterIndex: 0,
@@ -144,6 +162,35 @@ describeDb('markShortsStep (decision 293)', () => {
       'Shorts marking stopped: The model returned no JSON for Shorts candidates. It answered: not json at all. The Shorts stage will mark them again.',
     )
     expect(recordRepairs).not.toHaveBeenCalled()
+  })
+
+  it("never offers a Short the format's fixed lines", async () => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return {
+        ...channel,
+        format: { ...channel.format, introLine: 'Settle in.', outroLine: 'Sleep well.' },
+      }
+    })
+    try {
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify({ candidates: [candidate] }) })
+      await markShortsStep(PROJECT, {
+        chapters: [
+          {
+            index: 0,
+            title: 'The audit',
+            contentMd: fixedChapter,
+          },
+        ],
+      })
+      const sent = JSON.stringify(callLlm.mock.calls[0]![0])
+      expect(sent).toContain('EY refused to sign the accounts.')
+      expect(sent).not.toContain('Settle in.')
+      expect(sent).not.toContain('Sleep well.')
+    } finally {
+      channelForProject.mockImplementation(actual.channelForProject)
+    }
   })
 
   it('hands a budget stop back for the run to park, with no notice', async () => {
@@ -299,6 +346,255 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(sent.system).toContain('a documentary channel about\ncorporate collapses, frauds')
   })
 
+  it("stores each chapter's estRuntimeSec at the project format's pace", async () => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    const real = await actual.channelForProject(db, FIXTURE_PROJECT_ID)
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return { ...channel, format: { ...channel.format, wordsPerMinute: 120 } }
+    })
+    try {
+      const { result } = await engine.executeStep('draft-chapter-0', {
+        events: approved(),
+        steps: throughSelfCheck().slice(0, 3),
+      })
+      const { chapterId } = result as { chapterId: string }
+      const row = await getChapter(db, chapterId)
+      const text = mockChapter('The audit')
+      expect(row?.estRuntimeSec).toBe(estimateRuntimeSec(text, 120))
+      expect(row?.estRuntimeSec).not.toBe(estimateRuntimeSec(text, real.format.wordsPerMinute))
+    } finally {
+      channelForProject.mockImplementation(actual.channelForProject)
+    }
+  })
+
+  describe("a format's intro rule and fixed lines", () => {
+    const withFormat = async (patch: Record<string, string>) => {
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      channelForProject.mockImplementation(async (...args: unknown[]) => {
+        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+        return { ...channel, format: { ...channel.format, ...patch } }
+      })
+      return () => channelForProject.mockImplementation(actual.channelForProject)
+    }
+
+    it('stores the opening and closing lines in the chapter step, once', async () => {
+      const restore = await withFormat({ introLine: 'Settle in.', outroLine: 'Sleep well.' })
+      try {
+        const { result } = await engine.executeStep('draft-chapter-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 3),
+        })
+        const { chapterId, contentMd } = result as { chapterId: string; contentMd: string }
+        const paragraphs = contentMd.split(/\n{2,}/)
+        expect(paragraphs[0]).toBe('Settle in.')
+        expect(paragraphs.at(-1)).toBe('Sleep well.')
+        expect((await getChapter(db, chapterId))?.contentMd).toBe(contentMd)
+      } finally {
+        restore()
+      }
+    })
+
+    it('puts the intro rule in the outline request', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ introRule: 'The opening names tonight and settles in.' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('The opening names tonight and settles in.')
+        expect(sent.system).not.toContain('glimpse of the consequence')
+      } finally {
+        restore()
+      }
+    })
+
+    it("sends the calm playbook when the format's intent is calm, read inside the step", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('# Script craft: how a calm telling settles')
+        expect(sent.system).toContain('The calm contract, per chapter')
+        expect(sent.system).not.toContain('The tension contract')
+      } finally {
+        restore()
+      }
+    })
+
+    it('sends the documentary playbook when the intent is tension', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const restore = await withFormat({ intent: 'tension' })
+      try {
+        await engine
+          .executeStep('outline', { events: approved(), steps: throughSelfCheck().slice(0, 1) })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('The tension contract, per chapter')
+        expect(sent.system).not.toContain('how a calm telling settles')
+      } finally {
+        restore()
+      }
+    })
+
+    it("sends the calm playbook in the chapter step when the format's intent is calm", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: 'A whole chapter.' })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine.executeStep('draft-chapter-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 3),
+        })
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('# Script craft: how a calm telling settles')
+        // The chapter's own contract rides in a later message, not the system prompt.
+        expect(JSON.stringify(sent)).toContain('The calm contract for this chapter')
+      } finally {
+        restore()
+      }
+    })
+
+    it("sends the calm playbook in the self-check step when the format's intent is calm", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      const restore = await withFormat({ intent: 'calm' })
+      try {
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 4),
+        })
+        const sent = callLlm.mock.calls[0]![0] as { system: string }
+        expect(sent.system).toContain('checking the narration of a calm telling')
+      } finally {
+        restore()
+      }
+    })
+
+    describe('the outline of a calm format holds no tension', () => {
+      const tensionOutline = () => {
+        const outline = mockOutline(10)
+        outline.chapters[0]!.reveals = 'A leaked reveal'
+        return outline
+      }
+      const outlineOf = async () => {
+        const { result } = await engine.executeStep('outline', {
+          events: approved(),
+          steps: throughSelfCheck().slice(0, 1),
+        })
+        return (
+          result as {
+            outline: {
+              chapters: { question?: string; withhold?: string; reveals?: string }[]
+              close: { openThread?: string }
+            }
+          }
+        ).outline
+      }
+
+      it('blanks question, withhold, reveals and the open thread when the model fills them', async () => {
+        vi.stubEnv('MOCK_PROVIDERS', '')
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(tensionOutline()) })
+        const restore = await withFormat({ intent: 'calm' })
+        try {
+          const outline = await outlineOf()
+          expect(outline.chapters.length).toBeGreaterThan(1)
+          for (const chapter of outline.chapters) {
+            expect(chapter.question ?? '').toBe('')
+            expect(chapter.withhold ?? '').toBe('')
+            expect(chapter.reveals ?? '').toBe('')
+          }
+          expect(outline.close.openThread ?? '').toBe('')
+        } finally {
+          restore()
+        }
+      })
+
+      it('leaves a tension outline as the model wrote it', async () => {
+        vi.stubEnv('MOCK_PROVIDERS', '')
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(tensionOutline()) })
+        const restore = await withFormat({ intent: 'tension' })
+        try {
+          const outline = await outlineOf()
+          expect(outline.chapters[0]!.question).toBe('Mock open question 1')
+          expect(outline.chapters[0]!.withhold).toBe('Mock withheld fact 1')
+          expect(outline.chapters[0]!.reveals).toBe('A leaked reveal')
+          expect(outline.close.openThread).toBe('Mock open thread.')
+        } finally {
+          restore()
+        }
+      })
+    })
+
+    it('asks the outline for the words the fixed lines leave', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      const askedWords = async (patch: Record<string, string>): Promise<number> => {
+        callLlm.mockReset()
+        callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+        const restore = await withFormat(patch)
+        try {
+          await engine.executeStep('outline', {
+            events: approved(),
+            steps: throughSelfCheck().slice(0, 1),
+          })
+          const sent = callLlm.mock.calls[0]![0] as { system: string }
+          return Number(/totalling about (\d+) words/.exec(sent.system)?.[1])
+        } finally {
+          restore()
+        }
+      }
+      const bare = await askedWords({ introLine: '', outroLine: '' })
+      const fixed = await askedWords({
+        introLine: 'one two three four five six seven eight nine ten',
+        outroLine: 'one two three four five',
+      })
+      expect(bare - fixed).toBe(15)
+    })
+
+    it('leaves the fixed lines out of the self-check', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      const restore = await withFormat({ introLine: 'Settle in.', outroLine: 'Sleep well.' })
+      try {
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: [
+            ...throughSelfCheck().slice(0, 3),
+            {
+              id: 'draft-chapter-0',
+              handler: () => ({
+                ok: true,
+                chapterId: 'chapter-0',
+                contentMd: fixedChapter,
+              }),
+            },
+          ],
+        })
+        const sent = JSON.stringify(callLlm.mock.calls[0]![0])
+        expect(sent).toContain('EY refused to sign the accounts.')
+        expect(sent).not.toContain('Settle in.')
+        expect(sent).not.toContain('Sleep well.')
+      } finally {
+        restore()
+      }
+    })
+  })
+
   it("reads the project's search brief inside the outline step, never from an earlier step", async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     callLlm.mockReset()
@@ -321,6 +617,8 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       toldAlready: [],
       angleOptions: [],
       chosenAngle: null,
+      formatKey: null,
+      fit: null,
     }
     const steps = [
       {
@@ -410,6 +708,65 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(ctx.step.run).toHaveBeenCalledWith('shorts-over-budget', expect.any(Function))
     expect(ctx.step.run).not.toHaveBeenCalledWith('finish-draft', expect.any(Function))
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
+  })
+
+  describe('a format with Shorts off (ruling 18)', () => {
+    const off = () => shortsEnabledForProject.mockResolvedValue(false)
+    afterEach(() => {
+      shortsEnabledForProject.mockImplementation(async (...args: unknown[]) => {
+        const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+        return actual.shortsEnabledForProject(args[0] as never, args[1] as string)
+      })
+    })
+
+    it('makes no marking call and stores no candidates, live', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      off()
+
+      const { result } = await engine.executeStep('mark-shorts', {
+        events: approved(),
+        steps: throughSelfCheck(),
+      })
+
+      expect(result).toEqual({ ok: true, candidates: [] })
+      expect(callLlm).not.toHaveBeenCalled()
+    })
+
+    it('marks nothing in mock mode either, and the run summary says so', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '1')
+      off()
+
+      const { result } = await engine.execute({
+        events: approved(),
+        steps: [...throughSelfCheck(), { id: 'advance-to-voice', handler: () => undefined }],
+      })
+
+      expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 0, shortsOff: true })
+      expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([])
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('Shorts off for this format') }),
+      )
+      expect(notify).not.toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('Shorts candidates') }),
+      )
+    })
+
+    it('still counts candidates when the format makes Shorts', async () => {
+      const { result } = await engine.execute({
+        events: approved(),
+        steps: [
+          ...throughSelfCheck(),
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [candidate] }) },
+          { id: 'advance-to-voice', handler: () => undefined },
+        ],
+      })
+
+      expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 1, shortsOff: false })
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('1 Shorts candidates') }),
+      )
+    })
   })
 
   it('stores the bare list a run parked before decision 293 replays', async () => {

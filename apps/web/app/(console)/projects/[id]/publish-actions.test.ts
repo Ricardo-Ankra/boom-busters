@@ -1,6 +1,8 @@
 // @vitest-environment node
 
 import {
+  channelForProject,
+  castMembers,
   createCase,
   createChannel,
   createProjectFromCase,
@@ -290,6 +292,42 @@ describeDb('the search description (decision 303)', () => {
       // The owner's tag is kept, first; the written ones join it.
       tags: ['Owner tag', 'Wirecard', 'Markus Braun'],
     })
+  })
+
+  it("sends the description no fixed line of the project's format", async () => {
+    const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const format = { ...bible.formats[0]!, introLine: 'Settle in.', outroLine: 'Sleep well.' }
+    const channel = await createChannel(db, {
+      name: 'Fixed-line description channel',
+      handle: null,
+      slug: `fixed-desc-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...bible, formats: [format] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Wirecard',
+      category: 'collapse',
+    })
+    const projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+    const script = await createScriptVersion(db, projectId)
+    const chapter = await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'Settle in.\n\nA billion euros was never there.\n\nSleep well.',
+      estRuntimeSec: 12,
+    })
+    await insertTimeline(db, { projectId, json: masterTimeline(chapter.id), s3Key: '' })
+    callLlm.mockResolvedValueOnce({ text: DESCRIPTION })
+
+    expect(await generateDescription('master', projectId)).toEqual({ ok: true })
+
+    const request = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    const sent = request.messages.map((m) => m.content).join('\n')
+    expect(sent).toContain('A billion euros was never there.')
+    expect(sent).not.toContain('Settle in.')
+    expect(sent).not.toContain('Sleep well.')
   })
 
   it("writes a Short's titles and description from the clip, not the film's opening", async () => {
@@ -605,6 +643,8 @@ describeDb('the search brief in titles, description and tags', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
   }
   const TITLES = JSON.stringify({
     titles: ['One title here', 'Two title here', 'Three title here', 'Four title here'],
@@ -625,6 +665,9 @@ describeDb('the search brief in titles, description and tags', () => {
     await seed(db)
     await db.delete(publishRecords)
     await db.delete(vidiqCredits)
+    // Cast and a brief left by another suite would show up in the tags this suite asserts.
+    await db.delete(castMembers)
+    await setBrief(null)
     await updateWorkspace(db, DEFAULT_WORKSPACE_SETTINGS)
     const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
     await saveChapter(db, {
@@ -688,6 +731,165 @@ describeDb('the search brief in titles, description and tags', () => {
     })
   })
 
+  describe('a channel with tags, a format, a pillar and a hashtag', () => {
+    const FILLER = ['a', 'b', 'c', 'd', 'e'].map((letter) => letter.repeat(30))
+    /** Channel tags worth 174 characters joined: the last cannot fit in 150. */
+    const CHANNEL_TAGS = ['history', 'sleep', ...FILLER]
+    const ANSWER = JSON.stringify({
+      body: 'How Wirecard collapsed in June 2020.',
+      chapterGlosses: [],
+      hashtags: ['#Wirecard', '#Fraud', '#Documentary'],
+      tags: ['fintech fraud', 'HISTORY FOR SLEEP'],
+    })
+
+    async function channelProject(hashtag: string): Promise<string> {
+      const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+      const format = {
+        ...bible.formats[0]!,
+        keywords: ['History', 'history for sleep'],
+      }
+      const channel = await createChannel(db, {
+        name: 'Tagged channel',
+        handle: null,
+        slug: `tagged-${Math.random().toString(36).slice(2, 8)}`,
+        settings: DEFAULT_SETTINGS,
+        bible: {
+          ...bible,
+          formats: [format],
+          channelTags: CHANNEL_TAGS,
+          channelHashtag: hashtag,
+          caseCategories: bible.caseCategories.map((c) =>
+            c.key === 'collapse' ? { ...c, keywords: ['empire'] } : c,
+          ),
+        },
+      })
+      const kase = await createCase(db, {
+        channelId: channel.id,
+        title: 'Wirecard',
+        category: 'collapse',
+      })
+      return (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+    }
+    const draftOf = async (projectId: string, type: 'master' | 'short' = 'master') =>
+      (await getPublishRecord(db, type, projectId))?.metadata as Record<string, unknown>
+
+    it('orders the tags, drops case-insensitive repeats, stays within 500, and records the channel tags', async () => {
+      const projectId = await channelProject('')
+      await ensurePublishRecord(db, 'master', projectId)
+      await savePublishDraft('master', projectId, {
+        title: '',
+        descriptionBody: '',
+        tags: 'My Tag',
+      })
+      await setBrief(BRIEF)
+      callLlm.mockResolvedValueOnce({ text: ANSWER })
+      expect(await generateDescription('master', projectId)).toEqual({ ok: true })
+      const stored = await draftOf(projectId)
+      const tags = stored['tags'] as string[]
+      expect(tags[0]).toBe('My Tag')
+      expect(tags.slice(1, 7)).toEqual(['history', 'sleep', ...FILLER.slice(0, 4)])
+      expect(tags.slice(7, 9)).toEqual(['history for sleep', 'empire'])
+      expect(new Set(tags.map((t) => t.toLowerCase())).size).toBe(tags.length)
+      expect(tags.join(',').length).toBeLessThanOrEqual(500)
+      expect(stored['channelTags']).toEqual([
+        'history',
+        'sleep',
+        ...FILLER.slice(0, 4),
+        'history for sleep',
+        'empire',
+      ])
+      expect(stored['channelTagsDropped']).toEqual([FILLER[4]])
+    })
+
+    it('leads the hashtags with the channel hashtag and keeps three in all', async () => {
+      const projectId = await channelProject('HistoryForSleep')
+      callLlm.mockResolvedValueOnce({ text: ANSWER })
+      expect(await generateDescription('master', projectId)).toEqual({ ok: true })
+      expect((await draftOf(projectId))['hashtags']).toEqual([
+        '#HistoryForSleep',
+        '#Wirecard',
+        '#Fraud',
+      ])
+    })
+
+    it('does not repeat the channel hashtag when the model wrote it too', async () => {
+      const projectId = await channelProject('Wirecard')
+      callLlm.mockResolvedValueOnce({ text: ANSWER })
+      expect(await generateDescription('master', projectId)).toEqual({ ok: true })
+      expect((await draftOf(projectId))['hashtags']).toEqual([
+        '#Wirecard',
+        '#Fraud',
+        '#Documentary',
+      ])
+    })
+
+    it('asks a master to place the format and pillar keywords early in the body', async () => {
+      const projectId = await channelProject('')
+      callLlm.mockResolvedValueOnce({ text: ANSWER })
+      await generateDescription('master', projectId)
+      const request = callLlm.mock.calls[0]![0] as { system: string }
+      expect(request.system).toContain(
+        'where it reads naturally: "History", "history for sleep", "empire".',
+      )
+    })
+
+    it("leaves a Short's tags, hashtags and prompt as they were", async () => {
+      const projectId = await channelProject('HistoryForSleep')
+      const short = await insertShort(db, {
+        projectId,
+        title: 'Nine days',
+        segmentRef: { chapterId: '01HQ0000000000000000000CH1', fromParagraph: 0, toParagraph: 0 },
+      })
+      callLlm.mockResolvedValueOnce({ text: ANSWER })
+      expect(await generateDescription('short', short.id)).toEqual({ ok: true })
+      const stored = await draftOf(short.id, 'short')
+      expect(stored['tags']).toEqual(['fintech fraud', 'HISTORY FOR SLEEP'])
+      expect(stored['hashtags']).toEqual(['#Wirecard', '#Fraud', '#Documentary'])
+      expect(stored['channelTags']).toEqual([])
+      expect((callLlm.mock.calls[0]![0] as { system: string }).system).not.toContain(
+        'One of these also appears',
+      )
+    })
+  })
+
+  it("writes titles and the description from the first paragraph after the format's fixed line", async () => {
+    const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const format = { ...bible.formats[0]!, introLine: 'Settle in.', outroLine: 'Sleep well.' }
+    const channel = await createChannel(db, {
+      name: 'Fixed-line channel',
+      handle: null,
+      slug: `fixed-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...bible, formats: [format] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Wirecard',
+      category: 'collapse',
+    })
+    const projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+    const script = await createScriptVersion(db, projectId)
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The audit',
+      contentMd: 'Settle in.\n\nA billion euros was never there.\n\nSleep well.',
+      estRuntimeSec: 12,
+    })
+
+    callLlm.mockResolvedValueOnce({ text: TITLES })
+    expect(await generateTitles('master', projectId)).toEqual({ ok: true })
+    const request = JSON.stringify(callLlm.mock.calls[0]![0])
+    expect(request).toContain('A billion euros was never there.')
+    expect(request).not.toContain('Settle in.')
+
+    // The description's seed is the same hook.
+    const { descriptionIngredients } = await import('@/lib/publish-review')
+    expect((await descriptionIngredients(db, projectId)).hook).toBe(
+      'A billion euros was never there.',
+    )
+  })
+
   describe('title scores (mock VidIQ)', () => {
     beforeEach(() => {
       vi.stubEnv('MOCK_PROVIDERS', '1')
@@ -706,6 +908,63 @@ describeDb('the search brief in titles, description and tags', () => {
         true,
       )
       expect(rows.every((r) => r.credits === 5 && r.projectId === FIXTURE_PROJECT_ID)).toBe(true)
+    })
+
+    describe('a format with a title template', () => {
+      /** A project on its own channel whose frozen format has a template and a lead keyword. */
+      async function templatedProject(): Promise<string> {
+        const { bible } = await channelForProject(db, FIXTURE_PROJECT_ID)
+        const format = {
+          ...bible.formats[0]!,
+          keywords: ['actually happened'],
+          titleTemplate: '{topic} | {formatKeyword}',
+          titleRequiredSlots: ['topic', 'formatKeyword'] as ('topic' | 'formatKeyword')[],
+        }
+        const channel = await createChannel(db, {
+          name: 'Templated channel',
+          handle: null,
+          slug: `templated-${Math.random().toString(36).slice(2, 8)}`,
+          settings: DEFAULT_SETTINGS,
+          bible: { ...bible, formats: [format] },
+        })
+        const kase = await createCase(db, {
+          channelId: channel.id,
+          title: 'Wirecard',
+          category: 'collapse',
+        })
+        return (await createProjectFromCase(db, { caseId: kase.id, title: 'Wirecard' })).id
+      }
+
+      it('stores the slots each title lacks and scores only titles with none', async () => {
+        const projectId = await templatedProject()
+        await setBrief({ ...BRIEF, targetKeyword: null })
+        expect(await generateTitles('master', projectId)).toEqual({ ok: true })
+        const stored = (await getPublishRecord(db, 'master', projectId))?.metadata as Record<
+          string,
+          unknown
+        >
+        const options = stored['titleOptions'] as string[]
+        const misses = stored['titleSlotMisses'] as Record<string, string[]>
+        // Only "How Wirecard actually happened" holds the lead keyword.
+        const holding = options.filter((option) => option.includes('actually happened'))
+        expect(holding).toHaveLength(1)
+        for (const option of options) {
+          expect(misses[option]).toEqual(option === holding[0] ? undefined : ['formatKeyword'])
+        }
+        // The titles ahead of it miss, yet the one that holds the keyword is scored, alone.
+        expect(Object.keys(stored['titleScores'] as object)).toEqual(holding)
+        expect(await db.select().from(vidiqCredits)).toHaveLength(1)
+      })
+    })
+
+    it('stores no misses on the default format and scores the first three as before', async () => {
+      await setBrief(BRIEF)
+      expect(await generateTitles('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const stored = await draft()
+      expect(stored['titleSlotMisses']).toEqual({})
+      expect(Object.keys(stored['titleScores'] as object)).toEqual(
+        (stored['titleOptions'] as string[]).slice(0, 3),
+      )
     })
 
     it('scores nothing without a brief, and nothing for a Short', async () => {

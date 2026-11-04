@@ -14,6 +14,7 @@ import {
   setSlotResolution,
   setVisualsPhase,
   shotSlotStatuses,
+  getShotSlot,
   slotNeedsResolution,
   listCastMembers,
   listLogos,
@@ -43,8 +44,9 @@ import {
   type GateContext,
 } from '../lib/gates'
 import { designPlannedGraphics } from '../lib/graphic-steps'
-import { chunk, withinFailureTolerance } from '../lib/narration'
-import { RESOLUTION_CONCURRENCY, timedParagraphs } from '../lib/shot-list'
+import { withinFailureTolerance } from '../lib/narration'
+import { timedParagraphs } from '../lib/shot-list'
+import { perSlotStepsFit, rowAnswers, stepSlots, visualsOtherSteps } from '../lib/slot-steps'
 import { timingFindings } from '../lib/timing-findings'
 
 /**
@@ -113,6 +115,10 @@ export const visualsRunner = inngest.createFunction(
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
     let rejectedSlots = 0
     let undesignedGraphics = 0
+    // What the planning half of this run spent steps on, for `perSlotStepsFit`.
+    // Both are rebuilt from memoised step results on every replay, so stable.
+    let planChapters = 0
+    let planDesigned = 0
 
     if (!resuming) {
       const setup = await step.run('load-narration', async () => {
@@ -132,7 +138,7 @@ export const visualsRunner = inngest.createFunction(
         // `load-cast-and-sets`: drafting the book is what seeds them.
         // The logo library (decision 268, Plan B): titles name the marks in the
         // prompt, ids resolve a graphic's "logo" the moment the plan is stored.
-        const { channelId } = await channelForProject(db, projectId)
+        const { channelId, format } = await channelForProject(db, projectId)
         const logos = await listLogos(db, channelId)
 
         await setProjectStage(db, projectId, { stage: 'visuals', stageStatus: 'running' })
@@ -140,7 +146,11 @@ export const visualsRunner = inngest.createFunction(
         return {
           caseTitle: project.title,
           chapters: sources.chapters.map((chapter) => ({ id: chapter.id, title: chapter.title })),
-          paragraphs: timedParagraphs({ chapters: sources.chapters, takes }),
+          paragraphs: timedParagraphs({
+            chapters: sources.chapters,
+            takes,
+            wordsPerMinute: format.wordsPerMinute,
+          }),
           claims: claims.map((claim) => ({
             id: claim.id,
             text: claim.text,
@@ -212,6 +222,7 @@ export const visualsRunner = inngest.createFunction(
       // Shot-list generation, chapter by chapter, against the book
       // -----------------------------------------------------------------------
 
+      planChapters = setup.chapters.length
       const allRows: NewShotSlot[] = []
 
       for (const [index, chapter] of setup.chapters.entries()) {
@@ -247,6 +258,10 @@ export const visualsRunner = inngest.createFunction(
           await step.run(`shot-list-${index}-over-budget`, () => markStageFailed(ctx, planned.gate))
           return { projectId, outcome: 'over-budget' as const }
         }
+
+        planDesigned += planned.rows.filter(
+          (row) => row.type === 'chart' || row.type === 'graphic',
+        ).length
 
         // Each graphic gets a designer of its own (decision 289), one step
         // each, before the plan is saved. Step results are plain JSON, so the
@@ -299,12 +314,15 @@ export const visualsRunner = inngest.createFunction(
       })
 
       const stillCount = allRows.filter((row) => row.type === 'still').length
-      await step.run('open-plan-park', () => {
+      await step.run('open-plan-park', async () => {
         // Craft misses the model let through (decisions 252, 277): notes for
         // the plan screen, never rejections. Counted INSIDE the step (decision
         // 279): a run parked for days replays with the step results it saved
         // back then, and outside a step this read the cast, which an older
         // run's saved setup does not have, and crashed the fetch.
+        // The format's shot hold is read here for the same reason: a setup
+        // saved before it existed has no such field.
+        const { format: planFormat } = await channelForProject(db, projectId)
         const warnings = planFindings({
           rows: allRows,
           chapters: setup.chapters,
@@ -323,6 +341,7 @@ export const visualsRunner = inngest.createFunction(
             coversText: row.brief.coversText,
           })),
           setup.paragraphs,
+          planFormat.shotHold,
         ).length
         return openReviewGate(ctx, {
           stage: 'visuals',
@@ -407,62 +426,85 @@ export const visualsRunner = inngest.createFunction(
 
     const outcomes: SlotOutcome[] = []
 
-    for (const batch of chunk(board, RESOLUTION_CONCURRENCY)) {
-      const results = await Promise.all(
-        batch.map((slot) =>
-          step.run(`resolve-${slot.id}`, async (): Promise<SlotOutcome> => {
-            try {
-              const brief = ShotBriefSchema.parse(slot.brief)
-              const route = StillRouteSchema.nullable().safeParse(slot.route)
-              const resolution = await resolveSlotBrief({
-                projectId,
-                brief,
-                route: route.success ? route.data : null,
-              })
-              await setSlotResolution(
-                db,
-                slot.id,
-                resolution.status === 'resolved'
-                  ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
-                  : resolution,
-              )
-              return { ok: true, status: resolution.status }
-            } catch (error) {
-              if (error instanceof BudgetExceededError) {
-                return { ok: false, gate: budgetGateData(error) }
-              }
-              if (error instanceof ContentPolicyError) {
-                // The image model declined the prompt (decision 252): a
-                // placeholder with the refusal ON THE ROW, so the card can
-                // offer the two ways out instead of a generic "nothing found".
-                await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
-                await setSlotRefusal(db, slot.id, {
-                  reason: error.message,
-                  at: new Date().toISOString(),
-                })
-                return { ok: false, error: error.message }
-              }
-              /**
-               * Swallowed for the same reason the voice fan-out swallows: the
-               * tolerance needs per-item outcomes, and one thrown step would
-               * take down siblings that succeeded. The slot is marked
-               * `placeholder` so the board shows exactly what needs a human.
-               */
-              await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
-              return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
-            }
-          }),
-        ),
-      )
+    type OwedSlot = { id: string; brief: unknown; route: unknown }
 
-      outcomes.push(...results)
-
-      // A budget cap hit part-way is not a per-item failure — park now.
-      const overBudget = results.find((result) => !result.ok && 'gate' in result)
-      if (overBudget && !overBudget.ok && 'gate' in overBudget) {
-        await step.run('resolution-over-budget', () => markStageFailed(ctx, overBudget.gate))
-        return { projectId, outcome: 'over-budget' as const, resolved: outcomes.length }
+    // One slot at a time, as a closure so the per-slot and the batch steps run
+    // the same code.
+    const resolveOne = async (slot: OwedSlot): Promise<SlotOutcome> => {
+      try {
+        const brief = ShotBriefSchema.parse(slot.brief)
+        const route = StillRouteSchema.nullable().safeParse(slot.route)
+        const resolution = await resolveSlotBrief({
+          projectId,
+          brief,
+          route: route.success ? route.data : null,
+        })
+        await setSlotResolution(
+          db,
+          slot.id,
+          resolution.status === 'resolved'
+            ? { ...resolution, answered: { brief: slot.brief, route: slot.route } }
+            : resolution,
+        )
+        return { ok: true, status: resolution.status }
+      } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          return { ok: false, gate: budgetGateData(error) }
+        }
+        if (error instanceof ContentPolicyError) {
+          // The image model declined the prompt (decision 252): a
+          // placeholder with the refusal ON THE ROW, so the card can
+          // offer the two ways out instead of a generic "nothing found".
+          await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+          await setSlotRefusal(db, slot.id, {
+            reason: error.message,
+            at: new Date().toISOString(),
+          })
+          return { ok: false, error: error.message }
+        }
+        /**
+         * Swallowed for the same reason the voice fan-out swallows: the
+         * tolerance needs per-item outcomes, and one thrown step would
+         * take down siblings that succeeded. The slot is marked
+         * `placeholder` so the board shows exactly what needs a human.
+         */
+        await setSlotResolution(db, slot.id, { candidates: [], status: 'placeholder' })
+        return { ok: false, error: String(serialiseError(error).message ?? 'unknown') }
       }
+    }
+
+    // A step a slot while that fits under the step limit with this run's other
+    // steps, eight a step otherwise (`stepSlots`, `perSlotStepsFit`). Every
+    // input is the memoised plan's: the board's length and the plan's counts.
+    const owedBoard: OwedSlot[] = board
+    const settled = await stepSlots<OwedSlot, SlotOutcome>(
+      (id, fn) => step.run(id, fn) as never,
+      owedBoard,
+      'resolve',
+      {
+        perSlot: perSlotStepsFit(
+          owedBoard.length,
+          visualsOtherSteps({ chapters: planChapters, designedSlots: planDesigned }),
+        ),
+        run: resolveOne,
+        // A retried batch must not buy again what its first attempt finished: a
+        // slot whose stored resolution already answers this brief and route is done.
+        skip: async (slot): Promise<SlotOutcome | null> => {
+          return rowAnswers(await getShotSlot(db, slot.id), slot)
+            ? { ok: true, status: 'resolved' }
+            : null
+        },
+        // A cap hit means every slot after it would hit it too.
+        stopAfter: (outcome) => !outcome.ok && 'gate' in outcome,
+      },
+    )
+    outcomes.push(...settled.map(({ outcome }) => outcome))
+
+    // A budget cap hit part-way is not a per-item failure — park now.
+    const overBudget = outcomes.find((result) => !result.ok && 'gate' in result)
+    if (overBudget && !overBudget.ok && 'gate' in overBudget) {
+      await step.run('resolution-over-budget', () => markStageFailed(ctx, overBudget.gate))
+      return { projectId, outcome: 'over-budget' as const, resolved: outcomes.length }
     }
 
     const failed = outcomes.filter((outcome) => !outcome.ok).length

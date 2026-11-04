@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { chmodSync, createWriteStream, existsSync, readFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import * as Sentry from '@sentry/aws-serverless'
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
 import type { MediaJob, MediaJobCallback } from '@boom-busters/schemas'
 import type { Readable } from 'node:stream'
@@ -22,6 +22,7 @@ import {
   whisperJsonToCaptions,
   youtubeInitBody,
 } from './commands'
+import { putInChunks } from './youtube-upload'
 
 /**
  * The media-utils Lambda (build spec section 8): invoked ASYNCHRONOUSLY by
@@ -204,11 +205,10 @@ async function runTranscribe(job: Extract<MediaJob, { kind: 'transcribe' }>) {
  */
 async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' }>) {
   const { client, bucket } = clientFor(job.videoS3Key)
-  const head = await client.send(new GetObjectCommand({ Bucket: bucket, Key: job.videoS3Key }))
+  // The length alone: the video is read a chunk at a time below, never whole.
+  const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: job.videoS3Key }))
   const total = head.ContentLength
   if (total === undefined) throw new Error('video object has no length')
-  const bytes = await head.Body?.transformToByteArray()
-  if (!bytes) throw new Error('video object has no body')
 
   const startResponse = await fetch(
     'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
@@ -229,36 +229,23 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
   const uploadUrl = startResponse.headers.get('location')
   if (!uploadUrl) throw new Error('youtube resumable init returned no location')
 
-  const CHUNK = 8 * 1024 * 1024 // 256 KB-aligned
-  let offset = 0
-  for (;;) {
-    const end = Math.min(offset + CHUNK, total)
-    const chunk = bytes.subarray(offset, end)
-    const response = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'content-length': String(chunk.length),
-        'content-range': `bytes ${offset}-${end - 1}/${total}`,
-      },
-      body: chunk,
-    })
-    if (response.status === 308) {
-      const range = response.headers.get('range')
-      offset = range ? Number(range.split('-')[1]) + 1 : end
-      continue
-    }
-    if (response.ok) {
-      const uploaded = (await response.json()) as {
-        id?: string
-        status?: { uploadStatus?: string }
-      }
-      return {
-        videoId: uploaded.id ?? 'unknown',
-        status: uploaded.status?.uploadStatus ?? 'uploaded',
-      }
-    }
-    throw new Error(`youtube upload failed with ${response.status}`)
-  }
+  return putInChunks({
+    total,
+    uploadUrl,
+    fetchImpl: fetch,
+    readRange: async (start, endInclusive) => {
+      const part = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: job.videoS3Key,
+          Range: `bytes=${start}-${endInclusive}`,
+        }),
+      )
+      const bytes = await part.Body?.transformToByteArray()
+      if (!bytes) throw new Error('video object has no body')
+      return bytes
+    },
+  })
 }
 
 // ---------------------------------------------------------------------------

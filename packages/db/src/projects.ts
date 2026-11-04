@@ -66,6 +66,8 @@ export interface ProjectSummary {
   /** Which visuals checkpoint the project sits at (staged-visuals design). */
   visualsPhase: 'plan' | 'board' | null
   shortsPhase: 'points' | 'review' | null
+  /** The format the project was started in; the Projects list resolves its switches from it. */
+  formatKey: string
   /** The Director's Book as stored (decision 252); parse with `DirectorsBookSchema`. */
   direction: Record<string, unknown> | null
   /** The plan-level job in flight (decision 286); parse with `VisualsJobSchema`. */
@@ -87,6 +89,7 @@ const summaryColumns = {
   cancelledAt: projects.cancelledAt,
   visualsPhase: projects.visualsPhase,
   shortsPhase: projects.shortsPhase,
+  formatKey: projects.formatKey,
   direction: projects.direction,
   visualsJob: projects.visualsJob,
   searchBrief: projects.searchBrief,
@@ -488,7 +491,13 @@ export function nextStage(stage: ProjectStage): ProjectStage | null {
  */
 export async function createProjectFromCase(
   db: Database,
-  input: { caseId: string; title: string; targetRuntimeMin?: number; bibleId?: string },
+  input: {
+    caseId: string
+    title: string
+    targetRuntimeMin?: number
+    bibleId?: string
+    formatKey?: string
+  },
 ): Promise<ProjectRow> {
   if (input.bibleId !== undefined) {
     const [kase] = await db
@@ -535,6 +544,7 @@ export async function createProjectFromCase(
         stage: 'dossier',
         stageStatus: 'queued',
         searchBrief: frozen,
+        ...(input.formatKey === undefined ? {} : { formatKey: input.formatKey }),
         ...(input.targetRuntimeMin === undefined
           ? {}
           : { targetRuntimeMin: input.targetRuntimeMin }),

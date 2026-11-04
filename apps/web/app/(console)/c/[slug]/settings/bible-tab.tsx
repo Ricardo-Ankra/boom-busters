@@ -16,13 +16,18 @@ import { useToast } from '@/components/ui/toast'
 import { errorSection, flagSection } from '@/lib/bible-draft-keys'
 import type { ActionResult } from './actions'
 import {
+  analyseSearchSpaceAction,
   approveBibleSectionAction,
   discardBibleDraftAction,
   draftBibleAction,
   editBibleSectionAction,
+  measureKeywordsAction,
   saveBibleAction,
 } from './bible-actions'
 import { BibleHistory } from './bible-history'
+import type { KeywordReadings } from './bible-measurements'
+import type { MeasuredPaceView } from './bible-fields'
+import type { SearchSpaceReadings } from './bible-search-space'
 import { BiblePreview } from './bible-preview'
 import { BibleSaveBar } from './bible-save-bar'
 import { BibleSectionCard } from './bible-section-card'
@@ -56,6 +61,11 @@ export function BibleTab({
   vidiqReady,
   archived,
   copySources = [],
+  readings,
+  measureCount = 0,
+  searchSpace,
+  searchSpaceCounts,
+  measuredPace,
 }: {
   channel: { id: string; name: string; handle: string | null }
   /** The working draft, or null when there is none. */
@@ -69,6 +79,16 @@ export function BibleTab({
   archived: boolean
   /** Every other channel the bible can be copied from, archived ones included. */
   copySources?: CopySource[]
+  /** The latest VidIQ reading of each format and pillar keyword, by lower-cased keyword. */
+  readings?: KeywordReadings
+  /** How many format and pillar keywords have no reading from the last 30 days. */
+  measureCount?: number
+  /** The latest search-space analysis of each format keyword, by lower-cased keyword. */
+  searchSpace?: SearchSpaceReadings
+  /** Per format key, how many of its keywords have no analysis from the last 30 days. */
+  searchSpaceCounts?: Record<string, number>
+  /** The pace the channel's voice measured at; null when no take qualifies. */
+  measuredPace?: MeasuredPaceView | null
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -77,6 +97,16 @@ export function BibleTab({
   const [note, setNote] = React.useState('')
   const [retryToken, setRetryToken] = React.useState(0)
   const [panel, setPanel] = React.useState<BiblePanel>(null)
+  const [editProblems, setEditProblems] = React.useState<Partial<Record<BibleSection, string[]>>>(
+    {},
+  )
+  const setProblems = React.useCallback((section: BibleSection, problems: string[]) => {
+    setEditProblems((current) => {
+      const had = current[section] ?? []
+      if (had.length === problems.length && had.every((p, i) => p === problems[i])) return current
+      return { ...current, [section]: problems }
+    })
+  }, [])
 
   // The server's draft wins whenever the page refreshes.
   React.useEffect(() => setDraft(initialDraft), [initialDraft])
@@ -89,7 +119,9 @@ export function BibleTab({
   }, [running, router])
 
   const bible = draft?.bible ?? currentVersion.bible
-  const blockers = draft ? bibleSaveBlockers(draft) : []
+  // What the open section forms say is wrong with them also stops Save.
+  const formProblems = Object.values(editProblems).flat()
+  const blockers = draft ? [...bibleSaveBlockers(draft), ...formProblems] : []
   const locked = archived || running || busy
 
   /** Runs an action, shows its refusal, takes the draft it returns and refreshes the page. */
@@ -104,6 +136,40 @@ export function BibleTab({
       if (result.draft) setDraft(result.draft)
       router.refresh()
       return true
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const measureKeywords = async () => {
+    setBusy(true)
+    try {
+      const result = await measureKeywordsAction(channel.id)
+      if (!result.ok) {
+        toast({ title: 'Could not measure', description: result.error, variant: 'error' })
+        return
+      }
+      toast({
+        title: 'Measuring in VidIQ',
+        description: `About ${result.credits} credits. The readings appear here as they arrive; refresh the page to see them.`,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const analyseSearchSpace = async (formatKey: string) => {
+    setBusy(true)
+    try {
+      const result = await analyseSearchSpaceAction(channel.id, formatKey)
+      if (!result.ok) {
+        toast({ title: 'Could not analyse', description: result.error, variant: 'error' })
+        return
+      }
+      toast({
+        title: 'Analysing the search space',
+        description: `About ${result.credits} credits. The results appear here as they arrive; refresh the page to see them.`,
+      })
     } finally {
       setBusy(false)
     }
@@ -304,6 +370,29 @@ export function BibleTab({
             .filter(([key]) => errorSection(key) === section)
             .map(([, message]) => message)}
           disabled={locked}
+          onProblems={setProblems}
+          {...(readings ? { readings } : {})}
+          {...(section === 'formats' && measuredPace !== undefined ? { pace: measuredPace } : {})}
+          {...(section === 'formats' && searchSpace
+            ? {
+                space: {
+                  readings: searchSpace,
+                  counts: searchSpaceCounts ?? {},
+                  ready: vidiqReady,
+                  disabled: locked,
+                  onAnalyse: (formatKey: string) => void analyseSearchSpace(formatKey),
+                },
+              }
+            : {})}
+          {...(section === 'formats' || section === 'identity'
+            ? {
+                measure: {
+                  count: measureCount,
+                  ready: vidiqReady,
+                  onMeasure: () => void measureKeywords(),
+                },
+              }
+            : {})}
           onEdit={(target, patch) =>
             act(
               () => editBibleSectionAction(channel.id, target, patch),

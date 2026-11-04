@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { stageViews } from '@/lib/stage-view'
-import { PipelineRail } from './pipeline-rail'
+import { MiniPipelineRail, PipelineRail, segmentState } from './pipeline-rail'
 
 /**
  * The rail's job beyond decoration: spec section 11.3 says each segment "is
@@ -148,5 +148,43 @@ describe('PipelineRail', () => {
     expect(script).toBeInTheDocument()
     // And says it is not to be trusted, in words rather than a dashed border.
     expect(script).toHaveAccessibleName(/needs re-running/)
+  })
+})
+
+describe('the Shorts segment of a format with Shorts off', () => {
+  const afterMaster = {
+    project: { stage: 'publish' as const, stageStatus: 'awaiting_review' as const },
+    dossier: { version: 1 },
+    shortsOff: true,
+  }
+
+  it('says off for this format, with no link', () => {
+    renderRail(afterMaster, 'script')
+
+    expect(screen.getByText(/off for this format/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Shorts/ })).not.toBeInTheDocument()
+  })
+
+  it('has its own state, not the not-started one', () => {
+    const shorts = stageViews(afterMaster).find((v) => v.stage === 'shorts')!
+    expect(segmentState(shorts)).toBe('off')
+  })
+
+  it('says it on the mini rail too', () => {
+    render(<MiniPipelineRail views={stageViews(afterMaster)} />)
+    expect(screen.getByText(/Shorts.*off for this format/)).toBeInTheDocument()
+  })
+
+  it('shows the real state when the project is on the Shorts stage', () => {
+    renderRail(
+      {
+        project: { stage: 'shorts', stageStatus: 'queued' },
+        dossier: { version: 1 },
+        shortsOff: true,
+      },
+      'script',
+    )
+    expect(screen.queryByText(/off for this format/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Shorts/ })).toBeInTheDocument()
   })
 })

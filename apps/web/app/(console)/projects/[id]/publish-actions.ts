@@ -27,10 +27,18 @@ import {
 import type { PublishRecordRow } from '@boom-busters/db'
 import {
   CHAPTER_GLOSS_MAX,
+  channelTagsWithin,
   composeDescription,
   HASHTAGS_MAX,
+  fillTitleTemplate,
+  leadKeyword,
+  dropFixedParagraphs,
+  missingTitleSlots,
+  normaliseHashtag,
   OutlineSchema,
+  runtimeWords,
   splitHashtags,
+  topicForTitle,
   PublishDraftSchema,
   PublishMetadataSchema,
   splitParagraphs,
@@ -38,6 +46,7 @@ import {
   searchBriefLine,
   UlidSchema,
 } from '@boom-busters/schemas'
+import type { SearchBrief, TitleSlot, TitleSlotValues } from '@boom-busters/schemas'
 import {
   buildDescriptionRequest,
   buildTitlesRequest,
@@ -57,6 +66,7 @@ import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtu
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
+import { pillarOf } from '@/lib/pillar'
 import { searchTags } from '@/lib/search-tags'
 import { unscoredDistinctTitles } from '@/lib/title-scores'
 import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
@@ -195,6 +205,17 @@ export async function savePublishDraft(
   return { ok: true }
 }
 
+/** Each text once, case-insensitively, the first spelling kept. */
+function uniqueNoCase(texts: readonly string[]): string[] {
+  const seen = new Set<string>()
+  return texts.filter((text) => {
+    const key = text.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 /** The owner's tags first, then the written ones, inside YouTube's 500 characters. */
 function joinTags(kept: readonly string[], written: readonly string[]): string[] {
   const tags: string[] = []
@@ -281,7 +302,8 @@ export async function generateDescription(
   if (!('frozen' in bibleGate)) return bibleGate
 
   // The brief the project froze (null for a project started without one).
-  const brief = (await getProject(db, projectId))?.searchBrief ?? null
+  const project = await getProject(db, projectId)
+  const brief = project?.searchBrief ?? null
   const cast = brief ? (await listCastMembers(db, projectId)).map((member) => member.name) : []
 
   const [grounding, ingredients, sources] = await Promise.all([
@@ -289,15 +311,23 @@ export async function generateDescription(
     descriptionIngredients(db, projectId),
     latestScriptParagraphSources(db, projectId),
   ])
+  const { bible, format } = bibleGate.frozen
   const textOf = new Map(sources.chapters.map((chapter) => [chapter.id, chapter.contentMd]))
+  // The format's fixed lines are the owner's words, not the film's content: the
+  // description never sees them. `textOf` stays whole for the Short's paragraph indexes.
   const chapters =
     type === 'master'
       ? ingredients.chapters.map((chapter) => ({
           title: chapter.title,
-          text: textOf.get(chapter.id) ?? '',
+          text: dropFixedParagraphs(textOf.get(chapter.id) ?? '', format),
         }))
       : []
   const shortText = type === 'short' ? await shortNarration(targetId, textOf) : undefined
+
+  // The format's keywords, then the pillar's, once each: what a master's body and
+  // tags are asked to carry.
+  const pillarKeywords = pillarOf(bible, project?.caseCategory)?.keywords ?? []
+  const channelKeywords = uniqueNoCase([...format.keywords, ...pillarKeywords])
 
   let answer: DescriptionAnswer
   if (mockProvidersEnabled()) {
@@ -315,6 +345,8 @@ export async function generateDescription(
           chapters,
           ...(shortText ? { shortText } : {}),
           ...(brief ? { searchBrief: brief } : {}),
+          ...(type === 'master' ? { channelKeywords } : {}),
+          intent: format.intent,
         }),
         parse: (text, note) => parseDescriptionAnswer(text, chapters.length, note),
         complete: completeForProject(projectId, { estimateOutputTokens: 800 }),
@@ -334,8 +366,34 @@ export async function generateDescription(
   }
 
   const stored = PublishDraftSchema.safeParse(record.metadata)
-  // The brief's own tags go after the owner's and before the model's (spec 7.5).
-  const fromBrief = brief ? searchTags(brief, cast) : []
+  // The channel's tags, then the format's and pillar's keywords, then the brief's
+  // own go after the owner's and before the model's (spec 6.7, 7.5). A Short keeps
+  // the owner's, the brief's and the model's alone.
+  const fromBrief = brief ? searchTags(brief, cast, type === 'master' ? channelKeywords : []) : []
+  const channelFirst =
+    type === 'master' ? channelTagsWithin(bible.channelTags) : { kept: [], dropped: [] }
+  const channelCandidates = uniqueNoCase([
+    ...channelFirst.kept,
+    ...(type === 'master' ? channelKeywords : []),
+  ])
+  const tags = joinTags(stored.success ? stored.data.tags : [], [
+    ...channelCandidates,
+    ...fromBrief,
+    ...answer.tags,
+  ])
+  const inTags = new Set(tags.map((tag) => tag.toLowerCase()))
+  // Only the channel, format and pillar tags that made the list are marked as the channel's.
+  const channelTags = channelCandidates.filter((tag) => inTags.has(tag.toLowerCase()))
+  const own = normaliseHashtag(bible.channelHashtag)
+  const hashtags =
+    type === 'master' && own !== ''
+      ? [
+          own,
+          ...answer.hashtags
+            .filter((tag) => normaliseHashtag(tag).toLowerCase() !== own.toLowerCase())
+            .slice(0, HASHTAGS_MAX - 1),
+        ]
+      : answer.hashtags
   const patch = {
     descriptionBody: answer.body,
     bodyScriptVersion: grounding.scriptVersion,
@@ -349,9 +407,11 @@ export async function generateDescription(
           ),
         }
       : {}),
-    hashtags: answer.hashtags,
-    tags: joinTags(stored.success ? stored.data.tags : [], [...fromBrief, ...answer.tags]),
+    hashtags,
+    tags,
     searchTags: fromBrief,
+    channelTags,
+    channelTagsDropped: channelFirst.dropped,
   }
   // A patch the draft schema would refuse would make the whole draft unreadable
   // at upload, which would then fall back to the pitch title (decision 303, review).
@@ -468,6 +528,52 @@ async function vidiqAvailable(): Promise<boolean> {
 }
 
 /**
+ * The format's title template filled for this project, and the values a title
+ * must hold. Null for a Short and for a format with no template: titles are
+ * then written and scored as they always were.
+ */
+async function titleFrameFor(
+  projectId: string,
+  project: {
+    caseTitle: string
+    caseCategory: string
+    searchBrief: SearchBrief | null
+  },
+  frozen: Awaited<ReturnType<typeof channelForProject>>,
+): Promise<{
+  pattern: string
+  required: string[]
+  slots: readonly TitleSlot[]
+  values: TitleSlotValues
+} | null> {
+  const { format } = frozen
+  if (format.titleTemplate === '') return null
+  const brief = project.searchBrief
+  const runtimeSec = format.titleTemplate.includes('{runtime}')
+    ? (await descriptionIngredients(db, projectId)).runtimeSec
+    : null
+  const values: TitleSlotValues = {
+    topic: topicForTitle({
+      targetKeyword: brief?.targetKeyword?.keyword ?? null,
+      subject: brief?.subject ?? project.caseTitle,
+      formatKeywords: format.keywords,
+    }),
+    formatKeyword: leadKeyword(format),
+    pillar: format.titleTemplate.includes('{pillar}')
+      ? (pillarOf(frozen.bible, project.caseCategory)?.label ?? null)
+      : null,
+    runtime: runtimeSec === null ? null : runtimeWords(runtimeSec),
+  }
+  const slots = format.titleRequiredSlots
+  return {
+    pattern: fillTitleTemplate(format.titleTemplate, values),
+    required: slots.flatMap((slot) => (values[slot] === null ? [] : [values[slot]])),
+    slots,
+    values,
+  }
+}
+
+/**
  * The 8 generated title options (spec section 11.3): the 'metadata' LLM task,
  * routed and budget-guarded like every other call. Mock mode answers locally
  * — deterministic, obviously mock — for free.
@@ -492,6 +598,9 @@ export async function generateTitles(targetType: string, targetId: string): Prom
 
   const workingTitle =
     type === 'master' ? project.title : ((await getShort(db, targetId))?.title ?? project.title)
+  // The format's title template, for a master: the model is shown it filled,
+  // and each title is checked for the slots the format requires.
+  const frame = type === 'master' ? await titleFrameFor(projectId, project, bibleGate.frozen) : null
 
   let titles: string[]
   if (mockProvidersEnabled()) {
@@ -529,6 +638,8 @@ export async function generateTitles(targetType: string, targetId: string): Prom
           ...(grounding.centralQuestion ? { centralQuestion: grounding.centralQuestion } : {}),
           ...(shortText ? { shortText } : {}),
           ...(project.searchBrief ? { searchBrief: project.searchBrief } : {}),
+          ...(frame ? { titleFrame: { pattern: frame.pattern, required: frame.required } } : {}),
+          intent: frozen.format.intent,
         }),
         parse: (text) => parseTitleOptions(text),
         complete: completeForProject(projectId, { estimateOutputTokens: 500 }),
@@ -547,16 +658,29 @@ export async function generateTitles(targetType: string, targetId: string): Prom
     }
   }
 
+  // The required slots each title lacks: a warning on the Publish screen,
+  // never a reason to drop a title.
+  const titleSlotMisses: Record<string, TitleSlot[]> = {}
+  if (frame) {
+    for (const title of titles) {
+      const missing = missingTitleSlots(title, frame.slots, frame.values)
+      if (missing.length > 0) titleSlotMisses[title] = missing
+    }
+  }
+
   // A master with a search brief and a VidIQ key has the model's first three
-  // titles scored (spec 7.3). Scoring never costs the titles: a refusal keeps
-  // them, with a note under the list saying why. A Short is not scored here.
+  // titles that miss nothing scored (spec 7.3), in the model's order. Scoring
+  // never costs the titles: a refusal keeps them, with a note under the list
+  // saying why. A Short is not scored here.
   const scored =
     type === 'master' && project.searchBrief
       ? await scoreTitleList({
           skipWithoutKey: true,
           channelId: bibleGate.frozen.channelId,
           projectId,
-          titles: titles.slice(0, TITLES_SCORED_UP_FRONT),
+          titles: titles
+            .filter((title) => !(title in titleSlotMisses))
+            .slice(0, TITLES_SCORED_UP_FRONT),
           type: 'long',
         })
       : { scores: {}, note: '' }
@@ -566,6 +690,7 @@ export async function generateTitles(targetType: string, targetId: string): Prom
     // New titles, new scores: the old ones belong to titles that are gone.
     titleScores: scored.scores,
     titleScoreNote: scored.note,
+    titleSlotMisses,
   })
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
@@ -797,6 +922,8 @@ async function requestUpload(
     sources: ingredients.sources,
     // The bed plays under Shorts too — the licence rides on every upload.
     musicAttribution: ingredients.musicAttribution,
+    // The channel's footer is a long-form description's; a Short's is as it was.
+    ...(type === 'master' ? { footer: ingredients.footer } : {}),
     hashtags: draft.success ? draft.data.hashtags : [],
     disclaimer: ingredients.disclaimer,
   })

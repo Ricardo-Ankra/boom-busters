@@ -77,7 +77,7 @@ suite('bible drafts', () => {
     const draft = await openBibleDraft(db, channelId)
     expect(draft.baseBibleId).toBe(current.id)
     expect(draft.bible).toEqual(current.bible)
-    expect(Object.values(draft.statuses)).toEqual(Array(7).fill('approved'))
+    expect(Object.values(draft.statuses)).toEqual(Array(8).fill('approved'))
     expect(draft.job).toBeNull()
     // A second open returns the same draft rather than a new one.
     expect(await openBibleDraft(db, channelId)).toEqual(draft)

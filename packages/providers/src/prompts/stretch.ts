@@ -1,6 +1,6 @@
 import { splitSentences } from '@boom-busters/schemas'
 import type { BibleInUse, PlannedSlot } from '@boom-busters/schemas'
-import { MIN_SHOT_RULE } from './min-shot-rule'
+import { MIN_SHOT_RULE, minShotRule } from './min-shot-rule'
 import { mockStockBrief, shotListAnswerTokens } from './shotlist'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -23,6 +23,8 @@ export interface StretchRequestInput {
    * psychology sweep covers this one too.
    */
   bible: BibleInUse
+  /** The format's shot hold, a multiplier on the minimums; absent means 1. */
+  shotHold?: number
 }
 
 /**
@@ -51,7 +53,7 @@ export function buildStretchRequest(
     `Before: ${JSON.stringify(input.before)}\nAfter: ${JSON.stringify(input.after)}`,
     `The first slot's "coversText" must start with "${input.opening}".`,
     'Quote the stretch in narration order, and every sentence is quoted by exactly one slot.',
-    MIN_SHOT_RULE,
+    minShotRule(input.shotHold),
   ]
   if (!input.headlineAllowed) lines.push('Do not plan a headline shot.')
   if (input.note) lines.push(`Producer's note: ${input.note}`)

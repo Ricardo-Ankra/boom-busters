@@ -85,10 +85,10 @@ export function mockTakeSeed(voiceId: string, idempotencyKey: string): string {
  * re-derives the bytes from the take's own text and seed. Determinism is what
  * makes that possible, and it is the reason there is no `Math.random()` here.
  */
-export function mockNarrationPcm(text: string, seed: string): Buffer {
-  // Real narration at 150 wpm, floored so a one-word paragraph is still
-  // scrubbable rather than a click.
-  const durationMs = Math.max(800, estimateRuntimeSec(text) * 1000)
+export function mockNarrationPcm(text: string, seed: string, wordsPerMinute?: number): Buffer {
+  // Narration at the format's pace (150 by default), floored so a one-word
+  // paragraph is still scrubbable rather than a click.
+  const durationMs = Math.max(800, estimateRuntimeSec(text, wordsPerMinute) * 1000)
   const totalSamples = Math.floor((durationMs / 1000) * NARRATION_SAMPLE_RATE)
   const pcm = Buffer.alloc(totalSamples * 2)
 
@@ -161,6 +161,7 @@ export function createMockTTS(script: MockTTSScript = {}, id: TtsProvider = 'ele
       const audioBuffer = mockNarrationPcm(
         request.text,
         mockTakeSeed(request.voiceId, request.idempotencyKey),
+        request.wordsPerMinute,
       )
 
       const durationMs = pcmDurationMs(audioBuffer.length, NARRATION_SAMPLE_RATE)

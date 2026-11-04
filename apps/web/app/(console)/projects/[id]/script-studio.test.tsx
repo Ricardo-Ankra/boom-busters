@@ -1,8 +1,23 @@
-import { render, screen } from '@testing-library/react'
+import type * as TiptapReact from '@tiptap/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ShortsStrip } from './script-studio'
+import { saveChapterText } from './actions'
+import { ScriptStudio, ShortsStrip } from './script-studio'
+
+// The editor's options, captured so a test can fire its update hook.
+const editorHooks: { onUpdate: (arg: unknown) => void }[] = []
+vi.mock('@tiptap/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof TiptapReact>()
+  return {
+    ...actual,
+    useEditor: (options: Parameters<typeof actual.useEditor>[0]) => {
+      editorHooks.push(options as unknown as (typeof editorHooks)[number])
+      return actual.useEditor(options)
+    },
+  }
+})
 
 vi.mock('./actions', () => ({
   applyRegeneratedText: vi.fn(),
@@ -97,5 +112,102 @@ describe('the Shorts strip (decision 293)', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss note' }))
     expect(dismissNoticeAction).toHaveBeenCalledWith('01J000000000000000000000S1')
+  })
+})
+
+describe('the format fixed lines in the chapter editor', () => {
+  const chapter = {
+    id: '01J000000000000000000000C1',
+    index: 0,
+    title: 'The audit',
+    contentMd: 'Settle in.\n\nEY refused to sign the accounts.\n\nSleep well.',
+    warnings: [],
+    estRuntimeSec: 12,
+  } as never
+
+  const studio = (fixedLines?: { introLine: string; outroLine: string }) => (
+    <ScriptStudio
+      channelId="01J000000000000000000000H1"
+      projectId="01J0000000000000000000000P"
+      scriptId="01J000000000000000000000S1"
+      chapters={[chapter]}
+      targetRuntimeMin={10}
+      shorts={[]}
+      usedFallbackModel={false}
+      {...(fixedLines ? { fixedLines } : {})}
+    />
+  )
+
+  it('shows each fixed line read-only, labelled', () => {
+    render(studio({ introLine: 'Settle in.', outroLine: 'Sleep well.' }))
+    expect(screen.getAllByText('Fixed line from the bible')).toHaveLength(2)
+    expect(screen.getByText('Settle in.')).toBeInTheDocument()
+    expect(screen.getByText('Sleep well.')).toBeInTheDocument()
+  })
+
+  it('keeps a new paragraph typed before the fixed closing line, and saves the line intact', async () => {
+    vi.mocked(saveChapterText).mockResolvedValue({ ok: true } as never)
+    render(studio({ introLine: 'Settle in.', outroLine: 'Sleep well.' }))
+    await screen.findByLabelText('The audit narration')
+    // jsdom cannot type into ProseMirror: feed the editor's own update hook the
+    // text it would report after each key (an empty paragraph reads as a blank line).
+    const type = (text: string) =>
+      act(() => editorHooks.at(-1)!.onUpdate({ editor: { getText: () => text } }))
+    const base = 'EY refused to sign the accounts.'
+    type(`${base} A`)
+    type(`${base} A\n\n`)
+    type(`${base} A\n\n\n\n`)
+    type(`${base} A\n\n\n\nB`)
+    await waitFor(
+      () => {
+        const text = vi.mocked(saveChapterText).mock.calls.at(-1)![2]
+        expect(text).toMatch(/accounts\. A\n\n+B\n\nSleep well\.$/)
+        expect(text.startsWith('Settle in.\n\nEY refused')).toBe(true)
+      },
+      { timeout: 3000 },
+    )
+  })
+
+  it('shows none for a format without fixed lines', () => {
+    render(studio())
+    expect(screen.queryByText('Fixed line from the bible')).toBeNull()
+  })
+})
+
+describe('the Shorts strip when the format has Shorts off', () => {
+  const chapter = {
+    id: '01J000000000000000000000C1',
+    index: 0,
+    title: 'The audit',
+    contentMd: 'EY refused to sign the accounts.',
+    warnings: [],
+    estRuntimeSec: 12,
+  } as never
+
+  const studio = (shorts: (typeof candidate)[], shortsOff: boolean) => (
+    <ScriptStudio
+      channelId="01J000000000000000000000H1"
+      projectId="01J0000000000000000000000P"
+      scriptId="01J000000000000000000000S1"
+      chapters={[chapter]}
+      targetRuntimeMin={10}
+      shorts={shorts}
+      usedFallbackModel={false}
+      notices={[notice('01J000000000000000000000S1', 'stopped', STOPPED)]}
+      shortsOff={shortsOff}
+    />
+  )
+
+  it('hides the strip, notices and all, when off and no candidates exist', () => {
+    render(studio([], true))
+    expect(screen.queryByText(STOPPED)).toBeNull()
+  })
+
+  it('still shows the strip when off but candidates exist, and when on', () => {
+    const { unmount } = render(studio([candidate], true))
+    expect(screen.getByText(STOPPED)).toBeInTheDocument()
+    unmount()
+    render(studio([], false))
+    expect(screen.getByText(STOPPED)).toBeInTheDocument()
   })
 })

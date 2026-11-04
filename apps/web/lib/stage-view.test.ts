@@ -323,3 +323,47 @@ describe('stageViewsForProject with narration', () => {
     expect(view(views, 'voice').availability).toBe('ready')
   })
 })
+
+describe('a format with Shorts off', () => {
+  const base = {
+    stage: 'assembly' as ProjectStage,
+    stageStatus: 'awaiting_review' as StageStatus,
+    dossierVersion: 1,
+    hasScript: true,
+    scriptVersion: 1,
+    scriptBuiltFromDossierVersion: 1,
+    voiceTakes: 0,
+    voiceBuiltFromScriptVersion: null,
+  }
+
+  it('marks the Shorts stage off, and not viewable, while the project is elsewhere', () => {
+    const views = stageViews({ project: at('assembly', 'queued'), shortsOff: true })
+
+    expect(view(views, 'shorts')).toMatchObject({ availability: 'off', viewable: false })
+    expect(view(views, 'publish').availability).toBe('upcoming')
+  })
+
+  it('is unchanged without the switch', () => {
+    expect(view(stageViews({ project: at('assembly', 'queued') }), 'shorts').availability).toBe(
+      'upcoming',
+    )
+  })
+
+  it('keeps the real state when the project is on the Shorts stage', () => {
+    const views = stageViews({ project: at('shorts', 'queued'), shortsOff: true })
+
+    expect(view(views, 'shorts')).toMatchObject({ availability: 'upcoming', current: true })
+  })
+
+  it('stageViewsForProject passes the switch, and keeps the real state for a project that has Shorts', () => {
+    expect(view(stageViewsForProject(base, false, true), 'shorts').availability).toBe('off')
+    expect(view(stageViewsForProject(base, false, false), 'shorts').availability).toBe('upcoming')
+    const past = { ...base, stage: 'publish' as ProjectStage, shortsPhase: 'review' as const }
+    expect(view(stageViewsForProject(past, false, true), 'shorts').availability).toBe('ready')
+  })
+
+  it('does not name an off stage as downstream work', () => {
+    const views = stageViews({ project: at('assembly', 'queued'), shortsOff: true })
+    expect(downstreamOf('script', views).map((v) => v.stage)).not.toContain('shorts')
+  })
+})

@@ -4,15 +4,19 @@ import {
   createCase,
   createChannel,
   createProjectFromCase,
+  createScriptVersion,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   insertShort,
   moveProjectBible,
   saveBibleVersion,
+  withTemporaryBible,
   currentBible,
   insertTalkingPointSet,
   approveTalkingPointSet,
   projects,
+  saveChapter,
+  scripts,
   publishRecords,
   requireTestDatabase,
   seed,
@@ -23,6 +27,7 @@ import {
 } from '@boom-busters/db'
 import {
   DEFAULT_SETTINGS,
+  defaultFormat,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
   PUBLISH_DISCLAIMER,
@@ -30,7 +35,7 @@ import {
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { descriptionIngredients, publishModel } from './publish-review'
+import { descriptionIngredients, publishModel, spokenIntro } from './publish-review'
 
 /**
  * The Publish screen's "x of N upload starts" must use the budget of the
@@ -220,6 +225,8 @@ describeDb('publishModel search brief fields', () => {
         toldAlready: [],
         angleOptions: [],
         chosenAngle: null,
+        formatKey: null,
+        fit: null,
       },
     })
     const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
@@ -242,5 +249,109 @@ describeDb('publishModel search brief fields', () => {
     } finally {
       await db.update(projects).set({ searchBrief: null })
     }
+  })
+})
+
+describeDb('publishModel cohesion', () => {
+  async function projectOn(keywords: string[], title: string) {
+    const channel = await createChannel(db, {
+      name: 'Cohesion channel',
+      handle: null,
+      slug: `cohesion-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...EMPTY_BIBLE, formats: [{ ...defaultFormat('Main'), keywords }] },
+    })
+    const kase = await createCase(db, {
+      channelId: channel.id,
+      title: 'Cleopatra',
+      category: 'con',
+    })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'Cleopatra' })
+    const record = await ensurePublishRecord(db, 'master', project.id)
+    await updatePublishRecord(db, record.id, { metadata: { title, titleOptions: [title] } })
+    return project
+  }
+
+  it('reports a miss in the format column when the title lacks the lead keyword', async () => {
+    await seed(db)
+    const project = await projectOn(['documentary'], 'Cleopatra and the asp')
+    const { cohesion } = (await publishModel(db, project.id, { presign: null })).items[0]!
+    expect(cohesion?.cells.title.format).toBe('miss')
+    expect(cohesion?.cells.title.topic).toBe('hit')
+  })
+
+  it('reports the format column as not set, with a gap, on a default format', async () => {
+    await seed(db)
+    const project = await projectOn([], 'Cleopatra and the asp')
+    const { cohesion } = (await publishModel(db, project.id, { presign: null })).items[0]!
+    expect(cohesion?.cells.title.format).toBe('none')
+    expect(cohesion?.gaps).toContain('No format keywords set')
+  })
+
+  it('does not credit an unwritten description with the generated hook', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    // Its own script version, so the hook is real and starts with a known word.
+    const script = await createScriptVersion(db, FIXTURE_PROJECT_ID)
+    await saveChapter(db, {
+      scriptId: script.id,
+      index: 0,
+      title: 'The rise',
+      contentMd: '# The rise\n\nTelegraph poles ran across the plain.',
+      estRuntimeSec: 10,
+    })
+    const original = await currentBible(db, FIRST_CHANNEL_ID)
+    try {
+      const { hook } = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      expect(hook).not.toBe('')
+      const lead = hook.split(/\s+/)[0]!
+      expect(lead).toBe('Telegraph')
+      const withLead = {
+        ...original.bible,
+        formats: [{ ...original.bible.formats[0]!, keywords: [lead] }],
+      }
+      // The helper puts the channel and the project back, and drops the version.
+      await withTemporaryBible(db, FIRST_CHANNEL_ID, withLead, async () => {
+        const frozen = await currentBible(db, FIRST_CHANNEL_ID)
+        await moveProjectBible(db, FIXTURE_PROJECT_ID, frozen.id)
+        const { cohesion } = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null }))
+          .items[0]!
+        expect(cohesion?.cells.descriptionOpening.format).toBe('miss')
+      })
+    } finally {
+      await db.delete(scripts)
+    }
+  })
+
+  it('has no report for a Short', async () => {
+    await seed(db)
+    const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+    for (const item of model.items.filter((i) => i.targetType === 'short')) {
+      expect(item.cohesion).toBeNull()
+    }
+  })
+})
+
+describe('spokenIntro', () => {
+  const none = { introLine: '', outroLine: '' }
+  const md = ['# The rise', 'One two [pause] three four.', 'Five six seven eight nine ten.'].join(
+    '\n\n',
+  )
+
+  it('takes round(30 x wordsPerMinute / 60) words, skipping headings and markup', () => {
+    // 120 wpm: 60 words, so the whole chapter; 8 words at 16 wpm.
+    expect(spokenIntro(md, 120, none)).toBe('One two three four. Five six seven eight nine ten.')
+    expect(spokenIntro(md, 16, none)).toBe('One two three four. Five six seven eight')
+  })
+
+  it('is empty for an empty chapter', () => {
+    expect(spokenIntro('', 150, none)).toBe('')
+  })
+
+  it("starts after the format's fixed opening line", () => {
+    const withLine = ['Settle in.', md].join('\n\n')
+    const format = { introLine: 'Settle in.', outroLine: '' }
+    expect(spokenIntro(withLine, 16, format)).toBe('One two three four. Five six seven eight')
+    expect(spokenIntro(withLine, 16, none)).toBe('Settle in. One two three four. Five six')
   })
 })

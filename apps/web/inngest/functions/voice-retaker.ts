@@ -94,7 +94,7 @@ export const voiceRetaker = inngest.createFunction(
       }
       const text = unit.text
 
-      const { settings } = await channelForProject(db, projectId)
+      const { settings, format } = await channelForProject(db, projectId)
 
       // Before the claim, so a retake with nowhere to go does not burn a take
       // number. See `takeStorage`.
@@ -154,6 +154,7 @@ export const voiceRetaker = inngest.createFunction(
             text,
             idempotencyKey: `${idempotencyKey}#${claimed.take.takeNumber}`,
             projectId,
+            wordsPerMinute: format.wordsPerMinute,
           },
           settings,
         )

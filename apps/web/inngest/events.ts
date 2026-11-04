@@ -7,12 +7,14 @@ import {
   MediaJobCompletedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
+  KeywordsMeasureSchema,
   ProjectCancelledSchema,
   ProjectCreatedSchema,
   ProjectMasterReadySchema,
   PublishRequestedSchema,
   RenderDraftRequestedSchema,
   RenderSettledSchema,
+  SearchSpaceAnalyseSchema,
   ShortsRenderRequestedSchema,
   ShortsPointBuildRequestedSchema,
   ShortsPointsRequestedSchema,
@@ -148,6 +150,11 @@ export const events = {
 
   caseResearchRequested: eventType('case/research.requested', {
     schema: CaseResearchRequestedSchema,
+  }),
+
+  keywordsMeasure: eventType('channel/keywords.measure', { schema: KeywordsMeasureSchema }),
+  searchSpaceAnalyse: eventType('channel/search_space.analyse', {
+    schema: SearchSpaceAnalyseSchema,
   }),
 
   demoRequested: eventType('demo/pipeline.requested', { schema: DemoRequestedSchema }),

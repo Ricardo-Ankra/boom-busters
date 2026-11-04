@@ -105,6 +105,13 @@ describe('runtime estimates', () => {
     expect(estimateRuntimeSec(Array(150).fill('word').join(' '))).toBe(60)
   })
 
+  it('estimates at the pace it is given', () => {
+    const words = Array(240).fill('word').join(' ')
+    expect(estimateRuntimeSec(words)).toBe(96)
+    expect(estimateRuntimeSec(words, 150)).toBe(96)
+    expect(estimateRuntimeSec(words, 120)).toBe(120)
+  })
+
   it('is zero for nothing', () => {
     expect(estimateRuntimeSec('')).toBe(0)
   })

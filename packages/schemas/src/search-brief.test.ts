@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   CASE_RESEARCH_CREDITS,
+  caseResearchCredits,
   CaseResearchJobSchema,
   SEARCH_BRIEF_STALE_DAYS,
   SearchBriefSchema,
@@ -63,6 +64,8 @@ function fixture(over: Partial<SearchBrief> = {}): SearchBrief {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
     ...over,
   }
 }
@@ -186,5 +189,26 @@ describe('searchBriefLine', () => {
     expect(searchBriefLine('a'.repeat(300))).toHaveLength(200)
     expect(searchBriefLine('abc def', 5)).toBe('abc d')
     expect(searchBriefLine(' \n ')).toBe('')
+  })
+})
+
+describe('a brief and its format', () => {
+  test('a stored brief without formatKey and fit parses with both null', () => {
+    const { formatKey: _f, fit: _fit, ...stored } = fixture()
+    const parsed = SearchBriefSchema.parse(stored)
+    expect(parsed.formatKey).toBeNull()
+    expect(parsed.fit).toBeNull()
+  })
+
+  test('a brief keeps its format key and fit', () => {
+    const fit = { inScope: true, pillarKey: 'con', reason: 'A collapse the channel covers.' }
+    const parsed = SearchBriefSchema.parse(fixture({ formatKey: 'sleep', fit }))
+    expect(parsed.formatKey).toBe('sleep')
+    expect(parsed.fit).toEqual(fit)
+  })
+
+  test('the estimate is 20 credits, and 25 with a format seed', () => {
+    expect(caseResearchCredits(false)).toBe(20)
+    expect(caseResearchCredits(true)).toBe(25)
   })
 })

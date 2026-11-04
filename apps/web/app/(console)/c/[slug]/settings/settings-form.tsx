@@ -17,6 +17,9 @@ import { Input, Label, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { BibleTab, type BibleVersionView } from './bible-tab'
+import type { KeywordReadings } from './bible-measurements'
+import type { MeasuredPaceView } from './bible-fields'
+import type { SearchSpaceReadings } from './bible-search-space'
 import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
@@ -69,6 +72,11 @@ export function SettingsForm({
   currentVersion,
   vidiqReady = false,
   copySources = [],
+  keywordReadings,
+  measureCount = 0,
+  searchSpace,
+  searchSpaceCounts,
+  measuredPace,
 }: {
   initialSettings: Settings
   /** This channel's YouTube connection, masked. */
@@ -105,6 +113,14 @@ export function SettingsForm({
   vidiqReady?: boolean
   /** Every other channel, archived ones included, for the Bible tab's copy. */
   copySources?: CopySource[]
+  keywordReadings?: KeywordReadings
+  /** The latest search-space analysis of each format keyword, by lower-cased keyword. */
+  searchSpace?: SearchSpaceReadings
+  /** Per format key, how many of its keywords have no analysis from the last 30 days. */
+  searchSpaceCounts?: Record<string, number>
+  /** The pace the channel's voice measured at; null when no take qualifies. */
+  measuredPace?: MeasuredPaceView | null
+  measureCount?: number
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
@@ -230,6 +246,11 @@ export function SettingsForm({
               vidiqReady={vidiqReady}
               archived={channel.archived}
               copySources={copySources}
+              {...(keywordReadings ? { readings: keywordReadings } : {})}
+              measureCount={measureCount}
+              {...(searchSpace ? { searchSpace } : {})}
+              {...(searchSpaceCounts ? { searchSpaceCounts } : {})}
+              {...(measuredPace !== undefined ? { measuredPace } : {})}
             />
           </Lock>
         </TabsContent>

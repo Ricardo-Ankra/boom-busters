@@ -18,6 +18,8 @@ import {
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
+  cohesionReport,
+  dropFixedParagraphs,
   nameMatches,
   normaliseArticleUrl,
   PublishDraftSchema,
@@ -27,10 +29,19 @@ import {
   sourceLabel,
   stripNarrationMarkup,
   TimelineSchema,
+  timelineDurationMs,
 } from '@boom-busters/schemas'
-import type { DescriptionSource, ScheduleSlot } from '@boom-busters/schemas'
+import type {
+  BriefFit,
+  CohesionReport,
+  DescriptionSource,
+  FixedLines,
+  ScheduleSlot,
+  TitleSlot,
+} from '@boom-busters/schemas'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
+import { pillarOf } from './pillar'
 import { shortSlotsAfter } from './schedule-slots'
 
 /**
@@ -54,6 +65,8 @@ export interface PublishRecordProp {
   titleScores: Record<string, number | null>
   /** Why the last scoring run kept no scores, or kept only some; empty when it did not fail. */
   titleScoreNote: string
+  /** The format's required title slots each option lacks, by option text. */
+  titleSlotMisses: Record<string, TitleSlot[]>
   descriptionBody: string | null
   /** The script version the saved opening was written for; null before 303 kept it. */
   bodyScriptVersion: number | null
@@ -66,6 +79,10 @@ export interface PublishRecordProp {
   tags: string[]
   /** The tags that came from the case's search brief, so the screen can mark them. */
   searchTags: string[]
+  /** The channel, format and pillar tags in the list, so the screen can mark them. */
+  channelTags: string[]
+  /** The channel tags left out to keep the list inside YouTube's limit. */
+  channelTagsDropped: string[]
   thumbs: { key: string; url: string | null }[]
 }
 
@@ -97,6 +114,21 @@ export interface PublishItemModel {
    * from the same visuals.
    */
   syntheticLikenesses: string[]
+  /**
+   * Where the topic, format and pillar keywords show up across the master's
+   * copy. Information only. Null for a Short.
+   */
+  cohesion: CohesionReport | null
+  /**
+   * The frozen brief's channel fit with what the panel needs to word it: the
+   * case's pillar key and the bible's pillars. Master only; absent when the
+   * project froze no fit.
+   */
+  briefFit?: {
+    fit: BriefFit
+    casePillarKey: string
+    pillars: { key: string; label: string }[]
+  } | null
   /**
    * When an unscheduled point Short would take the next Short slot after its
    * long form (design section 8). A suggestion only: the owner's Schedule
@@ -167,6 +199,8 @@ export interface PublishModel {
   musicAttribution: string | null
   /** The channel's disclaimer, from the bible the project froze; the last block of the description. */
   disclaimer: string
+  /** The channel's footer, from the same bible; the screen shows it on the master only. */
+  footer: string
   /** The project froze a search brief, so VidIQ title scores are on offer. */
   hasSearchBrief: boolean
   /** What VidIQ charges to score one title, for the Score all estimate. */
@@ -190,6 +224,7 @@ export function emptyPublishModel(): PublishModel {
     scriptVersion: 0,
     musicAttribution: null,
     disclaimer: '',
+    footer: '',
     hasSearchBrief: false,
     titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: [],
@@ -216,6 +251,8 @@ export function deriveIngredients(input: {
   claims: { text: string; sourceUrl: string | null; confidence: string; quarantined: boolean }[]
   /** What the article records read, by normalised URL (decision 303). */
   articles?: ReadonlyMap<string, { outlet: string | null; headline: string | null }>
+  /** The project's format: its fixed lines are not the hook. */
+  format: FixedLines
 }): {
   chapters: { id: string; title: string; startMs: number }[]
   sources: DescriptionSource[]
@@ -260,7 +297,7 @@ export function deriveIngredients(input: {
   const firstChapter = input.scriptChapters[0]
   const hook = firstChapter
     ? stripNarrationMarkup(
-        firstChapter.contentMd
+        dropFixedParagraphs(firstChapter.contentMd, input.format)
           .split(/\n{2,}/)
           .map((paragraph) => paragraph.trim())
           .find((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#')) ?? '',
@@ -286,6 +323,25 @@ export function openingIsStale(input: {
   const body = input.body?.trim() ?? ''
   if (body === '' || body === input.hook.trim()) return false
   return input.bodyScriptVersion === undefined || input.bodyScriptVersion < input.scriptVersion
+}
+
+/**
+ * The words the first thirty seconds of narration carry, with the markup
+ * stripped: the first thirty seconds after the format's fixed lines.
+ */
+export function spokenIntro(chapterMd: string, wordsPerMinute: number, format: FixedLines): string {
+  const count = Math.round((30 * wordsPerMinute) / 60)
+  return stripNarrationMarkup(
+    dropFixedParagraphs(chapterMd, format)
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith('#'))
+      .join(' '),
+  )
+    .split(/\s+/)
+    .filter((word) => word !== '')
+    .slice(0, count)
+    .join(' ')
 }
 
 /** What the article records hold for these sources, by normalised URL. */
@@ -326,8 +382,12 @@ export async function descriptionIngredients(
   musicAttribution: string | null
   /** The channel's disclaimer, from the project's frozen bible. */
   disclaimer: string
+  /** The channel's footer, from the project's frozen bible; the actions add it to a master's description only. */
+  footer: string
   /** The latest script's version, which a saved opening is measured against. */
   scriptVersion: number
+  /** The latest timeline's length in seconds; null when there is no timeline. */
+  runtimeSec: number | null
 }> {
   const [timelineRow, scriptSources, dossier, channel] = await Promise.all([
     latestTimeline(db, projectId),
@@ -343,10 +403,13 @@ export async function descriptionIngredients(
       scriptChapters: scriptSources.chapters,
       claims,
       articles: await articlesFor(db, claims),
+      format: channel.format,
     }),
     musicAttribution: await timelineMusicAttribution(db, master),
     disclaimer: channel.bible.disclaimer,
+    footer: channel.bible.channelFooter,
     scriptVersion: scriptSources.scriptVersion,
+    runtimeSec: master ? timelineDurationMs(master) / 1000 : null,
   }
 }
 
@@ -367,6 +430,7 @@ function toRecordProp(
     titleOptions: draft.success ? draft.data.titleOptions : [],
     titleScores: draft.success ? draft.data.titleScores : {},
     titleScoreNote: draft.success ? draft.data.titleScoreNote : '',
+    titleSlotMisses: draft.success ? draft.data.titleSlotMisses : {},
     descriptionBody: draft.success ? (draft.data.descriptionBody ?? null) : null,
     bodyScriptVersion: draft.success ? (draft.data.bodyScriptVersion ?? null) : null,
     bodyStale:
@@ -381,6 +445,8 @@ function toRecordProp(
     hashtags: draft.success ? draft.data.hashtags : [],
     tags: draft.success ? draft.data.tags : [],
     searchTags: draft.success ? draft.data.searchTags : [],
+    channelTags: draft.success ? draft.data.channelTags : [],
+    channelTagsDropped: draft.success ? draft.data.channelTagsDropped : [],
     thumbs,
   }
 }
@@ -422,6 +488,7 @@ export async function publishModel(
     scriptChapters: scriptSources.chapters,
     claims: dossier?.claims ?? [],
     articles: await articlesFor(db, dossier?.claims ?? []),
+    format: channel.format,
   })
   const current = { hook, scriptVersion: scriptSources.scriptVersion }
 
@@ -463,6 +530,33 @@ export async function publishModel(
     masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
   ])
 
+  // The master's copy against the topic, the format and the pillar, from the
+  // frozen bible. The opening is the saved body alone (the description starts
+  // with it): an unwritten one is not credited with the generated hook.
+  const masterCohesion = (): CohesionReport => {
+    const draft = masterRecord ? toRecordProp(masterRecord, [], current) : null
+    const brief = project.searchBrief
+    const target = brief?.targetKeyword?.keyword
+    const pillar = pillarOf(channel.bible, project.caseCategory)
+    return cohesionReport({
+      title: draft?.title ?? draft?.titleOptions[0] ?? '',
+      description: draft?.descriptionBody?.trim() ? draft.descriptionBody : '',
+      tags: draft?.tags ?? [],
+      hashtags: draft?.hashtags ?? [],
+      spokenIntro: spokenIntro(
+        scriptSources.chapters[0]?.contentMd ?? '',
+        channel.format.wordsPerMinute,
+        channel.format,
+      ),
+      topic: [target, brief?.subject ?? project.caseTitle].filter(
+        (text): text is string => typeof text === 'string' && text.trim() !== '',
+      ),
+      formatKeywords: channel.format.keywords,
+      pillar: pillar ? { label: pillar.label, keywords: pillar.keywords } : null,
+      channelHashtag: channel.bible.channelHashtag,
+    })
+  }
+
   const items: PublishItemModel[] = [
     {
       targetType: 'master',
@@ -477,6 +571,14 @@ export async function publishModel(
       relatedLinkChecked: null,
       record: masterRecord ? toRecordProp(masterRecord, masterThumbs, current) : null,
       syntheticLikenesses: likenesses,
+      cohesion: masterCohesion(),
+      briefFit: project.searchBrief?.fit
+        ? {
+            fit: project.searchBrief.fit,
+            casePillarKey: project.caseCategory,
+            pillars: channel.bible.caseCategories.map(({ key, label }) => ({ key, label })),
+          }
+        : null,
     },
   ]
 
@@ -501,6 +603,7 @@ export async function publishModel(
       relatedLinkChecked: short.relatedLinkChecked,
       record: record ? toRecordProp(record, await thumbsFor(record), current) : null,
       syntheticLikenesses: likenesses,
+      cohesion: null,
     })
   }
 
@@ -559,6 +662,7 @@ export async function publishModel(
     scriptVersion: scriptSources.scriptVersion,
     musicAttribution,
     disclaimer: channel.bible.disclaimer,
+    footer: channel.bible.channelFooter,
     hasSearchBrief: project.searchBrief !== null,
     titleScoreCredits: VIDIQ_CREDIT_COST.scoreTitle,
     slots: settings.publish.defaultScheduleSlots,

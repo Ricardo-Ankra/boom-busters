@@ -14,6 +14,8 @@ const startBibleResearchAction = vi.fn()
 const editBibleSectionAction = vi.fn()
 const saveBibleAction = vi.fn()
 const copyBibleFromChannelAction = vi.fn()
+const measureKeywordsAction = vi.fn()
+const analyseSearchSpaceAction = vi.fn()
 vi.mock('./bible-actions', () => ({
   approveBibleSectionAction: (...args: unknown[]) => approveBibleSectionAction(...args),
   discardBibleDraftAction: (...args: unknown[]) => discardBibleDraftAction(...args),
@@ -23,6 +25,8 @@ vi.mock('./bible-actions', () => ({
   editBibleSectionAction: (...args: unknown[]) => editBibleSectionAction(...args),
   saveBibleAction: (...args: unknown[]) => saveBibleAction(...args),
   copyBibleFromChannelAction: (...args: unknown[]) => copyBibleFromChannelAction(...args),
+  measureKeywordsAction: (...args: unknown[]) => measureKeywordsAction(...args),
+  analyseSearchSpaceAction: (...args: unknown[]) => analyseSearchSpaceAction(...args),
   restoreBibleVersionAction: vi.fn(),
   viewBibleVersionAction: vi.fn(),
   previewStagePromptAction: vi.fn(async () => ({ ok: true, text: '' })),
@@ -42,6 +46,7 @@ function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
     bible: FIRST_CHANNEL_BIBLE,
     statuses: {
       identity: 'approved',
+      formats: 'approved',
       voice: 'approved',
       look: 'approved',
       examples: 'approved',
@@ -109,8 +114,8 @@ describe('BibleTab', () => {
           ...FIRST_CHANNEL_BIBLE,
           language: '',
           country: '',
-          keywordContext: '',
           channelTags: [],
+          channelHashtag: '',
         },
         statuses: { ...draftOf().statuses, voice: 'drafted' },
       }),
@@ -534,6 +539,171 @@ describe('BibleTab', () => {
     })
   })
 
+  describe('formats, pillar keywords, hashtag and footer', () => {
+    it('edits formats as cards: add, make primary, and save two with one primary', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+
+      expect(screen.getAllByRole('group', { name: 'Documentary' })).toHaveLength(1)
+      await userEvent.click(screen.getByRole('button', { name: 'Add format' }))
+      const second = screen.getByRole('group', { name: 'New format' })
+      expect(within(second).queryByText('Primary')).toBeNull()
+
+      await userEvent.click(within(second).getByRole('button', { name: /^Make .* primary$/ }))
+      expect(within(second).getByText('Primary')).toBeInTheDocument()
+      expect(
+        within(screen.getByRole('group', { name: 'Documentary' })).queryByText('Primary'),
+      ).toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        formats: { primary: boolean }[]
+      }
+      expect(patch.formats).toHaveLength(2)
+      expect(patch.formats.filter((f) => f.primary)).toHaveLength(1)
+    })
+
+    it('toggles Shorts per format with a labelled button, and saves the value', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      const on = within(format).getByRole('button', { name: 'Shorts: on' })
+      expect(on).toHaveAttribute('aria-pressed', 'true')
+
+      await userEvent.click(on)
+      const off = within(format).getByRole('button', { name: 'Shorts: off' })
+      expect(off).toHaveAttribute('aria-pressed', 'false')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as { formats: { shorts: boolean }[] }
+      expect(patch.formats[0]!.shorts).toBe(false)
+    })
+
+    it('lists Shorts off in the read view only for a format with them off', () => {
+      const { unmount } = renderTab(null)
+      expect(screen.queryByText('Shorts off')).toBeNull()
+      unmount()
+
+      const bible = {
+        ...FIRST_CHANNEL_BIBLE,
+        formats: FIRST_CHANNEL_BIBLE.formats.map((f) => ({ ...f, shorts: false })),
+      }
+      render(
+        <BibleTab
+          channel={CHANNEL}
+          draft={null}
+          versions={[]}
+          currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+          vidiqReady={false}
+          archived={false}
+          copySources={SOURCES}
+        />,
+      )
+      expect(screen.getByText('Shorts off')).toBeInTheDocument()
+    })
+
+    it('refuses to remove the primary format and removes another', async () => {
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add format' }))
+      const first = screen.getByRole('group', { name: 'Documentary' })
+      await userEvent.click(within(first).getByRole('button', { name: /^Remove format/ }))
+      expect(screen.getByText('Make another format primary first')).toBeInTheDocument()
+      expect(screen.getAllByRole('group', { name: /Documentary|New format/ })).toHaveLength(2)
+
+      const second = screen.getByRole('group', { name: 'New format' })
+      await userEvent.click(within(second).getByRole('button', { name: /^Remove format/ }))
+      expect(screen.queryByRole('group', { name: 'New format' })).toBeNull()
+    })
+
+    it('edits a format keyword by keyword, with the schema limits on the numbers', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      await userEvent.click(within(format).getByRole('button', { name: 'Add keyword' }))
+      await userEvent.type(within(format).getByLabelText('Keyword 1'), 'ancient history')
+      await userEvent.click(within(format).getByRole('button', { name: 'Add keyword' }))
+      await userEvent.type(within(format).getByLabelText('Keyword 2'), 'sleep')
+      await userEvent.click(within(format).getByRole('button', { name: 'Remove keyword 2' }))
+      expect(within(format).queryByLabelText('Keyword 2')).toBeNull()
+
+      const pace = within(format).getByLabelText('Narration pace (words a minute)')
+      expect(pace).toHaveAttribute('type', 'number')
+      expect(pace).toHaveAttribute('min', '80')
+      expect(pace).toHaveAttribute('max', '200')
+      const hold = within(format).getByLabelText('Picture pace (hold multiplier)')
+      expect(hold).toHaveAttribute('step', '0.5')
+      expect(hold).toHaveAttribute('min', '1')
+      expect(hold).toHaveAttribute('max', '4')
+      expect(within(format).getByLabelText('Longest')).toHaveAttribute('max', '180')
+
+      await userEvent.selectOptions(within(format).getByLabelText('Intent'), 'calm')
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        formats: { keywords: string[]; intent: string }[]
+      }
+      expect(patch.formats[0]).toMatchObject({ keywords: ['ancient history'], intent: 'calm' })
+    })
+
+    it('shows schema errors under the field, holds Done and adds to the save bar', async () => {
+      renderTab(draftOf())
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      const longest = within(format).getByLabelText('Longest')
+      await userEvent.clear(longest)
+      await userEvent.type(longest, '5')
+      expect(within(format).getByText(/Runtime needs/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Done editing Formats' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      expect(screen.getByText(/1 thing to fix before saving/)).toBeInTheDocument()
+
+      await userEvent.clear(longest)
+      await userEvent.type(longest, '60')
+      expect(within(format).queryByText(/Runtime needs/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+
+      await userEvent.click(within(format).getByRole('checkbox', { name: 'topic' }))
+      expect(
+        within(format).getByText('Every required title slot must appear in the template as {slot}'),
+      ).toBeInTheDocument()
+      await userEvent.type(within(format).getByLabelText('Title pattern'), 'The {{topic} case')
+      expect(within(format).queryByText(/Every required title slot/)).toBeNull()
+    })
+
+    it('shows the hashtag error, blocks Save, and takes the footer', async () => {
+      renderTab(draftOf())
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Search' }))
+      const tag = screen.getByLabelText('Channel hashtag')
+      await userEvent.type(tag, '#history')
+      expect(screen.getByText('Letters and digits only, without #')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+      await userEvent.clear(tag)
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Publishing' }))
+      expect(screen.getByLabelText('Channel footer')).toBeInTheDocument()
+    })
+
+    it('edits each pillar keywords as one comma-separated line', async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Identity' }))
+      const first = screen.getByLabelText('Category 1 keywords')
+      await userEvent.clear(first)
+      await userEvent.type(first, 'ancient egypt, egypt history')
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Identity' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        caseCategories: { keywords: string[] }[]
+      }
+      expect(patch.caseCategories[0]!.keywords).toEqual(['ancient egypt', 'egypt history'])
+      expect(screen.queryByText('Keyword context')).toBeNull()
+    })
+  })
+
   describe('adding and removing hooks, openings and titles', () => {
     const entry = (text: string) => ({ text, note: '', drawnFrom: [] })
     const withLists = (hooks: number, titles = 0) =>
@@ -665,6 +835,7 @@ describe('BibleTab, copy from another channel', () => {
   const COPY = 'Copy from another channel'
   const SECTION_LABELS = [
     'Identity',
+    'Formats',
     'Voice',
     'Look',
     'Examples',
@@ -898,4 +1069,268 @@ describe('BibleTab, the tool row', () => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('BibleTab, keyword measurements', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString()
+
+  const bible = {
+    ...FIRST_CHANNEL_BIBLE,
+    formats: FIRST_CHANNEL_BIBLE.formats.map((format, i) =>
+      i === 0
+        ? {
+            ...format,
+            keywords: ['wework documentary', 'wework podcast', 'new term', 'fresh idea'],
+          }
+        : format,
+    ),
+    caseCategories: [{ key: 'con', label: 'Con', keywords: ['Old Reading'] }],
+  }
+
+  function renderMeasured(over: { measureCount?: number; vidiqReady?: boolean } = {}) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady={over.vidiqReady ?? true}
+        archived={false}
+        copySources={[]}
+        readings={{
+          'wework documentary': {
+            volume: 64,
+            competition: 38,
+            measuredAt: '2026-11-02T09:00:00.000Z',
+          },
+          'wework podcast': { volume: null, competition: 39, measuredAt: ago(1) },
+          'new term': { volume: null, competition: null, measuredAt: '2026-11-02T09:00:00.000Z' },
+          'old reading': { volume: 5, competition: 5, measuredAt: ago(34) },
+        }}
+        measureCount={over.measureCount ?? 2}
+      />,
+    )
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-03T12:00:00Z') })
+  })
+
+  it('shows the latest reading beside a format keyword, and Not measured without one', () => {
+    renderMeasured()
+    const formats = within(card('Formats'))
+    expect(formats.getByText('Volume 64, competition 38, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('Volume unknown, competition 39, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('No VidIQ data for this phrase, measured 2 Nov')).toBeInTheDocument()
+    expect(formats.getByText('Not measured')).toBeInTheDocument()
+  })
+
+  it('shows a pillar keyword read more than 30 days ago as measured so many days ago, muted', () => {
+    renderMeasured()
+    const stale = within(card('Identity')).getByText('Measured 34 days ago')
+    expect(stale.className).toContain('text-[var(--color-text-muted)]')
+  })
+
+  it('offers Measure in VidIQ on the Formats and Identity cards with the credits at 5 a keyword', () => {
+    renderMeasured({ measureCount: 3 })
+    for (const label of ['Formats', 'Identity']) {
+      expect(
+        within(card(label)).getByRole('button', { name: 'Measure in VidIQ (about 15 credits)' }),
+      ).toBeEnabled()
+    }
+    expect(within(card('Voice')).queryByRole('button', { name: /Measure in VidIQ/ })).toBeNull()
+  })
+
+  it('hides the button when nothing is left to measure', () => {
+    renderMeasured({ measureCount: 0 })
+    expect(screen.queryByRole('button', { name: /Measure in VidIQ/ })).toBeNull()
+  })
+
+  it('holds the button without a VidIQ key', () => {
+    renderMeasured({ vidiqReady: false })
+    expect(within(card('Formats')).getByRole('button', { name: /Measure in VidIQ/ })).toBeDisabled()
+  })
+
+  it('asks for the measurement and says what it will cost', async () => {
+    vi.useRealTimers()
+    measureKeywordsAction.mockResolvedValue({ ok: true, credits: 10 })
+    renderMeasured()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: 'Measure in VidIQ (about 10 credits)' }),
+    )
+    expect(measureKeywordsAction).toHaveBeenCalledWith(CHANNEL.id)
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Measuring in VidIQ',
+        description: expect.stringContaining('10 credits'),
+      }),
+    )
+  })
+
+  it('shows the refusal when the measurement cannot start', async () => {
+    vi.useRealTimers()
+    measureKeywordsAction.mockResolvedValue({ ok: false, error: 'Over the cap' })
+    renderMeasured()
+    await userEvent.click(
+      within(card('Identity')).getByRole('button', { name: /Measure in VidIQ/ }),
+    )
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not measure',
+        description: 'Over the cap',
+        variant: 'error',
+      }),
+    )
+  })
+})
+
+describe('BibleTab, measured pace', () => {
+  const format = FIRST_CHANNEL_BIBLE.formats[0]!
+  const bible = { ...FIRST_CHANNEL_BIBLE, formats: [format] }
+
+  function renderPace(measuredPace: { wordsPerMinute: number; takes: number } | null) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady
+        archived={false}
+        copySources={[]}
+        measuredPace={measuredPace}
+      />,
+    )
+  }
+
+  it("shows the voice's measured pace and how many takes it comes from", () => {
+    renderPace({ wordsPerMinute: 138, takes: 40 })
+    expect(
+      within(card('Formats')).getByText(
+        "Your voice's measured pace: 138 words a minute, from 40 takes",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says "1 take" for one', () => {
+    renderPace({ wordsPerMinute: 150, takes: 1 })
+    expect(
+      within(card('Formats')).getByText(
+        "Your voice's measured pace: 150 words a minute, from 1 take",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says it is not measured yet when no take qualifies', () => {
+    renderPace(null)
+    expect(within(card('Formats')).getByText('Not measured yet')).toBeInTheDocument()
+  })
+})
+
+describe('BibleTab, search space', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString()
+  const format = FIRST_CHANNEL_BIBLE.formats[0]!
+  const bible = {
+    ...FIRST_CHANNEL_BIBLE,
+    formats: [{ ...format, keywords: ['heist stories', 'never analysed'] }],
+  }
+
+  function renderSpace(
+    over: { counts?: Record<string, number>; vidiqReady?: boolean; stale?: boolean } = {},
+  ) {
+    return render(
+      <BibleTab
+        channel={CHANNEL}
+        draft={draftOf({ bible })}
+        versions={[]}
+        currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+        vidiqReady={over.vidiqReady ?? true}
+        archived={false}
+        copySources={[]}
+        searchSpace={{
+          'heist stories': {
+            measuredAt: over.stale ? ago(40) : '2026-11-02T09:00:00.000Z',
+            titlePatterns: ['The Heist That {figure}', 'How {subject} Got Away'],
+            durations: { minSec: 6000, medianSec: 7500, maxSec: 11400 },
+          },
+        }}
+        searchSpaceCounts={over.counts ?? { [format.key]: 1 }}
+      />,
+    )
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-03T12:00:00Z') })
+  })
+
+  it('shows the duration spread, the title patterns and the date beside the keyword', () => {
+    renderSpace()
+    const formats = within(card('Formats'))
+    expect(
+      formats.getByText('Winning videos run 1 h 40 to 3 h 10, median 2 h 05'),
+    ).toBeInTheDocument()
+    expect(formats.getByText('The Heist That {figure}')).toBeInTheDocument()
+    expect(formats.getByText('How {subject} Got Away')).toBeInTheDocument()
+    expect(formats.getByText('Analysed 2 Nov')).toBeInTheDocument()
+    expect(formats.queryByText(/days ago/)).toBeNull()
+  })
+
+  it('adds a muted stale note past 30 days', () => {
+    renderSpace({ stale: true })
+    const note = within(card('Formats')).getByText('Analysed 40 days ago, older than 30 days')
+    expect(note.className).toContain('text-[var(--color-text-muted)]')
+  })
+
+  it('offers Analyse search space with the credits at 10 a keyword, and hides it with none to do', () => {
+    const { unmount } = renderSpace({ counts: { [format.key]: 2 } })
+    expect(
+      within(card('Formats')).getByRole('button', {
+        name: 'Analyse search space (about 20 credits)',
+      }),
+    ).toBeEnabled()
+    unmount()
+    renderSpace({ counts: { [format.key]: 0 } })
+    expect(screen.queryByRole('button', { name: /Analyse search space/ })).toBeNull()
+  })
+
+  it('holds the button without a VidIQ key', () => {
+    renderSpace({ vidiqReady: false })
+    expect(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    ).toBeDisabled()
+  })
+
+  it('asks for the analysis of that format and says what it will cost', async () => {
+    vi.useRealTimers()
+    analyseSearchSpaceAction.mockResolvedValue({ ok: true, credits: 10 })
+    renderSpace()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    )
+    expect(analyseSearchSpaceAction).toHaveBeenCalledWith(CHANNEL.id, format.key)
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Analysing the search space',
+        description: expect.stringContaining('10 credits'),
+      }),
+    )
+  })
+
+  it('shows the refusal when the analysis cannot start', async () => {
+    vi.useRealTimers()
+    analyseSearchSpaceAction.mockResolvedValue({ ok: false, error: 'Over the cap' })
+    renderSpace()
+    await userEvent.click(
+      within(card('Formats')).getByRole('button', { name: /Analyse search space/ }),
+    )
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not analyse',
+        description: 'Over the cap',
+        variant: 'error',
+      }),
+    )
+  })
 })

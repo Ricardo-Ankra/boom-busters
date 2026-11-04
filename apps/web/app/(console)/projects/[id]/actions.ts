@@ -195,11 +195,12 @@ export async function saveChapterText(
     return { ok: false, error: 'That chapter is not part of this project' }
   }
 
+  const { format } = await channelForProject(db, projectId)
   const updated = await editChapter(db, {
     chapterId,
     afterText: parsed.data,
     editType: 'human',
-    estRuntimeSec: estimateRuntimeSec(parsed.data),
+    estRuntimeSec: estimateRuntimeSec(parsed.data, format.wordsPerMinute),
   })
   if (!updated) return { ok: false, error: 'That chapter no longer exists' }
 
@@ -248,7 +249,8 @@ export async function regenerateSection(
 
   try {
     // Read here, in the action that builds the request, before any mock branch.
-    const frozen = requireCompleteBible(await channelForProject(db, projectId))
+    const channel = await channelForProject(db, projectId)
+    const frozen = requireCompleteBible(channel)
     if (mockProvidersEnabled()) {
       return { ok: true, proposal: mockRegeneratedSection(selection, note) }
     }
@@ -262,6 +264,7 @@ export async function regenerateSection(
         selection,
         note,
         claims,
+        intent: channel.format.intent,
       }),
       complete: completeForProject(projectId),
     })
@@ -299,12 +302,13 @@ export async function applyRegeneratedText(
     return { ok: false, error: 'That chapter is not part of this project' }
   }
 
+  const { format } = await channelForProject(db, projectId)
   const updated = await editChapter(db, {
     chapterId,
     afterText: parsed.data,
     editType: 'regenerate',
     note: note.trim() || null,
-    estRuntimeSec: estimateRuntimeSec(parsed.data),
+    estRuntimeSec: estimateRuntimeSec(parsed.data, format.wordsPerMinute),
   })
   if (!updated) return { ok: false, error: 'That chapter no longer exists' }
 

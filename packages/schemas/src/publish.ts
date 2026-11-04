@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TITLE_SLOTS } from './formats'
 
 /**
  * The publish description, composed (build spec section 9): "hook paragraph
@@ -51,6 +52,8 @@ export const PublishDraftSchema = z.object({
   titleScores: z.record(z.string(), z.number().nullable()).default({}),
   /** Why the last scoring run kept no scores (a cap, a refused key); empty when it did not fail. */
   titleScoreNote: z.string().max(500).default(''),
+  /** The format's required title slots an option lacks, by the option's text; an option with none has no entry. */
+  titleSlotMisses: z.record(z.string(), z.array(z.enum(TITLE_SLOTS))).default({}),
   /** The human-owned opening — the auto-blocks are appended at compose time. */
   descriptionBody: z.string().max(DESCRIPTION_MAX_CHARS).optional(),
   /**
@@ -70,6 +73,10 @@ export const PublishDraftSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
   /** The tags assembled from the case's search brief, so the screen can mark them. */
   searchTags: z.array(z.string()).default([]),
+  /** The channel, format and pillar tags that made the tag list, so the screen can mark them. */
+  channelTags: z.array(z.string()).default([]),
+  /** The channel's own tags left out to keep the tag list inside YouTube's limit. */
+  channelTagsDropped: z.array(z.string()).default([]),
 })
 export type PublishDraft = z.infer<typeof PublishDraftSchema>
 
@@ -141,7 +148,7 @@ export function splitHashtags(raw: string): string[] {
 }
 
 /** "#AI Documentary" or "StableDiffusion" to one word with its mark; empty when nothing is left. */
-function normaliseHashtag(raw: string): string {
+export function normaliseHashtag(raw: string): string {
   const word = raw.replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')
   return word === '' ? '' : `#${word}`
 }
@@ -167,6 +174,8 @@ export interface ComposeDescriptionInput {
    * the bed carries no text.
    */
   musicAttribution?: string | null
+  /** The channel's footer, from its bible: after the chapters, before the music. A master's only. */
+  footer?: string
   /** The channel's disclaimer, from its bible; `PUBLISH_DISCLAIMER` is Boom & Busters'. */
   disclaimer: string
 }
@@ -178,7 +187,7 @@ export interface ComposedDescription {
 }
 
 /**
- * Body, then chapters, then music attribution, then sources, then the
+ * Body, then chapters, then the channel's footer, then music attribution, then sources, then the
  * disclaimer — and it always fits. The ceiling is enforced by dropping
  * sources from the end of the list (the block that grows without bound),
  * never by truncating mid-sentence: a description YouTube would cut off is a
@@ -204,6 +213,7 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
           .join('\n')
       : null
 
+  const footerBlock = input.footer?.trim() || null
   const attribution = input.musicAttribution?.trim()
   const musicBlock = attribution ? `Music:\n${attribution}` : null
 
@@ -221,7 +231,15 @@ export function composeDescription(input: ComposeDescriptionInput): ComposedDesc
   const build = (sources: readonly (string | DescriptionSource)[]): string => {
     const sourceBlock =
       sources.length > 0 ? ['Sources:'].concat(sources.map(sourceLine)).join('\n') : null
-    return [body, chapterBlock, musicBlock, sourceBlock, hashtagBlock, input.disclaimer]
+    return [
+      body,
+      chapterBlock,
+      footerBlock,
+      musicBlock,
+      sourceBlock,
+      hashtagBlock,
+      input.disclaimer,
+    ]
       .filter((block): block is string => block !== null && block !== '')
       .join('\n\n')
   }

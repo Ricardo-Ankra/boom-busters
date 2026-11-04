@@ -7,17 +7,20 @@ import {
 } from '@boom-busters/db'
 import {
   buildAngleOptionsRequest,
+  buildFitRequest,
   buildKeywordFilterRequest,
   buildWinnersRequest,
   mockAngleOptions,
+  mockFit,
   mockKeywordFilter,
   mockProvidersEnabled,
   mockWinners,
   parseAngleOptions,
+  parseFit,
   parseKeywordFilter,
   parseWinners,
 } from '@boom-busters/providers'
-import type { AngleOptionsInput, Winners } from '@boom-busters/providers'
+import type { AngleOptionsInput, FitInput, Winners } from '@boom-busters/providers'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import type { VidiqVideo } from '@boom-busters/providers/vidiq'
 import {
@@ -25,10 +28,13 @@ import {
   TITLE_PATTERNS_MAX,
   TOLD_ALREADY_MAX,
   chooseTargetKeyword,
+  leadKeyword,
   parseEventData,
+  resolveFormat,
 } from '@boom-busters/schemas'
 import type {
   AngleOption,
+  BriefFit,
   CaseResearchJob,
   SearchBrief,
   SearchKeyword,
@@ -49,7 +55,10 @@ import { events } from '../events'
  *
  * Four VidIQ calls (matching terms, questions, outliers, the top outliers'
  * details), each a step of its own that records its credits in the ledger once
- * the call has returned, and three model steps between them. Only the brief's
+ * the call has returned, and three model steps between them. A case whose
+ * format has a lead keyword adds a fifth: matching terms for the subject with
+ * that keyword. A model step with no credits checks the subject's fit with the
+ * channel's pillars. Only the brief's
  * digest-sized fields are stored: no transcripts and no full descriptions.
  *
  * Nothing reaches `cases.search_brief` until the last step, so a run that
@@ -61,7 +70,8 @@ import { events } from '../events'
 const FUNCTION_ID = 'case-researcher'
 const PURPOSE = 'case-research' as const
 
-const TERMS_LIMIT = 20
+/** Matching terms asked for; the keyword measurer asks for the same many. */
+export const TERMS_LIMIT = 20
 const QUESTIONS_LIMIT = 10
 const OUTLIERS_LIMIT = 25
 /** Outliers whose details are read, and which the brief keeps. */
@@ -77,6 +87,9 @@ interface Loaded {
   channelId: string
   subject: string
   angleIdea: string | null
+  /** The case's format resolved against the current bible, and its lead keyword. */
+  formatKey: string | null
+  leadKeyword: string | null
 }
 
 type Details = Record<string, { description: string; tags: string[] }>
@@ -191,7 +204,17 @@ export const caseResearcher = inngest.createFunction(
       if (!row || !channel) throw new NonRetriableError('That case no longer exists')
       const subject = row.searchJob?.subject.trim() ?? ''
       if (subject === '') throw new NonRetriableError('The case has no subject to research')
-      return { channelId: channel.id, subject, angleIdea: row.angle?.trim() || null }
+      // The case's own format, as the channel's current bible words it: a key
+      // the bible no longer lists reads as the primary.
+      const { bible } = await currentBible(db, channel.id)
+      const format = resolveFormat(bible.formats, row.formatKey)
+      return {
+        channelId: channel.id,
+        subject,
+        angleIdea: row.angle?.trim() || null,
+        formatKey: format.key,
+        leadKeyword: leadKeyword(format),
+      }
     })
     const { channelId, subject, angleIdea } = loaded
     const complete = completeFor(channelId)
@@ -211,24 +234,66 @@ export const caseResearcher = inngest.createFunction(
       return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
     })
 
+    // 1b. The terms that contain the subject and the format's lead keyword. Skipped without one
+    // (a `load` memoised before the deploy has none, and must not spend on "<subject> undefined").
+    const formatTerms: SearchKeyword[] = !loaded.leadKeyword
+      ? []
+      : await step.run('keywords-format', async () => {
+          await beat(caseId, jobStartedAt, 'keywords-format')
+          const found = await spendVidiq(
+            {
+              channelId,
+              purpose: PURPOSE,
+              tool: 'vidiq_keyword_research',
+              cost: VIDIQ_CREDIT_COST.keywordResearch,
+            },
+            (client) =>
+              client.keywordResearch(`${subject} ${loaded.leadKeyword}`, {
+                mode: 'matching_terms',
+                limit: TERMS_LIMIT,
+              }),
+          )
+          return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
+        })
+    const measured = firstOfEach([...terms, ...formatTerms], (row) => row.keyword)
+
     // 2. The model keeps the terms that are about this subject.
     const keywords: SearchKeyword[] = await step.run('keywords-filter', async () => {
       await beat(caseId, jobStartedAt, 'keywords-filter')
       // Nothing measured, nothing to filter: no model call.
-      if (terms.length === 0) return []
+      if (measured.length === 0) return []
       let kept: string[]
       if (mockProvidersEnabled()) {
-        kept = mockKeywordFilter(terms)
+        kept = mockKeywordFilter(measured)
       } else {
         const answer = await callForAnswer({
-          request: buildKeywordFilterRequest({ subject, rows: terms }),
-          parse: (text, note) => parseKeywordFilter(text, terms, note),
+          request: buildKeywordFilterRequest({ subject, rows: measured }),
+          parse: (text, note) => parseKeywordFilter(text, measured, note),
           complete,
         })
         kept = answerOrStop(answer, 'The keyword filter could not be read')
       }
       const wanted = new Set(kept)
-      return terms.filter((row) => wanted.has(row.keyword))
+      return measured.filter((row) => wanted.has(row.keyword))
+    })
+
+    // 2b. Whether the subject belongs on this channel, and under which pillar. No credits.
+    const fit: BriefFit = await step.run('fit', async () => {
+      await beat(caseId, jobStartedAt, 'fit')
+      const bible = await currentBible(db, channelId)
+      const input: FitInput = { bible, subject }
+      if (mockProvidersEnabled()) return mockFit(input)
+      const answer = await callForAnswer({
+        request: buildFitRequest(input),
+        parse: (text, note) =>
+          parseFit(
+            text,
+            bible.bible.caseCategories.map((pillar) => pillar.key),
+            note,
+          ),
+        complete,
+      })
+      return answerOrStop(answer, 'The channel fit could not be read')
     })
 
     // 3. The questions people search.
@@ -363,6 +428,8 @@ export const caseResearcher = inngest.createFunction(
         toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
         angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
         chosenAngle: null,
+        formatKey: loaded.formatKey ?? null,
+        fit,
       })
       // A retry would fail the same way, so the run stops with a reason the owner can read.
       if (!parsed.success) {

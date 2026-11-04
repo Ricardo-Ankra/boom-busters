@@ -1,6 +1,7 @@
 import {
   approvedTalkingPointSet,
   currentBible,
+  shortsEnabledForProject,
   getChannel,
   getDossier,
   listDossierDocumentSummaries,
@@ -113,7 +114,9 @@ export default async function ProjectPage({
    * board, the timeline JSON — multiplied every refresh by roughly four, on
    * a database whose data transfer is metered (decision 185).
    */
-  const views = stageViewsForProject(project, liveRun)
+  // Shorts on or off is the channel's CURRENT bible, not the frozen one (ruling 18).
+  const shortsOn = await shortsEnabledForProject(db, project.id)
+  const views = stageViewsForProject(project, liveRun, !shortsOn)
   const viewing = resolveViewedStage(requestedStage, views, project.stage)
   const viewingCurrent = viewing === project.stage
   const viewed = views.find((view) => view.stage === viewing)
@@ -579,6 +582,7 @@ export default async function ProjectPage({
           model={publish}
           live={!mockProvidersEnabled()}
           canFinish={project.stage === 'publish' && !liveRun}
+          shortsOff={!shortsOn}
         />
       ) : showsTalkingPoints ? (
         <TalkingPointsScreen
@@ -632,6 +636,11 @@ export default async function ProjectPage({
           shorts={script.script.shortsCandidates}
           usedFallbackModel={usedFallbackModel}
           notices={noticesFor(notices, 'script')}
+          fixedLines={{
+            introLine: channel.format.introLine,
+            outroLine: channel.format.outroLine,
+          }}
+          shortsOff={!shortsOn}
         />
       ) : showDossier ? (
         <DossierReview

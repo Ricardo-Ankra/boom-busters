@@ -15,6 +15,7 @@ import {
 import type { BibleDraft, BibleSectionStatus } from './bible-draft'
 import { CAST_GUARDRAIL_MAX, DEFAULT_GUARDRAIL_SUFFIX } from './cast'
 import { EXAMPLE_SLOTS } from './bible-slots'
+import { defaultFormat } from './formats'
 import {
   BIBLE_SECTIONS,
   ChannelBibleReadSchema,
@@ -128,12 +129,27 @@ describe('sectionIsEmpty', () => {
   })
 
   test('identity is not empty when only case categories are set', () => {
-    const bible = { ...EMPTY_BIBLE, caseCategories: [{ key: 'a', label: 'A' }] }
+    const bible = { ...EMPTY_BIBLE, caseCategories: [{ key: 'a', label: 'A', keywords: [] }] }
     expect(sectionIsEmpty(bible, 'identity')).toBe(false)
   })
 })
 
+describe('formats section', () => {
+  test('empty while the one format is the default, not once it has a keyword', () => {
+    expect(sectionIsEmpty(EMPTY_BIBLE, 'formats')).toBe(true)
+    const [only] = EMPTY_BIBLE.formats
+    const bible = { ...EMPTY_BIBLE, formats: [{ ...only!, keywords: ['sleep'] }] }
+    expect(sectionIsEmpty(bible, 'formats')).toBe(false)
+  })
+})
+
 describe('section order and labels', () => {
+  test('the order holds every section once', () => {
+    expect(new Set(BIBLE_SECTION_ORDER).size).toBe(BIBLE_SECTION_ORDER.length)
+    expect(BIBLE_SECTION_ORDER).toHaveLength(Object.keys(BIBLE_SECTIONS).length)
+    expect(BIBLE_SECTION_ORDER[1]).toBe('formats')
+    expect(BIBLE_SECTION_LABELS.formats).toBe('Formats')
+  })
   test('every section is ordered and labelled', () => {
     expect([...BIBLE_SECTION_ORDER].sort()).toEqual(Object.keys(BIBLE_SECTIONS).sort())
     expect(BIBLE_SECTION_LABELS.hooks).toBe('Hooks, openings and titles')
@@ -237,7 +253,7 @@ describe('sectionProgress', () => {
       sectionProgress({ ...FIRST_CHANNEL_BIBLE, hooks: [], openings: [], titles: [] }, 'hooks'),
     ).toBe('0 hooks, 0 openings, 0 titles')
     expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, channelTags: [] }, 'search')).toBe(
-      '3 of 4 filled',
+      '2 of 4 filled',
     )
     expect(
       sectionProgress(
@@ -248,5 +264,22 @@ describe('sectionProgress', () => {
         'examples',
       ),
     ).toBe('44 of 44 examples written')
+  })
+
+  test('counts formats, and agrees with the empty chip about an untouched default', () => {
+    expect(sectionIsEmpty({ ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat()] }, 'formats')).toBe(
+      true,
+    )
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat()] }, 'formats')).toBe(
+      '0 formats',
+    )
+    const tuned = { ...defaultFormat(), keywords: ['ancient history'] }
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [tuned] }, 'formats')).toBe(
+      '1 format',
+    )
+    const second = { ...tuned, key: 'sleep', primary: false }
+    expect(sectionProgress({ ...FIRST_CHANNEL_BIBLE, formats: [tuned, second] }, 'formats')).toBe(
+      '2 formats',
+    )
   })
 })

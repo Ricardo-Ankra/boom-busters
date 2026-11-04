@@ -34,6 +34,7 @@ function draftOf(over: Partial<BibleDraft> = {}): BibleDraft {
     bible: FIRST_CHANNEL_BIBLE,
     statuses: {
       identity: 'approved',
+      formats: 'approved',
       voice: 'approved',
       look: 'approved',
       examples: 'approved',

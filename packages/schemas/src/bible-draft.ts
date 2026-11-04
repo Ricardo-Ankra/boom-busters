@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { EXAMPLE_SLOTS, EXAMPLE_SLOT_IDS, examplesWritten } from './bible-slots'
 import { CAST_GUARDRAIL_MAX, DEFAULT_GUARDRAIL_SUFFIX } from './cast'
 import { BIBLE_SECTIONS, ChannelBibleSchema } from './channels'
+import { formatIsDefault } from './formats'
 import type { BibleSection, ChannelBible } from './channels'
 
 /**
@@ -13,6 +14,7 @@ export type BibleSectionStatus = 'approved' | 'drafted'
 
 export const BIBLE_SECTION_LABELS: Record<BibleSection, string> = {
   identity: 'Identity',
+  formats: 'Formats',
   voice: 'Voice',
   look: 'Look',
   examples: 'Examples',
@@ -23,6 +25,7 @@ export const BIBLE_SECTION_LABELS: Record<BibleSection, string> = {
 
 export const BIBLE_SECTION_ORDER: readonly BibleSection[] = [
   'identity',
+  'formats',
   'voice',
   'look',
   'examples',
@@ -46,6 +49,10 @@ function valueIsEmpty(value: unknown): boolean {
 export function sectionIsEmpty(bible: ChannelBible, section: BibleSection): boolean {
   return BIBLE_SECTIONS[section].every((key) => {
     const value = bible[key]
+    if (key === 'formats') {
+      const [only] = bible.formats
+      return bible.formats.length === 1 && only !== undefined && formatIsDefault(only)
+    }
     if (key === 'subjectNoun') {
       const noun = bible.subjectNoun
       return noun.singular === '' && noun.plural === ''
@@ -73,6 +80,9 @@ export function sectionProgress(bible: ChannelBible, section: BibleSection): str
       plural(bible.openings.length, 'opening', 'openings'),
       plural(bible.titles.length, 'title', 'titles'),
     ].join(', ')
+  }
+  if (section === 'formats') {
+    return plural(sectionIsEmpty(bible, section) ? 0 : bible.formats.length, 'format', 'formats')
   }
   const keys = BIBLE_SECTIONS[section]
   const filled = keys.filter((key) => {
@@ -160,7 +170,15 @@ export type BibleDraftUnit =
   | { section: 'examples'; source: string }
   | { section: 'examples'; slotId: string }
 
-const PlainSectionSchema = z.enum(['identity', 'voice', 'look', 'hooks', 'search', 'publishing'])
+const PlainSectionSchema = z.enum([
+  'identity',
+  'formats',
+  'voice',
+  'look',
+  'hooks',
+  'search',
+  'publishing',
+])
 
 export const BibleDraftUnitSchema = z.union([
   z.object({ section: z.literal('examples'), slotId: z.string().min(1) }),
@@ -233,6 +251,8 @@ export const BibleDraftSchema = z.object({
   bible: ChannelBibleSchema,
   statuses: z.object({
     identity: SectionStatusSchema,
+    // A draft stored before formats existed has no entry; its formats are approved as stored.
+    formats: SectionStatusSchema.default('approved'),
     voice: SectionStatusSchema,
     look: SectionStatusSchema,
     examples: SectionStatusSchema,

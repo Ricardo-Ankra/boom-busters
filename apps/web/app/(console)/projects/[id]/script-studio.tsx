@@ -1,8 +1,13 @@
 'use client'
 
 import type { ChapterWithWarnings } from '@boom-busters/db'
-import { EXPRESSION_TAGS, PAUSE_TAGS } from '@boom-busters/schemas'
-import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
+import {
+  EXPRESSION_TAGS,
+  joinFixedParagraphs,
+  PAUSE_TAGS,
+  splitFixedParagraphs,
+} from '@boom-busters/schemas'
+import type { FixedLines, Notice, ShortsCandidate } from '@boom-busters/schemas'
 import {
   AlertTriangle,
   Check,
@@ -69,6 +74,8 @@ import {
 
 const AUTOSAVE_MS = 500
 
+const NO_FIXED_LINES: FixedLines = { introLine: '', outroLine: '' }
+
 /**
  * What the one-click fix asks for. Written out rather than composed at the
  * call site so the note recorded in `script_edits` reads the same every time
@@ -90,6 +97,8 @@ export function ScriptStudio({
   shorts,
   usedFallbackModel,
   notices = [],
+  fixedLines = NO_FIXED_LINES,
+  shortsOff = false,
 }: {
   channelId: string
   projectId: string
@@ -100,6 +109,10 @@ export function ScriptStudio({
   usedFallbackModel: boolean
   /** What the Shorts marking repaired, or why it stopped (decision 293). */
   notices?: readonly Notice[]
+  /** The project's format's fixed opening and closing lines; shown read-only in the chapters that hold them. */
+  fixedLines?: FixedLines
+  /** The format makes no Shorts: the strip stays away unless candidates already exist. */
+  shortsOff?: boolean
 }) {
   const [activeIndex, setActiveIndex] = React.useState(0)
   const active = chapters[activeIndex]
@@ -162,12 +175,15 @@ export function ScriptStudio({
               channelId={channelId}
               projectId={projectId}
               chapter={active}
+              fixedLines={fixedLines}
             />
-            <ShortsStrip
-              key={`shorts-${active.id}`}
-              shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
-              notices={notices}
-            />
+            {shortsOff && shorts.length === 0 ? null : (
+              <ShortsStrip
+                key={`shorts-${active.id}`}
+                shorts={shorts.filter((candidate) => candidate.chapterIndex === active.index)}
+                notices={notices}
+              />
+            )}
           </div>
         ) : (
           <Card>
@@ -354,14 +370,23 @@ function ChapterEditor({
   channelId,
   projectId,
   chapter,
+  fixedLines,
 }: {
   channelId: string
   projectId: string
   chapter: ChapterWithWarnings
+  fixedLines: FixedLines
 }) {
   const router = useRouter()
   const { toast } = useToast()
   const [text, setText] = React.useState(chapter.contentMd)
+  // The format's fixed lines are shown beside the editor, never inside it: the
+  // owner edits the narration between them and the lines stay as the bible has them.
+  // The editable body is its own state, joined to the fixed head and tail only
+  // for `text`: re-splitting the joined text would collapse a trailing or
+  // leading blank line next to a fixed paragraph and swallow the Enter key.
+  const [parts] = React.useState(() => splitFixedParagraphs(chapter.contentMd, fixedLines))
+  const [body, setBody] = React.useState(parts.body)
   const [state, setState] = React.useState<SaveState>('idle')
   const [selection, setSelection] = React.useState('')
   const [proposal, setProposal] = React.useState<{ diff: ScriptDiff; note: string } | null>(null)
@@ -427,6 +452,7 @@ function ChapterEditor({
               const result = await applyRegeneratedText(projectId, chapter.id, next, proposal.note)
               if (result.ok) {
                 setText(next)
+                setBody(splitFixedParagraphs(next, fixedLines).body)
                 setProposal(null)
                 setSelection('')
                 setState('saved')
@@ -438,16 +464,21 @@ function ChapterEditor({
             onDiscard={() => setProposal(null)}
           />
         ) : (
-          <ProseEditor
-            label={`${chapter.title} narration`}
-            value={text}
-            warnedSentences={placed.filter((w) => w.start >= 0).map((w) => w.sentence)}
-            onChange={(next) => {
-              setText(next)
-              setState('dirty')
-            }}
-            onSelectionChange={setSelection}
-          />
+          <>
+            <FixedLineBlocks lines={parts.head} />
+            <ProseEditor
+              label={`${chapter.title} narration`}
+              value={body}
+              warnedSentences={placed.filter((w) => w.start >= 0).map((w) => w.sentence)}
+              onChange={(next) => {
+                setBody(next)
+                setText(joinFixedParagraphs({ ...parts, body: next }))
+                setState('dirty')
+              }}
+              onSelectionChange={setSelection}
+            />
+            <FixedLineBlocks lines={parts.tail} />
+          </>
         )}
 
         {placed.length > 0 ? (
@@ -496,6 +527,23 @@ function ChapterEditor({
         ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+/** The format's fixed lines, read-only: they are placed by the app and never regenerated or edited here. */
+function FixedLineBlocks({ lines }: { lines: readonly string[] }) {
+  return (
+    <>
+      {lines.map((line, at) => (
+        <div
+          key={`${at}-${line}`}
+          className="rounded-[6px] border border-dashed border-[var(--color-border)] px-3 py-2"
+        >
+          <p className="text-[11px] text-[var(--color-text-muted)]">Fixed line from the bible</p>
+          <p className="text-[14px] text-[var(--color-text-secondary)]">{line}</p>
+        </div>
+      ))}
+    </>
   )
 }
 

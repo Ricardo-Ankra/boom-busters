@@ -4,11 +4,13 @@ import {
   caseSubjectTaken,
   channelForCase,
   chooseCaseAngle,
+  costPerMinute,
   createCase,
   createProjectFromCase,
   deleteCase,
   getCase,
   markCaseInProduction,
+  setCaseFormat,
   setCaseStatus,
   setCaseTargetKeyword,
   setProjectStage,
@@ -16,18 +18,22 @@ import {
   writeCaseResearchJob,
 } from '@boom-busters/db'
 import type { CaseStatus } from '@boom-busters/db'
+import type { ChannelFormat } from '@boom-busters/schemas'
 import {
   CASE_PEOPLE_MAX,
-  CASE_RESEARCH_CREDITS,
   CASE_PERSON_MAX,
   CASE_SOURCE_LINKS_MAX,
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
   EXAMPLE_SLOT_IDS,
+  RUNTIME_START_MAX,
   UlidSchema,
+  caseResearchCredits,
   caseResearchJobIsRunning,
   isBibleComplete,
   keywordHasFigure,
+  leadKeyword,
+  resolveFormat,
   serialiseError,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -232,6 +238,7 @@ export interface StartProjectResult extends ActionResult {
 export async function startProjectFromCase(
   id: string,
   targetRuntimeMin?: number,
+  formatKey?: string,
 ): Promise<StartProjectResult> {
   await requireOwner()
   if (!UlidSchema.safeParse(id).success) return { ok: false, error: 'Unknown case' }
@@ -249,18 +256,46 @@ export async function startProjectFromCase(
   if (!isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS))
     return { ok: false, error: BIBLE_INCOMPLETE_MESSAGE }
 
-  const runtime = z
-    .number()
-    .int()
-    .min(3)
-    .max(60)
-    .safeParse(targetRuntimeMin ?? 15)
-  if (!runtime.success) return { ok: false, error: 'Target runtime must be 3-60 minutes' }
+  // The format: the one asked for (it must be in the bible now), else the case's, else the primary.
+  const formats = channel.bible.formats
+  if (formatKey !== undefined && !formats.some((f) => f.key === formatKey)) {
+    return { ok: false, error: "That format is not in the channel's bible" }
+  }
+  const format = resolveFormat(formats, formatKey ?? existing.formatKey)
+  const maxMin = Math.min(format.runtime.max, RUNTIME_START_MAX)
+  let runtime: number
+  if (format.runtime.min > RUNTIME_START_MAX) {
+    // Every length this format allows is beyond the start limit: nothing can start.
+    return {
+      ok: false,
+      error: `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`,
+    }
+  } else if (targetRuntimeMin === undefined) {
+    runtime = Math.min(Math.max(format.runtime.default, format.runtime.min), maxMin)
+  } else if (Number.isInteger(targetRuntimeMin) && targetRuntimeMin > RUNTIME_START_MAX) {
+    return {
+      ok: false,
+      error: `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`,
+    }
+  } else if (
+    !Number.isInteger(targetRuntimeMin) ||
+    targetRuntimeMin < format.runtime.min ||
+    targetRuntimeMin > maxMin
+  ) {
+    return {
+      ok: false,
+      error: `This format runs ${format.runtime.min} to ${format.runtime.max} minutes`,
+    }
+  } else {
+    runtime = targetRuntimeMin
+  }
 
   const project = await createProjectFromCase(db, {
     caseId: id,
     title: existing.title,
-    targetRuntimeMin: runtime.data,
+    targetRuntimeMin: runtime,
+    // Always the resolved key: left unset, the column default (`main`) would win over the primary.
+    formatKey: format.key,
   })
   await markCaseInProduction(db, id)
   revalidatePath('/c/[slug]', 'layout')
@@ -294,6 +329,30 @@ export async function startProjectFromCase(
   return { ok: true, projectId: project.id }
 }
 
+export interface StartCostEstimate {
+  usd: number | null
+  /** The whole line the Start control shows. */
+  basis: string
+}
+
+/**
+ * What a project of this length is likely to cost, from what finished projects
+ * did cost per minute. Spends nothing.
+ */
+export async function estimateStartCostAction(
+  channelId: string,
+  runtimeMin: number,
+): Promise<StartCostEstimate> {
+  await requireOwner()
+  const none = { usd: null, basis: 'No estimate yet: no finished projects' }
+  if (!UlidSchema.safeParse(channelId).success || !Number.isFinite(runtimeMin)) return none
+  const rate = await costPerMinute(db, channelId)
+  if (rate === null) return none
+  const usd = Math.round(rate.usdPerMinute * runtimeMin * 100) / 100
+  const count = rate.projects === 1 ? '1 finished project' : `${rate.projects} finished projects`
+  return { usd, basis: `About $${usd.toFixed(2)}, from ${count}` }
+}
+
 const RESEARCH_RUNNING: ActionResult = {
   ok: false,
   error: 'Research is already running for this case',
@@ -311,13 +370,25 @@ async function researchableCase(id: string) {
   if (existing.status === 'retired') {
     return { ok: false as const, error: 'That case is retired. Move it back to shortlisted first.' }
   }
-  const refusal = writeRefusalFor((await channelForCase(db, id)) ?? null)
+  const channel = (await channelForCase(db, id)) ?? null
+  const refusal = writeRefusalFor(channel)
   if (refusal) return refusal
   const subject = existing.subject?.trim() ?? ''
   if (subject === '') {
     return { ok: false as const, error: 'Give the case a subject before researching it' }
   }
-  return { ok: true as const, existing, subject }
+  return { ok: true as const, existing, subject, credits: researchCredits(channel, existing) }
+}
+
+/** What a run costs: more when the case's format (against the channel's current bible) has a lead keyword. */
+function researchCredits(
+  channel: { bible: { formats: readonly ChannelFormat[] } } | null,
+  existing: { formatKey: string | null },
+): number {
+  const formats = channel?.bible.formats ?? []
+  const hasFormatSeed =
+    formats.length > 0 && leadKeyword(resolveFormat(formats, existing.formatKey)) !== null
+  return caseResearchCredits(hasFormatSeed)
 }
 
 export type CaseResearchEstimate =
@@ -331,12 +402,14 @@ export type CaseResearchEstimate =
 export async function caseResearchEstimate(caseId: string): Promise<CaseResearchEstimate> {
   await requireOwner()
   if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
-  if (!(await getCase(db, caseId))) return { ok: false, error: 'That case no longer exists' }
-  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  const existing = await getCase(db, caseId)
+  if (!existing) return { ok: false, error: 'That case no longer exists' }
+  const credits = researchCredits((await channelForCase(db, caseId)) ?? null, existing)
+  const budget = await checkVidiqBudget(credits)
   if (!budget.ok) return budget
   return {
     ok: true,
-    credits: CASE_RESEARCH_CREDITS,
+    credits,
     capLeft: budget.capLeft,
     balance: budget.balance,
   }
@@ -353,7 +426,7 @@ export async function researchCaseAction(caseId: string): Promise<ActionResult> 
   const checked = await researchableCase(caseId)
   if (!checked.ok) return checked
 
-  const budget = await checkVidiqBudget(CASE_RESEARCH_CREDITS)
+  const budget = await checkVidiqBudget(checked.credits)
   if (!budget.ok) return budget
 
   if (checked.existing.searchJob && caseResearchJobIsRunning(checked.existing.searchJob)) {
@@ -447,6 +520,25 @@ export async function setTargetKeywordAction(
       error: error instanceof Error ? error.message : 'Could not set the target keyword',
     }
   }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** The format picker: which of the channel's formats this case is made as. */
+export async function setCaseFormatAction(
+  caseId: string,
+  formatKey: string | null,
+): Promise<ActionResult> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  const channel = (await channelForCase(db, caseId)) ?? null
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  const refusal = writeRefusalFor(channel)
+  if (refusal) return refusal
+  if (formatKey !== null && !channel.bible.formats.some((f) => f.key === formatKey)) {
+    return { ok: false, error: "That format is not in the channel's bible" }
+  }
+  await setCaseFormat(db, caseId, formatKey)
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
 }

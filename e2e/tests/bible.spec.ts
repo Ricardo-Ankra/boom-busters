@@ -28,6 +28,7 @@ test.setTimeout(180_000)
 
 const SECTION_LABELS = [
   'Identity',
+  'Formats',
   'Voice',
   'Look',
   'Examples',
@@ -103,9 +104,17 @@ async function leaveDraftedBible(): Promise<void> {
         if (!draft.inputs) throw new Error('the Start press did not save the inputs')
         return {
           ...draft,
-          bible: mock.bible,
+          // The mock draft leaves the starting format untouched, which reads Empty; name a keyword.
+          bible: {
+            ...mock.bible,
+            formats: mock.bible.formats.map((format) => ({
+              ...format,
+              keywords: ['psychology cases'],
+            })),
+          },
           statuses: {
             identity: 'drafted',
+            formats: 'drafted',
             voice: 'drafted',
             look: 'drafted',
             examples: 'drafted',
@@ -336,10 +345,34 @@ test.describe('a second channel’s bible', () => {
       timeout: 15_000,
     })
 
+    // A runtime that runs the wrong way is refused in words and holds Save; fixed, it saves.
+    await openCard(page, 'Formats')
+    await page.getByRole('button', { name: 'Edit Formats', exact: true }).click()
+    const longest = page.getByLabel('Longest')
+    await longest.fill('2')
+    await expect(page.getByText(/Runtime needs/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+    await longest.fill('60')
+    await page.getByRole('button', { name: 'Add keyword' }).click()
+    await page.getByLabel('Keyword 2', { exact: true }).fill('mind explained')
+    // Shorts are a visible labelled switch per format; turning it off is what saves with the rest.
+    const shorts = page.getByRole('button', { name: 'Shorts: on', exact: true })
+    await expect(shorts).toHaveAttribute('aria-pressed', 'true')
+    await shorts.click()
+    await expect(page.getByRole('button', { name: 'Shorts: off', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    await page.getByRole('button', { name: 'Done editing Formats', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled({
+      timeout: 15_000,
+    })
+
     await saveDraft(page)
     await expect(page.getByText('Version 3 is what the channel runs on.')).toBeVisible({
       timeout: 15_000,
     })
+    await expect(page.getByText('Shorts off', { exact: true })).toBeVisible()
     await openHistory(page)
     await expect(page.getByText('Version 3', { exact: true })).toBeVisible()
   })

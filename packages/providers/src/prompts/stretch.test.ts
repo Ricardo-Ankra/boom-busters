@@ -2,6 +2,7 @@ import { MIN_SHOT_SECONDS, ShotListOutputSchema, FIRST_CHANNEL_IN_USE } from '@b
 import { describe, expect, it } from 'vitest'
 import { buildShotListRequest } from './shotlist'
 import { buildStretchRequest, MIN_SHOT_RULE, mockStretchPlan } from './stretch'
+import { minShotRule } from './min-shot-rule'
 import type { StretchRequestInput } from './stretch'
 import { MAX_OUTPUT_TOKENS } from '../llm/types'
 
@@ -72,6 +73,26 @@ describe('MIN_SHOT_RULE', () => {
       '- Once timed, a slot must stay on screen at least: headline and social 5 seconds, chart and map 4, every other type 3.',
     )
     expect(MIN_SHOT_SECONDS.headline).toBe(5)
+  })
+})
+
+describe('minShotRule', () => {
+  it('is the current text at hold 1 and doubles every number at hold 2', () => {
+    expect(minShotRule(1)).toBe(MIN_SHOT_RULE)
+    expect(minShotRule(2)).toBe(
+      '- Once timed, a slot must stay on screen at least: headline and social 10 seconds, chart and map 8, every other type 6.',
+    )
+    expect(minShotRule(2.5)).toContain(
+      'headline and social 12.5 seconds, chart and map 10, every other type 7.5',
+    )
+  })
+
+  it('reaches the stretch request through shotHold', () => {
+    const at1 = buildStretchRequest(base, input).messages.at(-1)!.content
+    const at2 = buildStretchRequest(base, { ...input, shotHold: 2 }).messages.at(-1)!.content
+    expect(at1).toContain(MIN_SHOT_RULE)
+    expect(at2).toContain(minShotRule(2))
+    expect(at2).not.toContain(MIN_SHOT_RULE)
   })
 })
 

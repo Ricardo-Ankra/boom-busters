@@ -1,5 +1,3 @@
-import type { ChannelBible } from '@boom-busters/schemas'
-
 /**
  * The case category as the channel's bible words it (decision 245, and the
  * channel bible lift). `con` and `collapse` are stored lower-case; the bible's
@@ -8,7 +6,7 @@ import type { ChannelBible } from '@boom-busters/schemas'
  * A key the bible no longer lists (the owner edited the list after cases were
  * made) shows as the key itself, never as nothing and never as an error.
  */
-type CategorySource = Pick<ChannelBible, 'caseCategories'>
+type CategorySource = { caseCategories: readonly { key: string; label: string }[] }
 
 export function caseCategoryLabel(bible: CategorySource, key: string): string {
   return bible.caseCategories.find((category) => category.key === key)?.label ?? key

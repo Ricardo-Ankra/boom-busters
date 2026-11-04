@@ -1,5 +1,6 @@
 import { listProjects } from '@boom-busters/db'
 import type { ProjectSummary } from '@boom-busters/db'
+import { resolveFormat } from '@boom-busters/schemas'
 import type { ChannelBible } from '@boom-busters/schemas'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -71,7 +72,14 @@ function ProjectRow({ project, bible }: { project: ProjectSummary; bible: Channe
         </p>
       </div>
 
-      <MiniPipelineRail views={stageViewsForProject(project, project.hasActiveRun)} />
+      <MiniPipelineRail
+        views={stageViewsForProject(
+          project,
+          project.hasActiveRun,
+          // The switch is read from the current bible this page already holds (ruling 18).
+          !resolveFormat(bible.formats, project.formatKey).shorts,
+        )}
+      />
 
       <span className="font-mono text-[13px] text-[var(--color-text-muted)] tabular-nums">
         {project.targetRuntimeMin} min

@@ -2,22 +2,29 @@
 
 import type { CaseSummary } from '@boom-busters/db'
 import {
-  CASE_RESEARCH_CREDITS,
   briefIsStale,
+  caseResearchCredits,
   caseResearchJobIsRunning,
   keywordHasFigure,
+  leadKeyword,
+  resolveFormat,
+  RUNTIME_OUTER_MIN,
+  RUNTIME_START_MAX,
 } from '@boom-busters/schemas'
-import type { SearchBrief, SearchKeyword } from '@boom-busters/schemas'
+import type { ChannelFormat, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/input'
+import { Label, NumberInput, Select } from '@/components/ui/input'
+import { fitWarning } from '@/lib/brief-fit'
 import { channelHref } from '@/lib/channel-href'
 import {
   caseResearchEstimate,
   chooseAngleAction,
+  estimateStartCostAction,
   researchCaseAction,
+  setCaseFormatAction,
   setTargetKeywordAction,
   startProjectFromCase,
 } from './actions'
@@ -58,7 +65,9 @@ export function briefMatchesSubject(brief: SearchBrief, subject: string | null):
 const STEP_LABELS: Record<string, string> = {
   load: 'Starting',
   'keywords-terms': 'Finding search terms',
+  'keywords-format': 'Finding search terms for the format',
   'keywords-filter': 'Keeping the terms about the subject',
+  fit: 'Checking the subject fits the channel',
   'keywords-questions': 'Finding the questions people search',
   outliers: 'Finding the winning videos',
   'outlier-details': 'Reading the winning videos',
@@ -72,12 +81,65 @@ export function researchStepLabel(step: string | null): string {
   return label ?? 'Researching'
 }
 
-const researchLabel = (again: boolean): string =>
-  `${again ? 'Research again' : 'Research'} with VidIQ (about ${CASE_RESEARCH_CREDITS} credits)`
+/** The channel's current formats, for the picker and the estimate; empty reads as no formats. */
+export const FormatsContext = React.createContext<readonly ChannelFormat[]>([])
+
+/** Whether the case's format, resolved against the current bible, has a lead keyword to search. */
+function useFormatSeed(item: CaseSummary): boolean {
+  const formats = React.useContext(FormatsContext)
+  return formats.length > 0 && leadKeyword(resolveFormat(formats, item.formatKey)) !== null
+}
+
+/** The length a format starts at: its default, kept inside its range and the start limit. */
+function startRuntime(format: ChannelFormat | null): number {
+  if (format === null) return 15
+  const max = Math.min(format.runtime.max, RUNTIME_START_MAX)
+  return Math.min(Math.max(format.runtime.default, format.runtime.min), max)
+}
+
+const NOT_SUPPORTED_NOTE = `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`
+
+const researchLabel = (again: boolean, credits: number): string =>
+  `${again ? 'Research again' : 'Research'} with VidIQ (about ${credits} credits)`
+
+/** `Format`: which of the channel's formats this case is made as; hidden for a one-format channel. */
+export function FormatPicker({ item, run }: { item: CaseSummary; run: Run }) {
+  const formats = React.useContext(FormatsContext)
+  const [busy, setBusy] = React.useState(false)
+  if (formats.length < 2) return null
+  // A stored key the bible no longer has reads as the primary, as the pipeline resolves it.
+  const selected = resolveFormat(formats, item.formatKey).key
+  return (
+    <div className="flex items-center gap-2">
+      <Label htmlFor={`format-${item.id}`}>Format</Label>
+      <Select
+        id={`format-${item.id}`}
+        value={selected}
+        disabled={busy}
+        onChange={async (event) => {
+          setBusy(true)
+          try {
+            await run(() => setCaseFormatAction(item.id, event.target.value), 'Format updated')
+          } finally {
+            setBusy(false)
+          }
+        }}
+        className="w-40"
+      >
+        {formats.map((format) => (
+          <option key={format.key} value={format.key}>
+            {format.name}
+          </option>
+        ))}
+      </Select>
+    </div>
+  )
+}
 
 /** The research button, or what the run is doing, or why it failed with Try again. */
 export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) {
   const router = useRouter()
+  const credits = caseResearchCredits(useFormatSeed(item))
   const [estimate, setEstimate] = React.useState<CaseResearchEstimate | null>(null)
   const job = item.searchJob
   const running = job !== null && job.state === 'running' && caseResearchJobIsRunning(job)
@@ -119,7 +181,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
         <p className="text-[13px] text-[var(--color-danger)]">Research failed: {failure}</p>
       )}
       <ConfirmButton
-        label={failure === null ? researchLabel(hasBrief) : 'Try again'}
+        label={failure === null ? researchLabel(hasBrief, credits) : 'Try again'}
         confirmLabel="Start research"
         confirmVariant="primary"
         consequence={consequence}
@@ -140,27 +202,82 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
 /** `New project`: with a brief over 30 days old it asks whether to refresh the research first. */
 export function NewProjectButton({
   slug,
+  channelId,
   blocked,
   item,
   run,
 }: {
   slug: string
+  channelId: string
   /** Why a project cannot start, or null when it can. */
   blocked: string | null
   item: CaseSummary
   run: Run
 }) {
   const router = useRouter()
+  const formats = React.useContext(FormatsContext)
+  const credits = caseResearchCredits(useFormatSeed(item))
   const [busy, setBusy] = React.useState(false)
+  const caseFormat = formats.length > 0 ? resolveFormat(formats, item.formatKey) : null
+  const [formatKey, setFormatKey] = React.useState<string | null>(caseFormat?.key ?? null)
+  const format = formats.length > 0 && formatKey !== null ? resolveFormat(formats, formatKey) : null
+  const [runtimeText, setRuntimeText] = React.useState(String(startRuntime(caseFormat)))
+  // The row's own picker changed the case's format: the start control follows it.
+  const [seenCaseKey, setSeenCaseKey] = React.useState(caseFormat?.key ?? null)
+  if ((caseFormat?.key ?? null) !== seenCaseKey) {
+    setSeenCaseKey(caseFormat?.key ?? null)
+    setFormatKey(caseFormat?.key ?? null)
+    setRuntimeText(String(startRuntime(caseFormat)))
+  }
+  const [estimate, setEstimate] = React.useState<string | null>(null)
+  const minRuntime = format?.runtime.min ?? RUNTIME_OUTER_MIN
+  const maxRuntime = Math.min(format?.runtime.max ?? RUNTIME_START_MAX, RUNTIME_START_MAX)
+  const runtime = Number(runtimeText)
+  // Every length the format allows is past the start limit: nothing can be started yet.
+  const tooLong = format !== null && format.runtime.min > RUNTIME_START_MAX
+  const runtimeValid =
+    !tooLong &&
+    runtimeText.trim() !== '' &&
+    Number.isInteger(runtime) &&
+    runtime >= minRuntime &&
+    runtime <= maxRuntime
+  const outOfRange =
+    format !== null &&
+    (format.runtime.default > RUNTIME_START_MAX || format.runtime.max > RUNTIME_START_MAX)
   const [asking, setAsking] = React.useState(false)
   const brief = item.searchBrief
   // A brief for another subject freezes onto nothing, so its age does not matter.
   const stale = brief !== null && briefMatchesSubject(brief, item.subject) && briefIsStale(brief)
 
+  // A light debounce: the field is typed into, and each stop asks the server once.
+  React.useEffect(() => {
+    if (!runtimeValid) return
+    let current = true
+    const timer = setTimeout(() => {
+      estimateStartCostAction(channelId, runtime).then(
+        (result) => {
+          if (current) setEstimate(result?.basis ?? null)
+        },
+        () => {
+          if (current) setEstimate(null)
+        },
+      )
+    }, 300)
+    return () => {
+      current = false
+      clearTimeout(timer)
+    }
+  }, [channelId, runtime, runtimeValid])
+
   const start = async () => {
     setBusy(true)
     try {
-      const result = await startProjectFromCase(item.id)
+      // The format goes only when the owner chose another for this start.
+      const result = await startProjectFromCase(
+        item.id,
+        runtime,
+        format !== null && format.key !== caseFormat?.key ? format.key : undefined,
+      )
       if (result.ok) {
         router.push(channelHref(slug, '/projects'))
       } else {
@@ -190,7 +307,7 @@ export function NewProjectButton({
             }
           }}
         >
-          Refresh research (about {CASE_RESEARCH_CREDITS} credits)
+          Refresh research (about {credits} credits)
         </Button>
         <Button variant="outline" busy={busy} onClick={start}>
           Start without refreshing
@@ -203,15 +320,70 @@ export function NewProjectButton({
   }
 
   return (
-    <Button
-      variant="primary"
-      busy={busy}
-      disabled={blocked !== null}
-      title={blocked ?? undefined}
-      onClick={() => (stale ? setAsking(true) : void start())}
-    >
-      New project
-    </Button>
+    <div className="flex flex-wrap items-center gap-2">
+      {formats.length > 1 ? (
+        <>
+          <Label htmlFor={`start-format-${item.id}`}>Start format</Label>
+          <Select
+            id={`start-format-${item.id}`}
+            value={format?.key ?? ''}
+            disabled={busy}
+            onChange={(event) => {
+              setFormatKey(event.target.value)
+              setRuntimeText(String(startRuntime(resolveFormat(formats, event.target.value))))
+            }}
+            className="w-40"
+          >
+            {formats.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.name}
+              </option>
+            ))}
+          </Select>
+        </>
+      ) : null}
+      <Label htmlFor={`start-runtime-${item.id}`}>Length in minutes</Label>
+      <NumberInput
+        id={`start-runtime-${item.id}`}
+        value={runtimeText}
+        min={tooLong ? undefined : minRuntime}
+        max={tooLong ? undefined : maxRuntime}
+        step={1}
+        disabled={busy || tooLong}
+        onChange={(event) => setRuntimeText(event.target.value)}
+        className="w-24"
+      />
+      <Button
+        variant="primary"
+        busy={busy}
+        disabled={blocked !== null || !runtimeValid}
+        title={blocked ?? undefined}
+        onClick={() => (stale ? setAsking(true) : void start())}
+      >
+        New project
+      </Button>
+      {runtimeValid ? (
+        estimate === null ? null : (
+          <p className="w-full text-[13px] text-[var(--color-text-secondary)]">{estimate}</p>
+        )
+      ) : tooLong ? null : (
+        <p className="w-full text-[13px] text-[var(--color-warning)]">
+          This format runs {minRuntime} to {format?.runtime.max ?? RUNTIME_START_MAX} minutes
+        </p>
+      )}
+      {outOfRange ? (
+        <p className="w-full text-[13px] text-[var(--color-text-secondary)]">
+          {NOT_SUPPORTED_NOTE}
+        </p>
+      ) : null}
+      {/* A warning only: the brief's keywords were measured for another format's lead keyword. */}
+      {brief?.formatKey && format !== null && brief.formatKey !== format.key ? (
+        <p className="w-full text-[13px] text-[var(--color-text-secondary)]">
+          Researched for the{' '}
+          {formats.find((f) => f.key === brief.formatKey)?.name ?? brief.formatKey} format.
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -250,7 +422,16 @@ const measuredOn = (iso: string): string =>
   })
 
 /** The row's `Search brief`: collapsed, with the choices the owner makes from it. */
-export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run }) {
+export function SearchBriefPanel({
+  item,
+  run,
+  pillars = [],
+}: {
+  item: CaseSummary
+  run: Run
+  /** The channel's pillars, so a fit that names another one can say its label. */
+  pillars?: readonly { key: string; label: string }[]
+}) {
   const brief = item.searchBrief
   const [writing, setWriting] = React.useState(false)
   const [own, setOwn] = React.useState(item.angle ?? '')
@@ -274,9 +455,15 @@ export function SearchBriefPanel({ item, run }: { item: CaseSummary; run: Run })
   }
 
   const current = briefMatchesSubject(brief, item.subject)
+  const fit = fitWarning(brief.fit, item.category, pillars)
 
   return (
     <div className="flex w-full flex-col gap-2">
+      {fit ? (
+        <p role="status" className="text-[13px] text-[var(--color-warning)]">
+          {fit}
+        </p>
+      ) : null}
       {current ? null : (
         <p role="status" className="text-[13px] text-[var(--color-warning)]">
           This research is for {brief.subject}. Research again for {item.subject?.trim() ?? ''}.

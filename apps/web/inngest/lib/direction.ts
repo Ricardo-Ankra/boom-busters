@@ -298,7 +298,9 @@ export async function planChapterSlots(input: {
   logos?: readonly LogoIndex[]
 }): Promise<{ rows: NewShotSlot[]; rejected: number }> {
   // One read for the chapter, before any mock branch: every request this step builds shares it.
-  const bible = requireCompleteBible(await channelForProject(db, input.projectId))
+  const frozen = await channelForProject(db, input.projectId)
+  const bible = requireCompleteBible(frozen)
+  const shotHold = frozen.format.shotHold
   const paragraphs = promptParagraphs(input.paragraphs, input.chapter.id)
   if (paragraphs.length === 0) return { rows: [], rejected: 0 }
 
@@ -313,6 +315,7 @@ export async function planChapterSlots(input: {
       claimCount: input.claims.length,
       claimTexts: input.claims.map((claim) => claim.text),
       logoTitles: input.logos?.map((logo) => logo.title),
+      shotHold,
       newsClaimRefs: input.claims
         .map((claim, at) => (claimCarriesArticle(claim) ? at + 1 : 0))
         .filter((ref) => ref > 0),
@@ -330,7 +333,7 @@ export async function planChapterSlots(input: {
           channelId: bible.channelId,
           ...(purpose === 'plan' || purpose === 'repair' ? {} : { purpose }),
         }),
-      { ...input, bible },
+      { ...input, bible, shotHold },
     )
     if (!planned) return { rows: [], rejected: 0 }
     dropped = planned.malformed

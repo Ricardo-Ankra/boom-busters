@@ -1,5 +1,6 @@
 import {
   DEFAULT_SETTINGS,
+  defaultFormat,
   EMPTY_BIBLE,
   EXAMPLE_SLOT_IDS,
   FIRST_CHANNEL_BIBLE,
@@ -10,7 +11,13 @@ import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { bibleVersionById, currentBible, listBibleVersions, saveBibleVersion } from './bibles'
 import { createCase } from './cases'
-import { channelForProject, createChannel, ensureFirstChannel, getChannel } from './channels'
+import {
+  channelForProject,
+  createChannel,
+  ensureFirstChannel,
+  getChannel,
+  shortsEnabledForProject,
+} from './channels'
 import { createDb } from './client'
 import { createProjectFromCase } from './projects'
 import { cases, channelBibles, channels, projects, workspace, youtubeConnections } from './schema'
@@ -183,6 +190,102 @@ suite('bible versions', () => {
       expect(version.bible.subject).toBe('corporate collapses')
       expect(version.bible.subjectNoun).toEqual(EMPTY_BIBLE.subjectNoun)
     }
+  })
+
+  it('a bible stored with keywordContext and no formats reads back with a formats array, and a save drops keywordContext', async () => {
+    const channel = await createChannel(db, channelInput('legacy'))
+    const legacy = { ...EMPTY_BIBLE, keywordContext: 'documentary' } as Record<string, unknown>
+    delete legacy.formats
+    const [row] = await db
+      .insert(channelBibles)
+      .values({
+        channelId: channel.id,
+        version: 2,
+        bible: legacy as never,
+        slotIds: [],
+        complete: false,
+        note: 'Legacy',
+      })
+      .returning()
+    await db.update(channels).set({ currentBibleId: row!.id }).where(eq(channels.id, channel.id))
+
+    const current = await currentBible(db, channel.id)
+    expect(current.bible.formats[0]?.name).toBe('Documentary')
+
+    const saved = await saveBibleVersion(db, channel.id, current.bible, 'Edited in Settings')
+    const [raw] = await db.select().from(channelBibles).where(eq(channelBibles.id, saved.id))
+    const stored = raw!.bible as Record<string, unknown>
+    expect(Array.isArray(stored.formats)).toBe(true)
+    expect(stored).not.toHaveProperty('keywordContext')
+  })
+
+  it('createProjectFromCase stores the main format by default and a given key; channelForProject resolves it', async () => {
+    const channel = await createChannel(db, channelInput('fmt'))
+    const kase = await createCase(db, {
+      title: 'Enron',
+      category: 'collapse',
+      channelId: channel.id,
+    })
+
+    const plain = await createProjectFromCase(db, { caseId: kase.id, title: 'A' })
+    expect(plain.formatKey).toBe('main')
+    const sleep = await createProjectFromCase(db, {
+      caseId: kase.id,
+      title: 'B',
+      formatKey: 'sleep',
+    })
+    expect(sleep.formatKey).toBe('sleep')
+
+    // The frozen bible has no 'sleep' format, so the primary answers.
+    const resolved = await channelForProject(db, sleep.id)
+    expect(resolved.formatKey).toBe('sleep')
+    expect(resolved.format).toEqual(resolved.bible.formats[0])
+    expect((await channelForProject(db, plain.id)).formatKey).toBe('main')
+  })
+
+  it('shortsEnabledForProject reads the current bible, not the frozen one (ruling 18)', async () => {
+    const channel = await createChannel(db, channelInput('shorts'))
+    const kase = await createCase(db, {
+      title: 'Enron',
+      category: 'collapse',
+      channelId: channel.id,
+    })
+    const frozen = await createProjectFromCase(db, { caseId: kase.id, title: 'A' })
+    const sleepProject = await createProjectFromCase(db, {
+      caseId: kase.id,
+      title: 'B',
+      formatKey: 'sleep',
+    })
+    const unknown = await createProjectFromCase(db, {
+      caseId: kase.id,
+      title: 'C',
+      formatKey: 'gone',
+    })
+    expect(await shortsEnabledForProject(db, frozen.id)).toBe(true)
+
+    // The channel turns Shorts off later: the projects froze the version with them on.
+    const main = { ...defaultFormat('Documentary'), primary: true }
+    const sleep = { ...defaultFormat('Sleep'), key: 'sleep', primary: false, shorts: false }
+    await saveBibleVersion(
+      db,
+      channel.id,
+      { ...EMPTY_BIBLE, formats: [main, sleep] },
+      'Sleep without Shorts',
+    )
+    expect((await channelForProject(db, sleepProject.id)).format.shorts).toBe(true)
+    expect(await shortsEnabledForProject(db, sleepProject.id)).toBe(false)
+    // The main format and an unknown key (the primary answers) keep them on.
+    expect(await shortsEnabledForProject(db, frozen.id)).toBe(true)
+    expect(await shortsEnabledForProject(db, unknown.id)).toBe(true)
+
+    // An unknown key falls back to the primary's value.
+    await saveBibleVersion(
+      db,
+      channel.id,
+      { ...EMPTY_BIBLE, formats: [{ ...main, shorts: false }, sleep] },
+      'Primary off',
+    )
+    expect(await shortsEnabledForProject(db, unknown.id)).toBe(false)
   })
 
   it('a save for an unknown channel throws and writes nothing', async () => {

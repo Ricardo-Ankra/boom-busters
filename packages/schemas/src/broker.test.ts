@@ -64,14 +64,15 @@ describe('RenderProgressSchema', () => {
 })
 
 describe('estimateRenderCostUsd', () => {
-  it('quotes the section 8.1 anchor: ~$0.25 for a 15-minute master', () => {
-    expect(estimateRenderCostUsd(900)).toBe(0.25)
-    expect(estimateRenderCostUsd(20)).toBeCloseTo(0.0056, 4)
+  it("quotes Remotion's reported cost: $1.00 for a 16.6-minute master, $0.90 for 900 s", () => {
+    expect(estimateRenderCostUsd(996)).toBe(1)
+    expect(estimateRenderCostUsd(900)).toBe(0.9036)
+    expect(estimateRenderCostUsd(20)).toBeCloseTo(0.0201, 4)
   })
 
   it('quotes a half-scale draft at a quarter of the master price', () => {
-    expect(estimateRenderCostUsd(900, 'draft')).toBeCloseTo(0.0625, 4)
-    expect(estimateRenderCostUsd(900, 'short')).toBe(0.25)
+    expect(estimateRenderCostUsd(900, 'draft')).toBeCloseTo(0.2259, 4)
+    expect(estimateRenderCostUsd(900, 'short')).toBe(0.9036)
   })
 })
 

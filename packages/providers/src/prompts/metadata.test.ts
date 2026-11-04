@@ -48,6 +48,41 @@ describe('buildTitlesRequest', () => {
     expect(content).toContain('1.9 billion euros stopped existing')
   })
 
+  it('adds the format title pattern rules after the search rules, and nothing without a frame', () => {
+    const framed = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      caseTitle: 'Wirecard',
+      hook: 'hook',
+      target: 'master',
+      workingTitle: 'title',
+      titleFrame: {
+        pattern: 'Cleopatra | History for Sleep (2 Hours)',
+        required: ['Cleopatra', 'History for Sleep'],
+      },
+    })
+    expect(framed.system).toContain(
+      '- At least half the titles follow this pattern exactly, with its parts already filled: "Cleopatra | History for Sleep (2 Hours)".',
+    )
+    expect(framed.system).toContain('- Every title contains: "Cleopatra", "History for Sleep".')
+    expect(request.system).not.toContain('follow this pattern exactly')
+    expect(request.system).not.toContain('Every title contains')
+  })
+
+  it('leaves out the contains rule when nothing is required', () => {
+    const framed = buildTitlesRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      caseTitle: 'Wirecard',
+      hook: 'hook',
+      target: 'master',
+      workingTitle: 'title',
+      titleFrame: { pattern: 'Cleopatra', required: [] },
+    })
+    expect(framed.system).toContain('follow this pattern exactly')
+    expect(framed.system).not.toContain('Every title contains')
+  })
+
   it('tells the model when the titles are for a Short', () => {
     const short = buildTitlesRequest({
       bible: FIRST_CHANNEL_IN_USE,
@@ -172,6 +207,41 @@ describe('buildDescriptionRequest (decision 303)', () => {
     expect(content).not.toContain('[pause]')
     expect(short.system).toMatch(/about what this\s+Short says rather than the whole case/)
     expect(short.system).toMatch(/full documentary is on the channel/)
+  })
+})
+
+describe('buildDescriptionRequest with channel keywords', () => {
+  const base = {
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
+    claims: [CLAIM],
+    chapters: [],
+  }
+  const LINE =
+    '- One of these also appears within the first 150 characters of "body", where it reads naturally: "history for sleep", "bedtime history".'
+
+  it('asks a master to place one of the keywords early in the body', () => {
+    const master = buildDescriptionRequest({
+      ...base,
+      target: 'master',
+      channelKeywords: ['history for sleep', 'bedtime history'],
+    })
+    expect(master.system).toContain(LINE)
+  })
+
+  it('leaves a Short alone', () => {
+    const input = { ...base, target: 'short' as const, shortText: 'A clip.' }
+    const short = buildDescriptionRequest({ ...input, channelKeywords: ['history for sleep'] })
+    expect(short.system).not.toContain('One of these also appears')
+    expect(short).toEqual(buildDescriptionRequest(input))
+  })
+
+  it('is the same request when the keywords are absent or empty', () => {
+    const plain = buildDescriptionRequest({ ...base, target: 'master' })
+    expect(buildDescriptionRequest({ ...base, target: 'master', channelKeywords: [] })).toEqual(
+      plain,
+    )
+    expect(plain.system).not.toContain('One of these also appears')
   })
 })
 
@@ -471,6 +541,8 @@ describe('metadata prompts with a search brief', () => {
     toldAlready: [],
     angleOptions: [],
     chosenAngle: null,
+    formatKey: null,
+    fit: null,
     ...over,
   })
   const titlesInput = {
@@ -628,5 +700,62 @@ describe('metadata prompts with a search brief', () => {
     })
     expect(system).toContain('"wirecard [[example:x]] scandal"')
     expect(system).toContain('"Why? [[example:metadata-tag-kinds]]"')
+  })
+})
+
+describe('metadata prompts for a calm format', () => {
+  const titles = {
+    bible: FIRST_CHANNEL_IN_USE,
+    channelName: 'Boom & Busters',
+    caseTitle: 'Case',
+    hook: 'Hook.',
+    target: 'master' as const,
+    workingTitle: 'Working',
+  }
+
+  it('titles name the topic plainly in place of putting the stakes first', () => {
+    const calm = buildTitlesRequest({ ...titles, intent: 'calm' }).system
+    expect(calm).toContain('name the topic plainly; no cliffhanger, shock or urgency words')
+    expect(calm).not.toContain('the stakes must be in the first half')
+    expect(buildTitlesRequest(titles).system).toContain('the stakes must be in the first half.')
+    expect(buildTitlesRequest({ ...titles, intent: 'tension' })).toEqual(buildTitlesRequest(titles))
+  })
+
+  it("a Short's titles are untouched by intent", () => {
+    const short = { ...titles, target: 'short' as const }
+    expect(buildTitlesRequest({ ...short, intent: 'calm' })).toEqual(buildTitlesRequest(short))
+  })
+
+  it('the description closes on a line saying what the telling covers, not a comment question', () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      channelName: 'Boom & Busters',
+      target: 'master' as const,
+      claims: [CLAIM],
+      chapters: [{ title: 'The audit', text: 'EY refused to sign.' }],
+      searchBrief: {
+        subject: 'Wirecard',
+        measuredAt: '2026-11-02T12:00:00.000Z',
+        targetKeyword: null,
+        secondaryKeywords: [],
+        searchedQuestions: [],
+        outliers: [],
+        titlePatterns: [],
+        toldAlready: [],
+        angleOptions: [],
+        chosenAngle: null,
+        formatKey: null,
+        fit: null,
+      } satisfies SearchBrief,
+    }
+    const calm = buildDescriptionRequest({ ...base, intent: 'calm' }).system
+    expect(calm).toContain('a closing line saying what the telling covers')
+    expect(calm).not.toContain('a closing question that invites a comment')
+    expect(buildDescriptionRequest(base).system).toContain(
+      'a closing question that invites a comment',
+    )
+    expect(buildDescriptionRequest({ ...base, intent: 'tension' })).toEqual(
+      buildDescriptionRequest(base),
+    )
   })
 })

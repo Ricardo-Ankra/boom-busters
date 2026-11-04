@@ -79,7 +79,7 @@ describe('a review card and the case category', () => {
   it('shows the key itself when the bible no longer lists it, without error', () => {
     const [card] = buildNeedsYouCards({
       ...base,
-      bible: { caseCategories: [{ key: 'bias', label: 'Bias' }] },
+      bible: { caseCategories: [{ key: 'bias', label: 'Bias', keywords: [] }] },
     })
     expect(card!.context).toContain('· con ·')
   })
