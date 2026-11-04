@@ -1427,6 +1427,35 @@ describe('a design written as code (decision 295)', () => {
     expect(screen.getByTitle(CLAIM)).toHaveTextContent('claim 1')
   })
 
+  it("shows the designer's concept and storyboard under the title on a graphic and a chart (decision 388)", async () => {
+    const plan = { concept: 'the count is the story', storyboard: ['0.3 s the figure counts up'] }
+    render(
+      <VisualBoard
+        projectId={PROJECT}
+        channelId={CHANNEL}
+        model={model([
+          {
+            ...codedGraphic,
+            brief: { ...codedGraphic.brief!, code: { ...CODE, ...plan } },
+          } as SlotView,
+          {
+            ...codedChart,
+            brief: {
+              ...codedChart.brief!,
+              code: { ...CODE, title: 'The fall', concept: 'the floor gives way' },
+            },
+          } as SlotView,
+        ])}
+        colors={COLORS}
+        brand={BRAND}
+      />,
+    )
+    expect(screen.getByText('the count is the story')).toBeInTheDocument()
+    expect(screen.getByText('the floor gives way')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show storyboard (1)' }))
+    expect(screen.getByText('0.3 s the figure counts up')).toBeVisible()
+  })
+
   it('hands the still every mark in the library, keyed by title, whatever the code reads (ruling 5)', async () => {
     const slot = {
       ...codedGraphic,

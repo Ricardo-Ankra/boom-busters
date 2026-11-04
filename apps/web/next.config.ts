@@ -35,7 +35,16 @@ const nextConfig: NextConfig = {
   // the platform-specific binary, so Next leaves it where it is. `esbuild`
   // is the same kind of package: the graphics designer's compile check
   // (decision 295, lib/graphic-code/compile.ts) runs its native binary.
-  serverExternalPackages: ['esbuild', 'postgres', 'sharp'],
+  // The designer's browser (decision 389, lib/graphic-code/frames.ts) is the
+  // same: Playwright drives Chromium, which `@sparticuz/chromium` ships
+  // compressed for Vercel's Linux, so neither is bundled.
+  serverExternalPackages: [
+    'esbuild',
+    'postgres',
+    'sharp',
+    'playwright-core',
+    '@sparticuz/chromium',
+  ],
   // The dry run (decision 295, lib/graphic-code/dry-run.ts) requires React,
   // react-dom/server and Remotion at run time by names the file trace cannot
   // read, so the Inngest route's function bundle would ship without them.
@@ -60,6 +69,14 @@ const nextConfig: NextConfig = {
       '../../node_modules/.pnpm/react-dom@*/node_modules/react-dom/cjs/**/*',
       '../../node_modules/.pnpm/remotion@*/node_modules/remotion/package.json',
       '../../node_modules/.pnpm/remotion@*/node_modules/remotion/dist/cjs/**/*',
+      // Chromium itself: `@sparticuz/chromium` reads its compressed browser
+      // from its own `bin` folder by path at run time, which the trace cannot see.
+      './node_modules/@sparticuz/chromium/bin/**/*',
+      '../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**/*',
+      // Playwright loads parts of itself lazily, by paths the trace does not
+      // follow, so the whole package ships.
+      './node_modules/playwright-core/**/*',
+      '../../node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/**/*',
     ],
   },
   typedRoutes: true,

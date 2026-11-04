@@ -25,6 +25,11 @@ export const GRAPHIC_SOURCE_MAX = 16_384
 /** One line on the slot card. */
 export const GRAPHIC_TITLE_MAX = 80
 export const GRAPHIC_FACTS_MAX = 40
+/** The designer's one-line concept, written before the code (decision 388). */
+export const GRAPHIC_CONCEPT_MAX = 200
+/** The storyboard: one line per change on the slot's clock (decision 388). */
+export const GRAPHIC_STORYBOARD_MAX = 16
+export const GRAPHIC_STORYBOARD_LINE_MAX = 200
 
 /** One narrated word, timed from the slot's start: what the code keys its motion to. */
 export const GraphicCodeWordSchema = z.object({
@@ -57,11 +62,33 @@ export const GraphicCodeSchema = z.object({
    * from new.
    */
   motion: z.number().int().positive().optional(),
+  /**
+   * The concept and the storyboard the designer wrote before the code
+   * (decision 388); absent on a design stored before them. Kept so the board
+   * can show what the graphic set out to do.
+   */
+  concept: z.string().trim().min(1).max(GRAPHIC_CONCEPT_MAX).optional(),
+  storyboard: z
+    .array(z.string().trim().min(1).max(GRAPHIC_STORYBOARD_LINE_MAX))
+    .max(GRAPHIC_STORYBOARD_MAX)
+    .optional(),
+  /**
+   * What the review made of the design (decision 389): `kept` when the
+   * designer, shown its rendered frames, kept it (or its revision could not be
+   * kept), `revised` when the revision passed every check and replaced it.
+   * Absent when no review ran: switched off, out of time, or no browser.
+   */
+  review: z.enum(['kept', 'revised']).optional(),
 })
 export type GraphicCode = z.infer<typeof GraphicCodeSchema>
 
 /** The wire shape: claim NUMBERS, no compiled code yet. */
 export const PlannedGraphicCodeSchema = z.object({
+  concept: z.string().trim().min(1).max(GRAPHIC_CONCEPT_MAX).optional(),
+  storyboard: z
+    .array(z.string().trim().min(1).max(GRAPHIC_STORYBOARD_LINE_MAX))
+    .max(GRAPHIC_STORYBOARD_MAX)
+    .optional(),
   source: z.string().min(1).max(GRAPHIC_SOURCE_MAX),
   title: z.string().trim().min(1).max(GRAPHIC_TITLE_MAX),
   facts: z

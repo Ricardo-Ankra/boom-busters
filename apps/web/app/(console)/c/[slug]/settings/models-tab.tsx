@@ -22,6 +22,7 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label, Select } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/components/ui/toast'
 import { refreshModelListsAction } from './model-actions'
 
@@ -435,6 +436,30 @@ export function ModelsTab({
               </div>
 
               {renderNotes(providerOptions, row.model, selected)}
+              {task === 'graphics' ? (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      id="graphic-review"
+                      checked={settings.features.graphicReview}
+                      disabled={saving}
+                      onCheckedChange={(checked) => {
+                        const next = structuredClone(settings)
+                        next.features.graphicReview = checked
+                        void commit({ features: { graphicReview: checked } }, next)
+                      }}
+                    />
+                    <Label htmlFor="graphic-review">
+                      Review each graphic on its rendered frames
+                    </Label>
+                  </div>
+                  <p className="text-[12px] text-[var(--color-text-muted)]">
+                    Once a design passes its checks, this model is shown it rendered and fixes what
+                    it sees. A second call with pictures, so each graphic costs about twice as much.
+                    The layout check in the browser runs either way.
+                  </p>
+                </div>
+              ) : null}
             </div>
           )
         })}

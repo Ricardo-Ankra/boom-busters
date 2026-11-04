@@ -45,16 +45,20 @@ describe('perSlotStepsFit', () => {
 })
 
 describe('the counting helpers', () => {
-  it('visuals: its fixed steps, a step per chapter, the terminals and a step per designed slot', () => {
+  it('visuals: its fixed steps, a step per chapter, the terminals and two per designed slot', () => {
     expect(visualsOtherSteps({ chapters: 0, designedSlots: 0 })).toBe(21)
-    expect(visualsOtherSteps({ chapters: 15, designedSlots: 40 })).toBe(21 + 15 + 40)
+    expect(visualsOtherSteps({ chapters: 15, designedSlots: 40 })).toBe(21 + 15 + 2 * 40)
   })
   it('assembly: its fixed steps and two a paragraph without stored timings', () => {
     expect(assemblyOtherSteps({ untimedParagraphs: 0 })).toBe(9)
     expect(assemblyOtherSteps({ untimedParagraphs: 5 })).toBe(19)
   })
-  it('a real 60-minute board (855 slots, 15 chapters, timed takes) stays per-slot in both', () => {
-    expect(perSlotStepsFit(855, visualsOtherSteps({ chapters: 15, designedSlots: 80 }))).toBe(true)
+  it('a typical 60-minute board (360 slots, 15 chapters, timed takes) stays per-slot in both', () => {
+    expect(perSlotStepsFit(360, visualsOtherSteps({ chapters: 15, designedSlots: 80 }))).toBe(true)
+    expect(perSlotStepsFit(360, assemblyOtherSteps({ untimedParagraphs: 0 }))).toBe(true)
+  })
+  it('a shortest-slot 60-minute board (855 slots) batches visuals, which the review step pushes past the limit', () => {
+    expect(perSlotStepsFit(855, visualsOtherSteps({ chapters: 15, designedSlots: 80 }))).toBe(false)
     expect(perSlotStepsFit(855, assemblyOtherSteps({ untimedParagraphs: 0 }))).toBe(true)
   })
   it('a 120-minute board of 1,710 slots batches in both', () => {

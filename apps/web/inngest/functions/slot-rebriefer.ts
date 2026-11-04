@@ -40,6 +40,7 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
+import { reviewStoredGraphic } from '../lib/graphic-steps'
 
 /**
  * slot-rebriefer (decision 258). "Draft a different brief": the owner has
@@ -182,7 +183,11 @@ export const slotRebriefer = inngest.createFunction(
           }
           await updateSlotBrief(db, slotId, withDesign(brief, result))
           await setSlotRetype(db, slotId, null)
-          return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
+          return {
+            ok: true as const,
+            resolveNow: project.visualsPhase === 'board',
+            designed: true as const,
+          }
         } catch (error) {
           if (error instanceof BudgetExceededError) {
             return { ok: false as const, gate: budgetGateData(error) }
@@ -307,6 +312,15 @@ export const slotRebriefer = inngest.createFunction(
         outcome: 'refused' as const,
         reason: 'refused' in drafted ? drafted.refused : undefined,
       }
+    }
+
+    // A graphic or chart just redesigned is reviewed in a step of its own
+    // (decision 389), with the producer's steer, so the review has a step's
+    // whole time; a run parked before the deploy replays no `designed` and skips it.
+    if ('designed' in drafted && drafted.designed) {
+      await step.run('review-graphic', () =>
+        reviewStoredGraphic(projectId, slotId, guidance === undefined ? {} : { guidance }),
+      )
     }
 
     // Board phase: the owner is looking at candidate strips, so fetch for the

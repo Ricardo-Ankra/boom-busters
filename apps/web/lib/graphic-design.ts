@@ -1,18 +1,24 @@
+import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { channelForProject } from '@boom-busters/db'
 import { requireCompleteBible } from '@/inngest/lib/channel'
 import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
+import { resolveBrandKit } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { browserFrames } from '@/lib/graphic-code/frames'
 import {
   chartData,
   designGraphicWith,
   loadGraphicContextFrom,
+  reviewGraphicWith,
   slotIntent,
   slotWords,
+  type GraphicCompleteFn,
   type GraphicDesignContext,
   type GraphicDesignResult,
+  type GraphicReviewResult,
   type GraphicSlotTiming,
 } from '@/lib/graphic-design-core'
 
@@ -31,11 +37,36 @@ import {
 export {
   designGraphicWith,
   GRAPHIC_DESIGN_DEADLINE_MS,
+  reviewGraphicWith,
   type GraphicCompleteFn,
   type GraphicDesignContext,
   type GraphicDesignResult,
+  type GraphicReviewResult,
   type GraphicSlotTiming,
 } from '@/lib/graphic-design-core'
+
+/**
+ * The designer's log for one slot (decision 389's follow-up): every refusal,
+ * review outcome, skip and failure as one `[graphics]` line naming the slot,
+ * at error level when something failed and warning level otherwise (the lint
+ * allows no other), so `vercel logs` can find it.
+ */
+function graphicsLog(context: GraphicDesignContext, slot: GraphicSlotTiming) {
+  const at = `${context.projectId} ${slot.chapterId} at ${(slot.startMs / 1000).toFixed(1)} s`
+  return (line: string) => {
+    const text = `[graphics] ${at}: ${line}`
+    if (/failed|without the browser/.test(line)) console.error(text)
+    else console.warn(text)
+  }
+}
+
+/** The ledgered model call, for the project and its channel. */
+function ledgered(projectId: string, channelId: string): GraphicCompleteFn {
+  return (request, callOptions) => callLlm(request, { projectId, channelId, ...callOptions })
+}
+
+/** The browser, unless GRAPHIC_FRAMES=off (the runners' tests). */
+const framesOn = () => process.env['GRAPHIC_FRAMES'] !== 'off'
 
 export async function designGraphic(
   context: GraphicDesignContext,
@@ -44,7 +75,8 @@ export async function designGraphic(
 ): Promise<GraphicDesignResult> {
   // Read here, inside the step that designs, so the bible is the project's frozen one and never
   // an earlier step's memoised copy. The gate sits before the mock branch.
-  const inUse = requireCompleteBible(await channelForProject(db, context.projectId))
+  const channel = await channelForProject(db, context.projectId)
+  const inUse = requireCompleteBible(channel)
   if (mockProvidersEnabled()) {
     // The fixture component (decision 295), through the same scan, compile,
     // dry run and facts as a real answer, so the runners, the retyper and the
@@ -69,17 +101,45 @@ export async function designGraphic(
       : { ok: false, issue: checked.issue }
   }
 
-  return designGraphicWith(
-    (request, callOptions) =>
-      callLlm(request, {
-        projectId: context.projectId,
-        channelId: inUse.channelId,
-        ...callOptions,
-      }),
-    context,
-    slot,
-    { ...options, bible: inUse },
-  )
+  return designGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
+    ...options,
+    bible: inUse,
+    // The browser's layout check (decision 389), in the channel's own faces
+    // and colours. The review is a step of its own: `reviewGraphic`.
+    ...(framesOn() ? { frames: browserFrames() } : {}),
+    brand: graphicBrand(resolveBrandKit(channel.settings)),
+    log: graphicsLog(context, slot),
+  })
+}
+
+/**
+ * The review of a stored design (decision 389), called in a step of its own
+ * after the design's step, so it has a step's whole time to itself. Skipped,
+ * with the reason, when Settings has it off, in mock mode, with the browser
+ * off, or on a slot with no design; otherwise `reviewGraphicWith` decides.
+ */
+export async function reviewGraphic(
+  context: GraphicDesignContext,
+  slot: GraphicSlotTiming & { brief: DesignableBrief },
+  options: { guidance?: string } = {},
+): Promise<GraphicReviewResult> {
+  const channel = await channelForProject(db, context.projectId)
+  const inUse = requireCompleteBible(channel)
+  const log = graphicsLog(context, slot)
+  const skipped = (reason: string): GraphicReviewResult => {
+    log(`review skipped: ${reason}`)
+    return { outcome: 'skipped', reason }
+  }
+  if (mockProvidersEnabled()) return { outcome: 'skipped', reason: 'mock providers' }
+  if (!channel.settings.features.graphicReview) return skipped('switched off in Settings')
+  if (!framesOn()) return skipped('the browser is off')
+  return reviewGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
+    ...options,
+    bible: inUse,
+    frames: browserFrames(),
+    brand: graphicBrand(resolveBrandKit(channel.settings)),
+    log,
+  })
 }
 
 const DESIGN_ISSUE_MAX = 500

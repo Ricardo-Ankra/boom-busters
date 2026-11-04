@@ -5,9 +5,11 @@ import { BudgetExceededError } from '@boom-busters/schemas'
 import type * as GraphicDesign from '@/lib/graphic-design'
 
 const designGraphic = vi.fn()
+const reviewGraphic = vi.fn()
 vi.mock('@/lib/graphic-design', async (importOriginal) => ({
   ...(await importOriginal<typeof GraphicDesign>()),
   designGraphic: (...args: unknown[]) => designGraphic(...args),
+  reviewGraphic: (...args: unknown[]) => reviewGraphic(...args),
 }))
 
 import { designPlannedGraphics } from './graphic-steps'
@@ -85,9 +87,39 @@ const CONTEXT = {
 
 beforeEach(() => {
   designGraphic.mockReset()
+  reviewGraphic.mockReset()
+  reviewGraphic.mockResolvedValue({ outcome: 'skipped', reason: 'switched off in Settings' })
 })
 
 describe('designPlannedGraphics (decisions 289, 295)', () => {
+  it('stores what the review step made of a design, and the design itself when it skipped (decision 389)', async () => {
+    designGraphic
+      .mockResolvedValueOnce({ ok: true, code: CODE })
+      .mockResolvedValueOnce({ ok: true, code: CODE })
+    reviewGraphic
+      .mockResolvedValueOnce({
+        outcome: 'revised',
+        code: { ...CODE, title: 'Revised', review: 'revised' },
+      })
+      .mockResolvedValueOnce({ outcome: 'skipped', reason: 'no frames to show' })
+    const result = await designPlannedGraphics(async (_id, fn) => fn(), {
+      prefix: 'graphic-0',
+      rows: [graphic('a'), graphic('b')] as never,
+      context: CONTEXT,
+      chapterTitle: 'One',
+    })
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.rows[0]!.brief).toMatchObject({ code: { title: 'Revised', review: 'revised' } })
+    expect(result.rows[1]!.brief).toMatchObject({ code: CODE })
+    // The review is handed the designed brief on the slot's own clock.
+    expect(reviewGraphic.mock.calls[0]![1]).toMatchObject({
+      chapterId: 'c1',
+      startMs: 0,
+      durationMs: 6000,
+      brief: { code: CODE },
+    })
+  })
+
   it('runs one named step per graphic and leaves other rows alone', async () => {
     designGraphic
       .mockResolvedValueOnce({ ok: true, code: CODE })
@@ -105,7 +137,8 @@ describe('designPlannedGraphics (decisions 289, 295)', () => {
         chapterTitle: 'One',
       },
     )
-    expect(ids).toEqual(['graphic-0-0', 'graphic-0-1'])
+    // A design that lands is reviewed in a step of its own (decision 389); a refused one is not.
+    expect(ids).toEqual(['graphic-0-0', 'graphic-0-0-review', 'graphic-0-1'])
     expect(result).toMatchObject({ ok: true, undesigned: 1 })
     if (!result.ok) throw new Error('unreachable')
     expect(result.rows[0]!.brief).toMatchObject({ code: CODE })
@@ -131,7 +164,7 @@ describe('designPlannedGraphics (decisions 289, 295)', () => {
       },
     )
     // A chart takes ids of its own; graphics keep the numbering they had.
-    expect(ids).toEqual(['graphic-0-chart-0', 'graphic-0-0'])
+    expect(ids).toEqual(['graphic-0-chart-0', 'graphic-0-chart-0-review', 'graphic-0-0'])
     expect(designGraphic.mock.calls[0]![1]).toMatchObject({
       chapterId: 'c1',
       startMs: 9000,

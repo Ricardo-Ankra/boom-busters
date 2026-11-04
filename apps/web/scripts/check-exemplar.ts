@@ -10,7 +10,8 @@ import {
   renderRegistry,
   vendoredHash,
 } from '@/lib/exemplar-translate'
-import { graphicCodeIssue } from '@/lib/graphic-code/check'
+import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
+import { browserFrames, FramesUnavailable } from '@/lib/graphic-code/frames'
 import { readRawFlags } from '@/lib/live-set-args'
 
 /**
@@ -18,7 +19,9 @@ import { readRawFlags } from '@/lib/live-set-args'
  * (decision 305): the same `graphicCodeIssue` the designer's answers go
  * through, with the entry's synthetic slot, in both frames. No model call,
  * no spend. The paid route is `translate-exemplars.ts`; this is the route for
- * designs written by hand.
+ * designs written by hand. Where a browser can start, the design must also
+ * pass the designer's layout check (decision 389), so no exemplar teaches a
+ * layout the designer's own answer would be refused for.
  *
  *   pnpm --filter @boom-busters/web exemplar:check -- --id stat-counter --claims
  *     prints the derived claims, numbered, for the facts manifest
@@ -55,7 +58,7 @@ function storedIds(): string[] {
     .map((name) => name.slice(0, -3))
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const raw = readRawFlags(process.argv.slice(2))
   const entry = entryOf(raw.id)
   const context = exemplarContext(entry)
@@ -66,15 +69,32 @@ function main(): void {
   if (!raw.source || !raw.title) throw new Error('--source <file> and --title are required')
   const source = readFileSync(raw.source, 'utf8')
   const facts = JSON.parse(raw.facts ?? '[]') as { text: string; claim: number }[]
-  const result = graphicCodeIssue({ title: raw.title, source, facts }, context, {
+  const slot = {
     brief: exemplarBrief(entry, context),
     durationMs: entry.slot.durationMs,
     words: entry.slot.words.map((word) => ({ text: word.text, atMs: word.atMs })),
-  })
+  }
+  const result = graphicCodeIssue({ title: raw.title, source, facts }, context, slot)
   if ('issue' in result) {
     console.log(`REFUSED ${entry.id}: ${result.issue}`)
     process.exitCode = 1
     return
+  }
+  try {
+    const { layoutIssue } = await browserFrames().inspect({
+      compiled: result.code.compiled,
+      props: dryRunProps(context, slot),
+      durationMs: slot.durationMs,
+      shots: false,
+    })
+    if (layoutIssue !== null) {
+      console.log(`REFUSED ${entry.id}: ${layoutIssue}`)
+      process.exitCode = 1
+      return
+    }
+  } catch (error) {
+    if (!(error instanceof FramesUnavailable)) throw error
+    console.log(`(no layout check: ${error.message})`)
   }
   console.log(`PASSED ${entry.id}`)
   if ('write' in raw) {
@@ -91,9 +111,7 @@ function main(): void {
   }
 }
 
-try {
-  main()
-} catch (error) {
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error))
   process.exitCode = 1
-}
+})

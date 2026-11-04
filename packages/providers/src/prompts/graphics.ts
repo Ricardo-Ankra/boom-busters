@@ -1,6 +1,9 @@
 import {
   figureDigitGroups,
+  GRAPHIC_CONCEPT_MAX,
   GRAPHIC_SOURCE_MAX,
+  GRAPHIC_STORYBOARD_LINE_MAX,
+  GRAPHIC_STORYBOARD_MAX,
   GRAPHIC_STILL_MAX_MS,
   GRAPHIC_TITLE_MAX,
   PlannedGraphicCodeSchema,
@@ -19,8 +22,8 @@ import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
 import type { Exemplar } from '../exemplars/index'
 import { formatIssues, parseJsonCompletion } from './json'
-import { ignoreRepairs, trimField, type Note } from './repair'
-import { outputBudget, type LLMTaskRequest } from '../llm/types'
+import { capList, ignoreRepairs, trimField, type Note } from './repair'
+import { outputBudget, type LLMTaskRequest, type MsgImage } from '../llm/types'
 
 export { GRAPHIC_CODE_FIXTURE_SOURCE }
 
@@ -94,8 +97,15 @@ slot: its chapter, the paragraph it sits in, the words it covers, its length, ev
 spoken word with its time from the slot's start, the intent (what the viewer must take
 away) and the claims it rests on. A chart slot also carries its data.
 
-Answer with JSON only:
-{"title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
+Answer with JSON only, its keys in this order, so the concept and the storyboard are settled
+before the code is written:
+{"concept": "...", "storyboard": ["...", "..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
+- "concept": the one idea the graphic is made of, in one line of at most ${GRAPHIC_CONCEPT_MAX} characters:
+  what the picture is and how it changes ("the sentence parts and the figure rises out of
+  it"), found in this slot's own words.
+- "storyboard": the graphic moment by moment on the slot's clock, one entry per change, each
+  starting with its time (2.0 s, on "1.2bn": the figure rises out of the gap, pushing the
+  lead-in up into its label), at most ${GRAPHIC_STORYBOARD_MAX} entries. Then write the code to it.
 - "title": the slot card's name for the graphic, one line of at most ${GRAPHIC_TITLE_MAX} characters.
 - "facts": every number and every quoted phrase the graphic shows, each with the NUMBER
   of the claim it comes from. A year is a number. At most 40 entries: more is refused, not
@@ -203,12 +213,36 @@ The code is run at every 250 ms of the slot in both frames before it is kept: a 
 that throws, or takes more than 2 seconds, is refused. The last second shows the
 finished graphic, with words or figures on screen.
 
-Craft:
+Craft. You are a motion designer, not a slide builder: the graphic is one idea that moves.
+- A concept, not a layout. Find the picture in this slot's own words (a sentence that splits
+  open to show its figure, a repeated word kept while what follows it changes, a door that
+  opens on a name) and build the whole graphic out of it. A centred column of lines, each
+  fading in under the last, is a template, not a design.
+- Each moment is made out of the one before: an element arrives once and then changes role
+  instead of leaving (a lead-in shrinks into the figure's label, a rule becomes the line a
+  title drops from, a spoken word collapses into the divider it names, a figure docks into a
+  row to make room for the next). What has landed stays unless the concept takes it away.
+- A hook in the first half second: something on screen and moving before the first word
+  lands, and it is part of the concept (the rule the figure will stand on, the mark the
+  quote will open with), not decoration.
 - Kinetic type, not paragraphs: a few words at a time, big, entering as they are spoken.
   A line can build word by word.
 - One dominant idea with secondary detail: one thing is biggest, and the rest supports it.
 - Motion keyed to the spoken words: each new thing said gets its own change, whether an
   entrance, a highlight, a bar growing or a line drawing across.
+- Something changes about every 1.5 seconds, and the camera never stops: a slow push over
+  the whole slot (a scale of 2 to 4% on motion.ease.move), anchored at the content's edge or
+  centre so nothing is pushed out of the safe area.
+- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far
+  it moved since the frame before (compute its place at frame - 1), and none at rest.
+- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a
+  card, never a spin for its own sake.
+- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring
+  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to
+  the next. The invention goes into the type, the framing and the hand-offs, never the data
+  marks.
+- Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one
+  whole layout to another, decorative gradients, drop shadows for depth.
 - Entrances, exits and moves come from the tokens, in the house motion below. Nothing
   passes its mark except the one hero spring of a beat and snap's hair of overshoot on
   small things; nothing spins.
@@ -239,7 +273,9 @@ and every length are judged on the board, not checked:
 - Lengths come from motion.ms: an entrance is motion.ms.enter, an exit motion.ms.exit
   (exits are shorter than entrances), a wipe motion.ms.reveal, a bar or a line drawn on
   motion.ms.draw, a count motion.ms.count, a move motion.ms.move. A change within a beat
-  is an exit, a motion.ms.gap pause, then an entrance. Convert with motion.frames(ms, fps).
+  transforms what is on screen (it moves, resizes, recolours or docks) rather than clearing
+  it; when something must leave, it exits on motion.ms.exit and what replaces it enters a
+  motion.ms.gap later. Convert with motion.frames(ms, fps).
 - A fade rises motion.px.rise times your unit; a figure scales in from motion.scale.enter,
   never from 0; a wipe is a clip-path.
 - A group of three or more elements staggers: the index-th item enters motion.stagger(index,
@@ -301,6 +337,61 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   }
 }
 
+/** One rendered frame the review is shown (decision 389), and how the message names it. */
+export interface ReviewFrame {
+  label: string
+  image: MsgImage
+}
+
+/**
+ * The review (decision 389): the designer is shown its own passing design,
+ * rendered at the moments a viewer reads it, and asked to keep it or fix
+ * what it sees. The design's own request is the start, so the cached system
+ * prompt and film message are shared, without the redesign's old design (the
+ * design under review replaces it) and without a refusal; the review is the
+ * last message, carrying the frames, the design as answered and the ask.
+ */
+export function buildGraphicReviewRequest(
+  input: GraphicDesignInput,
+  design: PlannedGraphicCode,
+  frames: readonly ReviewFrame[],
+): LLMTaskRequest {
+  const { current: _current, rejection: _rejection, ...rest } = input
+  const request = buildGraphicRequest(rest)
+  const listed = frames.map((frame, index) => `Frame ${index + 1}: ${frame.label}`).join('\n')
+  const review =
+    `Your design for this slot passed every check. Here it is as it renders, ${frames.length} frames ` +
+    `in this order:\n${listed}\nLogos are drawn as empty boxes in these frames; the film shows the marks.\n\n` +
+    `The design:\n\`\`\`\`json\n${JSON.stringify(design, null, 2)}\n\`\`\`\`\n\n` +
+    'Look at each frame as a viewer would, against your concept and storyboard. Fix what you see: ' +
+    'words that collide or crowd, text cut off or pressed against an edge, type too small to read on a ' +
+    'phone, a frame with two things competing to be biggest, a moment that is empty or late against ' +
+    'its word, a concept that does not read, or anything the craft section rules out. If every frame ' +
+    'reads cleanly, answer {"keep": true} and nothing else. Otherwise answer the whole design again in ' +
+    'the same JSON shape, its keys in the same order, with the fixes made and what works kept.'
+  return {
+    ...request,
+    messages: [
+      ...request.messages,
+      { role: 'user', content: review, images: frames.map((frame) => frame.image) },
+    ],
+  }
+}
+
+/** The review's answer: keep the design, or a revised one to check. */
+export type GraphicReview = { keep: true } | { keep: false; design: PlannedGraphicCode }
+
+/**
+ * The review's answer, validated: `{"keep": true}` keeps the design; anything
+ * else is a whole design, read as the designer's answer is (decision 293's
+ * trims included) and refused as it would be.
+ */
+export function parseGraphicReview(text: string, note: Note = ignoreRepairs): GraphicReview {
+  const raw = parseJsonCompletion(text, z.looseObject({}), 'graphic review')
+  if (raw['keep'] === true) return { keep: true }
+  return { keep: false, design: parseGraphicCode(text, note) }
+}
+
 /**
  * The slot's exemplar (decision 305): one passing design of the technique
  * the brief calls for, in the sandbox and on the tokens. It is the only
@@ -312,8 +403,9 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
 function exemplarBlock(exemplar: Exemplar): string {
   return (
     `A passing design of this technique (${exemplar.technique}: ${exemplar.description}), in this ` +
-    'sandbox and on the tokens, to pattern on. Its words and figures are its own; yours come ' +
-    'from this slot and its claims:\n' +
+    'sandbox and on the tokens, for its mechanics, its timing and its standard. Its concept came ' +
+    "from its own narration: find this slot's own rather than reusing its layout. Its words and " +
+    'figures are its own; yours come from this slot and its claims:\n' +
     '````jsx\n' +
     exemplar.source +
     '\n````'
@@ -341,17 +433,33 @@ function currentDesign(current: CurrentDesign): string {
 }
 
 /**
- * The designer's answer, validated. The title is free text, so one over
- * `GRAPHIC_TITLE_MAX` is trimmed with `trimField` and the trim reported
- * through `note` (decision 293). Nothing else is repaired: a cut source would
- * not compile, and a claim number or a fact's text is a fact. A malformed
- * answer is refused, and the retry is told why (decision 292).
+ * The designer's answer, validated. The title, the concept and the
+ * storyboard are free text, so one over its limit is trimmed with
+ * `trimField` (a storyboard past `GRAPHIC_STORYBOARD_MAX` lines is capped)
+ * and the repair reported through `note` (decisions 293 and 388). Nothing
+ * else is repaired: a cut source would not compile, and a claim number or a
+ * fact's text is a fact. A malformed answer is refused, and the retry is
+ * told why (decision 292).
  */
 export function parseGraphicCode(text: string, note: Note = ignoreRepairs): PlannedGraphicCode {
   const raw = parseJsonCompletion(text, z.looseObject({}), 'graphic code')
+  const storyboard = capList(
+    raw['storyboard'],
+    GRAPHIC_STORYBOARD_MAX,
+    "the graphic's storyboard",
+    note,
+  )
   const parsed = PlannedGraphicCodeSchema.safeParse({
     ...raw,
     title: trimField(raw['title'], GRAPHIC_TITLE_MAX, "the graphic's title", note),
+    concept: trimField(raw['concept'], GRAPHIC_CONCEPT_MAX, "the graphic's concept", note),
+    ...(Array.isArray(storyboard)
+      ? {
+          storyboard: storyboard.map((line) =>
+            trimField(line, GRAPHIC_STORYBOARD_LINE_MAX, 'a storyboard line', note),
+          ),
+        }
+      : {}),
   })
   if (!parsed.success) {
     throw new ValidationError(`The graphic answer is malformed: ${formatIssues(parsed.error)}`, {

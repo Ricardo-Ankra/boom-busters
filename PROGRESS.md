@@ -4511,6 +4511,45 @@ This is on master and unrelated to this work.
       History, Copy, then Draft with AI in turn (`c159bb4`). The Impeccable
       detector reports no findings on the Bible tab files.
 
+## Exemplars that transform (2026-11-03)
+
+> The first three exemplars rewritten to a motion-design standard taken from
+> a showreel prompt the owner shared: a named concept and a storyboard before
+> any code, every moment built out of the last rather than added or swapped,
+> motion blur that follows speed, a camera that never stops, and frames
+> checked by eye. Branch `exemplars-transform`; decision 387. The other
+> fifteen followed on branch `exemplars-rest`, with the designer's prompt and
+> answer (decision 388).
+
+### Deliverables
+
+- [x] `kinetic-word-stack`, `stat-counter` and `bar-chart` rewritten, each
+      passing `exemplar:check`; manifest descriptions and the three
+      `graphics-exemplar-*` lift fixtures follow.
+- [x] Owner's first review: notches off the stat counter, bars rising from
+      the baseline again on the bar chart.
+- [x] Owner approved the revised three ("Happy lets proceed to the next
+      steps").
+- [x] The other fifteen exemplars, each passing `exemplar:check` and
+      reviewed on stills every 500 ms or 1 s in both frames (`9699d15`).
+- [x] The prompt's craft section and a `concept` and `storyboard` in the
+      designer's answer (decision 388).
+- [x] Owner reviewed the eighteen ("Happy").
+- [x] The board shows a coded graphic's concept and storyboard (`54238775`).
+- [x] A layout check in a browser and the review on rendered frames, with a
+      Settings switch (decision 389).
+- [x] First production redesign (2026-11-03): the logs showed Chromium
+      launching on Vercel and then failing, and a 300 s timeout before it;
+      fixed the same day (decision 389, the follow-up).
+- [x] After the follow-up's deploy: two redesigns (2026-11-03) ran with no
+      browser failure and no timeout, but neither was reviewed.
+- [x] The review moved to a step of its own, and the designer logs
+      (decision 389, the second follow-up).
+- [ ] After that deploy: a redesign's card says "Reviewed on its rendered
+      frames", and the logs carry its `[graphics]` lines.
+- [ ] Redesign a few real slots on the new prompt and review (paid; on the
+      owner's word).
+
 ---
 
 # Decisions made
@@ -9349,3 +9388,180 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      decision 357's skip is retired. Saved versions keep their stamped slot
      ids, and an Examples edit rechecks registered slots only, so a retired
      key is neither flagged nor kept.
+
+387. **Three exemplars rewritten to transform, not stack** (2026-11-03, owner:
+     "Proceed" on rewriting three exemplars before the rest). Since decision
+     386 a slot's exemplar is the only design the designer sees, so it sets
+     the look more than the prompt does. Seventeen of the eighteen were a
+     centred column whose parts fade and rise in and stay; none used 3D.
+     The rewrites: `stat-counter` has the sentence part and the figure rise
+     out of it on the hero spring, pushing the lead-in up into its label,
+     while the rule under it fills with the count;
+     `kinetic-word-stack` builds the repeated "Nobody" once and rolls the
+     verdicts past it on a CSS 3D drum, the earlier ones turned up and back
+     (down in portrait, where the anchor stacks above); `bar-chart` raises
+     each year's bar out of the baseline as the year is spoken, the last on
+     the hero spring, then draws a line across the tops. Each opens with a concept line
+     and a storyboard on the narration's clock in its header comment, blurs
+     a fast move by its speed (`filter: blur`, from the frame before), and
+     keeps a slow camera push to the last frame.
+     Decisions made where the spec left room: the concept and storyboard
+     live in the source comment for now, since the answer schema has no
+     field for them (cost if wrong: none; they move when the schema does);
+     each design was reviewed on stills rendered every 500 ms through the
+     real `GraphicCode` composition in both frames, with a scratch harness
+     not committed (cost if wrong: none); the camera push is anchored at the
+     content's left edge in landscape, since a push about any other point
+     carried left-aligned text past the inset; a bar label at rest shows its
+     value as the data states it ("4", never "4.0") and rolls at the data's
+     precision only while moving, which the facts check requires. No
+     migration, no deploy beyond Vercel: exemplars ship in the web bundle.
+     Owner's review, the same day: the month notches on the stat counter's
+     rule went (minor marks on an axis read as clutter), and the bar chart's
+     travelling bar went back to bars rising from the baseline (the bars
+     rising out of the x-axis were what worked in the old design).
+
+388. **The designer plans a concept and a storyboard, and is taught to
+     transform** (2026-11-03, owner: "Happy lets proceed to the next steps"
+     after decision 387). The answer gains `concept` (one line, at most 200
+     characters) and `storyboard` (one line per change on the slot's clock,
+     at most 16 of 200 characters), asked for first, so the plan is written
+     before the code; both are stored on the design for the board to show
+     later. Both are optional in the schema, so a design stored before them
+     still parses and an answer that leaves them out is not refused; an
+     over-long concept or line is trimmed and a long storyboard capped, each
+     reported, as an over-long title already is. The craft section now leads
+     with a concept found in the slot's own words and each moment made out of
+     the one before, a hook in the first half second, a change about every
+     1.5 s under a camera push that never stops, blur that follows speed, 3D
+     only when it carries meaning, a ban list (glows, particle bursts, lens
+     flares, camera shake, RGB split, whole-layout crossfades, decorative
+     gradients, drop shadows) and, from the owner's review of 387, charts kept
+     conventional: bars rise from the baseline, lines draw on, no gridlines or
+     minor ticks, no bar that travels between values. The house-motion line
+     "a change within a beat is an exit, a gap, then an entrance" became a
+     transformation of what is on screen, with exit and gap kept for what
+     must leave. The exemplar block says to take an exemplar for its
+     mechanics, timing and standard and find the slot's own concept rather
+     than reuse its layout.
+     The other fifteen exemplars were rewritten to the same standard. Charts
+     changed least: no gridlines, the hero on the spring, the slow push, and
+     one honest emphasis each (the line chart's area filled behind the pen,
+     the comparison chart's gap as a dashed outline, the donut's slice pulled
+     out on "gone", the racing chart's year as a rolling reel). The type
+     techniques changed most: kpi figures dock into a row, the typed line is
+     selected, one marker stroke runs under the phrase, the quote mark settles
+     into the margin, one marker travels the list, the bar draws the lower
+     third's name, the chapter rule becomes the title's edge, doors open on
+     the logo, the pivot word collapses into the split screen's divider.
+     Decisions made where the spec left room: the fields are optional rather
+     than required, since a refusal costs a paid retry and the prompt asks
+     for them first (cost if wrong: a design without a plan, still checked);
+     the board does not show them yet (cost if wrong: none; a later card
+     change); a full-width layout pushes 2% from the centre, a left-aligned
+     one 3% from its left edge, so neither pushes text past the inset. Every
+     designer prompt's lift fixture changed (24), and nothing else. No
+     migration: `code` lives in the brief's JSON column. Shipping: a Vercel
+     deploy and `PUT /api/inngest`; the new prompt applies to every graphic
+     designed after it, including Redesign.
+
+389. **The designer's layout is measured in a browser, and it reviews its
+     own frames** (2026-11-03, owner: "do 1,2 and 3"; rulings: Chromium in the
+     app rather than Remotion Lambda through the broker; the review behind a
+     Settings switch, on by default). The dry run sees markup, not layout, and
+     most faults found by eye in the eighteen exemplars were layout: words
+     colliding, a mark over a word, a push carrying text off the edge.
+     What shipped. `lib/graphic-code/frames.ts` takes the dry run's markup at
+     each rest moment (a word's entrance once settled, or just before the
+     next word; merged within 400 ms; at most ten; and the end), sets it in
+     headless Chromium at 1920 by 1080 and 1080 by 1920 with the channel's
+     faces from Google Fonts and Remotion's border-box reset, and measures
+     every visible run of text. Refused, inside the design's parse and so
+     retried once with the reason: two runs that overlap by more than a fifth
+     of the smaller, a run more than 24 px past the safe area, type set under
+     26 px. Only text being read counts: opacity at least 0.5 and not under a
+     blur. With the review on, the passing design's frames (up to six 16:9
+     moments, the 9:16 middle and end, JPEG at half size) go back to the
+     designer with the design as answered: `{"keep": true}` keeps it, a whole
+     design is checked like any answer, layout included, and replaces it only
+     if it passes. The design records `review: kept | revised`, and the board
+     says so under the plan, which now shows the concept and the storyboard
+     behind "Show storyboard". Settings, Models has "Review each graphic on
+     its rendered frames" under the Motion graphics route.
+     Calibration. All eighteen exemplars pass; a drum with its first, too
+     small radius is refused ("asked." and "checked." overlap at 2.4 s). Seven
+     false refusals on the first pass were fixed in the measure, not the
+     designs: a line box runs a fifth above the capitals, so a run is measured
+     on its letters' band (a fifth off the top, a tenth off the bottom) and
+     then clipped; size is the computed font size times the 2D scale, so a
+     word turned away in 3D is not "small"; the slack past the safe area is
+     24 px for the camera's push. The check found one real fault the eye
+     missed: the chapter title's waiting word sat over the line above when
+     the title wrapped in 9:16; each word is now masked at its own line.
+     Decisions made where the spec left room: the page script is JavaScript
+     text, not a serialised function, because a compiler that keeps names
+     (esbuild under tsx) wraps functions in a helper the page lacks; the
+     review is one call, no retry, and only with 90 s of the 240 s deadline
+     left, and nothing it does can lose a passing design (a failed call, a
+     budget stop or the clock keeps the design unmarked); a browser that
+     cannot start leaves the design on the dry run's word and logs
+     "[graphics] designing ... without the browser" once, rather than failing
+     designs; mock mode runs no browser and no review; the layout check also
+     runs in `exemplar:check` where a browser starts; the web tests run with
+     `GRAPHIC_FRAMES=off` so the runners' tests never start Chromium, and the
+     designer's own tests stub it; `callForAnswer` takes an async parse. Not
+     checked: overlap during motion, which the review sees in its frames.
+     Packaging: `playwright-core` (1.62.1, matching e2e, so local runs use the
+     Chromium e2e installs) and `@sparticuz/chromium` (153) are server
+     externals; the Inngest route's trace was checked after a production
+     build: Chromium's compressed browser, fonts and libraries, `tar-fs`, and
+     all of `playwright-core` (316 files, shipped whole because it loads parts
+     of itself lazily). Whether Chromium starts on Vercel is only proven by
+     the first design after the deploy: the log line above says if not.
+     Cost: the review is a second graphics-route call with about eight
+     images per graphic, roughly doubling a graphic's cost; the layout check
+     is free. Shipping: a Vercel deploy and `PUT /api/inngest`. No migration,
+     no Remotion or broker deploy.
+     Follow-up, the same evening (owner: "I did do a redesign please check
+     the logs"). Read with the Vercel CLI, now installed and signed in to the
+     account that owns the project. The first attempt ran into Vercel's 300 s
+     limit; Inngest's retry launched Chromium from `@sparticuz/chromium` and
+     lost it at `browser.newPage` ("Target page, context or browser has been
+     closed"), and the design went on without the browser, as designed. The
+     cause: the packaged Chromium runs as a single process, and closing its
+     last page closes the browser, so the 9:16 frame's new page found it gone;
+     reproduced locally with the same flags, where the inspection did not
+     throw but hung with its promise unsettled, which is how the first attempt
+     reached the 300 s limit. Fixed: one page serves both frame sizes, resized
+     between them; the launch (20 s), the whole inspection (45 s, and never
+     past the design's deadline less 20 s, none at all with under 10 s to
+     spend), the font wait (3 s) and the close (5 s) are each raced against a
+     clock, a stall is `FramesUnavailable`, and a browser that starts after
+     its launch was given up on closes itself. `GRAPHIC_CHROMIUM_ARGS` adds
+     flags to a local launch, so a test runs the single-process browser. The
+     timed-out attempt's model calls were paid again by the retry.
+     Second follow-up, 2026-11-04 (owner: "proceed"). The two redesigns after
+     the browser fix were read from production in a read-only transaction:
+     both designs were stored with their concept and storyboard, neither had
+     a `review`, and the ledger held four graphics calls and no review call.
+     Each first answer was refused and retried; one design used about 190 s
+     of the 240 s step budget, below the 90 s the review needed, and the
+     other left about 110 s yet showed no review, its failure swallowed by
+     the catch that keeps a design (a failed call also deletes its ledger
+     reservation), so nothing recorded why. A design call takes 80 to 110 s,
+     so the review cannot share the design's step. Now: `reviewGraphicWith`
+     reviews a stored design with its own 240 s deadline, photographing it
+     without measuring (a design stored before the layout check is still
+     shown its frames); `designGraphicWith` no longer reviews. The visuals
+     run reviews each landed design in `<id>-review`; Redesign (with its
+     steer) and retype run `review-graphic` through `reviewStoredGraphic`,
+     which lands only on the design it reviewed (a newer one wins) and never
+     reviews a design twice. Every refusal, review outcome, skip and failure
+     is one `[graphics] <project> <chapter> at <s>: ...` line, error level
+     for failures and warning level otherwise (the lint allows no other).
+     Decisions made where the spec left room: a skipped review leaves the
+     design unmarked; Redesign clears its "drafting" marker before the review
+     step, so the card shows the new design while the review runs and changes
+     if it is revised (cost if wrong: a card that changes once more); a run
+     parked before the deploy replays no `designed` on the Redesign step and
+     skips the review.

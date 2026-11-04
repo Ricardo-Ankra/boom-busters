@@ -17,6 +17,7 @@ import type {
 import type * as Providers from '@boom-busters/providers'
 import type * as Compile from './graphic-code/compile'
 import type * as DryRun from './graphic-code/dry-run'
+import type * as Frames from './graphic-code/frames'
 import { NonRetriableError } from 'inngest'
 import type * as Db from '@boom-busters/db'
 
@@ -25,14 +26,31 @@ vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) 
 
 // The wrappers resolve the project's channel before they call the model; this
 // file has no database, so the lookup answers with a fixed channel.
-vi.mock('@boom-busters/db', async (importOriginal) => ({
-  ...(await importOriginal<typeof Db>()),
-  channelForProject: async () => ({
-    channelId: '01J00000000000000000000CH1',
-    slug: 'first',
-    settings: {},
-    ...(await import('@boom-busters/schemas')).FIRST_CHANNEL_IN_USE,
-  }),
+// The review is off unless a test turns it on (decision 389), so the two-call
+// ladder below is the design's own.
+let reviewSetting = false
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const schemas = await import('@boom-busters/schemas')
+  return {
+    ...(await importOriginal<typeof Db>()),
+    channelForProject: async () => ({
+      channelId: '01J00000000000000000000CH1',
+      slug: 'first',
+      settings: {
+        ...schemas.DEFAULT_SETTINGS,
+        features: { ...schemas.DEFAULT_SETTINGS.features, graphicReview: reviewSetting },
+      },
+      ...schemas.FIRST_CHANNEL_IN_USE,
+    }),
+  }
+})
+
+// The browser (decision 389): every inspection passes and photographs nothing
+// unless a test hands it answers of its own.
+const inspect = vi.fn<Frames.GraphicFrames['inspect']>()
+vi.mock('./graphic-code/frames', async (importOriginal) => ({
+  ...(await importOriginal<typeof Frames>()),
+  browserFrames: () => ({ inspect: (input: Frames.FramesInput) => inspect(input) }),
 }))
 let mock = false
 /** When set, stands in for the corpus: the exemplar every slot is sent. */
@@ -75,6 +93,7 @@ import { graphicCodeIssue } from './graphic-code/check'
 import { slotIntent } from './graphic-design-core'
 import {
   designGraphic,
+  reviewGraphic,
   designGraphicWith,
   designIssueText,
   GRAPHIC_DESIGN_DEADLINE_MS,
@@ -214,10 +233,16 @@ beforeEach(() => {
   callLlm.mockReset()
   mock = false
   exemplarStub = null
+  reviewSetting = false
+  // The config turns the browser off for every other file; this one stubs it.
+  vi.stubEnv('GRAPHIC_FRAMES', 'on')
+  inspect.mockReset()
+  inspect.mockResolvedValue({ layoutIssue: null, shots: [] })
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllEnvs()
 })
 
 const CUT_OFF = "the designer's answer was cut off at its length limit"
@@ -737,5 +762,178 @@ describe('designIssueText', () => {
     const text = designIssueText('x'.repeat(900))
     expect(text.length).toBe(500)
     expect(text.endsWith('…')).toBe(true)
+  })
+})
+
+describe('the layout check in the design (decision 389)', () => {
+  const LAYOUT =
+    'at 1.6 s in landscape, "Raised in one round" and "$4bn" overlap; give each its own place, or let one leave before the other lands'
+
+  it("refuses a design the browser finds colliding, retries with the browser's reason, and logs the refusal", async () => {
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    inspect
+      .mockResolvedValueOnce({ layoutIssue: LAYOUT, shots: [] })
+      .mockResolvedValueOnce({ layoutIssue: null, shots: [] })
+    callLlm.mockResolvedValueOnce(answer('$4bn')).mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(sent(1)).toContain(LAYOUT)
+    // The browser measures with the dry run's props, and photographs nothing for the design.
+    expect(inspect.mock.calls[0]![0]).toMatchObject({ shots: false, measure: true })
+    expect(inspect.mock.calls[0]![0].props.words).toEqual(WORDS)
+    expect(String(logged.mock.calls[0]![0])).toBe(
+      `[graphics] ${CONTEXT.projectId} c1 at 0.0 s: refused: ${LAYOUT}`,
+    )
+    logged.mockRestore()
+  })
+
+  it('asks no review inside the design: one call, unmarked', async () => {
+    reviewSetting = true
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok && result.code.review).toBeUndefined()
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it("bounds each inspection by the design's deadline, and starts none without the time", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT)
+    // A fresh design: the inspection's own ceiling.
+    expect(inspect.mock.calls[0]![0].timeoutMs).toBe(45_000)
+
+    inspect.mockClear()
+    callLlm.mockImplementationOnce(async () => {
+      // The answer came back with 25 s of the 240 s left: under the 20 s margin and the 10 s floor.
+      vi.setSystemTime(Date.now() + 215_000)
+      return answer('$4bn')
+    })
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result.ok).toBe(true)
+    expect(inspect).not.toHaveBeenCalled()
+  })
+
+  it('designs on without the browser when it cannot start, saying so once at error level', async () => {
+    const { FramesUnavailable } = await vi.importActual<typeof Frames>('./graphic-code/frames')
+    inspect.mockRejectedValue(new FramesUnavailable('no Chromium on this host'))
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    expect(result).toMatchObject({ ok: true, code: { source: figureSource('$4bn') } })
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(String(logged.mock.calls[0]![0])).toContain(
+      'without the browser: no Chromium on this host',
+    )
+    logged.mockRestore()
+  })
+})
+
+describe('reviewGraphic, a step of its own (decision 389)', () => {
+  const SHOT = { orientation: 'landscape' as const, atMs: 1600, jpeg: '/9j/AAAA' }
+  const LAYOUT =
+    'at 1.6 s in landscape, "Raised in one round" and "$4bn" overlap; give each its own place, or let one leave before the other lands'
+  /** The slot with a stored design, as the review step reads it. */
+  const stored = async () => {
+    const designed = await designGraphic(CONTEXT, SLOT)
+    if (!designed.ok) throw new Error(designed.issue)
+    callLlm.mockReset()
+    inspect.mockReset()
+    return { ...SLOT, brief: { ...BRIEF, code: designed.code } }
+  }
+
+  beforeEach(() => {
+    reviewSetting = true
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+  })
+
+  it('photographs the stored design, shows it the frames, and marks a keep', async () => {
+    const slot = await stored()
+    inspect.mockResolvedValueOnce({ layoutIssue: null, shots: [SHOT] })
+    callLlm.mockResolvedValueOnce({ text: '{"keep": true}' })
+    const result = await reviewGraphic(CONTEXT, slot)
+    expect(result).toMatchObject({
+      outcome: 'kept',
+      code: { source: figureSource('$4bn'), review: 'kept' },
+    })
+    // Photographed only, so a design stored before the layout check is still shown its frames.
+    expect(inspect.mock.calls[0]![0]).toMatchObject({ shots: true, measure: false })
+    const [request, options] = callLlm.mock.calls[0]!
+    expect(options).toMatchObject({ purpose: 'review' })
+    const last = request.messages.at(-1)
+    expect(last.images).toEqual([{ mimeType: 'image/jpeg', data: '/9j/AAAA' }])
+    expect(last.content).toContain('Frame 1: 16:9 at 1.6 s')
+    // The design is shown citing claims by number, as the designer answered it.
+    expect(last.content).toContain('"claim": 1')
+  })
+
+  it('takes a revision that passes every check, the layout included', async () => {
+    const slot = await stored()
+    inspect
+      .mockResolvedValueOnce({ layoutIssue: null, shots: [SHOT] })
+      .mockResolvedValueOnce({ layoutIssue: null, shots: [] })
+    const revised = { ...planned('$4bn'), title: 'Four billion, one round' }
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify(revised) })
+    const result = await reviewGraphic(CONTEXT, slot)
+    expect(result).toMatchObject({
+      outcome: 'revised',
+      code: { title: 'Four billion, one round', review: 'revised' },
+    })
+    expect(inspect.mock.calls[1]![0]).toMatchObject({ shots: false, measure: true })
+  })
+
+  it('keeps the design when the revision fails a check or the browser', async () => {
+    const slot = await stored()
+    inspect.mockResolvedValueOnce({ layoutIssue: null, shots: [SHOT] })
+    callLlm.mockResolvedValueOnce(answer('$7bn'))
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+      outcome: 'kept',
+      code: { source: figureSource('$4bn'), review: 'kept' },
+    })
+
+    inspect
+      .mockResolvedValueOnce({ layoutIssue: null, shots: [SHOT] })
+      .mockResolvedValueOnce({ layoutIssue: LAYOUT, shots: [] })
+    const revised = { ...planned('$4bn'), title: 'Four billion, one round' }
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify(revised) })
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+      outcome: 'kept',
+      code: { title: 'Raised in one round', review: 'kept' },
+    })
+  })
+
+  it('skips, saying why at error level, when the review call fails or the budget stops it', async () => {
+    const slot = await stored()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    inspect.mockResolvedValueOnce({ layoutIssue: null, shots: [SHOT] })
+    callLlm.mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 10,
+        monthSpendUsd: 10,
+        estimateUsd: 0.1,
+      }),
+    )
+    const result = await reviewGraphic(CONTEXT, slot)
+    expect(result.outcome).toBe('skipped')
+    expect(String(logged.mock.calls[0]![0])).toMatch(/review skipped: the review failed: /)
+    logged.mockRestore()
+  })
+
+  it('skips with no frames to show, and when Settings has it off, without a call', async () => {
+    const slot = await stored()
+    inspect.mockResolvedValueOnce({ layoutIssue: null, shots: [] })
+    expect(await reviewGraphic(CONTEXT, slot)).toEqual({
+      outcome: 'skipped',
+      reason: 'no frames to show',
+    })
+
+    reviewSetting = false
+    expect(await reviewGraphic(CONTEXT, slot)).toEqual({
+      outcome: 'skipped',
+      reason: 'switched off in Settings',
+    })
+    expect(callLlm).not.toHaveBeenCalled()
   })
 })

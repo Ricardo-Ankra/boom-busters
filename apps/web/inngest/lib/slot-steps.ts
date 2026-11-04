@@ -18,7 +18,8 @@ export const STEP_MARGIN = 20
  *
  * Real boards stay per-slot: a 60-minute board is 360 to 855 slots (3,420 s of
  * narration over 9.5 s typical and 4 s shortest slots at hold 1), with about
- * 120 other steps in visuals and 9 in assembly.
+ * 200 other steps in visuals and 9 in assembly. Only its shortest-slot end
+ * batches in visuals, and that run already passes the limit without batching.
  *
  * Every input is read from the run's own memoised plan or load step, so the
  * answer is the same on replay.
@@ -41,13 +42,14 @@ export function perSlotStepsFit(slots: number, otherSteps: number): boolean {
  * Terminal, 2 (each ends the run, counted anyway): shot-list-<n>-over-budget
  * :258 and graphic-<n>-over-budget :282.
  * Per chapter, 1: shot-list-<n> :229.
- * Per designed graphic or chart slot, 1: graphic-<n>-<m> through
- * `designPlannedGraphics` :269 (`lib/graphic-steps.ts:66`).
+ * Per designed graphic or chart slot, 2: graphic-<n>-<m> and its review
+ * graphic-<n>-<m>-review (decision 389) through `designPlannedGraphics` :269
+ * (`lib/graphic-steps.ts:78` and `:102`).
  */
 export const VISUALS_FIXED_STEPS = 19 + 2
 
 export function visualsOtherSteps(input: { chapters: number; designedSlots: number }): number {
-  return VISUALS_FIXED_STEPS + input.chapters + input.designedSlots
+  return VISUALS_FIXED_STEPS + input.chapters + 2 * input.designedSlots
 }
 
 /**

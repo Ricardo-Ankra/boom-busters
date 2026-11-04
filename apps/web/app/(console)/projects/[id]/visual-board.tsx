@@ -101,6 +101,7 @@ import {
 } from './visuals-actions'
 import { CameraRow } from './camera-row'
 import { DirectionCard } from './direction-card'
+import { GraphicPlan } from './graphic-plan'
 import {
   codeLogosFor,
   GraphicPlayback,
@@ -1300,6 +1301,7 @@ function GraphicSlot({
       {code ? (
         <>
           <p className="text-[13px] text-[var(--color-text-primary)]">{code.title}</p>
+          <GraphicPlan code={code} />
           {playing ? null : <GraphicCodePreview code={code} brand={brand} logos={codeLogos} />}
         </>
       ) : scene ? (
@@ -1398,7 +1400,12 @@ function ChartSlot({
 
   return (
     <div className="flex flex-col gap-2">
-      {code ? <p className="text-[13px] text-[var(--color-text-primary)]">{code.title}</p> : null}
+      {code ? (
+        <>
+          <p className="text-[13px] text-[var(--color-text-primary)]">{code.title}</p>
+          <GraphicPlan code={code} />
+        </>
+      ) : null}
       {playing ? null : code ? (
         <GraphicCodePreview code={code} brand={brand} logos={codeLogos} data={data} />
       ) : (
