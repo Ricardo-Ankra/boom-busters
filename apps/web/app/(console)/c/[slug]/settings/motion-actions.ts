@@ -460,7 +460,20 @@ export async function draftMotionIdentityAction(
       avoid: row.avoid,
       reading: row.reading ?? null,
     })),
-    brand: { colors: { ...brand.colors }, fonts: { ...brand.fonts } },
+    brand: {
+      colors: Object.fromEntries(
+        Object.entries(brand.colors).flatMap(([role, value]) =>
+          typeof value === 'string'
+            ? [[role, value]]
+            : Array.isArray(value)
+              ? [[role, value.join(', ')]]
+              : Object.entries(value).map(([inner, hex]) => [`${role} ${inner}`, hex]),
+        ),
+      ),
+      fonts: Object.fromEntries(
+        Object.entries(brand.typography).map(([role, face]) => [role, face.family]),
+      ),
+    },
     techniques: MANIFEST.map((entry) => ({
       technique: entry.technique,
       description: entry.description,

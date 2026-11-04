@@ -56,7 +56,7 @@ vi.mock('@/lib/storage', () => ({
   },
 }))
 
-const sent = vi.hoisted(() => ({ send: vi.fn(async () => ({ ids: ['evt'] })) }))
+const sent = vi.hoisted(() => ({ send: vi.fn(async (_event: unknown) => ({ ids: ['evt'] })) }))
 vi.mock('@/inngest/client', () => ({ inngest: { send: sent.send } }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
