@@ -45,6 +45,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'motion-reference-reader': { key: 'event.data.referenceId', mode: 'cancel' },
   // A derivation runs one per channel at a time (spec 9.1); the launch action refuses while one runs.
   'motion-exemplar-deriver': { key: 'event.data.channelId', mode: 'cancel' },
+  'motion-exemplar-refiner': { key: 'event.data.channelId', mode: 'cancel' },
   'slot-redirector': { key: 'event.data.slotId', mode: 'cancel' },
   'visuals-replanner': { key: 'event.data.projectId', mode: 'cancel' },
   'short-render-runner': { key: 'event.data.shortId', mode: 'cancel' },
