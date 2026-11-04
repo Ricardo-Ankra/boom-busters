@@ -2,7 +2,8 @@ import { safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { AVAILABLE_FONTS } from '@boom-busters/compositions/fonts'
 import type { Browser, Page } from 'playwright-core'
-import { FRAME_SIZES, graphicMarkupAt, type FrameSize } from './dry-run'
+import { FRAME_SIZES, GRAPHIC_SAMPLE_MS, graphicMarkupAt, type FrameSize } from './dry-run'
+import { SHEET_WIDTH, sheetDocument, type SheetTile } from './sheet-document'
 
 /**
  * The designer's frames (decision 389): the code rendered in a real browser
@@ -38,6 +39,10 @@ export interface TextBox {
   opacity: number
   /** Under a blur: moving, so not read as at rest. */
   moving: boolean
+  /** The computed colour of the type, as the page reports it. */
+  color: string
+  /** The nearest ancestor's painted background, or null when none paints one (the brand background shows). */
+  ground: string | null
 }
 
 export interface FrameShot {
@@ -57,12 +62,30 @@ export interface FramesInput {
   measure?: boolean
   /** The longest the whole inspection may take; `INSPECT_MAX_MS` when not given. */
   timeoutMs?: number
+  /**
+   * Moments photographed through the moves (spec 2026-11-04, section 10.2),
+   * measured in flight for findings and laid out on the contact sheet; none
+   * when not given.
+   */
+  dense?: readonly number[]
+  /** A contact sheet per orientation of its dense shots, taken in the same page. */
+  sheets?: boolean
+  /** The longest the dense set and the sheets may take after the rest moments; the time left less a margin when not given. */
+  denseMaxMs?: number
 }
 
 export interface FramesResult {
   /** Why the layout cannot be kept, naming the moment and the frame; null when it reads. */
   layoutIssue: string | null
   shots: FrameShot[]
+  /**
+   * What the critic is told, never a refusal: a collision in flight, settled
+   * text under the contrast bar, and a dense set cut short, in time order.
+   */
+  findings: string[]
+  dense: FrameShot[]
+  /** The contact sheet of each orientation's dense shots, a JPEG in base64. */
+  sheets: Partial<Record<FrameSize['orientation'], string>>
 }
 
 /** What the designer is handed: the real browser in the app, a stub in its tests. */
@@ -82,6 +105,8 @@ export class FramesUnavailable extends Error {}
 export const INSPECT_MAX_MS = 45_000
 const LAUNCH_MAX_MS = 20_000
 const CLOSE_MAX_MS = 5_000
+/** What the dense set leaves of the inspection's time for the rest to finish. */
+const DENSE_MARGIN_MS = 5_000
 
 /** `work`, or `FramesUnavailable` naming `what` once `ms` have passed. */
 function withinTime<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
@@ -156,6 +181,24 @@ export function shotMoments(
   return { landscape: [...new Set(wide)], portrait: [...new Set([middle, last])] }
 }
 
+/** At most this many dense shots per orientation (spec 2026-11-04, section 10.4). */
+export const DENSE_SHOTS_MAX = 24
+
+/**
+ * The review's dense moments (spec 10.2): evenly across the slot, every
+ * sample step on a short slot and thinned to the cap on a long one, from
+ * one step in. The derivation passes its own moments around each
+ * storyboard beat instead.
+ */
+export function denseMoments(durationMs: number): number[] {
+  const step = Math.max(GRAPHIC_SAMPLE_MS, Math.ceil(durationMs / DENSE_SHOTS_MAX))
+  const moments: number[] = []
+  for (let at = step; at < durationMs && moments.length < DENSE_SHOTS_MAX; at += step) {
+    moments.push(at)
+  }
+  return moments
+}
+
 // ---------------------------------------------------------------------------
 // The layout rules
 // ---------------------------------------------------------------------------
@@ -218,6 +261,97 @@ export function layoutIssueIn(
       if (smaller > 0 && shared / smaller > OVERLAP_SHARE) {
         return `${where}, ${quoted(a.text)} and ${quoted(b.text)} overlap; give each its own place, or let one leave before the other lands`
       }
+    }
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Contrast (spec 2026-11-04, section 10.3)
+// ---------------------------------------------------------------------------
+
+/** Type at or above this size needs 3:1; smaller type needs 4.5:1. */
+export const CONTRAST_LARGE_PX = 24
+export const CONTRAST_LARGE_MIN = 3
+export const CONTRAST_SMALL_MIN = 4.5
+/** At most this many findings per inspection, beyond the cut-short line. */
+const FINDINGS_MAX = 8
+
+/** A CSS colour as the page reports it (`rgb()`, `rgba()`) or as the brand holds it (`#rgb`, `#rrggbb`); null otherwise. */
+function cssColour(value: string): { r: number; g: number; b: number; a: number } | null {
+  const text = value.trim()
+  const fn = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(
+    text,
+  )
+  if (fn) {
+    return {
+      r: Number(fn[1]),
+      g: Number(fn[2]),
+      b: Number(fn[3]),
+      a: fn[4] === undefined ? 1 : Number(fn[4]),
+    }
+  }
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text)
+  if (hex) {
+    const digits = hex[1]!
+    const wide = digits.length === 3 ? [...digits].map((d) => d + d).join('') : digits
+    return {
+      r: parseInt(wide.slice(0, 2), 16),
+      g: parseInt(wide.slice(2, 4), 16),
+      b: parseInt(wide.slice(4, 6), 16),
+      a: 1,
+    }
+  }
+  return null
+}
+
+function luminance(c: { r: number; g: number; b: number }): number {
+  const channel = (v: number) => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+}
+
+/**
+ * The WCAG contrast ratio of type over its ground. A translucent foreground
+ * is blended over the ground first; a ground that is itself translucent
+ * cannot be judged (what shows through is unknown), so null, as is a colour
+ * the page did not resolve to numbers.
+ */
+export function contrastRatio(foreground: string, background: string): number | null {
+  const fg = cssColour(foreground)
+  const bg = cssColour(background)
+  if (!fg || !bg || bg.a < 1) return null
+  const blended = {
+    r: fg.a * fg.r + (1 - fg.a) * bg.r,
+    g: fg.a * fg.g + (1 - fg.a) * bg.g,
+    b: fg.a * fg.b + (1 - fg.a) * bg.b,
+  }
+  const l1 = luminance(blended)
+  const l2 = luminance(bg)
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+}
+
+/**
+ * The first run of settled text under its contrast bar at this moment, as a
+ * finding for the critic, or null. Measured against the nearest painted
+ * ancestor, else the brand background behind the graphic. Only text being
+ * read counts, as the layout rules count it.
+ */
+export function contrastFindingIn(
+  boxes: readonly TextBox[],
+  size: FrameSize,
+  atMs: number,
+  brandBackground: string,
+): string | null {
+  const read = boxes.filter((box) => box.opacity >= READ_OPACITY && !box.moving)
+  for (const box of read) {
+    const ratio = contrastRatio(box.color, box.ground ?? brandBackground)
+    if (ratio === null) continue
+    const needed = box.fontPx >= CONTRAST_LARGE_PX ? CONTRAST_LARGE_MIN : CONTRAST_SMALL_MIN
+    if (ratio < needed) {
+      return `at ${seconds(atMs)} in ${size.orientation}, ${quoted(box.text)} reads at ${ratio.toFixed(1)}:1 on its ground; ${needed}:1 is needed`
     }
   }
   return null
@@ -291,10 +425,14 @@ const MEASURE_IN_PAGE = `(() => {
     let opacity = 1
     let moving = false
     let hidden = false
+    let ground = null
     const clips = []
     for (let element = walker.currentNode.parentElement; element && element !== frame; element = element.parentElement) {
       const style = getComputedStyle(element)
       opacity *= parseFloat(style.opacity) || 0
+      if (ground === null && style.backgroundColor && style.backgroundColor !== 'transparent' && !/^rgba\\(\\d+, \\d+, \\d+, 0\\)$/.test(style.backgroundColor)) {
+        ground = style.backgroundColor
+      }
       if (style.visibility === 'hidden' || style.display === 'none') hidden = true
       if (/blur\\((?!0px\\))/.test(style.filter)) moving = true
       const rect = element.getBoundingClientRect()
@@ -309,6 +447,7 @@ const MEASURE_IN_PAGE = `(() => {
     const parentRect = parent.getBoundingClientRect()
     const scale = parent.offsetWidth > 0 ? parentRect.width / parent.offsetWidth : 1
     const fontPx = (parseFloat(getComputedStyle(parent).fontSize) || 0) * scale
+    const color = getComputedStyle(parent).color
     const range = document.createRange()
     range.selectNodeContents(walker.currentNode)
     for (const line of Array.from(range.getClientRects())) {
@@ -325,7 +464,7 @@ const MEASURE_IN_PAGE = `(() => {
         bottom = Math.min(bottom, clip.bottom)
       }
       if (right - left > 1 && bottom - top > 1) {
-        boxes.push({ node, text, x: left, y: top, width: right - left, height: bottom - top, fontPx, opacity, moving })
+        boxes.push({ node, text, x: left, y: top, width: right - left, height: bottom - top, fontPx, opacity, moving, color, ground })
       }
     }
   }
@@ -383,12 +522,36 @@ async function showMoment(page: Page, markup: string): Promise<void> {
   }, blanked)
 }
 
-/** The whole inspection: in each frame size, every rest moment measured, and the review's moments photographed. */
+/**
+ * The whole inspection: in each frame size, every rest moment measured (a
+ * layout fault refuses, a contrast fault is a finding) and the review's
+ * moments photographed; then, under a soft clock of `denseMaxMs`, the dense
+ * moments measured in flight (a fault is a finding) and photographed, and
+ * the orientation's contact sheet taken in the same page.
+ */
 async function inspectWith(browser: Browser, input: FramesInput): Promise<FramesResult> {
   const moments = restMoments(input.props.words, input.durationMs)
   const wanted = input.shots ? shotMoments(moments) : { landscape: [], portrait: [] }
   const measured = input.measure === false ? [] : moments
-  const shots: FrameShot[] = []
+  const dense = [...new Set(input.dense ?? [])].sort((a, b) => a - b)
+  const result: FramesResult = { layoutIssue: null, shots: [], findings: [], dense: [], sheets: {} }
+  const findings: string[] = []
+  const denseStop = Date.now() + (input.denseMaxMs ?? Infinity)
+  let cutShort = false
+  const note = (finding: string | null) => {
+    if (finding !== null && findings.length < FINDINGS_MAX) findings.push(finding)
+  }
+  const done = () => {
+    result.findings = [
+      ...findings,
+      ...(cutShort
+        ? [
+            `the dense set was cut short at ${result.dense.length} of ${dense.length * FRAME_SIZES.length} shots`,
+          ]
+        : []),
+    ]
+    return result
+  }
   // One page for both frame sizes, resized between them. Vercel's packaged
   // Chromium runs as a single process, and closing its last page closes the
   // browser: a page per size lost the browser before the 9:16 frame.
@@ -399,39 +562,65 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
     deviceScaleFactor: 0.5,
   })
   for (const size of FRAME_SIZES) {
-    const times = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
+    const rest = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
     const rendered = graphicMarkupAt(
       { compiled: input.compiled, props: input.props, durationMs: input.durationMs },
       size,
-      times,
+      [...new Set([...rest, ...dense])].sort((a, b) => a - b),
     )
-    if (rendered.issue !== null) return { layoutIssue: rendered.issue, shots }
+    if (rendered.issue !== null) return { ...done(), layoutIssue: rendered.issue }
+    const samples = new Map(rendered.samples.map((sample) => [sample.atMs, sample]))
     await page.setViewportSize({ width: size.width, height: size.height })
     await page.setContent(frameDocument(size, input.props.brand), {
       waitUntil: 'load',
       timeout: 15_000,
     })
-    for (const sample of rendered.samples) {
+    for (const atMs of rest) {
+      const sample = samples.get(atMs)
+      if (!sample) continue
       await showMoment(page, sample.markup)
-      if (measured.includes(sample.atMs)) {
-        const issue = layoutIssueIn(
-          (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[],
-          size,
-          sample.atMs,
-        )
-        if (issue !== null) return { layoutIssue: issue, shots }
+      if (measured.includes(atMs)) {
+        const boxes = (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[]
+        const issue = layoutIssueIn(boxes, size, atMs)
+        if (issue !== null) return { ...done(), layoutIssue: issue }
+        note(contrastFindingIn(boxes, size, atMs, input.props.brand.colors.background))
       }
-      if (wanted[size.orientation].includes(sample.atMs)) {
+      if (wanted[size.orientation].includes(atMs)) {
         const jpeg = await page.screenshot({ type: 'jpeg', quality: 72 })
-        shots.push({
-          orientation: size.orientation,
-          atMs: sample.atMs,
-          jpeg: jpeg.toString('base64'),
-        })
+        result.shots.push({ orientation: size.orientation, atMs, jpeg: jpeg.toString('base64') })
       }
     }
+    const tiles: SheetTile[] = []
+    for (const atMs of dense) {
+      if (Date.now() >= denseStop) {
+        cutShort = true
+        break
+      }
+      const sample = samples.get(atMs)
+      if (!sample) continue
+      await showMoment(page, sample.markup)
+      if (!measured.includes(atMs)) {
+        const boxes = (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[]
+        const issue = layoutIssueIn(boxes, size, atMs)
+        if (issue !== null) note(`while moving, ${issue}`)
+      }
+      const jpeg = (await page.screenshot({ type: 'jpeg', quality: 60 })).toString('base64')
+      result.dense.push({ orientation: size.orientation, atMs, jpeg })
+      tiles.push({
+        atMs,
+        dataUri: `data:image/jpeg;base64,${jpeg}`,
+        width: size.width / 2,
+        height: size.height / 2,
+      })
+    }
+    if (input.sheets && tiles.length > 0 && !cutShort && Date.now() < denseStop) {
+      await page.setViewportSize({ width: SHEET_WIDTH, height: 800 })
+      await page.setContent(sheetDocument(tiles), { waitUntil: 'load', timeout: 15_000 })
+      const sheet = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: true })
+      result.sheets[size.orientation] = sheet.toString('base64')
+    }
   }
-  return { layoutIssue: null, shots }
+  return done()
 }
 
 /** The app's frames: one browser per inspection, closed after it. */
@@ -451,9 +640,13 @@ export function browserFrames(): GraphicFrames {
         throw error
       })
       try {
+        const left = Math.max(1, budget - (Date.now() - started))
         return await withinTime(
-          inspectWith(browser, input),
-          Math.max(1, budget - (Date.now() - started)),
+          inspectWith(browser, {
+            ...input,
+            denseMaxMs: input.denseMaxMs ?? Math.max(0, left - DENSE_MARGIN_MS),
+          }),
+          left,
           'the inspection',
         )
       } catch (error) {

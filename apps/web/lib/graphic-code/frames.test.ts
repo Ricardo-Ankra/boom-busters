@@ -6,6 +6,10 @@ import { DRY_RUN_BRAND } from './check'
 import { FRAME_SIZES } from './dry-run'
 import {
   browserFrames,
+  contrastFindingIn,
+  contrastRatio,
+  DENSE_SHOTS_MAX,
+  denseMoments,
   fontsHref,
   frameDocument,
   FramesUnavailable,
@@ -27,7 +31,70 @@ const box = (over: Partial<TextBox>): TextBox => ({
   fontPx: 72,
   opacity: 1,
   moving: false,
+  color: 'rgb(255, 255, 255)',
+  ground: null,
   ...over,
+})
+
+describe('denseMoments (spec 2026-11-04, section 10.2)', () => {
+  it('samples every 250 ms on a short slot and thins a long one to 24', () => {
+    expect(DENSE_SHOTS_MAX).toBe(24)
+    expect(denseMoments(6000)).toHaveLength(23)
+    expect(denseMoments(6000).slice(0, 3)).toEqual([250, 500, 750])
+    expect(denseMoments(30000)).toHaveLength(23)
+    expect(denseMoments(30000)[0]).toBe(1250)
+    expect(denseMoments(500)).toEqual([250])
+    expect(denseMoments(100)).toEqual([])
+  })
+})
+
+describe('contrast (spec 2026-11-04, section 10.3)', () => {
+  it('reads WCAG ratios from CSS colours and blends a translucent foreground', () => {
+    expect(contrastRatio('rgb(255, 255, 255)', 'rgb(0, 0, 0)')).toBeCloseTo(21, 0)
+    expect(contrastRatio('rgb(0, 0, 0)', 'rgb(255, 255, 255)')).toBeCloseTo(21, 0)
+    expect(contrastRatio('rgba(255, 255, 255, 0.5)', 'rgb(0, 0, 0)')).toBeLessThan(6)
+    expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 0)
+    expect(contrastRatio('red', 'rgb(0, 0, 0)')).toBeNull()
+    expect(contrastRatio('rgb(0, 0, 0)', 'rgba(0, 0, 0, 0)')).toBeNull()
+  })
+
+  it('finds a run under its bar by size, naming the run, the ratio and the bar', () => {
+    const faint = box({
+      text: 'Loss',
+      fontPx: 40,
+      color: 'rgb(90, 90, 90)',
+      ground: 'rgb(20, 20, 20)',
+    })
+    expect(contrastFindingIn([faint], LANDSCAPE, 1600, '#000')).toMatch(
+      /^at 1\.6 s in landscape, "Loss" reads at \d\.\d:1 on its ground; 3:1 is needed$/,
+    )
+    expect(contrastFindingIn([box({ ...faint, fontPx: 20 })], LANDSCAPE, 1600, '#000')).toMatch(
+      /4\.5:1 is needed$/,
+    )
+    expect(
+      contrastFindingIn([box({ ...faint, color: 'rgb(255, 255, 255)' })], LANDSCAPE, 1600, '#000'),
+    ).toBeNull()
+  })
+
+  it('measures against the brand background when no ancestor paints one', () => {
+    const bare = box({ text: 'Loss', fontPx: 40, color: 'rgb(30, 30, 30)', ground: null })
+    expect(contrastFindingIn([bare], LANDSCAPE, 1600, '#101010')).toMatch(/reads at/)
+    expect(contrastFindingIn([bare], LANDSCAPE, 1600, '#ffffff')).toBeNull()
+  })
+
+  it('skips text passing through: faint, blurred, or with a colour it cannot read', () => {
+    const faint = box({
+      text: 'Loss',
+      fontPx: 40,
+      color: 'rgb(30, 30, 30)',
+      ground: 'rgb(0, 0, 0)',
+    })
+    expect(contrastFindingIn([box({ ...faint, opacity: 0.3 })], LANDSCAPE, 1600, '#000')).toBeNull()
+    expect(contrastFindingIn([box({ ...faint, moving: true })], LANDSCAPE, 1600, '#000')).toBeNull()
+    expect(
+      contrastFindingIn([box({ ...faint, color: 'currentcolor' })], LANDSCAPE, 1600, '#000'),
+    ).toBeNull()
+  })
 })
 
 describe('restMoments (decision 389)', () => {
@@ -277,6 +344,125 @@ describe.skipIf(!(await browserAvailable()))(
         shots: false,
       })
       expect(result.layoutIssue).toMatch(/^at 0\.9 s in landscape, "Revenue" and "Loss" overlap;/)
+    }, 60_000)
+
+    /** Two lines apart at rest; between 1.2 and 1.4 s the second sits over the first. */
+    const crossing = () => `function Graphic(props) {
+  const { width, height, fps } = Remotion.useVideoConfig()
+  const t = (Remotion.useCurrentFrame() / fps) * 1000
+  const unit = Math.min(width, height) / 1080
+  const gap = t > 1200 && t < 1400 ? -80 : 40
+  return (
+    <Remotion.AbsoluteFill style={{ padding: props.safeArea.top + 'px ' + props.safeArea.right + 'px', justifyContent: 'center' }}>
+      <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, color: props.brand.colors.textPrimary }}>Revenue</div>
+      <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, marginTop: gap * unit, color: props.brand.colors.textPrimary }}>Loss</div>
+    </Remotion.AbsoluteFill>
+  )
+}`
+
+    /** The second line on a painted card; the first bare on the brand background. */
+    const carded = () => `function Graphic(props) {
+  const { width, height } = Remotion.useVideoConfig()
+  const unit = Math.min(width, height) / 1080
+  return (
+    <Remotion.AbsoluteFill style={{ padding: props.safeArea.top + 'px ' + props.safeArea.right + 'px', justifyContent: 'center' }}>
+      <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, color: props.brand.colors.textPrimary }}>Revenue</div>
+      <div style={{ background: 'rgb(20, 20, 20)', padding: 20 * unit, marginTop: 40 * unit }}>
+        <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, color: props.brand.colors.textPrimary }}>Loss</div>
+      </div>
+    </Remotion.AbsoluteFill>
+  )
+}`
+
+    /** The second line in a grey too close to the brand background. */
+    const dim = () => `function Graphic(props) {
+  const { width, height } = Remotion.useVideoConfig()
+  const unit = Math.min(width, height) / 1080
+  return (
+    <Remotion.AbsoluteFill style={{ padding: props.safeArea.top + 'px ' + props.safeArea.right + 'px', justifyContent: 'center' }}>
+      <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, color: props.brand.colors.textPrimary }}>Revenue</div>
+      <div style={{ fontFamily: props.brand.fonts.heading, fontSize: 96 * unit, lineHeight: 1, marginTop: 40 * unit, color: 'rgb(60, 60, 60)' }}>Loss</div>
+    </Remotion.AbsoluteFill>
+  )
+}`
+
+    it('photographs the dense moments and returns a contact sheet per orientation (spec 10.2, 10.4)', async () => {
+      const result = await browserFrames().inspect({
+        compiled: stored(twoLines(40)),
+        props,
+        durationMs: 3000,
+        shots: true,
+        dense: [250, 1250, 2250],
+        sheets: true,
+      })
+      expect(result.layoutIssue).toBeNull()
+      expect(result.findings).toEqual([])
+      expect(result.dense.map((shot) => [shot.orientation, shot.atMs])).toEqual([
+        ['landscape', 250],
+        ['landscape', 1250],
+        ['landscape', 2250],
+        ['portrait', 250],
+        ['portrait', 1250],
+        ['portrait', 2250],
+      ])
+      expect(result.shots).toHaveLength(5)
+      expect(Buffer.from(result.sheets.landscape!, 'base64')[0]).toBe(0xff)
+      expect(Buffer.from(result.sheets.portrait!, 'base64')[1]).toBe(0xd8)
+    }, 60_000)
+
+    it('reports a collision in flight as a finding, not a refusal (spec 10.2)', async () => {
+      const result = await browserFrames().inspect({
+        compiled: stored(crossing()),
+        props,
+        durationMs: 3000,
+        shots: false,
+        dense: [1250, 1300],
+      })
+      expect(result.layoutIssue).toBeNull()
+      expect(result.findings[0]).toMatch(
+        /^while moving, at 1\.[23] s in landscape, "Revenue" and "Loss" overlap/,
+      )
+      expect(result.dense).toHaveLength(4)
+    }, 60_000)
+
+    it("reads each run's colour and its painted ground, or none (spec 10.3)", async () => {
+      const result = await browserFrames().inspect({
+        compiled: stored(carded()),
+        props,
+        durationMs: 3000,
+        shots: false,
+      })
+      expect(result.layoutIssue).toBeNull()
+      expect(result.findings).toEqual([])
+    }, 60_000)
+
+    it('reports settled text under the contrast bar as a finding (spec 10.3)', async () => {
+      const result = await browserFrames().inspect({
+        compiled: stored(dim()),
+        props,
+        durationMs: 3000,
+        shots: false,
+      })
+      expect(result.layoutIssue).toBeNull()
+      expect(result.findings[0]).toMatch(
+        /^at 0\.9 s in landscape, "Loss" reads at \d\.\d:1 on its ground; 3:1 is needed$/,
+      )
+    }, 60_000)
+
+    it('cuts the dense set short and says so when its time is spent', async () => {
+      const result = await browserFrames().inspect({
+        compiled: stored(twoLines(40)),
+        props,
+        durationMs: 3000,
+        shots: true,
+        dense: [250, 1250, 2250],
+        sheets: true,
+        denseMaxMs: 0,
+      })
+      expect(result.shots.length).toBeGreaterThan(0)
+      expect(result.dense).toEqual([])
+      expect(result.sheets).toEqual({})
+      expect(result.findings.at(-1)).toBe('the dense set was cut short at 0 of 6 shots')
     }, 60_000)
   },
 )
