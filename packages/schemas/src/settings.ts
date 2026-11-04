@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_MOTION_IDENTITY, MotionIdentitySchema } from './motion-identity'
 
 /**
  * The single-row `settings` table (build spec section 4) plus the Brand Kit
@@ -643,6 +644,8 @@ export const SettingsSchema = z.object({
   publish: PublishSettingsSchema,
   brandKit: BrandKitStoredSchema,
   features: FeatureFlagsSchema,
+  /** The channel's motion identity (spec 2026-11-04); absent on a row saved before it, so the house identity. */
+  motion: MotionIdentitySchema.prefault({}),
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -685,6 +688,7 @@ export const SettingsPatchSchema = z
     publish: patchSection(PublishSettingsSchema),
     brandKit: patchSection(BrandKitStoredSchema),
     features: patchSection(FeatureFlagsSchema),
+    motion: patchSection(MotionIdentitySchema),
     // Strict: prices and the budget moved to the workspace, so a patch that
     // still carries them must fail loudly rather than be stripped in silence.
   })
@@ -786,6 +790,7 @@ export const DEFAULT_SETTINGS: Settings = {
     },
   },
   features: { heroSlots: false, graphicReview: true },
+  motion: DEFAULT_MOTION_IDENTITY,
 }
 
 /**

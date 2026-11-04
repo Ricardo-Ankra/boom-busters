@@ -11,6 +11,22 @@ describe('mergeSettings', () => {
     expect(mergeSettings(DEFAULT_SETTINGS, {})).toEqual(DEFAULT_SETTINGS)
   })
 
+  it('applies one motion field and keeps the rest of the identity (spec 2026-11-04)', () => {
+    const merged = mergeSettings(
+      DEFAULT_SETTINGS,
+      SettingsPatchSchema.parse({ motion: { overshoot: 'none' } }),
+    )
+    expect(merged.motion.overshoot).toBe('none')
+    expect(merged.motion.changeEveryMs).toBe(DEFAULT_SETTINGS.motion.changeEveryMs)
+    expect(merged.motion.techniques).toEqual(DEFAULT_SETTINGS.motion.techniques)
+  })
+
+  it('refuses a motion patch that breaks the identity as a whole', () => {
+    expect(() =>
+      mergeSettings(DEFAULT_SETTINGS, SettingsPatchSchema.parse({ motion: { allow: ['glows'] } })),
+    ).toThrow(/both lists/)
+  })
+
   it('applies a single nested field without disturbing its siblings', () => {
     const next = mergeSettings(DEFAULT_SETTINGS, { render: { concurrency: 4 } })
 
