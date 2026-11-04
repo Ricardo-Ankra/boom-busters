@@ -35,6 +35,17 @@ vi.mock('./channel-actions', () => ({
   updateChannelAction: vi.fn(),
   archiveChannelAction: vi.fn(),
 }))
+vi.mock('./motion-actions', () => ({
+  createReferenceUploadAction: vi.fn(),
+  createReferenceFrameUploadsAction: vi.fn(),
+  finaliseReferenceAction: vi.fn(),
+  updateReferenceAction: vi.fn(),
+  remarkReferenceAction: vi.fn(),
+  readReferenceAction: vi.fn(),
+  saveReadingAction: vi.fn(),
+  archiveReferenceAction: vi.fn(),
+  draftMotionIdentityAction: vi.fn(),
+}))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),

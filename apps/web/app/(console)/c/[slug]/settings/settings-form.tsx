@@ -26,6 +26,7 @@ import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
 import { ExemplarsTab } from './exemplars-tab'
 import { MotionTab, type TechniqueOption } from './motion-tab'
+import type { ReferenceView } from './references-section'
 import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
@@ -69,6 +70,9 @@ export function SettingsForm({
   exemplars = [],
   exemplarLogo = null,
   techniqueOptions = [],
+  references = [],
+  storageReady = false,
+  readingEstimateUsd = 0,
   draft = null,
   versions = [],
   currentVersion,
@@ -105,6 +109,12 @@ export function SettingsForm({
   exemplars?: ExemplarView[]
   /** The technique catalogue, for the Motion tab's techniques in use (spec 2026-11-04). */
   techniqueOptions?: readonly TechniqueOption[]
+  /** The channel's reference pack, for the Motion tab (spec 2026-11-04, section 11.2). */
+  references?: readonly ReferenceView[]
+  /** R2 is configured, so the Motion tab can upload references. */
+  storageReady?: boolean
+  /** What one reference reading costs on the graphics route, in dollars. */
+  readingEstimateUsd?: number
   /** The channel mark the logo-reveal example plays (`exemplarLogoFor`). */
   exemplarLogo?: ExemplarLogo | null
   /** The bible's working draft, or null when there is none. */
@@ -278,10 +288,15 @@ export function SettingsForm({
           <Lock archived={channel.archived}>
             {' '}
             <MotionTab
+              channelId={channelId}
+              archived={channel.archived}
               settings={settings}
               saving={saving}
               commit={commit}
               techniqueOptions={techniqueOptions}
+              references={references}
+              storageReady={storageReady}
+              readingEstimateUsd={readingEstimateUsd}
             />
           </Lock>
         </TabsContent>

@@ -11,6 +11,7 @@ import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { ReferencesSection, type ReferenceView } from './references-section'
 
 /**
  * The Motion tab (spec 2026-11-04, section 11.1, plan 1): the channel's motion
@@ -26,10 +27,18 @@ export interface TechniqueOption {
 }
 
 interface MotionTabProps {
+  channelId: string
+  archived: boolean
   settings: Settings
   saving: boolean
   commit: (patch: SettingsPatch, optimistic: Settings) => Promise<void>
   techniqueOptions: readonly TechniqueOption[]
+  /** The channel's reference pack, in order (spec 2026-11-04, section 11.2). */
+  references: readonly ReferenceView[]
+  /** R2 is configured, so a reference can be uploaded. */
+  storageReady: boolean
+  /** What one reading costs on the graphics route, in dollars. */
+  readingEstimateUsd: number
 }
 
 const STYLE_GUIDE_MAX = 4000
@@ -45,7 +54,17 @@ const phrasesOf = (text: string) =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
 
-export function MotionTab({ settings, saving, commit, techniqueOptions }: MotionTabProps) {
+export function MotionTab({
+  channelId,
+  archived,
+  settings,
+  saving,
+  commit,
+  techniqueOptions,
+  references,
+  storageReady,
+  readingEstimateUsd,
+}: MotionTabProps) {
   const motion = settings.motion
   // Typed text is held locally until blur, so a keystroke does not save a patch.
   const [never, setNever] = React.useState(linesOf(motion.never))
@@ -366,6 +385,14 @@ export function MotionTab({ settings, saving, commit, techniqueOptions }: Motion
           })}
         </CardContent>
       </Card>
+
+      <ReferencesSection
+        channelId={channelId}
+        references={references}
+        storageReady={storageReady}
+        readingEstimateUsd={readingEstimateUsd}
+        archived={archived}
+      />
     </div>
   )
 }
