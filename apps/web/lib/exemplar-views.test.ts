@@ -21,7 +21,7 @@ describe('exemplarViews (decision 305)', () => {
       expect(code.compiled).toContain('function Graphic(')
       expect(code.source).toBe(DESIGNS[view.technique]!.source)
       expect(code.title).toBe(DESIGNS[view.technique]!.title)
-      expect(code.motion).toBe(1)
+      expect(code.motion).toBe(2)
       expect(code.words).toEqual(entry.slot.words)
       expect(code.durationMs).toBe(entry.slot.durationMs)
       expect(view.title).toBe(code.title)
