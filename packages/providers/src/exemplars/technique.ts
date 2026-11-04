@@ -1,5 +1,5 @@
-import type { ChartKind } from '@boom-busters/schemas'
-import type { Technique } from './manifest'
+import { LAST_RESORT_TECHNIQUES } from '@boom-busters/schemas'
+import type { ChartKind, Technique } from '@boom-busters/schemas'
 
 /**
  * Which exemplar a slot gets (decision 305): a pure function of the brief's
@@ -23,6 +23,12 @@ export interface TechniqueInput {
   logos: readonly string[]
   /** The producer's steer on a redesign. */
   guidance?: string
+  /**
+   * The channel's techniques in use (spec 2026-11-04, section 8.3); absent
+   * means all. A rule whose technique is switched off is skipped for the next;
+   * the two last resorts are always in use, and a steer still wins.
+   */
+  techniques?: readonly Technique[]
 }
 
 /**
@@ -177,43 +183,58 @@ export function techniqueFor(input: TechniqueInput): Technique {
     const steered = steerTechnique(input.guidance)
     if (steered) return steered
   }
-  if (input.type === 'chart') return chartTechnique(input)
+  const inUse = (technique: Technique) =>
+    input.techniques === undefined ||
+    input.techniques.includes(technique) ||
+    (LAST_RESORT_TECHNIQUES as readonly Technique[]).includes(technique)
+  const candidates = input.type === 'chart' ? chartTechniques(input) : graphicTechniques(input)
+  return candidates.find(inUse) ?? candidates[candidates.length - 1]!
+}
+
+/** The graphic rules in order, each yielding its technique when it matches; the word stack last. */
+function graphicTechniques(input: TechniqueInput): Technique[] {
   const fields = [input.intent, input.description, input.coversText]
+  const candidates: Technique[] = []
   if (fields.some((field) => QUOTE_MARKS.test(field)) || SPEECH.test(input.intent)) {
-    return 'quote-card'
+    candidates.push('quote-card')
   }
   // A percentage that moves in its own field ("shares lost 70%") is a counter;
   // any other percentage or share ("40% of the money") is a share of a whole.
-  if (fields.some((field) => PERCENT.test(field) && MOVEMENT.test(field))) return 'stat-counter'
-  if (fields.some((field) => PERCENT.test(field))) return 'donut-chart'
-  if (VERSUS.test(input.intent) || VERSUS.test(input.description)) return 'split-screen'
-  if (mentionsLogo(input.intent, input.logos)) return 'logo-reveal'
+  if (fields.some((field) => PERCENT.test(field) && MOVEMENT.test(field))) {
+    candidates.push('stat-counter')
+  }
+  if (fields.some((field) => PERCENT.test(field))) candidates.push('donut-chart')
+  if (VERSUS.test(input.intent) || VERSUS.test(input.description)) candidates.push('split-screen')
+  if (mentionsLogo(input.intent, input.logos)) candidates.push('logo-reveal')
   const figures = distinctFigures(fields)
-  if (figures >= 2) return 'kpi-counter'
-  if (figures === 1) return 'stat-counter'
-  if (input.intent.trim().split(/\s+/).filter(Boolean).length <= 8) return 'text-highlight'
-  return 'kinetic-word-stack'
+  if (figures >= 2) candidates.push('kpi-counter')
+  if (figures === 1) candidates.push('stat-counter')
+  if (input.intent.trim().split(/\s+/).filter(Boolean).length <= 8) {
+    candidates.push('text-highlight')
+  }
+  candidates.push('kinetic-word-stack')
+  return candidates
 }
 
-function chartTechnique(input: TechniqueInput): Technique {
+function chartTechniques(input: TechniqueInput): Technique[] {
   const series = input.seriesCount ?? 0
   const labels = input.xLabels ?? []
   switch (input.chartKind) {
     case 'line':
     case 'area':
-      return 'line-chart'
+      return ['line-chart', 'bar-chart']
     case 'waterfall':
-      return 'comparison-chart'
+      return ['comparison-chart', 'bar-chart']
     case 'bar':
       // A race needs several series to reorder over a years axis; one series
       // is a plain bar chart however long it runs.
       if (series >= 3 && labels.length >= 5 && labels.every((label) => YEAR.test(label))) {
-        return 'racing-chart'
+        return ['racing-chart', 'comparison-chart', 'bar-chart']
       }
-      if (series >= 2) return 'comparison-chart'
-      return 'bar-chart'
+      if (series >= 2) return ['comparison-chart', 'bar-chart']
+      return ['bar-chart']
     case 'stacked':
     default:
-      return 'bar-chart'
+      return ['bar-chart']
   }
 }
