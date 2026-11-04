@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, gt } from 'drizzle-orm'
 import type { DerivationState, Technique, TechniqueProgress } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { motionDerivations } from './schema'
@@ -57,6 +57,22 @@ export async function latestDerivation(
   return row ?? null
 }
 
+/**
+ * A running row nobody has touched for this long is dead (final review,
+ * issue 1): a run cancelled outside the app fires no failure handler, and
+ * the job touches its row before every paid step, none of which outlasts a
+ * Vercel invocation. Without this the channel would wait forever.
+ */
+export const DERIVATION_STALE_MS = 15 * 60_000
+
+/** The job's heartbeat: before every paid step. */
+export async function touchDerivation(db: Database, id: string): Promise<void> {
+  await db
+    .update(motionDerivations)
+    .set({ updatedAt: new Date() })
+    .where(eq(motionDerivations.id, id))
+}
+
 export async function runningDerivation(
   db: Database,
   channelId: string,
@@ -64,7 +80,13 @@ export async function runningDerivation(
   const [row] = await db
     .select()
     .from(motionDerivations)
-    .where(and(eq(motionDerivations.channelId, channelId), eq(motionDerivations.state, 'running')))
+    .where(
+      and(
+        eq(motionDerivations.channelId, channelId),
+        eq(motionDerivations.state, 'running'),
+        gt(motionDerivations.updatedAt, new Date(Date.now() - DERIVATION_STALE_MS)),
+      ),
+    )
     .orderBy(desc(motionDerivations.createdAt))
     .limit(1)
   return row ?? null

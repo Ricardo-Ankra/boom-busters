@@ -196,9 +196,9 @@ describeDb('motion-exemplar-refiner', () => {
     expect(await listChannelExemplars(db, FIRST_CHANNEL_ID)).toHaveLength(0)
   })
 
-  it('runs one refine per channel at a time', () => {
+  it('runs one refine per parent version at a time, so refines of other techniques are not cancelled (final review, issue 2)', () => {
     const opts = (motionExemplarRefiner as unknown as { opts: Record<string, unknown> }).opts
-    expect(opts['singleton']).toEqual({ key: 'event.data.channelId', mode: 'cancel' })
+    expect(opts['singleton']).toEqual({ key: 'event.data.parentId', mode: 'cancel' })
   })
 
   describe('the real path, the model and the browser stubbed', () => {
@@ -206,6 +206,43 @@ describeDb('motion-exemplar-refiner', () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       vi.stubEnv('GRAPHIC_FRAMES', '')
       storageOn = true
+    })
+
+    it('stores the draft unreviewed, with no fake report, when there are no frames (final review, issue 3)', async () => {
+      const parent = await aParent()
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify(planned()) })
+      const result = await refine(parent.id, 'slower')
+      expect(result).toMatchObject({ outcome: 'refined' })
+      expect(callLlm).toHaveBeenCalledTimes(1)
+      const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
+        (row) => row.id !== parent.id,
+      )!
+      expect(draft.critique).toBeNull()
+      expect(draft.verify).toBeNull()
+    })
+
+    it('leaves a draft the owner approved mid-run as it is (final review, issue 4)', async () => {
+      const parent = await aParent()
+      inspect.mockResolvedValueOnce(framed()).mockImplementationOnce(async () => {
+        // The owner approves the new draft while its frames are being taken.
+        const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
+          (row) => row.id !== parent.id,
+        )!
+        await approveExemplarVersion(db, draft.id)
+        return photographed()
+      })
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify(planned()) })
+      const result = await refine(parent.id, 'slower')
+      expect(result).toMatchObject({ outcome: 'refined' })
+      // No critic call: the version was no longer a draft when its frames came back.
+      expect(callLlm).toHaveBeenCalledTimes(1)
+      const approved = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
+        (row) => row.id !== parent.id,
+      )!
+      expect(approved.status).toBe('approved')
+      expect(approved.frames).toBeNull()
+      expect(approved.verify).toBeNull()
     })
 
     it('a refused build inserts nothing and leaves a heads-up', async () => {

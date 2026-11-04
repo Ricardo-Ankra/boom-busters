@@ -10021,3 +10021,25 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      one critic call and one fix per round, the pairwise from round two and
      the verify, all against the cap; the dialogue prices it on the two
      routes and shows the last run's figures. Migration 0048.
+     The final review (a fresh reviewer) found no Critical and eight
+     Important faults; seven were fixed with a failing test first. A
+     derivation cancelled outside the app left its row running and the
+     channel waiting forever (now a handler on Inngest's cancelled event
+     stops the row, the cap check is the row's heartbeat, and a row untouched
+     for a quarter of an hour no longer counts as running); refines cancelled
+     each other across techniques (now one per parent version); the refiner
+     stored a fake "ready" report when it had no frames (now unreviewed);
+     an owner approving a refined draft mid-run failed the job (now the
+     frames and verify steps leave a decided version alone); the last round
+     never fixed and the verify re-judged the frames the critic had just
+     seen (now a fix in every round the critic asks for, a final photograph
+     before the verify, and no verify call when nothing changed since the
+     last critic, whose report is the verdict); one technique's thrown or
+     malformed call killed the whole derivation and the swapped pairwise
+     shared the critic's step (now each is contained in its own step as
+     that technique's reason, and the pairwise is a step of its own); and
+     the ledger named a retired parent as the comparison when the draft was
+     shown beside the version approved at the time (now the version shown).
+     The eighth stands as a ruling: "Refine again" refines the approved
+     version, as spec 9.3 says, not the new draft. Deferred minors are in
+     the ledger and the hand-over.

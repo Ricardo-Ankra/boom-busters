@@ -17,6 +17,9 @@ async function clearVersions(): Promise<void> {
   const connection = createDb(e2eDatabaseUrl(), { max: 1 })
   try {
     await connection.db.delete(channelExemplars)
+    // The copy refuses a target with live references, so the second channel's seeded one is archived.
+    await connection.sql`update motion_references set archived_at = now()
+      where archived_at is null and channel_id in (select id from channels where slug = ${SECOND_SLUG})`
   } finally {
     await connection.sql.end({ timeout: 5 })
   }
@@ -146,9 +149,8 @@ test.describe('Derivation', () => {
     await page.getByLabel('Copy motion from').selectOption({ label: 'Boom & Busters' })
     await page.getByRole('button', { name: 'Copy motion from this channel' }).click()
     await page.getByRole('button', { name: 'Yes, copy it' }).click()
-    await expect(
-      page.getByText('Copied the identity, 0 references and 1 exemplars').first(),
-    ).toBeVisible()
+    // The toast comes and goes; what the copy leaves behind is the proof.
+    await expect(page.getByRole('button', { name: 'Copy motion from this channel' })).toBeDisabled()
     await page.goto(channelPath('/settings?tab=exemplars', SECOND_SLUG))
     const stat = page.getByRole('region', { name: 'Stat counter' })
     await expect(stat.getByText('Approved v1, derived', { exact: false })).toBeVisible()

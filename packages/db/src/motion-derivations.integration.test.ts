@@ -1,4 +1,4 @@
-import { sql as dsql } from 'drizzle-orm'
+import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
@@ -6,8 +6,10 @@ import {
   createDerivation,
   finishDerivation,
   getDerivation,
+  DERIVATION_STALE_MS,
   latestDerivation,
   runningDerivation,
+  touchDerivation,
   updateTechniqueProgress,
 } from './motion-derivations'
 import { motionDerivations } from './schema'
@@ -63,6 +65,25 @@ suite('motion derivations', () => {
     const after = await getDerivation(db, row.id)
     expect(after?.progress[0]).toEqual(row.progress[0])
     expect(after?.progress[1]).toMatchObject({ state: 'stopped-at-cap', costUsd: 1.5 })
+  })
+
+  it('a running row nobody has touched for a quarter of an hour is not running (final review, issue 1)', async () => {
+    const row = await createDerivation(db, {
+      channelId,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 5,
+    })
+    expect((await runningDerivation(db, channelId))?.id).toBe(row.id)
+    const stale = new Date(Date.now() - DERIVATION_STALE_MS - 1000)
+    await db
+      .update(motionDerivations)
+      .set({ updatedAt: stale })
+      .where(eq(motionDerivations.id, row.id))
+    expect(await runningDerivation(db, channelId)).toBeNull()
+    await touchDerivation(db, row.id)
+    expect((await runningDerivation(db, channelId))?.id).toBe(row.id)
+    expect((await latestDerivation(db, channelId))?.id).toBe(row.id)
   })
 
   it('finishes with the spend', async () => {

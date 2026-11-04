@@ -9,7 +9,7 @@ import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
 import { keywordMeasurer } from './keyword-measurer'
-import { motionExemplarDeriver } from './motion-exemplar-deriver'
+import { motionDerivationCancelled, motionExemplarDeriver } from './motion-exemplar-deriver'
 import { motionExemplarRefiner } from './motion-exemplar-refiner'
 import { motionReferenceReader } from './motion-reference-reader'
 import { searchSpaceAnalyser } from './search-space-analyser'
@@ -62,6 +62,7 @@ export const functions = [
   bibleResearcher,
   caseResearcher,
   keywordMeasurer,
+  motionDerivationCancelled,
   motionExemplarDeriver,
   motionExemplarRefiner,
   motionReferenceReader,
@@ -106,6 +107,7 @@ export {
   cancelReconciler,
   draftRunner,
   keywordMeasurer,
+  motionDerivationCancelled,
   motionExemplarDeriver,
   motionExemplarRefiner,
   motionReferenceReader,

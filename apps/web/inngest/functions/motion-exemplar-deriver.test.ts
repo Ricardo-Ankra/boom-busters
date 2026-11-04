@@ -22,7 +22,7 @@ import { derivedContext } from '@/lib/exemplar-derive'
 import type * as Cost from '@boom-busters/cost'
 import type * as Frames from '@/lib/graphic-code/frames'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { motionExemplarDeriver } from './motion-exemplar-deriver'
+import { motionDerivationCancelled, motionExemplarDeriver } from './motion-exemplar-deriver'
 
 /**
  * The deriver against the real database (spec 2026-11-04, section 9.2):
@@ -79,6 +79,7 @@ vi.mock('@boom-busters/cost', async (importOriginal) => ({
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const stat = MANIFEST.find((entry) => entry.id === 'stat-counter')!
+const highlight = MANIFEST.find((entry) => entry.id === 'text-highlight')!
 const SHOT = { orientation: 'landscape' as const, atMs: 900, jpeg: 'AAAA' }
 const photographed = (): Frames.FramesResult => ({
   layoutIssue: null,
@@ -109,25 +110,30 @@ const prefers = (value: 'A' | 'B' | 'same') =>
   Object.fromEntries(CRITIC_AXES.map((axis) => [axis, value]))
 
 /** A design the checks pass for the mock plan's slot. */
-const design = () => {
-  const plan = mockStoryboardPlan(stat)
-  const context = derivedContext(stat, plan)
+const design = (entry = stat) => {
+  const plan = mockStoryboardPlan(entry)
+  const context = derivedContext(entry, plan)
   return {
     text: JSON.stringify(
       mockGraphicCode({
         claimTexts: context.claims.map((claim) => claim.text),
         intentRefs: [1],
-        durationMs: stat.slot.durationMs,
+        durationMs: entry.slot.durationMs,
       }),
     ),
   }
 }
-const storyboard = () => ({ text: JSON.stringify(mockStoryboardPlan(stat)) })
+const storyboard = (entry = stat) => ({ text: JSON.stringify(mockStoryboardPlan(entry)) })
+const under = Object.fromEntries(CRITIC_AXES.map((axis) => [axis, { score: 6, line: 'low' }]))
 
 describeDb('motion-exemplar-deriver', () => {
   let engine: InngestTestEngine
 
-  const launch = async (techniques: ('stat-counter' | 'bar-chart')[], rounds = 1, capUsd = 5) => {
+  const launch = async (
+    techniques: ('stat-counter' | 'bar-chart' | 'text-highlight')[],
+    rounds = 1,
+    capUsd = 5,
+  ) => {
     const row = await createDerivation(db, {
       channelId: FIRST_CHANNEL_ID,
       techniques,
@@ -194,6 +200,42 @@ describeDb('motion-exemplar-deriver', () => {
     expect(after.progress[0]!.versionId).not.toBeNull()
     expect(after.spentUsd).toBe('0.7500')
     expect(after.finishedAt).toBeInstanceOf(Date)
+  })
+
+  it('marks the derivation stopped when its run is cancelled outside the app (final review, issue 1)', async () => {
+    const row = await createDerivation(db, {
+      channelId: FIRST_CHANNEL_ID,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 5,
+    })
+    const cancelled = new InngestTestEngine({ function: motionDerivationCancelled })
+    const { result } = await cancelled.execute({
+      events: [
+        {
+          name: 'inngest/function.cancelled',
+          data: {
+            run_id: '01RUN',
+            function_id: 'motion-exemplar-deriver',
+            event: {
+              name: 'motion/exemplars.derive',
+              data: { channelId: FIRST_CHANNEL_ID, derivationId: row.id },
+            },
+          },
+        },
+      ],
+    })
+    expect(result).toMatchObject({ outcome: 'stopped', derivationId: row.id })
+    const after = (await getDerivation(db, row.id))!
+    expect(after.state).toBe('stopped')
+    expect(after.error).toBe('Cancelled outside the app (the Inngest dashboard, or the API)')
+    expect(after.finishedAt).toBeInstanceOf(Date)
+    const other = await cancelled.execute({
+      events: [
+        { name: 'inngest/function.cancelled', data: { run_id: 'x', function_id: 'script-runner' } },
+      ],
+    })
+    expect(other.result).toMatchObject({ outcome: 'not-ours' })
   })
 
   it('runs one derivation per channel at a time', () => {
@@ -267,17 +309,18 @@ describeDb('motion-exemplar-deriver', () => {
         .mockResolvedValueOnce(storyboard())
         .mockResolvedValueOnce(design())
         .mockResolvedValueOnce(report())
-        .mockResolvedValueOnce(report({ keep: true }))
       const { after } = await launch(['stat-counter'], 2)
-      // The storyboard, the build, one critic round, the verify: no fix, no second round.
-      expect(callLlm).toHaveBeenCalledTimes(4)
+      // The storyboard, the build, one critic round: no fix, no second round, and no
+      // verify call either, since nothing changed after the critic (final review, issue 5).
+      expect(callLlm).toHaveBeenCalledTimes(3)
       expect(callLlm.mock.calls[2]![0].task).toBe('critic')
       expect(callLlm.mock.calls[2]![1]).toMatchObject({
         purpose: 'critic',
         meta: { technique: 'stat-counter' },
       })
-      expect(after.progress[0]).toMatchObject({ state: 'wants-pass' })
+      expect(after.progress[0]).toMatchObject({ state: 'ready' })
       const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+      expect(version?.verify?.verdict).toBe('ready')
       expect(version?.frames?.sheets.landscape).toMatch(/round-1\/landscape-sheet\.jpg$/)
       expect(version?.metrics?.simultaneity).toBe(0.2)
       expect(putObject).toHaveBeenCalled()
@@ -289,7 +332,6 @@ describeDb('motion-exemplar-deriver', () => {
         .mockResolvedValueOnce(photographed())
         .mockResolvedValueOnce(framed())
         .mockResolvedValueOnce(photographed())
-      const under = Object.fromEntries(CRITIC_AXES.map((axis) => [axis, { score: 6, line: 'low' }]))
       callLlm
         .mockResolvedValueOnce(storyboard())
         .mockResolvedValueOnce(design())
@@ -303,11 +345,9 @@ describeDb('motion-exemplar-deriver', () => {
         .mockResolvedValueOnce({
           text: JSON.stringify({ prefers: { ...prefers('A'), craft: 'B' } }),
         })
-        .mockResolvedValueOnce({
-          text: JSON.stringify({ ...JSON.parse(report().text), verdict: 'ready' }),
-        })
       const { after } = await launch(['stat-counter'], 2)
-      expect(callLlm).toHaveBeenCalledTimes(7)
+      // The second critic passed, so no fix and no verify call followed it.
+      expect(callLlm).toHaveBeenCalledTimes(6)
       const second = callLlm.mock.calls[4]![0]
       expect(second.messages.at(-1).content).toContain('Previous version (B)')
       const swapped = callLlm.mock.calls[5]![0]
@@ -321,18 +361,71 @@ describeDb('motion-exemplar-deriver', () => {
       expect(after.progress[0]).toMatchObject({ state: 'ready' })
     })
 
-    it('the verify call runs on the graphics route', async () => {
-      inspect.mockResolvedValueOnce(framed()).mockResolvedValueOnce(photographed())
+    it('fixes in the last round too, photographs the fix, and verifies it on the graphics route', async () => {
+      inspect
+        .mockResolvedValueOnce(framed())
+        .mockResolvedValueOnce(photographed())
+        .mockResolvedValueOnce(framed())
+        .mockResolvedValueOnce(photographed())
       callLlm
         .mockResolvedValueOnce(storyboard())
         .mockResolvedValueOnce(design())
-        .mockResolvedValueOnce(report())
-        .mockResolvedValueOnce(report())
-      await launch(['stat-counter'], 1)
-      const [verify, options] = callLlm.mock.calls[3]!
+        .mockResolvedValueOnce(
+          report({ keep: false, fixes: ['bigger type'], scores: under as never }),
+        )
+        .mockResolvedValueOnce(design())
+        .mockResolvedValueOnce({
+          text: JSON.stringify({ ...JSON.parse(report().text), verdict: 'ready' }),
+        })
+      const { after } = await launch(['stat-counter'], 1)
+      // The storyboard, the build, the critic, the fix of that last round, the verify on the fix's frames.
+      expect(callLlm).toHaveBeenCalledTimes(5)
+      expect(callLlm.mock.calls[3]![0].messages.at(-1).content).toContain(
+        "The critic's fixes, in order: 1. bigger type",
+      )
+      const [verify, options] = callLlm.mock.calls[4]!
       expect(verify.task).toBe('graphics')
       expect(verify.messages.at(-1).content).toContain('This is a verify round.')
       expect(options).toMatchObject({ purpose: 'verify' })
+      expect(inspect).toHaveBeenCalledTimes(4)
+      const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+      expect(version?.frames?.round).toBe(2)
+      expect(after.progress[0]).toMatchObject({ state: 'ready' })
+    })
+
+    it('contains a malformed critic reply to its technique and derives the next (final review, issue 6)', async () => {
+      inspect
+        .mockResolvedValueOnce(framed())
+        .mockResolvedValueOnce(photographed())
+        .mockResolvedValueOnce(framed())
+      callLlm
+        .mockResolvedValueOnce(storyboard())
+        .mockResolvedValueOnce(design())
+        .mockResolvedValueOnce({ text: 'not a report at all' })
+        .mockResolvedValueOnce(storyboard(highlight))
+        .mockResolvedValueOnce(design(highlight))
+      const { after } = await launch(['stat-counter', 'text-highlight'], 1)
+      const [first, second] = after.progress
+      expect(first).toMatchObject({ technique: 'stat-counter', state: 'failed' })
+      expect(first!.reason).toMatch(/malformed/i)
+      expect(first!.versionId).not.toBeNull()
+      expect((await exemplarVersionById(db, first!.versionId!))?.status).toBe('draft')
+      expect(second!.technique).toBe('text-highlight')
+      expect(second!.versionId).not.toBeNull()
+      expect(after.state).toBe('done')
+    })
+
+    it('marks a technique failed when its call throws and derives the next', async () => {
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      callLlm
+        .mockRejectedValueOnce(new Error('provider down'))
+        .mockResolvedValueOnce(storyboard(highlight))
+        .mockResolvedValueOnce(design(highlight))
+      const { after } = await launch(['stat-counter', 'text-highlight'], 1)
+      const [first, second] = after.progress
+      expect(first).toMatchObject({ technique: 'stat-counter', state: 'failed', versionId: null })
+      expect(first!.reason).toContain('provider down')
+      expect(second).toMatchObject({ technique: 'text-highlight', state: 'no-frames' })
     })
   })
 })

@@ -185,12 +185,16 @@ export async function approveExemplarVersionAction(
   const version = await ownVersion(channelId, versionId)
   if (!version) return UNKNOWN_VERSION
   if (version.status === 'approved') return { ok: true }
+  // The preference is against the version it was shown beside: the one
+  // approved at this moment, else its parent (final review, issue 7).
+  const shownAgainst =
+    (await approvedExemplar(db, channelId, version.technique))?.id ?? version.parentId
   await approveExemplarVersion(db, version.id)
   await recordVerdict(db, {
     channelId,
     kind: version.parentId ? 'prefer' : 'approve',
     exemplarId: version.id,
-    ...(version.parentId ? { comparison: { a: version.id, b: version.parentId } } : {}),
+    ...(version.parentId && shownAgainst ? { comparison: { a: version.id, b: shownAgainst } } : {}),
   })
   refresh()
   return { ok: true }

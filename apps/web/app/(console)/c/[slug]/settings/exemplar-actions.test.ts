@@ -185,6 +185,21 @@ describeDb('the exemplar actions', () => {
     expect(plain).toMatchObject({ kind: 'approve', exemplarId: first.id, comparison: null })
   })
 
+  it('records the preference against the version approved at the time, not a retired parent (final review, issue 7)', async () => {
+    const v1 = await aVersion()
+    await approveExemplarVersion(db, v1.id)
+    const v2 = await aVersion({ parentId: v1.id, steer: 'slower' })
+    const v3 = await aVersion({ parentId: v1.id, steer: 'darker' })
+    await approveExemplarVersionAction(channelId, v3.id)
+    await approveExemplarVersionAction(channelId, v2.id)
+    const [verdict] = await listVerdicts(db, channelId)
+    expect(verdict).toMatchObject({
+      kind: 'prefer',
+      exemplarId: v2.id,
+      comparison: { a: v2.id, b: v3.id },
+    })
+  })
+
   it('keeps the approved one and retires the draft', async () => {
     const parent = await aVersion()
     await approveExemplarVersion(db, parent.id)

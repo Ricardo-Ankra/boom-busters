@@ -6,6 +6,7 @@ import {
   getDerivation,
   insertExemplarVersion,
   listMotionReferences,
+  touchDerivation,
   updateExemplarDraft,
   updateTechniqueProgress,
 } from '@boom-busters/db'
@@ -29,6 +30,7 @@ import {
   parseEventData,
   resolveBrandKit,
   serialiseError,
+  ValidationError,
 } from '@boom-busters/schemas'
 import type {
   CriticReport,
@@ -36,6 +38,7 @@ import type {
   ExemplarFrames,
   ExemplarPlan,
   MotionMetrics,
+  PairwiseAnswer,
   PairwiseOutcome,
   Technique,
   TechniqueProgress,
@@ -76,7 +79,9 @@ import {
  */
 
 const FUNCTION_ID = 'motion-exemplar-deriver'
+const CANCELLED_ID = 'motion-derivation-cancelled'
 const VERIFY_BRIEF = 'The derivation is over; is it ready?'
+const CANCELLED_OUTSIDE = 'Cancelled outside the app (the Inngest dashboard, or the API)'
 
 type StepTools = GetStepTools<typeof inngest>
 
@@ -103,6 +108,10 @@ function brandForPrompt(brand: ReturnType<typeof resolveBrandKit>): {
     ),
   }
 }
+
+/** A thrown call as the technique's reason, contained in its step so the other techniques still run (final review, issue 6). */
+const failedWith = (error: unknown) =>
+  (error instanceof Error ? error.message : String(error)).slice(0, 500)
 
 const capReason = (capUsd: number, spent: number) =>
   `The cap of $${capUsd} was reached at $${spent.toFixed(2)}`
@@ -145,6 +154,8 @@ async function deriveTechnique(
 
   /** The cap, checked before every paid step: the reason when it is reached. */
   const overCap = async (): Promise<string | null> => {
+    // The heartbeat: a row untouched for a quarter of an hour is dead (`runningDerivation`).
+    await touchDerivation(db, derivation.id)
     const spent = await jobSpendUsd(db, derivation.id)
     return spent >= capUsd ? capReason(capUsd, spent) : null
   }
@@ -186,7 +197,7 @@ async function deriveTechnique(
         return answer.ok ? { plan: answer.value } : { failed: answer.issue }
       } catch (error) {
         if (error instanceof BudgetExceededError) return { cap: error.message }
-        throw error
+        return { failed: failedWith(error) }
       }
     },
   )
@@ -233,7 +244,7 @@ async function deriveTechnique(
           })
         } catch (error) {
           if (error instanceof BudgetExceededError) return { cap: error.message }
-          throw error
+          return { refused: failedWith(error) }
         }
       }
       if (!result.ok) return { refused: result.issue }
@@ -251,13 +262,21 @@ async function deriveTechnique(
   if ('refused' in built) return { state: 'refused', reason: built.refused, versionId: null }
   const { versionId } = built
 
-  // 3 to 6. The rounds.
+  // 3 to 6. The rounds. A critic and, unless it passed or asked nothing, a
+  // fix in every round, the last included (spec 9.2, steps 4 to 6).
   let lastReport: CriticReport | null = null
-  let previous: ExemplarFrames | null = null
+  /** The frames of the code the last critic judged. */
+  let lastFrames: ExemplarFrames | null = null
+  /** The round before, for the pairwise question. */
+  let previousFrames: ExemplarFrames | null = null
   let lastMetrics: MotionMetrics | null = null
   let noFrames: string | null = null
-  for (let round = 1; round <= derivation.rounds; round += 1) {
-    const shot = await step.run(
+  let malformed: string | null = null
+  /** A fix landed after the last critic: its frames are not yet taken, and the verify needs them. */
+  let fixedAfterLastCritic = false
+
+  const photograph = async (round: number) =>
+    step.run(
       name(`frames-${round}`),
       async (): Promise<
         | { frames: ExemplarFrames; findings: string[]; metrics: MotionMetrics | null }
@@ -267,6 +286,7 @@ async function deriveTechnique(
         if (!framesOn()) return { none: 'no frames to show' }
         const version = await exemplarVersionById(db, versionId)
         if (!version) return { none: 'the version is gone' }
+        if (version.status !== 'draft') return { none: 'the owner decided on the version' }
         const channel = await loopChannel(channelId)
         const photographed = await photographVersion({
           channel,
@@ -282,13 +302,21 @@ async function deriveTechnique(
             none: storageConfigured() ? 'no frames to show' : 'no storage to keep the frames',
           }
         }
-        await updateExemplarDraft(db, versionId, {
-          frames: photographed.frames,
-          metrics: photographed.metrics,
-        })
+        try {
+          await updateExemplarDraft(db, versionId, {
+            frames: photographed.frames,
+            metrics: photographed.metrics,
+          })
+        } catch (error) {
+          if (error instanceof ValidationError) return { none: 'the owner decided on the version' }
+          throw error
+        }
         return photographed
       },
     )
+
+  for (let round = 1; round <= derivation.rounds; round += 1) {
+    const shot = await photograph(round)
     if ('none' in shot && !mock) {
       noFrames = shot.none
       break
@@ -297,7 +325,10 @@ async function deriveTechnique(
     const judged = await step.run(
       name(`critic-${round}`),
       async (): Promise<
-        { report: CriticReport; pairwise: PairwiseOutcome | null } | { cap: string }
+        | { report: CriticReport; pairwise: PairwiseAnswer | null }
+        | { cap: string }
+        | { malformed: string }
+        | { failed: string }
       > => {
         const cap = await overCap()
         if (cap) return { cap }
@@ -322,40 +353,69 @@ async function deriveTechnique(
               channelId,
               plan.leansOn.map((lean) => lean.title),
             ),
-            ...(previous ? { previous } : {}),
+            ...(lastFrames ? { previous: lastFrames } : {}),
             complete,
           })
-          let outcome: PairwiseOutcome | null = null
-          if (previous && pairwise) {
-            const swapped = await pairwiseSwapped({
-              channel,
-              plan: criticPlan,
-              current: shot.frames,
-              previous,
-              complete,
-            })
-            outcome = pairwiseOutcome(pairwise, swapped)
-          }
-          await updateExemplarDraft(db, versionId, {
-            critique: report,
-            ...(outcome ? { pairwise: outcome } : {}),
-          })
-          return { report, pairwise: outcome }
+          await updateExemplarDraft(db, versionId, { critique: report })
+          return { report, pairwise }
         } catch (error) {
           if (error instanceof BudgetExceededError) return { cap: error.message }
-          throw error
+          if (error instanceof ValidationError) return { malformed: error.message }
+          return { failed: failedWith(error) }
         }
       },
     )
     if ('cap' in judged) return stopped(judged.cap, versionId)
+    if ('failed' in judged) return { state: 'failed', reason: judged.failed, versionId }
+    if ('malformed' in judged) {
+      malformed = judged.malformed
+      break
+    }
     lastReport = judged.report
+    fixedAfterLastCritic = false
     if (!('none' in shot)) {
-      previous = shot.frames
+      previousFrames = lastFrames
+      lastFrames = shot.frames
       lastMetrics = shot.metrics
     }
+
+    // The pairwise question again, swapped, in a step of its own (spec 9.2, step 4).
+    if (judged.pairwise && previousFrames && lastFrames) {
+      const first = judged.pairwise
+      const current = lastFrames
+      const before = previousFrames
+      const swapped = await step.run(
+        name(`pairwise-${round}`),
+        async (): Promise<{ outcome: PairwiseOutcome } | { cap: string } | { skipped: string }> => {
+          const cap = await overCap()
+          if (cap) return { cap }
+          const channel = await loopChannel(channelId)
+          const version = await exemplarVersionById(db, versionId)
+          if (!version) return { cap: 'the version is gone' }
+          try {
+            const answer = await pairwiseSwapped({
+              channel,
+              plan: criticPlanOf(version.code, derivedContext(entry, plan)),
+              current,
+              previous: before,
+              complete,
+            })
+            const outcome = pairwiseOutcome(first, answer)
+            await updateExemplarDraft(db, versionId, { pairwise: outcome })
+            return { outcome }
+          } catch (error) {
+            if (error instanceof BudgetExceededError) return { cap: error.message }
+            if (error instanceof ValidationError) return { skipped: error.message }
+            return { skipped: failedWith(error) }
+          }
+        },
+      )
+      if ('cap' in swapped) return stopped(swapped.cap, versionId)
+    }
+
     if (mock) break
     if (criticPasses(judged.report) && !(lastMetrics?.frozenCritical ?? false)) break
-    if (round === derivation.rounds || judged.report.fixes.length === 0) break
+    if (judged.report.fixes.length === 0) break
 
     const fixed = await step.run(
       name(`fix-${round}`),
@@ -364,6 +424,7 @@ async function deriveTechnique(
         if (cap) return { cap }
         const version = await exemplarVersionById(db, versionId)
         if (!version) return { cap: 'the version is gone' }
+        if (version.status !== 'draft') return { kept: 'the owner decided on the version' }
         const channel = await loopChannel(channelId)
         try {
           const result = await buildFromPlan({
@@ -380,20 +441,38 @@ async function deriveTechnique(
           return { fixed: true }
         } catch (error) {
           if (error instanceof BudgetExceededError) return { cap: error.message }
-          throw error
+          return { kept: failedWith(error) }
         }
       },
     )
     if ('cap' in fixed) return stopped(fixed.cap, versionId)
     if ('kept' in fixed) break
+    fixedAfterLastCritic = true
   }
 
   if (noFrames) return { state: 'no-frames', reason: noFrames, versionId }
+  if (malformed) {
+    return { state: 'failed', reason: `the critic's report was malformed: ${malformed}`, versionId }
+  }
 
-  // 7. The verify.
+  // 7. The verify (step 7), on the frames of the code as it stands. A fix
+  // after the last critic is photographed first; with nothing changed since
+  // the last critic, its report is the verdict and no call is paid.
+  if (!mock && fixedAfterLastCritic) {
+    const finalShot = await photograph(derivation.rounds + 1)
+    if ('none' in finalShot) return { state: 'no-frames', reason: finalShot.none, versionId }
+    previousFrames = lastFrames
+    lastFrames = finalShot.frames
+    lastMetrics = finalShot.metrics
+  }
+  const framesForVerify = lastFrames
+  const beforeVerify = previousFrames
+  const metricsForVerify = lastMetrics
   const verified = await step.run(
     name('verify'),
-    async (): Promise<{ verify: CriticVerify } | { cap: string }> => {
+    async (): Promise<
+      { verify: CriticVerify } | { cap: string } | { malformed: string } | { failed: string }
+    > => {
       const cap = await overCap()
       if (cap) return { cap }
       const version = await exemplarVersionById(db, versionId)
@@ -401,9 +480,19 @@ async function deriveTechnique(
       const channel = await loopChannel(channelId)
       const criticPlan = criticPlanOf(version.code, derivedContext(entry, plan))
       const prior = lastReport ?? mockCriticReport(criticPlan)
-      if (mock || !previous) {
+      if (mock) {
         const verify = mockCriticVerify(criticPlan, prior)
         await updateExemplarDraft(db, versionId, { verify })
+        return { verify }
+      }
+      if (!fixedAfterLastCritic || !framesForVerify) {
+        const passes = criticPasses(prior) && !(metricsForVerify?.frozenCritical ?? false)
+        const verify: CriticVerify = {
+          ...prior,
+          priorDefects: prior.defects.map((_, index) => ({ index: index + 1, state: 'present' })),
+          verdict: passes ? 'ready' : 'one-more-pass',
+        }
+        if (version.status === 'draft') await updateExemplarDraft(db, versionId, { verify })
         return { verify }
       }
       try {
@@ -411,24 +500,36 @@ async function deriveTechnique(
           channel,
           plan: criticPlan,
           slot: loopSlot(entry, plan),
-          frames: previous,
+          frames: framesForVerify,
           findings: [],
-          metrics: lastMetrics,
+          metrics: metricsForVerify,
           references: [],
+          ...(beforeVerify ? { previous: beforeVerify } : {}),
           verify: { prior, brief: VERIFY_BRIEF },
           strong: true,
           complete,
         })
         const verify = report as CriticVerify
-        await updateExemplarDraft(db, versionId, { verify })
+        if (version.status === 'draft') {
+          await updateExemplarDraft(db, versionId, { critique: verify, verify })
+        }
         return { verify }
       } catch (error) {
         if (error instanceof BudgetExceededError) return { cap: error.message }
-        throw error
+        if (error instanceof ValidationError) return { malformed: error.message }
+        return { failed: failedWith(error) }
       }
     },
   )
   if ('cap' in verified) return stopped(verified.cap, versionId)
+  if ('failed' in verified) return { state: 'failed', reason: verified.failed, versionId }
+  if ('malformed' in verified) {
+    return {
+      state: 'failed',
+      reason: `the critic's verify report was malformed: ${verified.malformed}`,
+      versionId,
+    }
+  }
   return {
     state: verified.verify.verdict === 'ready' ? 'ready' : 'wants-pass',
     reason: null,
@@ -469,7 +570,14 @@ export const motionExemplarDeriver = inngest.createFunction(
         await updateTechniqueProgress(db, derivationId, technique, { state: 'running' })
         return jobSpendUsd(db, derivationId)
       })
-      const outcome = await deriveTechnique(step, derivation, technique)
+      // One technique's failure is its own (final review, issue 6): the rest still run.
+      let outcome: TechniqueOutcome
+      try {
+        outcome = await deriveTechnique(step, derivation, technique)
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        outcome = { state: 'failed', reason: reason.slice(0, 500), versionId: null }
+      }
       await step.run(`${technique}/done`, async () => {
         const spent = await jobSpendUsd(db, derivationId)
         const costUsd = Math.max(0, Math.round((spent - before) * 10_000) / 10_000)
@@ -488,6 +596,43 @@ export const motionExemplarDeriver = inngest.createFunction(
       const state = stoppedAtCap ? ('stopped' as const) : ('done' as const)
       await finishDerivation(db, derivationId, { state, spentUsd: spent })
       return state
+    })
+    return { derivationId, outcome }
+  },
+)
+
+/**
+ * A derivation cancelled outside the app (the Inngest dashboard, or a
+ * second launch under the singleton) fires no failure handler, so its row
+ * would stay running and the channel would wait forever (final review,
+ * issue 1). Inngest emits `inngest/function.cancelled` with the triggering
+ * event; the row is stopped with the spend so far.
+ */
+export const motionDerivationCancelled = inngest.createFunction(
+  {
+    id: CANCELLED_ID,
+    name: 'A cancelled derivation is stopped',
+    retries: 4,
+    triggers: [{ event: 'inngest/function.cancelled' }],
+  },
+  async ({ event, step }) => {
+    const data = (event.data ?? {}) as Record<string, unknown>
+    const functionId = typeof data['function_id'] === 'string' ? data['function_id'] : ''
+    if (!functionId.endsWith(FUNCTION_ID)) return { outcome: 'not-ours' as const }
+    const original = data['event'] as { data?: Record<string, unknown> } | undefined
+    const derivationId = original?.data?.['derivationId']
+    if (typeof derivationId !== 'string') return { outcome: 'no-derivation' as const }
+    const outcome = await step.run('stop', async () => {
+      const row = await getDerivation(db, derivationId)
+      if (!row) return 'unknown' as const
+      if (row.state !== 'running') return 'already-closed' as const
+      const spent = await jobSpendUsd(db, derivationId).catch(() => 0)
+      await finishDerivation(db, derivationId, {
+        state: 'stopped',
+        spentUsd: spent,
+        error: CANCELLED_OUTSIDE,
+      })
+      return 'stopped' as const
     })
     return { derivationId, outcome }
   },

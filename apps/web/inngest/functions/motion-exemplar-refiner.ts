@@ -6,7 +6,13 @@ import {
   mockCriticVerify,
   mockProvidersEnabled,
 } from '@boom-busters/providers'
-import { BudgetExceededError, CRITIC_AXES, CRITIC_BAR, parseEventData } from '@boom-busters/schemas'
+import {
+  BudgetExceededError,
+  CRITIC_AXES,
+  CRITIC_BAR,
+  parseEventData,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { CriticReport, CriticVerify, PairwiseOutcome } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, refineSteer } from '@/lib/exemplar-derive'
@@ -65,8 +71,10 @@ export const motionExemplarRefiner = inngest.createFunction(
     id: FUNCTION_ID,
     name: 'Motion exemplar refiner',
     retries: 1,
-    // One refine per channel at a time (spec 9.3); cancel, not skip, as the deriver (decision 233).
-    singleton: { key: 'event.data.channelId', mode: 'cancel' },
+    // One refine per parent version at a time (spec 9.3): a second steer on
+    // the same version replaces the first; refines of other techniques run
+    // beside it (final review, issue 2). Cancel, not skip (decision 233).
+    singleton: { key: 'event.data.parentId', mode: 'cancel' },
     triggers: [events.motionExemplarRefine],
   },
   async ({ event, step, runId }) => {
@@ -153,6 +161,8 @@ export const motionExemplarRefiner = inngest.createFunction(
       const version = await exemplarVersionById(db, versionId)
       const parent = await exemplarVersionById(db, parentId)
       if (!version || !parent) return null
+      // The owner may have decided on the draft already (final review, issue 4): it is theirs now.
+      if (version.status !== 'draft') return null
       const entry = MANIFEST.find((candidate) => candidate.technique === parent.technique)
       if (!entry) return null
       const channel = await loopChannel(channelId)
@@ -166,10 +176,16 @@ export const motionExemplarRefiner = inngest.createFunction(
         frames: browserFrames(),
       })
       if (!photographed) return null
-      await updateExemplarDraft(db, versionId, {
-        frames: photographed.frames,
-        metrics: photographed.metrics,
-      })
+      try {
+        await updateExemplarDraft(db, versionId, {
+          frames: photographed.frames,
+          metrics: photographed.metrics,
+        })
+      } catch (error) {
+        // The owner decided on the draft while its frames were taken: it is theirs now.
+        if (error instanceof ValidationError) return null
+        throw error
+      }
       return photographed
     })
 
@@ -180,11 +196,17 @@ export const motionExemplarRefiner = inngest.createFunction(
       const entry = MANIFEST.find((candidate) => candidate.technique === parent.technique)
       if (!entry) return
       const channel = await loopChannel(channelId)
+      if (version.status !== 'draft') return
       const plan = criticPlanOf(version.code, derivedContext(entry, parent.plan))
       const prior = parent.critique ?? emptyReport()
-      if (mock || !shot) {
+      if (mock) {
         const verify = mockCriticVerify(plan, prior)
         await updateExemplarDraft(db, versionId, { critique: mockCriticReport(plan), verify })
+        return
+      }
+      if (!shot) {
+        // No frames, no critic: the draft is stored unreviewed, never with a fake report (final review, issue 3).
+        channel.log(`the refine of ${parent.technique} was not reviewed: no frames to show`)
         return
       }
       try {
