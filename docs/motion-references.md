@@ -13,7 +13,9 @@ and is tagged with it:
 - **mechanism**: one move. A word that splits open to show a figure. A numeral
   that stays while the background changes. Bars rising as years are spoken.
 - **look**: palette, type, texture, the weight and spacing of letters. Stills
-  are good for look and useless for motion.
+  are good for look and useless for motion. The critic that reviews each
+  graphic is shown the first two look references, so put the two that matter
+  most first.
 - **pacing**: how long things hold, how fast they leave, how much is on screen
   at once.
 

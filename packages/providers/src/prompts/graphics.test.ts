@@ -10,8 +10,6 @@ import {
 import { PSYCHOLOGY_TEST_BIBLE } from './lift/psychology-bible'
 import {
   buildGraphicRequest,
-  buildGraphicReviewRequest,
-  parseGraphicReview,
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
   GRAPHIC_CODE_FIXTURE_SOURCE,
@@ -82,7 +80,7 @@ describe('the designer prompt (decision 295)', () => {
 
   it('asks for the concept and the storyboard first, then a title, a facts manifest and the source as one JSON string (decision 388)', () => {
     expect(system).toContain(
-      '{"concept": "...", "storyboard": ["...", "..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}',
+      '{"concept": "...", "storyboard": ["...", "..."], "mechanisms": ["..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}',
     )
     expect(rules).toContain(
       'its keys in this order, so the concept and the storyboard are settled before the code is written',
@@ -423,6 +421,7 @@ describe('buildGraphicRequest (decision 295)', () => {
     const exemplar = {
       technique: 'stat-counter' as const,
       description: 'one large figure counting up to its mark, a label beneath, held',
+      mechanisms: ['drum' as const, 'word-splits-open' as const],
       title: 'The 1.2bn',
       source: 'function Graphic(props) {\n  return null\n}',
     }
@@ -435,13 +434,21 @@ describe('buildGraphicRequest (decision 295)', () => {
     )
     const slot = request.messages[1]!.content
     expect(slot).toContain(
-      "A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, for its mechanics, its timing and its standard. Its concept came from its own narration: find this slot's own rather than reusing its layout. Its words and figures are its own; yours come from this slot and its claims:",
+      "A passing design of this technique (stat-counter: one large figure counting up to its mark, a label beneath, held), in this sandbox and on the tokens, for its mechanics, its timing and its standard. It uses: drum, word splits open. Its concept came from its own narration: find this slot's own rather than reusing its layout. Its words and figures are its own; yours come from this slot and its claims:",
     )
     expect(slot).toContain('````jsx\n' + exemplar.source + '\n````')
     expect(slot.indexOf('Data (draw every point')).toBeLessThan(slot.indexOf('A passing design'))
     expect(request.messages[2]!.content).toContain('The current design')
     expect(request.messages[0]!.content).not.toContain('A passing design')
     expect(request.system).toBe(buildGraphicRequest(input()).system)
+  })
+
+  it('lists the mechanisms with their definitions and asks for the design\u2019s own (spec 2026-11-04, section 8.5)', () => {
+    const system = buildGraphicRequest(input()).system
+    expect(system).toContain('"mechanisms": [')
+    expect(system).toContain('- persistent-actor, persistent actor: ')
+    expect(system).toContain('- camera-push, camera push: ')
+    expect(system).toContain('at most 6')
   })
 
   it('sends no block when no exemplar is given', () => {
@@ -527,48 +534,6 @@ describe('buildGraphicRequest (decision 295)', () => {
   })
 })
 
-describe('the review (decision 389)', () => {
-  const design = {
-    concept: 'the count is the story',
-    storyboard: ['0.3 s the figure counts up'],
-    title: 'Raised in one round',
-    facts: [{ text: '$4bn', claim: 1 }],
-    source: 'function Graphic(props) {\n  return null\n}',
-  }
-  const frames = [
-    { label: '16:9 at 0.9 s', image: { mimeType: 'image/jpeg' as const, data: 'AAAA' } },
-    { label: '9:16 at 5.9 s', image: { mimeType: 'image/jpeg' as const, data: 'BBBB' } },
-  ]
-
-  it("shares the design's cached start, drops the old design and the refusal, and ends on the frames", () => {
-    const base = input({
-      current: { source: 'function Graphic() { return null }', title: 'Old', motion: 1 },
-      rejection: 'refused once',
-      guidance: 'Bigger type.',
-    })
-    const review = buildGraphicReviewRequest(base, design, frames)
-    const design0 = buildGraphicRequest(base)
-    expect(review.system).toBe(design0.system)
-    expect(review.cacheablePrefixMessages).toBe(1)
-    expect(review.messages[0]).toEqual(design0.messages[0])
-    const texts = review.messages.map((message) => message.content).join('\n')
-    expect(texts).not.toContain('The current design')
-    expect(texts).not.toContain('refused once')
-    expect(texts).toContain("The producer's steer: Bigger type.")
-    const last = review.messages.at(-1)!
-    expect(last.images).toEqual(frames.map((frame) => frame.image))
-    expect(last.content).toContain('Frame 1: 16:9 at 0.9 s\nFrame 2: 9:16 at 5.9 s')
-    expect(last.content).toContain('"concept": "the count is the story"')
-    expect(last.content).toContain('answer {"keep": true} and nothing else')
-  })
-
-  it('reads a keep, and reads anything else as a whole design', () => {
-    expect(parseGraphicReview('{"keep": true}')).toEqual({ keep: true })
-    expect(parseGraphicReview(JSON.stringify(design))).toEqual({ keep: false, design })
-    expect(() => parseGraphicReview('{"keep": false}')).toThrow(/^The graphic answer is malformed/)
-  })
-})
-
 describe('parseGraphicCode (decision 295)', () => {
   const ANSWER = {
     title: 'Raised in one round',
@@ -611,6 +576,46 @@ describe('parseGraphicCode (decision 295)', () => {
       ...ANSWER,
     }
     expect(parseGraphicCode(JSON.stringify(planned))).toEqual(planned)
+  })
+
+  it('drops an unknown mechanism with a note and caps the rest at six', () => {
+    const notes: Repair[] = []
+    const parsed = parseGraphicCode(
+      JSON.stringify({
+        ...ANSWER,
+        mechanisms: [
+          'persistent-actor',
+          'jazz-hands',
+          'docking',
+          'drum',
+          'reel',
+          'draw-on',
+          'tally',
+          'door',
+        ],
+      }),
+      (repair) => notes.push(repair),
+    )
+    expect(parsed.mechanisms).toEqual([
+      'persistent-actor',
+      'docking',
+      'drum',
+      'reel',
+      'draw-on',
+      'tally',
+    ])
+    expect(notes.map((n) => n.action)).toEqual(['dropped', 'capped'])
+    expect(parseGraphicCode(JSON.stringify(ANSWER)).mechanisms).toBeUndefined()
+    // A label that is not a list is dropped, never refused: a refusal would buy a whole design again (final review, issue 9).
+    const dropped: Repair[] = []
+    expect(
+      parseGraphicCode(JSON.stringify({ ...ANSWER, mechanisms: 'drum' }), (r) => dropped.push(r))
+        .mechanisms,
+    ).toBeUndefined()
+    expect(dropped.map((n) => n.action)).toEqual(['dropped'])
+    expect(
+      parseGraphicCode(JSON.stringify({ ...ANSWER, mechanisms: null })).mechanisms,
+    ).toBeUndefined()
   })
 
   it('trims an over-long concept and storyboard and caps the storyboard, saying so (decision 388)', () => {

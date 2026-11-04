@@ -201,6 +201,9 @@ export function graphicCodeIssue(
       ...(answer.storyboard && answer.storyboard.length > 0
         ? { storyboard: answer.storyboard }
         : {}),
+      ...(answer.mechanisms && answer.mechanisms.length > 0
+        ? { mechanisms: answer.mechanisms }
+        : {}),
     },
   }
 }

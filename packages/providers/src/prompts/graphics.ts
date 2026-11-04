@@ -6,6 +6,10 @@ import {
   GRAPHIC_STORYBOARD_LINE_MAX,
   GRAPHIC_STORYBOARD_MAX,
   GRAPHIC_TITLE_MAX,
+  MECHANISM_KEYS,
+  MECHANISMS,
+  MECHANISMS_PER_DESIGN_MAX,
+  mechanismName,
   motionNeverList,
   motionNumbers,
   PlannedGraphicCodeSchema,
@@ -25,7 +29,7 @@ import { REMOTION_RULES } from './remotion-rules'
 import { claimList, type ScriptClaim } from './script'
 import type { Exemplar } from '../exemplars/index'
 import { formatIssues, parseJsonCompletion } from './json'
-import { capList, ignoreRepairs, trimField, type Note } from './repair'
+import { capList, dropItems, ignoreRepairs, trimField, type Note } from './repair'
 import { outputBudget, type LLMTaskRequest, type MsgImage } from '../llm/types'
 
 export { GRAPHIC_CODE_FIXTURE_SOURCE }
@@ -182,6 +186,29 @@ function channelMotion(motion: MotionIdentity): string {
   return `\n\nThis channel's motion:\n${lines.join('\n')}`
 }
 
+/**
+ * The identity said whole, house values included (spec 2026-11-04, section
+ * 10.4): for a prompt with no craft section of its own, the critic's, so it
+ * judges against the channel's taste and not its own. The designer's prompt
+ * says the house values in its craft section and takes `channelMotion`.
+ */
+export function motionIdentityBlock(motion: MotionIdentity): string {
+  const numbers = motionNumbers(motion)
+  const lengths = Object.entries(numbers.ms)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(', ')
+  const lines = [
+    `- The curves are ${EASE_WORDS[motion.signatureEase]}.`,
+    `- Things arrive by ${motion.entrance}; overshoot: ${motion.overshoot}.`,
+    `- Lengths in milliseconds: ${lengths}.`,
+    craftFromIdentity(motion),
+    `- Nothing may stay still longer than ${secondsWord(motion.stillMaxMs)}.`,
+  ]
+  const guide = motion.styleGuideMd.trim()
+  if (guide.length > 0) lines.push(guide)
+  return `This channel's motion:\n${lines.join('\n')}`
+}
+
 const systemTemplate = (
   bible: ChannelBible,
   motion: MotionIdentity,
@@ -197,19 +224,24 @@ away) and the claims it rests on. A chart slot also carries its data.
 
 Answer with JSON only, its keys in this order, so the concept and the storyboard are settled
 before the code is written:
-{"concept": "...", "storyboard": ["...", "..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
+{"concept": "...", "storyboard": ["...", "..."], "mechanisms": ["..."], "title": "...", "facts": [{"text": "...", "claim": 3}], "source": "..."}
 - "concept": the one idea the graphic is made of, in one line of at most ${GRAPHIC_CONCEPT_MAX} characters:
   what the picture is and how it changes ("the sentence parts and the figure rises out of
   it"), found in this slot's own words.
 - "storyboard": the graphic moment by moment on the slot's clock, one entry per change, each
   starting with its time (2.0 s, on "1.2bn": the figure rises out of the gap, pushing the
   lead-in up into its label), at most ${GRAPHIC_STORYBOARD_MAX} entries. Then write the code to it.
+- "mechanisms": the moves the design is built on, as keys from the list below and no other,
+  at most ${MECHANISMS_PER_DESIGN_MAX}; leave it out when none fits. The critic checks that each one is on the frames.
 - "title": the slot card's name for the graphic, one line of at most ${GRAPHIC_TITLE_MAX} characters.
 - "facts": every number and every quoted phrase the graphic shows, each with the NUMBER
   of the claim it comes from. A year is a number. At most 40 entries: more is refused, not
   cut. A chart's digits read off props.data need no entry.
 - "source": the component, at most ${GRAPHIC_SOURCE_MAX} characters, as one JSON string. Escape
   its double quotes and line breaks as JSON requires.
+
+The mechanisms, by key:
+${MECHANISMS.map((m) => `- ${m.key}, ${mechanismName(m.key)}: ${m.definition}.`).join('\n')}
 
 The sandbox your code runs in:
 - Declare function Graphic(props) at the top level; helper functions and constants
@@ -424,59 +456,10 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   }
 }
 
-/** One rendered frame the review is shown (decision 389), and how the message names it. */
+/** One rendered rest frame the critic is shown (decision 389, spec 2026-11-04 section 10.4), and how the message names it. */
 export interface ReviewFrame {
   label: string
   image: MsgImage
-}
-
-/**
- * The review (decision 389): the designer is shown its own passing design,
- * rendered at the moments a viewer reads it, and asked to keep it or fix
- * what it sees. The design's own request is the start, so the cached system
- * prompt and film message are shared, without the redesign's old design (the
- * design under review replaces it) and without a refusal; the review is the
- * last message, carrying the frames, the design as answered and the ask.
- */
-export function buildGraphicReviewRequest(
-  input: GraphicDesignInput,
-  design: PlannedGraphicCode,
-  frames: readonly ReviewFrame[],
-): LLMTaskRequest {
-  const { current: _current, rejection: _rejection, ...rest } = input
-  const request = buildGraphicRequest(rest)
-  const listed = frames.map((frame, index) => `Frame ${index + 1}: ${frame.label}`).join('\n')
-  const review =
-    `Your design for this slot passed every check. Here it is as it renders, ${frames.length} frames ` +
-    `in this order:\n${listed}\nLogos are drawn as empty boxes in these frames; the film shows the marks.\n\n` +
-    `The design:\n\`\`\`\`json\n${JSON.stringify(design, null, 2)}\n\`\`\`\`\n\n` +
-    'Look at each frame as a viewer would, against your concept and storyboard. Fix what you see: ' +
-    'words that collide or crowd, text cut off or pressed against an edge, type too small to read on a ' +
-    'phone, a frame with two things competing to be biggest, a moment that is empty or late against ' +
-    'its word, a concept that does not read, or anything the craft section rules out. If every frame ' +
-    'reads cleanly, answer {"keep": true} and nothing else. Otherwise answer the whole design again in ' +
-    'the same JSON shape, its keys in the same order, with the fixes made and what works kept.'
-  return {
-    ...request,
-    messages: [
-      ...request.messages,
-      { role: 'user', content: review, images: frames.map((frame) => frame.image) },
-    ],
-  }
-}
-
-/** The review's answer: keep the design, or a revised one to check. */
-export type GraphicReview = { keep: true } | { keep: false; design: PlannedGraphicCode }
-
-/**
- * The review's answer, validated: `{"keep": true}` keeps the design; anything
- * else is a whole design, read as the designer's answer is (decision 293's
- * trims included) and refused as it would be.
- */
-export function parseGraphicReview(text: string, note: Note = ignoreRepairs): GraphicReview {
-  const raw = parseJsonCompletion(text, z.looseObject({}), 'graphic review')
-  if (raw['keep'] === true) return { keep: true }
-  return { keep: false, design: parseGraphicCode(text, note) }
 }
 
 /**
@@ -490,7 +473,11 @@ export function parseGraphicReview(text: string, note: Note = ignoreRepairs): Gr
 function exemplarBlock(exemplar: Exemplar): string {
   return (
     `A passing design of this technique (${exemplar.technique}: ${exemplar.description}), in this ` +
-    'sandbox and on the tokens, for its mechanics, its timing and its standard. Its concept came ' +
+    'sandbox and on the tokens, for its mechanics, its timing and its standard. ' +
+    (exemplar.mechanisms.length > 0
+      ? `It uses: ${exemplar.mechanisms.map(mechanismName).join(', ')}. `
+      : '') +
+    'Its concept came ' +
     "from its own narration: find this slot's own rather than reusing its layout. Its words and " +
     'figures are its own; yours come from this slot and its claims:\n' +
     '````jsx\n' +
@@ -536,8 +523,31 @@ export function parseGraphicCode(text: string, note: Note = ignoreRepairs): Plan
     "the graphic's storyboard",
     note,
   )
+  // A mechanism not in the list, or a label that is not a list at all, is
+  // dropped, never refused: it is a label, not the design, and a refusal
+  // would buy the whole design again.
+  const listed = raw['mechanisms']
+  if (listed !== undefined && !Array.isArray(listed)) {
+    note({ action: 'dropped', field: "the design's mechanisms", reason: 'not a list' })
+  }
+  const mechanisms = capList(
+    dropItems(
+      Array.isArray(listed) ? listed : undefined,
+      (item) =>
+        typeof item === 'string' && (MECHANISM_KEYS as readonly string[]).includes(item)
+          ? null
+          : 'not a mechanism in the list',
+      (item, index) => `mechanism ${index + 1} (${String(item)})`,
+      note,
+    ),
+    MECHANISMS_PER_DESIGN_MAX,
+    "the design's mechanisms",
+    note,
+  )
+  const { mechanisms: _listed, ...rest } = raw
   const parsed = PlannedGraphicCodeSchema.safeParse({
-    ...raw,
+    ...rest,
+    ...(mechanisms === undefined ? {} : { mechanisms }),
     title: trimField(raw['title'], GRAPHIC_TITLE_MAX, "the graphic's title", note),
     concept: trimField(raw['concept'], GRAPHIC_CONCEPT_MAX, "the graphic's concept", note),
     ...(Array.isArray(storyboard)

@@ -1,0 +1,38 @@
+{
+  "task": "critic",
+  "system": "You are the critic for a channel's motion graphics: a fresh judge, never the designer.\nA design for one slot of a documentary was written as code, checked, and rendered; you are\nshown it as pictures with the plan the designer wrote, the motion measured from its frames,\nand what the browser found. Your report decides whether it is kept or sent back with fixes.\n\nThe channel's references, when shown, are grammar to learn from (how things enter, move and\nleave; the density; the pacing), never content to copy: nothing from them is to appear in\nthe design.\n\nScore the design on five axes, each 1 to 10, a bar of 8:\n- engagement: does it hold the eye from the first half second and earn each next second.\n- intent: does a viewer take away the slot's one point, with nothing competing for it.\n- composition: hierarchy, reading order, the safe area, type that reads on a phone, one thing biggest.\n- temporal: the beats land on their words, nothing freezes, nothing happens all at once, the ending holds.\n- craft: easing, overshoot, blur and 3D as the identity allows; no banned move; the moves it names are there.\nA score at or above 8 means a viewer would notice nothing to fix on that axis.\n\nAnswer with JSON only, its keys in this order:\n{\"scores\": {\"engagement\": {\"score\": 8, \"line\": \"...\"}, \"intent\": {\"score\": 8, \"line\": \"...\"}, \"composition\": {\"score\": 8, \"line\": \"...\"}, \"temporal\": {\"score\": 8, \"line\": \"...\"}, \"craft\": {\"score\": 8, \"line\": \"...\"}}, \"defects\": [{\"atMs\": 1350, \"orientation\": \"landscape\", \"text\": \"...\"}], \"fixes\": [\"...\", \"...\", \"...\"], \"mechanisms\": [{\"key\": \"...\", \"present\": true}], \"keep\": true}\n- \"scores\": one line of at most 200 characters per axis saying what earned the score.\n- \"defects\": what is wrong, ranked worst first, each with the time in milliseconds on the slot's\n  clock and the frame (landscape or portrait) it shows in; at most 8. Use the\n  browser's findings where they stand, and drop any the pictures do not bear out.\n- \"fixes\": the changes worth a designer's call, in the order they are worth making, at most\n  3, each one concrete change the designer can make from the words alone\n  (\"hold the final figure for the last second instead of fading it\"). Empty when nothing is.\n- \"mechanisms\": for each mechanism the plan names, whether the frames show it.\n- \"keep\": true only when no fix is worth a designer's call, whatever the scores say.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "This channel's motion:\n- The curves are soft (arrivals settle long, moves ease both ways).\n- Things arrive by rise; overshoot: hair.\n- Lengths in milliseconds: micro 120, enter 450, exit 300, reveal 550, draw 700, count 1000, move 900, gap 120.\n- Something changes about every 1.5 seconds, and the camera never stops: a slow push over the whole slot (a scale of 2 to 4% on motion.ease.move), anchored at the content's edge or centre so nothing is pushed out of the safe area.\n- Blur follows speed: an element moving fast takes a filter: blur() worked out from how far\n  it moved since the frame before (compute its place at frame - 1), and none at rest.\n- 3D when it carries meaning: perspective with rotateX or rotateY for a drum, a turn or a\n  card, never a spin for its own sake.\n- Charts stay honest and conventional: bars rise out of the baseline, lines draw on, a ring\n  sweeps; no gridlines or minor ticks, and no bar that travels or morphs from one value to\n  the next. The invention goes into the type, the framing and the hand-offs, never the data\n  marks.\n- Never: glows, particle bursts, lens flares, camera shake, RGB split, a crossfade from one whole layout to another, decorative gradients, drop shadows for depth.\n- Nothing may stay still longer than 6 seconds.\n\nThe mechanisms a design may name, with what each means:\n- persistent actor: one element stays on screen through the slot and carries every change.\n- foreground becomes transition: an element grows, turns or moves until it is the next layout.\n- cause to effect: one thing visibly makes the next thing happen.\n- density from hierarchy: the busiest layer is the least important; the point sits alone.\n- change of speed: a fast move set against a slow one, so each reads by contrast.\n- hard cut: a change with no transition at all.\n- word splits open: a word or line parts in the middle to let the next thing through.\n- docking: a moving element settles into a slot made for it.\n- drum: a count that strikes each figure in turn, beat by beat.\n- reel: a column of values spins and stops on the answer.\n- draw on: a line, shape or path drawn as the viewer watches.\n- rise from baseline: bars and figures grow up from their rule, never morph across.\n- tally: marks that accumulate one at a time until the count is shown.\n- door: a panel opens or slides away to reveal what was behind it.\n- marker stroke: a hand-drawn underline, circle or strike over the type.\n- camera push: the whole frame drifts slowly in, so nothing is ever still."
+    },
+    {
+      "role": "user",
+      "content": "The slot: 6.0 s long. Intent: The fall from 104.5 to 1.28 euros in nine days is the story.\n\nThe words, on the slot's clock: 0.0 s \"The\", 0.3 s \"share\".\n\nThe plan, as the designer answered it (claims by number):\n````json\n{\n  \"concept\": \"the floor gives way\",\n  \"storyboard\": [\n    \"0.0 s the baseline draws\",\n    \"2.0 s \\\"2019\\\": the first point lands\"\n  ],\n  \"title\": \"The fall\",\n  \"facts\": [\n    {\n      \"text\": \"2022\",\n      \"claim\": 1\n    }\n  ],\n  \"mechanisms\": [\n    \"rise-from-baseline\"\n  ]\n}\n````\n\nMeasured motion, from the 16:9 frames compared neighbour to neighbour (change is the mean grey difference per pixel, 0 to 255):\n- Longest frozen run 500 ms (limit 6000 ms); frozen in total 1000 ms.\n- 75% of the change inside one 250 ms window.\n- The ending holds 1000 ms after the last change.\n- Change per shot: 0.5 s 0, 1.0 s 30.\n\nWhat the browser found, at rest, in flight and in contrast:\n1. while moving, at 1.3 s in landscape, \"2019\" and \"2022\" overlap"
+    },
+    {
+      "role": "user",
+      "content": "The pictures, in this order:\nReference 1: Numeral over a changing background (look): borrow the held numeral, not the story\nContact sheet 16:9: the design through its moves, in time order, a timecode under each tile\nContact sheet 9:16: the design through its moves, in time order, a timecode under each tile\nFrame 1: 16:9 at 0.9 s, at rest\nLogos are drawn as empty boxes; the film shows the marks.\n\nJudge the design as a viewer would, against its plan and the channel’s motion, and answer the report.",
+      "images": [
+        {
+          "mimeType": "image/jpeg",
+          "data": "DDDD"
+        },
+        {
+          "mimeType": "image/jpeg",
+          "data": "AAAA"
+        },
+        {
+          "mimeType": "image/jpeg",
+          "data": "BBBB"
+        },
+        {
+          "mimeType": "image/jpeg",
+          "data": "CCCC"
+        }
+      ]
+    }
+  ],
+  "cacheablePrefixMessages": 1,
+  "maxTokens": 5500
+}

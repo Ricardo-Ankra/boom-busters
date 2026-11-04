@@ -5,6 +5,7 @@ import { mockGraphicCode, mockProvidersEnabled } from '@boom-busters/providers'
 import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
+import { criticReferencesFor } from '@/lib/critic-references'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
@@ -115,10 +116,12 @@ export async function designGraphic(
 }
 
 /**
- * The review of a stored design (decision 389), called in a step of its own
- * after the design's step, so it has a step's whole time to itself. Skipped,
- * with the reason, when Settings has it off, in mock mode, with the browser
- * off, or on a slot with no design; otherwise `reviewGraphicWith` decides.
+ * The review of a stored design (decision 389; the critic since spec
+ * 2026-11-04, section 10.4), called in a step of its own after the design's
+ * step, so it has a step's whole time to itself. Skipped, with the reason,
+ * when Settings has it off, in mock mode, with the browser off, or on a slot
+ * with no design; otherwise `reviewGraphicWith` decides, shown the channel's
+ * first two look references.
  */
 export async function reviewGraphic(
   context: GraphicDesignContext,
@@ -139,6 +142,7 @@ export async function reviewGraphic(
     ...options,
     bible: inUse,
     motion: resolveMotionIdentity(channel.settings),
+    references: await criticReferencesFor(inUse.channelId),
     frames: browserFrames(),
     brand: graphicBrand(resolveBrandKit(channel.settings)),
     log,
