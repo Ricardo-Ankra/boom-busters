@@ -107,8 +107,8 @@ test.describe('channels', () => {
       .fill('Curious adults who read popular science.')
     for (let index = 1; index <= 2; index += 1) {
       await page.getByRole('button', { name: 'Add category' }).click()
-      await page.getByLabel(`Category ${index} key`).fill(`category-${index}`)
-      await page.getByLabel(`Category ${index} label`).fill(`Category ${index}`)
+      await page.getByLabel(`Category ${index} key`, { exact: true }).fill(`category-${index}`)
+      await page.getByLabel(`Category ${index} label`, { exact: true }).fill(`Category ${index}`)
     }
     await page.getByRole('button', { name: 'Done editing Identity', exact: true }).click()
     await page.getByRole('button', { name: 'Save', exact: true }).click()
