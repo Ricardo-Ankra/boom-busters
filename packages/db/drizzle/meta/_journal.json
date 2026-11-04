@@ -337,6 +337,13 @@
       "when": 1793790337787,
       "tag": "0047_nifty_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793813150637,
+      "tag": "0048_nasty_glorian",
+      "breakpoints": true
     }
   ]
 }
