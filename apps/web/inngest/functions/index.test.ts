@@ -41,6 +41,8 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'slot-refetcher': { key: 'event.data.slotId', mode: 'cancel' },
   'slot-retyper': { key: 'event.data.slotId', mode: 'cancel' },
   'slot-rebriefer': { key: 'event.data.slotId', mode: 'cancel' },
+  // One read per reference; a re-mark or a second Read cancels the older run (spec 2026-11-04, 7.3).
+  'motion-reference-reader': { key: 'event.data.referenceId', mode: 'cancel' },
   'slot-redirector': { key: 'event.data.slotId', mode: 'cancel' },
   'visuals-replanner': { key: 'event.data.projectId', mode: 'cancel' },
   'short-render-runner': { key: 'event.data.shortId', mode: 'cancel' },

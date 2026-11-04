@@ -467,3 +467,43 @@ export function browserFrames(): GraphicFrames {
     },
   }
 }
+
+/**
+ * One document photographed whole (spec 2026-11-04, section 7.3): the
+ * reference sheets are laid out as a page and screenshotted here, on the
+ * same browser and the same bounds as the inspection. The page is `width`
+ * wide and as tall as the document; the picture is a JPEG.
+ */
+export async function screenshotDocument(input: {
+  html: string
+  width: number
+  timeoutMs?: number
+}): Promise<Buffer> {
+  const budget = input.timeoutMs ?? INSPECT_MAX_MS
+  const started = Date.now()
+  const launching = launchBrowser()
+  const browser = await withinTime(launching, Math.min(budget, LAUNCH_MAX_MS), 'the launch').catch(
+    (error: unknown) => {
+      launching.then((late) => late.close()).catch(() => undefined)
+      throw error
+    },
+  )
+  try {
+    const shoot = async () => {
+      const page = await browser.newPage({
+        viewport: { width: input.width, height: 800 },
+        deviceScaleFactor: 1,
+      })
+      await page.setContent(input.html, { waitUntil: 'load', timeout: 15_000 })
+      return page.screenshot({ type: 'jpeg', quality: 80, fullPage: true })
+    }
+    return await withinTime(shoot(), Math.max(1, budget - (Date.now() - started)), 'the sheet')
+  } catch (error) {
+    if (error instanceof FramesUnavailable) throw error
+    throw new FramesUnavailable(
+      `the sheet failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  } finally {
+    await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
+  }
+}
