@@ -9935,3 +9935,20 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      reviewed graphic pays the critic call with up to five images and, on a
      fix, a second designer call; at most two reference images, each held to
      1600 px, so the per-shot cost does not grow with the pack.
+     The final review (a fresh reviewer) found one Critical and four
+     Important faults, fixed with a failing test first: the review's
+     inspection measured nothing at rest, so no contrast finding ever
+     reached the critic (now a findings mode measures the rest moments and
+     reports a rest fault or a contrast fault as a finding); the design's
+     contact sheets came out at 800 px on the half-scale frame page (now a
+     second page at full scale); the dense set could starve the portrait
+     rest shots and lose the whole inspection (now both rest phases run
+     first and the dense clock starts after them); a fix could replace a
+     browser-checked design unchecked when the clock ran out (now the fix
+     call is held short of its check, and an unchecked fix keeps the
+     design); and one cosmetic field, a frame named "16:9" or a fractional
+     time, threw away a whole paid report (now mapped, rounded and dropped
+     singly). Two minors with the cost of a paid call were fixed with them:
+     a mechanisms label that is not a list no longer refuses a design, and a
+     fix call that fails keeps the design with its critique. Deferred minors
+     are in the ledger and the hand-over.
