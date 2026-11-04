@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { CriticReportSchema } from './critic'
 import { figureCitesClaim, figureDigitGroups } from './graphics'
 import { UlidSchema } from './ids'
+import { MECHANISMS_PER_DESIGN_MAX, MechanismSchema } from './mechanisms'
 
 /**
  * The designer writes the graphic (decision 295).
@@ -79,6 +81,15 @@ export const GraphicCodeSchema = z.object({
    * Absent when no review ran: switched off, out of time, or no browser.
    */
   review: z.enum(['kept', 'revised']).optional(),
+  /** The moves the designer said the design is built on (spec 2026-11-04, section 8.5). */
+  mechanisms: z.array(MechanismSchema).max(MECHANISMS_PER_DESIGN_MAX).optional(),
+  /**
+   * The critic's report on the design (spec 2026-11-04, section 10.4): the
+   * five scores, the defects, the fixes it asked for and whether it kept the
+   * design. Beside `review`, which says whether a fix replaced the design.
+   * Absent on a design reviewed before the critic, or not reviewed.
+   */
+  critique: CriticReportSchema.optional(),
 })
 export type GraphicCode = z.infer<typeof GraphicCodeSchema>
 
@@ -94,6 +105,8 @@ export const PlannedGraphicCodeSchema = z.object({
   facts: z
     .array(z.object({ text: z.string().trim().min(1).max(120), claim: z.number().int().min(1) }))
     .max(GRAPHIC_FACTS_MAX),
+  /** The moves the design is built on, from the global list; optional, at most six. */
+  mechanisms: z.array(MechanismSchema).max(MECHANISMS_PER_DESIGN_MAX).optional(),
 })
 export type PlannedGraphicCode = z.infer<typeof PlannedGraphicCodeSchema>
 

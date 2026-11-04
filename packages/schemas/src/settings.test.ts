@@ -3,6 +3,7 @@ import {
   BrandKitStoredSchema,
   BrandKitTokensSchema,
   DEFAULT_BIBLE_ROUTE,
+  DEFAULT_CRITIC_ROUTE,
   DEFAULT_SET_SHEET_ROUTE,
   DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
@@ -424,6 +425,19 @@ describe('the graphics route (decision 289)', () => {
     const { graphics: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
     const parsed = ModelRoutingSchema.parse(stored)
     expect(parsed.graphics).toEqual({ provider: 'anthropic', model: 'claude-opus-5-5' })
+  })
+})
+
+describe('the critic route (spec 2026-11-04, sections 10.4 and 12.2)', () => {
+  it('is an LLM task on a cheaper model than the designer', () => {
+    expect(LLM_TASKS).toContain('critic')
+    expect(DEFAULT_CRITIC_ROUTE).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5' })
+    expect(DEFAULT_SETTINGS.modelRouting.critic).toEqual(DEFAULT_CRITIC_ROUTE)
+  })
+
+  it('fills the default into routing stored before it existed', () => {
+    const { critic: _dropped, ...stored } = DEFAULT_SETTINGS.modelRouting
+    expect(ModelRoutingSchema.parse(stored).critic).toEqual(DEFAULT_CRITIC_ROUTE)
   })
 })
 

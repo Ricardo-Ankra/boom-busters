@@ -33,6 +33,24 @@ describe('GraphicCodeSchema (decision 295)', () => {
     expect(GraphicCodeSchema.parse(DESIGN)).toEqual(DESIGN)
   })
 
+  it("may carry the critic's report and the mechanisms it named (spec 2026-11-04, section 10.4)", () => {
+    const critique = {
+      scores: Object.fromEntries(
+        ['engagement', 'intent', 'composition', 'temporal', 'craft'].map((axis) => [
+          axis,
+          { score: 8, line: 'fine' },
+        ]),
+      ),
+      defects: [],
+      fixes: ['hold the end'],
+      mechanisms: [{ key: 'drum', present: true }],
+      keep: false,
+    }
+    const stored = { ...DESIGN, mechanisms: ['drum'], critique }
+    expect(GraphicCodeSchema.parse(stored)).toEqual(stored)
+    expect(GraphicCodeSchema.parse(DESIGN).critique).toBeUndefined()
+  })
+
   it('records the preamble version a design carries, and accepts a design stored before there was one (decision 301)', () => {
     expect(GraphicCodeSchema.parse({ ...DESIGN, motion: 1 })).toEqual({ ...DESIGN, motion: 1 })
     expect(GraphicCodeSchema.parse(DESIGN)).not.toHaveProperty('motion')
@@ -91,6 +109,17 @@ describe('PlannedGraphicCodeSchema', () => {
   it('caps the facts manifest', () => {
     const facts = Array.from({ length: GRAPHIC_FACTS_MAX + 1 }, () => ({ text: '$4bn', claim: 1 }))
     expect(PlannedGraphicCodeSchema.safeParse({ ...planned, facts }).success).toBe(false)
+  })
+
+  it('may name up to six mechanisms from the list (spec 2026-11-04, section 8.5)', () => {
+    const six = ['persistent-actor', 'docking', 'drum', 'reel', 'draw-on', 'tally']
+    expect(PlannedGraphicCodeSchema.parse({ ...planned, mechanisms: six }).mechanisms).toEqual(six)
+    expect(
+      PlannedGraphicCodeSchema.safeParse({ ...planned, mechanisms: [...six, 'door'] }).success,
+    ).toBe(false)
+    expect(
+      PlannedGraphicCodeSchema.safeParse({ ...planned, mechanisms: ['jazz-hands'] }).success,
+    ).toBe(false)
   })
 })
 

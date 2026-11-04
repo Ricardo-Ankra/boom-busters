@@ -41,6 +41,8 @@ export const LLM_TASKS = [
   'direction',
   /** One call per graphic slot (decision 289): what it shows, its layout and its motion. */
   'graphics',
+  /** The critic that reviews a rendered graphic (spec 2026-11-04, section 10.4): a cheaper model than the designer. */
+  'critic',
   /** Drafting a channel's bible, one section at a time, and digesting its research. */
   'bible',
 ] as const
@@ -204,6 +206,14 @@ export const DEFAULT_GRAPHICS_ROUTE = { provider: 'anthropic', model: 'claude-op
  */
 export const DEFAULT_BIBLE_ROUTE = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
 
+/**
+ * The critic's default (spec 2026-11-04, section 12.2, the owner's ruling):
+ * a cheaper, vision-capable model than the designer, since it judges and
+ * names fixes while the designer makes them. A row stored before the route
+ * existed reads this.
+ */
+export const DEFAULT_CRITIC_ROUTE = { provider: 'anthropic', model: 'claude-sonnet-5' } as const
+
 export const ModelRoutingSchema = z.object({
   research: ModelRefSchema,
   scripting: ModelRefSchema,
@@ -213,6 +223,7 @@ export const ModelRoutingSchema = z.object({
   digest: ModelRefSchema,
   direction: ModelRefSchema,
   graphics: ModelRefSchema.default(DEFAULT_GRAPHICS_ROUTE),
+  critic: ModelRefSchema.default(DEFAULT_CRITIC_ROUTE),
   bible: ModelRefSchema.default(DEFAULT_BIBLE_ROUTE),
   /** The still-image generator — not an LLM task, but routed where the others are. */
   stills: StillRouteSchema,
@@ -723,6 +734,8 @@ export const DEFAULT_SETTINGS: Settings = {
     direction: { provider: 'anthropic', model: 'claude-sonnet-5' },
     // Graphics get a designer of their own (decision 289).
     graphics: DEFAULT_GRAPHICS_ROUTE,
+    // The critic judges what the designer made (spec 2026-11-04, section 10.4).
+    critic: DEFAULT_CRITIC_ROUTE,
     // Drafting a bible is scripting-tier work (spec 4.7).
     bible: DEFAULT_BIBLE_ROUTE,
     // Gemini rides the Google key Settings already holds for the LLM

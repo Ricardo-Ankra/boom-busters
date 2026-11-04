@@ -15,6 +15,7 @@ const routing: ModelRouting = {
   digest: { provider: 'anthropic', model: 'mock-small' },
   direction: { provider: 'anthropic', model: 'mock-medium' },
   graphics: { provider: 'anthropic', model: 'mock-large' },
+  critic: { provider: 'anthropic', model: 'mock-medium' },
   bible: { provider: 'anthropic', model: 'mock-medium' },
   // Not LLM tasks — present because the type carries them (decision 208);
   // the LLM router never reads either.
