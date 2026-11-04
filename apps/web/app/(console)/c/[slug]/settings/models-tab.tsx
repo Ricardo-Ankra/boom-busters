@@ -43,6 +43,7 @@ const TASK_LABELS: Record<LlmTask, string> = {
   digest: 'Weekly digest',
   direction: 'Visual direction',
   graphics: 'Motion graphics',
+  critic: 'Motion critic',
   bible: 'Bible drafting',
 }
 
@@ -436,7 +437,7 @@ export function ModelsTab({
               </div>
 
               {renderNotes(providerOptions, row.model, selected)}
-              {task === 'graphics' ? (
+              {task === 'critic' ? (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-3">
                     <Switch
@@ -454,9 +455,11 @@ export function ModelsTab({
                     </Label>
                   </div>
                   <p className="text-[12px] text-[var(--color-text-muted)]">
-                    Once a design passes its checks, this model is shown it rendered and fixes what
-                    it sees. A second call with pictures, so each graphic costs about twice as much.
-                    The layout check in the browser runs either way.
+                    Once a design passes its checks, this model is shown it rendered, through its
+                    moves and beside two of the channel&apos;s look references, and scores it on
+                    five axes. What it finds worth fixing goes to the Motion graphics model as one
+                    fix. Two calls with pictures per graphic, so each costs about three times a bare
+                    design. The layout check in the browser runs either way.
                   </p>
                 </div>
               ) : null}

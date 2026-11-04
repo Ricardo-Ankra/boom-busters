@@ -170,7 +170,7 @@ describe('routing the set sheet generator (decision 275)', () => {
   })
 })
 
-it('switches the graphics review off and on beside the Motion graphics route, on by default (decision 389)', async () => {
+it('switches the graphics review off and on beside the Motion critic route, on by default (decision 389, spec 2026-11-04 section 10.4)', async () => {
   renderModelsTab()
   const review = screen.getByRole('switch', { name: 'Review each graphic on its rendered frames' })
   expect(review).toBeChecked()
@@ -185,6 +185,18 @@ it('offers a Motion graphics route (decision 289)', () => {
   expect(screen.getByRole('combobox', { name: 'Motion graphics model' })).toHaveValue(
     'claude-opus-5-5',
   )
+})
+
+it('offers a Motion critic route defaulting to Sonnet 5, with the review switch under it (spec 2026-11-04, section 12.2)', () => {
+  renderModelsTab()
+  const select = screen.getByRole('combobox', { name: 'Motion critic model' })
+  expect(select).toHaveValue('claude-sonnet-5')
+  const review = screen.getByRole('switch', { name: 'Review each graphic on its rendered frames' })
+  // The switch sits in the critic's row, after its selects and before the next route's label.
+  expect(select.compareDocumentPosition(review) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  const bible = screen.getByLabelText('Bible drafting')
+  expect(review.compareDocumentPosition(bible) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(screen.getByText(/scores it on five axes/)).toBeInTheDocument()
 })
 
 describe('live model lists (decision 288)', () => {

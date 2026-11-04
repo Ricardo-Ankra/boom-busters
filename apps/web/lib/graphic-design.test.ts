@@ -55,6 +55,11 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
 const inspect = vi.fn<Frames.GraphicFrames['inspect']>()
 // The measured motion (spec 2026-11-04, section 10.1): the stub's dense shots are not JPEGs, so the numbers are given.
 const motionMetrics = vi.fn<typeof MotionMetricsModule.motionMetrics>()
+// The channel's look references the critic is shown (spec 10.4): none unless a test gives some.
+const criticReferencesFor = vi.fn(async (_channelId: string) => [] as Providers.CriticReference[])
+vi.mock('./critic-references', () => ({
+  criticReferencesFor: (channelId: string) => criticReferencesFor(channelId),
+}))
 vi.mock('./graphic-code/motion-metrics', () => ({
   motionMetrics: (...args: Parameters<typeof MotionMetricsModule.motionMetrics>) =>
     motionMetrics(...args),
@@ -956,6 +961,25 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
       { mimeType: 'image/jpeg', data: '/9j/AAAA' },
     ])
     expect(last.content).toContain('Frame 1: 16:9 at 1.6 s')
+  })
+
+  it("hands the critic the channel's look references, before the sheets and the frames", async () => {
+    const slot = await stored()
+    const REF: Providers.CriticReference = {
+      title: 'Kaye reel',
+      purpose: 'look',
+      carryOver: 'one actor',
+      image: { mimeType: 'image/jpeg', data: 'RRRR' },
+    }
+    criticReferencesFor.mockResolvedValueOnce([REF])
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm.mockResolvedValueOnce(report())
+    await reviewGraphic(CONTEXT, slot)
+    expect(criticReferencesFor).toHaveBeenCalledWith('01J00000000000000000000CH1')
+    const last = callLlm.mock.calls[0]![0].messages.at(-1)
+    expect(last.images[0]).toEqual(REF.image)
+    expect(last.images).toHaveLength(4)
+    expect(last.content).toContain('Reference 1: Kaye reel (look): one actor')
   })
 
   it('applies the three fixes as the steer of one designer call and takes a revision that passes', async () => {
