@@ -236,26 +236,25 @@ export const caseResearcher = inngest.createFunction(
 
     // 1b. The terms that contain the subject and the format's lead keyword. Skipped without one
     // (a `load` memoised before the deploy has none, and must not spend on "<subject> undefined").
-    const formatTerms: SearchKeyword[] =
-      !loaded.leadKeyword
-        ? []
-        : await step.run('keywords-format', async () => {
-            await beat(caseId, jobStartedAt, 'keywords-format')
-            const found = await spendVidiq(
-              {
-                channelId,
-                purpose: PURPOSE,
-                tool: 'vidiq_keyword_research',
-                cost: VIDIQ_CREDIT_COST.keywordResearch,
-              },
-              (client) =>
-                client.keywordResearch(`${subject} ${loaded.leadKeyword}`, {
-                  mode: 'matching_terms',
-                  limit: TERMS_LIMIT,
-                }),
-            )
-            return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
-          })
+    const formatTerms: SearchKeyword[] = !loaded.leadKeyword
+      ? []
+      : await step.run('keywords-format', async () => {
+          await beat(caseId, jobStartedAt, 'keywords-format')
+          const found = await spendVidiq(
+            {
+              channelId,
+              purpose: PURPOSE,
+              tool: 'vidiq_keyword_research',
+              cost: VIDIQ_CREDIT_COST.keywordResearch,
+            },
+            (client) =>
+              client.keywordResearch(`${subject} ${loaded.leadKeyword}`, {
+                mode: 'matching_terms',
+                limit: TERMS_LIMIT,
+              }),
+          )
+          return firstOfEach(found.data.map(toKeyword), (row) => row.keyword)
+        })
     const measured = firstOfEach([...terms, ...formatTerms], (row) => row.keyword)
 
     // 2. The model keeps the terms that are about this subject.

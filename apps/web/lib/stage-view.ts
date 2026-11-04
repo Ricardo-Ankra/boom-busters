@@ -195,8 +195,8 @@ export function stageViews(input: StageInputs): StageView[] {
             : stage === 'shorts' && input.shortsOff && !current
               ? { availability: 'off' }
               : // M5 onwards. Until a stage has a runner it can only be described
-              // by where the project has got to, which is what position gives.
-              { availability: index < currentIndex ? 'ready' : 'upcoming' }
+                // by where the project has got to, which is what position gives.
+                { availability: index < currentIndex ? 'ready' : 'upcoming' }
 
     return {
       stage,

@@ -177,7 +177,11 @@ describe('the Shorts segment of a format with Shorts off', () => {
 
   it('shows the real state when the project is on the Shorts stage', () => {
     renderRail(
-      { project: { stage: 'shorts', stageStatus: 'queued' }, dossier: { version: 1 }, shortsOff: true },
+      {
+        project: { stage: 'shorts', stageStatus: 'queued' },
+        dossier: { version: 1 },
+        shortsOff: true,
+      },
       'script',
     )
     expect(screen.queryByText(/off for this format/)).not.toBeInTheDocument()
