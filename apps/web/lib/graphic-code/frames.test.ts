@@ -1,4 +1,5 @@
 // @vitest-environment node
+import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import { compileGraphicSource } from './compile'
@@ -408,6 +409,31 @@ describe.skipIf(!(await browserAvailable()))(
       expect(result.shots).toHaveLength(5)
       expect(Buffer.from(result.sheets.landscape!, 'base64')[0]).toBe(0xff)
       expect(Buffer.from(result.sheets.portrait!, 'base64')[1]).toBe(0xd8)
+      // The sheet is 1600 px wide (spec 12.2), whatever scale the frames were shot at (final review, issue 2).
+      const meta = await sharp(Buffer.from(result.sheets.landscape!, 'base64')).metadata()
+      expect(meta.width).toBe(1600)
+    }, 60_000)
+
+    it("measures the rest moments in the review's mode, reporting a rest fault and contrast as findings (final review, issue 1)", async () => {
+      const faulty = await browserFrames().inspect({
+        compiled: stored(twoLines(-80)),
+        props,
+        durationMs: 3000,
+        shots: true,
+        measure: 'findings',
+      })
+      expect(faulty.layoutIssue).toBeNull()
+      expect(faulty.shots).toHaveLength(5)
+      expect(faulty.findings[0]).toMatch(/^at 0\.9 s in landscape, "Revenue" and "Loss" overlap/)
+
+      const dimmed = await browserFrames().inspect({
+        compiled: stored(dim()),
+        props,
+        durationMs: 3000,
+        shots: false,
+        measure: 'findings',
+      })
+      expect(dimmed.findings[0]).toMatch(/"Loss" reads at \d\.\d:1 on its ground; 3:1 is needed$/)
     }, 60_000)
 
     it('reports a collision in flight as a finding, not a refusal (spec 10.2)', async () => {
@@ -459,7 +485,8 @@ describe.skipIf(!(await browserAvailable()))(
         sheets: true,
         denseMaxMs: 0,
       })
-      expect(result.shots.length).toBeGreaterThan(0)
+      // Both orientations' rest shots are taken before any dense work (final review, issue 3).
+      expect(result.shots).toHaveLength(5)
       expect(result.dense).toEqual([])
       expect(result.sheets).toEqual({})
       expect(result.findings.at(-1)).toBe('the dense set was cut short at 0 of 6 shots')

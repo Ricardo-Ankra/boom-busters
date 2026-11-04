@@ -8,6 +8,7 @@ import {
   CriticReportSchema,
   MECHANISM_KEYS,
   MECHANISMS,
+  MECHANISMS_PER_DESIGN_MAX,
   ValidationError,
   mechanismName,
 } from '@boom-busters/schemas'
@@ -133,7 +134,7 @@ function metricsLines(metrics: MotionMetrics | null, stillMaxMs: number): string
 
 function findingsLines(findings: readonly string[]): string {
   if (findings.length === 0) return 'The browser found nothing wrong at rest or in flight.'
-  return `What the browser found (a rest fault refuses the design before it gets here, so these are in flight or contrast):\n${findings
+  return `What the browser found, at rest, in flight and in contrast:\n${findings
     .map((finding, index) => `${index + 1}. ${finding}`)
     .join('\n')}`
 }
@@ -194,6 +195,36 @@ export function buildCriticRequest(input: CriticInput): LLMTaskRequest {
 const isMechanism = (value: unknown): value is Mechanism =>
   typeof value === 'string' && (MECHANISM_KEYS as readonly string[]).includes(value)
 
+const CriticDefectSchema = CriticReportSchema.shape.defects.element
+const ORIENTATION_NAMES: Record<string, 'landscape' | 'portrait'> = {
+  landscape: 'landscape',
+  portrait: 'portrait',
+  '16:9': 'landscape',
+  '9:16': 'portrait',
+}
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+const rounded = (value: unknown): unknown =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : value
+
+/**
+ * A defect as the model wrote it, read the way the pictures were labelled
+ * (16:9 and 9:16 are the frame names), its time rounded and its text
+ * trimmed; null when it cannot be placed at all (final review, issue 5).
+ */
+function defectOf(value: unknown, note: Note): unknown {
+  const defect = asRecord(value)
+  if (!defect) return null
+  const orientation = typeof defect['orientation'] === 'string' ? defect['orientation'].trim() : ''
+  const placed = {
+    ...defect,
+    atMs: rounded(defect['atMs']),
+    orientation: ORIENTATION_NAMES[orientation] ?? orientation,
+    text: trimField(defect['text'], CRITIC_LINE_MAX, 'a defect', note),
+  }
+  return CriticDefectSchema.safeParse(placed).success ? placed : null
+}
+
 /**
  * The critic's report, validated: lines trimmed to their limits, fixes and
  * defects capped, a mechanism not in the list dropped, each with a note.
@@ -222,36 +253,40 @@ export function parseCriticReport(text: string, note: Note = ignoreRepairs): Cri
           ]),
         )
       : scores
-  const defects = capList(raw['defects'], CRITIC_DEFECTS_MAX, 'the defects', note)
+  const scoresRounded =
+    trimmedScores && typeof trimmedScores === 'object'
+      ? Object.fromEntries(
+          Object.entries(trimmedScores as Record<string, unknown>).map(([axis, value]) => {
+            const score = asRecord(value)
+            return [axis, score ? { ...score, score: rounded(score['score']) } : value]
+          }),
+        )
+      : trimmedScores
+  const placed = dropItems(
+    Array.isArray(raw['defects'])
+      ? raw['defects'].map((defect) => defectOf(defect, note))
+      : raw['defects'],
+    (item) => (item === null ? 'a defect with no time, frame or words' : null),
+    (_item, index) => `defect ${index + 1}`,
+    note,
+  )
+  const defects = capList(placed, CRITIC_DEFECTS_MAX, 'the defects', note)
   const fixes = capList(raw['fixes'], CRITIC_FIXES_MAX, 'the fixes', note)
-  const mechanisms = dropItems(
-    raw['mechanisms'],
-    (item) =>
-      item && typeof item === 'object' && isMechanism((item as Record<string, unknown>)['key'])
-        ? null
-        : 'not a mechanism in the list',
-    (item, index) =>
-      `mechanism ${index + 1}${item && typeof item === 'object' ? ` (${String((item as Record<string, unknown>)['key'])})` : ''}`,
+  const mechanisms = capList(
+    dropItems(
+      raw['mechanisms'],
+      (item) => (isMechanism(asRecord(item)?.['key']) ? null : 'not a mechanism in the list'),
+      (item, index) => `mechanism ${index + 1} (${String(asRecord(item)?.['key'])})`,
+      note,
+    ),
+    MECHANISMS_PER_DESIGN_MAX,
+    'the mechanisms',
     note,
   )
   const parsed = CriticReportSchema.safeParse({
     ...raw,
-    scores: trimmedScores,
-    defects: Array.isArray(defects)
-      ? defects.map((defect) =>
-          defect && typeof defect === 'object'
-            ? {
-                ...(defect as Record<string, unknown>),
-                text: trimField(
-                  (defect as Record<string, unknown>)['text'],
-                  CRITIC_LINE_MAX,
-                  'a defect',
-                  note,
-                ),
-              }
-            : defect,
-        )
-      : defects,
+    scores: scoresRounded,
+    defects,
     fixes: Array.isArray(fixes)
       ? fixes.map((fix) => trimField(fix, CRITIC_FIX_MAX, 'a fix', note))
       : fixes,

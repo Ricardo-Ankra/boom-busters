@@ -58,8 +58,13 @@ export interface FramesInput {
   durationMs: number
   /** Photograph the review's moments. */
   shots: boolean
-  /** Measure the layout at every rest moment; false photographs only. True when not given. */
-  measure?: boolean
+  /**
+   * Measure the layout at every rest moment; false photographs only; true
+   * when not given. `'findings'` measures too, but a rest fault and a
+   * contrast fault are findings for the critic, never a refusal, so a
+   * design stored before the layout check is still reviewed whole.
+   */
+  measure?: boolean | 'findings'
   /** The longest the whole inspection may take; `INSPECT_MAX_MS` when not given. */
   timeoutMs?: number
   /**
@@ -70,7 +75,10 @@ export interface FramesInput {
   dense?: readonly number[]
   /** A contact sheet per orientation of its dense shots, taken in the same page. */
   sheets?: boolean
-  /** The longest the dense set and the sheets may take after the rest moments; the time left less a margin when not given. */
+  /**
+   * The longest the dense set and the sheets may take, counted from the end
+   * of the rest moments; the time then left, less a margin, when not given.
+   */
   denseMaxMs?: number
 }
 
@@ -105,8 +113,10 @@ export class FramesUnavailable extends Error {}
 export const INSPECT_MAX_MS = 45_000
 const LAUNCH_MAX_MS = 20_000
 const CLOSE_MAX_MS = 5_000
-/** What the dense set leaves of the inspection's time for the rest to finish. */
+/** What the dense set leaves of the inspection's time for the result to be returned. */
 const DENSE_MARGIN_MS = 5_000
+/** A contact sheet is taken only with this much of the dense time left: its page, its fonts and a full-page shot. */
+const SHEET_RESERVE_MS = 3_000
 
 /** `work`, or `FramesUnavailable` naming `what` once `ms` have passed. */
 function withinTime<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
@@ -523,20 +533,27 @@ async function showMoment(page: Page, markup: string): Promise<void> {
 }
 
 /**
- * The whole inspection: in each frame size, every rest moment measured (a
- * layout fault refuses, a contrast fault is a finding) and the review's
- * moments photographed; then, under a soft clock of `denseMaxMs`, the dense
- * moments measured in flight (a fault is a finding) and photographed, and
- * the orientation's contact sheet taken in the same page.
+ * The whole inspection, in two phases so the rest moments are never starved
+ * (final review, issue 3). First, in each frame size, every rest moment
+ * measured (a layout fault refuses, or is a finding in the review's mode; a
+ * contrast fault is a finding) and the review's moments photographed. Then,
+ * under a soft clock of `denseMaxMs` started once the rest moments are
+ * done and never past `hardStop`, the dense moments of each frame size
+ * measured in flight (a fault is a finding) and photographed, and the
+ * frame size's contact sheet taken on a second page at full scale.
  */
-async function inspectWith(browser: Browser, input: FramesInput): Promise<FramesResult> {
+async function inspectWith(
+  browser: Browser,
+  input: FramesInput,
+  hardStop: number,
+): Promise<FramesResult> {
   const moments = restMoments(input.props.words, input.durationMs)
   const wanted = input.shots ? shotMoments(moments) : { landscape: [], portrait: [] }
   const measured = input.measure === false ? [] : moments
+  const faultsAsFindings = input.measure === 'findings'
   const dense = [...new Set(input.dense ?? [])].sort((a, b) => a - b)
   const result: FramesResult = { layoutIssue: null, shots: [], findings: [], dense: [], sheets: {} }
   const findings: string[] = []
-  const denseStop = Date.now() + (input.denseMaxMs ?? Infinity)
   let cutShort = false
   const note = (finding: string | null) => {
     if (finding !== null && findings.length < FINDINGS_MAX) findings.push(finding)
@@ -561,20 +578,30 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
     viewport: { width: first.width, height: first.height },
     deviceScaleFactor: 0.5,
   })
-  for (const size of FRAME_SIZES) {
-    const rest = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
-    const rendered = graphicMarkupAt(
-      { compiled: input.compiled, props: input.props, durationMs: input.durationMs },
-      size,
-      [...new Set([...rest, ...dense])].sort((a, b) => a - b),
-    )
-    if (rendered.issue !== null) return { ...done(), layoutIssue: rendered.issue }
-    const samples = new Map(rendered.samples.map((sample) => [sample.atMs, sample]))
+  const rendered = new Map<
+    FrameSize['orientation'],
+    Map<number, { atMs: number; markup: string }>
+  >()
+  const showFrame = async (size: FrameSize) => {
     await page.setViewportSize({ width: size.width, height: size.height })
     await page.setContent(frameDocument(size, input.props.brand), {
       waitUntil: 'load',
       timeout: 15_000,
     })
+  }
+
+  // Phase one: the rest moments, both frame sizes.
+  for (const size of FRAME_SIZES) {
+    const rest = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
+    const markup = graphicMarkupAt(
+      { compiled: input.compiled, props: input.props, durationMs: input.durationMs },
+      size,
+      [...new Set([...rest, ...dense])].sort((a, b) => a - b),
+    )
+    if (markup.issue !== null) return { ...done(), layoutIssue: markup.issue }
+    const samples = new Map(markup.samples.map((sample) => [sample.atMs, sample]))
+    rendered.set(size.orientation, samples)
+    await showFrame(size)
     for (const atMs of rest) {
       const sample = samples.get(atMs)
       if (!sample) continue
@@ -582,7 +609,10 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
       if (measured.includes(atMs)) {
         const boxes = (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[]
         const issue = layoutIssueIn(boxes, size, atMs)
-        if (issue !== null) return { ...done(), layoutIssue: issue }
+        if (issue !== null) {
+          if (!faultsAsFindings) return { ...done(), layoutIssue: issue }
+          note(issue)
+        }
         note(contrastFindingIn(boxes, size, atMs, input.props.brand.colors.background))
       }
       if (wanted[size.orientation].includes(atMs)) {
@@ -590,6 +620,21 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
         result.shots.push({ orientation: size.orientation, atMs, jpeg: jpeg.toString('base64') })
       }
     }
+  }
+  if (dense.length === 0) return done()
+
+  // Phase two: the dense moments and the sheets, on the soft clock.
+  const denseStop = Math.min(
+    Date.now() + (input.denseMaxMs ?? Infinity),
+    hardStop - DENSE_MARGIN_MS,
+  )
+  for (const size of FRAME_SIZES) {
+    const samples = rendered.get(size.orientation)!
+    if (Date.now() >= denseStop) {
+      cutShort = true
+      break
+    }
+    await showFrame(size)
     const tiles: SheetTile[] = []
     for (const atMs of dense) {
       if (Date.now() >= denseStop) {
@@ -613,11 +658,22 @@ async function inspectWith(browser: Browser, input: FramesInput): Promise<Frames
         height: size.height / 2,
       })
     }
-    if (input.sheets && tiles.length > 0 && !cutShort && Date.now() < denseStop) {
-      await page.setViewportSize({ width: SHEET_WIDTH, height: 800 })
-      await page.setContent(sheetDocument(tiles), { waitUntil: 'load', timeout: 15_000 })
-      const sheet = await page.screenshot({ type: 'jpeg', quality: 80, fullPage: true })
-      result.sheets[size.orientation] = sheet.toString('base64')
+    if (cutShort) break
+    if (input.sheets && tiles.length > 0 && denseStop - Date.now() > SHEET_RESERVE_MS) {
+      // A second page at full scale, so the sheet is its 1600 px (final
+      // review, issue 2); the frame page stays open, so the single-process
+      // browser keeps a page throughout.
+      const sheetPage = await browser.newPage({
+        viewport: { width: SHEET_WIDTH, height: 800 },
+        deviceScaleFactor: 1,
+      })
+      try {
+        await sheetPage.setContent(sheetDocument(tiles), { waitUntil: 'load', timeout: 15_000 })
+        const sheet = await sheetPage.screenshot({ type: 'jpeg', quality: 80, fullPage: true })
+        result.sheets[size.orientation] = sheet.toString('base64')
+      } finally {
+        await sheetPage.close().catch(() => undefined)
+      }
     }
   }
   return done()
@@ -642,10 +698,7 @@ export function browserFrames(): GraphicFrames {
       try {
         const left = Math.max(1, budget - (Date.now() - started))
         return await withinTime(
-          inspectWith(browser, {
-            ...input,
-            denseMaxMs: input.denseMaxMs ?? Math.max(0, left - DENSE_MARGIN_MS),
-          }),
+          inspectWith(browser, input, Date.now() + left),
           left,
           'the inspection',
         )

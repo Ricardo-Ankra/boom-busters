@@ -523,10 +523,16 @@ export function parseGraphicCode(text: string, note: Note = ignoreRepairs): Plan
     "the graphic's storyboard",
     note,
   )
-  // A mechanism not in the list is dropped, never refused: it is a label, not the design.
+  // A mechanism not in the list, or a label that is not a list at all, is
+  // dropped, never refused: it is a label, not the design, and a refusal
+  // would buy the whole design again.
+  const listed = raw['mechanisms']
+  if (listed !== undefined && !Array.isArray(listed)) {
+    note({ action: 'dropped', field: "the design's mechanisms", reason: 'not a list' })
+  }
   const mechanisms = capList(
     dropItems(
-      raw['mechanisms'],
+      Array.isArray(listed) ? listed : undefined,
       (item) =>
         typeof item === 'string' && (MECHANISM_KEYS as readonly string[]).includes(item)
           ? null
@@ -538,8 +544,9 @@ export function parseGraphicCode(text: string, note: Note = ignoreRepairs): Plan
     "the design's mechanisms",
     note,
   )
+  const { mechanisms: _listed, ...rest } = raw
   const parsed = PlannedGraphicCodeSchema.safeParse({
-    ...raw,
+    ...rest,
     ...(mechanisms === undefined ? {} : { mechanisms }),
     title: trimField(raw['title'], GRAPHIC_TITLE_MAX, "the graphic's title", note),
     concept: trimField(raw['concept'], GRAPHIC_CONCEPT_MAX, "the graphic's concept", note),

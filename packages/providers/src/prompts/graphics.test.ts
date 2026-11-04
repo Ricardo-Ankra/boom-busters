@@ -606,6 +606,16 @@ describe('parseGraphicCode (decision 295)', () => {
     ])
     expect(notes.map((n) => n.action)).toEqual(['dropped', 'capped'])
     expect(parseGraphicCode(JSON.stringify(ANSWER)).mechanisms).toBeUndefined()
+    // A label that is not a list is dropped, never refused: a refusal would buy a whole design again (final review, issue 9).
+    const dropped: Repair[] = []
+    expect(
+      parseGraphicCode(JSON.stringify({ ...ANSWER, mechanisms: 'drum' }), (r) => dropped.push(r))
+        .mechanisms,
+    ).toBeUndefined()
+    expect(dropped.map((n) => n.action)).toEqual(['dropped'])
+    expect(
+      parseGraphicCode(JSON.stringify({ ...ANSWER, mechanisms: null })).mechanisms,
+    ).toBeUndefined()
   })
 
   it('trims an over-long concept and storyboard and caps the storyboard, saying so (decision 388)', () => {

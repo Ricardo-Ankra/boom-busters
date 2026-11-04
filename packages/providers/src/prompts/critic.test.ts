@@ -182,6 +182,37 @@ describe('parseCriticReport', () => {
     expect(parsed.defects).toHaveLength(8)
   })
 
+  it('reads the frame names as the pictures were labelled, rounds, and drops a defect it cannot place (final review, issue 5)', () => {
+    const notes: Repair[] = []
+    const parsed = parseCriticReport(
+      JSON.stringify({
+        ...REPORT,
+        scores: { ...REPORT.scores, craft: { score: 7.6, line: 'rounded' } },
+        defects: [
+          { atMs: 1350.4, orientation: '16:9', text: 'the lines cross' },
+          { atMs: 5900, orientation: '9:16', text: 'the end fades' },
+          { atMs: 100, orientation: 'sideways', text: 'nowhere' },
+          { atMs: -5, orientation: 'landscape' },
+        ],
+        mechanisms: Array.from({ length: 8 }, (_, i) => ({
+          key: ['drum', 'reel', 'door', 'tally', 'docking', 'draw-on', 'hard-cut', 'camera-push'][
+            i
+          ],
+          present: true,
+        })),
+      }),
+      (repair) => notes.push(repair),
+    )
+    expect(parsed.scores.craft.score).toBe(8)
+    expect(parsed.defects).toEqual([
+      { atMs: 1350, orientation: 'landscape', text: 'the lines cross' },
+      { atMs: 5900, orientation: 'portrait', text: 'the end fades' },
+    ])
+    expect(parsed.mechanisms).toHaveLength(6)
+    expect(notes.filter((n) => n.action === 'dropped')).toHaveLength(2)
+    expect(notes.some((n) => n.action === 'capped')).toBe(true)
+  })
+
   it('refuses a report missing an axis or scored past ten', () => {
     expect(() =>
       parseCriticReport(

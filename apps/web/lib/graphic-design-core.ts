@@ -306,7 +306,12 @@ function inspector(
   let framesDown = !options.frames
   return async (
     code: GraphicCode,
-    mode: { shots: boolean; measure: boolean; dense?: readonly number[]; sheets?: boolean },
+    mode: {
+      shots: boolean
+      measure: boolean | 'findings'
+      dense?: readonly number[]
+      sheets?: boolean
+    },
   ): Promise<FramesResult | null> => {
     if (framesDown || !options.frames) return null
     const left = deadline - Date.now() - FRAMES_MARGIN_MS
@@ -476,7 +481,7 @@ export async function reviewGraphicWith(
     // and the sheets are best effort; the rest shots are what the critic needs.
     const photographed = await inspect(code, {
       shots: true,
-      measure: false,
+      measure: 'findings',
       dense: denseMoments(slot.durationMs),
       sheets: true,
     })
@@ -530,14 +535,28 @@ export async function reviewGraphicWith(
     if (report.keep || report.fixes.length === 0) return kept('the critic kept it')
     remaining = deadline - Date.now()
     if (remaining < FIX_MIN_MS) return kept('no time left for the fix')
-    const fixReply = await complete(
-      buildGraphicRequest({
-        ...base,
-        current: currentDesign(code),
-        guidance: criticSteer(report.fixes, options.guidance),
-      }),
-      { signal: AbortSignal.timeout(remaining), purpose: 'fix' },
-    )
+    // The fix call is held short of the deadline by what its browser check
+    // needs, so a passing fix is always checked (final review, issue 4); a
+    // call that fails for any reason keeps the design and its paid report
+    // (final review, issue 10).
+    let fixReply: Awaited<ReturnType<GraphicCompleteFn>>
+    try {
+      fixReply = await complete(
+        buildGraphicRequest({
+          ...base,
+          current: currentDesign(code),
+          guidance: criticSteer(report.fixes, options.guidance),
+        }),
+        {
+          signal: AbortSignal.timeout(
+            Math.max(MIN_CALL_MS, remaining - FRAMES_MARGIN_MS - FRAMES_MIN_MS),
+          ),
+          purpose: 'fix',
+        },
+      )
+    } catch (error) {
+      return kept(`the fix call failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
     let checked: ReturnType<typeof graphicCodeIssue>
     try {
       checked = graphicCodeIssue(parseGraphicCode(fixReply.text), context, checkSlot, { motion })
@@ -547,7 +566,8 @@ export async function reviewGraphicWith(
     }
     if ('issue' in checked) return kept(`the fix was refused: ${checked.issue}`)
     const inspected = await inspect(checked.code, { shots: false, measure: true })
-    if (inspected?.layoutIssue) return kept(`the fix was refused: ${inspected.layoutIssue}`)
+    if (inspected === null) return kept('the fix could not be checked in the browser')
+    if (inspected.layoutIssue) return kept(`the fix was refused: ${inspected.layoutIssue}`)
     options.log?.('review revised the design')
     return { outcome: 'revised', code: { ...checked.code, review: 'revised', critique: report } }
   } catch (error) {

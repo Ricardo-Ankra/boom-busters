@@ -19,6 +19,7 @@ import type * as Providers from '@boom-busters/providers'
 import type * as Compile from './graphic-code/compile'
 import type * as DryRun from './graphic-code/dry-run'
 import type * as Frames from './graphic-code/frames'
+import { FramesUnavailable } from './graphic-code/frames'
 import type * as MotionMetricsModule from './graphic-code/motion-metrics'
 import { NonRetriableError } from 'inngest'
 import type * as Db from '@boom-busters/db'
@@ -944,7 +945,7 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
     })
     // Photographed only, so a design stored before the layout check is still shown its frames.
     const asked = inspect.mock.calls[0]![0]
-    expect(asked).toMatchObject({ shots: true, measure: false, sheets: true })
+    expect(asked).toMatchObject({ shots: true, measure: 'findings', sheets: true })
     expect(asked.dense).toHaveLength(23)
     expect(motionMetrics).toHaveBeenCalledWith(DENSE, 6000, 6000)
     const [request, options] = callLlm.mock.calls[0]!
@@ -1027,6 +1028,50 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
     expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
       outcome: 'kept',
       code: { title: 'Raised in one round', review: 'kept', critique: { fixes: FIXES } },
+    })
+  })
+
+  it('keeps the design with its critique when the fix cannot be checked in the browser (final review, issue 4)', async () => {
+    const slot = await stored()
+    inspect
+      .mockResolvedValueOnce(photographed())
+      .mockRejectedValueOnce(
+        new FramesUnavailable('the designer\u2019s frames: the launch did not finish in 20 s'),
+      )
+    const revised = { ...planned('$4bn'), title: 'Four billion, one round' }
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: FIXES }))
+      .mockResolvedValueOnce({ text: JSON.stringify(revised) })
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+      outcome: 'kept',
+      code: { title: 'Raised in one round', review: 'kept', critique: { fixes: FIXES } },
+    })
+  })
+
+  it('keeps the design with its critique when the fix call fails or the budget stops it (final review, issue 10)', async () => {
+    const slot = await stored()
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: FIXES }))
+      .mockRejectedValueOnce(new Error('provider down'))
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+      outcome: 'kept',
+      code: { review: 'kept', critique: { keep: false } },
+    })
+
+    inspect.mockResolvedValueOnce(photographed())
+    callLlm.mockResolvedValueOnce(report({ keep: false, fixes: FIXES })).mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.graphics',
+        budgetUsd: 10,
+        monthSpendUsd: 10,
+        estimateUsd: 0.1,
+      }),
+    )
+    expect(await reviewGraphic(CONTEXT, slot)).toMatchObject({
+      outcome: 'kept',
+      code: { review: 'kept', critique: { keep: false } },
     })
   })
 
