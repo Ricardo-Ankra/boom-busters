@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { SEARCHED_TERMS_MAX, byMonthlySearchesDesc, classifySearchTerms } from './search-terms'
+import {
+  SEARCHED_TERMS_MAX,
+  byMonthlySearchesDesc,
+  classifySearchTerms,
+  termWords,
+} from './search-terms'
 
 /** One measured keyword row; every measure is null when VidIQ gave none. */
 export const SearchKeywordSchema = z.object({
@@ -9,7 +14,14 @@ export const SearchKeywordSchema = z.object({
   overall: z.number().nullable(),
   estimatedMonthlySearch: z.number().nullable(),
   growthPct: z.number().nullable(),
+  /** What the searcher wants, in plain words; set by the research run's understanding step. */
+  intent: z.string().max(80).optional(),
+  /** Whether a video in the case's format on this channel would satisfy that searcher. */
+  fit: z.enum(['fits', 'partly', 'off']).optional(),
+  /** A short label shared by terms that mean the same thing. */
+  topic: z.string().max(40).optional(),
 })
+export type KeywordFit = NonNullable<SearchKeyword['fit']>
 export type SearchKeyword = z.infer<typeof SearchKeywordSchema>
 
 /** A winning video (an outlier) in the subject's search space. */
@@ -86,14 +98,21 @@ export const CaseResearchJobSchema = z.object({
 export type CaseResearchJob = z.infer<typeof CaseResearchJobSchema>
 
 export const SEARCH_BRIEF_STALE_DAYS = 30
-/** The estimate shown before a case research run spends VidIQ credits. */
+/** Credits per run: the base call (the run itself still spends this much today), then each optional call. */
 export const CASE_RESEARCH_CREDITS = 20
-/** The extra VidIQ call a format's lead keyword adds to a research run. */
 const FORMAT_SEED_CREDITS = 5
+const PEOPLE_SEED_CREDITS = 5
+const PEOPLE_SEEDS_MAX = 2
+const FIELD_CHECK_CREDITS = 35
 
-/** The estimate for a run: 20, and 5 more when the case's format has a lead keyword to search. */
-export function caseResearchCredits(hasFormatSeed: boolean): number {
-  return CASE_RESEARCH_CREDITS + (hasFormatSeed ? FORMAT_SEED_CREDITS : 0)
+/** The estimate for a run: 20, 5 for the format seed, 5 per People seed (two at most), and 35 for the field check, comments and niche test. */
+export function caseResearchCredits(input: { formatSeed: boolean; people: number }): number {
+  return (
+    CASE_RESEARCH_CREDITS +
+    (input.formatSeed ? FORMAT_SEED_CREDITS : 0) +
+    PEOPLE_SEED_CREDITS * Math.min(Math.max(input.people, 0), PEOPLE_SEEDS_MAX) +
+    FIELD_CHECK_CREDITS
+  )
 }
 
 const JOB_STALE_MS = 30 * 60_000
@@ -118,19 +137,50 @@ export function maskFigures(keyword: string): string {
   return keyword.replace(FIGURE_RUN, '{figure}')
 }
 
-const DOCUMENTARY_PHRASES = [
-  'documentary',
-  'what happened to',
-  'rise and fall of',
-  'story',
-  'collapse',
-  'bankruptcy',
-]
+/** Below this `overall` a keyword is never offered as the target. */
+const PICK_FLOOR = 50
+const CANDIDATES_MAX = 3
+
+/**
+ * The keywords the research run checks the field for, best first. Eligible rows
+ * are keywords (no title, no other language, no figure) with `overall` 50 or
+ * more. Rows that fit (or were never judged) win; only when none do, rows that
+ * partly fit. Then a row with a whole preferred word, then most searches (nulls
+ * last). Three at most.
+ */
+export function pickTargetCandidates(
+  rows: readonly SearchKeyword[],
+  options: { preferredWords: readonly string[]; language?: string },
+): SearchKeyword[] {
+  const kinds = classifySearchTerms(
+    rows.map((r) => r.keyword),
+    { language: options.language },
+  )
+  const eligible = rows.filter(
+    (r) =>
+      !keywordHasFigure(r.keyword) &&
+      kinds.get(keyOf(r.keyword)) === 'keyword' &&
+      (r.overall ?? -1) >= PICK_FLOOR,
+  )
+  const fitting = eligible.filter((r) => r.fit === undefined || r.fit === 'fits')
+  const pool = fitting.length > 0 ? fitting : eligible.filter((r) => r.fit === 'partly')
+  const wanted = new Set(options.preferredWords.map((w) => w.toLowerCase()))
+  const hasWanted = (r: SearchKeyword) => (termWords(r.keyword).some((w) => wanted.has(w)) ? 1 : 0)
+  return pool
+    .map((row, i) => ({ row, i }))
+    .sort(
+      (a, b) =>
+        hasWanted(b.row) - hasWanted(a.row) || byMonthlySearchesDesc(a.row, b.row) || a.i - b.i,
+    )
+    .slice(0, CANDIDATES_MAX)
+    .map((x) => x.row)
+}
 
 /**
  * The highest `overall` among keyword-shaped rows with no figure (never a
- * video title or another language); on a tie, a documentary phrase, then a
- * row naming the subject. Null when no row qualifies.
+ * video title or another language); on a tie, a row naming the subject, then
+ * the most searches. Null when no row qualifies. The upgrade path uses this;
+ * a research run uses `pickTargetCandidates`.
  */
 export function chooseTargetKeyword(
   rows: readonly SearchKeyword[],
@@ -138,29 +188,20 @@ export function chooseTargetKeyword(
 ): SearchKeyword | null {
   const name = subject.trim().toLowerCase()
   const kinds = classifySearchTerms(rows.map((r) => r.keyword))
-  const rank = (row: SearchKeyword): [number, number, number] => {
-    const text = row.keyword.toLowerCase()
-    return [
-      row.overall ?? -1,
-      DOCUMENTARY_PHRASES.some((p) => text.includes(p)) ? 1 : 0,
-      name !== '' && text.includes(name) ? 1 : 0,
-    ]
-  }
+  const names = (r: SearchKeyword) =>
+    name !== '' && r.keyword.toLowerCase().includes(name) ? 1 : 0
   let best: SearchKeyword | null = null
-  let bestRank: [number, number, number] = [-2, 0, 0]
   for (const row of rows) {
     if (keywordHasFigure(row.keyword)) continue
-    if (kinds.get(row.keyword.trim().toLowerCase()) !== 'keyword') continue
-    const r = rank(row)
-    const better =
-      r[0] !== bestRank[0]
-        ? r[0] > bestRank[0]
-        : r[1] !== bestRank[1]
-          ? r[1] > bestRank[1]
-          : r[2] > bestRank[2]
-    if (best === null || better) {
+    if (kinds.get(keyOf(row.keyword)) !== 'keyword') continue
+    const lead =
+      best === null
+        ? 1
+        : (row.overall ?? -1) - (best.overall ?? -1) ||
+          names(row) - names(best) ||
+          -byMonthlySearchesDesc(row, best)
+    if (lead > 0) {
       best = row
-      bestRank = r
     }
   }
   return best

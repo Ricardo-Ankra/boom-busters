@@ -116,7 +116,10 @@ export function FormatPicker({ item, run }: { item: CaseSummary; run: Run }) {
 /** The research button, or what the run is doing, or why it failed with Try again. */
 export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) {
   const router = useRouter()
-  const credits = caseResearchCredits(useFormatSeed(item))
+  const credits = caseResearchCredits({
+    formatSeed: useFormatSeed(item),
+    people: item.people.length,
+  })
   const [estimate, setEstimate] = React.useState<CaseResearchEstimate | null>(null)
   const job = item.searchJob
   const running = job !== null && job.state === 'running' && caseResearchJobIsRunning(job)
@@ -193,7 +196,10 @@ export function NewProjectButton({
 }) {
   const router = useRouter()
   const formats = React.useContext(FormatsContext)
-  const credits = caseResearchCredits(useFormatSeed(item))
+  const credits = caseResearchCredits({
+    formatSeed: useFormatSeed(item),
+    people: item.people.length,
+  })
   const [busy, setBusy] = React.useState(false)
   const caseFormat = formats.length > 0 ? resolveFormat(formats, item.formatKey) : null
   const [formatKey, setFormatKey] = React.useState<string | null>(caseFormat?.key ?? null)

@@ -5,6 +5,7 @@ import {
   classifySearchTerms,
   hasDiacritic,
   isTitleShaped,
+  preferredWords,
   splitSearchTerms,
 } from './search-terms'
 
@@ -120,5 +121,35 @@ describe('splitSearchTerms', () => {
     expect(out.searchedTitles).toHaveLength(10)
     expect(out.searchedTitles[0]!.estimatedMonthlySearch).toBe(1300)
     expect(out.searchedTitles.some((r) => r.estimatedMonthlySearch === null)).toBe(false)
+  })
+})
+
+describe('language-aware terms', () => {
+  it('keeps accented keywords on a Portuguese channel', () => {
+    const kinds = classifySearchTerms(
+      ['dom pedro ii documentário', 'dom pedro ii: o último imperador'],
+      {
+        language: 'pt-BR',
+      },
+    )
+    expect(kinds.get('dom pedro ii documentário')).toBe('keyword')
+    expect(kinds.get('dom pedro ii: o último imperador')).toBe('title')
+  })
+  it('still files accents as another language for English or no language', () => {
+    for (const language of [undefined, '', 'en', 'en-ZA']) {
+      expect(
+        classifySearchTerms(['wework documentário'], { language }).get('wework documentário'),
+      ).toBe('other-language')
+    }
+  })
+  it('splitSearchTerms takes the same option', () => {
+    const out = splitSearchTerms([row('dom pedro documentário', 5)], { language: 'pt-BR' })
+    expect(out.keywords).toHaveLength(1)
+    expect(out.otherLanguages).toHaveLength(0)
+  })
+  it('builds preferred words from bible keywords without the subject', () => {
+    expect(
+      preferredWords(['documentary', 'downfall', 'rise and fall', 'WeWork of', 'ai'], 'WeWork'),
+    ).toEqual(['documentary', 'downfall', 'rise', 'and', 'fall'])
   })
 })

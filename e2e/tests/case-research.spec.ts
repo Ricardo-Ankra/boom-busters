@@ -225,7 +225,7 @@ test.describe('case research', () => {
     await panel(page)
       .getByRole('button', { name: /^Research with VidIQ/ })
       .click()
-    await expect(panel(page).getByText(/About 20 credits/)).toBeVisible({ timeout: 15_000 })
+    await expect(panel(page).getByText(/About 55 credits/)).toBeVisible({ timeout: 15_000 })
 
     await panel(page).getByRole('button', { name: 'Start research' }).click()
     await expect(page.getByText(/Could not reach Inngest/).first()).toBeVisible({

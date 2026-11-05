@@ -393,12 +393,12 @@ async function researchableCase(id: string) {
 /** What a run costs: more when the case's format (against the channel's current bible) has a lead keyword. */
 function researchCredits(
   channel: { bible: { formats: readonly ChannelFormat[] } } | null,
-  existing: { formatKey: string | null },
+  existing: { formatKey: string | null; people: readonly string[] },
 ): number {
   const formats = channel?.bible.formats ?? []
   const hasFormatSeed =
     formats.length > 0 && leadKeyword(resolveFormat(formats, existing.formatKey)) !== null
-  return caseResearchCredits(hasFormatSeed)
+  return caseResearchCredits({ formatSeed: hasFormatSeed, people: existing.people.length })
 }
 
 export type CaseResearchEstimate =

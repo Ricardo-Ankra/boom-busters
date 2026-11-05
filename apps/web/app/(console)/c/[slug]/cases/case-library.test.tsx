@@ -496,7 +496,7 @@ function renderRow(item: CaseSummary) {
   return panelOf(item.title)
 }
 
-const ESTIMATE = { ok: true, credits: 20, capLeft: 980, balance: 1443 }
+const ESTIMATE = { ok: true, credits: 55, capLeft: 980, balance: 1443 }
 
 describe('the case row: priority is gone', () => {
   it('shows no priority fact and no Priority sort button', () => {
@@ -514,11 +514,11 @@ describe('Research with VidIQ', () => {
     const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
 
     await userEvent.click(
-      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
     )
     expect(actions.researchCaseAction).not.toHaveBeenCalled()
     await waitFor(() =>
-      expect(row).toHaveTextContent("About 20 credits. 980 left of this month's cap"),
+      expect(row).toHaveTextContent("About 55 credits. 980 left of this month's cap"),
     )
     expect(row).toHaveTextContent('VidIQ balance 1,443')
 
@@ -643,7 +643,7 @@ describe('the case panel and its research', () => {
     const row = renderRow(researched({ subject: 'We Company' }))
     expect(row).toHaveTextContent('This research is for WeWork. Research again for We Company.')
     expect(
-      within(row).getByRole('button', { name: 'Research again with VidIQ (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 55 credits)' }),
     ).toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: /^Use this angle/ })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: /^Make target/ })).not.toBeInTheDocument()
@@ -653,7 +653,7 @@ describe('the case panel and its research', () => {
     const row = renderRow(researched({ subject: '  wework ' }))
     expect(row).not.toHaveTextContent('This research is for')
     expect(
-      within(row).getByRole('button', { name: 'Research again with VidIQ (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 55 credits)' }),
     ).toBeInTheDocument()
   })
 
@@ -664,7 +664,7 @@ describe('the case panel and its research', () => {
     ).toBeInTheDocument()
     const without = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
     expect(
-      within(without).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+      within(without).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
     ).toBeInTheDocument()
   })
 })
@@ -698,7 +698,7 @@ describe('New project and a stale brief', () => {
     expect(row).toHaveTextContent('The search research is 45 days old.')
 
     await userEvent.click(
-      within(row).getByRole('button', { name: 'Refresh research (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Refresh research (about 55 credits)' }),
     )
     await waitFor(() => expect(actions.researchCaseAction).toHaveBeenCalledWith(WIRECARD))
     expect(actions.startProjectFromCase).not.toHaveBeenCalled()
@@ -770,20 +770,20 @@ describe('the case format picker', () => {
     expect(within(row).getByLabelText('Format')).toHaveValue('main')
   })
 
-  it('labels the research button 25 credits when the selected format has a lead keyword', () => {
+  it('labels the research button 60 credits when the selected format has a lead keyword', () => {
     const withSeed = renderWith(
       two,
       kase({ status: 'shortlisted', subject: 'Iomega', formatKey: 'sleep' }),
     )
     expect(
-      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 25 credits)' }),
+      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 60 credits)' }),
     ).toBeInTheDocument()
   })
 
-  it('keeps 20 credits when the selected format has no keyword', () => {
+  it('keeps 55 credits when the selected format has no keyword', () => {
     const row = renderWith(two, kase({ status: 'shortlisted', subject: 'Iomega' }))
     expect(
-      within(row).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
     ).toBeInTheDocument()
   })
 })

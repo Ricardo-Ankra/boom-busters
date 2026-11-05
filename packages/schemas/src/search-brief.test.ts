@@ -15,6 +15,7 @@ import {
   briefIsStale,
   caseResearchJobIsRunning,
   chooseTargetKeyword,
+  pickTargetCandidates,
   keywordHasFigure,
   maskFigures,
   searchBriefLine,
@@ -114,12 +115,16 @@ describe('chooseTargetKeyword', () => {
   test('excludes figure rows despite a higher score', () => {
     expect(chooseTargetKeyword(recon, 'WeWork')?.keyword).toBe('wework documentary')
   })
-  test('breaks an overall tie toward a documentary search naming the subject', () => {
-    const rows = [kw('wework office', 60), kw('what happened to wework', 60)]
-    expect(chooseTargetKeyword(rows, 'WeWork')?.keyword).toBe('what happened to wework')
-    expect(chooseTargetKeyword([...rows].reverse(), 'WeWork')?.keyword).toBe(
-      'what happened to wework',
-    )
+  test('breaks an overall tie toward the row naming the subject, then the most searches', () => {
+    const rows = [kw('office space', 60), kw('wework office', 60)]
+    expect(chooseTargetKeyword(rows, 'WeWork')?.keyword).toBe('wework office')
+    expect(chooseTargetKeyword([...rows].reverse(), 'WeWork')?.keyword).toBe('wework office')
+    const both = [
+      kw('wework office', 60, { estimatedMonthlySearch: 100 }),
+      kw('wework story', 60, { estimatedMonthlySearch: 900 }),
+    ]
+    expect(chooseTargetKeyword(both, 'WeWork')?.keyword).toBe('wework story')
+    expect(chooseTargetKeyword([...both].reverse(), 'WeWork')?.keyword).toBe('wework story')
   })
   test('skips a plain copy of a punctuated title', () => {
     const rows = [
@@ -226,9 +231,73 @@ describe('a brief and its format', () => {
     expect(parsed.fit).toEqual(fit)
   })
 
-  test('the estimate is 20 credits, and 25 with a format seed', () => {
-    expect(caseResearchCredits(false)).toBe(20)
-    expect(caseResearchCredits(true)).toBe(25)
+  test('counts every call in the estimate', () => {
+    expect(caseResearchCredits({ formatSeed: true, people: 2 })).toBe(70)
+    expect(caseResearchCredits({ formatSeed: false, people: 0 })).toBe(55)
+    expect(caseResearchCredits({ formatSeed: false, people: 5 })).toBe(65)
+  })
+})
+
+describe('pickTargetCandidates', () => {
+  const rows = [
+    kw('wework documentary', 64, { estimatedMonthlySearch: 900, fit: 'fits' }),
+    kw('wework office pune', 74, { estimatedMonthlySearch: 5000, fit: 'off' }),
+    kw('wework stock', 68, { estimatedMonthlySearch: 4000, fit: 'partly' }),
+    kw('wework collapse', 63, { estimatedMonthlySearch: 2000, fit: 'fits' }),
+    kw('wework story', 62, { estimatedMonthlySearch: 3000, fit: 'fits' }),
+    kw('wework scene', 58, { estimatedMonthlySearch: 9000, fit: 'off' }),
+    kw('wework ceo', 57, { estimatedMonthlySearch: 8000, fit: 'off' }),
+  ]
+  test('picks by fit, then bible words, then searches', () => {
+    const out = pickTargetCandidates(rows, { preferredWords: ['documentary'] })
+    expect(out.map((r) => r.keyword)).toEqual([
+      'wework documentary',
+      'wework story',
+      'wework collapse',
+    ])
+  })
+  test('falls back to partly when nothing fits', () => {
+    const none = rows.map((r) => (r.fit === 'fits' ? { ...r, fit: 'off' as const } : r))
+    expect(pickTargetCandidates(none, { preferredWords: [] }).map((r) => r.keyword)).toEqual([
+      'wework stock',
+    ])
+  })
+  test('an undefined fit counts as fitting', () => {
+    const out = pickTargetCandidates([kw('wework news', 60, { estimatedMonthlySearch: 10 })], {
+      preferredWords: [],
+    })
+    expect(out).toHaveLength(1)
+  })
+  test('never offers a row under 50, with a figure, or a title', () => {
+    const bad = [
+      kw('wework low', 49, { fit: 'fits' }),
+      kw('wework 2019', 80, { fit: 'fits' }),
+      kw('wework: the fall', 80, { fit: 'fits' }),
+      kw('wework null', null, { fit: 'fits' }),
+    ]
+    expect(pickTargetCandidates(bad, { preferredWords: [] })).toEqual([])
+  })
+  test('a preferred word is a whole word, and nulls sort last', () => {
+    const out = pickTargetCandidates(
+      [
+        kw('documentaryish thing', 70, { estimatedMonthlySearch: 9000 }),
+        kw('wework nulls', 70),
+        kw('wework documentary', 70, { estimatedMonthlySearch: 5 }),
+      ],
+      { preferredWords: ['documentary'] },
+    )
+    expect(out.map((r) => r.keyword)).toEqual([
+      'wework documentary',
+      'documentaryish thing',
+      'wework nulls',
+    ])
+  })
+  test('keeps an accented keyword on a Portuguese channel', () => {
+    const out = pickTargetCandidates([kw('dom pedro documentário', 60, { fit: 'fits' })], {
+      preferredWords: [],
+      language: 'pt-BR',
+    })
+    expect(out).toHaveLength(1)
   })
 })
 

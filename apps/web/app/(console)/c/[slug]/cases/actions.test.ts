@@ -278,6 +278,7 @@ describe('researchCaseAction and caseResearchEstimate', () => {
     subject: 'WeWork',
     status: 'shortlisted',
     searchJob: null,
+    people: [],
     ...over,
   })
   const running = (over: Partial<CaseResearchJob> = {}): CaseResearchJob => ({
@@ -313,7 +314,7 @@ describe('researchCaseAction and caseResearchEstimate', () => {
 
   it('stamps the job with the case subject and sends the run', async () => {
     expect(await researchCaseAction(CASE_ID)).toEqual({ ok: true })
-    expect(checkVidiqBudget).toHaveBeenCalledWith(20)
+    expect(checkVidiqBudget).toHaveBeenCalledWith(55)
     expect(stored).toMatchObject({ state: 'running', error: null, subject: 'WeWork' })
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0]![0]).toMatchObject({
@@ -426,10 +427,10 @@ describe('researchCaseAction and caseResearchEstimate', () => {
     expect(stored).toMatchObject({ state: 'running', startedAt: '2099-01-01T00:00:00.000Z' })
   })
 
-  it('the estimate is 20 credits with what is left of the cap and the balance, and spends nothing', async () => {
+  it('the estimate is 55 credits with what is left of the cap and the balance, and spends nothing', async () => {
     expect(await caseResearchEstimate(CASE_ID)).toEqual({
       ok: true,
-      credits: 20,
+      credits: 55,
       capLeft: 1000,
       balance: 1443,
     })
@@ -471,7 +472,13 @@ describe('setCaseFormatAction and the estimate by format', () => {
     store.channelForCase.mockReset().mockResolvedValue(channel())
     store.getCase
       .mockReset()
-      .mockResolvedValue({ id: CASE_ID, subject: 'WeWork', status: 'shortlisted', formatKey: null })
+      .mockResolvedValue({
+        id: CASE_ID,
+        subject: 'WeWork',
+        status: 'shortlisted',
+        formatKey: null,
+        people: [],
+      })
     checkVidiqBudget.mockReset().mockResolvedValue({ ok: true, balance: 1443, capLeft: 1000 })
   })
 
@@ -499,19 +506,20 @@ describe('setCaseFormatAction and the estimate by format', () => {
     expect(store.setCaseFormat).not.toHaveBeenCalled()
   })
 
-  it('the estimate and the run cost 25 when the case format has a lead keyword', async () => {
+  it('the estimate and the run cost 70 with a lead keyword and two People seeds (a third is not searched)', async () => {
     store.getCase.mockResolvedValue({
       id: CASE_ID,
       subject: 'WeWork',
       status: 'shortlisted',
       searchJob: null,
       formatKey: 'sleep',
+      people: ['Adam Neumann', 'Miguel McKelvey', 'Third Person'],
     })
-    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 25 })
-    expect(checkVidiqBudget).toHaveBeenLastCalledWith(25)
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 70 })
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(70)
     store.writeCaseResearchJob.mockImplementation(async (_db, _id, update) => update(null))
     await researchCaseAction(CASE_ID)
-    expect(checkVidiqBudget).toHaveBeenLastCalledWith(25)
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(70)
   })
 
   it('a stored key no longer in the bible costs the primary format price', async () => {
@@ -520,8 +528,9 @@ describe('setCaseFormatAction and the estimate by format', () => {
       subject: 'WeWork',
       status: 'shortlisted',
       formatKey: 'gone',
+      people: [],
     })
-    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 20 })
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 55 })
   })
 })
 
