@@ -97,14 +97,14 @@ function brief(over: Partial<SearchBrief> = {}): SearchBrief {
 
 const ctx = { caseCategory: 'business', checkedAngle: 0 }
 const line = (b: SearchBrief, name: string, c = ctx) =>
-  briefVerdict(b, c, NOW).find((l) => l.check === name)!
+  briefVerdict(b, c).find((l) => l.check === name)!
 
 describe('field competition', () => {
   it('finds no open doors in the WeWork field and calls it recent', () => {
     const c = check(WEWORK)
     expect(openDoors(c)).toBe(0)
     expect(isStaleField(c, NOW)).toBe(false)
-    expect(fieldCompetition(c, NOW)).toBe('bad')
+    expect(fieldCompetition(c)).toBe('bad')
     const l = line(brief({ fieldChecks: [c] }), 'competition')
     expect(l.state).toBe('bad')
     expect(l.reason).toContain('wework documentary')
@@ -119,8 +119,8 @@ describe('field competition', () => {
       result(5, 500, 30_000, '2026-01-01', 600),
     ])
     expect(openDoors(c)).toBe(3)
-    expect(fieldCompetition(c, NOW)).toBe('ok')
-    expect(fieldCompetition(check(c.results.slice(0, 2)), NOW)).toBe('warn')
+    expect(fieldCompetition(c)).toBe('ok')
+    expect(fieldCompetition(check(c.results.slice(0, 2)))).toBe('warn')
   })
 
   it('warns on no open doors in a stale field', () => {
@@ -130,7 +130,7 @@ describe('field competition', () => {
     const c = check(old)
     expect(isStaleField(c, NOW)).toBe(true)
     expect(openDoors(c)).toBe(0)
-    expect(fieldCompetition(c, NOW)).toBe('warn')
+    expect(fieldCompetition(c)).toBe('warn')
   })
 
   it('calls a field of Shorts bad', () => {
@@ -140,7 +140,7 @@ describe('field competition', () => {
     const c = check(shorts)
     expect(shortCount(c)).toBe(6)
     expect(openDoors(c)).toBe(10)
-    expect(fieldCompetition(c, NOW)).toBe('bad')
+    expect(fieldCompetition(c)).toBe('bad')
     expect(shortCount(check([result(1, 1, 1, null, 60), result(2, 1, 1, null, 61)]))).toBe(1)
   })
 
@@ -151,9 +151,29 @@ describe('field competition', () => {
       result(3, null, 40_000, null, 600),
       result(4, 500, 40_000, '2026-01-01', null),
     ])
-    expect(['ok', 'warn', 'bad']).toContain(fieldCompetition(c, NOW))
+    expect(['ok', 'warn', 'bad']).toContain(fieldCompetition(c))
     expect(openDoors(c)).toBe(1)
     expect(() => briefVerdict(brief({ fieldChecks: [c] }), ctx)).not.toThrow()
+  })
+
+  it('judges staleness from the research date, not today', () => {
+    const results = Array.from({ length: 10 }, (_, i) =>
+      result(i, 2_000_000, 900_000, i < 6 ? '2022-06-01' : '2023-12-01', 600),
+    )
+    // Researched in January 2024 the 2022 videos were under three years old: a recent field.
+    const early = { ...check(results), checkedAt: '2024-01-01T00:00:00.000Z' }
+    expect(fieldCompetition(early)).toBe('bad')
+    expect(line(brief({ fieldChecks: [early] }), 'competition').state).toBe('bad')
+    // The same videos are three years old by a late 2026 research date.
+    expect(fieldCompetition(check(results))).toBe('warn')
+  })
+
+  it('treats a field check with no results as not checked', () => {
+    const empty = check([])
+    expect(fieldCompetition(empty)).toBe('warn')
+    const l = line(brief({ fieldChecks: [empty] }), 'competition')
+    expect(l.state).toBe('warn')
+    expect(l.reason).toBe('No results came back for "wework documentary"')
   })
 
   it('shows Not checked for a target with no field check', () => {
@@ -198,6 +218,18 @@ describe('topic demand', () => {
       ],
     })
     expect(topicDemand(b)).toEqual({ topic: 'wework', searches: 5000, growth: 20 })
+  })
+
+  it('counts the target itself even when its fit is off', () => {
+    const b = brief({
+      targetKeyword: kw('wework documentary', {
+        topic: 'wework',
+        fit: 'off',
+        estimatedMonthlySearch: 6000,
+      }),
+    })
+    expect(topicDemand(b).searches).toBe(6000)
+    expect(line(b, 'demand').state).toBe('ok')
   })
 
   it('is unmeasured with no target, topic or figures', () => {

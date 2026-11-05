@@ -61,9 +61,9 @@ export function topicDemand(brief: SearchBrief): {
       ? [target]
       : rows.filter(
           (r) =>
-            r.topic === topic &&
-            r.fit !== 'off' &&
-            (r === target || kinds.get(keyOf(r.keyword)) === 'keyword'),
+            // The target always counts: intent already flags an off target, demand still shows it.
+            r === target ||
+            (r.topic === topic && r.fit !== 'off' && kinds.get(keyOf(r.keyword)) === 'keyword'),
         )
   let searches: number | null = null
   for (const r of counted) {
@@ -100,13 +100,18 @@ export function shortCount(check: FieldCheck): number {
   return check.results.filter((r) => r.seconds !== null && r.seconds <= SHORT_MAX_SECONDS).length
 }
 
-/** The Competition rule for one field check. */
-export function fieldCompetition(check: FieldCheck, now: Date): VerdictState {
+/**
+ * The Competition rule for one field check. Staleness is judged against the
+ * research date (`checkedAt`), so the verdict does not drift with the viewing
+ * date. A check with no results is not a judgement: warn.
+ */
+export function fieldCompetition(check: FieldCheck): VerdictState {
+  if (check.results.length === 0) return 'warn'
   if (shortCount(check) >= SHORTS_BAD) return 'bad'
   const doors = openDoors(check)
   if (doors >= 3) return 'ok'
   if (doors >= 1) return 'warn'
-  return isStaleField(check, now) ? 'warn' : 'bad'
+  return isStaleField(check, new Date(check.checkedAt)) ? 'warn' : 'bad'
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -225,7 +230,7 @@ function demandLine(brief: SearchBrief): VerdictLine {
   return { check: 'demand', state: searches >= DEMAND_OK ? 'ok' : 'warn', reason: figure }
 }
 
-function competitionLine(brief: SearchBrief, now: Date): VerdictLine {
+function competitionLine(brief: SearchBrief): VerdictLine {
   const target = brief.targetKeyword
   const found =
     target === null
@@ -238,7 +243,14 @@ function competitionLine(brief: SearchBrief, now: Date): VerdictLine {
       reason: skippedGroup(brief, 'field check') ? CREDIT_CAP : NOT_CHECKED,
     }
   }
-  const state = fieldCompetition(found, now)
+  if (found.results.length === 0) {
+    return {
+      check: 'competition',
+      state: 'warn',
+      reason: `No results came back for "${found.keyword}"`,
+    }
+  }
+  const state = fieldCompetition(found)
   const doors = openDoors(found)
   const shorts = shortCount(found)
   const name = `"${found.keyword}"`
@@ -247,7 +259,7 @@ function competitionLine(brief: SearchBrief, now: Date): VerdictLine {
       ? `${plural(shorts, 'Short')} in the top ${found.results.length} for ${name}`
       : doors > 0
         ? `${plural(doors, 'open door')} in the top ${found.results.length} for ${name}`
-        : isStaleField(found, now)
+        : isStaleField(found, new Date(found.checkedAt))
           ? `No open doors for ${name}, but most of the field is old`
           : `No open doors for ${name} and the field is recent`
   return { check: 'competition', state, reason }
@@ -260,13 +272,12 @@ function competitionLine(brief: SearchBrief, now: Date): VerdictLine {
 export function briefVerdict(
   brief: SearchBrief,
   context: { caseCategory: string | null; checkedAngle: number | null },
-  now: Date = new Date(),
 ): VerdictLine[] {
   return [
     intentLine(brief),
     angleLine(brief, context.checkedAngle),
     fitLine(brief, context.caseCategory),
     demandLine(brief),
-    competitionLine(brief, now),
+    competitionLine(brief),
   ]
 }
