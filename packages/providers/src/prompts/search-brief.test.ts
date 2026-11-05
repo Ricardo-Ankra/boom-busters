@@ -479,6 +479,27 @@ describe('the rate-the-angles step', () => {
     expect(RATE_ANGLES_OUTPUT_TOKENS).toBe(400)
   })
 
+  it('accepts a reason naming an option number', () => {
+    const out = parseRateAngles(
+      answer(1, 'Option 1 pairs a real gap with a clear story.'),
+      rateInput,
+    )
+    expect(out.recommended).toBe(1)
+  })
+
+  it('tells the model not to cite option numbers', () => {
+    expect(buildRateAnglesRequest(rateInput).system).toContain(
+      'In the reason, never refer to an option by its number; name its idea in a few words instead.',
+    )
+  })
+
+  it('refuses a reason without a string reason', () => {
+    expect(() => parseRateAngles(JSON.stringify({ recommended: 0 }), rateInput)).toThrow(
+      ValidationError,
+    )
+    expect(() => parseRateAngles(answer(0, 5), rateInput)).toThrow(ValidationError)
+  })
+
   it('mocks the highest demand', () => {
     expect(mockRateAngles(rateInput)).toEqual({
       recommended: 0,
