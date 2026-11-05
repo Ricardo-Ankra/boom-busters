@@ -110,7 +110,8 @@ describeDb('channel actions', () => {
       await saveChannelYoutubeConnection(db, source.id, {
         refreshToken: 'refresh-token-from-a',
         encryptionKey: Buffer.alloc(32, 1).toString('base64'),
-        youtubeChannelId: 'UC-source',
+        // Unique per run: the id is unique in youtube_connections, and nothing deletes the row.
+        youtubeChannelId: `UC-${unique()}`,
         youtubeChannelTitle: 'Source',
       })
       await insertLogo(db, source.id, {

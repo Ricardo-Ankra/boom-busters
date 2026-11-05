@@ -4481,11 +4481,12 @@ All four done 2026-11-03, after the merge (`001fff1`).
   the runner is covered by the harness tests with the mock VidIQ client.
 - A live VidIQ call. Every test uses the mock client.
 
-### Known test bug, not fixed here
+### Known test bug, fixed 2026-11-05
 
-`channel-actions.test.ts` leaves a `UC-source` row in `youtube_connections`
-in the test database, so it fails on a second run until the row is deleted.
-This is on master and unrelated to this work.
+`channel-actions.test.ts` left a `UC-source` row in `youtube_connections`
+in the test database, so it failed on a second run until the row was
+deleted. The test now gives the fake YouTube channel id a unique suffix on
+every run, so a leftover row no longer collides.
 
 ## Bible tab rework (2026-11-03)
 
