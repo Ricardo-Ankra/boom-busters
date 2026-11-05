@@ -116,7 +116,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /**
  * Polls the niche job until it finishes. Null for a failed or expired job, a
  * poll with an unknown status, or no answer in time. Polls cost nothing and
- * are not recorded.
+ * are not recorded; one client serves the whole wait.
  */
 export async function awaitNicheTest(
   jobId: string,
@@ -124,19 +124,21 @@ export async function awaitNicheTest(
   options: { timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<NicheTest | null> {
   const { timeoutMs = 90_000, intervalMs = 5_000 } = options
-  let waited = 0
-  for (;;) {
-    let state
-    try {
-      state = (await withVidiqClient((client) => client.jobPoll(jobId))).data
-    } catch (error) {
-      if (error instanceof VidiqError) return null
-      throw error
+  return withVidiqClient(async (client) => {
+    let waited = 0
+    for (;;) {
+      let state
+      try {
+        state = (await client.jobPoll(jobId)).data
+      } catch (error) {
+        if (error instanceof VidiqError) return null
+        throw error
+      }
+      if (state.status === 'completed') return nicheTestOf(angle, state.result)
+      if (state.status !== 'inprogress') return null
+      if (waited + intervalMs > timeoutMs) return null
+      await sleep(intervalMs)
+      waited += intervalMs
     }
-    if (state.status === 'completed') return nicheTestOf(angle, state.result)
-    if (state.status !== 'inprogress') return null
-    if (waited + intervalMs > timeoutMs) return null
-    await sleep(intervalMs)
-    waited += intervalMs
-  }
+  })
 }

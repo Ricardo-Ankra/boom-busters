@@ -80,6 +80,12 @@ describeDb('vidiq-spend (mock mode)', () => {
       await expect(spendVidiq(input, vi.fn())).rejects.toBeInstanceOf(VidiqCapReached)
     })
 
+    it('keeps the NonRetriableError name so Inngest still stops retrying', async () => {
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 3 } })
+      const error = await spendVidiq(input, vi.fn()).catch((e: unknown) => e)
+      expect((error as Error).name).toBe('NonRetriableError')
+    })
+
     it('writes a row with the purpose, the tool and the wire arguments', async () => {
       const result = await spendVidiq(input, (client) =>
         client.keywordResearch('wework', { mode: 'matching_terms', limit: 20 }),

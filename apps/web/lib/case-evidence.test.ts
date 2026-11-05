@@ -139,6 +139,27 @@ describe('awaitNicheTest', () => {
     })
   })
 
+  it.each([
+    ['null', null],
+    ['a string', 'done'],
+    ['null notes', { notes: null }],
+  ])(
+    'gives no verdict and no evidence for a completed result that is %s',
+    async (_name, result) => {
+      poll({ status: 'completed', result })
+      vi.useFakeTimers()
+      const pending = awaitNicheTest('job', 'a')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(await pending).toEqual({
+        angle: 'a',
+        verdict: 'No verdict returned',
+        direct: false,
+        evidence: [],
+        notes: '',
+      })
+    },
+  )
+
   it('returns null when the niche job times out', async () => {
     const jobPoll = vi
       .fn()

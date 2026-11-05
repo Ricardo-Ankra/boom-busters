@@ -71,10 +71,8 @@ async function openClient(): Promise<VidiqClient> {
 
 /** The monthly cap refused a call; a NonRetriableError, so callers that catch that keep working. */
 export class VidiqCapReached extends NonRetriableError {
-  constructor(message: string) {
-    super(message)
-    this.name = 'VidiqCapReached'
-  }
+  // No constructor and no `name` override: the name stays `NonRetriableError`,
+  // which Inngest reads to stop retrying (the AnswerStopped convention).
 }
 
 /** Runs `fn` with an open client and closes it after. For free calls only: use `spendVidiq` for anything that costs. */
