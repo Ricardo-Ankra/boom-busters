@@ -4685,6 +4685,60 @@ Final review and fixes:
       loudnorm and QC part by part, the transcription fallback batched, and a
       YouTube upload that resumes across invocations (decision 394).
 
+## Case Library redesign (2026-11-05)
+
+> The Case Library is a list on the left and the open case's panel on the
+> right (`/c/<slug>/cases?case=<id>`), and the search brief keeps searched
+> video titles and other-language searches apart from the keywords. Branch
+> `case-library-redesign`; decisions 399 to 408. Spec
+> `docs/superpowers/specs/2026-11-05-case-library-redesign-design.md`, plan
+> `docs/superpowers/plans/2026-11-05-case-library-redesign.md`. No migration:
+> every new brief field is jsonb with a Zod default.
+
+### Deliverables
+
+- [x] Task 1: search terms split into keywords, searched video titles and other
+      languages by their shape; the target is chosen from the keywords only
+      (`cc5728cc`).
+- [x] Task 2: the brief schema gains `searchedTitles`, `otherLanguages`,
+      `recommendedAngle`, `recommendationReason` and `ownAngle`; the read-time
+      upgrade; the angle Demand score (`b9be851e`).
+- [x] Task 3: cases and frozen projects read their brief upgraded; the own-angle
+      flag, the refusal of a title as a target, and the angle rating save
+      (`462a627e`, `b92b8e57`).
+- [x] Task 4: the rate-the-angles prompt, parser and mock answer (`ab8ca68e`,
+      `96c97d6d`).
+- [x] Task 5: the research run keeps titles apart and rates its angles in a
+      separate step (`dceaec75`).
+- [x] Task 6: the Rate the angles action and its cost estimate (`c7cd834c`).
+- [x] Task 7: case progress, the list signal and the score words
+      (`7eb8b4a9`, `a80a0003`).
+- [x] Task 8: the panel's Angle and Search demand sections (`c90141e1`,
+      `f6ce28fa`).
+- [x] Task 9: the Case Library as a list and side panel (`ec8d774d`).
+- [x] Task 10: the end to end specs follow the new layout (`case-research`
+      drives the panel, the Searched video titles, Make target, Rate the angles
+      and Use this angle; `writing-room`, `project-lifecycle` and `bible` open
+      the case from the list before New project), and this section.
+
+### Owner actions at deploy
+
+1. `PUT /api/inngest` after the Vercel deploy, so Inngest registers the new
+   `rate-angles` step of `case-researcher`.
+2. No migration.
+3. Open the Stellantis project's publish screen and check it shows the re-picked
+   target (`leapmotor stellantis`, from the read-time upgrade) in place of the
+   stored title. Nothing is written back; the stored row keeps its old target.
+4. Optional: press Research again on a case whose target reads weak (the panel
+   says so), to measure fresh terms.
+
+### Not verified
+
+- No live VidIQ or model run: the research split, Rate the angles and the
+  classifier were exercised on mock providers and fixtures only.
+- The layout was seen only in the e2e screenshots (desktop 1440 by 900, and
+  390 by 844 with and without `?case=`), not on a real phone or tablet.
+
 ---
 
 # Decisions made
@@ -10043,3 +10097,81 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      The eighth stands as a ruling: "Refine again" refines the approved
      version, as spec 9.3 says, not the new draft. Deferred minors are in
      the ledger and the hand-over.
+399. **A search term is a video title when its shape says so** (2026-11-05,
+     owner's Stellantis screenshot; spec "Thresholds"). A measured term is a
+     title when it contains `:`, a dash, `|`, `.`, `!`, `?` or a quote, has nine
+     or more words, or is the opening words (three or more) of a title in the
+     same list; it is another language when it carries an accented letter from
+     `áàâãäéèêíóôõöúüçñ` or the capitals of the same (any uppercase letter is
+     not enough). Everything else is a keyword. "co-founder" is not
+     punctuation, and a seven-word term such as the Sears one stays a keyword.
+     The target is chosen from the keywords only; titles and other languages
+     keep their figures in `searchedTitles` and `otherLanguages` (ten rows
+     each). Deferred minor: a plain term equal in words to a punctuated title
+     stays a keyword, because the prefix rule needs strictly fewer words.
+400. **Old briefs are upgraded on read, never rewritten** (2026-11-05). One
+     function in the schemas package, `upgradeSearchBrief`, moves title and
+     other-language rows out of the target and the secondaries, is idempotent,
+     and leaves a brief that is already split unchanged. Cases and frozen
+     projects both read through it, so the two cannot drift, and the stored
+     rows are left as they were: a frozen project's stored brief still names
+     what the project was frozen on, while its screens read the upgraded one.
+     A brief that no longer parses reads as null, so every writer validates
+     before it stores.
+401. **An owner's keyword choice survives the upgrade** (2026-11-05). The
+     target is re-picked only when the stored one was not a keyword. A target
+     the owner set with Make target stays, whatever it measured. When the
+     stored target was a title, the best remaining keyword takes its place;
+     when none is left the target is null, which the dossier, script, metadata
+     and publish code already handle. The panel then suggests Research again,
+     as it does for a target whose `overall` is below 50.
+402. **Demand is one formula, in one place** (2026-11-05). An angle's Demand is
+     round(0.7 times the `overall` of the keyword it serves, plus 6 for each
+     searched question it answers, up to 5 of them), capped at 100. An angle
+     that serves a searched title rather than a keyword scores on its answers
+     alone. Answers match searched questions lowercased and trimmed. The word
+     bands are 0 to 33 low, 34 to 66 medium (volume: moderate), 67 to 100 high.
+403. **Rating is its own step, and a failure does not fail the run**
+     (2026-11-05). `case-researcher` gains a `rate-angles` step after the angle
+     options exist. The run classifies the rows the keyword filter kept, not
+     the full measured list: a title the filter keeps is still caught, and one
+     it drops is gone either way. A model failure, a refused answer or a throw
+     leaves the brief saved without a recommendation, and Rate the angles can
+     be pressed later. A new research run always writes `recommendedAngle` and
+     `recommendationReason` fresh, never carrying old ones over. The step
+     writes a `cost_ledger` row like every other model step.
+404. **The rating save validates the brief it writes** (2026-11-05, task 3
+     review). `saveCaseAngleRating` refuses an out-of-range index, cuts the
+     reason to 200 characters and parses the whole brief before storing,
+     because a brief that fails the read schema reads as null. It takes the
+     lock research takes and compares the option texts it rated, returning
+     null when they changed, so Rate the angles holds no row lock across the
+     model call. A reason over 200 characters is shortened, not refused. The
+     prompt forbids option numbers in the reason, and the parser accepts
+     0 to n minus 1 so a slip does not cost a paid retry.
+405. **"Angle chosen" covers the owner's own angle through a flag**
+     (2026-11-05). `cases.angle` also holds the idea typed into Add case, so
+     its text cannot say an angle was chosen. The brief gains
+     `ownAngle: boolean` (default false), set by Save my angle and cleared when
+     an option is chosen; the angle counts as chosen when `chosenAngle` is set
+     or `ownAngle` is true. A fresh research run resets both. Old briefs where
+     the owner kept their own angle read as not chosen until Save my angle is
+     pressed again.
+406. **Retired is read first, and has no live step** (2026-11-05, task 7
+     review). A retired case reads "Retired" in the next-step line before any
+     other rule, and a retired or project-started case marks no step as
+     current. The step labels live in a plain module (`research-steps.ts`)
+     that the server page imports, since `case-progress.ts` must not import
+     from a `'use client'` file.
+407. **Two panes from `xl`** (2026-11-05). At 1280px the panel has about 660px
+     beside the 280px rail and a 340px list. Below it one pane shows at a
+     time, by CSS alone: the list, or the open case with Back to cases once the
+     URL names a case. The open case is the `case` parameter, else the first
+     backlog case, and only the first counts as explicit. The Other keywords
+     table stacks its figures under each keyword below `sm`.
+408. **The Demand breakdown is visible text** (2026-11-05, task 8 review). Each
+     angle card says what its score was made of in words ("overall 74 for
+     stellantis problems, 1 searched question"), with no hover title, so touch
+     and screen readers get it as well. Each card is one line taller for it.
+     Deferred minors: a suggestion that needs research still offers a research
+     button in the Angle slot; the Trend hint is vague for a negative figure.
