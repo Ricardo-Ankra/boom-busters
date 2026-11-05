@@ -1,0 +1,74 @@
+{
+  "_probe": "vidiq_video_comments {videoId: 'c9Xm1bT50DQ', order: 'relevance', maxResult: 20} on 2026-11-05. 20 threads returned; 3 kept, replies trimmed, and abusive replies present in the real response removed. Field names, value types and the HTML-escaped text are verbatim.",
+  "videoId": "c9Xm1bT50DQ",
+  "comments": [
+    {
+      "commentId": "Ugz9Yt4V_5IrvjMmJyZ4AaABAg",
+      "channelId": "UCE4Gn00XZbpWvGUfIslT-tA",
+      "videoId": "c9Xm1bT50DQ",
+      "topComment": {
+        "author": "@MagnatesMedia",
+        "authorChannelUrl": "http://www.youtube.com/@MagnatesMedia",
+        "text": "Hey legends, this is one of my favourite business stories ever. This was a crazy project that took many months to make. I really hope you enjoy! 😁\r<br>\r<br>📚 The video is split into chapters ...",
+        "likeCount": 1142,
+        "publishedAt": "2025-03-15T16:48:09Z",
+        "byChannelOwner": true
+      },
+      "replyCount": 49,
+      "replies": [
+        {
+          "author": "@rounak6343",
+          "authorChannelUrl": "http://www.youtube.com/@rounak6343",
+          "text": "You made a damm netflix level documentory damm",
+          "likeCount": 35,
+          "publishedAt": "2025-03-15T16:51:40Z",
+          "byChannelOwner": false
+        }
+      ],
+      "videoTitle": "The $47 Billion Cult"
+    },
+    {
+      "commentId": "UgwCDgzTi3N1YMCz_tJ4AaABAg",
+      "channelId": "UCE4Gn00XZbpWvGUfIslT-tA",
+      "videoId": "c9Xm1bT50DQ",
+      "topComment": {
+        "author": "@KnakuanaRka",
+        "authorChannelUrl": "http://www.youtube.com/@KnakuanaRka",
+        "text": "One other thing worth noting: remember Greendesk, the earlier company Adam and Miguel made with Guttman before selling it to him and heading off to WeWork? Apparently that one’s still around, and making Guttman and co a tidy profit. Shows that the original core concept of leasing out office space isn’t a fundamentally bad business plan; the problem was Adam ...",
+        "likeCount": 173,
+        "publishedAt": "2025-09-13T17:37:15Z",
+        "byChannelOwner": false
+      },
+      "replyCount": 8,
+      "replies": [
+        {
+          "author": "@jcee6886",
+          "authorChannelUrl": "http://www.youtube.com/@jcee6886",
+          "text": "He&#39;s still worth 2.3 billion. How?",
+          "likeCount": 3,
+          "publishedAt": "2026-02-05T20:10:07Z",
+          "byChannelOwner": false
+        }
+      ],
+      "videoTitle": "The $47 Billion Cult"
+    },
+    {
+      "commentId": "Ugyt7JPi4wReyHMQG054AaABAg",
+      "channelId": "UCE4Gn00XZbpWvGUfIslT-tA",
+      "videoId": "c9Xm1bT50DQ",
+      "topComment": {
+        "author": "@censored-k8f",
+        "authorChannelUrl": "http://www.youtube.com/@censored-k8f",
+        "text": "&quot;you violated the happiness clause of your contract&quot; 💀",
+        "likeCount": 2655,
+        "publishedAt": "2025-03-15T18:15:43Z",
+        "byChannelOwner": false
+      },
+      "replyCount": 16,
+      "replies": [],
+      "videoTitle": "The $47 Billion Cult"
+    }
+  ],
+  "nextPageToken": "Z2V0X3JhbmtlZF9zdHJlYW1zLS1D...(trimmed)",
+  "_credits": { "used": 5 }
+}
