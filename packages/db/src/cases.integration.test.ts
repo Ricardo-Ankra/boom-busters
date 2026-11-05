@@ -1,4 +1,9 @@
-import { DEFAULT_SETTINGS, EMPTY_BIBLE } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  EMPTY_BIBLE,
+  SearchBriefSchema,
+  briefDemandNotes,
+} from '@boom-busters/schemas'
 import type { CaseResearchJob, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
@@ -13,6 +18,7 @@ import {
   getCase,
   listCases,
   markCaseInProduction,
+  saveCaseAngleRating,
   saveCaseSearchBrief,
   setCaseFormat,
   setCaseStatus,
@@ -358,6 +364,37 @@ suite('cases', () => {
       expect(got?.searchJob).toBeNull()
     })
 
+    /** Write a brief the way an old row holds it: no new fields, a title as the target. */
+    async function writeRawBrief(id: string, brief: SearchBrief) {
+      const {
+        searchedTitles: _t,
+        otherLanguages: _o,
+        recommendedAngle: _r,
+        recommendationReason: _rr,
+        ownAngle: _a,
+        ...old
+      } = brief
+      await db.execute(
+        dsql`update cases set search_brief = ${JSON.stringify(old)}::jsonb where id = ${id}`,
+      )
+    }
+    const oldTitleBrief = () =>
+      briefFor('WeWork', {
+        targetKeyword: kw('wework: the full story', 90),
+        secondaryKeywords: [kw('wework collapse', 80), kw('wework bankruptcy', 50)],
+      })
+
+    it('reads an old brief upgraded', async () => {
+      const row = await createCase(db, { channelId, title: 'Old brief', category: 'con' })
+      await writeRawBrief(row.id, oldTitleBrief())
+      const got = await getCase(db, row.id)
+      expect(got?.searchBrief?.searchedTitles.map((k) => k.keyword)).toEqual([
+        'wework: the full story',
+      ])
+      expect(got?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+      expect((await listCases(db, channelId))[0]?.searchBrief?.searchedTitles).toHaveLength(1)
+    })
+
     describe('caseSubjectTaken', () => {
       it('is true for a trimmed, case-insensitive match in the same channel only', async () => {
         const row = await createCase(db, {
@@ -486,6 +523,15 @@ suite('cases', () => {
         expect(got.searchBrief?.chosenAngle).toBeNull()
       })
 
+      it('marks an own angle chosen and clears it for an option', async () => {
+        const id = await researched()
+        const own = await chooseCaseAngle(db, id, { own: 'My own telling' })
+        expect(own.searchBrief?.ownAngle).toBe(true)
+        const option = await chooseCaseAngle(db, id, { option: 0 })
+        expect(option.searchBrief?.ownAngle).toBe(false)
+        expect(option.searchBrief?.chosenAngle).toBe(0)
+      })
+
       it('refuses an option that does not exist, and a case with no brief', async () => {
         const id = await researched()
         await expect(chooseCaseAngle(db, id, { option: 5 })).rejects.toThrow()
@@ -529,11 +575,73 @@ suite('cases', () => {
         expect(got.demandNotes).toBe('Owner note about the audience')
       })
 
+      it('refuses a searched title as the target', async () => {
+        const id = await researched()
+        await writeRawBrief(id, oldTitleBrief())
+        await expect(setCaseTargetKeyword(db, id, 'wework: the full story')).rejects.toThrow(
+          'a searched video title or another language cannot be the target keyword',
+        )
+      })
+
       it('refuses a keyword with a figure, and one that is not a secondary', async () => {
         const id = await researched()
         await expect(setCaseTargetKeyword(db, id, 'wework $47 billion')).rejects.toThrow(/figure/)
         await expect(setCaseTargetKeyword(db, id, 'nothing here')).rejects.toThrow()
         expect((await getCase(db, id))?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+      })
+    })
+
+    describe('saveCaseAngleRating', () => {
+      const optionTexts = [
+        'How a lease broker became a unicorn on borrowed hype',
+        'The board that signed off on every excess',
+      ]
+
+      it('saves a rating for the options it rated', async () => {
+        const id = await researched()
+        const got = await saveCaseAngleRating(db, id, {
+          options: optionTexts,
+          recommended: 1,
+          reason: '  The board is the part nobody has told.  ',
+        })
+        expect(got?.searchBrief?.recommendedAngle).toBe(1)
+        expect(got?.searchBrief?.recommendationReason).toBe(
+          'The board is the part nobody has told.',
+        )
+      })
+
+      it('refuses a rating for options that changed', async () => {
+        const id = await researched()
+        const before = (await getCase(db, id))?.updatedAt
+        const got = await saveCaseAngleRating(db, id, {
+          options: [optionTexts[1]!, optionTexts[0]!],
+          recommended: 0,
+          reason: 'x',
+        })
+        expect(got).toBeNull()
+        const after = await getCase(db, id)
+        expect(after?.searchBrief?.recommendedAngle).toBeNull()
+        expect(after?.updatedAt).toEqual(before)
+        const bare = await createCase(db, { channelId, title: 'Bare', category: 'con' })
+        expect(
+          await saveCaseAngleRating(db, bare.id, {
+            options: optionTexts,
+            recommended: 0,
+            reason: 'x',
+          }),
+        ).toBeNull()
+      })
+
+      it('notes from the pre-upgrade brief follow the upgraded target', async () => {
+        const id = await researched()
+        const old = oldTitleBrief()
+        await writeRawBrief(id, old)
+        await updateCase(db, id, {
+          demandNotes: briefDemandNotes(SearchBriefSchema.parse(old)),
+        })
+        const got = await setCaseTargetKeyword(db, id, 'wework bankruptcy')
+        expect(got.demandNotes).toBe(briefDemandNotes(got.searchBrief!))
+        expect(got.demandNotes).toContain('wework bankruptcy')
       })
     })
 
@@ -546,6 +654,22 @@ suite('cases', () => {
         await setCaseTargetKeyword(db, id, 'wework bankruptcy')
         const after = await getProject(db, project.id)
         expect(after?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+      })
+
+      it('reads a frozen project brief upgraded', async () => {
+        const id = await researched()
+        const project = await createProjectFromCase(db, { caseId: id, title: 'Old frozen' })
+        await db.execute(
+          dsql`update projects set search_brief = ${JSON.stringify({
+            ...oldTitleBrief(),
+            searchedTitles: undefined,
+          })}::jsonb where id = ${project.id}`,
+        )
+        const got = await getProject(db, project.id)
+        expect(got?.searchBrief?.searchedTitles.map((k) => k.keyword)).toEqual([
+          'wework: the full story',
+        ])
+        expect(got?.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
       })
 
       it('compares the subject trimmed and case-insensitively', async () => {
