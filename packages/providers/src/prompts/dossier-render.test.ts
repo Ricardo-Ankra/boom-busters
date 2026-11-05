@@ -100,6 +100,11 @@ describe('renderDossierMarkdown search section', () => {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
     ...over,
   })
 

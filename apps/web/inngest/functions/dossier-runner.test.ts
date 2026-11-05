@@ -109,6 +109,11 @@ const SEARCH_BRIEF: SearchBrief = {
   chosenAngle: null,
   formatKey: null,
   fit: null,
+  searchedTitles: [],
+  otherLanguages: [],
+  recommendedAngle: null,
+  recommendationReason: null,
+  ownAngle: false,
 }
 const ENTITY = { qid: 'Q1', titles: ['Wirecard'], cik: null, ticker: null, website: null }
 

@@ -248,6 +248,11 @@ describe('buildOutlineRequest with a search brief', () => {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
     ...patch,
   })
 

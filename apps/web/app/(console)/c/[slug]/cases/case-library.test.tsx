@@ -431,6 +431,11 @@ const BRIEF: SearchBrief = {
   chosenAngle: 1,
   formatKey: null,
   fit: null,
+  searchedTitles: [],
+  otherLanguages: [],
+  recommendedAngle: null,
+  recommendationReason: null,
+  ownAngle: false,
 }
 
 function researched(over: Partial<CaseSummary> = {}) {

@@ -430,6 +430,11 @@ export const caseResearcher = inngest.createFunction(
         chosenAngle: null,
         formatKey: loaded.formatKey ?? null,
         fit,
+        searchedTitles: [],
+        otherLanguages: [],
+        recommendedAngle: null,
+        recommendationReason: null,
+        ownAngle: false,
       })
       // A retry would fail the same way, so the run stops with a reason the owner can read.
       if (!parsed.success) {

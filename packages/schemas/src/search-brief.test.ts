@@ -5,6 +5,12 @@ import {
   CaseResearchJobSchema,
   SEARCH_BRIEF_STALE_DAYS,
   SearchBriefSchema,
+  StoredSearchBriefSchema,
+  WEAK_TARGET_OVERALL,
+  angleDemand,
+  angleIsChosen,
+  briefNeedsResearch,
+  upgradeSearchBrief,
   briefDemandNotes,
   briefIsStale,
   caseResearchJobIsRunning,
@@ -66,6 +72,11 @@ function fixture(over: Partial<SearchBrief> = {}): SearchBrief {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
     ...over,
   }
 }
@@ -231,5 +242,204 @@ describe('chooseTargetKeyword and titles', () => {
       kw('leapmotor stellantis', 63),
     ]
     expect(chooseTargetKeyword(rows, 'Stellantis')?.keyword).toBe('leapmotor stellantis')
+  })
+})
+
+const STELLANTIS_ROWS = [
+  kw('stellantis is losing everything: jeep, dodge & fiat on the brink', 75, {
+    estimatedMonthlySearch: 109212,
+  }),
+  kw('a stellantis está perdendo tudo: jeep, dodge e fiat à beira do abismo', 73, {
+    estimatedMonthlySearch: 7261,
+  }),
+  kw('stellantis is falling apart — jeep, dodge & chrysler owners should be worried', 70, {
+    estimatedMonthlySearch: 3000,
+  }),
+  kw('stellantis lo está perdiendo todo: jeep, dodge y fiat al borde del abismo', 68, {
+    estimatedMonthlySearch: 9337,
+  }),
+  kw('stellantis is losing everything across the uk: vauxhall, peugeot & fiat on the brink', 68, {
+    estimatedMonthlySearch: 2000,
+  }),
+  kw('jeep made billions. then stellantis happened.', 66, { estimatedMonthlySearch: 1000 }),
+  kw('stellantis is losing everything', 65, { estimatedMonthlySearch: 52004 }),
+  kw('stellantis lo está perdiendo todo en méxico: jeep, dodge y fiat al borde del abismo', 65, {
+    estimatedMonthlySearch: 500,
+  }),
+  kw('stellantis lo está perdiendo todo: jeep, dodge y fiat, al borde del abismo', 64, {
+    estimatedMonthlySearch: 400,
+  }),
+  kw('leapmotor stellantis', 63, { estimatedMonthlySearch: 8167 }),
+]
+
+function stellantisBrief(): SearchBrief {
+  return fixture({
+    subject: 'Stellantis',
+    targetKeyword: STELLANTIS_ROWS[0],
+    secondaryKeywords: STELLANTIS_ROWS.slice(1),
+  })
+}
+
+const OPTION_ANGLE = 'An angle that is long enough to pass'
+
+describe('the brief fields added with the case library redesign', () => {
+  test('parses a brief stored before the new fields', () => {
+    const old: Record<string, unknown> = { ...fixture() }
+    for (const k of [
+      'searchedTitles',
+      'otherLanguages',
+      'recommendedAngle',
+      'recommendationReason',
+      'ownAngle',
+    ]) {
+      delete old[k]
+    }
+    const parsed = SearchBriefSchema.parse(old)
+    expect(parsed.searchedTitles).toEqual([])
+    expect(parsed.otherLanguages).toEqual([])
+    expect(parsed.recommendedAngle).toBeNull()
+    expect(parsed.recommendationReason).toBeNull()
+    expect(parsed.ownAngle).toBe(false)
+  })
+})
+
+describe('upgradeSearchBrief', () => {
+  test('moves the Stellantis titles out and re-picks the target', () => {
+    const up = upgradeSearchBrief(stellantisBrief())
+    expect(up.targetKeyword?.keyword).toBe('leapmotor stellantis')
+    expect(up.secondaryKeywords).toEqual([])
+    expect(up.searchedTitles).toHaveLength(5)
+    expect(up.otherLanguages).toHaveLength(4)
+    expect(up.searchedTitles[0]?.keyword).toBe(
+      'stellantis is losing everything: jeep, dodge & fiat on the brink',
+    )
+    expect(up.otherLanguages[0]?.estimatedMonthlySearch).toBe(9337)
+  })
+
+  test('is idempotent', () => {
+    const once = upgradeSearchBrief(stellantisBrief())
+    expect(upgradeSearchBrief(once)).toEqual(once)
+  })
+
+  test('returns a deep-equal brief when nothing moves', () => {
+    const b = fixture({ secondaryKeywords: [kw('wework bankruptcy', 40)] })
+    expect(upgradeSearchBrief(b)).toEqual(b)
+  })
+
+  test('keeps a keyword target the owner chose', () => {
+    const b = fixture({
+      targetKeyword: kw('wework documentary', 40),
+      secondaryKeywords: [kw('wework story', 70), kw('wework: the fall!', 60)],
+    })
+    const up = upgradeSearchBrief(b)
+    expect(up.targetKeyword?.keyword).toBe('wework documentary')
+    expect(up.secondaryKeywords.map((r) => r.keyword)).toEqual(['wework story'])
+    expect(up.searchedTitles.map((r) => r.keyword)).toEqual(['wework: the fall!'])
+  })
+
+  test('merges with the lists already there, without duplicates', () => {
+    const b = fixture({
+      secondaryKeywords: [kw('Wework: The Fall!', 60)],
+      searchedTitles: [kw('wework: the fall!', 60), kw('wework: the end!', 10)],
+    })
+    expect(upgradeSearchBrief(b).searchedTitles).toHaveLength(2)
+  })
+
+  test('nulls a recommendation index out of range', () => {
+    const option = { angle: OPTION_ANGLE, keyword: 'wework documentary', answers: [], gap: '' }
+    expect(
+      upgradeSearchBrief(fixture({ angleOptions: [option], recommendedAngle: 1 })).recommendedAngle,
+    ).toBeNull()
+    expect(
+      upgradeSearchBrief(fixture({ angleOptions: [option], recommendedAngle: 0 })).recommendedAngle,
+    ).toBe(0)
+  })
+
+  test('StoredSearchBriefSchema upgrades as it parses', () => {
+    const parsed = StoredSearchBriefSchema.parse(stellantisBrief())
+    expect(parsed.targetKeyword?.keyword).toBe('leapmotor stellantis')
+  })
+})
+
+describe('angleDemand', () => {
+  const option = (keyword: string, answers: string[]) => ({
+    angle: OPTION_ANGLE,
+    keyword,
+    answers,
+    gap: '',
+  })
+  const questions = ['why did it fail', 'who is adam', 'how much', 'when', 'where', 'what']
+
+  test('scores demand from overall and answered questions', () => {
+    const b = fixture({ searchedQuestions: questions })
+    const d = angleDemand(option('Wework Documentary', ['Why did it fail ', 'who is adam']), b)
+    expect(d).toEqual({
+      score: 56,
+      keyword: 'wework documentary',
+      keywordOverall: 63,
+      servesSearchedTerm: false,
+      answers: 2,
+    })
+  })
+
+  test('caps at 100 and at five answers', () => {
+    const b = fixture({
+      targetKeyword: kw('wework documentary', 100),
+      searchedQuestions: questions,
+    })
+    const d = angleDemand(option('wework documentary', questions), b)
+    expect(d.answers).toBe(5)
+    expect(d.score).toBe(100)
+  })
+
+  test('scores a title-serving option on questions only', () => {
+    const b = fixture({
+      searchedTitles: [kw('wework: the fall!', 90)],
+      searchedQuestions: questions,
+    })
+    const d = angleDemand(option('wework: the fall!', ['why did it fail']), b)
+    expect(d.score).toBe(6)
+    expect(d.servesSearchedTerm).toBe(true)
+  })
+
+  test('scores an unknown keyword on questions only, without serving a term', () => {
+    expect(angleDemand(option('', []), fixture())).toEqual({
+      score: 0,
+      keyword: null,
+      keywordOverall: null,
+      servesSearchedTerm: false,
+      answers: 0,
+    })
+  })
+
+  test('counts a repeated answer once', () => {
+    const b = fixture({ searchedQuestions: questions })
+    const d = angleDemand(option('wework documentary', ['who is adam', 'Who is Adam']), b)
+    expect(d.answers).toBe(1)
+  })
+})
+
+describe('angleIsChosen and briefNeedsResearch', () => {
+  test('counts an own angle as chosen', () => {
+    expect(angleIsChosen(fixture())).toBe(false)
+    expect(angleIsChosen(fixture({ chosenAngle: 0 }))).toBe(true)
+    expect(angleIsChosen(fixture({ ownAngle: true }))).toBe(true)
+  })
+
+  test('flags a weak or missing target for research', () => {
+    expect(WEAK_TARGET_OVERALL).toBe(50)
+    expect(briefNeedsResearch(fixture())).toBe(false)
+    expect(briefNeedsResearch(fixture({ targetKeyword: null }))).toBe(true)
+    expect(briefNeedsResearch(fixture({ targetKeyword: kw('wework', 49) }))).toBe(true)
+    expect(briefNeedsResearch(fixture({ targetKeyword: kw('wework', null) }))).toBe(true)
+    expect(briefNeedsResearch(fixture({ targetKeyword: kw('wework', 50) }))).toBe(false)
+  })
+
+  test('flags a brief with an option that serves a searched title', () => {
+    const b = fixture({
+      searchedTitles: [kw('wework: the fall!', 90)],
+      angleOptions: [{ angle: OPTION_ANGLE, keyword: 'wework: the fall!', answers: [], gap: '' }],
+    })
+    expect(briefNeedsResearch(b)).toBe(true)
   })
 })

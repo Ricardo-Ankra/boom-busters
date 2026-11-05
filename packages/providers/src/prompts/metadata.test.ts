@@ -543,6 +543,11 @@ describe('metadata prompts with a search brief', () => {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
     ...over,
   })
   const titlesInput = {
@@ -746,6 +751,11 @@ describe('metadata prompts for a calm format', () => {
         chosenAngle: null,
         formatKey: null,
         fit: null,
+        searchedTitles: [],
+        otherLanguages: [],
+        recommendedAngle: null,
+        recommendationReason: null,
+        ownAngle: false,
       } satisfies SearchBrief,
     }
     const calm = buildDescriptionRequest({ ...base, intent: 'calm' }).system

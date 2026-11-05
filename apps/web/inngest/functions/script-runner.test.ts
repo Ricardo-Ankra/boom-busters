@@ -619,6 +619,11 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       chosenAngle: null,
       formatKey: null,
       fit: null,
+      searchedTitles: [],
+      otherLanguages: [],
+      recommendedAngle: null,
+      recommendationReason: null,
+      ownAngle: false,
     }
     const steps = [
       {

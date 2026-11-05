@@ -349,6 +349,11 @@ describeDb('dossier-reviser', () => {
           chosenAngle: null,
           formatKey: null,
           fit: null,
+          searchedTitles: [],
+          otherLanguages: [],
+          recommendedAngle: null,
+          recommendationReason: null,
+          ownAngle: false,
         },
       }),
     }

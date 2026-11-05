@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { classifySearchTerms } from './search-terms'
+import { SEARCHED_TERMS_MAX, byMonthlySearchesDesc, classifySearchTerms } from './search-terms'
 
 /** One measured keyword row; every measure is null when VidIQ gave none. */
 export const SearchKeywordSchema = z.object({
@@ -38,6 +38,8 @@ export type AngleOption = z.infer<typeof AngleOptionSchema>
 export const TITLE_PATTERNS_MAX = 5
 export const TOLD_ALREADY_MAX = 8
 
+const RECOMMENDATION_REASON_MAX = 200
+
 /** Whether the subject fits the channel's scope, and the pillar it belongs to. */
 export const BriefFitSchema = z.object({
   inScope: z.boolean(),
@@ -60,6 +62,15 @@ export const SearchBriefSchema = z.object({
   /** The format the research ran as; null in a brief saved before formats. */
   formatKey: z.string().nullable().default(null),
   fit: BriefFitSchema.nullable().default(null),
+  /** Measured terms that are other people's video titles, kept apart from the keywords. */
+  searchedTitles: z.array(SearchKeywordSchema).max(SEARCHED_TERMS_MAX).default([]),
+  /** Measured terms in another language (auto-translated titles). */
+  otherLanguages: z.array(SearchKeywordSchema).max(SEARCHED_TERMS_MAX).default([]),
+  /** The model's pick among `angleOptions` (an index), with one sentence on why. */
+  recommendedAngle: z.number().int().min(0).nullable().default(null),
+  recommendationReason: z.string().max(RECOMMENDATION_REASON_MAX).nullable().default(null),
+  /** The owner wrote their own angle instead of choosing an option. */
+  ownAngle: z.boolean().default(false),
 })
 export type SearchBrief = z.infer<typeof SearchBriefSchema>
 
@@ -188,4 +199,148 @@ export function briefIsStale(brief: SearchBrief, now: Date = new Date()): boolea
  */
 export function searchBriefLine(text: string, max = 200): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, max).trim()
+}
+
+const keyOf = (term: string) => term.trim().toLowerCase()
+
+/** One list from several: the first spelling of a term wins; by monthly searches (nulls last), ten at most. */
+function mergeTermRows(...lists: readonly (readonly SearchKeyword[])[]): SearchKeyword[] {
+  const seen = new Set<string>()
+  const rows: SearchKeyword[] = []
+  for (const row of lists.flat()) {
+    const key = keyOf(row.keyword)
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push(row)
+  }
+  return rows.sort(byMonthlySearchesDesc).slice(0, SEARCHED_TERMS_MAX)
+}
+
+function byOverallDesc(a: SearchKeyword, b: SearchKeyword): number {
+  return (b.overall ?? -1) - (a.overall ?? -1)
+}
+
+/**
+ * Reads a brief saved before titles and other languages were kept apart.
+ * Title and other-language rows leave the target and the secondaries for their
+ * own lists; the target is re-picked only when the stored one was not a
+ * keyword (an owner's keyword choice stays). Idempotent, and a brief that is
+ * already split comes back unchanged. Not written back on read.
+ */
+export function upgradeSearchBrief(brief: SearchBrief): SearchBrief {
+  const target = brief.targetKeyword
+  const kinds = classifySearchTerms([
+    ...(target ? [target.keyword] : []),
+    ...brief.secondaryKeywords.map((r) => r.keyword),
+    ...brief.searchedTitles.map((r) => r.keyword),
+    ...brief.otherLanguages.map((r) => r.keyword),
+  ])
+  const kindOf = (r: SearchKeyword) => kinds.get(keyOf(r.keyword))
+  const movedFrom = [...(target ? [target] : []), ...brief.secondaryKeywords].filter(
+    (r) => kindOf(r) !== 'keyword',
+  )
+  const recommendedAngle =
+    brief.recommendedAngle !== null && brief.recommendedAngle >= brief.angleOptions.length
+      ? null
+      : brief.recommendedAngle
+  const recommendationReason = recommendedAngle === null ? null : brief.recommendationReason
+
+  if (movedFrom.length === 0) {
+    return recommendedAngle === brief.recommendedAngle
+      ? brief
+      : { ...brief, recommendedAngle, recommendationReason }
+  }
+
+  const keywordSecondaries = brief.secondaryKeywords.filter((r) => kindOf(r) === 'keyword')
+  let nextTarget = target
+  let secondaryKeywords = keywordSecondaries
+  if (target !== null && kindOf(target) !== 'keyword') {
+    nextTarget = chooseTargetKeyword(keywordSecondaries, brief.subject)
+    secondaryKeywords = keywordSecondaries
+      .filter((r) => r !== nextTarget)
+      .sort(byOverallDesc)
+      .slice(0, SEARCHED_TERMS_MAX)
+  }
+  const moved = (kind: 'title' | 'other-language') => movedFrom.filter((r) => kindOf(r) === kind)
+  return {
+    ...brief,
+    targetKeyword: nextTarget,
+    secondaryKeywords,
+    searchedTitles: mergeTermRows(brief.searchedTitles, moved('title')),
+    otherLanguages: mergeTermRows(brief.otherLanguages, moved('other-language')),
+    recommendedAngle,
+    recommendationReason,
+  }
+}
+
+/** The schema for a brief read from the database: parses, then upgrades. */
+export const StoredSearchBriefSchema = SearchBriefSchema.transform(upgradeSearchBrief)
+
+/** A target with an `overall` below this is weak: the brief suggests researching again. */
+export const WEAK_TARGET_OVERALL = 50
+
+const DEMAND_KEYWORD_WEIGHT = 0.7
+const DEMAND_PER_ANSWER = 6
+const DEMAND_ANSWERS_MAX = 5
+
+export interface AngleDemand {
+  /** 0 to 100, computed on read and never stored. */
+  score: number
+  /** The brief's spelling of the option's keyword; null when it is empty or in no list. */
+  keyword: string | null
+  /** The keyword's VidIQ `overall`; null when the keyword part is 0 for any reason. */
+  keywordOverall: number | null
+  /** The keyword is a searched title or another language, not a keyword. */
+  servesSearchedTerm: boolean
+  /** Searched questions the option answers, at most five. */
+  answers: number
+}
+
+/**
+ * Demand for an angle: 70% of its keyword's `overall` (looked up among the
+ * target and secondaries; 0 when the keyword is a title, another language or
+ * unknown) plus 6 per searched question it answers (five at most), rounded
+ * and capped at 100. Pass an upgraded brief.
+ */
+export function angleDemand(option: AngleOption, brief: SearchBrief): AngleDemand {
+  const key = keyOf(option.keyword)
+  const asTerm = [...brief.searchedTitles, ...brief.otherLanguages].find(
+    (r) => keyOf(r.keyword) === key,
+  )
+  const asKeyword = [
+    ...(brief.targetKeyword ? [brief.targetKeyword] : []),
+    ...brief.secondaryKeywords,
+  ].find((r) => keyOf(r.keyword) === key)
+  const serves = key !== '' && asTerm !== undefined
+  const found = key === '' ? undefined : (asTerm ?? asKeyword)
+  const keywordOverall = serves ? null : (asKeyword?.overall ?? null)
+
+  const asked = new Set(brief.searchedQuestions.map(keyOf))
+  const answers = Math.min(
+    new Set(option.answers.map(keyOf).filter((a) => asked.has(a))).size,
+    DEMAND_ANSWERS_MAX,
+  )
+  const score = Math.min(
+    100,
+    Math.round(DEMAND_KEYWORD_WEIGHT * (keywordOverall ?? 0) + DEMAND_PER_ANSWER * answers),
+  )
+  return {
+    score,
+    keyword: found?.keyword ?? null,
+    keywordOverall,
+    servesSearchedTerm: serves,
+    answers,
+  }
+}
+
+/** An angle is chosen when an option was picked or the owner wrote their own. */
+export function angleIsChosen(brief: SearchBrief): boolean {
+  return brief.chosenAngle !== null || brief.ownAngle
+}
+
+/** Research again is worth suggesting: no target, a weak one, or an angle that serves a searched title. */
+export function briefNeedsResearch(brief: SearchBrief): boolean {
+  const target = brief.targetKeyword
+  if (target === null || (target.overall ?? 0) < WEAK_TARGET_OVERALL) return true
+  return brief.angleOptions.some((o) => angleDemand(o, brief).servesSearchedTerm)
 }

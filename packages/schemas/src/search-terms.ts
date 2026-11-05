@@ -61,7 +61,7 @@ export function classifySearchTerms(terms: readonly string[]): Map<string, Searc
   return kinds
 }
 
-function byMonthlySearchesDesc(a: SearchKeyword, b: SearchKeyword): number {
+export function byMonthlySearchesDesc(a: SearchKeyword, b: SearchKeyword): number {
   const x = a.estimatedMonthlySearch
   const y = b.estimatedMonthlySearch
   if (x === y) return 0

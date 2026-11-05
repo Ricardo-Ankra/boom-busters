@@ -123,6 +123,11 @@ describe('the winners caps follow the brief schema', () => {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
   })
 
   it.each([0, 1, 5, 20])('an answer %i over the caps still fits the brief', (extra) => {

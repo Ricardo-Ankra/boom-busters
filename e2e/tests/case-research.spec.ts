@@ -83,6 +83,11 @@ function seededBrief(measuredAt: string): SearchBrief {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
   }
 }
 
