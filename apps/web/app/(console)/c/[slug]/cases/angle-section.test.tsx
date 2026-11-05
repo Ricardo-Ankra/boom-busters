@@ -134,9 +134,55 @@ describe('AngleSection', () => {
     // round(0.7 x 80 + 6 x 2) = 68
     expect(within(first).getByText('68')).toBeInTheDocument()
     expect(within(first).getByText('Demand')).toBeInTheDocument()
-    expect(first.querySelector('[title*="keyword 80"]')).not.toBeNull()
+    expect(
+      within(first).getByText('overall 80 for stellantis jeep, 2 searched questions'),
+    ).toBeVisible()
+    expect(first.querySelector('[title]')).toBeNull()
     expect(within(first).getByText(/Serves/)).toHaveTextContent('Serves stellantis jeep')
     expect(within(first).getByText(/answers 2 searched questions/)).toBeInTheDocument()
+  })
+
+  it('words the breakdown plainly for a title, a missing score and one question', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({
+          searchedTitles: [keyword({ keyword: 'stellantis is losing everything' })],
+          angleOptions: [
+            {
+              angle: 'Treat the slide as a documented chain of decisions inside one company.',
+              keyword: 'Stellantis is losing everything',
+              answers: [QUESTION_A],
+              gap: 'A gap.',
+            },
+            {
+              angle:
+                'Follow one Jeep dealer through 2023 to 2025 and the stock that would not move.',
+              keyword: '',
+              answers: [],
+              gap: 'Another gap.',
+            },
+          ],
+        }),
+      }),
+    )
+    expect(screen.getByText('Serves a searched title, 1 searched question')).toBeInTheDocument()
+    expect(screen.getByText('No keyword score, no searched questions')).toBeInTheDocument()
+  })
+
+  it('ignores a cost estimate from an earlier arm', async () => {
+    let first: (value: unknown) => void = () => {}
+    actions.rateAnglesEstimate
+      .mockReturnValueOnce(new Promise((resolve) => (first = resolve)))
+      .mockResolvedValueOnce({ ok: true, usd: 0.5, model: 'second-model' })
+    renderSection(kase())
+    await userEvent.click(screen.getByRole('button', { name: 'Rate the angles' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Rate the angles' }))
+    expect(await screen.findByText('About $0.50 on second-model. No VidIQ credits.')).toBeVisible()
+    first({ ok: true, usd: 9, model: 'stale-model' })
+    await Promise.resolve()
+    expect(screen.queryByText(/stale-model/)).not.toBeInTheDocument()
+    expect(screen.getByText(/second-model/)).toBeInTheDocument()
   })
 
   it('names the angle in Use this angle', async () => {

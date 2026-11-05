@@ -176,6 +176,32 @@ describe('SearchDemandSection', () => {
     )
   })
 
+  it('lets only one Make target be in flight', async () => {
+    let release: (value: { ok: boolean }) => void = () => {}
+    actions.setTargetKeywordAction.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      }),
+    )
+    render(
+      <SearchDemandSection
+        item={kase({
+          searchBrief: brief({
+            secondaryKeywords: [
+              keyword({ keyword: 'stellantis news' }),
+              keyword({ keyword: 'stellantis layoffs' }),
+            ],
+          }),
+        })}
+        run={run}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Make target: stellantis news' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Make target: stellantis layoffs' }))
+    expect(actions.setTargetKeywordAction).toHaveBeenCalledTimes(1)
+    release({ ok: true })
+  })
+
   it('offers no Make target for a brief on another subject', () => {
     render(<SearchDemandSection item={kase({ subject: 'Fiat' })} run={run} />)
     expect(screen.queryByRole('button', { name: /Make target/ })).not.toBeInTheDocument()

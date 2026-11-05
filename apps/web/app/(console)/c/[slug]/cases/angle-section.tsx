@@ -22,12 +22,16 @@ const RESEARCH_SUGGESTION =
 
 type Demand = ReturnType<typeof angleDemand>
 
-const demandKeyword = (demand: Demand): string =>
-  demand.keywordOverall === null ? 'no keyword score' : `keyword ${demand.keywordOverall}`
+const searchedQuestions = (n: number): string =>
+  n === 0 ? 'no searched questions' : `${n} searched ${n === 1 ? 'question' : 'questions'}`
 
-/** Demand's parts in words, for the line shown below `sm` where the hover title cannot be reached. */
-function demandParts(demand: Demand): string {
-  return `${demandKeyword(demand)}, ${demand.answers} ${demand.answers === 1 ? 'answer' : 'answers'}`
+/** What Demand was made of, in plain words; shown as text so touch and screen readers get it too. */
+function demandBreakdown(demand: Demand, option: AngleOption): string {
+  const questions = searchedQuestions(demand.answers)
+  if (demand.servesSearchedTerm) return `Serves a searched title, ${questions}`
+  const served = demand.keyword ?? option.keyword
+  if (demand.keywordOverall === null || served === '') return `No keyword score, ${questions}`
+  return `overall ${demand.keywordOverall} for ${served}, ${questions}`
 }
 
 function AngleCard({
@@ -98,21 +102,19 @@ function AngleCard({
         </p>
       </div>
 
-      <div className="flex items-baseline gap-3 sm:min-w-[92px] sm:flex-col sm:items-end sm:gap-0 sm:text-right">
-        <div
-          title={`Demand ${demand.score}: 0.7 x ${demandKeyword(demand)} + 6 x ${demand.answers} answered`}
-        >
+      <div className="flex flex-col gap-0.5 sm:w-[180px] sm:items-end sm:text-right">
+        <div className="flex items-baseline gap-2">
           <span className="font-mono text-[26px] leading-none font-semibold tabular-nums">
             {demand.score}
           </span>
+          <span className="text-[11px] text-[var(--color-text-muted)]">Demand</span>
         </div>
-        <span className="text-[11px] text-[var(--color-text-muted)] sm:mt-0.5">Demand</span>
-        <span className="text-[12px] text-[var(--color-text-secondary)] sm:hidden">
-          From {demandParts(demand)}
-        </span>
+        <p className="text-[12px] text-[var(--color-text-secondary)]">
+          {demandBreakdown(demand, option)}
+        </p>
         <div
           aria-hidden="true"
-          className="mt-1.5 hidden h-1 w-full overflow-hidden rounded-[2px] bg-[var(--color-surface-raised)] sm:block"
+          className="mt-1.5 h-1 w-full overflow-hidden rounded-[2px] bg-[var(--color-surface-raised)]"
         >
           <div
             className="h-full bg-[var(--color-accent-text)]"
@@ -129,6 +131,8 @@ function AngleCard({
 /** `Rate the angles`: asks the model to pick one; shown only while there is no recommendation. */
 function RateAnglesButton({ item, run }: { item: CaseSummary; run: Run }) {
   const [estimate, setEstimate] = React.useState<RateAnglesEstimate | null>(null)
+  // Each arm bumps this; an answer from an earlier arm is ignored.
+  const armed = React.useRef(0)
   const job = item.searchJob
   const running = job !== null && job.state === 'running' && caseResearchJobIsRunning(job)
   const consequence =
@@ -147,8 +151,12 @@ function RateAnglesButton({ item, run }: { item: CaseSummary; run: Run }) {
       title={running ? 'Research is running' : undefined}
       onArm={() => {
         setEstimate(null)
-        rateAnglesEstimate(item.id).then(setEstimate, () =>
-          setEstimate({ ok: false, error: 'Could not check the cost' }),
+        const arm = ++armed.current
+        const settle = (result: RateAnglesEstimate) => {
+          if (arm === armed.current) setEstimate(result)
+        }
+        rateAnglesEstimate(item.id).then(settle, () =>
+          settle({ ok: false, error: 'Could not check the cost' }),
         )
       }}
       onConfirm={() => run(() => rateAnglesAction(item.id), 'Angles rated')}
@@ -206,7 +214,7 @@ export function AngleSection({
         <ul className="flex flex-col gap-2.5">
           {options.map((option, at) => (
             <AngleCard
-              key={option.angle}
+              key={at}
               option={option}
               brief={brief}
               at={at}
