@@ -73,6 +73,7 @@ const STEP_LABELS: Record<string, string> = {
   'outlier-details': 'Reading the winning videos',
   winners: 'Studying the winning titles',
   angles: 'Drafting angle options',
+  'rate-angles': 'Ranking the angles',
   'save-brief': 'Saving the brief',
 }
 

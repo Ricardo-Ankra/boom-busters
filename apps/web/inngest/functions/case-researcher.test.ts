@@ -16,6 +16,7 @@ import {
 import type { AngleOption, CaseResearchJob, ChannelFormat } from '@boom-busters/schemas'
 import type * as ProvidersModule from '@boom-busters/providers'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
+import type * as RateAnglesModule from '@/lib/rate-angles'
 import {
   CASE_RESEARCH_CREDITS,
   DEFAULT_WORKSPACE_SETTINGS,
@@ -40,10 +41,20 @@ import { caseResearcher, failCaseResearch } from './case-researcher'
 
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 
+vi.mock('@/lib/rate-angles', async (importOriginal) => {
+  const original = await importOriginal<typeof RateAnglesModule>()
+  return {
+    ...original,
+    rateAngles: (...args: Parameters<typeof original.rateAngles>) =>
+      seams.ratingOverride ? seams.ratingOverride() : original.rateAngles(...args),
+  }
+})
+
 const seams = vi.hoisted(() => ({
   clientOverride: null as null | ((real: unknown) => unknown),
   winnersOverride: null as null | { titlePatterns: string[]; toldAlready: string[] },
   anglesOverride: null as null | AngleOption[],
+  ratingOverride: null as null | (() => Promise<{ ok: false; error: string }>),
 }))
 
 vi.mock('@boom-busters/providers', async (importOriginal) => {
@@ -116,6 +127,7 @@ describeDb('case-researcher (mock mode)', () => {
     seams.clientOverride = null
     seams.winnersOverride = null
     seams.anglesOverride = null
+    seams.ratingOverride = null
     engine = new InngestTestEngine({ function: caseResearcher })
     await seed(db)
     await truncateRunMirror(db)
@@ -186,6 +198,53 @@ describeDb('case-researcher (mock mode)', () => {
       .map((r) => (r.args as { mode?: string }).mode)
       .sort()
     expect(modes).toEqual(['matching_terms', 'questions'])
+  })
+
+  it('stores titles apart from keywords', async () => {
+    const row = (keyword: string, overall: number, monthly: number) => ({
+      keyword,
+      volume: 50,
+      competition: 30,
+      overall,
+      estimatedMonthlySearch: monthly,
+      growthPct: null,
+    })
+    seams.clientOverride = (real) => ({
+      ...(real as object),
+      keywordResearch: async (_subject: string, options: { mode: string }) => ({
+        data:
+          options.mode === 'questions'
+            ? [row('why did wework fail', 1, 0)]
+            : [row('wework documentary', 60, 100), row('wework: the rise and fall', 90, 500)],
+        credits: 5,
+        args: { keyword: SUBJECT, mode: options.mode },
+      }),
+    })
+    await engine.execute(request())
+    const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+    expect(brief.targetKeyword?.keyword).toBe('wework documentary')
+    expect(brief.secondaryKeywords).toEqual([])
+    expect(brief.searchedTitles.map((r) => r.keyword)).toEqual(['wework: the rise and fall'])
+    expect(brief.otherLanguages).toEqual([])
+  })
+
+  it('stores a recommendation', async () => {
+    await engine.execute(request())
+    const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+    expect(brief.recommendedAngle).not.toBeNull()
+    expect(brief.recommendedAngle).toBeLessThan(brief.angleOptions.length)
+    expect(brief.recommendationReason).toBeTruthy()
+  })
+
+  it('saves the brief when the rating cannot be read', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    seams.ratingOverride = async () => ({ ok: false, error: 'unreadable' })
+    const { result } = await engine.execute(request())
+    expect(result).toMatchObject({ outcome: 'researched' })
+    const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+    expect(brief.recommendedAngle).toBeNull()
+    expect(brief.recommendationReason).toBeNull()
+    expect(brief.angleOptions.length).toBeGreaterThanOrEqual(2)
   })
 
   it('a winners answer at the parser allowance still saves a brief, cut to the brief limits', async () => {
