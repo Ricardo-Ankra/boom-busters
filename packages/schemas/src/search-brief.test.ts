@@ -212,3 +212,24 @@ describe('a brief and its format', () => {
     expect(caseResearchCredits(true)).toBe(25)
   })
 })
+
+describe('chooseTargetKeyword and titles', () => {
+  test('never picks a title as the target', () => {
+    const rows = [
+      kw('stellantis is losing everything: jeep, dodge & fiat on the brink', 75),
+      kw('a stellantis está perdendo tudo: jeep, dodge e fiat à beira do abismo', 73),
+      kw('stellantis is falling apart — jeep, dodge & chrysler owners should be worried', 70),
+      kw('stellantis lo está perdiendo todo: jeep, dodge y fiat al borde del abismo', 68),
+      kw(
+        'stellantis is losing everything across the uk: vauxhall, peugeot & fiat on the brink',
+        68,
+      ),
+      kw('jeep made billions. then stellantis happened.', 66),
+      kw('stellantis is losing everything', 65),
+      kw('stellantis lo está perdiendo todo en méxico: jeep, dodge y fiat al borde del abismo', 65),
+      kw('stellantis lo está perdiendo todo: jeep, dodge y fiat, al borde del abismo', 64),
+      kw('leapmotor stellantis', 63),
+    ]
+    expect(chooseTargetKeyword(rows, 'Stellantis')?.keyword).toBe('leapmotor stellantis')
+  })
+})

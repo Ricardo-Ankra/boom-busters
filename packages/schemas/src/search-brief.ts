@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { classifySearchTerms } from './search-terms'
 
 /** One measured keyword row; every measure is null when VidIQ gave none. */
 export const SearchKeywordSchema = z.object({
@@ -116,14 +117,16 @@ const DOCUMENTARY_PHRASES = [
 ]
 
 /**
- * The highest `overall` among rows with no figure; on a tie, a documentary
- * phrase, then a row naming the subject. Null when no row qualifies.
+ * The highest `overall` among keyword-shaped rows with no figure (never a
+ * video title or another language); on a tie, a documentary phrase, then a
+ * row naming the subject. Null when no row qualifies.
  */
 export function chooseTargetKeyword(
   rows: readonly SearchKeyword[],
   subject: string,
 ): SearchKeyword | null {
   const name = subject.trim().toLowerCase()
+  const kinds = classifySearchTerms(rows.map((r) => r.keyword))
   const rank = (row: SearchKeyword): [number, number, number] => {
     const text = row.keyword.toLowerCase()
     return [
@@ -136,6 +139,7 @@ export function chooseTargetKeyword(
   let bestRank: [number, number, number] = [-2, 0, 0]
   for (const row of rows) {
     if (keywordHasFigure(row.keyword)) continue
+    if (kinds.get(row.keyword.trim().toLowerCase()) !== 'keyword') continue
     const r = rank(row)
     const better =
       r[0] !== bestRank[0]
