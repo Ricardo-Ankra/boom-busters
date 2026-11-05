@@ -1613,6 +1613,8 @@ const otherCases: LiftCase[] = [
       secondaryKeywords: ['wework podcast'],
       searchedQuestions: ['why did wework fail'],
       toldAlready: ['the founder rise and the failed listing'],
+      commentThemes: [],
+      fieldSummary: null,
     }),
   ),
 ]

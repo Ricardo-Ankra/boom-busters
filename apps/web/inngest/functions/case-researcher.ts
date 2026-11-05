@@ -406,6 +406,8 @@ export const caseResearcher = inngest.createFunction(
         secondaryKeywords: secondary.map((row) => row.keyword),
         searchedQuestions: questions,
         toldAlready: winners.toldAlready,
+        commentThemes: [],
+        fieldSummary: null,
       }
       if (mockProvidersEnabled()) return mockAngleOptions(input)
       const answer = await callForAnswer({
