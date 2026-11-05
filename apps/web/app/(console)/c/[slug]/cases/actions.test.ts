@@ -470,15 +470,13 @@ describe('setCaseFormatAction and the estimate by format', () => {
   beforeEach(() => {
     store.setCaseFormat.mockReset().mockResolvedValue(undefined)
     store.channelForCase.mockReset().mockResolvedValue(channel())
-    store.getCase
-      .mockReset()
-      .mockResolvedValue({
-        id: CASE_ID,
-        subject: 'WeWork',
-        status: 'shortlisted',
-        formatKey: null,
-        people: [],
-      })
+    store.getCase.mockReset().mockResolvedValue({
+      id: CASE_ID,
+      subject: 'WeWork',
+      status: 'shortlisted',
+      formatKey: null,
+      people: [],
+    })
     checkVidiqBudget.mockReset().mockResolvedValue({ ok: true, balance: 1443, capLeft: 1000 })
   })
 
