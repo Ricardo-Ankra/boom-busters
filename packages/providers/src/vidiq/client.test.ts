@@ -175,3 +175,66 @@ describe('a refused key', () => {
     expect(isRetriable(error)).toBe(true)
   })
 })
+
+describe('search, comments and the niche test', () => {
+  it('serves the new fixtures in mock mode and reports the wire arguments', async () => {
+    const c = mockVidiqClient()
+    const search = await c.youtubeSearch('wework documentary')
+    expect(search.args).toEqual({
+      query: 'wework documentary',
+      type: ['video'],
+      limit: 10,
+      order: 'relevance',
+    })
+    expect(search.credits).toBe(5)
+    expect(search.data.length).toBe(5)
+
+    const comments = await c.videoComments('c9Xm1bT50DQ')
+    expect(comments.args).toEqual({ videoId: 'c9Xm1bT50DQ', order: 'relevance', maxResult: 100 })
+    expect(comments.credits).toBe(5)
+    expect(comments.data.length).toBe(5)
+
+    const job = await c.commentInsightsValidate({
+      niche: 'business collapses',
+      idea: 'WeWork',
+      language: 'pt-BR',
+    })
+    expect(job.data).toEqual({ jobId: 'job_fixture_0001' })
+    expect(job.args).toEqual({
+      mode: 'validate',
+      niche: 'business collapses',
+      idea: 'WeWork',
+      language: 'pt',
+    })
+    expect(job.credits).toBe(VIDIQ_CREDIT_COST.commentInsights)
+
+    const polled = await c.jobPoll('job_fixture_0001')
+    expect(polled.args).toEqual({ mcpJobId: 'job_fixture_0001' })
+    expect(polled.credits).toBe(0)
+    expect(polled.data.status).toBe('completed')
+  })
+
+  it('omits an empty language and keeps the costs', async () => {
+    const c = mockVidiqClient()
+    expect((await c.commentInsightsValidate({ niche: 'n', idea: 'i' })).args).toEqual({
+      mode: 'validate',
+      niche: 'n',
+      idea: 'i',
+    })
+    expect((await c.commentInsightsValidate({ niche: 'n', idea: 'i', language: '' })).args).toEqual(
+      {
+        mode: 'validate',
+        niche: 'n',
+        idea: 'i',
+      },
+    )
+    expect(VIDIQ_CREDIT_COST).toEqual(
+      expect.objectContaining({
+        youtubeSearch: 5,
+        videoComments: 5,
+        commentInsights: 5,
+        jobPoll: 0,
+      }),
+    )
+  })
+})
