@@ -1,5 +1,6 @@
 import {
   FIRST_CHANNEL_IN_USE,
+  RECOMMENDATION_REASON_MAX,
   SearchBriefSchema,
   TITLE_PATTERNS_MAX,
   TOLD_ALREADY_MAX,
@@ -12,15 +13,20 @@ import {
   buildAngleOptionsRequest,
   buildFitRequest,
   buildKeywordFilterRequest,
+  buildRateAnglesRequest,
   buildWinnersRequest,
   mockAngleOptions,
   mockFit,
   mockKeywordFilter,
+  mockRateAngles,
   mockWinners,
   parseAngleOptions,
   parseFit,
   parseKeywordFilter,
+  parseRateAngles,
   parseWinners,
+  RATE_ANGLES_INPUT_TOKENS,
+  RATE_ANGLES_OUTPUT_TOKENS,
 } from './search-brief'
 
 const row = (keyword: string): SearchKeyword => ({
@@ -391,5 +397,96 @@ describe('the fit step', () => {
       pillarKey: FIRST_CHANNEL_IN_USE.bible.caseCategories[0]?.key ?? null,
       reason: 'Mock fit.',
     })
+  })
+})
+
+describe('the rate-the-angles step', () => {
+  const options = [
+    {
+      angle: 'Follow the money behind the leases.',
+      gap: 'Nobody explains the lease numbers.',
+      keyword: 'wework leases',
+      servesSearchedTerm: false,
+      demand: 74,
+      keywordOverall: 61,
+      answers: 2,
+    },
+    {
+      angle: 'The people inside the company.',
+      gap: 'The cast is left out.',
+      keyword: '',
+      servesSearchedTerm: true,
+      demand: 40,
+      keywordOverall: null,
+      answers: 0,
+    },
+  ]
+  const rateInput = {
+    bible: FIRST_CHANNEL_IN_USE,
+    subject: 'WeWork',
+    options,
+    searchedQuestions: ['why did wework fail'],
+    toldAlready: ['the founder rise'],
+  }
+  const answer = (recommended: unknown, reason: unknown) => JSON.stringify({ recommended, reason })
+
+  it('reads a recommendation', () => {
+    expect(parseRateAngles(answer(1, 'It covers the gap nobody filled.'), rateInput)).toEqual({
+      recommended: 1,
+      reason: 'It covers the gap nobody filled.',
+    })
+  })
+
+  it('refuses an index out of range', () => {
+    expect(() => parseRateAngles(answer(2, 'Fine.'), rateInput)).toThrow(ValidationError)
+    expect(() => parseRateAngles(answer(-1, 'Fine.'), rateInput)).toThrow(ValidationError)
+  })
+
+  it('refuses a non-integer index', () => {
+    expect(() => parseRateAngles(answer(0.5, 'Fine.'), rateInput)).toThrow(ValidationError)
+    expect(() => parseRateAngles(answer('0', 'Fine.'), rateInput)).toThrow(ValidationError)
+  })
+
+  it('refuses an empty reason', () => {
+    expect(() => parseRateAngles(answer(0, '   '), rateInput)).toThrow(ValidationError)
+  })
+
+  it('trims a long reason to 200 with a note', () => {
+    const repairs: Repair[] = []
+    const out = parseRateAngles(answer(0, 'a'.repeat(300)), rateInput, (r) => repairs.push(r))
+    expect(out.reason.length).toBeLessThanOrEqual(RECOMMENDATION_REASON_MAX)
+    expect(repairs.some((r) => r.action === 'trimmed')).toBe(true)
+  })
+
+  it('refuses a reason stating a figure no input carries', () => {
+    expect(() => parseRateAngles(answer(0, 'It lost 47 billion.'), rateInput)).toThrow(
+      ValidationError,
+    )
+  })
+
+  it('accepts a reason quoting a Demand score', () => {
+    expect(parseRateAngles(answer(0, 'Demand 74 and a real gap.'), rateInput).recommended).toBe(0)
+  })
+
+  it('tells the model which options serve a searched title', () => {
+    const request = buildRateAnglesRequest(rateInput)
+    const content = String(request.messages[0]?.content)
+    expect(content).toContain('serves a searched title')
+    expect(content).toContain('wework leases')
+    expect(request.task).toBe('research')
+    expect(request.system).toContain('Recommend exactly one option.')
+    expect(RATE_ANGLES_INPUT_TOKENS).toBe(2500)
+    expect(RATE_ANGLES_OUTPUT_TOKENS).toBe(400)
+  })
+
+  it('mocks the highest demand', () => {
+    expect(mockRateAngles(rateInput)).toEqual({
+      recommended: 0,
+      reason: 'Mock rating: the highest Demand score.',
+    })
+    const tied = { ...rateInput, options: options.map((o) => ({ ...o, demand: 50 })) }
+    expect(mockRateAngles(tied).recommended).toBe(0)
+    const later = { ...rateInput, options: [options[1]!, options[0]!] }
+    expect(mockRateAngles(later).recommended).toBe(1)
   })
 })
