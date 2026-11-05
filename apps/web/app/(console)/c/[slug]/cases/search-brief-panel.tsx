@@ -29,6 +29,7 @@ import {
   startProjectFromCase,
 } from './actions'
 import type { CaseResearchEstimate } from './actions'
+import { researchStepLabel } from './research-steps'
 
 /**
  * What the case row shows of its VidIQ research: the `Research with VidIQ`
@@ -61,26 +62,7 @@ export function briefMatchesSubject(brief: SearchBrief, subject: string | null):
   return subject !== null && sameSubject(brief.subject, subject)
 }
 
-/** What the researcher is doing, by the step id it reports; an unknown id reads as plain Researching. */
-const STEP_LABELS: Record<string, string> = {
-  load: 'Starting',
-  'keywords-terms': 'Finding search terms',
-  'keywords-format': 'Finding search terms for the format',
-  'keywords-filter': 'Keeping the terms about the subject',
-  fit: 'Checking the subject fits the channel',
-  'keywords-questions': 'Finding the questions people search',
-  outliers: 'Finding the winning videos',
-  'outlier-details': 'Reading the winning videos',
-  winners: 'Studying the winning titles',
-  angles: 'Drafting angle options',
-  'rate-angles': 'Ranking the angles',
-  'save-brief': 'Saving the brief',
-}
-
-export function researchStepLabel(step: string | null): string {
-  const label = step !== null && Object.hasOwn(STEP_LABELS, step) ? STEP_LABELS[step] : undefined
-  return label ?? 'Researching'
-}
+export { researchStepLabel } from './research-steps'
 
 /** The channel's current formats, for the picker and the estimate; empty reads as no formats. */
 export const FormatsContext = React.createContext<readonly ChannelFormat[]>([])

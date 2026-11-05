@@ -1,6 +1,6 @@
 import type { CaseSummary } from '@boom-busters/db'
 import { angleIsChosen, caseResearchJobIsRunning } from '@boom-busters/schemas'
-import { researchStepLabel } from './search-brief-panel'
+import { researchStepLabel } from './research-steps'
 
 /** The Case Library's small pure helpers: the next-step strip, the list row signal and score words. */
 
@@ -23,7 +23,9 @@ export function caseProgress(item: CaseSummary): {
     ['Angle chosen', chosen],
     ['Start a project', projectStarted],
   ]
-  const currentAt = done.findIndex(([, isDone]) => !isDone)
+  // A retired or finished case has nothing live to do, so no step is current.
+  const live = item.status !== 'retired' && !projectStarted
+  const currentAt = live ? done.findIndex(([, isDone]) => !isDone) : -1
   const steps = done.map(([label, isDone], i) => ({
     label,
     state: isDone ? ('done' as const) : i === currentAt ? ('current' as const) : ('todo' as const),
@@ -33,14 +35,14 @@ export function caseProgress(item: CaseSummary): {
 }
 
 function nextSentence(item: CaseSummary, chosen: boolean, projectStarted: boolean): string {
-  if (projectStarted) return item.status === 'retired' ? 'Retired' : 'Nothing waiting on you here'
+  if (item.status === 'retired') return 'Retired'
+  if (projectStarted) return 'Nothing waiting on you here'
   if (!item.subject || item.subject.trim() === '') {
     return 'Next: give the case a subject, then research it'
   }
   if (item.searchBrief === null) return 'Next: research the subject with VidIQ'
   if (!chosen) return 'Next: choose an angle'
   if (item.status === 'shortlisted') return 'Next: start a project from the chosen angle'
-  if (item.status === 'retired') return 'Retired'
   return 'Next: shortlist the case to start a project'
 }
 

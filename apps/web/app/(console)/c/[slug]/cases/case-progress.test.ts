@@ -1,12 +1,8 @@
 import type { CaseSummary } from '@boom-busters/db'
 import type { CaseResearchJob, SearchBrief } from '@boom-busters/schemas'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { caseProgress, listSignal, scoreWord } from './case-progress'
-import { researchStepLabel } from './search-brief-panel'
-
-// The panel's server actions load next-auth, which cannot load under jsdom.
-vi.mock('./actions', () => ({}))
-vi.mock('next/navigation', () => ({ useRouter: () => ({}) }))
+import { researchStepLabel } from './research-steps'
 
 function kase(overrides: Partial<CaseSummary>): CaseSummary {
   return {
@@ -130,7 +126,17 @@ describe('caseProgress', () => {
   it('says nothing is waiting even when the angle was never chosen through the brief', () => {
     const item = kase({ status: 'in_production', projectCount: 1 })
     expect(caseProgress(item).next).toBe('Nothing waiting on you here')
-    expect(states(item)).toEqual(['current', 'todo', 'done'])
+    expect(states(item)).toEqual(['todo', 'todo', 'done'])
+  })
+
+  it('reads Retired whatever else is missing', () => {
+    const item = kase({ status: 'retired', subject: null })
+    expect(caseProgress(item).next).toBe('Retired')
+    expect(states(item)).toEqual(['todo', 'todo', 'todo'])
+  })
+
+  it('marks no step current once a project started', () => {
+    expect(states(kase({ projectCount: 1 }))).toEqual(['todo', 'todo', 'done'])
   })
 
   it('reads Retired for a retired case with a project', () => {
