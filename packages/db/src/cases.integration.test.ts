@@ -632,6 +632,38 @@ suite('cases', () => {
         ).toBeNull()
       })
 
+      it('cuts an over-long reason to 200 characters', async () => {
+        const id = await researched()
+        const got = await saveCaseAngleRating(db, id, {
+          options: optionTexts,
+          recommended: 0,
+          reason: 'a'.repeat(300),
+        })
+        expect(got?.searchBrief?.recommendationReason).toHaveLength(200)
+        expect((await getCase(db, id))?.searchBrief).not.toBeNull()
+      })
+
+      it('refuses an index outside the options', async () => {
+        const id = await researched()
+        for (const recommended of [2, -1, 0.5]) {
+          expect(
+            await saveCaseAngleRating(db, id, { options: optionTexts, recommended, reason: 'x' }),
+          ).toBeNull()
+        }
+        expect((await getCase(db, id))?.searchBrief?.recommendedAngle).toBeNull()
+      })
+
+      it('a rating save moves default notes and keeps edited ones', async () => {
+        const id = await researched()
+        await chooseCaseAngle(db, id, { option: 0 })
+        const rating = { options: optionTexts, recommended: 1, reason: 'Untold part.' }
+        const moved = await saveCaseAngleRating(db, id, rating)
+        expect(moved?.demandNotes).toBe(briefDemandNotes(moved!.searchBrief!))
+        await updateCase(db, id, { demandNotes: 'Owner note' })
+        const kept = await saveCaseAngleRating(db, id, { ...rating, recommended: 0 })
+        expect(kept?.demandNotes).toBe('Owner note')
+      })
+
       it('notes from the pre-upgrade brief follow the upgraded target', async () => {
         const id = await researched()
         const old = oldTitleBrief()

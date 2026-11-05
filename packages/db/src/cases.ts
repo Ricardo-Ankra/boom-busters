@@ -1,6 +1,7 @@
 import {
   CaseResearchJobSchema,
   SearchBriefSchema,
+  RECOMMENDATION_REASON_MAX,
   StoredSearchBriefSchema,
   briefDemandNotes,
   classifySearchTerms,
@@ -372,11 +373,20 @@ export async function saveCaseAngleRating(
     ) {
       return false
     }
+    if (
+      !Number.isInteger(rating.recommended) ||
+      rating.recommended < 0 ||
+      rating.recommended >= current.length
+    ) {
+      return false
+    }
     const next: SearchBrief = {
       ...brief,
       recommendedAngle: rating.recommended,
-      recommendationReason: rating.reason.trim(),
+      recommendationReason: rating.reason.trim().slice(0, RECOMMENDATION_REASON_MAX).trim(),
     }
+    // A brief that would not parse reads back as null, so it is never written.
+    if (!SearchBriefSchema.safeParse(next).success) return false
     const followNotes = await notesFollow(tx, caseId, rawBrief, brief)
     await tx
       .update(cases)

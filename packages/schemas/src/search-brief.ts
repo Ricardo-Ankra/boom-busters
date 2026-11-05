@@ -38,7 +38,7 @@ export type AngleOption = z.infer<typeof AngleOptionSchema>
 export const TITLE_PATTERNS_MAX = 5
 export const TOLD_ALREADY_MAX = 8
 
-const RECOMMENDATION_REASON_MAX = 200
+export const RECOMMENDATION_REASON_MAX = 200
 
 /** Whether the subject fits the channel's scope, and the pillar it belongs to. */
 export const BriefFitSchema = z.object({
