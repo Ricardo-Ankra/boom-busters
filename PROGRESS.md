@@ -4726,9 +4726,12 @@ Final review and fixes:
 1. `PUT /api/inngest` after the Vercel deploy, so Inngest registers the new
    `rate-angles` step of `case-researcher`.
 2. No migration.
-3. Open the Stellantis project's publish screen and check it shows the re-picked
-   target (`leapmotor stellantis`, from the read-time upgrade) in place of the
-   stored title. Nothing is written back; the stored row keeps its old target.
+3. After the deploy, the Stellantis project's frozen brief reads with target
+   "leapmotor stellantis", the only keyword left once the titles move out. From
+   then on these aim at that term: regenerated titles and descriptions, the tags,
+   the title template's {topic}, and any outline or script regenerate. Check
+   before regenerating anything on that project. Research again on the case does
+   not reach the frozen project.
 4. Optional: press Research again on a case whose target reads weak (the panel
    says so), to measure fresh terms.
 
@@ -10175,3 +10178,8 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      and screen readers get it as well. Each card is one line taller for it.
      Deferred minors: a suggestion that needs research still offers a research
      button in the Angle slot; the Trend hint is vague for a negative figure.
+409. **Rate the angles is a synchronous server action** (2026-11-05, final review).
+     Its busy state does not survive a page refresh, and pressing it again after a
+     refresh can buy a second rating (a few cents, no VidIQ credits). This was
+     accepted rather than built as a background job, so the spec's "survive a
+     refresh" note is not met.
