@@ -392,7 +392,7 @@ export function parseCommentThemes(
       quote !== null &&
       quote !== '' &&
       quote.length <= COMMENT_QUOTE_MAX &&
-      sent.some((comment) => comment.text.includes(quote))
+      source.text.includes(quote)
     if (quote !== null && quote !== '' && !found) {
       note({
         action: 'dropped',
@@ -615,7 +615,7 @@ export function buildAngleOptionsRequest(input: AngleOptionsInput): LLMTaskReque
             'What viewers of the winning videos asked for (comment themes, with how many comments support each)',
             input.commentThemes.map((t) => `${t.theme} (${t.count} comments)`),
           ),
-          `Field check (who ranks for the target now): ${input.fieldSummary ?? 'not checked'}`,
+          `Field check (who ranks for the target now): ${input.fieldSummary === null ? 'not checked' : JSON.stringify(input.fieldSummary)}`,
         ]
           .filter((part): part is string => part !== null)
           .join('\n\n'),

@@ -679,6 +679,17 @@ describe('comment themes', () => {
     expect(out.every((t) => t.count <= 2)).toBe(true)
   })
 
+  it('nulls a quote taken from a different comment than the one cited', () => {
+    const repairs: Repair[] = []
+    const out = parseCommentThemes(
+      JSON.stringify({ themes: [theme({ comment: 2 })] }),
+      input,
+      (r) => repairs.push(r),
+    )
+    expect(out[0]).toMatchObject({ quote: null, videoId: 'v2' })
+    expect(repairs.some((r) => r.action === 'dropped')).toBe(true)
+  })
+
   it('drops a theme that cites no real comment', () => {
     expect(parseCommentThemes(JSON.stringify({ themes: [theme({ comment: 7 })] }), input)).toEqual(
       [],
