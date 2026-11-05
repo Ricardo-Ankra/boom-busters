@@ -38,7 +38,7 @@ import { researchStepLabel } from './research-steps'
  * `case-library.tsx` so the row itself stays small.
  */
 
-type Run = (
+export type Run = (
   action: () => Promise<{ ok: boolean; error?: string }>,
   success: string,
 ) => Promise<boolean>
