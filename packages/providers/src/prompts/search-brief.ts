@@ -533,6 +533,8 @@ export function parseRateAngles(
     digitRuns(
       [
         input.subject,
+        input.bible.bible.subject,
+        input.bible.bible.audience,
         ...input.searchedQuestions,
         ...input.toldAlready,
         // A slip such as "Option 2" is harmless, so the indices are given.

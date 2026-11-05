@@ -41,6 +41,12 @@ describe('classifySearchTerms', () => {
     }
   })
 
+  it('treats a plain copy of a punctuated title as a title', () => {
+    const plain = 'jeep made billions then stellantis happened'
+    const kinds = classifySearchTerms([plain, 'jeep made billions. then stellantis happened.'])
+    expect(kinds.get(plain)).toBe('title')
+  })
+
   it('keeps a seven-word search as a keyword', () => {
     const t = 'sears holdings prairie stone hoffman estates headquarters'
     expect(classifySearchTerms([t]).get(t)).toBe('keyword')

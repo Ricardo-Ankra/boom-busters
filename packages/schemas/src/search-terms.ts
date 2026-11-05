@@ -48,7 +48,7 @@ export function classifySearchTerms(terms: readonly string[]): Map<string, Searc
     const own = words(term)
     const opensATitle =
       own.length >= PREFIX_MIN_WORDS &&
-      titleWords.some((t) => t.length > own.length && own.every((w, i) => t[i] === w))
+      titleWords.some((t) => t.length >= own.length && own.every((w, i) => t[i] === w))
     kinds.set(
       key,
       hasDiacritic(term)

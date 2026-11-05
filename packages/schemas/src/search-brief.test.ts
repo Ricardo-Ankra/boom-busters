@@ -121,6 +121,14 @@ describe('chooseTargetKeyword', () => {
       'what happened to wework',
     )
   })
+  test('skips a plain copy of a punctuated title', () => {
+    const rows = [
+      kw('jeep made billions then stellantis happened', 90),
+      kw('jeep made billions. then stellantis happened.', 80),
+      kw('leapmotor stellantis', 50),
+    ]
+    expect(chooseTargetKeyword(rows, 'Stellantis')?.keyword).toBe('leapmotor stellantis')
+  })
   test('null when every row carries a figure or the list is empty', () => {
     expect(chooseTargetKeyword([kw('wework 2019', 80), kw('$47 billion', 70)], 'WeWork')).toBeNull()
     expect(chooseTargetKeyword([], 'WeWork')).toBeNull()

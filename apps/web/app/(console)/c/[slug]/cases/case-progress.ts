@@ -6,11 +6,18 @@ import { researchStepLabel } from './research-steps'
 
 export type StepState = 'done' | 'current' | 'todo'
 
-type StepLabel = 'Researched' | 'Angle chosen' | 'Start a project'
+export type StepId = 'research' | 'angle' | 'project'
+
+/** Each step reads in the past tense once done and as an action until then. */
+const STEP_LABELS: Record<StepId, { done: string; pending: string }> = {
+  research: { done: 'Researched', pending: 'Research the subject' },
+  angle: { done: 'Angle chosen', pending: 'Choose an angle' },
+  project: { done: 'Project started', pending: 'Start a project' },
+}
 
 /** Three steps and one sentence on what comes next; the first step not done is the current one. */
 export function caseProgress(item: CaseSummary): {
-  steps: { label: StepLabel; state: StepState }[]
+  steps: { id: StepId; label: string; state: StepState }[]
   next: string
 } {
   const brief = item.searchBrief
@@ -18,16 +25,17 @@ export function caseProgress(item: CaseSummary): {
   const projectStarted =
     item.projectCount > 0 || item.status === 'in_production' || item.status === 'published'
 
-  const done: [StepLabel, boolean][] = [
-    ['Researched', brief !== null],
-    ['Angle chosen', chosen],
-    ['Start a project', projectStarted],
+  const done: [StepId, boolean][] = [
+    ['research', brief !== null],
+    ['angle', chosen],
+    ['project', projectStarted],
   ]
   // A retired or finished case has nothing live to do, so no step is current.
   const live = item.status !== 'retired' && !projectStarted
   const currentAt = live ? done.findIndex(([, isDone]) => !isDone) : -1
-  const steps = done.map(([label, isDone], i) => ({
-    label,
+  const steps = done.map(([id, isDone], i) => ({
+    id,
+    label: isDone ? STEP_LABELS[id].done : STEP_LABELS[id].pending,
     state: isDone ? ('done' as const) : i === currentAt ? ('current' as const) : ('todo' as const),
   }))
 

@@ -49,11 +49,6 @@ function AngleCard({
   const demand = angleDemand(option, brief)
   const recommended = brief.recommendedAngle === at
   const chosen = brief.chosenAngle === at
-  const served = demand.keyword ?? option.keyword
-  const questions =
-    demand.answers === 0
-      ? 'answers no searched questions'
-      : `answers ${demand.answers} searched ${demand.answers === 1 ? 'question' : 'questions'}`
 
   return (
     <li
@@ -89,17 +84,6 @@ function AngleCard({
             {`Why recommended: ${brief.recommendationReason}`}
           </p>
         ) : null}
-        <p className="text-[12px] text-[var(--color-text-muted)]">
-          {demand.servesSearchedTerm ? (
-            <span>Serves a searched title, not a keyword</span>
-          ) : served === '' ? null : (
-            <span>
-              Serves <span className="font-mono">{served}</span>
-            </span>
-          )}
-          {demand.servesSearchedTerm || served !== '' ? ' · ' : ''}
-          <span>{questions}</span>
-        </p>
       </div>
 
       <div className="flex flex-col gap-0.5 sm:w-[180px] sm:items-end sm:text-right">

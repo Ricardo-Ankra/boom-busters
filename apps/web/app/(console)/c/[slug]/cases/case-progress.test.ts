@@ -62,11 +62,20 @@ function brief(over: Partial<SearchBrief> = {}): SearchBrief {
 const states = (item: CaseSummary) => caseProgress(item).steps.map((s) => s.state)
 
 describe('caseProgress', () => {
-  it('names the three steps in order', () => {
+  it('names the three steps in order, as actions until each is done', () => {
     expect(caseProgress(kase({})).steps.map((s) => s.label)).toEqual([
-      'Researched',
-      'Angle chosen',
+      'Research the subject',
+      'Choose an angle',
       'Start a project',
+    ])
+  })
+
+  it('words a done step in the past tense', () => {
+    const item = kase({ searchBrief: brief(), projectCount: 1 })
+    expect(caseProgress(item).steps.map((s) => s.label)).toEqual([
+      'Researched',
+      'Choose an angle',
+      'Project started',
     ])
   })
 

@@ -430,6 +430,14 @@ describe('the rate-the-angles step', () => {
   }
   const answer = (recommended: unknown, reason: unknown) => JSON.stringify({ recommended, reason })
 
+  it('accepts a reason echoing a figure from the bible', () => {
+    const bible = { ...FIRST_CHANNEL_IN_USE.bible, subject: 'Collapses since 1929' }
+    const input = { ...rateInput, bible: { ...FIRST_CHANNEL_IN_USE, bible } }
+    expect(
+      parseRateAngles(answer(0, 'It fits the 1929 era of collapses.'), input).recommended,
+    ).toBe(0)
+  })
+
   it('reads a recommendation', () => {
     expect(parseRateAngles(answer(1, 'It covers the gap nobody filled.'), rateInput)).toEqual({
       recommended: 1,

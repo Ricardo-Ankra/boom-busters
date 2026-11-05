@@ -138,8 +138,7 @@ describe('AngleSection', () => {
       within(first).getByText('overall 80 for stellantis jeep, 2 searched questions'),
     ).toBeVisible()
     expect(first.querySelector('[title]')).toBeNull()
-    expect(within(first).getByText(/Serves/)).toHaveTextContent('Serves stellantis jeep')
-    expect(within(first).getByText(/answers 2 searched questions/)).toBeInTheDocument()
+    expect(within(first).queryByText(/^Serves/)).not.toBeInTheDocument()
   })
 
   it('words the breakdown plainly for a title, a missing score and one question', () => {
@@ -213,7 +212,7 @@ describe('AngleSection', () => {
         }),
       }),
     )
-    expect(screen.getByText('Serves a searched title, not a keyword')).toBeInTheDocument()
+    expect(screen.getByText('Serves a searched title, no searched questions')).toBeInTheDocument()
   })
 
   it('offers Rate the angles only without a recommendation', () => {

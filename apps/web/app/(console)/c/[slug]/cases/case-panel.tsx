@@ -72,7 +72,7 @@ export function CasePanel({
   const retired = item.status === 'retired'
   const { steps, next } = caseProgress(item)
   const needsResearch = brief !== null && briefNeedsResearch(brief)
-  const research = retired ? null : <ResearchControl item={item} run={run} />
+  const research = retired || suggestion ? null : <ResearchControl item={item} run={run} />
   const fit = brief === null ? null : fitWarning(brief.fit, item.category, categories)
   const mismatch = brief !== null && !briefMatchesSubject(brief, item.subject)
   const pillar = caseCategoryLabel({ caseCategories: [...categories] }, item.category)
@@ -137,7 +137,7 @@ export function CasePanel({
         <ol aria-label="Progress" className="flex flex-wrap gap-1.5 text-[12px]">
           {steps.map((step) => (
             <li
-              key={step.label}
+              key={step.id}
               aria-current={step.state === 'current' ? 'step' : undefined}
               className={`flex items-center gap-1 rounded-full border px-2 py-0.5 ${STEP_CLASS[step.state]}`}
             >

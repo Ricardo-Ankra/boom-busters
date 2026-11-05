@@ -123,8 +123,8 @@ describe('CasePanel', () => {
       'listitem',
     )
     expect(steps.map((step) => step.textContent)).toEqual([
-      'Researched (next)',
-      'Angle chosen (not yet)',
+      'Research the subject (next)',
+      'Choose an angle (not yet)',
       'Start a project (not yet)',
     ])
     expect(panel).toHaveTextContent('Next: research the subject with VidIQ')
@@ -194,6 +194,16 @@ describe('CasePanel', () => {
       .getByRole('heading', { level: 3, name: 'Angle' })
       .closest('section')!
     expect(angle).toContainElement(controls[0]!)
+  })
+
+  it('offers no research on a suggestion whose brief needs research', () => {
+    const panel = renderPanel(
+      kase({
+        status: 'idea',
+        searchBrief: brief({ targetKeyword: { ...GOOD_KEYWORD, overall: 30 } }),
+      }),
+    )
+    expect(within(panel).queryByRole('button', { name: /^Research/ })).not.toBeInTheDocument()
   })
 
   it('shows the warnings above the Angle section', () => {
