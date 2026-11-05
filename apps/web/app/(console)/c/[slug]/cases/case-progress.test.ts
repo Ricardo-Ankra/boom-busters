@@ -1,7 +1,7 @@
 import type { CaseSummary } from '@boom-busters/db'
 import type { CaseResearchJob, SearchBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { caseProgress, listSignal, scoreWord } from './case-progress'
+import { caseProgress, listSignal, resolveSelected, scoreWord } from './case-progress'
 import { researchStepLabel } from './research-steps'
 
 function kase(overrides: Partial<CaseSummary>): CaseSummary {
@@ -221,5 +221,36 @@ describe('scoreWord', () => {
     expect(scoreWord(34, 'volume')).toBe('moderate')
     expect(scoreWord(66, 'volume')).toBe('moderate')
     expect(scoreWord(67, 'volume')).toBe('high')
+  })
+})
+
+describe('resolveSelected', () => {
+  const idea = kase({ id: 'A', status: 'idea' })
+  const first = kase({ id: 'B', status: 'shortlisted' })
+  const second = kase({ id: 'C', status: 'published' })
+
+  it('opens the case the URL names, as explicit', () => {
+    expect(resolveSelected([idea, first, second], 'C')).toEqual({ selectedId: 'C', explicit: true })
+    expect(resolveSelected([idea, first, second], 'A')).toEqual({ selectedId: 'A', explicit: true })
+  })
+
+  it('opens the first backlog case without a case id', () => {
+    expect(resolveSelected([idea, first, second], undefined)).toEqual({
+      selectedId: 'B',
+      explicit: false,
+    })
+  })
+
+  it('falls back to the first case for an unknown case id', () => {
+    expect(resolveSelected([idea, first, second], 'nope')).toEqual({
+      selectedId: 'B',
+      explicit: false,
+    })
+  })
+
+  it('opens the first suggestion when the backlog is empty, and nothing when the library is', () => {
+    expect(resolveSelected([idea], undefined)).toEqual({ selectedId: 'A', explicit: false })
+    expect(resolveSelected([], undefined)).toEqual({ selectedId: null, explicit: false })
+    expect(resolveSelected([], 'A')).toEqual({ selectedId: null, explicit: false })
   })
 })

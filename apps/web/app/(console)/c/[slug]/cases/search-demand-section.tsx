@@ -6,7 +6,7 @@ import type { SearchKeyword } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { setTargetKeywordAction } from './actions'
-import { scoreWord } from './case-progress'
+import { measuredOn, scoreWord } from './case-progress'
 import { briefMatchesSubject } from './search-brief-panel'
 import type { Run } from './search-brief-panel'
 
@@ -23,14 +23,6 @@ const signed = (pct: number): string => {
   const rounded = Math.round(pct)
   return `${rounded > 0 ? '+' : rounded < 0 ? '-' : ''}${Math.abs(rounded)}%`
 }
-
-const measuredOn = (iso: string): string =>
-  new Date(iso).toLocaleDateString('en-ZA', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  })
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 

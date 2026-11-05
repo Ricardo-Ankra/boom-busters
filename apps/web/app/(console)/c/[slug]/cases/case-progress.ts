@@ -73,3 +73,37 @@ export function scoreWord(value: number, kind: 'competition' | 'volume'): string
   if (value <= 66) return kind === 'volume' ? 'moderate' : 'medium'
   return 'high'
 }
+
+/**
+ * The open case: the one the URL names when it is in the list, else the first
+ * backlog case, else the first suggestion. `explicit` is true only for the
+ * first, so a phone shows the list until the owner picks a case.
+ */
+export function resolveSelected(
+  cases: readonly Pick<CaseSummary, 'id' | 'status'>[],
+  param: string | undefined,
+): { selectedId: string | null; explicit: boolean } {
+  if (param !== undefined && cases.some((item) => item.id === param)) {
+    return { selectedId: param, explicit: true }
+  }
+  const fallback = cases.find((item) => item.status !== 'idea') ?? cases[0] ?? null
+  return { selectedId: fallback?.id ?? null, explicit: false }
+}
+
+/** The status words the list, the panel and the status select share. */
+export const STATUS_LABELS: Record<string, string> = {
+  idea: 'Suggested',
+  shortlisted: 'Shortlisted',
+  in_production: 'In production',
+  published: 'Published',
+  retired: 'Retired',
+}
+
+/** An ISO date as the owner reads it: 20 October 2026. */
+export const measuredOn = (iso: string): string =>
+  new Date(iso).toLocaleDateString('en-ZA', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
