@@ -69,6 +69,24 @@ async function openClient(): Promise<VidiqClient> {
   return client
 }
 
+/** The monthly cap refused a call; a NonRetriableError, so callers that catch that keep working. */
+export class VidiqCapReached extends NonRetriableError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'VidiqCapReached'
+  }
+}
+
+/** Runs `fn` with an open client and closes it after. For free calls only: use `spendVidiq` for anything that costs. */
+export async function withVidiqClient<T>(fn: (client: VidiqClient) => Promise<T>): Promise<T> {
+  const client = await openClient()
+  try {
+    return await fn(client)
+  } finally {
+    await client.close()
+  }
+}
+
 export interface VidiqSpendInput {
   channelId: string
   projectId?: string
@@ -93,7 +111,7 @@ export async function spendVidiq<T>(
     const [{ settings }, spent] = await Promise.all([getWorkspace(db), vidiqCreditsThisMonth(db)])
     const cap = settings.vidiq.monthlyCreditCap
     if (spent + input.cost > cap) {
-      throw new NonRetriableError(
+      throw new VidiqCapReached(
         `The VidIQ cap is reached: ${spent} of ${cap} credits used this month`,
       )
     }
