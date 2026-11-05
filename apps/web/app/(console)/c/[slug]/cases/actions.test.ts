@@ -4,6 +4,12 @@ import type * as ChannelLookup from '@/lib/channel-lookup'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CaseResearchJob } from '@boom-busters/schemas'
 import {
+  BudgetExceededError,
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  canonicalModelId,
+} from '@boom-busters/schemas'
+import {
   EMPTY_BIBLE,
   defaultFormat,
   FIRST_CHANNEL_BIBLE,
@@ -15,6 +21,8 @@ import {
   chooseAngleAction,
   estimateStartCostAction,
   editCase,
+  rateAnglesAction,
+  rateAnglesEstimate,
   researchCaseAction,
   setCaseFormatAction,
   setTargetKeywordAction,
@@ -35,6 +43,10 @@ const store = vi.hoisted(() => ({
   setCaseTargetKeyword: vi.fn(),
   setCaseFormat: vi.fn(),
   costPerMinute: vi.fn(),
+  saveCaseAngleRating: vi.fn(),
+  currentBible: vi.fn(),
+  getChannelSettings: vi.fn(),
+  getWorkspace: vi.fn(),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -47,6 +59,11 @@ vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.co
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 const send = vi.hoisted(() => vi.fn())
 vi.mock('@/inngest/client', () => ({ inngest: { send } }))
+const rateAnglesMock = vi.hoisted(() => vi.fn())
+const estimateLlmUsd = vi.hoisted(() => vi.fn(() => 0.42))
+vi.mock('@boom-busters/cost', () => ({ estimateLlmUsd }))
+vi.mock('@/lib/rate-angles', () => ({ rateAngles: rateAnglesMock }))
+vi.mock('@/lib/answer-call', () => ({ completeForChannel: vi.fn(() => 'complete') }))
 const checkVidiqBudget = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/vidiq-spend', () => ({ checkVidiqBudget }))
 
@@ -767,5 +784,133 @@ describe('estimateStartCostAction', () => {
       usd: null,
       basis: 'No estimate yet: no finished projects',
     })
+  })
+})
+
+describe('rateAnglesAction and rateAnglesEstimate', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+  const option = (angle: string) => ({ angle, keyword: 'wework', answers: [], gap: '' })
+  const brief = (over: Record<string, unknown> = {}) => ({
+    subject: 'WeWork',
+    angleOptions: [option('one'), option('two')],
+    ...over,
+  })
+  const rated = { ok: true, rating: { recommended: 1, reason: 'Why.' } }
+
+  beforeEach(() => {
+    store.getCase.mockReset().mockResolvedValue({
+      id: CASE_ID,
+      status: 'shortlisted',
+      subject: 'WeWork',
+      searchBrief: brief(),
+      searchJob: null,
+    })
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    store.currentBible.mockReset().mockResolvedValue({ id: 'bible' })
+    store.saveCaseAngleRating.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.getChannelSettings.mockReset().mockResolvedValue(DEFAULT_SETTINGS)
+    store.getWorkspace
+      .mockReset()
+      .mockResolvedValue({ settings: DEFAULT_WORKSPACE_SETTINGS, defaultChannelId: null })
+    rateAnglesMock.mockReset().mockResolvedValue(rated)
+  })
+
+  it('rates and saves the angles', async () => {
+    expect(await rateAnglesAction(CASE_ID)).toEqual({ ok: true })
+    expect(rateAnglesMock.mock.calls[0]![0]).toMatchObject({ subject: 'WeWork' })
+    expect(store.saveCaseAngleRating).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, {
+      options: ['one', 'two'],
+      recommended: 1,
+      reason: 'Why.',
+    })
+  })
+
+  it('refuses while research runs', async () => {
+    store.getCase.mockResolvedValue({
+      id: CASE_ID,
+      status: 'shortlisted',
+      subject: 'WeWork',
+      searchBrief: brief(),
+      searchJob: {
+        state: 'running',
+        current: null,
+        error: null,
+        startedAt: new Date().toISOString(),
+        subject: 'WeWork',
+      },
+    })
+    expect(await rateAnglesAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Research is already running for this case',
+    })
+    expect(rateAnglesMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a brief for another subject', async () => {
+    store.getCase.mockResolvedValue({
+      id: CASE_ID,
+      status: 'shortlisted',
+      subject: 'Theranos',
+      searchBrief: brief(),
+      searchJob: null,
+    })
+    expect(await rateAnglesAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'This research is for another subject. Research again first.',
+    })
+    expect(rateAnglesMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a case with no angles to rate', async () => {
+    store.getCase.mockResolvedValue({
+      id: CASE_ID,
+      status: 'shortlisted',
+      subject: 'WeWork',
+      searchBrief: brief({ angleOptions: [option('one')] }),
+      searchJob: null,
+    })
+    expect(await rateAnglesAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'There are no angles to rate',
+    })
+  })
+
+  it('says so when the angles changed', async () => {
+    store.saveCaseAngleRating.mockResolvedValue(null)
+    expect(await rateAnglesAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'The angles changed while they were being rated. Rate them again.',
+    })
+  })
+
+  it('returns a rating failure and a budget refusal as errors', async () => {
+    rateAnglesMock.mockResolvedValueOnce({ ok: false, error: 'The model did not answer' })
+    expect(await rateAnglesAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'The model did not answer',
+    })
+    rateAnglesMock.mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.research',
+        budgetUsd: 1,
+        monthSpendUsd: 1,
+        estimateUsd: 0.1,
+      }),
+    )
+    expect((await rateAnglesAction(CASE_ID)).ok).toBe(false)
+    expect(store.saveCaseAngleRating).not.toHaveBeenCalled()
+  })
+
+  it('estimates on the research route', async () => {
+    const route = DEFAULT_SETTINGS.modelRouting.research
+    const model = canonicalModelId(route.provider, route.model)
+    expect(await rateAnglesEstimate(CASE_ID)).toEqual({ ok: true, usd: 0.42, model })
+    expect(estimateLlmUsd).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: route.provider, model }),
+    )
+    expect(await rateAnglesEstimate('nope')).toEqual({ ok: false, error: 'Unknown case' })
   })
 })

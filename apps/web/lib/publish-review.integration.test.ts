@@ -227,6 +227,11 @@ describeDb('publishModel search brief fields', () => {
         chosenAngle: null,
         formatKey: null,
         fit: null,
+        searchedTitles: [],
+        otherLanguages: [],
+        recommendedAngle: null,
+        recommendationReason: null,
+        ownAngle: false,
       },
     })
     const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)

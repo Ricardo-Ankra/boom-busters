@@ -1362,6 +1362,11 @@ const CASE_SEARCH = {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
   } satisfies SearchBrief,
 }
 

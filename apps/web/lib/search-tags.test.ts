@@ -35,6 +35,11 @@ const brief = (over: Partial<SearchBrief> = {}): SearchBrief => ({
   chosenAngle: null,
   formatKey: null,
   fit: null,
+  searchedTitles: [],
+  otherLanguages: [],
+  recommendedAngle: null,
+  recommendationReason: null,
+  ownAngle: false,
   ...over,
 })
 

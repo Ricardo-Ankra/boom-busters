@@ -7,9 +7,13 @@ import {
   costPerMinute,
   createCase,
   createProjectFromCase,
+  currentBible,
   deleteCase,
   getCase,
+  getChannelSettings,
+  getWorkspace,
   markCaseInProduction,
+  saveCaseAngleRating,
   setCaseFormat,
   setCaseStatus,
   setCaseTargetKeyword,
@@ -19,7 +23,10 @@ import {
 } from '@boom-busters/db'
 import type { CaseStatus } from '@boom-busters/db'
 import type { ChannelFormat } from '@boom-busters/schemas'
+import { RATE_ANGLES_OUTPUT_TOKENS } from '@boom-busters/providers'
 import {
+  BudgetExceededError,
+  canonicalModelId,
   CASE_PEOPLE_MAX,
   CASE_PERSON_MAX,
   CASE_SOURCE_LINKS_MAX,
@@ -45,6 +52,9 @@ import { events } from '@/inngest/events'
 import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import { caseCategoryKeys } from '@/lib/case-category'
+import { completeForChannel } from '@/lib/answer-call'
+import { rateAngles } from '@/lib/rate-angles'
+import { rateAnglesEstimateUsd } from '@/lib/rate-angles-estimate'
 import { checkVidiqBudget } from '@/lib/vidiq-spend'
 
 /**
@@ -470,6 +480,80 @@ async function writableCase(caseId: string): Promise<ActionResult | null> {
   const channel = await channelForCase(db, caseId)
   if (!channel) return { ok: false, error: 'That case no longer exists' }
   return writeRefusalFor(channel)
+}
+
+export type RateAnglesEstimate =
+  { ok: true; usd: number; model: string } | { ok: false; error: string }
+
+/** What `Rate the angles` would cost, for the button's label. Spends nothing. */
+export async function rateAnglesEstimate(caseId: string): Promise<RateAnglesEstimate> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  const channel = await channelForCase(db, caseId)
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  const settings = await getChannelSettings(db, channel.id)
+  const { settings: workspace } = await getWorkspace(db)
+  const route = settings.modelRouting.research
+  return {
+    ok: true,
+    usd: rateAnglesEstimateUsd(settings, workspace),
+    model: canonicalModelId(route.provider, route.model),
+  }
+}
+
+/**
+ * `Rate the angles`: ask the model which of the brief's angles to recommend and
+ * save the pick. The save refuses, writing nothing, if the options changed
+ * while the model was answering.
+ */
+export async function rateAnglesAction(caseId: string): Promise<ActionResult> {
+  await requireOwner()
+  const refusal = await writableCase(caseId)
+  if (refusal) return refusal
+  const existing = await getCase(db, caseId)
+  if (!existing) return { ok: false, error: 'That case no longer exists' }
+  const brief = existing.searchBrief
+  if (!brief || brief.angleOptions.length < 2) {
+    return { ok: false, error: 'There are no angles to rate' }
+  }
+  // The same comparison the brief panel makes: an edited subject orphans the brief.
+  if (
+    existing.subject === null ||
+    brief.subject.trim().toLowerCase() !== existing.subject.trim().toLowerCase()
+  ) {
+    return { ok: false, error: 'This research is for another subject. Research again first.' }
+  }
+  if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
+
+  // The refusal above proved the channel exists.
+  const channel = await channelForCase(db, caseId)
+  if (!channel) return { ok: false, error: 'That case no longer exists' }
+  let result: Awaited<ReturnType<typeof rateAngles>>
+  try {
+    result = await rateAngles(
+      brief,
+      await currentBible(db, channel.id),
+      completeForChannel(channel.id, { estimateOutputTokens: RATE_ANGLES_OUTPUT_TOKENS }),
+    )
+  } catch (error) {
+    if (error instanceof BudgetExceededError) return { ok: false, error: error.message }
+    throw error
+  }
+  if (!result.ok) return { ok: false, error: result.error }
+
+  const saved = await saveCaseAngleRating(db, caseId, {
+    // The options the model saw: the save refuses if the brief no longer holds exactly these.
+    options: brief.angleOptions.map((option) => option.angle),
+    ...result.rating,
+  })
+  if (!saved) {
+    return {
+      ok: false,
+      error: 'The angles changed while they were being rated. Rate them again.',
+    }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
 }
 
 const AngleChoiceSchema = z.union([

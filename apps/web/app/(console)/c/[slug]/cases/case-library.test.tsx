@@ -7,9 +7,11 @@ import {
   defaultFormat,
 } from '@boom-busters/schemas'
 import type { Notice, SearchBrief } from '@boom-busters/schemas'
+import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CaseLibrary } from './case-library'
-import { researchStepLabel } from './search-brief-panel'
+import { resolveSelected } from './case-progress'
+import { researchStepLabel } from './research-steps'
 
 /**
  * The Case Library's notices (decision 293): a suggestion's repairs on its own row.
@@ -65,6 +67,24 @@ function kase(overrides: Partial<CaseSummary>): CaseSummary {
   }
 }
 
+type LibraryProps = Omit<ComponentProps<typeof CaseLibrary>, 'selectedId' | 'explicit'> &
+  Partial<Pick<ComponentProps<typeof CaseLibrary>, 'selectedId' | 'explicit'>>
+
+/** The library as the page renders it: the open case is what `resolveSelected` picks, unless a test says. */
+function Library({ selectedId, explicit, ...props }: LibraryProps) {
+  const resolved = resolveSelected(props.cases, undefined)
+  return (
+    <CaseLibrary
+      {...props}
+      selectedId={selectedId === undefined ? resolved.selectedId : selectedId}
+      explicit={explicit ?? resolved.explicit}
+    />
+  )
+}
+
+/** The open case's panel: every control for the case sits inside it. */
+const panelOf = (title: string) => screen.getByRole('region', { name: title })
+
 const trimmed: Notice = {
   id: '01J0000000000000000000000N',
   projectId: null,
@@ -84,32 +104,45 @@ beforeEach(() => {
 })
 
 describe('CaseLibrary notices (decision 293)', () => {
-  it("shows a case's notice on its own row and no other", () => {
-    render(
-      <CaseLibrary
+  it("shows a case's notice in its own panel and no other", () => {
+    const cases = [kase({}), kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })]
+    const view = render(
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
-        cases={[kase({}), kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })]}
+        cases={cases}
         sort="priority"
         notices={[trimmed]}
+        selectedId={WIRECARD}
       />,
     )
-    const wirecard = screen.getByText('Wirecard').closest('li')!
+    const wirecard = panelOf('Wirecard')
     expect(within(wirecard).getByRole('status')).toHaveTextContent(
       'Trimmed to fit: the angle of Wirecard.',
     )
-    // The row has the case's own Dismiss too; the notice's sits on its line.
+    // The panel has the case's own Dismiss too; the notice's sits on its line.
     const noticeLine = within(wirecard).getByRole('status').parentElement!
     expect(within(noticeLine).getByRole('button', { name: 'Dismiss note' })).toBeInTheDocument()
-    const theranos = screen.getByText('Theranos').closest('li')!
-    expect(within(theranos).queryByRole('status')).not.toBeInTheDocument()
+
+    view.rerender(
+      <Library
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={cases}
+        sort="priority"
+        notices={[trimmed]}
+        selectedId={THERANOS}
+      />,
+    )
+    expect(within(panelOf('Theranos')).queryByRole('status')).not.toBeInTheDocument()
   })
 
   it("asks before a suggestion's Dismiss deletes it (decision 294)", async () => {
     actions.dismissCase.mockResolvedValue({ ok: true })
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -118,7 +151,7 @@ describe('CaseLibrary notices (decision 293)', () => {
         notices={[trimmed]}
       />,
     )
-    const row = screen.getByText('Wirecard').closest('li')!
+    const row = panelOf('Wirecard')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
     expect(actions.dismissCase).not.toHaveBeenCalled()
@@ -130,7 +163,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 
   it('says a suggestion with projects behind it is retired, not deleted', async () => {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -138,7 +171,7 @@ describe('CaseLibrary notices (decision 293)', () => {
         sort="priority"
       />,
     )
-    const row = screen.getByText('Wirecard').closest('li')!
+    const row = panelOf('Wirecard')
 
     await userEvent.click(within(row).getByRole('button', { name: 'Dismiss' }))
     expect(row).toHaveTextContent(
@@ -151,7 +184,7 @@ describe('CaseLibrary notices (decision 293)', () => {
 describe('the case form: subject, people and source links', () => {
   async function openAddForm() {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -165,7 +198,9 @@ describe('the case form: subject, people and source links', () => {
   it('leads with Subject, then Angle idea, and defaults Title from the subject until it is typed in', async () => {
     await openAddForm()
     const labels = screen
-      .getAllByText(/^(Subject|Angle idea|Title|Category|People|Source links)$/)
+      .getAllByText(/^(Subject|Angle idea|Title|Category|People|Source links)$/, {
+        selector: 'label',
+      })
       .map((label) => label.textContent)
     expect(labels.slice(0, 3)).toEqual(['Subject', 'Angle idea', 'Title'])
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
@@ -221,7 +256,7 @@ describe('the case form: subject, people and source links', () => {
   it('shows the same three fields when editing, and saves them', async () => {
     actions.editCase.mockResolvedValue({ ok: true })
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -236,7 +271,7 @@ describe('the case form: subject, people and source links', () => {
         sort="priority"
       />,
     )
-    const row = screen.getByText('Wirecard', { selector: 'p' }).closest('li')!
+    const row = panelOf('Wirecard')
     await userEvent.click(within(row).getByRole('button', { name: 'Edit details' }))
     expect(within(row).getByLabelText('Subject')).toHaveValue('Wirecard')
     expect(within(row).getByLabelText('People')).toHaveValue('Markus Braun')
@@ -257,7 +292,7 @@ describe('the case form: subject, people and source links', () => {
 describe('CaseLibrary with an incomplete channel bible', () => {
   it('disables New project and links to the Bible tab', () => {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -279,7 +314,7 @@ describe('CaseLibrary with an incomplete channel bible', () => {
 
   it('leaves New project enabled once the bible is complete', () => {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -295,7 +330,7 @@ describe('CaseLibrary with an incomplete channel bible', () => {
 describe('CaseLibrary for an archived channel', () => {
   it('disables Add and New project with the archived notice', () => {
     render(
-      <CaseLibrary
+      <Library
         slug="old"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -321,7 +356,7 @@ const PSYCHOLOGY_CATEGORIES = [
 describe('categories come from the channel bible', () => {
   it("lists the bible's categories in the add form, labelled", async () => {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={SECOND_CHANNEL_ID}
         categories={PSYCHOLOGY_CATEGORIES}
@@ -337,7 +372,7 @@ describe('categories come from the channel bible', () => {
 
   it('renders a case whose key the bible no longer lists, as the key', () => {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={SECOND_CHANNEL_ID}
         categories={PSYCHOLOGY_CATEGORIES}
@@ -345,7 +380,7 @@ describe('categories come from the channel bible', () => {
         sort="priority"
       />,
     )
-    const row = screen.getByText('Wirecard').closest('li')!
+    const row = panelOf('Wirecard')
     expect(row).toHaveTextContent('collapse')
   })
 
@@ -355,7 +390,7 @@ describe('categories come from the channel bible', () => {
       [CHANNEL_ID, CATEGORIES],
     ] as const) {
       const { unmount } = render(
-        <CaseLibrary
+        <Library
           slug="psychology"
           channelId={id}
           categories={categories}
@@ -431,6 +466,11 @@ const BRIEF: SearchBrief = {
   chosenAngle: 1,
   formatKey: null,
   fit: null,
+  searchedTitles: [],
+  otherLanguages: [],
+  recommendedAngle: null,
+  recommendationReason: null,
+  ownAngle: false,
 }
 
 function researched(over: Partial<CaseSummary> = {}) {
@@ -445,7 +485,7 @@ function researched(over: Partial<CaseSummary> = {}) {
 
 function renderRow(item: CaseSummary) {
   render(
-    <CaseLibrary
+    <Library
       slug="psychology"
       channelId={CHANNEL_ID}
       categories={CATEGORIES}
@@ -453,7 +493,7 @@ function renderRow(item: CaseSummary) {
       sort="newest"
     />,
   )
-  return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+  return panelOf(item.title)
 }
 
 const ESTIMATE = { ok: true, credits: 20, capLeft: 980, balance: 1443 }
@@ -598,80 +638,15 @@ describe('Research with VidIQ', () => {
   })
 })
 
-describe('the Search brief panel', () => {
-  it('is a collapsed details with the measured date, keywords, questions, outliers and told-already', () => {
-    const row = renderRow(researched())
-    const panel = within(row).getByText('Search brief').closest('details')!
-    expect(panel).not.toHaveAttribute('open')
-    expect(panel).toHaveTextContent('Measured 20 October 2026')
-    expect(panel).toHaveTextContent('wework documentary')
-    expect(panel).toHaveTextContent('volume 64')
-    expect(panel).toHaveTextContent('what happened to wework')
-    expect(panel).toHaveTextContent('why did wework fail')
-    expect(panel).toHaveTextContent('The WeWork Collapse')
-    expect(panel).toHaveTextContent('Some Channel')
-    expect(panel).toHaveTextContent('172,000 views')
-    expect(panel).toHaveTextContent('40x')
-    expect(panel).toHaveTextContent('The Adam Neumann exit package')
-    expect(panel).toHaveTextContent('The valuation was the product, not the offices.')
-  })
-
-  it('has no panel for a case without a brief', () => {
-    const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
-    expect(within(row).queryByText('Search brief')).not.toBeInTheDocument()
-  })
-
-  it('Use this angle chooses the option by its index, and the chosen option is marked', async () => {
-    actions.chooseAngleAction.mockResolvedValue({ ok: true })
-    const row = renderRow(researched({ searchBrief: { ...BRIEF, chosenAngle: 0 } }))
-    const uses = within(row).getAllByRole('button', { name: 'Use this angle' })
-    expect(within(row).getAllByText('Chosen')).toHaveLength(1)
-    // The marked option is the first, so the one left to use is the second.
-    expect(uses).toHaveLength(1)
-    await userEvent.click(uses[0]!)
-    await waitFor(() =>
-      expect(actions.chooseAngleAction).toHaveBeenCalledWith(WIRECARD, { option: 1 }),
-    )
-  })
-
-  it('Keep my own angle opens a box and saves the words as the angle', async () => {
-    actions.chooseAngleAction.mockResolvedValue({ ok: true })
-    const row = renderRow(researched({ angle: 'My own take' }))
-    await userEvent.click(within(row).getByRole('button', { name: 'Keep my own angle' }))
-    const box = within(row).getByLabelText('Your angle')
-    expect(box).toHaveValue('My own take')
-    await userEvent.clear(box)
-    await userEvent.type(box, 'The auditors are the story')
-    await userEvent.click(within(row).getByRole('button', { name: 'Save my angle' }))
-    await waitFor(() =>
-      expect(actions.chooseAngleAction).toHaveBeenCalledWith(WIRECARD, {
-        own: 'The auditors are the story',
-      }),
-    )
-  })
-
-  it('Make target is on each secondary keyword except one with a figure', async () => {
-    actions.setTargetKeywordAction.mockResolvedValue({ ok: true })
-    const row = renderRow(researched())
-    const makes = within(row).getAllByRole('button', { name: 'Make target' })
-    expect(makes).toHaveLength(1)
-    await userEvent.click(makes[0]!)
-    await waitFor(() =>
-      expect(actions.setTargetKeywordAction).toHaveBeenCalledWith(
-        WIRECARD,
-        'what happened to wework',
-      ),
-    )
-  })
-
+describe('the case panel and its research', () => {
   it('says the research is for another subject, offers Research again, and hides the choosers', () => {
     const row = renderRow(researched({ subject: 'We Company' }))
     expect(row).toHaveTextContent('This research is for WeWork. Research again for We Company.')
     expect(
       within(row).getByRole('button', { name: 'Research again with VidIQ (about 20 credits)' }),
     ).toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: 'Use this angle' })).not.toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: 'Make target' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /^Use this angle/ })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /^Make target/ })).not.toBeInTheDocument()
   })
 
   it('does not call a matching subject a mismatch, whatever its case or spacing', () => {
@@ -691,46 +666,6 @@ describe('the Search brief panel', () => {
     expect(
       within(without).getByRole('button', { name: 'Research with VidIQ (about 20 credits)' }),
     ).toBeInTheDocument()
-  })
-
-  it('hides "Searched as" for an option with no keyword', () => {
-    const options = BRIEF.angleOptions.map((option, at) => ({
-      ...option,
-      keyword: at === 0 ? '' : option.keyword,
-    }))
-    const row = renderRow(researched({ searchBrief: { ...BRIEF, angleOptions: options } }))
-    expect(within(row).getAllByText(/Searched as/)).toHaveLength(options.length - 1)
-    expect(row).not.toHaveTextContent('Searched as .')
-    expect(row).toHaveTextContent(options[0]!.gap)
-  })
-
-  it('Use this angle and Make target are locked while one is pending, so a double click sends once', async () => {
-    let release: (value: { ok: boolean }) => void = () => {}
-    actions.chooseAngleAction.mockReturnValue(
-      new Promise((resolve) => {
-        release = resolve
-      }),
-    )
-    const row = renderRow(researched())
-    const use = within(row).getAllByRole('button', { name: 'Use this angle' })[0]!
-    await userEvent.dblClick(use)
-    expect(actions.chooseAngleAction).toHaveBeenCalledTimes(1)
-    expect(use).toBeDisabled()
-    // The other chooser waits too, so two choices cannot race.
-    expect(within(row).getByRole('button', { name: 'Make target' })).toBeDisabled()
-    release({ ok: true })
-    await waitFor(() => expect(use).not.toBeDisabled())
-
-    let release2: (value: { ok: boolean }) => void = () => {}
-    actions.setTargetKeywordAction.mockReturnValue(
-      new Promise((resolve) => {
-        release2 = resolve
-      }),
-    )
-    const make = within(row).getByRole('button', { name: 'Make target' })
-    await userEvent.dblClick(make)
-    expect(actions.setTargetKeywordAction).toHaveBeenCalledTimes(1)
-    release2({ ok: true })
   })
 })
 
@@ -799,7 +734,7 @@ describe('the case format picker', () => {
 
   function renderWith(formats: typeof two, item: CaseSummary) {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -808,7 +743,7 @@ describe('the case format picker', () => {
         formats={formats}
       />,
     )
-    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+    return panelOf(item.title)
   }
 
   it('shows no picker for a channel with one format', () => {
@@ -894,7 +829,7 @@ describe('the start control: format, length and cost', () => {
 
   function renderStart(item: CaseSummary, withFormats = formats) {
     render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -903,7 +838,7 @@ describe('the start control: format, length and cost', () => {
         formats={withFormats}
       />,
     )
-    return screen.getByText(item.title, { selector: 'p' }).closest('li')!
+    return panelOf(item.title)
   }
 
   it('defaults the length to the format default clamped to 30, with the not-supported note', async () => {
@@ -1026,7 +961,7 @@ describe('the start control: format, length and cost', () => {
     actions.setCaseFormatAction.mockResolvedValue({ ok: true })
     const item = kase({ status: 'shortlisted', formatKey: 'short' })
     const view = render(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -1035,10 +970,10 @@ describe('the start control: format, length and cost', () => {
         formats={formats}
       />,
     )
-    const row = screen.getByText(item.title, { selector: 'p' }).closest('li')!
+    const row = panelOf(item.title)
     expect(within(row).getByLabelText('Length in minutes')).toHaveValue(8)
     view.rerender(
-      <CaseLibrary
+      <Library
         slug="psychology"
         channelId={CHANNEL_ID}
         categories={CATEGORIES}
@@ -1049,5 +984,106 @@ describe('the start control: format, length and cost', () => {
     )
     expect(within(row).getByLabelText('Start format')).toHaveValue('main')
     expect(within(row).getByLabelText('Length in minutes')).toHaveValue(15)
+  })
+})
+
+describe('the two panes', () => {
+  const second = kase({ id: THERANOS, title: 'Theranos', status: 'shortlisted' })
+  const first = kase({ title: 'Wirecard', status: 'in_production', projectCount: 1 })
+
+  function renderLibrary(over: Partial<LibraryProps> = {}) {
+    return render(
+      <Library
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[first, second]}
+        sort="status"
+        {...over}
+      />,
+    )
+  }
+
+  it('opens the first case without a case id', () => {
+    renderLibrary()
+    expect(screen.getByRole('heading', { level: 2, name: 'Wirecard' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: 'Theranos' })).not.toBeInTheDocument()
+  })
+
+  it('links each row to its case and keeps the sort', () => {
+    renderLibrary()
+    const list = screen.getByRole('navigation', { name: 'Cases' })
+    const links = within(list).getAllByRole('link')
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      `/c/psychology/cases?sort=status&case=${WIRECARD}`,
+      `/c/psychology/cases?sort=status&case=${THERANOS}`,
+    ])
+  })
+
+  it('marks the open row current', () => {
+    renderLibrary({ selectedId: THERANOS, explicit: true })
+    const list = screen.getByRole('navigation', { name: 'Cases' })
+    const current = within(list).getAllByRole('link', { current: true })
+    expect(current).toHaveLength(1)
+    expect(current[0]).toHaveTextContent('Theranos')
+  })
+
+  it('shows each row as title, status, projects and the angle signal', () => {
+    renderLibrary()
+    const row = within(screen.getByRole('navigation', { name: 'Cases' })).getByRole('link', {
+      name: /Wirecard/,
+    })
+    expect(row).toHaveTextContent('In production')
+    expect(row).toHaveTextContent('1 project')
+    expect(row).toHaveTextContent('Not researched')
+  })
+
+  it('groups suggestions apart from the backlog', () => {
+    renderLibrary({ cases: [kase({ id: THERANOS, title: 'Idea one' }), first] })
+    const list = screen.getByRole('navigation', { name: 'Cases' })
+    expect(list).toHaveTextContent('Suggested')
+    expect(list).toHaveTextContent('Backlog')
+  })
+
+  it('shows the list alone below xl until a case is named, then the case with Back to cases', () => {
+    const view = renderLibrary()
+    const list = screen.getByRole('navigation', { name: 'Cases' }).parentElement!
+    const panel = panelOf('Wirecard').parentElement!
+    expect(list.className).not.toContain('hidden')
+    expect(panel.className).toContain('hidden xl:block')
+    expect(screen.queryByRole('link', { name: 'Back to cases' })).not.toBeInTheDocument()
+
+    view.unmount()
+    renderLibrary({ selectedId: THERANOS, explicit: true })
+    expect(screen.getByRole('navigation', { name: 'Cases' }).parentElement!.className).toContain(
+      'hidden xl:flex',
+    )
+    expect(panelOf('Theranos').parentElement!.className).not.toContain('hidden')
+    const back = screen.getByRole('link', { name: 'Back to cases' })
+    expect(back).toHaveAttribute('href', '/c/psychology/cases?sort=status')
+    expect(back.className).toContain('xl:hidden')
+  })
+
+  it('opens the add form in the panel area, and Cancel closes it', async () => {
+    renderLibrary()
+    await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
+    expect(screen.getByLabelText('Subject')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Wirecard' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByLabelText('Subject')).not.toBeInTheDocument()
+    expect(panelOf('Wirecard')).toBeInTheDocument()
+  })
+
+  it('prompts to add a case in the panel when the library is empty', async () => {
+    renderLibrary({ cases: [] })
+    expect(screen.getByRole('heading', { name: 'Add a case' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Add case' }))
+    expect(screen.getByLabelText('Subject')).toBeInTheDocument()
+  })
+
+  it('keeps the sort buttons, and a sort change keeps an explicitly open case', async () => {
+    renderLibrary({ selectedId: THERANOS, explicit: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Newest' }))
+    expect(push).toHaveBeenCalledWith(`/c/psychology/cases?sort=newest&case=${THERANOS}`)
   })
 })

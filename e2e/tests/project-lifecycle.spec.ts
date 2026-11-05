@@ -135,9 +135,10 @@ test.describe('making a project from a case', () => {
     await page.getByRole('button', { name: 'Save case' }).click()
     await expect(page.getByText('Case added to your backlog').first()).toBeVisible()
 
+    // New project lives in the case's panel: open the case from the list first.
+    await page.getByRole('listitem').filter({ hasText: CASE_TITLE }).getByRole('link').click()
     await page
-      .getByRole('listitem')
-      .filter({ hasText: CASE_TITLE })
+      .getByRole('region', { name: CASE_TITLE })
       .getByRole('button', { name: 'New project' })
       .click()
 
@@ -291,9 +292,10 @@ test.describe('deleting a project', () => {
     await page.getByRole('button', { name: 'Save case' }).click()
     await expect(page.getByText('Case added to your backlog').first()).toBeVisible()
 
+    // New project lives in the case's panel: open the case from the list first.
+    await page.getByRole('listitem').filter({ hasText: CASE_TITLE }).getByRole('link').click()
     await page
-      .getByRole('listitem')
-      .filter({ hasText: CASE_TITLE })
+      .getByRole('region', { name: CASE_TITLE })
       .getByRole('button', { name: 'New project' })
       .click()
     await expect(page.getByText(/nothing is researching it/i).first()).toBeVisible()
@@ -311,7 +313,7 @@ test.describe('deleting a project', () => {
     // The case survives: a case is a story worth telling, and abandoning one
     // attempt at it does not retract that.
     await page.goto(channelPath('/cases'))
-    await expect(page.getByText(CASE_TITLE)).toBeVisible()
+    await expect(page.getByRole('link', { name: CASE_TITLE })).toBeVisible()
   })
 
   test('is not offered while a run is in flight', async ({ page }) => {

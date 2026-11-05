@@ -1,5 +1,5 @@
 import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
-import { SearchBriefSchema } from '@boom-busters/schemas'
+import { StoredSearchBriefSchema } from '@boom-busters/schemas'
 import type { DirectorsBook, SearchBrief, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
 import type { Database } from './client'
 import { cases, channelBibles, channels, costLedger, dossiers, projects, scripts } from './schema'
@@ -160,7 +160,7 @@ function summaryFrom(db: Database) {
     .leftJoin(dossiers, eq(dossiers.projectId, projects.id))
 }
 
-const storedBrief = SearchBriefSchema.nullable().catch(null)
+const storedBrief = StoredSearchBriefSchema.nullable().catch(null)
 
 /** The stored brief jsonb as the app's type; a row that does not parse reads null. */
 function toProjectSummary<T extends { searchBrief: unknown }>(

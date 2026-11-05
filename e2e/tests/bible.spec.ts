@@ -319,9 +319,10 @@ test.describe('a second channel’s bible', () => {
     await page.getByRole('button', { name: 'Save case' }).click()
     await expect(page.getByText('Case added to your backlog').first()).toBeVisible()
 
+    // New project lives in the case's panel: open the case from the list first.
+    await page.getByRole('listitem').filter({ hasText: CASE_TITLE }).getByRole('link').click()
     await page
-      .getByRole('listitem')
-      .filter({ hasText: CASE_TITLE })
+      .getByRole('region', { name: CASE_TITLE })
       .getByRole('button', { name: 'New project' })
       .click()
     // The dossier run cannot be sent from here; the project row is made first.

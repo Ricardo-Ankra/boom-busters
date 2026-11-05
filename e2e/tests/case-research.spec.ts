@@ -23,6 +23,8 @@ test.setTimeout(120_000)
 const SUBJECT = 'Iomega Zip Drive (E2E case research)'
 const TARGET = 'iomega zip drive'
 const SECONDARY = 'zip drive click of death'
+/** A searched video title: the colon marks it, so it is kept apart from the keywords. */
+const COLON_TITLE = 'Zip Drive: The Click of Death Explained'
 const FIRST_ANGLE =
   'The click of death was a hardware failure that spread from one drive to another.'
 const SECOND_ANGLE =
@@ -49,6 +51,14 @@ function seededBrief(measuredAt: string): SearchBrief {
         overall: 70,
         estimatedMonthlySearch: 1900,
         growthPct: 2,
+      },
+      {
+        keyword: COLON_TITLE,
+        volume: null,
+        competition: null,
+        overall: 75,
+        estimatedMonthlySearch: 2600,
+        growthPct: 9,
       },
     ],
     searchedQuestions: ['what was the click of death', 'why did zip drives fail'],
@@ -83,6 +93,11 @@ function seededBrief(measuredAt: string): SearchBrief {
     chosenAngle: null,
     formatKey: null,
     fit: null,
+    searchedTitles: [],
+    otherLanguages: [],
+    recommendedAngle: null,
+    recommendationReason: null,
+    ownAngle: false,
   }
 }
 
@@ -128,11 +143,17 @@ async function removeCase(): Promise<void> {
   })
 }
 
+/** The case's row in the list: a link that opens its panel. */
 const row = (page: Page) => page.getByRole('listitem').filter({ hasText: SUBJECT })
 
-async function openBrief(page: Page): Promise<void> {
+/** The open case's panel, named by its title (a case added by subject is titled by it). */
+const panel = (page: Page) => page.getByRole('region', { name: SUBJECT })
+
+async function openCase(page: Page): Promise<void> {
   await page.goto(channelPath('/cases'))
-  await row(page).getByText('Search brief', { exact: true }).click()
+  await row(page).getByRole('link').click()
+  await expect(page).toHaveURL(/[?&]case=/)
+  await expect(panel(page)).toBeVisible({ timeout: 15_000 })
 }
 
 async function addCaseBySubject(page: Page): Promise<void> {
@@ -200,73 +221,91 @@ test.describe('case research', () => {
   test('Research with VidIQ shows its estimate and says plainly that Inngest is missing', async ({
     page,
   }) => {
-    await page.goto(channelPath('/cases'))
-    await row(page)
+    await openCase(page)
+    await panel(page)
       .getByRole('button', { name: /^Research with VidIQ/ })
       .click()
-    await expect(row(page).getByText(/About 20 credits/)).toBeVisible({ timeout: 15_000 })
+    await expect(panel(page).getByText(/About 20 credits/)).toBeVisible({ timeout: 15_000 })
 
-    await row(page).getByRole('button', { name: 'Start research' }).click()
+    await panel(page).getByRole('button', { name: 'Start research' }).click()
     await expect(page.getByText(/Could not reach Inngest/).first()).toBeVisible({
       timeout: 15_000,
     })
     await expect(
-      page.getByText('Research failed: The research run could not be started'),
+      page.getByText('Research failed: The research run could not be started').first(),
     ).toBeVisible({
       timeout: 15_000,
     })
   })
 
-  test('choosing an angle sets it on the case and rewrites the demand line', async ({ page }) => {
+  test('the panel keeps titles apart, makes a target, rates the angles and takes one', async ({
+    page,
+  }) => {
     await leaveBrief(new Date().toISOString())
-    await openBrief(page)
-    await expect(row(page).getByText(`for ${SUBJECT}`)).toBeVisible()
+    await openCase(page)
 
-    await row(page)
-      .getByRole('listitem')
-      .filter({ hasText: FIRST_ANGLE })
-      .getByRole('button', { name: 'Use this angle' })
-      .click()
-    await expect(page.getByText('Angle chosen').first()).toBeVisible({ timeout: 15_000 })
+    // The target card carries its labelled figures.
+    const card = panel(page).getByTestId('target-card')
+    await expect(card.getByText(TARGET, { exact: true })).toBeVisible()
+    await expect(card.getByText('Searches a month')).toBeVisible()
+    await expect(card.getByText('~3,400')).toBeVisible()
+    await expect(card.getByTestId('volume')).toContainText('61')
+    await expect(card.getByText('moderate')).toBeVisible()
+    await expect(card.getByTestId('competition')).toContainText('28')
+    await expect(card.getByText('low')).toBeVisible()
+    await expect(card.getByText('Trend')).toBeVisible()
 
-    await expect(row(page).getByText('Chosen', { exact: true })).toBeVisible()
-    // The row's own angle line now carries the chosen angle.
-    await expect(row(page).getByText(FIRST_ANGLE).first()).toBeVisible()
+    // The colon title is a searched video title, not a keyword: no Make target.
+    const titles = panel(page).getByRole('heading', { name: 'Searched video titles' }).locator('..')
+    await expect(titles.getByText(COLON_TITLE)).toBeVisible()
+    await expect(
+      panel(page).getByRole('button', { name: `Make target: ${COLON_TITLE}` }),
+    ).toHaveCount(0)
+    await expect(panel(page).getByRole('table').getByText(COLON_TITLE)).toHaveCount(0)
 
-    const stored = await withDb(
-      ({ sql }) =>
-        sql<{ angle: string; demand_notes: string }[]>`
-          select angle, demand_notes from cases where subject = ${SUBJECT}`,
-    )
-    expect(stored[0]?.angle).toBe(FIRST_ANGLE)
-    expect(stored[0]?.demand_notes).toContain(`${TARGET}: 61 volume, competition 28`)
-    expect(stored[0]?.demand_notes).toMatch(/; 1 winning video(?!s)/)
-  })
-
-  test('Make target promotes a secondary keyword', async ({ page }) => {
-    await openBrief(page)
-    await row(page)
-      .getByRole('listitem')
-      .filter({ hasText: SECONDARY })
-      .getByRole('button', { name: 'Make target' })
+    // A real secondary keyword can become the target.
+    await panel(page)
+      .getByRole('button', { name: `Make target: ${SECONDARY}` })
       .click()
     await expect(page.getByText('Target keyword set').first()).toBeVisible({ timeout: 15_000 })
+    await expect(panel(page).getByTestId('target-card').getByText(SECONDARY)).toBeVisible()
+
+    // Rate the angles, confirm (mock mode), and a Recommended badge appears.
+    await panel(page).getByRole('button', { name: 'Rate the angles' }).click()
+    await panel(page).getByRole('button', { name: 'Rate now' }).click()
+    await expect(page.getByText('Angles rated').first()).toBeVisible({ timeout: 15_000 })
+    await expect(panel(page).getByText('Recommended', { exact: true })).toBeVisible()
+
+    // Take the first angle: the list row says so.
+    await panel(page)
+      .getByRole('button', { name: /^Use this angle: The click of death was a hardware/ })
+      .click()
+    await expect(page.getByText('Angle chosen').first()).toBeVisible({ timeout: 15_000 })
+    await expect(row(page).getByText('Angle chosen')).toBeVisible()
+    await expect(panel(page).getByText('Chosen', { exact: true })).toBeVisible()
 
     const stored = await withDb(
       ({ sql }) =>
-        sql<{ brief: SearchBrief }[]>`
-          select search_brief as brief from cases where subject = ${SUBJECT}`,
+        sql<{ angle: string; demand_notes: string; brief: SearchBrief }[]>`
+          select angle, demand_notes, search_brief as brief
+          from cases where subject = ${SUBJECT}`,
     )
+    expect(stored[0]?.angle).toBe(FIRST_ANGLE)
+    expect(stored[0]?.demand_notes).toContain(`${SECONDARY}: 44 volume, competition 19`)
+    expect(stored[0]?.demand_notes).toMatch(/; 1 winning video(?!s)/)
     expect(stored[0]?.brief.targetKeyword?.keyword).toBe(SECONDARY)
     expect(stored[0]?.brief.secondaryKeywords.map((k) => k.keyword)).toContain(TARGET)
+    expect(stored[0]?.brief.secondaryKeywords.map((k) => k.keyword)).not.toContain(COLON_TITLE)
+    expect(stored[0]?.brief.recommendedAngle).not.toBeNull()
   })
 
-  test('at 390 px the brief has no sideways scroll and every control is 40 px tall', async ({
+  test('at 390 px the panel has no sideways scroll and every control is 40 px tall', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await openBrief(page)
-    await expect(row(page).getByText('Target keyword', { exact: true })).toBeVisible()
+    await openCase(page)
+    await expect(panel(page).getByText('Target keyword', { exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Back to cases' })).toBeVisible()
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -280,13 +319,13 @@ test.describe('case research', () => {
   }) => {
     const old = new Date(Date.now() - 45 * 86_400_000).toISOString()
     await leaveBrief(old)
-    await page.goto(channelPath('/cases'))
+    await openCase(page)
 
-    await row(page).getByRole('button', { name: 'New project' }).click()
-    await expect(row(page).getByText('The search research is 45 days old.')).toBeVisible()
-    await expect(row(page).getByRole('button', { name: /^Refresh research/ })).toBeVisible()
+    await panel(page).getByRole('button', { name: 'New project' }).click()
+    await expect(panel(page).getByText('The search research is 45 days old.')).toBeVisible()
+    await expect(panel(page).getByRole('button', { name: /^Refresh research/ })).toBeVisible()
 
-    await row(page).getByRole('button', { name: 'Start without refreshing' }).click()
+    await panel(page).getByRole('button', { name: 'Start without refreshing' }).click()
     // No Inngest here, so the project is made but nothing researches it.
     await expect(page.getByText(/nothing is researching it/i).first()).toBeVisible({
       timeout: 15_000,

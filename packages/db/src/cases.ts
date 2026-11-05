@@ -1,7 +1,10 @@
 import {
   CaseResearchJobSchema,
   SearchBriefSchema,
+  RECOMMENDATION_REASON_MAX,
+  StoredSearchBriefSchema,
   briefDemandNotes,
+  classifySearchTerms,
   keywordHasFigure,
 } from '@boom-busters/schemas'
 import type { CaseResearchJob, SearchBrief } from '@boom-busters/schemas'
@@ -70,7 +73,10 @@ const summaryColumns = {
   projectCount: sql<number>`count(${projects.id})::int`,
 }
 
-const storedBrief = SearchBriefSchema.nullable().catch(null)
+/** Every read upgrades an old brief: titles and other languages leave the keywords. */
+const storedBrief = StoredSearchBriefSchema.nullable().catch(null)
+/** The brief as stored, not upgraded; only to tell whether the notes came from it. */
+const rawStoredBrief = SearchBriefSchema.nullable().catch(null)
 const storedJob = CaseResearchJobSchema.nullable().catch(null)
 
 /**
@@ -211,11 +217,19 @@ export async function caseSubjectTaken(
 
 type CaseTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 
-/** Lock the case row for the rest of the transaction and read its brief and job. */
+/**
+ * Lock the case row for the rest of the transaction and read its brief and job.
+ * `rawBrief` is the stored brief before the upgrade, so a writer can tell notes
+ * written from the old target from notes the owner wrote.
+ */
 async function lockCaseResearch(
   tx: CaseTransaction,
   caseId: string,
-): Promise<{ brief: SearchBrief | null; job: CaseResearchJob | null }> {
+): Promise<{
+  brief: SearchBrief | null
+  rawBrief: SearchBrief | null
+  job: CaseResearchJob | null
+}> {
   const [row] = await tx
     .select({ searchBrief: cases.searchBrief, searchJob: cases.searchJob })
     .from(cases)
@@ -224,6 +238,7 @@ async function lockCaseResearch(
   if (!row) throw new Error(`case ${caseId} not found`)
   return {
     brief: storedBrief.parse(row.searchBrief ?? null),
+    rawBrief: rawStoredBrief.parse(row.searchBrief ?? null),
     job: storedJob.parse(row.searchJob ?? null),
   }
 }
@@ -287,17 +302,20 @@ export async function chooseCaseAngle(
     if (!brief) throw new Error('this case has no search brief to choose an angle from')
     let angle: string
     let chosenAngle: number | null
+    let ownAngle: boolean
     if ('option' in choice) {
       const option = brief.angleOptions[choice.option]
       if (!option) throw new Error(`angle option ${choice.option} does not exist`)
       angle = option.angle
       chosenAngle = choice.option
+      ownAngle = false
     } else {
       angle = choice.own.trim()
       if (angle === '') throw new Error('an angle of your own cannot be empty')
       chosenAngle = null
+      ownAngle = true
     }
-    const next: SearchBrief = { ...brief, chosenAngle }
+    const next: SearchBrief = { ...brief, chosenAngle, ownAngle }
     await tx
       .update(cases)
       .set({
@@ -314,6 +332,77 @@ export async function chooseCaseAngle(
 }
 
 /**
+ * Whether the case's demand notes are still the brief's own line, before or
+ * after the upgrade. Those follow the brief; notes the owner wrote or edited
+ * by hand stay as they are.
+ */
+async function notesFollow(
+  tx: CaseTransaction,
+  caseId: string,
+  rawBrief: SearchBrief | null,
+  brief: SearchBrief,
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ demandNotes: cases.demandNotes })
+    .from(cases)
+    .where(eq(cases.id, caseId))
+  const notes = row?.demandNotes
+  if (notes === null || notes === undefined) return false
+  return (
+    notes === briefDemandNotes(brief) || (rawBrief !== null && notes === briefDemandNotes(rawBrief))
+  )
+}
+
+/**
+ * Save the model's rating of the brief's angle options: which it recommends and
+ * why. Null, with nothing written, when the brief is gone or its options are no
+ * longer the ones that were rated.
+ */
+export async function saveCaseAngleRating(
+  db: Database,
+  caseId: string,
+  rating: { options: readonly string[]; recommended: number; reason: string },
+): Promise<CaseSummary | null> {
+  const saved = await db.transaction(async (tx) => {
+    const { brief, rawBrief } = await lockCaseResearch(tx, caseId)
+    if (!brief) return false
+    const current = brief.angleOptions.map((o) => o.angle)
+    if (
+      current.length !== rating.options.length ||
+      current.some((angle, i) => angle !== rating.options[i])
+    ) {
+      return false
+    }
+    if (
+      !Number.isInteger(rating.recommended) ||
+      rating.recommended < 0 ||
+      rating.recommended >= current.length
+    ) {
+      return false
+    }
+    const next: SearchBrief = {
+      ...brief,
+      recommendedAngle: rating.recommended,
+      recommendationReason: rating.reason.trim().slice(0, RECOMMENDATION_REASON_MAX).trim(),
+    }
+    // A brief that would not parse reads back as null, so it is never written.
+    if (!SearchBriefSchema.safeParse(next).success) return false
+    const followNotes = await notesFollow(tx, caseId, rawBrief, brief)
+    await tx
+      .update(cases)
+      .set({
+        searchBrief: next,
+        ...(followNotes ? { demandNotes: briefDemandNotes(next) } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(cases.id, caseId))
+    return true
+  })
+  if (!saved) return null
+  return (await getCase(db, caseId)) ?? null
+}
+
+/**
  * Make one of the brief's secondary keywords the target; the old target joins
  * the secondaries. A keyword with a figure is never the target.
  */
@@ -327,8 +416,18 @@ export async function setCaseTargetKeyword(
   }
   const wanted = keyword.trim().toLowerCase()
   await db.transaction(async (tx) => {
-    const { brief } = await lockCaseResearch(tx, caseId)
+    const { brief, rawBrief } = await lockCaseResearch(tx, caseId)
     if (!brief) throw new Error('this case has no search brief')
+    const terms = [
+      ...(brief.targetKeyword ? [brief.targetKeyword.keyword] : []),
+      ...brief.secondaryKeywords.map((k) => k.keyword),
+      ...brief.searchedTitles.map((k) => k.keyword),
+      ...brief.otherLanguages.map((k) => k.keyword),
+      keyword,
+    ]
+    if (classifySearchTerms(terms).get(wanted) !== 'keyword') {
+      throw new Error('a searched video title or another language cannot be the target keyword')
+    }
     const chosen = brief.secondaryKeywords.find((k) => k.keyword.trim().toLowerCase() === wanted)
     if (!chosen) throw new Error(`"${keyword}" is not one of this brief's secondary keywords`)
     const next: SearchBrief = {
@@ -339,18 +438,12 @@ export async function setCaseTargetKeyword(
         ...(brief.targetKeyword ? [brief.targetKeyword] : []),
       ],
     }
-    // Notes still exactly as chooseCaseAngle wrote them name the old target, so they follow it.
-    // Notes the owner wrote or edited by hand stay as they are.
-    const [row] = await tx
-      .select({ demandNotes: cases.demandNotes })
-      .from(cases)
-      .where(eq(cases.id, caseId))
-    const fromBrief = row?.demandNotes === briefDemandNotes(brief)
+    const followNotes = await notesFollow(tx, caseId, rawBrief, brief)
     await tx
       .update(cases)
       .set({
         searchBrief: next,
-        ...(fromBrief ? { demandNotes: briefDemandNotes(next) } : {}),
+        ...(followNotes ? { demandNotes: briefDemandNotes(next) } : {}),
         updatedAt: new Date(),
       })
       .where(eq(cases.id, caseId))

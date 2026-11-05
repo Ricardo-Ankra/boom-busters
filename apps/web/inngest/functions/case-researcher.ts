@@ -20,7 +20,7 @@ import {
   parseKeywordFilter,
   parseWinners,
 } from '@boom-busters/providers'
-import type { AngleOptionsInput, FitInput, Winners } from '@boom-busters/providers'
+import type { AngleOptionsInput, AngleRating, FitInput, Winners } from '@boom-busters/providers'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import type { VidiqVideo } from '@boom-busters/providers/vidiq'
 import {
@@ -31,6 +31,7 @@ import {
   leadKeyword,
   parseEventData,
   resolveFormat,
+  splitSearchTerms,
 } from '@boom-busters/schemas'
 import type {
   AngleOption,
@@ -45,6 +46,7 @@ import { answerOrStop, callForAnswer } from '@/lib/answer'
 import type { AnswerComplete } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { rateAngles } from '@/lib/rate-angles'
 import { spendVidiq } from '@/lib/vidiq-spend'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -382,9 +384,11 @@ export const caseResearcher = inngest.createFunction(
       return answerOrStop(answer, 'The winning-video patterns could not be read')
     })
 
-    // The target is the best keyword with no figure in it; the rest are secondary.
-    const target = chooseTargetKeyword(keywords, subject)
-    const secondary = keywords
+    // Titles and other languages are kept apart; the target and secondaries are real keywords.
+    // Split outside any step, from the memoised keywords, so a parked run replays it the same way.
+    const split = splitSearchTerms(keywords)
+    const target = chooseTargetKeyword(split.keywords, subject)
+    const secondary = split.keywords
       .filter((row) => row.keyword !== target?.keyword)
       .sort(byOverall)
       .slice(0, SECONDARY_KEPT)
@@ -412,25 +416,50 @@ export const caseResearcher = inngest.createFunction(
       return answerOrStop(answer, 'The angle options could not be read')
     })
 
+    /** The brief as the save step writes it, from the same values the rating reads. */
+    const candidate = (rating: AngleRating | null) => ({
+      subject,
+      measuredAt: new Date().toISOString(),
+      targetKeyword: target,
+      secondaryKeywords: secondary.slice(0, SECONDARY_KEPT),
+      searchedQuestions: questions.slice(0, QUESTIONS_LIMIT),
+      outliers: winning.slice(0, OUTLIERS_KEPT),
+      titlePatterns: winners.titlePatterns.slice(0, TITLE_PATTERNS_MAX),
+      toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
+      angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
+      chosenAngle: null,
+      formatKey: loaded.formatKey ?? null,
+      fit,
+      searchedTitles: split.searchedTitles,
+      otherLanguages: split.otherLanguages,
+      recommendedAngle: rating?.recommended ?? null,
+      recommendationReason: rating?.reason ?? null,
+      ownAngle: false,
+    })
+
+    // 7b. Which angle to recommend. A failure never loses the run: the brief is saved with no
+    // recommendation, and the owner can press Rate the angles.
+    const rating: AngleRating | null = await step.run('rate-angles', async () => {
+      await beat(caseId, jobStartedAt, 'rate-angles')
+      if (angleOptions.length < 2) return null
+      const parsed = SearchBriefSchema.safeParse(candidate(null))
+      if (!parsed.success) return null
+      try {
+        const rated = await rateAngles(parsed.data, await currentBible(db, channelId), complete)
+        if (rated.ok) return rated.rating
+        console.error('[case-researcher] the angle rating failed', rated.error)
+      } catch (error) {
+        console.error('[case-researcher] the angle rating failed', error)
+      }
+      return null
+    })
+
     // 8. The brief, written once, and only while this run still owns the job.
     const saved = await step.run('save-brief', async () => {
       await beat(caseId, jobStartedAt, 'save-brief')
       // Each list is cut to the brief's own limit first, so a long model answer
       // cannot fail the parse after every credit is spent.
-      const parsed = SearchBriefSchema.safeParse({
-        subject,
-        measuredAt: new Date().toISOString(),
-        targetKeyword: target,
-        secondaryKeywords: secondary.slice(0, SECONDARY_KEPT),
-        searchedQuestions: questions.slice(0, QUESTIONS_LIMIT),
-        outliers: winning.slice(0, OUTLIERS_KEPT),
-        titlePatterns: winners.titlePatterns.slice(0, TITLE_PATTERNS_MAX),
-        toldAlready: winners.toldAlready.slice(0, TOLD_ALREADY_MAX),
-        angleOptions: angleOptions.slice(0, ANGLE_OPTIONS_MAX),
-        chosenAngle: null,
-        formatKey: loaded.formatKey ?? null,
-        fit,
-      })
+      const parsed = SearchBriefSchema.safeParse(candidate(rating))
       // A retry would fail the same way, so the run stops with a reason the owner can read.
       if (!parsed.success) {
         throw new NonRetriableError(

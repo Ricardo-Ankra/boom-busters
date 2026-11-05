@@ -24,7 +24,10 @@ test.describe('Case Library', () => {
     await page.getByRole('button', { name: 'Save case' }).click()
 
     await expect(page.getByText('Case added to your backlog').first()).toBeVisible()
-    await expect(page.getByText('A case I decided on myself')).toBeVisible()
+    // The new case is in the list; the panel beside it may open on it too.
+    await expect(
+      page.getByRole('link', { name: /A case I decided on myself/ }).first(),
+    ).toBeVisible()
     await expect(page.getByText(/Shortlisted/).first()).toBeVisible()
   })
 
