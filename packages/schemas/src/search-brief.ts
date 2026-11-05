@@ -43,6 +43,8 @@ export const AngleOptionSchema = z.object({
   /** Searched questions this angle answers. */
   answers: z.array(z.string()).max(5),
   gap: z.string().max(300),
+  /** Comment-theme lines that support this angle; set by the research run. */
+  evidence: z.array(z.string().max(160)).max(3).optional(),
 })
 export type AngleOption = z.infer<typeof AngleOptionSchema>
 
@@ -59,6 +61,47 @@ export const BriefFitSchema = z.object({
   reason: z.string().max(300),
 })
 export type BriefFit = z.infer<typeof BriefFitSchema>
+
+/** One video in a keyword's top ten; every measure is null when VidIQ gave none. */
+export const FieldResultSchema = z.object({
+  videoId: z.string(),
+  title: z.string(),
+  channelTitle: z.string().nullable(),
+  subscribers: z.number().nullable(),
+  views: z.number().nullable(),
+  publishedAt: z.string().nullable(),
+  /** Length in seconds, parsed from the ISO 8601 duration by the provider. */
+  seconds: z.number().nullable(),
+})
+export type FieldResult = z.infer<typeof FieldResultSchema>
+
+/** Who ranks now for one keyword: the top ten at the time of the check. */
+export const FieldCheckSchema = z.object({
+  keyword: z.string(),
+  checkedAt: z.string().datetime(),
+  results: z.array(FieldResultSchema).max(10),
+})
+export type FieldCheck = z.infer<typeof FieldCheckSchema>
+
+/** A thing viewers keep asking for or saying in the subject's winning videos. */
+export const CommentThemeSchema = z.object({
+  theme: z.string().max(120),
+  count: z.number().int().min(1),
+  quote: z.string().max(140).nullable(),
+  videoId: z.string(),
+})
+export type CommentTheme = z.infer<typeof CommentThemeSchema>
+
+/** A niche test of one angle: whether the audience for it exists. */
+export const NicheTestSchema = z.object({
+  angle: z.string(),
+  verdict: z.string().max(300),
+  /** The evidence speaks to this angle itself, not only the wider subject. */
+  direct: z.boolean(),
+  evidence: z.array(z.object({ text: z.string().max(200), count: z.number().nullable() })).max(3),
+  notes: z.string().max(500),
+})
+export type NicheTest = z.infer<typeof NicheTestSchema>
 
 export const SearchBriefSchema = z.object({
   subject: z.string(),
@@ -83,6 +126,18 @@ export const SearchBriefSchema = z.object({
   recommendationReason: z.string().max(RECOMMENDATION_REASON_MAX).nullable().default(null),
   /** The owner wrote their own angle instead of choosing an option. */
   ownAngle: z.boolean().default(false),
+  /** The bible's language the run read terms in; absent in a brief saved before it. */
+  language: z.string().optional(),
+  /** The niche the run understood the subject to sit in. */
+  niche: z.string().max(80).optional(),
+  /** Measured rows the understanding step judged off the channel's intent. */
+  offIntent: z.array(SearchKeywordSchema).max(10).optional(),
+  fieldChecks: z.array(FieldCheckSchema).max(4).optional(),
+  commentThemes: z.array(CommentThemeSchema).max(5).optional(),
+  commentsRead: z.object({ videos: z.number().int(), comments: z.number().int() }).optional(),
+  nicheTests: z.array(NicheTestSchema).max(3).optional(),
+  /** Checks the run did not make, as plain strings starting with the group ('field check: credit cap'). */
+  skipped: z.array(z.string()).max(6).optional(),
 })
 export type SearchBrief = z.infer<typeof SearchBriefSchema>
 
@@ -270,12 +325,15 @@ function byOverallDesc(a: SearchKeyword, b: SearchKeyword): number {
  */
 export function upgradeSearchBrief(brief: SearchBrief): SearchBrief {
   const target = brief.targetKeyword
-  const kinds = classifySearchTerms([
-    ...(target ? [target.keyword] : []),
-    ...brief.secondaryKeywords.map((r) => r.keyword),
-    ...brief.searchedTitles.map((r) => r.keyword),
-    ...brief.otherLanguages.map((r) => r.keyword),
-  ])
+  const kinds = classifySearchTerms(
+    [
+      ...(target ? [target.keyword] : []),
+      ...brief.secondaryKeywords.map((r) => r.keyword),
+      ...brief.searchedTitles.map((r) => r.keyword),
+      ...brief.otherLanguages.map((r) => r.keyword),
+    ],
+    { language: brief.language },
+  )
   const kindOf = (r: SearchKeyword) => kinds.get(keyOf(r.keyword))
   const movedFrom = [...(target ? [target] : []), ...brief.secondaryKeywords].filter(
     (r) => kindOf(r) !== 'keyword',
