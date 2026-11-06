@@ -7,7 +7,13 @@ import {
   classifySearchTerms,
   keywordHasFigure,
 } from '@boom-busters/schemas'
-import type { CaseResearchJob, SearchBrief } from '@boom-busters/schemas'
+import type {
+  CaseResearchJob,
+  FieldCheck,
+  NicheTest,
+  SearchBrief,
+  SearchKeyword,
+} from '@boom-busters/schemas'
 import { and, asc, desc, eq, inArray, ne, notInArray, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { cases, projects } from './schema'
@@ -288,34 +294,98 @@ export async function saveCaseSearchBrief(
   })
 }
 
+/** What choosing an angle did to the target keyword; null when there was nothing to say. */
+export type TargetChange = { to: string } | { keptBecause: string } | null
+
+const keyOf = (term: string) => term.trim().toLowerCase()
+
+/** The brief with a secondary keyword made the target; the old target joins the secondaries. */
+function withTarget(brief: SearchBrief, chosen: SearchKeyword): SearchBrief {
+  return {
+    ...brief,
+    targetKeyword: chosen,
+    secondaryKeywords: [
+      ...brief.secondaryKeywords.filter((k) => k !== chosen),
+      ...(brief.targetKeyword ? [brief.targetKeyword] : []),
+    ],
+  }
+}
+
+/**
+ * Whether an angle's keyword can become the target, and if not, why the target
+ * stays. Eligible: a secondary keyword, of keyword kind, with no figure and a
+ * fit that is not `off`.
+ */
+function targetForAngle(
+  brief: SearchBrief,
+  keyword: string,
+): { eligible: SearchKeyword } | { keptBecause: string } | null {
+  const wanted = keyOf(keyword)
+  const target = brief.targetKeyword
+  if (wanted === '' || !target || keyOf(target.keyword) === wanted) return null
+  const stays = `so the target stays ${target.keyword}`
+  const kind = classifySearchTerms(
+    [
+      target.keyword,
+      ...brief.secondaryKeywords.map((k) => k.keyword),
+      ...brief.searchedTitles.map((k) => k.keyword),
+      ...brief.otherLanguages.map((k) => k.keyword),
+      keyword,
+    ],
+    { language: brief.language },
+  ).get(wanted)
+  const secondary = brief.secondaryKeywords.find((k) => keyOf(k.keyword) === wanted)
+  const offIntent = (brief.offIntent ?? []).some((k) => keyOf(k.keyword) === wanted)
+  if (keywordHasFigure(keyword)) {
+    return { keptBecause: `This angle's keyword has a figure, ${stays}` }
+  }
+  if (kind === 'title' || kind === 'other-language') {
+    return { keptBecause: `This angle serves a searched title, ${stays}` }
+  }
+  if (secondary?.fit === 'off' || (offIntent && !secondary)) {
+    return { keptBecause: `This angle's keyword does not fit this channel, ${stays}` }
+  }
+  return secondary ? { eligible: secondary } : null
+}
+
 /**
  * Settle the case's angle from its brief: one of the offered options, or the
- * owner's own words. Rewrites the demand notes from the brief.
+ * owner's own words. Rewrites the demand notes from the brief. An option whose
+ * keyword can be the target makes it the target; the result says what happened.
  */
 export async function chooseCaseAngle(
   db: Database,
   caseId: string,
   choice: { option: number } | { own: string },
-): Promise<CaseSummary> {
+): Promise<{ summary: CaseSummary; targetChange: TargetChange }> {
+  let targetChange: TargetChange = null
   await db.transaction(async (tx) => {
     const { brief } = await lockCaseResearch(tx, caseId)
     if (!brief) throw new Error('this case has no search brief to choose an angle from')
     let angle: string
     let chosenAngle: number | null
     let ownAngle: boolean
+    let base = brief
     if ('option' in choice) {
       const option = brief.angleOptions[choice.option]
       if (!option) throw new Error(`angle option ${choice.option} does not exist`)
       angle = option.angle
       chosenAngle = choice.option
       ownAngle = false
+      const verdict = targetForAngle(brief, option.keyword)
+      if (verdict && 'eligible' in verdict) {
+        base = withTarget(brief, verdict.eligible)
+        targetChange = { to: verdict.eligible.keyword }
+      } else if (verdict) {
+        targetChange = verdict
+      }
     } else {
       angle = choice.own.trim()
       if (angle === '') throw new Error('an angle of your own cannot be empty')
       chosenAngle = null
       ownAngle = true
     }
-    const next: SearchBrief = { ...brief, chosenAngle, ownAngle }
+    const next: SearchBrief = { ...base, chosenAngle, ownAngle }
     await tx
       .update(cases)
       .set({
@@ -326,9 +396,9 @@ export async function chooseCaseAngle(
       })
       .where(eq(cases.id, caseId))
   })
-  const updated = await getCase(db, caseId)
-  if (!updated) throw new Error(`case ${caseId} not found`)
-  return updated
+  const summary = await getCase(db, caseId)
+  if (!summary) throw new Error(`case ${caseId} not found`)
+  return { summary, targetChange }
 }
 
 /**
@@ -430,14 +500,7 @@ export async function setCaseTargetKeyword(
     }
     const chosen = brief.secondaryKeywords.find((k) => k.keyword.trim().toLowerCase() === wanted)
     if (!chosen) throw new Error(`"${keyword}" is not one of this brief's secondary keywords`)
-    const next: SearchBrief = {
-      ...brief,
-      targetKeyword: chosen,
-      secondaryKeywords: [
-        ...brief.secondaryKeywords.filter((k) => k !== chosen),
-        ...(brief.targetKeyword ? [brief.targetKeyword] : []),
-      ],
-    }
+    const next = withTarget(brief, chosen)
     const followNotes = await notesFollow(tx, caseId, rawBrief, brief)
     await tx
       .update(cases)
@@ -451,6 +514,65 @@ export async function setCaseTargetKeyword(
   const updated = await getCase(db, caseId)
   if (!updated) throw new Error(`case ${caseId} not found`)
   return updated
+}
+
+/**
+ * Save a brief with one evidence list changed, under the row lock. Null, with
+ * nothing written, when there is no brief or the result would not parse (a
+ * brief that does not parse reads back as null, so it is never written).
+ */
+async function saveEvidence(
+  db: Database,
+  caseId: string,
+  change: (brief: SearchBrief) => SearchBrief,
+): Promise<CaseSummary | null> {
+  const saved = await db.transaction(async (tx) => {
+    const { brief } = await lockCaseResearch(tx, caseId)
+    if (!brief) return false
+    const next = change(brief)
+    if (!SearchBriefSchema.safeParse(next).success) return false
+    await tx
+      .update(cases)
+      .set({ searchBrief: next, updatedAt: new Date() })
+      .where(eq(cases.id, caseId))
+    return true
+  })
+  if (!saved) return null
+  return (await getCase(db, caseId)) ?? null
+}
+
+const FIELD_CHECKS_MAX = 4
+const NICHE_TESTS_MAX = 3
+
+/** Save a field check, replacing one for the same keyword; at the cap the oldest check goes. */
+export async function saveCaseFieldCheck(
+  db: Database,
+  caseId: string,
+  check: FieldCheck,
+): Promise<CaseSummary | null> {
+  return saveEvidence(db, caseId, (brief) => {
+    const kept = (brief.fieldChecks ?? []).filter((c) => keyOf(c.keyword) !== keyOf(check.keyword))
+    if (kept.length >= FIELD_CHECKS_MAX) {
+      const oldest = kept.reduce((a, b) => (b.checkedAt < a.checkedAt ? b : a))
+      kept.splice(kept.indexOf(oldest), 1)
+    }
+    return { ...brief, fieldChecks: [...kept, check] }
+  })
+}
+
+/** Save a niche test, replacing one for the same angle; at the cap the first test goes. */
+export async function saveCaseNicheTest(
+  db: Database,
+  caseId: string,
+  test: NicheTest,
+): Promise<CaseSummary | null> {
+  return saveEvidence(db, caseId, (brief) => {
+    const kept = (brief.nicheTests ?? []).filter((t) => t.angle !== test.angle)
+    return {
+      ...brief,
+      nicheTests: [...(kept.length >= NICHE_TESTS_MAX ? kept.slice(1) : kept), test],
+    }
+  })
 }
 
 /** Set the format a case is made as; null clears it back to the primary. */

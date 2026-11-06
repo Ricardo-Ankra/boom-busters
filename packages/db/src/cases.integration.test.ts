@@ -4,7 +4,13 @@ import {
   SearchBriefSchema,
   briefDemandNotes,
 } from '@boom-busters/schemas'
-import type { CaseResearchJob, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
+import type {
+  CaseResearchJob,
+  FieldCheck,
+  NicheTest,
+  SearchBrief,
+  SearchKeyword,
+} from '@boom-busters/schemas'
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
@@ -19,6 +25,8 @@ import {
   listCases,
   markCaseInProduction,
   saveCaseAngleRating,
+  saveCaseFieldCheck,
+  saveCaseNicheTest,
   saveCaseSearchBrief,
   setCaseFormat,
   setCaseStatus,
@@ -506,7 +514,7 @@ suite('cases', () => {
     describe('chooseCaseAngle', () => {
       it('writes the option angle, its index and the demand notes line', async () => {
         const id = await researched()
-        const got = await chooseCaseAngle(db, id, { option: 1 })
+        const got = (await chooseCaseAngle(db, id, { option: 1 })).summary
         expect(got.angle).toBe('The board that signed off on every excess')
         expect(got.searchBrief?.chosenAngle).toBe(1)
         expect(got.demandNotes).toBe(
@@ -518,16 +526,16 @@ suite('cases', () => {
       it("writes the owner's own angle with a null chosenAngle", async () => {
         const id = await researched()
         await chooseCaseAngle(db, id, { option: 0 })
-        const got = await chooseCaseAngle(db, id, { own: '  My own telling  ' })
+        const got = (await chooseCaseAngle(db, id, { own: '  My own telling  ' })).summary
         expect(got.angle).toBe('My own telling')
         expect(got.searchBrief?.chosenAngle).toBeNull()
       })
 
       it('marks an own angle chosen and clears it for an option', async () => {
         const id = await researched()
-        const own = await chooseCaseAngle(db, id, { own: 'My own telling' })
+        const own = (await chooseCaseAngle(db, id, { own: 'My own telling' })).summary
         expect(own.searchBrief?.ownAngle).toBe(true)
-        const option = await chooseCaseAngle(db, id, { option: 0 })
+        const option = (await chooseCaseAngle(db, id, { option: 0 })).summary
         expect(option.searchBrief?.ownAngle).toBe(false)
         expect(option.searchBrief?.chosenAngle).toBe(0)
       })
@@ -537,6 +545,153 @@ suite('cases', () => {
         await expect(chooseCaseAngle(db, id, { option: 5 })).rejects.toThrow()
         const bare = await createCase(db, { channelId, title: 'Bare', category: 'con' })
         await expect(chooseCaseAngle(db, bare.id, { option: 0 })).rejects.toThrow()
+      })
+    })
+
+    describe('an angle follows the target', () => {
+      const angleText = (n: string) => `An angle about ${n} that is long enough to pass`
+      const option = (keyword: string, n = keyword) => ({
+        angle: angleText(n),
+        keyword,
+        answers: [],
+        gap: 'x',
+      })
+      async function researchedWith(over: Partial<SearchBrief>) {
+        const row = await createCase(db, { channelId, title: 'Case', category: 'con' })
+        await writeCaseResearchJob(db, row.id, () => job('t1'))
+        await saveCaseSearchBrief(db, row.id, briefFor('WeWork', over), 't1')
+        return row.id
+      }
+
+      it("makes the chosen angle's keyword the target", async () => {
+        const id = await researchedWith({ angleOptions: [option('Wework Bankruptcy ')] })
+        const got = await chooseCaseAngle(db, id, { option: 0 })
+        expect(got.summary.searchBrief?.targetKeyword?.keyword).toBe('wework bankruptcy')
+        expect(got.summary.searchBrief?.secondaryKeywords.map((k) => k.keyword)).toContain(
+          'wework collapse',
+        )
+        expect(got.targetChange).toEqual({ to: 'wework bankruptcy' })
+        expect(got.summary.angle).toBe(angleText('Wework Bankruptcy '))
+      })
+
+      it("keeps the target when the angle's keyword is not eligible", async () => {
+        const id = await researchedWith({
+          secondaryKeywords: [
+            kw('wework $47 billion'),
+            kw('wework documentary'),
+            { ...kw('wework gossip'), fit: 'off' },
+            kw('wework: the full story'),
+          ],
+          searchedTitles: [kw('wework: the full story')],
+          offIntent: [kw('wework memes')],
+          angleOptions: [
+            option('wework $47 billion'),
+            option('wework: the full story'),
+            option('wework gossip'),
+          ],
+        })
+        const figure = await chooseCaseAngle(db, id, { option: 0 })
+        expect(figure.targetChange).toEqual({
+          keptBecause: "This angle's keyword has a figure, so the target stays wework collapse",
+        })
+        const title = await chooseCaseAngle(db, id, { option: 1 })
+        expect(title.targetChange).toEqual({
+          keptBecause: 'This angle serves a searched title, so the target stays wework collapse',
+        })
+        const off = await chooseCaseAngle(db, id, { option: 2 })
+        expect(off.targetChange).toEqual({
+          keptBecause:
+            "This angle's keyword does not fit this channel, so the target stays wework collapse",
+        })
+        expect(off.summary.searchBrief?.targetKeyword?.keyword).toBe('wework collapse')
+        const other = await researchedWith({
+          offIntent: [kw('wework memes')],
+          angleOptions: [option('wework memes')],
+        })
+        const offIntent = await chooseCaseAngle(db, other, { option: 0 })
+        expect(offIntent.targetChange).toEqual({
+          keptBecause:
+            "This angle's keyword does not fit this channel, so the target stays wework collapse",
+        })
+      })
+
+      it('says nothing for an own angle, the target itself or a keyword found nowhere', async () => {
+        const id = await researchedWith({
+          angleOptions: [option('wework collapse'), option('something else'), option('')],
+        })
+        expect((await chooseCaseAngle(db, id, { own: 'My own telling' })).targetChange).toBeNull()
+        expect((await chooseCaseAngle(db, id, { option: 0 })).targetChange).toBeNull()
+        expect((await chooseCaseAngle(db, id, { option: 1 })).targetChange).toBeNull()
+        expect((await chooseCaseAngle(db, id, { option: 2 })).targetChange).toBeNull()
+      })
+
+      it('writes the demand notes from the brief with the new target', async () => {
+        const id = await researchedWith({ angleOptions: [option('wework bankruptcy')] })
+        const got = await chooseCaseAngle(db, id, { option: 0 })
+        expect(got.summary.demandNotes).toBe(briefDemandNotes(got.summary.searchBrief!))
+        expect(got.summary.demandNotes).toContain('wework bankruptcy')
+      })
+    })
+
+    describe('saving evidence', () => {
+      const check = (keyword: string, checkedAt: string): FieldCheck => ({
+        keyword,
+        checkedAt,
+        results: [],
+      })
+      const test = (angle: string, verdict = 'ok'): NicheTest => ({
+        angle,
+        verdict,
+        direct: false,
+        evidence: [],
+        notes: '',
+      })
+
+      it('saves a field check for the target and replaces an older one', async () => {
+        const id = await researched()
+        await saveCaseFieldCheck(db, id, check('wework collapse', '2026-11-01T00:00:00.000Z'))
+        const got = await saveCaseFieldCheck(
+          db,
+          id,
+          check('WeWork Collapse', '2026-11-02T00:00:00.000Z'),
+        )
+        expect(got?.searchBrief?.fieldChecks).toEqual([
+          check('WeWork Collapse', '2026-11-02T00:00:00.000Z'),
+        ])
+      })
+
+      it('drops the oldest field check at the cap', async () => {
+        const id = await researched()
+        for (const [i, k] of ['a', 'b', 'c', 'd'].entries()) {
+          await saveCaseFieldCheck(db, id, check(k, `2026-11-0${i + 1}T00:00:00.000Z`))
+        }
+        const got = await saveCaseFieldCheck(db, id, check('e', '2026-11-09T00:00:00.000Z'))
+        expect(got?.searchBrief?.fieldChecks?.map((c) => c.keyword)).toEqual(['b', 'c', 'd', 'e'])
+      })
+
+      it('saves a niche test for a chosen angle, replacing the same angle', async () => {
+        const id = await researched()
+        await saveCaseNicheTest(db, id, test('first angle', 'one'))
+        const got = await saveCaseNicheTest(db, id, test('first angle', 'two'))
+        expect(got?.searchBrief?.nicheTests).toEqual([test('first angle', 'two')])
+      })
+
+      it('drops the first niche test at the cap', async () => {
+        const id = await researched()
+        for (const a of ['a', 'b', 'c']) await saveCaseNicheTest(db, id, test(a))
+        const got = await saveCaseNicheTest(db, id, test('d'))
+        expect(got?.searchBrief?.nicheTests?.map((t) => t.angle)).toEqual(['b', 'c', 'd'])
+      })
+
+      it('writes nothing when there is no brief or the result would not parse', async () => {
+        const bare = await createCase(db, { channelId, title: 'Bare', category: 'con' })
+        expect(
+          await saveCaseFieldCheck(db, bare.id, check('a', '2026-11-01T00:00:00.000Z')),
+        ).toBeNull()
+        const id = await researched()
+        expect(await saveCaseFieldCheck(db, id, check('a', 'not a date'))).toBeNull()
+        expect((await getCase(db, id))?.searchBrief?.fieldChecks).toBeUndefined()
+        expect(await saveCaseNicheTest(db, id, test('a', 'x'.repeat(301)))).toBeNull()
       })
     })
 

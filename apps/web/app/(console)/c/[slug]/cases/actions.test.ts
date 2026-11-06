@@ -18,8 +18,10 @@ import {
 import {
   addCase,
   caseResearchEstimate,
+  checkWhoRanksAction,
   chooseAngleAction,
   estimateStartCostAction,
+  evidenceEstimate,
   editCase,
   rateAnglesAction,
   rateAnglesEstimate,
@@ -27,6 +29,7 @@ import {
   setCaseFormatAction,
   setTargetKeywordAction,
   startProjectFromCase,
+  testAngleAction,
 } from './actions'
 
 const store = vi.hoisted(() => ({
@@ -44,6 +47,8 @@ const store = vi.hoisted(() => ({
   setCaseFormat: vi.fn(),
   costPerMinute: vi.fn(),
   saveCaseAngleRating: vi.fn(),
+  saveCaseFieldCheck: vi.fn(),
+  saveCaseNicheTest: vi.fn(),
   currentBible: vi.fn(),
   getChannelSettings: vi.fn(),
   getWorkspace: vi.fn(),
@@ -66,6 +71,16 @@ vi.mock('@/lib/rate-angles', () => ({ rateAngles: rateAnglesMock }))
 vi.mock('@/lib/answer-call', () => ({ completeForChannel: vi.fn(() => 'complete') }))
 const checkVidiqBudget = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/vidiq-spend', () => ({ checkVidiqBudget }))
+const evidence = vi.hoisted(() => {
+  class CapReached extends Error {}
+  return {
+    CapReached,
+    searchField: vi.fn(),
+    startNicheTest: vi.fn(),
+    awaitNicheTest: vi.fn(),
+  }
+})
+vi.mock('@/lib/case-evidence', () => evidence)
 
 describe('the case form actions: subject, people and source links', () => {
   const form = {
@@ -536,7 +551,9 @@ describe('the angle and target keyword actions', () => {
   const CASE_ID = '01J00000000000000000000C01'
 
   beforeEach(() => {
-    store.chooseCaseAngle.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.chooseCaseAngle
+      .mockReset()
+      .mockResolvedValue({ summary: { id: CASE_ID }, targetChange: null })
     store.setCaseTargetKeyword.mockReset().mockResolvedValue({ id: CASE_ID })
     store.channelForCase
       .mockReset()
@@ -544,15 +561,30 @@ describe('the angle and target keyword actions', () => {
   })
 
   it('chooseAngleAction passes an option or the owner own words to the db', async () => {
-    expect(await chooseAngleAction(CASE_ID, { option: 1 })).toEqual({ ok: true })
+    expect(await chooseAngleAction(CASE_ID, { option: 1 })).toEqual({
+      ok: true,
+      targetChange: null,
+    })
     expect(store.chooseCaseAngle).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, {
       option: 1,
     })
     expect(await chooseAngleAction(CASE_ID, { own: '  The auditors are the story.  ' })).toEqual({
       ok: true,
+      targetChange: null,
     })
     expect(store.chooseCaseAngle).toHaveBeenLastCalledWith({ marker: 'db' }, CASE_ID, {
       own: 'The auditors are the story.',
+    })
+  })
+
+  it('chooseAngleAction reports what happened to the target', async () => {
+    store.chooseCaseAngle.mockResolvedValue({
+      summary: { id: CASE_ID },
+      targetChange: { to: 'wework bankruptcy' },
+    })
+    expect(await chooseAngleAction(CASE_ID, { option: 0 })).toEqual({
+      ok: true,
+      targetChange: { to: 'wework bankruptcy' },
     })
   })
 
@@ -919,5 +951,169 @@ describe('rateAnglesAction and rateAnglesEstimate', () => {
       expect.objectContaining({ provider: route.provider, model }),
     )
     expect(await rateAnglesEstimate('nope')).toEqual({ ok: false, error: 'Unknown case' })
+  })
+})
+
+describe('checkWhoRanksAction, testAngleAction and evidenceEstimate', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+  const kw = (keyword: string) => ({
+    keyword,
+    volume: 1,
+    competition: 1,
+    overall: 50,
+    estimatedMonthlySearch: 1000,
+    growthPct: null,
+  })
+  const brief = (over: Record<string, unknown> = {}) => ({
+    subject: 'WeWork',
+    targetKeyword: kw('wework collapse'),
+    niche: 'startup collapses',
+    language: 'en',
+    angleOptions: [{ angle: 'The board that signed off', keyword: 'wework', answers: [], gap: '' }],
+    ...over,
+  })
+  const found = (over: Record<string, unknown> = {}) => ({
+    id: CASE_ID,
+    status: 'shortlisted',
+    subject: 'WeWork',
+    searchBrief: brief(),
+    searchJob: null,
+    ...over,
+  })
+  const check = { keyword: 'wework collapse', checkedAt: '2026-11-06T00:00:00.000Z', results: [] }
+  const test = {
+    angle: 'The board that signed off',
+    verdict: 'ok',
+    direct: true,
+    evidence: [],
+    notes: '',
+  }
+
+  beforeEach(() => {
+    store.getCase.mockReset().mockResolvedValue(found())
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    store.saveCaseFieldCheck.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.saveCaseNicheTest.mockReset().mockResolvedValue({ id: CASE_ID })
+    evidence.searchField.mockReset().mockResolvedValue(check)
+    evidence.startNicheTest.mockReset().mockResolvedValue('job-1')
+    evidence.awaitNicheTest.mockReset().mockResolvedValue(test)
+  })
+
+  it('checks who ranks for an unchecked target', async () => {
+    expect(await checkWhoRanksAction(CASE_ID)).toEqual({ ok: true })
+    expect(evidence.searchField).toHaveBeenCalledWith('wework collapse', CHANNEL_ID)
+    expect(store.saveCaseFieldCheck).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, check)
+  })
+
+  it('refuses a check with no target, an already checked target, and a bad id', async () => {
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ targetKeyword: null }) }))
+    expect(await checkWhoRanksAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'There is no target keyword to check',
+    })
+    store.getCase.mockResolvedValue(
+      found({ searchBrief: brief({ fieldChecks: [{ ...check, keyword: ' WeWork Collapse' }] }) }),
+    )
+    expect(await checkWhoRanksAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Who ranks is already checked for this keyword',
+    })
+    expect((await checkWhoRanksAction('nope')).ok).toBe(false)
+    expect(evidence.searchField).not.toHaveBeenCalled()
+  })
+
+  it('refuses a check while research runs', async () => {
+    store.getCase.mockResolvedValue(
+      found({
+        searchJob: {
+          state: 'running',
+          current: null,
+          error: null,
+          startedAt: new Date().toISOString(),
+          subject: 'WeWork',
+        },
+      }),
+    )
+    expect(await checkWhoRanksAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'Research is already running for this case',
+    })
+    expect(evidence.searchField).not.toHaveBeenCalled()
+  })
+
+  it('says the cap message rather than throwing', async () => {
+    evidence.searchField.mockRejectedValue(
+      new evidence.CapReached('The monthly VidIQ cap is reached'),
+    )
+    expect(await checkWhoRanksAction(CASE_ID)).toEqual({
+      ok: false,
+      error: 'The monthly VidIQ cap is reached',
+    })
+    expect(store.saveCaseFieldCheck).not.toHaveBeenCalled()
+  })
+
+  it('tests the chosen angle', async () => {
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({ ok: true })
+    expect(evidence.startNicheTest).toHaveBeenCalledWith(
+      { niche: 'startup collapses', idea: 'The board that signed off', language: 'en' },
+      CHANNEL_ID,
+    )
+    expect(evidence.awaitNicheTest).toHaveBeenCalledWith('job-1', 'The board that signed off')
+    expect(store.saveCaseNicheTest).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, test)
+  })
+
+  it('refuses an angle test for a bad index, a brief with no niche, or while research runs', async () => {
+    expect(await testAngleAction(CASE_ID, 4)).toEqual({
+      ok: false,
+      error: 'There is no angle there',
+    })
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ niche: undefined }) }))
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({
+      ok: false,
+      error: 'This brief has no niche to test against. Research again first.',
+    })
+    store.getCase.mockResolvedValue(
+      found({
+        searchJob: {
+          state: 'running',
+          current: null,
+          error: null,
+          startedAt: new Date().toISOString(),
+          subject: 'WeWork',
+        },
+      }),
+    )
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({
+      ok: false,
+      error: 'Research is already running for this case',
+    })
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+  })
+
+  it('says so when the angle test does not finish, and saves nothing', async () => {
+    evidence.awaitNicheTest.mockResolvedValue(null)
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({
+      ok: false,
+      error:
+        'The angle test did not finish. Try again later; any unused credits are refunded by VidIQ.',
+    })
+    expect(store.saveCaseNicheTest).not.toHaveBeenCalled()
+  })
+
+  it('says the cap message when the angle test is refused by the cap', async () => {
+    evidence.startNicheTest.mockRejectedValue(new evidence.CapReached('cap'))
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({ ok: false, error: 'cap' })
+  })
+
+  it('estimates five credits each, and refuses a bad id or a missing case', async () => {
+    expect(await evidenceEstimate(CASE_ID)).toEqual({
+      ok: true,
+      credits: { whoRanks: 5, angleTest: 5 },
+    })
+    expect((await evidenceEstimate('nope')).ok).toBe(false)
+    store.getCase.mockResolvedValue(undefined)
+    expect((await evidenceEstimate(CASE_ID)).ok).toBe(false)
   })
 })

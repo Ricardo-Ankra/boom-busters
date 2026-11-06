@@ -14,6 +14,8 @@ import {
   getWorkspace,
   markCaseInProduction,
   saveCaseAngleRating,
+  saveCaseFieldCheck,
+  saveCaseNicheTest,
   setCaseFormat,
   setCaseStatus,
   setCaseTargetKeyword,
@@ -21,7 +23,7 @@ import {
   updateCase,
   writeCaseResearchJob,
 } from '@boom-busters/db'
-import type { CaseStatus } from '@boom-busters/db'
+import type { CaseStatus, TargetChange } from '@boom-busters/db'
 import type { ChannelFormat } from '@boom-busters/schemas'
 import { RATE_ANGLES_OUTPUT_TOKENS } from '@boom-busters/providers'
 import {
@@ -53,6 +55,7 @@ import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import { caseCategoryKeys } from '@/lib/case-category'
 import { completeForChannel } from '@/lib/answer-call'
+import { CapReached, awaitNicheTest, searchField, startNicheTest } from '@/lib/case-evidence'
 import { rateAngles } from '@/lib/rate-angles'
 import { rateAnglesEstimateUsd } from '@/lib/rate-angles-estimate'
 import { checkVidiqBudget } from '@/lib/vidiq-spend'
@@ -561,11 +564,14 @@ const AngleChoiceSchema = z.union([
   z.object({ own: z.string().trim().min(1, 'Write your angle first').max(2000) }).strict(),
 ])
 
-/** `Use this angle` and `Keep my own angle`: settle the case's angle from its brief. */
+/**
+ * `Use this angle` and `Keep my own angle`: settle the case's angle from its
+ * brief. An option can also move the target keyword; `targetChange` says how.
+ */
 export async function chooseAngleAction(
   caseId: string,
   choice: { option: number } | { own: string },
-): Promise<ActionResult> {
+): Promise<ActionResult & { targetChange?: TargetChange }> {
   await requireOwner()
   const refusal = await writableCase(caseId)
   if (refusal) return refusal
@@ -573,10 +579,108 @@ export async function chooseAngleAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'That angle is not valid' }
   }
+  let targetChange: TargetChange
   try {
-    await chooseCaseAngle(db, caseId, parsed.data)
+    targetChange = (await chooseCaseAngle(db, caseId, parsed.data)).targetChange
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Could not set the angle' }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true, targetChange }
+}
+
+/** The VidIQ credits each on-demand check costs, for the buttons' labels. */
+export type EvidenceEstimate =
+  { ok: true; credits: { whoRanks: 5; angleTest: 5 } } | { ok: false; error: string }
+
+/** What `Check who ranks now` and `Test this angle` cost. Spends nothing. */
+export async function evidenceEstimate(caseId: string): Promise<EvidenceEstimate> {
+  await requireOwner()
+  if (!UlidSchema.safeParse(caseId).success) return { ok: false, error: 'Unknown case' }
+  if (!(await getCase(db, caseId))) return { ok: false, error: 'That case no longer exists' }
+  return { ok: true, credits: { whoRanks: 5, angleTest: 5 } }
+}
+
+/** The case and channel an on-demand check runs against, or the refusal. */
+async function evidenceCase(caseId: string) {
+  const refusal = await writableCase(caseId)
+  if (refusal) return { ok: false as const, error: refusal.error ?? 'That case cannot be changed' }
+  const existing = await getCase(db, caseId)
+  const channel = await channelForCase(db, caseId)
+  if (!existing || !channel) return { ok: false as const, error: 'That case no longer exists' }
+  return { ok: true as const, existing, channelId: channel.id }
+}
+
+/** `Check who ranks now`: buy the top ten for the target keyword and keep it on the brief. */
+export async function checkWhoRanksAction(caseId: string): Promise<ActionResult> {
+  await requireOwner()
+  const checked = await evidenceCase(caseId)
+  if (!checked.ok) return checked
+  const { existing, channelId } = checked
+  const target = existing.searchBrief?.targetKeyword
+  if (!target) return { ok: false, error: 'There is no target keyword to check' }
+  const wanted = target.keyword.trim().toLowerCase()
+  if (
+    (existing.searchBrief?.fieldChecks ?? []).some((c) => c.keyword.trim().toLowerCase() === wanted)
+  ) {
+    return { ok: false, error: 'Who ranks is already checked for this keyword' }
+  }
+  if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
+
+  let check: Awaited<ReturnType<typeof searchField>>
+  try {
+    check = await searchField(target.keyword, channelId)
+  } catch (error) {
+    if (error instanceof CapReached) return { ok: false, error: error.message }
+    throw error
+  }
+  const saved = await saveCaseFieldCheck(db, caseId, check)
+  if (!saved) {
+    return { ok: false, error: 'The research changed while this was running. Check again.' }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/** `Test this angle`: start a niche test for one angle option, wait for it and keep the result. */
+export async function testAngleAction(caseId: string, option: number): Promise<ActionResult> {
+  await requireOwner()
+  const checked = await evidenceCase(caseId)
+  if (!checked.ok) return checked
+  const { existing, channelId } = checked
+  const brief = existing.searchBrief
+  const chosen = Number.isInteger(option) ? brief?.angleOptions[option] : undefined
+  if (!brief || !chosen) return { ok: false, error: 'There is no angle there' }
+  if (!brief.niche) {
+    return { ok: false, error: 'This brief has no niche to test against. Research again first.' }
+  }
+  if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
+
+  let test: Awaited<ReturnType<typeof awaitNicheTest>>
+  try {
+    const jobId = await startNicheTest(
+      {
+        niche: brief.niche,
+        idea: chosen.angle,
+        ...(brief.language ? { language: brief.language } : {}),
+      },
+      channelId,
+    )
+    test = await awaitNicheTest(jobId, chosen.angle)
+  } catch (error) {
+    if (error instanceof CapReached) return { ok: false, error: error.message }
+    throw error
+  }
+  if (!test) {
+    return {
+      ok: false,
+      error:
+        'The angle test did not finish. Try again later; any unused credits are refunded by VidIQ.',
+    }
+  }
+  const saved = await saveCaseNicheTest(db, caseId, test)
+  if (!saved) {
+    return { ok: false, error: 'The research changed while this was running. Test again.' }
   }
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }
