@@ -31,10 +31,13 @@ export function rateAnglesInput(brief: SearchBrief, bible: BibleInUse): RateAngl
         demand: demand.score,
         keywordOverall: demand.keywordOverall,
         answers: demand.answers,
+        evidence: option.evidence ?? [],
+        themeBacked: option.themeBacked ?? 0,
       }
     }),
     searchedQuestions: brief.searchedQuestions,
     toldAlready: brief.toldAlready,
+    commentThemes: (brief.commentThemes ?? []).map((t) => ({ theme: t.theme, count: t.count })),
   }
 }
 

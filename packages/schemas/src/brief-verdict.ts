@@ -157,15 +157,15 @@ function angleLine(brief: SearchBrief, checkedAngle: number | null): VerdictLine
   }
   const option = checkedAngle === null ? undefined : brief.angleOptions[checkedAngle]
   const themes = brief.commentThemes ?? []
-  const lines = option?.evidence ?? []
+  const backed = option?.themeBacked ?? 0
   const tests = (brief.nicheTests ?? []).filter(
     (t) => option !== undefined && t.angle === option.angle,
   )
-  if (themes.length > 0 && lines.length > 0) {
+  if (backed > 0) {
     return {
       check: 'angle',
       state: 'ok',
-      reason: `Viewer comments back this angle (${plural(lines.length, 'supporting line')})`,
+      reason: `Viewer comments back this angle (${plural(backed, 'supporting line')})`,
     }
   }
   if (tests.some((t) => t.direct)) {

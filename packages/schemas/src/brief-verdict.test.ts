@@ -302,10 +302,17 @@ describe('intent, fit and angle', () => {
       quote: null,
       videoId: 'v1',
     }
-    const base = (evidence?: string[]) =>
+    const base = (evidence?: string[], themeBacked?: number) =>
       brief({
         angleOptions: [
-          { angle: ANGLE, keyword: 'wework documentary', answers: [], gap: 'g', evidence },
+          {
+            angle: ANGLE,
+            keyword: 'wework documentary',
+            answers: [],
+            gap: 'g',
+            evidence,
+            themeBacked,
+          },
         ],
       })
     const niche = (direct: boolean, angle = ANGLE) => ({
@@ -319,7 +326,8 @@ describe('intent, fit and angle', () => {
     expect(line(base(), 'angle').state).toBe('warn')
     expect(line({ ...base(), commentThemes: [theme] }, 'angle').state).toBe('warn')
     expect(
-      line({ ...base(['Four viewers ask about leases']), commentThemes: [theme] }, 'angle').state,
+      line({ ...base(['Four viewers ask about leases'], 1), commentThemes: [theme] }, 'angle')
+        .state,
     ).toBe('ok')
     expect(line(base(['Four viewers ask']), 'angle').state).toBe('warn')
     expect(line({ ...base(), nicheTests: [niche(true)] }, 'angle').state).toBe('ok')
@@ -332,6 +340,26 @@ describe('intent, fit and angle', () => {
     expect(line({ ...base(), skipped: ['niche test: timed out'] }, 'angle').reason).not.toBe(
       'Not checked: credit cap',
     )
+  })
+
+  it('warns when an angle cites only the field', () => {
+    const theme = { theme: 'Viewers ask about leases', count: 4, quote: null, videoId: 'v1' }
+    const fieldOnly = brief({
+      angleOptions: [
+        {
+          angle: ANGLE,
+          keyword: 'wework documentary',
+          answers: [],
+          gap: 'g',
+          evidence: ['None of the top ten covers the filing'],
+          themeBacked: 0,
+        },
+      ],
+      commentThemes: [theme],
+    })
+    const out = line(fieldOnly, 'angle')
+    expect(out.state).toBe('warn')
+    expect(out.reason).toContain('none tied to this angle')
   })
 
   it('returns the five lines in order', () => {

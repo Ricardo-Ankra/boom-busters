@@ -45,6 +45,8 @@ export const AngleOptionSchema = z.object({
   gap: z.string().max(300),
   /** Comment-theme lines that support this angle; set by the research run. */
   evidence: z.array(z.string().max(160)).max(3).optional(),
+  /** How many evidence lines rest on a comment theme, not only on the field. */
+  themeBacked: z.number().int().min(0).max(3).optional(),
 })
 export type AngleOption = z.infer<typeof AngleOptionSchema>
 

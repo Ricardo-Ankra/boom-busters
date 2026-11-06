@@ -72,6 +72,23 @@ describe('rate-angles', () => {
     })
   })
 
+  it('passes the evidence of each option and the comment themes', () => {
+    const base = brief([
+      { ...option('wework documentary'), evidence: ['Four ask about leases'], themeBacked: 1 },
+      option('wework: the rise and fall'),
+    ])
+    const input = rateAnglesInput(
+      {
+        ...base,
+        commentThemes: [{ theme: 'Leases', count: 4, quote: null, videoId: 'v1' }],
+      },
+      FIRST_CHANNEL_IN_USE,
+    )
+    expect(input.options[0]).toMatchObject({ evidence: ['Four ask about leases'], themeBacked: 1 })
+    expect(input.options[1]).toMatchObject({ evidence: [], themeBacked: 0 })
+    expect(input.commentThemes).toEqual([{ theme: 'Leases', count: 4 }])
+  })
+
   it('refuses fewer than two options', async () => {
     const result = await rateAngles(
       brief([option('wework documentary')]),
