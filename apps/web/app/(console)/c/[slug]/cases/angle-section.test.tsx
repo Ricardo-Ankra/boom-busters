@@ -352,6 +352,32 @@ describe('AngleSection', () => {
     await waitFor(() => expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1))
   })
 
+  it('offers to collect a paid pending test for free, and ignores an old one', async () => {
+    const angle = 'Follow one Jeep dealer through 2023 to 2025 and the stock that would not move.'
+    const job = (minutesAgo: number) => ({
+      angle,
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+    })
+    const fresh = renderSection(
+      kase({
+        searchBrief: brief({ chosenAngle: 1, niche: 'car industry', nicheJobs: [job(5)] }),
+      }),
+    )
+    expect(screen.queryByRole('button', { name: 'Test this angle' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Collect the angle test' }))
+    expect(screen.getByText('Free: the test was already paid for.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Collect it' }))
+    await waitFor(() => expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1))
+    fresh.unmount()
+    renderSection(
+      kase({
+        searchBrief: brief({ chosenAngle: 1, niche: 'car industry', nicheJobs: [job(45)] }),
+      }),
+    )
+    expect(screen.getByRole('button', { name: 'Test this angle' })).toBeInTheDocument()
+  })
+
   it('offers no test without a niche, for an unchosen angle, or once it is tested', () => {
     const tested = {
       angle: 'Follow one Jeep dealer through 2023 to 2025 and the stock that would not move.',

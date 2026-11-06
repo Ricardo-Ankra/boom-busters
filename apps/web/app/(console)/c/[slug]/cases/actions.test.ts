@@ -49,6 +49,8 @@ const store = vi.hoisted(() => ({
   saveCaseAngleRating: vi.fn(),
   saveCaseFieldCheck: vi.fn(),
   saveCaseNicheTest: vi.fn(),
+  saveCaseNicheJob: vi.fn(),
+  dropCaseNicheJob: vi.fn(),
   currentBible: vi.fn(),
   getChannelSettings: vi.fn(),
   getWorkspace: vi.fn(),
@@ -996,9 +998,11 @@ describe('checkWhoRanksAction, testAngleAction and evidenceEstimate', () => {
       .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
     store.saveCaseFieldCheck.mockReset().mockResolvedValue({ id: CASE_ID })
     store.saveCaseNicheTest.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.saveCaseNicheJob.mockReset().mockResolvedValue({ id: CASE_ID })
+    store.dropCaseNicheJob.mockReset().mockResolvedValue({ id: CASE_ID })
     evidence.searchField.mockReset().mockResolvedValue(check)
     evidence.startNicheTest.mockReset().mockResolvedValue('job-1')
-    evidence.awaitNicheTest.mockReset().mockResolvedValue(test)
+    evidence.awaitNicheTest.mockReset().mockResolvedValue({ state: 'done', test })
   })
 
   it('checks who ranks for an unchecked target', async () => {
@@ -1092,14 +1096,86 @@ describe('checkWhoRanksAction, testAngleAction and evidenceEstimate', () => {
     expect(evidence.startNicheTest).not.toHaveBeenCalled()
   })
 
-  it('says so when the angle test does not finish, and saves nothing', async () => {
-    evidence.awaitNicheTest.mockResolvedValue(null)
+  it('says so when the angle test fails, and saves nothing', async () => {
+    evidence.awaitNicheTest.mockResolvedValue({ state: 'failed' })
     expect(await testAngleAction(CASE_ID, 0)).toEqual({
       ok: false,
       error:
         'The angle test did not finish. Try again later; any unused credits are refunded by VidIQ.',
     })
     expect(store.saveCaseNicheTest).not.toHaveBeenCalled()
+    expect(store.saveCaseNicheJob).not.toHaveBeenCalled()
+  })
+
+  it('keeps the paid job when the wait times out, and says the next press is free', async () => {
+    evidence.awaitNicheTest.mockResolvedValue({ state: 'running' })
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({
+      ok: false,
+      error:
+        'The test is still running at VidIQ and has been paid for. Press Test this angle again in a minute to collect it; that costs nothing.',
+    })
+    expect(store.saveCaseNicheJob).toHaveBeenCalledWith(
+      { marker: 'db' },
+      CASE_ID,
+      expect.objectContaining({ angle: 'The board that signed off', jobId: 'job-1' }),
+    )
+    expect(store.saveCaseNicheTest).not.toHaveBeenCalled()
+  })
+
+  it('collects a pending job for free: no new purchase, the job is polled', async () => {
+    const pending = {
+      angle: 'The board that signed off',
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [pending] }) }))
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({ ok: true })
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+    expect(evidence.awaitNicheTest).toHaveBeenCalledWith('job-paid', 'The board that signed off')
+    expect(store.saveCaseNicheTest).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, test)
+  })
+
+  it('keeps the original start time when a collected job is still running', async () => {
+    const pending = {
+      angle: 'The board that signed off',
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [pending] }) }))
+    evidence.awaitNicheTest.mockResolvedValue({ state: 'running' })
+    expect((await testAngleAction(CASE_ID, 0)).ok).toBe(false)
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+    expect(store.saveCaseNicheJob).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, pending)
+  })
+
+  it('forgets a pending job that failed at VidIQ, and buys nothing yet', async () => {
+    const pending = {
+      angle: 'The board that signed off',
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [pending] }) }))
+    evidence.awaitNicheTest.mockResolvedValue({ state: 'failed' })
+    const result = await testAngleAction(CASE_ID, 0)
+    expect(result.ok).toBe(false)
+    expect(store.dropCaseNicheJob).toHaveBeenCalledWith(
+      { marker: 'db' },
+      CASE_ID,
+      'The board that signed off',
+    )
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+  })
+
+  it('ignores a pending job older than thirty minutes and buys a new test', async () => {
+    const stale = {
+      angle: 'The board that signed off',
+      jobId: 'job-old',
+      startedAt: new Date(Date.now() - 31 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [stale] }) }))
+    expect(await testAngleAction(CASE_ID, 0)).toEqual({ ok: true })
+    expect(evidence.startNicheTest).toHaveBeenCalledTimes(1)
+    expect(evidence.awaitNicheTest).toHaveBeenCalledWith('job-1', 'The board that signed off')
   })
 
   it('says the cap message when the angle test is refused by the cap', async () => {

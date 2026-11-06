@@ -67,7 +67,9 @@ vi.mock('@/lib/case-evidence', async (importOriginal) => {
   return {
     ...original,
     awaitNicheTest: (...args: Parameters<typeof original.awaitNicheTest>) =>
-      seams.nicheTimesOut ? Promise.resolve(null) : original.awaitNicheTest(...args),
+      seams.nicheTimesOut
+        ? Promise.resolve({ state: 'running' as const })
+        : original.awaitNicheTest(...args),
   }
 })
 
@@ -547,6 +549,18 @@ describeDb('case-researcher (mock mode)', () => {
       const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
       expect(brief.nicheTests).toEqual([])
       expect(brief.skipped).toContain('niche test: no result')
+    })
+
+    it('keeps the paid niche job when the test times out, so the panel can collect it', async () => {
+      seams.nicheTimesOut = true
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.nicheJobs).toHaveLength(1)
+      expect(brief.nicheJobs?.[0]).toEqual({
+        angle: brief.angleOptions[brief.recommendedAngle!]?.angle,
+        jobId: expect.any(String),
+        startedAt: expect.any(String),
+      })
     })
 
     it('skips optional steps at the cap and says so', async () => {

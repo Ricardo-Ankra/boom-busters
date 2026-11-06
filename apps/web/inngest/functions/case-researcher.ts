@@ -55,6 +55,7 @@ import type {
   CaseResearchJob,
   CommentTheme,
   FieldCheck,
+  NicheJob,
   NicheTest,
   SearchBrief,
   SearchKeyword,
@@ -614,7 +615,11 @@ export const caseResearcher = inngest.createFunction(
     })
 
     /** The brief as the save step writes it, from the same values the rating reads. */
-    const candidate = (rating: AngleRating | null, tests: NicheTest[] = []) => ({
+    const candidate = (
+      rating: AngleRating | null,
+      tests: NicheTest[] = [],
+      jobs: NicheJob[] = [],
+    ) => ({
       subject,
       measuredAt: new Date().toISOString(),
       targetKeyword: target,
@@ -639,6 +644,7 @@ export const caseResearcher = inngest.createFunction(
       commentThemes,
       commentsRead: { videos: videosRead, comments: gathered.length },
       nicheTests: tests.slice(0, 3),
+      ...(jobs.length > 0 ? { nicheJobs: jobs.slice(0, 3) } : {}),
       skipped: skipped.slice(0, 6),
     })
 
@@ -662,6 +668,7 @@ export const caseResearcher = inngest.createFunction(
     // 7c. A niche test of the recommended angle: one purchase to start, then a free wait. Skipped
     // with no recommendation or no niche; a cap, a failure or no answer in time is recorded.
     const nicheTests: NicheTest[] = []
+    const nicheJobs: NicheJob[] = []
     const recommended = rating === null ? undefined : angleOptions[rating.recommended]
     if (recommended !== undefined && understood.niche !== '') {
       const started = await step.run('niche-start', async () => {
@@ -680,14 +687,27 @@ export const caseResearcher = inngest.createFunction(
       if (isCapped(started)) skipped.push(`niche test: ${CAP_REACHED}`)
       else if (started === null) skipped.push('niche test: no result')
       else {
-        const test = await step.run('niche-wait', async () => {
+        const waited = await step.run('niche-wait', async () => {
           await beat(caseId, jobStartedAt, 'niche-wait')
-          return optional('waiting for the niche test', () =>
+          const wait = await optional('waiting for the niche test', () =>
             awaitNicheTest(started, recommended.angle),
           )
+          // The time is taken inside the step, so a replay reads the memoised one.
+          return wait !== null && !isCapped(wait) && wait.state === 'running'
+            ? { ...wait, at: new Date().toISOString() }
+            : wait
         })
-        if (test === null || isCapped(test)) skipped.push('niche test: no result')
-        else nicheTests.push(test)
+        if (waited === null || isCapped(waited) || waited.state === 'failed') {
+          skipped.push('niche test: no result')
+        } else if (waited.state === 'running') {
+          // Paid for and not finished: keep the job so the panel button collects it for free.
+          skipped.push('niche test: no result')
+          nicheJobs.push({
+            angle: recommended.angle,
+            jobId: started,
+            startedAt: waited.at,
+          })
+        } else nicheTests.push(waited.test)
       }
     }
 
@@ -696,7 +716,7 @@ export const caseResearcher = inngest.createFunction(
       await beat(caseId, jobStartedAt, 'save-brief')
       // Each list is cut to the brief's own limit first, so a long model answer
       // cannot fail the parse after every credit is spent.
-      const parsed = SearchBriefSchema.safeParse(candidate(rating, nicheTests))
+      const parsed = SearchBriefSchema.safeParse(candidate(rating, nicheTests, nicheJobs))
       // A retry would fail the same way, so the run stops with a reason the owner can read.
       if (!parsed.success) {
         throw new NonRetriableError(

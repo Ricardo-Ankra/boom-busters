@@ -1,7 +1,12 @@
 'use client'
 
 import type { CaseSummary } from '@boom-busters/db'
-import { angleDemand, briefNeedsResearch, caseResearchJobIsRunning } from '@boom-busters/schemas'
+import {
+  angleDemand,
+  briefNeedsResearch,
+  caseResearchJobIsRunning,
+  pendingNicheJob,
+} from '@boom-busters/schemas'
 import type { AngleOption, SearchBrief } from '@boom-busters/schemas'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -157,17 +162,33 @@ function AngleCard({
   )
 }
 
-/** `Test this angle`: buys one niche test for the chosen angle and keeps its verdict on the brief. */
-function TestAngleButton({ item, option, run }: { item: CaseSummary; option: number; run: Run }) {
+/**
+ * `Test this angle`: buys one niche test for the chosen angle and keeps its
+ * verdict on the brief. When an earlier test ran past the wait it is already
+ * paid for, so the button collects it instead, at no cost.
+ */
+function TestAngleButton({
+  item,
+  option,
+  angle,
+  run,
+}: {
+  item: CaseSummary
+  option: number
+  angle: string
+  run: Run
+}) {
   const [busy, setBusy] = React.useState(false)
   const job = item.searchJob
   const running = job !== null && caseResearchJobIsRunning(job)
+  const collecting =
+    item.searchBrief !== null && pendingNicheJob(item.searchBrief, angle) !== undefined
   return (
     <ConfirmButton
-      label="Test this angle"
-      confirmLabel="Test it"
+      label={collecting ? 'Collect the angle test' : 'Test this angle'}
+      confirmLabel={collecting ? 'Collect it' : 'Test it'}
       confirmVariant="primary"
-      consequence="About 5 VidIQ credits."
+      consequence={collecting ? 'Free: the test was already paid for.' : 'About 5 VidIQ credits.'}
       disabled={running}
       title={running ? 'Research is running' : undefined}
       busy={busy}
@@ -308,7 +329,7 @@ export function AngleSection({
                       </Button>
                     ) : null}
                     {testable(option, at) ? (
-                      <TestAngleButton item={item} option={at} run={run} />
+                      <TestAngleButton item={item} option={at} angle={option.angle} run={run} />
                     ) : null}
                   </>
                 ) : null

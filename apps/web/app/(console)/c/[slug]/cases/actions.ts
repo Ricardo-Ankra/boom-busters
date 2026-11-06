@@ -9,12 +9,14 @@ import {
   createProjectFromCase,
   currentBible,
   deleteCase,
+  dropCaseNicheJob,
   getCase,
   getChannelSettings,
   getWorkspace,
   markCaseInProduction,
   saveCaseAngleRating,
   saveCaseFieldCheck,
+  saveCaseNicheJob,
   saveCaseNicheTest,
   setCaseFormat,
   setCaseStatus,
@@ -42,6 +44,7 @@ import {
   isBibleComplete,
   keywordHasFigure,
   leadKeyword,
+  pendingNicheJob,
   resolveFormat,
   serialiseError,
 } from '@boom-busters/schemas'
@@ -642,7 +645,15 @@ export async function checkWhoRanksAction(caseId: string): Promise<ActionResult>
   return { ok: true }
 }
 
-/** `Test this angle`: start a niche test for one angle option, wait for it and keep the result. */
+const NICHE_STILL_RUNNING =
+  'The test is still running at VidIQ and has been paid for. Press Test this angle again in a minute to collect it; that costs nothing.'
+
+/**
+ * `Test this angle`: start a niche test for one angle option, wait for it and
+ * keep the result. A test that outlasts the wait is paid for, so its job is
+ * kept on the brief; the next press only polls that job (free) for thirty
+ * minutes instead of buying again.
+ */
 export async function testAngleAction(caseId: string, option: number): Promise<ActionResult> {
   await requireOwner()
   const checked = await evidenceCase(caseId)
@@ -656,29 +667,54 @@ export async function testAngleAction(caseId: string, option: number): Promise<A
   }
   if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
 
-  let test: Awaited<ReturnType<typeof awaitNicheTest>>
+  const pending = pendingNicheJob(brief, chosen.angle)
+  let jobId: string
+  let wait: Awaited<ReturnType<typeof awaitNicheTest>>
   try {
-    const jobId = await startNicheTest(
-      {
-        niche: brief.niche,
-        idea: chosen.angle,
-        ...(brief.language ? { language: brief.language } : {}),
-      },
-      channelId,
-    )
-    test = await awaitNicheTest(jobId, chosen.angle)
+    jobId =
+      pending?.jobId ??
+      (await startNicheTest(
+        {
+          niche: brief.niche,
+          idea: chosen.angle,
+          ...(brief.language ? { language: brief.language } : {}),
+        },
+        channelId,
+      ))
+    wait = await awaitNicheTest(jobId, chosen.angle)
   } catch (error) {
     if (error instanceof CapReached) return { ok: false, error: error.message }
     throw error
   }
-  if (!test) {
+  if (wait.state === 'running') {
+    const kept = await saveCaseNicheJob(db, caseId, {
+      angle: chosen.angle,
+      jobId,
+      startedAt: pending?.startedAt ?? new Date().toISOString(),
+    })
+    if (!kept) {
+      return { ok: false, error: 'The research changed while this was running. Test again.' }
+    }
+    revalidatePath('/c/[slug]', 'layout')
+    return { ok: false, error: NICHE_STILL_RUNNING }
+  }
+  if (wait.state === 'failed') {
+    if (pending) {
+      await dropCaseNicheJob(db, caseId, chosen.angle)
+      revalidatePath('/c/[slug]', 'layout')
+      return {
+        ok: false,
+        error:
+          'The earlier angle test failed at VidIQ. Press Test this angle again to buy a new one.',
+      }
+    }
     return {
       ok: false,
       error:
         'The angle test did not finish. Try again later; any unused credits are refunded by VidIQ.',
     }
   }
-  const saved = await saveCaseNicheTest(db, caseId, test)
+  const saved = await saveCaseNicheTest(db, caseId, wait.test)
   if (!saved) {
     return { ok: false, error: 'The research changed while this was running. Test again.' }
   }

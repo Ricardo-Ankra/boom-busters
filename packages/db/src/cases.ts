@@ -10,6 +10,7 @@ import {
 import type {
   CaseResearchJob,
   FieldCheck,
+  NicheJob,
   NicheTest,
   SearchBrief,
   SearchKeyword,
@@ -568,11 +569,43 @@ export async function saveCaseNicheTest(
 ): Promise<CaseSummary | null> {
   return saveEvidence(db, caseId, (brief) => {
     const kept = (brief.nicheTests ?? []).filter((t) => t.angle !== test.angle)
+    const jobs = (brief.nicheJobs ?? []).filter((j) => j.angle !== test.angle)
     return {
       ...brief,
       nicheTests: [...(kept.length >= NICHE_TESTS_MAX ? kept.slice(1) : kept), test],
+      ...(brief.nicheJobs === undefined ? {} : { nicheJobs: jobs }),
     }
   })
+}
+
+/**
+ * Keep a paid niche job that had not finished, replacing one for the same
+ * angle; at the cap the oldest goes. `Test this angle` collects it for free.
+ */
+export async function saveCaseNicheJob(
+  db: Database,
+  caseId: string,
+  job: NicheJob,
+): Promise<CaseSummary | null> {
+  return saveEvidence(db, caseId, (brief) => {
+    const kept = (brief.nicheJobs ?? []).filter((j) => j.angle !== job.angle)
+    return {
+      ...brief,
+      nicheJobs: [...(kept.length >= NICHE_TESTS_MAX ? kept.slice(1) : kept), job],
+    }
+  })
+}
+
+/** Forget the pending niche job for an angle (it failed or expired at VidIQ). */
+export async function dropCaseNicheJob(
+  db: Database,
+  caseId: string,
+  angle: string,
+): Promise<CaseSummary | null> {
+  return saveEvidence(db, caseId, (brief) => ({
+    ...brief,
+    nicheJobs: (brief.nicheJobs ?? []).filter((j) => j.angle !== angle),
+  }))
 }
 
 /** Set the format a case is made as; null clears it back to the primary. */

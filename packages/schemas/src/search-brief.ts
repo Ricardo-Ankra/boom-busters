@@ -105,6 +105,28 @@ export const NicheTestSchema = z.object({
 })
 export type NicheTest = z.infer<typeof NicheTestSchema>
 
+/** A niche test bought but not yet collected: the VidIQ job for one angle. */
+export const NicheJobSchema = z.object({
+  angle: z.string(),
+  jobId: z.string(),
+  startedAt: z.string().datetime(),
+})
+export type NicheJob = z.infer<typeof NicheJobSchema>
+
+/** A pending niche job is collected for free this long after it started; later it is ignored. */
+export const NICHE_JOB_COLLECT_MS = 30 * 60_000
+
+/** The angle's pending niche job when it started under thirty minutes ago, else undefined. */
+export function pendingNicheJob(
+  brief: Pick<SearchBrief, 'nicheJobs'>,
+  angle: string,
+  now: Date = new Date(),
+): NicheJob | undefined {
+  return (brief.nicheJobs ?? []).find(
+    (j) => j.angle === angle && now.getTime() - Date.parse(j.startedAt) < NICHE_JOB_COLLECT_MS,
+  )
+}
+
 export const SearchBriefSchema = z.object({
   subject: z.string(),
   measuredAt: z.string().datetime(),
@@ -138,6 +160,8 @@ export const SearchBriefSchema = z.object({
   commentThemes: z.array(CommentThemeSchema).max(5).optional(),
   commentsRead: z.object({ videos: z.number().int(), comments: z.number().int() }).optional(),
   nicheTests: z.array(NicheTestSchema).max(3).optional(),
+  /** Niche tests paid for that had not finished when the wait ended; the panel collects them for free. */
+  nicheJobs: z.array(NicheJobSchema).max(3).optional(),
   /** Checks the run did not make, as plain strings starting with the group ('field check: credit cap'). */
   skipped: z.array(z.string()).max(6).optional(),
 })

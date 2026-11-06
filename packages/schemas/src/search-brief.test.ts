@@ -21,6 +21,7 @@ import {
   searchBriefLine,
   type SearchBrief,
   type SearchKeyword,
+  pendingNicheJob,
 } from './search-brief'
 
 const kw = (
@@ -518,5 +519,26 @@ describe('angleIsChosen and briefNeedsResearch', () => {
       angleOptions: [{ angle: OPTION_ANGLE, keyword: 'wework: the fall!', answers: [], gap: '' }],
     })
     expect(briefNeedsResearch(b)).toBe(true)
+  })
+})
+
+describe('pendingNicheJob', () => {
+  const now = new Date('2026-11-06T12:00:00.000Z')
+  const job = (angle: string, minutesAgo: number) => ({
+    angle,
+    jobId: `job-${angle}`,
+    startedAt: new Date(now.getTime() - minutesAgo * 60_000).toISOString(),
+  })
+
+  test('finds the angle job started under thirty minutes ago', () => {
+    expect(pendingNicheJob({ nicheJobs: [job('a', 29), job('b', 1)] }, 'a', now)?.jobId).toBe(
+      'job-a',
+    )
+  })
+
+  test('ignores an old job, another angle and a brief without jobs', () => {
+    expect(pendingNicheJob({ nicheJobs: [job('a', 30)] }, 'a', now)).toBeUndefined()
+    expect(pendingNicheJob({ nicheJobs: [job('b', 1)] }, 'a', now)).toBeUndefined()
+    expect(pendingNicheJob({}, 'a', now)).toBeUndefined()
   })
 })

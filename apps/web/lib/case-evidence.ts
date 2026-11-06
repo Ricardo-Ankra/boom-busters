@@ -113,30 +113,36 @@ function nicheTestOf(angle: string, raw: unknown): NicheTest {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/** Where a niche job stands after the wait: done, still running at VidIQ, or failed for good. */
+export type NicheWait =
+  { state: 'done'; test: NicheTest } | { state: 'running' } | { state: 'failed' }
+
 /**
- * Polls the niche job until it finishes. Null for a failed or expired job, a
- * poll with an unknown status, or no answer in time. Polls cost nothing and
- * are not recorded; one client serves the whole wait.
+ * Polls the niche job until it finishes. `running` when there was no answer in
+ * time (the job is paid for and may yet finish); `failed` for a failed or
+ * expired job, a poll error or an unknown status. Polls cost nothing and are
+ * not recorded; one client serves the whole wait.
  */
 export async function awaitNicheTest(
   jobId: string,
   angle: string,
   options: { timeoutMs?: number; intervalMs?: number } = {},
-): Promise<NicheTest | null> {
+): Promise<NicheWait> {
   const { timeoutMs = 90_000, intervalMs = 5_000 } = options
-  return withVidiqClient(async (client) => {
+  return withVidiqClient(async (client): Promise<NicheWait> => {
     let waited = 0
     for (;;) {
       let state
       try {
         state = (await client.jobPoll(jobId)).data
       } catch (error) {
-        if (error instanceof VidiqError) return null
+        if (error instanceof VidiqError) return { state: 'failed' }
         throw error
       }
-      if (state.status === 'completed') return nicheTestOf(angle, state.result)
-      if (state.status !== 'inprogress') return null
-      if (waited + intervalMs > timeoutMs) return null
+      if (state.status === 'completed')
+        return { state: 'done', test: nicheTestOf(angle, state.result) }
+      if (state.status !== 'inprogress') return { state: 'failed' }
+      if (waited + intervalMs > timeoutMs) return { state: 'running' }
       await sleep(intervalMs)
       waited += intervalMs
     }

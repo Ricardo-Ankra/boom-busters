@@ -21,11 +21,13 @@ import {
   chooseCaseAngle,
   createCase,
   deleteCase,
+  dropCaseNicheJob,
   getCase,
   listCases,
   markCaseInProduction,
   saveCaseAngleRating,
   saveCaseFieldCheck,
+  saveCaseNicheJob,
   saveCaseNicheTest,
   saveCaseSearchBrief,
   setCaseFormat,
@@ -681,6 +683,25 @@ suite('cases', () => {
         for (const a of ['a', 'b', 'c']) await saveCaseNicheTest(db, id, test(a))
         const got = await saveCaseNicheTest(db, id, test('d'))
         expect(got?.searchBrief?.nicheTests?.map((t) => t.angle)).toEqual(['b', 'c', 'd'])
+      })
+
+      it('keeps a pending niche job per angle, at most three, and clears it with the test', async () => {
+        const id = await researched()
+        const job = (angle: string, jobId = 'j') => ({
+          angle,
+          jobId,
+          startedAt: '2026-11-01T00:00:00.000Z',
+        })
+        await saveCaseNicheJob(db, id, job('a', 'one'))
+        const replaced = await saveCaseNicheJob(db, id, job('a', 'two'))
+        expect(replaced?.searchBrief?.nicheJobs).toEqual([job('a', 'two')])
+        for (const a of ['b', 'c']) await saveCaseNicheJob(db, id, job(a))
+        const capped = await saveCaseNicheJob(db, id, job('d'))
+        expect(capped?.searchBrief?.nicheJobs?.map((j) => j.angle)).toEqual(['b', 'c', 'd'])
+        const collected = await saveCaseNicheTest(db, id, test('c'))
+        expect(collected?.searchBrief?.nicheJobs?.map((j) => j.angle)).toEqual(['b', 'd'])
+        const dropped = await dropCaseNicheJob(db, id, 'b')
+        expect(dropped?.searchBrief?.nicheJobs?.map((j) => j.angle)).toEqual(['d'])
       })
 
       it('writes nothing when there is no brief or the result would not parse', async () => {

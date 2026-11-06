@@ -112,15 +112,18 @@ describe('awaitNicheTest', () => {
     const pending = awaitNicheTest('job', 'my angle')
     await vi.advanceTimersByTimeAsync(5000)
     expect(await pending).toEqual({
-      angle: 'my angle',
-      verdict: 'Viewers want this.',
-      direct: true,
-      evidence: [
-        { text: 'They ask.', count: 8 },
-        { text: 'Also.', count: null },
-        { text: 'three', count: null },
-      ],
-      notes: 'a b',
+      state: 'done',
+      test: {
+        angle: 'my angle',
+        verdict: 'Viewers want this.',
+        direct: true,
+        evidence: [
+          { text: 'They ask.', count: 8 },
+          { text: 'Also.', count: null },
+          { text: 'three', count: null },
+        ],
+        notes: 'a b',
+      },
     })
     expect(jobPoll).toHaveBeenCalledTimes(2)
   })
@@ -131,11 +134,14 @@ describe('awaitNicheTest', () => {
     const pending = awaitNicheTest('job', 'a')
     await vi.advanceTimersByTimeAsync(0)
     expect(await pending).toEqual({
-      angle: 'a',
-      verdict: 'No verdict returned',
-      direct: false,
-      evidence: [],
-      notes: '',
+      state: 'done',
+      test: {
+        angle: 'a',
+        verdict: 'No verdict returned',
+        direct: false,
+        evidence: [],
+        notes: '',
+      },
     })
   })
 
@@ -151,16 +157,19 @@ describe('awaitNicheTest', () => {
       const pending = awaitNicheTest('job', 'a')
       await vi.advanceTimersByTimeAsync(0)
       expect(await pending).toEqual({
-        angle: 'a',
-        verdict: 'No verdict returned',
-        direct: false,
-        evidence: [],
-        notes: '',
+        state: 'done',
+        test: {
+          angle: 'a',
+          verdict: 'No verdict returned',
+          direct: false,
+          evidence: [],
+          notes: '',
+        },
       })
     },
   )
 
-  it('returns null when the niche job times out', async () => {
+  it('says the job is still running when the wait times out', async () => {
     const jobPoll = vi
       .fn()
       .mockResolvedValue({ data: { status: 'inprogress' }, credits: 0, args: {} })
@@ -168,19 +177,19 @@ describe('awaitNicheTest', () => {
     vi.useFakeTimers()
     const pending = awaitNicheTest('job', 'a', { timeoutMs: 20_000, intervalMs: 5000 })
     await vi.advanceTimersByTimeAsync(30_000)
-    expect(await pending).toBeNull()
+    expect(await pending).toEqual({ state: 'running' })
     expect(jobPoll.mock.calls.length).toBeLessThanOrEqual(5)
   })
 
-  it('returns null on a refunded failure', async () => {
+  it('says failed on a refunded failure', async () => {
     poll({ status: 'failed', refunded: true })
     vi.useFakeTimers()
     const pending = awaitNicheTest('job', 'a')
     await vi.advanceTimersByTimeAsync(0)
-    expect(await pending).toBeNull()
+    expect(await pending).toEqual({ state: 'failed' })
   })
 
-  it('returns null when a poll has an unknown status', async () => {
+  it('says failed when a poll has an unknown status', async () => {
     const { VidiqError } = await import('@boom-busters/providers/vidiq')
     spend.client = {
       ...mockVidiqClient(),
@@ -189,7 +198,7 @@ describe('awaitNicheTest', () => {
     vi.useFakeTimers()
     const pending = awaitNicheTest('job', 'a')
     await vi.advanceTimersByTimeAsync(0)
-    expect(await pending).toBeNull()
+    expect(await pending).toEqual({ state: 'failed' })
   })
 })
 
