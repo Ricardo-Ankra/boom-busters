@@ -4796,6 +4796,14 @@ Final review and fixes:
 - The comment-insights result shape is a guess; the fixture is hand-written.
 - The layout was seen only in e2e screenshots (desktop 1440 by 900, phone
   390 by 844), not on a real phone or tablet.
+- `workspace-form.test.tsx` fails to load in the web suite. That was already so
+  before this branch and the branch did not touch it.
+- The dev overlay's "1 Issue" badge: a throwaway Playwright run on the case
+  panel with a full-check brief recorded no console error and no page error.
+  The only error in the run was the dev server's "The destination stream closed
+  early" (digest 233116834) on the sign-in landing page, raised when the next
+  navigation aborts its stream, before any case panel renders. It is not from
+  this branch and was left alone.
 
 ---
 
@@ -10300,5 +10308,61 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      angle rewrites `demandNotes` unconditionally, as it did before, so a hand edit
      is lost on an angle-driven swap; a non-cap failure in the field or comments
      group adds no `skipped` entry, so the verdict cannot say why; abuse screening
-     of comment quotes is prompt-only, with no deterministic filter; the search
-     demand section still formats numbers en-US while the new blocks use en-ZA.
+     of comment quotes is prompt-only, with no deterministic filter. Also left
+     for later, from the final whole-branch review: a paid call whose result then
+     fails to parse (`parseNicheJob` with no job id) leaves its spend unrecorded;
+     the niche result shape is a guess, so `direct` (any evidence line) may read
+     true for indirect evidence until the live run; `awaitNicheTest` counts only
+     its sleeps, so the real wall time is 90 s plus up to 19 poll latencies
+     (still well inside the route's 300 s `maxDuration`); `checkWhoRanksAction`
+     has no row lock, so two simultaneous clicks in two tabs both buy;
+     `saveCaseSearchBrief` and the angle-swap path do not `safeParse` (the run
+     does before it saves, and the swap cannot exceed a cap); an evidence
+     purchase that lands after a fresh research run saves into the new brief,
+     keyed by keyword; and comment text lives only in the Inngest step memo for
+     its retention period, not in the database (the spec scopes storage to the
+     brief).
+422. **Angle evidence is tied to a comment theme** (2026-11-06, final review).
+     The angle prompt asks for each evidence line as `{"text", "theme"}`, where
+     `theme` is the 1-based number of a listed comment theme or null for a field
+     observation. The parser still stores `evidence: string[]` and adds
+     `themeBacked`, the count of lines with a valid theme number; an invalid
+     number counts as null with a repair note, and a bare string line reads as a
+     field observation. The verdict's Angle line is ok only when the checked
+     angle has `themeBacked` above 0 or a direct niche test, so a field-only
+     citation warns even when comment themes exist.
+423. **A timed-out angle test is kept, then collected for free** (2026-11-06,
+     final review). A niche test that outlasts the 90 s wait is already paid for,
+     so the brief gains `nicheJobs` (at most 3: angle, job id, start time). Test
+     this angle saves the pending job under the lock and says so; the next press
+     within 30 minutes only polls that job, which costs nothing, and the button
+     reads "Collect the angle test". An older job is ignored and a new test is
+     bought; a job that failed at VidIQ is dropped. The research run's niche wait
+     records its job the same way, with the time taken inside its step. This
+     replaces the "only once" wording of decision 419 for the timed-out case:
+     there is still no second purchase while a paid job is pending.
+424. **The rating sees the evidence** (2026-11-06, final review). The rate step
+     gets each option's evidence lines and `themeBacked`, plus the brief's
+     comment themes with their counts, and a rule to weigh viewer-comment
+     evidence with demand and the gap. Its digit guard admits the theme counts
+     and the evidence digits.
+425. **One number format on the panel** (2026-11-06, final review). The new
+     blocks (Who ranks now, the Angle section) use en-US grouping, as the rest of
+     the console does. Date formatting that used en-ZA before this branch is left
+     alone.
+426. **The niche verdict is labelled** (2026-11-06, final review). It reads
+     "Niche test: <verdict>" so it no longer looks like a heading.
+427. **An own angle is never judged by the recommended one** (2026-11-06, final
+     review). With `ownAngle` set, the Angle line is a warning, "Your own angle
+     has no evidence check yet".
+428. **The comments block counts and explains** (2026-11-06, final review). It
+     uses "1 video" and "1 comment", and when nothing was read (no video, or a
+     skipped comments check) it says "No comments were read", with the skip
+     reason when there is one, never "no clear requests".
+429. **The fit reason names the pillar by its label** (2026-11-06, final review).
+     `briefVerdict` stays pure: the case panel passes `pillarLabels` (key to
+     label) through its context, and a key the bible no longer lists reads as
+     the key.
+430. **People seeds are de-duplicated** (2026-11-06, final review). Names are
+     trimmed and compared without regard to case before the first two are taken,
+     so one person is never searched twice.
