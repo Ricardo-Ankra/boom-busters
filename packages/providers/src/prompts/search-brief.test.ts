@@ -13,21 +13,18 @@ import {
   buildAngleOptionsRequest,
   buildCommentThemesRequest,
   buildFitRequest,
-  buildKeywordFilterRequest,
   buildKeywordUnderstandingRequest,
   buildRateAnglesRequest,
   buildWinnersRequest,
   mockAngleOptions,
   mockCommentThemes,
   mockFit,
-  mockKeywordFilter,
   mockKeywordUnderstanding,
   mockRateAngles,
   mockWinners,
   parseAngleOptions,
   parseCommentThemes,
   parseFit,
-  parseKeywordFilter,
   parseKeywordUnderstanding,
   parseRateAngles,
   parseWinners,
@@ -72,7 +69,6 @@ const option = (angle: string) => ({ angle, keyword: 'wework documentary', answe
 
 describe('the requests', () => {
   it('route at research', () => {
-    expect(buildKeywordFilterRequest({ subject: 'WeWork', rows: ROWS }).task).toBe('research')
     expect(
       buildWinnersRequest({ subject: 'WeWork', outliers: [OUTLIER], descriptions: {} }).task,
     ).toBe('research')
@@ -83,22 +79,6 @@ describe('the requests', () => {
     const line = "The first option develops the owner's idea"
     expect(buildAngleOptionsRequest(angleInput('the leases')).system).toContain(line)
     expect(buildAngleOptionsRequest(angleInput()).system).not.toContain(line)
-  })
-})
-
-describe('parseKeywordFilter', () => {
-  it('keeps only listed rows and reports the unknown one', () => {
-    const repairs: Repair[] = []
-    const kept = parseKeywordFilter('{"keep": ["wework podcast", "made up term"]}', ROWS, (r) =>
-      repairs.push(r),
-    )
-    expect(kept).toEqual(['wework podcast'])
-    expect(repairs).toHaveLength(1)
-    expect(repairs[0]?.action).toBe('dropped')
-  })
-
-  it('refuses an answer with no list', () => {
-    expect(() => parseKeywordFilter('{"nope": 1}', ROWS)).toThrow(ValidationError)
   })
 })
 
@@ -292,9 +272,6 @@ describe('other people text stays quoted', () => {
 
 describe('the mocks', () => {
   it('are valid and deterministic', () => {
-    const kept = mockKeywordFilter(ROWS)
-    expect(kept.every((k) => ROWS.some((r) => r.keyword === k))).toBe(true)
-    expect(mockKeywordFilter(ROWS)).toEqual(kept)
     const winners = mockWinners()
     expect(parseWinners(JSON.stringify(winners))).toEqual(winners)
     const input = angleInput('the leases')
