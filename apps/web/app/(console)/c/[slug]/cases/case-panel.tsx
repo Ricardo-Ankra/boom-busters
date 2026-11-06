@@ -1,7 +1,7 @@
 'use client'
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
-import { briefNeedsResearch } from '@boom-busters/schemas'
+import { briefHasFullChecks, briefNeedsResearch } from '@boom-busters/schemas'
 import type { Notice } from '@boom-busters/schemas'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import Link from 'next/link'
@@ -20,6 +20,7 @@ import type { CaseCategoryOption } from './case-forms'
 import { STATUS_LABELS, caseProgress, measuredOn } from './case-progress'
 import type { StepState } from './case-progress'
 import { SearchDemandSection } from './search-demand-section'
+import { VerdictCard } from './verdict-card'
 import {
   FormatPicker,
   NewProjectButton,
@@ -149,9 +150,21 @@ export function CasePanel({
         </ol>
       </div>
 
+      {brief === null ? null : <VerdictCard brief={brief} caseCategory={item.category} />}
+
       {fit ? (
-        <p role="status" className="text-[13px] text-[var(--color-warning)]">
+        <p
+          id="evidence-fit"
+          role="status"
+          className="scroll-mt-4 text-[13px] text-[var(--color-warning)]"
+        >
           {fit}
+        </p>
+      ) : brief !== null && briefHasFullChecks(brief) ? (
+        <p id="evidence-fit" className="scroll-mt-4 text-[13px] text-[var(--color-text-secondary)]">
+          {brief.fit === null
+            ? 'Channel fit was not measured.'
+            : `Channel fit: ${brief.fit.reason}`}
         </p>
       ) : null}
       {mismatch && brief !== null ? (

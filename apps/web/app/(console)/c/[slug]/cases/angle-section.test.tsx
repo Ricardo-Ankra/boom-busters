@@ -12,6 +12,7 @@ const actions = vi.hoisted(() => ({
   rateAnglesAction: vi.fn(),
   rateAnglesEstimate: vi.fn(),
   setTargetKeywordAction: vi.fn(),
+  testAngleAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -90,10 +91,24 @@ function kase(overrides: Partial<CaseSummary> = {}): CaseSummary {
   } as CaseSummary
 }
 
-const run = vi.fn(async (action: () => Promise<{ ok: boolean; error?: string }>) => {
-  const result = await action()
-  return result.ok
-})
+/** What the console would toast, in order. */
+const toasts: string[] = []
+const run = vi.fn(
+  async (
+    action: () => Promise<{ ok: boolean; error?: string }>,
+    success: string | (() => string),
+  ) => {
+    const result = await action()
+    toasts.push(
+      result.ok
+        ? typeof success === 'function'
+          ? success()
+          : success
+        : `error: ${result.error ?? ''}`,
+    )
+    return result.ok
+  },
+)
 
 function renderSection(item: CaseSummary) {
   return render(
@@ -103,6 +118,8 @@ function renderSection(item: CaseSummary) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  toasts.length = 0
+  actions.testAngleAction.mockResolvedValue({ ok: true })
   actions.chooseAngleAction.mockResolvedValue({ ok: true })
   actions.rateAnglesAction.mockResolvedValue({ ok: true })
   actions.rateAnglesEstimate.mockResolvedValue({ ok: true, usd: 0.0312, model: 'gemini-pro' })
@@ -297,5 +314,136 @@ describe('AngleSection', () => {
     await userEvent.click(b!)
     expect(actions.chooseAngleAction).toHaveBeenCalledTimes(1)
     release({ ok: true })
+  })
+
+  it('toasts the target change when an angle is chosen', async () => {
+    actions.chooseAngleAction.mockResolvedValue({
+      ok: true,
+      targetChange: { to: 'stellantis dealers' },
+    })
+    renderSection(kase())
+    await userEvent.click(screen.getAllByRole('button', { name: /^Use this angle: / })[1]!)
+    await waitFor(() => expect(toasts).toEqual(['Target keyword is now stellantis dealers']))
+  })
+
+  it('says why the target stayed when an angle is chosen', async () => {
+    actions.chooseAngleAction.mockResolvedValue({
+      ok: true,
+      targetChange: { keptBecause: 'The angle keyword has a figure in it.' },
+    })
+    renderSection(kase())
+    await userEvent.click(screen.getAllByRole('button', { name: /^Use this angle: / })[0]!)
+    await waitFor(() => expect(toasts).toEqual(['The angle keyword has a figure in it.']))
+  })
+
+  it('keeps the plain toast when the target does not change', async () => {
+    renderSection(kase())
+    await userEvent.click(screen.getAllByRole('button', { name: /^Use this angle: / })[0]!)
+    await waitFor(() => expect(toasts).toEqual(['Angle chosen']))
+  })
+
+  it('offers Test this angle for a chosen angle without a test', async () => {
+    renderSection(kase({ searchBrief: brief({ chosenAngle: 1, niche: 'car industry' }) }))
+    const cards = screen.getAllByRole('listitem')
+    expect(within(cards[0]!).queryByRole('button', { name: 'Test this angle' })).toBeNull()
+    await userEvent.click(within(cards[1]!).getByRole('button', { name: 'Test this angle' }))
+    expect(screen.getByText('About 5 VidIQ credits.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Test it' }))
+    await waitFor(() => expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1))
+  })
+
+  it('offers no test without a niche, for an unchosen angle, or once it is tested', () => {
+    const tested = {
+      angle: 'Follow one Jeep dealer through 2023 to 2025 and the stock that would not move.',
+      verdict: 'Viewers want this.',
+      direct: true,
+      evidence: [{ text: 'Dealer stories pull views', count: 12_400 }],
+      notes: 'Based on three channels.',
+    }
+    const first = renderSection(kase({ searchBrief: brief({ chosenAngle: 1 }) }))
+    expect(screen.queryByRole('button', { name: 'Test this angle' })).not.toBeInTheDocument()
+    first.unmount()
+    const second = renderSection(kase({ searchBrief: brief({ niche: 'car industry' }) }))
+    expect(screen.queryByRole('button', { name: 'Test this angle' })).not.toBeInTheDocument()
+    second.unmount()
+    renderSection(
+      kase({ searchBrief: brief({ chosenAngle: 1, niche: 'car industry', nicheTests: [tested] }) }),
+    )
+    expect(screen.queryByRole('button', { name: 'Test this angle' })).not.toBeInTheDocument()
+    const card = screen.getAllByRole('listitem')[1]!
+    expect(card).toHaveTextContent('Viewers want this.')
+    expect(card).toHaveTextContent('Dealer stories pull views')
+    expect(card).toHaveTextContent(
+      new Intl.NumberFormat('en-ZA').format(12_400).replace(/\s/g, ' '),
+    )
+    expect(card).toHaveTextContent('Based on three channels.')
+  })
+
+  it('reports a failed angle test instead of throwing', async () => {
+    actions.testAngleAction.mockRejectedValue(new Error('vidiq down'))
+    renderSection(kase({ searchBrief: brief({ chosenAngle: 1, niche: 'car industry' }) }))
+    await userEvent.click(screen.getByRole('button', { name: 'Test this angle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Test it' }))
+    await waitFor(() => expect(toasts).toEqual(['error: Could not test the angle. Try again.']))
+  })
+
+  it('lists an angle card its evidence lines', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({
+          angleOptions: [
+            {
+              angle: 'Treat the slide as a documented chain of decisions inside one company.',
+              keyword: 'stellantis jeep',
+              answers: [],
+              gap: 'A gap.',
+              evidence: ['Viewers ask who signed off', 'Three comments want the dealer view'],
+            },
+          ],
+        }),
+      }),
+    )
+    const card = screen.getAllByRole('listitem')[0]!
+    expect(within(card).getByText('Viewers ask who signed off')).toBeInTheDocument()
+    expect(within(card).getByText('Three comments want the dealer view')).toBeInTheDocument()
+  })
+
+  it('says honestly when comments held no requests', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({ commentThemes: [], commentsRead: { videos: 3, comments: 240 } }),
+      }),
+    )
+    expect(screen.getByText('What viewers asked for')).toBeInTheDocument()
+    const read = new Intl.NumberFormat('en-ZA').format(240)
+    expect(
+      screen.getByText(`Read ${read} comments on 3 videos; no clear requests.`),
+    ).toBeInTheDocument()
+  })
+
+  it('lists the themes viewers asked for, collapsed', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({
+          commentThemes: [
+            { theme: 'Show the dealers', count: 14, quote: 'More on dealers', videoId: 'v1' },
+          ],
+          commentsRead: { videos: 2, comments: 90 },
+        }),
+      }),
+    )
+    const block = screen.getByText('What viewers asked for').closest('details')!
+    expect(block).not.toHaveAttribute('open')
+    expect(block).toHaveTextContent('Show the dealers')
+    expect(block).toHaveTextContent('14')
+    expect(block).toHaveTextContent('More on dealers')
+    expect(block).toHaveTextContent('Read 90 comments on 2 videos.')
+  })
+
+  it('is the evidence target for Angle evidence', () => {
+    renderSection(kase())
+    expect(document.getElementById('evidence-angle')).toContainElement(
+      screen.getByRole('heading', { name: 'Angle' }),
+    )
   })
 })

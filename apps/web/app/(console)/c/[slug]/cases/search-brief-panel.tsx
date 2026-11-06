@@ -36,7 +36,8 @@ import { researchStepLabel } from './research-steps'
 
 export type Run = (
   action: () => Promise<{ ok: boolean; error?: string }>,
-  success: string,
+  /** The success toast; a function is read after the action, so it can say what the result was. */
+  success: string | (() => string),
 ) => Promise<boolean>
 
 /** How often a row refreshes while its research runs, as the Bible tab does. */

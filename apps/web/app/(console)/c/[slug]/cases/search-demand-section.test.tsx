@@ -12,6 +12,7 @@ const actions = vi.hoisted(() => ({
   chooseAngleAction: vi.fn(),
   rateAnglesAction: vi.fn(),
   rateAnglesEstimate: vi.fn(),
+  checkWhoRanksAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -236,5 +237,95 @@ describe('SearchDemandSection', () => {
     expect(screen.getByText('who runs stellantis')).toBeInTheDocument()
     expect(screen.getByText('The pricing push')).toBeInTheDocument()
     expect(screen.getByText(/stellantis esta perdendo tudo/)).toBeInTheDocument()
+  })
+
+  it('explains why a figure row has no Make target', () => {
+    render(<SearchDemandSection item={kase()} run={run} />)
+    const row = screen.getByText('stellantis 2025 loss').closest('tr')!
+    expect(within(row).getByText("Has a figure, can't be the target")).toBeInTheDocument()
+    const other = screen.getByText('stellantis news').closest('tr')!
+    expect(within(other).queryByText("Has a figure, can't be the target")).toBeNull()
+  })
+
+  it('shows the intent phrase, fit and topic on the target card', () => {
+    render(
+      <SearchDemandSection
+        item={kase({
+          searchBrief: brief({
+            targetKeyword: keyword({
+              fit: 'partly',
+              intent: 'wants the latest company news',
+              topic: 'stellantis news',
+            }),
+          }),
+        })}
+        run={run}
+      />,
+    )
+    const card = screen.getByTestId('target-card')
+    expect(card).toHaveAttribute('id', 'evidence-intent')
+    expect(card).toHaveTextContent('wants the latest company news')
+    expect(card).toHaveTextContent('Partly fits this channel')
+    const topic = within(card).getByText(/Topic: stellantis news/)
+    expect(topic).toHaveAttribute('id', 'evidence-demand')
+    expect(topic).toHaveTextContent('about 12,400 searches a month')
+  })
+
+  it('groups keywords by topic and hides off-intent rows in their own group', () => {
+    render(
+      <SearchDemandSection
+        item={kase({
+          searchBrief: brief({
+            targetKeyword: keyword({ topic: 'jeep sales' }),
+            secondaryKeywords: [
+              keyword({
+                keyword: 'jeep sales slump',
+                topic: 'jeep sales',
+                intent: 'wants the numbers',
+                fit: 'fits',
+              }),
+              keyword({
+                keyword: 'stellantis ceo',
+                topic: 'leadership',
+                intent: 'wants a profile',
+                fit: 'partly',
+              }),
+            ],
+            offIntent: [
+              keyword({
+                keyword: 'stellantis stock price',
+                topic: 'shares',
+                intent: 'wants a share quote',
+                fit: 'off',
+              }),
+            ],
+          }),
+        })}
+        run={run}
+      />,
+    )
+    expect(screen.getByRole('heading', { level: 5, name: 'jeep sales' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 5, name: 'leadership' })).toBeInTheDocument()
+    const slump = screen.getByText('jeep sales slump').closest('tr')!
+    expect(slump).toHaveTextContent('wants the numbers')
+    const group = screen.getByText("Doesn't fit this channel").closest('details')!
+    expect(group).not.toHaveAttribute('open')
+    expect(group).toHaveTextContent('stellantis stock price')
+    expect(group).toHaveTextContent('wants a share quote')
+    expect(within(group).queryByRole('button')).toBeNull()
+    expect(screen.getByText('stellantis ceo').closest('details')).toBeNull()
+  })
+
+  it('puts who ranks under the target for a full brief', () => {
+    render(
+      <SearchDemandSection
+        item={kase({
+          searchBrief: brief({ targetKeyword: keyword({ fit: 'fits' }), fieldChecks: [] }),
+        })}
+        run={run}
+      />,
+    )
+    expect(document.getElementById('evidence-competition')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check who ranks now' })).toBeInTheDocument()
   })
 })
