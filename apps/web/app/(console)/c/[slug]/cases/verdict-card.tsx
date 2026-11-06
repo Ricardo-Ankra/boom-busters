@@ -30,9 +30,12 @@ export const OLD_BRIEF_LINE =
 export function VerdictCard({
   brief,
   caseCategory,
+  pillarLabels,
 }: {
   brief: SearchBrief
   caseCategory: string | null
+  /** The channel's pillar labels by key. */
+  pillarLabels?: Readonly<Record<string, string>>
 }) {
   if (!briefHasFullChecks(brief)) {
     return (
@@ -47,7 +50,7 @@ export function VerdictCard({
 
   // The angle the owner chose, else the one the model recommended.
   const checkedAngle = brief.chosenAngle ?? brief.recommendedAngle ?? null
-  const lines = briefVerdict(brief, { caseCategory, checkedAngle })
+  const lines = briefVerdict(brief, { caseCategory, checkedAngle, pillarLabels })
 
   return (
     <section

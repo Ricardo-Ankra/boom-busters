@@ -399,9 +399,8 @@ describe('AngleSection', () => {
     const card = screen.getAllByRole('listitem')[1]!
     expect(card).toHaveTextContent('Viewers want this.')
     expect(card).toHaveTextContent('Dealer stories pull views')
-    expect(card).toHaveTextContent(
-      new Intl.NumberFormat('en-ZA').format(12_400).replace(/\s/g, ' '),
-    )
+    expect(card).toHaveTextContent('(12,400)')
+    expect(card).toHaveTextContent('Niche test: Viewers want this.')
     expect(card).toHaveTextContent('Based on three channels.')
   })
 
@@ -441,10 +440,50 @@ describe('AngleSection', () => {
       }),
     )
     expect(screen.getByText('What viewers asked for')).toBeInTheDocument()
-    const read = new Intl.NumberFormat('en-ZA').format(240)
+    const read = '240'
     expect(
       screen.getByText(`Read ${read} comments on 3 videos; no clear requests.`),
     ).toBeInTheDocument()
+  })
+
+  it('uses the singular for one video and one comment', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({ commentThemes: [], commentsRead: { videos: 1, comments: 1 } }),
+      }),
+    )
+    expect(screen.getByText('Read 1 comment on 1 video; no clear requests.')).toBeInTheDocument()
+  })
+
+  it('says no comments were read when no video was read, never "no clear requests"', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({ commentThemes: [], commentsRead: { videos: 0, comments: 0 } }),
+      }),
+    )
+    expect(screen.getByText('No comments were read.')).toBeInTheDocument()
+    expect(screen.queryByText(/no clear requests/)).not.toBeInTheDocument()
+  })
+
+  it('gives the reason when the comments check was skipped', () => {
+    renderSection(
+      kase({
+        searchBrief: brief({
+          commentThemes: [],
+          commentsRead: { videos: 2, comments: 0 },
+          skipped: ['comments: credit cap'],
+        }),
+      }),
+    )
+    expect(screen.getByText('No comments were read: credit cap.')).toBeInTheDocument()
+    expect(screen.queryByText(/no clear requests/)).not.toBeInTheDocument()
+  })
+
+  it('toasts instead of throwing when choosing an angle fails', async () => {
+    actions.chooseAngleAction.mockRejectedValue(new Error('db down'))
+    renderSection(kase())
+    await userEvent.click(screen.getAllByRole('button', { name: /^Use this angle: / })[0]!)
+    await waitFor(() => expect(toasts).toEqual(['error: Could not choose the angle. Try again.']))
   })
 
   it('lists the themes viewers asked for, collapsed', () => {

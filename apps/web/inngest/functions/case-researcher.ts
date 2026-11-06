@@ -283,9 +283,13 @@ export const caseResearcher = inngest.createFunction(
         angleIdea: row.angle?.trim() || null,
         formatKey: format.key,
         leadKeyword: leadKeyword(format),
+        // Trimmed and de-duplicated without regard to case, so one person is never seeded twice.
         people: row.people
           .map((name) => name.trim())
-          .filter((name) => name !== '')
+          .filter(
+            (name, at, all) =>
+              name !== '' && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === at,
+          )
           .slice(0, PEOPLE_SEEDS),
         language: bible.language,
         formatName: format.name,
@@ -523,7 +527,8 @@ export const caseResearcher = inngest.createFunction(
       .sort(byOverall)
       .slice(0, SECONDARY_KEPT)
     const targetCheck = target === null ? undefined : checkOf(target.keyword)
-    // App-computed text only: nothing VidIQ wrote reaches the angle prompt through here.
+    // App-built text. It carries the target keyword (VidIQ's own data), which the angle prompt
+    // JSON-quotes as data, so it never reads as an instruction.
     const fieldSummary =
       target === null || targetCheck === undefined
         ? null

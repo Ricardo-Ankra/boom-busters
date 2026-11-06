@@ -28,7 +28,7 @@ const RESEARCH_SUGGESTION =
 
 type Demand = ReturnType<typeof angleDemand>
 
-const number = new Intl.NumberFormat('en-ZA')
+const number = new Intl.NumberFormat('en-US')
 const fmt = (value: number): string => number.format(value)
 
 /** What the target did when an angle was chosen: said when it moved, and why when it stayed. */
@@ -138,7 +138,10 @@ function AngleCard({
 
       {test === undefined ? null : (
         <div className="flex flex-col gap-1 text-[13px] sm:col-span-2">
-          <p className="font-semibold">{test.verdict}</p>
+          <p>
+            <span className="text-[var(--color-text-secondary)]">Niche test:</span>{' '}
+            <span className="font-semibold">{test.verdict}</span>
+          </p>
           {test.evidence.length > 0 ? (
             <ul className="flex list-disc flex-col gap-0.5 pl-5">
               {test.evidence.map((line) => (
@@ -272,9 +275,13 @@ export function AngleSection({
       let change: Awaited<ReturnType<typeof chooseAngleAction>>['targetChange']
       await run(
         async () => {
-          const result = await chooseAngleAction(item.id, { option })
-          change = result.targetChange
-          return result
+          try {
+            const result = await chooseAngleAction(item.id, { option })
+            change = result.targetChange
+            return result
+          } catch {
+            return { ok: false, error: 'Could not choose the angle. Try again.' }
+          }
         },
         () => targetChangeNotice(change),
       )
@@ -290,6 +297,12 @@ export function AngleSection({
     brief.chosenAngle === at && Boolean(brief.niche) && nicheTestFor(brief, option) === undefined
   const themes = brief.commentThemes ?? []
   const read = brief.commentsRead
+  // A comments check the run skipped (the cap, or no result) means nothing was read.
+  const commentsSkip = (brief.skipped ?? []).find((s) =>
+    s.trim().toLowerCase().startsWith('comments'),
+  )
+  const nothingRead = read !== undefined && (read.videos === 0 || commentsSkip !== undefined)
+  const skipReason = commentsSkip?.replace(/^comments\s*:?\s*/i, '').trim() ?? ''
 
   return (
     <section id="evidence-angle" className="flex scroll-mt-4 flex-col gap-3">
@@ -345,7 +358,9 @@ export function AngleSection({
           summary={`${themes.length} ${themes.length === 1 ? 'theme' : 'themes'}`}
         >
           <p className="text-[var(--color-text-secondary)]">
-            {`Read ${fmt(read.comments)} comments on ${read.videos} videos${themes.length === 0 ? '; no clear requests.' : '.'}`}
+            {nothingRead
+              ? `No comments were read${skipReason === '' ? '.' : `: ${skipReason}.`}`
+              : `Read ${fmt(read.comments)} ${read.comments === 1 ? 'comment' : 'comments'} on ${read.videos} ${read.videos === 1 ? 'video' : 'videos'}${themes.length === 0 ? '; no clear requests.' : '.'}`}
           </p>
           {themes.length === 0 ? null : (
             <ul className="mt-2 flex flex-col gap-2">

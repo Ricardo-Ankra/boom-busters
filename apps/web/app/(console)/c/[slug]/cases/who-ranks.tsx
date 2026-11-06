@@ -24,7 +24,7 @@ import type { Run } from './search-brief-panel'
 
 const YEAR_MS = 365.25 * 86_400_000
 
-const grouped = new Intl.NumberFormat('en-ZA')
+const grouped = new Intl.NumberFormat('en-US')
 const fmt = (value: number): string => grouped.format(value)
 
 const keyOf = (term: string): string => term.trim().toLowerCase()

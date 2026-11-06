@@ -150,7 +150,13 @@ export function CasePanel({
         </ol>
       </div>
 
-      {brief === null ? null : <VerdictCard brief={brief} caseCategory={item.category} />}
+      {brief === null ? null : (
+        <VerdictCard
+          brief={brief}
+          caseCategory={item.category}
+          pillarLabels={Object.fromEntries(categories.map((c) => [c.key, c.label]))}
+        />
+      )}
 
       {fit ? (
         <p

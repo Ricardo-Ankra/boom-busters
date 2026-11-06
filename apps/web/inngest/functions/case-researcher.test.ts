@@ -593,6 +593,25 @@ describeDb('case-researcher (mock mode)', () => {
       await engine.execute(request())
       expect(searched).toEqual([SUBJECT, 'Adam Neumann', 'Miguel McKelvey'])
     })
+
+    it('seeds a person once, ignoring case and spaces, before taking two', async () => {
+      await updateCase(db, caseId, {
+        people: [' Adam Neumann ', 'adam neumann', 'ADAM NEUMANN', 'Miguel McKelvey'],
+      })
+      const searched: string[] = []
+      type Real = {
+        keywordResearch: (subject: string, options: { mode: string }) => Promise<unknown>
+      }
+      seams.clientOverride = (real) => ({
+        ...(real as object),
+        keywordResearch: async (subject: string, options: { mode: string }) => {
+          if (options.mode === 'matching_terms') searched.push(subject)
+          return (real as Real).keywordResearch(subject, options)
+        },
+      })
+      await engine.execute(request())
+      expect(searched).toEqual([SUBJECT, 'Adam Neumann', 'Miguel McKelvey'])
+    })
   })
 
   describe('the job it owns', () => {

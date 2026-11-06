@@ -152,6 +152,10 @@ function intentLine(brief: SearchBrief): VerdictLine {
 }
 
 function angleLine(brief: SearchBrief, checkedAngle: number | null): VerdictLine {
+  // The owner's own text is not an option: never judge the recommended one in its place.
+  if (brief.ownAngle) {
+    return { check: 'angle', state: 'warn', reason: 'Your own angle has no evidence check yet' }
+  }
   if (brief.angleOptions.length === 0) {
     return { check: 'angle', state: 'bad', reason: 'There are no angles to check' }
   }
@@ -188,7 +192,11 @@ function angleLine(brief: SearchBrief, checkedAngle: number | null): VerdictLine
   return { check: 'angle', state: 'warn', reason: found }
 }
 
-function fitLine(brief: SearchBrief, caseCategory: string | null): VerdictLine {
+function fitLine(
+  brief: SearchBrief,
+  caseCategory: string | null,
+  pillarLabels: Readonly<Record<string, string>> = {},
+): VerdictLine {
   const fit = brief.fit
   if (fit === null) return { check: 'fit', state: 'warn', reason: 'Channel fit was not measured' }
   if (!fit.inScope)
@@ -199,7 +207,7 @@ function fitLine(brief: SearchBrief, caseCategory: string | null): VerdictLine {
   return {
     check: 'fit',
     state: 'warn',
-    reason: `In scope, but it belongs to the ${fit.pillarKey} pillar`,
+    reason: `In scope, but it belongs to the ${pillarLabels[fit.pillarKey] ?? fit.pillarKey} pillar`,
   }
 }
 
@@ -271,12 +279,17 @@ function competitionLine(brief: SearchBrief): VerdictLine {
  */
 export function briefVerdict(
   brief: SearchBrief,
-  context: { caseCategory: string | null; checkedAngle: number | null },
+  context: {
+    caseCategory: string | null
+    checkedAngle: number | null
+    /** The channel's pillar labels by key, so a reason names the pillar as the owner does. */
+    pillarLabels?: Readonly<Record<string, string>>
+  },
 ): VerdictLine[] {
   return [
     intentLine(brief),
     angleLine(brief, context.checkedAngle),
-    fitLine(brief, context.caseCategory),
+    fitLine(brief, context.caseCategory, context.pillarLabels),
     demandLine(brief),
     competitionLine(brief),
   ]

@@ -362,6 +362,39 @@ describe('intent, fit and angle', () => {
     expect(out.reason).toContain('none tied to this angle')
   })
 
+  it('never judges the recommended option when the owner kept their own angle', () => {
+    const theme = { theme: 'Viewers ask about leases', count: 4, quote: null, videoId: 'v1' }
+    const own = brief({
+      ownAngle: true,
+      recommendedAngle: 0,
+      commentThemes: [theme],
+      angleOptions: [
+        {
+          angle: ANGLE,
+          keyword: 'wework documentary',
+          answers: [],
+          gap: 'g',
+          evidence: ['Four ask about leases'],
+          themeBacked: 1,
+        },
+      ],
+    })
+    const out = line(own, 'angle')
+    expect(out.state).toBe('warn')
+    expect(out.reason).toBe('Your own angle has no evidence check yet')
+  })
+
+  it('names the pillar by its label, not its key', () => {
+    const other = brief({ fit: { inScope: true, pillarKey: 'docs-key', reason: '' } })
+    expect(line(other, 'fit').reason).toContain('docs-key')
+    const labelled = briefVerdict(other, {
+      ...ctx,
+      caseCategory: 'crime',
+      pillarLabels: { 'docs-key': 'Documentaries' },
+    }).find((l) => l.check === 'fit')
+    expect(labelled?.reason).toBe('In scope, but it belongs to the Documentaries pillar')
+  })
+
   it('returns the five lines in order', () => {
     expect(briefVerdict(brief(), ctx).map((l) => l.check)).toEqual([
       'intent',

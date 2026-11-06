@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 
 const CASE_ID = '01J0000000000000000000000A'
 const CHECKED_AT = '2026-11-04T10:00:00.000Z'
-const grouped = (n: number) => new Intl.NumberFormat('en-ZA').format(n).replace(/\s/g, ' ')
+const grouped = (n: number) => new Intl.NumberFormat('en-US').format(n)
 
 const result = (overrides: Partial<FieldResult>): FieldResult => ({
   videoId: 'v1',
