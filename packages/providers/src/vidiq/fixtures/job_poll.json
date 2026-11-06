@@ -1,0 +1,23 @@
+{
+  "status": "completed",
+  "result": {
+    "verdict": "Viewers keep asking how the founder stayed rich after the collapse.",
+    "directEvidence": [
+      {
+        "summary": "Viewers ask how the founder is still worth billions.",
+        "threadCount": 8
+      },
+      {
+        "summary": "Viewers want the earlier company Greendesk covered.",
+        "threadCount": 3
+      }
+    ],
+    "adjacentEvidence": [
+      {
+        "summary": "Viewers compare the story with other startup collapses.",
+        "threadCount": 5
+      }
+    ],
+    "notes": "Fixture guess, not a live response."
+  }
+}

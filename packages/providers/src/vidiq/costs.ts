@@ -7,4 +7,8 @@ export const VIDIQ_CREDIT_COST = {
   videoTranscript: 5,
   keywordResearch: 5,
   scoreTitle: 5,
+  youtubeSearch: 5,
+  videoComments: 5,
+  commentInsights: 5,
+  jobPoll: 0,
 } as const

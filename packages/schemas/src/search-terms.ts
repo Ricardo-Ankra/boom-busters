@@ -16,7 +16,7 @@ const PREFIX_MIN_WORDS = 3
 const DIACRITIC = /[áàâãäéèêíóôõöúüçñÁÀÂÃÄÉÈÊÍÓÔÕÖÚÜÇÑ]/
 
 /** Lowercased whitespace tokens with title punctuation and commas stripped; empty tokens (a lone dash) drop out. */
-function words(term: string): string[] {
+export function termWords(term: string): string[] {
   return term
     .trim()
     .toLowerCase()
@@ -27,7 +27,13 @@ function words(term: string): string[] {
 
 /** Punctuation or nine words or more. The prefix rule needs the whole list, so it lives in `classifySearchTerms`. */
 export function isTitleShaped(term: string): boolean {
-  return TITLE_PUNCTUATION.test(term) || words(term).length >= TITLE_WORDS
+  return TITLE_PUNCTUATION.test(term) || termWords(term).length >= TITLE_WORDS
+}
+
+/** English, or no language set: the only channels whose accented terms are another language. */
+function isEnglish(language: string | undefined): boolean {
+  const l = (language ?? '').trim().toLowerCase()
+  return l === '' || l === 'en' || l.startsWith('en-')
 }
 
 /** A letter from the listed diacritic set, in either case (not any uppercase letter). */
@@ -38,20 +44,25 @@ export function hasDiacritic(term: string): boolean {
 /**
  * Sorts every term by shape, keyed by the trimmed lowercase term. A term is
  * also a title when it is the opening whole words (three or more) of a
- * title-shaped term in the list. Another language wins over a title.
+ * title-shaped term in the list. Another language wins over a title, but only
+ * on an English channel: on any other language an accent is just spelling.
  */
-export function classifySearchTerms(terms: readonly string[]): Map<string, SearchTermKind> {
-  const titleWords = terms.filter(isTitleShaped).map(words)
+export function classifySearchTerms(
+  terms: readonly string[],
+  options: { language?: string } = {},
+): Map<string, SearchTermKind> {
+  const accents = isEnglish(options.language)
+  const titleWords = terms.filter(isTitleShaped).map(termWords)
   const kinds = new Map<string, SearchTermKind>()
   for (const term of terms) {
     const key = term.trim().toLowerCase()
-    const own = words(term)
+    const own = termWords(term)
     const opensATitle =
       own.length >= PREFIX_MIN_WORDS &&
       titleWords.some((t) => t.length >= own.length && own.every((w, i) => t[i] === w))
     kinds.set(
       key,
-      hasDiacritic(term)
+      accents && hasDiacritic(term)
         ? 'other-language'
         : isTitleShaped(term) || opensATitle
           ? 'title'
@@ -71,12 +82,18 @@ export function byMonthlySearchesDesc(a: SearchKeyword, b: SearchKeyword): numbe
 }
 
 /** Keywords in input order; titles and other languages by monthly searches (nulls last), ten each at most. */
-export function splitSearchTerms(rows: readonly SearchKeyword[]): {
+export function splitSearchTerms(
+  rows: readonly SearchKeyword[],
+  options: { language?: string } = {},
+): {
   keywords: SearchKeyword[]
   searchedTitles: SearchKeyword[]
   otherLanguages: SearchKeyword[]
 } {
-  const kinds = classifySearchTerms(rows.map((r) => r.keyword))
+  const kinds = classifySearchTerms(
+    rows.map((r) => r.keyword),
+    options,
+  )
   const kindOf = (r: SearchKeyword) => kinds.get(r.keyword.trim().toLowerCase())
   const top = (kind: SearchTermKind) =>
     rows
@@ -88,4 +105,20 @@ export function splitSearchTerms(rows: readonly SearchKeyword[]): {
     searchedTitles: top('title'),
     otherLanguages: top('other-language'),
   }
+}
+
+/**
+ * The distinct lowercased words of the case's format and pillar keywords, for
+ * the pick to prefer. Words of two characters or fewer and the subject's own
+ * words are dropped: they say nothing about the kind of video.
+ */
+export function preferredWords(keywords: readonly string[], subject: string): string[] {
+  const skip = new Set(termWords(subject))
+  const out = new Set<string>()
+  for (const keyword of keywords) {
+    for (const w of termWords(keyword)) {
+      if (w.length > 2 && !skip.has(w)) out.add(w)
+    }
+  }
+  return [...out]
 }

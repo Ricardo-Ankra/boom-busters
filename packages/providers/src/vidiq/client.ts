@@ -9,19 +9,27 @@ import {
   creditsUsed,
   parseBalance,
   parseChannelVideos,
+  parseJobPoll,
   parseKeywordTable,
+  parseNicheJob,
   parseOutliers,
   parseScore,
   parseTranscript,
+  parseVideoComments,
   parseVideoDetails,
   parseVidiqResult,
+  parseYoutubeSearch,
 } from './shapes'
 import { VIDIQ_CREDIT_COST } from './costs'
 import type {
   VidiqBalance,
   VidiqCall,
+  VidiqComment,
+  VidiqJobState,
   VidiqKeywordRow,
+  VidiqNicheJob,
   VidiqRawResult,
+  VidiqSearchResult,
   VidiqTool,
   VidiqTranscript,
   VidiqVideo,
@@ -53,6 +61,16 @@ export interface VidiqClient {
     channelId?: string
     type?: 'long' | 'short'
   }): Promise<VidiqCall<{ score: number | null }>>
+  youtubeSearch(query: string): Promise<VidiqCall<VidiqSearchResult[]>>
+  videoComments(videoId: string): Promise<VidiqCall<VidiqComment[]>>
+  /** Starts the niche test; poll the job with `jobPoll`. */
+  commentInsightsValidate(args: {
+    niche: string
+    idea: string
+    language?: string
+  }): Promise<VidiqCall<VidiqNicheJob>>
+  /** Free. */
+  jobPoll(jobId: string): Promise<VidiqCall<VidiqJobState>>
   close(): Promise<void>
 }
 
@@ -156,6 +174,37 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
         VIDIQ_CREDIT_COST.scoreTitle,
         parseScore,
       ),
+    youtubeSearch: (query) =>
+      run(
+        'vidiq_youtube_search',
+        { query, type: ['video'], limit: 10, order: 'relevance' },
+        VIDIQ_CREDIT_COST.youtubeSearch,
+        parseYoutubeSearch,
+      ),
+    videoComments: (videoId) =>
+      run(
+        'vidiq_video_comments',
+        { videoId, order: 'relevance', maxResult: 100 },
+        VIDIQ_CREDIT_COST.videoComments,
+        parseVideoComments,
+      ),
+    commentInsightsValidate: ({ niche, idea, language }) => {
+      // The tool takes a two-letter code only: "pt-BR" is sent as "pt".
+      const code = language?.split(/[-_]/)[0] ?? ''
+      return run(
+        'vidiq_comment_insights',
+        {
+          mode: 'validate',
+          niche,
+          idea,
+          ...(/^[A-Za-z]{2}$/.test(code) ? { language: code } : {}),
+        },
+        VIDIQ_CREDIT_COST.commentInsights,
+        parseNicheJob,
+      )
+    },
+    jobPoll: (jobId) =>
+      run('vidiq_job_poll', { mcpJobId: jobId }, VIDIQ_CREDIT_COST.jobPoll, parseJobPoll),
     close,
   }
 }

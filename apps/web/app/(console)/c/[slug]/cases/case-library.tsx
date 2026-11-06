@@ -80,7 +80,7 @@ export function CaseLibrary({
     async (action, success) => {
       const result = await action()
       if (result.ok) {
-        toast({ title: success })
+        toast({ title: typeof success === 'function' ? success() : success })
         router.refresh()
       } else {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })

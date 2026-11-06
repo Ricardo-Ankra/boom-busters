@@ -3,6 +3,10 @@ import type { VidiqCaller, VidiqClient } from './client'
 import balance from './fixtures/balance.json' with { type: 'json' }
 import { KEYWORD_RESEARCH_MARKDOWN } from './fixtures/keyword-research'
 import { KEYWORD_QUESTIONS_MARKDOWN } from './fixtures/keyword-questions'
+import commentInsights from './fixtures/comment_insights.json' with { type: 'json' }
+import jobPoll from './fixtures/job_poll.json' with { type: 'json' }
+import videoComments from './fixtures/video_comments.json' with { type: 'json' }
+import youtubeSearch from './fixtures/youtube_search.json' with { type: 'json' }
 import channelVideos from './fixtures/channel_videos.json' with { type: 'json' }
 import getVideosByIds from './fixtures/get_videos_by_ids.json' with { type: 'json' }
 import outliers from './fixtures/outliers.json' with { type: 'json' }
@@ -22,6 +26,11 @@ const JSON_FIXTURES: Partial<Record<VidiqTool, unknown>> = {
   vidiq_get_videos_by_ids: getVideosByIds,
   vidiq_video_transcript: videoTranscript,
   vidiq_score_title: scoreTitle,
+  vidiq_youtube_search: youtubeSearch,
+  vidiq_video_comments: videoComments,
+  vidiq_comment_insights: commentInsights,
+  // The niche test finishes on the first poll.
+  vidiq_job_poll: jobPoll,
 }
 
 const serve: VidiqCaller = async (tool, args): Promise<VidiqRawResult> => {

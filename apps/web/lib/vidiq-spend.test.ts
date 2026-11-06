@@ -10,7 +10,7 @@ import {
 import { DEFAULT_WORKSPACE_SETTINGS, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { checkVidiqBudget, spendVidiq } from './vidiq-spend'
+import { checkVidiqBudget, spendVidiq, VidiqCapReached } from './vidiq-spend'
 
 /**
  * The shared VidIQ budget check and spend path, in mock-provider mode against
@@ -73,6 +73,17 @@ describeDb('vidiq-spend (mock mode)', () => {
       )
       expect(call).not.toHaveBeenCalled()
       expect(await db.select().from(vidiqCredits)).toHaveLength(0)
+    })
+
+    it('throws VidiqCapReached at the cap', async () => {
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 3 } })
+      await expect(spendVidiq(input, vi.fn())).rejects.toBeInstanceOf(VidiqCapReached)
+    })
+
+    it('keeps the NonRetriableError name so Inngest still stops retrying', async () => {
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 3 } })
+      const error = await spendVidiq(input, vi.fn()).catch((e: unknown) => e)
+      expect((error as Error).name).toBe('NonRetriableError')
     })
 
     it('writes a row with the purpose, the tool and the wire arguments', async () => {

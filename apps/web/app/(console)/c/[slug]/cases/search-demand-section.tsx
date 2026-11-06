@@ -1,14 +1,15 @@
 'use client'
 
 import type { CaseSummary } from '@boom-busters/db'
-import { keywordHasFigure } from '@boom-busters/schemas'
-import type { SearchKeyword } from '@boom-busters/schemas'
+import { briefHasFullChecks, keywordHasFigure, topicDemand } from '@boom-busters/schemas'
+import type { SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { setTargetKeywordAction } from './actions'
 import { measuredOn, scoreWord } from './case-progress'
 import { briefMatchesSubject } from './search-brief-panel'
 import type { Run } from './search-brief-panel'
+import { WhoRanks } from './who-ranks'
 
 /**
  * The panel's Search demand section: the target keyword with its figures,
@@ -65,14 +66,43 @@ const OutOf = () => (
   <span className="text-[12px] font-normal text-[var(--color-text-muted)]">/100</span>
 )
 
-function TargetCard({ target }: { target: SearchKeyword }) {
+const FIT_WORDS: Record<NonNullable<SearchKeyword['fit']>, string> = {
+  fits: 'Fits this channel',
+  partly: 'Partly fits this channel',
+  off: "Doesn't fit this channel",
+}
+
+function TargetCard({ target, brief }: { target: SearchKeyword; brief: SearchBrief }) {
+  const full = briefHasFullChecks(brief)
+  const { topic, searches } = topicDemand(brief)
   return (
     <div
+      id="evidence-intent"
       data-testid="target-card"
-      className="rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      className="scroll-mt-4 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
     >
       <p className="text-[12px] text-[var(--color-text-muted)]">Target keyword</p>
       <p className="font-mono text-[17px] font-semibold">{target.keyword}</p>
+      {target.fit === undefined && target.intent === undefined ? null : (
+        <p className="mt-1 text-[13px] text-[var(--color-text-secondary)]">
+          {target.fit === undefined ? null : (
+            <span className="font-medium text-[var(--color-text-primary)]">
+              {FIT_WORDS[target.fit]}
+            </span>
+          )}
+          {target.fit !== undefined && target.intent !== undefined ? ': ' : null}
+          {target.intent}
+        </p>
+      )}
+      {full && topic !== null ? (
+        <p
+          id="evidence-demand"
+          className="mt-1 scroll-mt-4 text-[13px] text-[var(--color-text-secondary)]"
+        >
+          {`Topic: ${topic}`}
+          {searches === null ? '' : `, about ${fmt(searches)} searches a month`}
+        </p>
+      ) : null}
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
         {target.estimatedMonthlySearch === null ? null : (
           <Figure label="Searches a month" hint="VidIQ estimate">
@@ -123,7 +153,96 @@ function stackedFigures(keyword: SearchKeyword): string {
 
 const cell = (value: number | null): string => (value === null ? '' : fmt(value))
 
-function EvidenceItem({
+/** Rows grouped under their topic, in first-seen order; rows with no topic share one headless group. */
+function groupByTopic(rows: readonly SearchKeyword[]) {
+  const groups: { topic: string | null; rows: SearchKeyword[] }[] = []
+  for (const row of rows) {
+    const topic = row.topic ?? null
+    const found = groups.find((g) => g.topic === topic)
+    if (found) found.rows.push(row)
+    else groups.push({ topic, rows: [row] })
+  }
+  return groups
+}
+
+function KeywordTable({
+  rows,
+  current,
+  pending,
+  onMakeTarget,
+}: {
+  rows: readonly SearchKeyword[]
+  current: boolean
+  pending: string | null
+  onMakeTarget: (term: string) => void
+}) {
+  return (
+    <table className="w-full border-collapse text-[13px]">
+      <thead>
+        <tr className="text-left text-[12px] text-[var(--color-text-muted)]">
+          <th className="border-b border-[var(--color-border)] px-2 py-1.5 font-medium">Keyword</th>
+          <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
+            A month
+          </th>
+          <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
+            Volume
+          </th>
+          <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
+            Competition
+          </th>
+          <th className="w-px border-b border-[var(--color-border)] px-2 py-1.5">
+            <span className="sr-only">Action</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((keyword) => (
+          <tr key={keyword.keyword}>
+            <td className="border-b border-[var(--color-border)] px-2 py-2 align-middle">
+              <span className="font-mono">{keyword.keyword}</span>
+              {keyword.intent === undefined ? null : (
+                <span className="mt-0.5 block text-[12px] text-[var(--color-text-secondary)]">
+                  {keyword.intent}
+                </span>
+              )}
+              <span className="mt-0.5 block font-mono text-[12px] text-[var(--color-text-secondary)] sm:hidden">
+                {stackedFigures(keyword)}
+              </span>
+            </td>
+            <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
+              {cell(keyword.estimatedMonthlySearch)}
+            </td>
+            <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
+              {cell(keyword.volume)}
+            </td>
+            <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
+              {cell(keyword.competition)}
+            </td>
+            <td className="border-b border-[var(--color-border)] px-2 py-1 text-right align-middle">
+              {!current ? null : keywordHasFigure(keyword.keyword) ? (
+                <span className="text-[12px] text-[var(--color-text-secondary)]">
+                  {"Has a figure, can't be the target"}
+                </span>
+              ) : (
+                <Button
+                  variant="outline"
+                  aria-label={`Make target: ${keyword.keyword}`}
+                  busy={pending === keyword.keyword}
+                  disabled={pending !== null}
+                  onClick={() => onMakeTarget(keyword.keyword)}
+                >
+                  Make target
+                </Button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+export function EvidenceItem({
   title,
   summary,
   children,
@@ -162,6 +281,8 @@ export function SearchDemandSection({ item, run }: { item: CaseSummary; run: Run
   }
 
   const current = briefMatchesSubject(brief, item.subject)
+  const groups = groupByTopic(brief.secondaryKeywords)
+  const offIntent = brief.offIntent ?? []
   const breakouts = brief.outliers.flatMap((o) =>
     o.breakoutScore === null ? [] : [o.breakoutScore],
   )
@@ -184,7 +305,7 @@ export function SearchDemandSection({ item, run }: { item: CaseSummary; run: Run
       </div>
 
       {brief.targetKeyword ? (
-        <TargetCard target={brief.targetKeyword} />
+        <TargetCard target={brief.targetKeyword} brief={brief} />
       ) : (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           No keyword people search for this subject was measured; the searched titles below show
@@ -192,65 +313,51 @@ export function SearchDemandSection({ item, run }: { item: CaseSummary; run: Run
         </p>
       )}
 
+      <WhoRanks item={item} run={run} />
+
       {brief.secondaryKeywords.length > 0 ? (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-2">
           <h4 className="text-[13px] font-semibold">Other keywords</h4>
-          <table className="w-full border-collapse text-[13px]">
-            <thead>
-              <tr className="text-left text-[12px] text-[var(--color-text-muted)]">
-                <th className="border-b border-[var(--color-border)] px-2 py-1.5 font-medium">
-                  Keyword
-                </th>
-                <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
-                  A month
-                </th>
-                <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
-                  Volume
-                </th>
-                <th className="hidden border-b border-[var(--color-border)] px-2 py-1.5 text-right font-medium sm:table-cell">
-                  Competition
-                </th>
-                <th className="w-px border-b border-[var(--color-border)] px-2 py-1.5">
-                  <span className="sr-only">Action</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {brief.secondaryKeywords.map((keyword) => (
-                <tr key={keyword.keyword}>
-                  <td className="border-b border-[var(--color-border)] px-2 py-2 align-middle">
-                    <span className="font-mono">{keyword.keyword}</span>
-                    <span className="mt-0.5 block font-mono text-[12px] text-[var(--color-text-secondary)] sm:hidden">
-                      {stackedFigures(keyword)}
-                    </span>
-                  </td>
-                  <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
-                    {cell(keyword.estimatedMonthlySearch)}
-                  </td>
-                  <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
-                    {cell(keyword.volume)}
-                  </td>
-                  <td className="hidden border-b border-[var(--color-border)] px-2 py-2 text-right font-mono tabular-nums sm:table-cell">
-                    {cell(keyword.competition)}
-                  </td>
-                  <td className="border-b border-[var(--color-border)] px-2 py-1 text-right align-middle">
-                    {current && !keywordHasFigure(keyword.keyword) ? (
-                      <Button
-                        variant="outline"
-                        aria-label={`Make target: ${keyword.keyword}`}
-                        busy={pending === keyword.keyword}
-                        disabled={pending !== null}
-                        onClick={() => void makeTarget(keyword.keyword)}
-                      >
-                        Make target
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {groups.map((group) => (
+            <div key={group.topic ?? ''} className="flex flex-col gap-1">
+              {group.topic === null ? null : (
+                <h5 className="text-[12px] font-medium text-[var(--color-text-secondary)]">
+                  {group.topic}
+                </h5>
+              )}
+              <KeywordTable
+                rows={group.rows}
+                current={current}
+                pending={pending}
+                onMakeTarget={(term) => void makeTarget(term)}
+              />
+            </div>
+          ))}
         </div>
+      ) : null}
+
+      {offIntent.length > 0 ? (
+        <details className="rounded-[10px] border border-[var(--color-border)]">
+          <summary className="flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-3.5 py-3 text-[14px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]">
+            <span>{"Doesn't fit this channel"}</span>
+            <span className="text-[13px] font-normal text-[var(--color-text-muted)]">
+              {plural(offIntent.length, 'keyword', 'keywords')}
+            </span>
+          </summary>
+          <ul className="flex flex-col border-t border-[var(--color-border)] px-3.5 py-1 text-[13px]">
+            {offIntent.map((row) => (
+              <li
+                key={row.keyword}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 border-b border-[var(--color-border)] py-2 last:border-b-0"
+              >
+                <span className="font-mono">{row.keyword}</span>
+                {row.intent === undefined ? null : (
+                  <span className="text-[var(--color-text-secondary)]">{row.intent}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       {brief.searchedTitles.length > 0 ? (

@@ -8,6 +8,7 @@ import {
   seed,
   setCaseFormat,
   truncateRunMirror,
+  updateCase,
   updateWorkspace,
   vidiqCredits,
   withTemporaryBible,
@@ -16,6 +17,7 @@ import {
 import type { AngleOption, CaseResearchJob, ChannelFormat } from '@boom-busters/schemas'
 import type * as ProvidersModule from '@boom-busters/providers'
 import type * as VidiqModule from '@boom-busters/providers/vidiq'
+import type * as EvidenceModule from '@/lib/case-evidence'
 import type * as RateAnglesModule from '@/lib/rate-angles'
 import {
   CASE_RESEARCH_CREDITS,
@@ -55,13 +57,33 @@ const seams = vi.hoisted(() => ({
   winnersOverride: null as null | { titlePatterns: string[]; toldAlready: string[] },
   anglesOverride: null as null | AngleOption[],
   ratingOverride: null as null | (() => Promise<{ ok: false; error: string }>),
+  understandingOverride: null as
+    null | ((input: { rows: readonly { keyword: string }[] }) => unknown),
+  nicheTimesOut: false,
 }))
+
+vi.mock('@/lib/case-evidence', async (importOriginal) => {
+  const original = await importOriginal<typeof EvidenceModule>()
+  return {
+    ...original,
+    awaitNicheTest: (...args: Parameters<typeof original.awaitNicheTest>) =>
+      seams.nicheTimesOut
+        ? Promise.resolve({ state: 'running' as const })
+        : original.awaitNicheTest(...args),
+  }
+})
 
 vi.mock('@boom-busters/providers', async (importOriginal) => {
   const original = await importOriginal<typeof ProvidersModule>()
   return {
     ...original,
     mockWinners: () => seams.winnersOverride ?? original.mockWinners(),
+    mockKeywordUnderstanding: (input: Parameters<typeof original.mockKeywordUnderstanding>[0]) =>
+      seams.understandingOverride
+        ? (seams.understandingOverride(input) as ReturnType<
+            typeof original.mockKeywordUnderstanding
+          >)
+        : original.mockKeywordUnderstanding(input),
     mockAngleOptions: (input: Parameters<typeof original.mockAngleOptions>[0]) =>
       seams.anglesOverride ?? original.mockAngleOptions(input),
   }
@@ -81,6 +103,15 @@ vi.mock('@boom-busters/providers/vidiq', async (importOriginal) => {
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const SUBJECT = 'WeWork'
+
+/** The optional checks' tools; the rest are the run's required calls. */
+const OPTIONAL_TOOLS = ['vidiq_youtube_search', 'vidiq_video_comments', 'vidiq_comment_insights']
+
+/** The ledger rows of the required calls (terms, questions, outliers, details), leaving out the optional checks. */
+async function requiredRows() {
+  const rows = await db.select().from(vidiqCredits)
+  return rows.filter((r) => !OPTIONAL_TOOLS.includes(r.tool))
+}
 
 /** Every longest string in a value, so a stored description or transcript would show. */
 function longestString(value: unknown): number {
@@ -128,6 +159,8 @@ describeDb('case-researcher (mock mode)', () => {
     seams.winnersOverride = null
     seams.anglesOverride = null
     seams.ratingOverride = null
+    seams.understandingOverride = null
+    seams.nicheTimesOut = false
     engine = new InngestTestEngine({ function: caseResearcher })
     await seed(db)
     await truncateRunMirror(db)
@@ -152,7 +185,7 @@ describeDb('case-researcher (mock mode)', () => {
     await deleteCase(db, caseId)
   })
 
-  it('saves a brief with a target keyword, short lists and two or three angles, in four ledger rows worth 20 credits', async () => {
+  it('saves a brief with a target keyword, short lists and two or three angles, in four required ledger rows worth 20 credits', async () => {
     const { result } = await engine.execute(request())
     expect(result).toMatchObject({ outcome: 'researched' })
 
@@ -177,7 +210,7 @@ describeDb('case-researcher (mock mode)', () => {
 
     expect(row?.searchJob).toMatchObject({ state: 'done', current: null, error: null })
 
-    const rows = await db.select().from(vidiqCredits)
+    const rows = await requiredRows()
     expect(rows).toHaveLength(4)
     expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(CASE_RESEARCH_CREDITS)
     expect(
@@ -395,6 +428,192 @@ describeDb('case-researcher (mock mode)', () => {
     })
   })
 
+  describe('the new checks', () => {
+    const kw = (keyword: string, overall: number, monthly: number) => ({
+      keyword,
+      volume: 50,
+      competition: 30,
+      overall,
+      estimatedMonthlySearch: monthly,
+      growthPct: null,
+    })
+    const rowsOf = (rows: ReturnType<typeof kw>[]) => {
+      seams.clientOverride = (real) => ({
+        ...(real as object),
+        keywordResearch: async (_subject: string, options: { mode: string }) => ({
+          data: options.mode === 'questions' ? [] : rows,
+          credits: 5,
+          args: { keyword: SUBJECT, mode: options.mode },
+        }),
+      })
+    }
+
+    it('stores intent, fit and topic, and keeps off rows apart', async () => {
+      rowsOf([
+        kw('wework documentary', 60, 900),
+        kw('wework office in pune', 70, 400),
+        kw('wework podcast', 40, 100),
+      ])
+      seams.understandingOverride = () => ({
+        niche: 'business collapses',
+        terms: [
+          { keyword: 'wework documentary', intent: 'wants the story', fit: 'fits', topic: 'story' },
+          {
+            keyword: 'wework office in pune',
+            intent: 'wants an office',
+            fit: 'off',
+            topic: 'office',
+          },
+          { keyword: 'wework podcast', intent: 'wants audio', fit: 'partly', topic: 'audio' },
+        ],
+      })
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.targetKeyword).toMatchObject({
+        keyword: 'wework documentary',
+        intent: 'wants the story',
+        fit: 'fits',
+        topic: 'story',
+      })
+      expect(brief.secondaryKeywords.map((k) => k.keyword)).toEqual(['wework podcast'])
+      expect(brief.secondaryKeywords[0]).toMatchObject({ fit: 'partly', topic: 'audio' })
+      expect(brief.offIntent?.map((k) => k.keyword)).toEqual(['wework office in pune'])
+      expect(brief.niche).toBe('business collapses')
+      expect(brief.language).toBe(FIRST_CHANNEL_BIBLE.language)
+    })
+
+    it('picks the first candidate whose field is not bad', async () => {
+      rowsOf([kw('wework documentary', 60, 900), kw('wework story', 60, 100)])
+      const base = seams.clientOverride!
+      seams.clientOverride = (real) => {
+        const client = base(real) as Record<string, unknown>
+        const now = new Date().toISOString()
+        const result = (subs: number, views: number, i: number) => ({
+          videoId: `v${i}`,
+          title: `Video ${i}`,
+          channelTitle: 'Channel',
+          subscribers: subs,
+          views,
+          publishedAt: now,
+          seconds: 600,
+        })
+        return {
+          ...client,
+          youtubeSearch: async (query: string) => ({
+            data:
+              query === 'wework documentary'
+                ? Array.from({ length: 10 }, (_, i) => result(5_000_000, 1_000_000, i))
+                : Array.from({ length: 10 }, (_, i) => result(2_000, 50_000, i)),
+            credits: 15,
+            args: { query },
+          }),
+        }
+      }
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.fieldChecks?.map((c) => c.keyword)).toEqual([
+        'wework documentary',
+        'wework story',
+      ])
+      expect(brief.targetKeyword?.keyword).toBe('wework story')
+      expect(brief.secondaryKeywords.map((k) => k.keyword)).toEqual(['wework documentary'])
+    })
+
+    it('stores comment themes and how many comments were read', async () => {
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.commentsRead?.videos).toBe(Math.min(3, brief.outliers.length))
+      expect(brief.commentsRead?.comments).toBeGreaterThan(0)
+      expect(brief.commentThemes?.length).toBeGreaterThan(0)
+      expect(brief.commentThemes?.[0]?.videoId).toBeTruthy()
+      const rows = await db.select().from(vidiqCredits)
+      expect(rows.filter((r) => r.tool === 'vidiq_video_comments')).toHaveLength(
+        brief.commentsRead!.videos,
+      )
+    })
+
+    it('stores the niche test for the recommended angle', async () => {
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.nicheTests).toHaveLength(1)
+      expect(brief.nicheTests?.[0]?.angle).toBe(brief.angleOptions[brief.recommendedAngle!]?.angle)
+      expect(brief.skipped ?? []).toEqual([])
+      const rows = await db.select().from(vidiqCredits)
+      expect(rows.filter((r) => r.tool === 'vidiq_comment_insights')).toHaveLength(1)
+    })
+
+    it('saves the brief when the niche test times out', async () => {
+      seams.nicheTimesOut = true
+      const { result } = await engine.execute(request())
+      expect(result).toMatchObject({ outcome: 'researched' })
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.nicheTests).toEqual([])
+      expect(brief.skipped).toContain('niche test: no result')
+    })
+
+    it('keeps the paid niche job when the test times out, so the panel can collect it', async () => {
+      seams.nicheTimesOut = true
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.nicheJobs).toHaveLength(1)
+      expect(brief.nicheJobs?.[0]).toEqual({
+        angle: brief.angleOptions[brief.recommendedAngle!]?.angle,
+        jobId: expect.any(String),
+        startedAt: expect.any(String),
+      })
+    })
+
+    it('skips optional steps at the cap and says so', async () => {
+      // The 20 credits of the required calls fit; the field check (15) does not.
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 22 } })
+      const { result } = await engine.execute(request())
+      expect(result).toMatchObject({ outcome: 'researched' })
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.fieldChecks).toEqual([])
+      expect(brief.skipped).toEqual(
+        expect.arrayContaining(['field check: credit cap', 'comments: credit cap']),
+      )
+      expect(brief.skipped).toContain('niche test: credit cap')
+      expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+    })
+
+    it('seeds research with up to two people', async () => {
+      await updateCase(db, caseId, { people: ['Adam Neumann', 'Miguel McKelvey', 'Third Person'] })
+      const searched: string[] = []
+      type Real = {
+        keywordResearch: (subject: string, options: { mode: string }) => Promise<unknown>
+      }
+      seams.clientOverride = (real) => ({
+        ...(real as object),
+        keywordResearch: async (subject: string, options: { mode: string }) => {
+          if (options.mode === 'matching_terms') searched.push(subject)
+          return (real as Real).keywordResearch(subject, options)
+        },
+      })
+      await engine.execute(request())
+      expect(searched).toEqual([SUBJECT, 'Adam Neumann', 'Miguel McKelvey'])
+    })
+
+    it('seeds a person once, ignoring case and spaces, before taking two', async () => {
+      await updateCase(db, caseId, {
+        people: [' Adam Neumann ', 'adam neumann', 'ADAM NEUMANN', 'Miguel McKelvey'],
+      })
+      const searched: string[] = []
+      type Real = {
+        keywordResearch: (subject: string, options: { mode: string }) => Promise<unknown>
+      }
+      seams.clientOverride = (real) => ({
+        ...(real as object),
+        keywordResearch: async (subject: string, options: { mode: string }) => {
+          if (options.mode === 'matching_terms') searched.push(subject)
+          return (real as Real).keywordResearch(subject, options)
+        },
+      })
+      await engine.execute(request())
+      expect(searched).toEqual([SUBJECT, 'Adam Neumann', 'Miguel McKelvey'])
+    })
+  })
+
   describe('the job it owns', () => {
     it('refreshes the heartbeat and names the step before it spends, so a long run stays alive', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -496,7 +715,7 @@ describeDb('case-researcher (mock mode)', () => {
         const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
         expect(brief.formatKey).toBe('sleep')
         expect(brief.fit).toMatchObject({ inScope: true, reason: 'Mock fit.' })
-        const rows = await db.select().from(vidiqCredits)
+        const rows = await requiredRows()
         expect(rows).toHaveLength(5)
         expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(CASE_RESEARCH_CREDITS + 5)
       })
@@ -509,7 +728,7 @@ describeDb('case-researcher (mock mode)', () => {
         expect(searched).toEqual([SUBJECT])
         const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
         expect(brief.formatKey).toBe('main')
-        expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+        expect(await requiredRows()).toHaveLength(4)
       })
     })
 
@@ -532,7 +751,7 @@ describeDb('case-researcher (mock mode)', () => {
       expect(searched).toEqual([SUBJECT])
       const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
       expect(brief.formatKey).toBeNull()
-      expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+      expect(await requiredRows()).toHaveLength(4)
     })
 
     it('a stale case key resolves to the primary', async () => {

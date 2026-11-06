@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { SEARCHED_TERMS_MAX, byMonthlySearchesDesc, classifySearchTerms } from './search-terms'
+import {
+  SEARCHED_TERMS_MAX,
+  byMonthlySearchesDesc,
+  classifySearchTerms,
+  termWords,
+} from './search-terms'
 
 /** One measured keyword row; every measure is null when VidIQ gave none. */
 export const SearchKeywordSchema = z.object({
@@ -9,7 +14,14 @@ export const SearchKeywordSchema = z.object({
   overall: z.number().nullable(),
   estimatedMonthlySearch: z.number().nullable(),
   growthPct: z.number().nullable(),
+  /** What the searcher wants, in plain words; set by the research run's understanding step. */
+  intent: z.string().max(80).optional(),
+  /** Whether a video in the case's format on this channel would satisfy that searcher. */
+  fit: z.enum(['fits', 'partly', 'off']).optional(),
+  /** A short label shared by terms that mean the same thing. */
+  topic: z.string().max(40).optional(),
 })
+export type KeywordFit = NonNullable<SearchKeyword['fit']>
 export type SearchKeyword = z.infer<typeof SearchKeywordSchema>
 
 /** A winning video (an outlier) in the subject's search space. */
@@ -31,6 +43,10 @@ export const AngleOptionSchema = z.object({
   /** Searched questions this angle answers. */
   answers: z.array(z.string()).max(5),
   gap: z.string().max(300),
+  /** Comment-theme lines that support this angle; set by the research run. */
+  evidence: z.array(z.string().max(160)).max(3).optional(),
+  /** How many evidence lines rest on a comment theme, not only on the field. */
+  themeBacked: z.number().int().min(0).max(3).optional(),
 })
 export type AngleOption = z.infer<typeof AngleOptionSchema>
 
@@ -47,6 +63,69 @@ export const BriefFitSchema = z.object({
   reason: z.string().max(300),
 })
 export type BriefFit = z.infer<typeof BriefFitSchema>
+
+/** One video in a keyword's top ten; every measure is null when VidIQ gave none. */
+export const FieldResultSchema = z.object({
+  videoId: z.string(),
+  title: z.string(),
+  channelTitle: z.string().nullable(),
+  subscribers: z.number().nullable(),
+  views: z.number().nullable(),
+  publishedAt: z.string().nullable(),
+  /** Length in seconds, parsed from the ISO 8601 duration by the provider. */
+  seconds: z.number().nullable(),
+})
+export type FieldResult = z.infer<typeof FieldResultSchema>
+
+/** Who ranks now for one keyword: the top ten at the time of the check. */
+export const FieldCheckSchema = z.object({
+  keyword: z.string(),
+  checkedAt: z.string().datetime(),
+  results: z.array(FieldResultSchema).max(10),
+})
+export type FieldCheck = z.infer<typeof FieldCheckSchema>
+
+/** A thing viewers keep asking for or saying in the subject's winning videos. */
+export const CommentThemeSchema = z.object({
+  theme: z.string().max(120),
+  count: z.number().int().min(1),
+  quote: z.string().max(140).nullable(),
+  videoId: z.string(),
+})
+export type CommentTheme = z.infer<typeof CommentThemeSchema>
+
+/** A niche test of one angle: whether the audience for it exists. */
+export const NicheTestSchema = z.object({
+  angle: z.string(),
+  verdict: z.string().max(300),
+  /** The evidence speaks to this angle itself, not only the wider subject. */
+  direct: z.boolean(),
+  evidence: z.array(z.object({ text: z.string().max(200), count: z.number().nullable() })).max(3),
+  notes: z.string().max(500),
+})
+export type NicheTest = z.infer<typeof NicheTestSchema>
+
+/** A niche test bought but not yet collected: the VidIQ job for one angle. */
+export const NicheJobSchema = z.object({
+  angle: z.string(),
+  jobId: z.string(),
+  startedAt: z.string().datetime(),
+})
+export type NicheJob = z.infer<typeof NicheJobSchema>
+
+/** A pending niche job is collected for free this long after it started; later it is ignored. */
+export const NICHE_JOB_COLLECT_MS = 30 * 60_000
+
+/** The angle's pending niche job when it started under thirty minutes ago, else undefined. */
+export function pendingNicheJob(
+  brief: Pick<SearchBrief, 'nicheJobs'>,
+  angle: string,
+  now: Date = new Date(),
+): NicheJob | undefined {
+  return (brief.nicheJobs ?? []).find(
+    (j) => j.angle === angle && now.getTime() - Date.parse(j.startedAt) < NICHE_JOB_COLLECT_MS,
+  )
+}
 
 export const SearchBriefSchema = z.object({
   subject: z.string(),
@@ -71,6 +150,20 @@ export const SearchBriefSchema = z.object({
   recommendationReason: z.string().max(RECOMMENDATION_REASON_MAX).nullable().default(null),
   /** The owner wrote their own angle instead of choosing an option. */
   ownAngle: z.boolean().default(false),
+  /** The bible's language the run read terms in; absent in a brief saved before it. */
+  language: z.string().optional(),
+  /** The niche the run understood the subject to sit in. */
+  niche: z.string().max(80).optional(),
+  /** Measured rows the understanding step judged off the channel's intent. */
+  offIntent: z.array(SearchKeywordSchema).max(10).optional(),
+  fieldChecks: z.array(FieldCheckSchema).max(4).optional(),
+  commentThemes: z.array(CommentThemeSchema).max(5).optional(),
+  commentsRead: z.object({ videos: z.number().int(), comments: z.number().int() }).optional(),
+  nicheTests: z.array(NicheTestSchema).max(3).optional(),
+  /** Niche tests paid for that had not finished when the wait ended; the panel collects them for free. */
+  nicheJobs: z.array(NicheJobSchema).max(3).optional(),
+  /** Checks the run did not make, as plain strings starting with the group ('field check: credit cap'). */
+  skipped: z.array(z.string()).max(6).optional(),
 })
 export type SearchBrief = z.infer<typeof SearchBriefSchema>
 
@@ -86,14 +179,21 @@ export const CaseResearchJobSchema = z.object({
 export type CaseResearchJob = z.infer<typeof CaseResearchJobSchema>
 
 export const SEARCH_BRIEF_STALE_DAYS = 30
-/** The estimate shown before a case research run spends VidIQ credits. */
+/** Credits per run: the base call (the run itself still spends this much today), then each optional call. */
 export const CASE_RESEARCH_CREDITS = 20
-/** The extra VidIQ call a format's lead keyword adds to a research run. */
 const FORMAT_SEED_CREDITS = 5
+const PEOPLE_SEED_CREDITS = 5
+const PEOPLE_SEEDS_MAX = 2
+const FIELD_CHECK_CREDITS = 35
 
-/** The estimate for a run: 20, and 5 more when the case's format has a lead keyword to search. */
-export function caseResearchCredits(hasFormatSeed: boolean): number {
-  return CASE_RESEARCH_CREDITS + (hasFormatSeed ? FORMAT_SEED_CREDITS : 0)
+/** The estimate for a run: 20, 5 for the format seed, 5 per People seed (two at most), and 35 for the field check, comments and niche test. */
+export function caseResearchCredits(input: { formatSeed: boolean; people: number }): number {
+  return (
+    CASE_RESEARCH_CREDITS +
+    (input.formatSeed ? FORMAT_SEED_CREDITS : 0) +
+    PEOPLE_SEED_CREDITS * Math.min(Math.max(input.people, 0), PEOPLE_SEEDS_MAX) +
+    FIELD_CHECK_CREDITS
+  )
 }
 
 const JOB_STALE_MS = 30 * 60_000
@@ -118,19 +218,50 @@ export function maskFigures(keyword: string): string {
   return keyword.replace(FIGURE_RUN, '{figure}')
 }
 
-const DOCUMENTARY_PHRASES = [
-  'documentary',
-  'what happened to',
-  'rise and fall of',
-  'story',
-  'collapse',
-  'bankruptcy',
-]
+/** Below this `overall` a keyword is never offered as the target. */
+const PICK_FLOOR = 50
+const CANDIDATES_MAX = 3
+
+/**
+ * The keywords the research run checks the field for, best first. Eligible rows
+ * are keywords (no title, no other language, no figure) with `overall` 50 or
+ * more. Rows that fit (or were never judged) win; only when none do, rows that
+ * partly fit. Then a row with a whole preferred word, then most searches (nulls
+ * last). Three at most.
+ */
+export function pickTargetCandidates(
+  rows: readonly SearchKeyword[],
+  options: { preferredWords: readonly string[]; language?: string },
+): SearchKeyword[] {
+  const kinds = classifySearchTerms(
+    rows.map((r) => r.keyword),
+    { language: options.language },
+  )
+  const eligible = rows.filter(
+    (r) =>
+      !keywordHasFigure(r.keyword) &&
+      kinds.get(keyOf(r.keyword)) === 'keyword' &&
+      (r.overall ?? -1) >= PICK_FLOOR,
+  )
+  const fitting = eligible.filter((r) => r.fit === undefined || r.fit === 'fits')
+  const pool = fitting.length > 0 ? fitting : eligible.filter((r) => r.fit === 'partly')
+  const wanted = new Set(options.preferredWords.map((w) => w.toLowerCase()))
+  const hasWanted = (r: SearchKeyword) => (termWords(r.keyword).some((w) => wanted.has(w)) ? 1 : 0)
+  return pool
+    .map((row, i) => ({ row, i }))
+    .sort(
+      (a, b) =>
+        hasWanted(b.row) - hasWanted(a.row) || byMonthlySearchesDesc(a.row, b.row) || a.i - b.i,
+    )
+    .slice(0, CANDIDATES_MAX)
+    .map((x) => x.row)
+}
 
 /**
  * The highest `overall` among keyword-shaped rows with no figure (never a
- * video title or another language); on a tie, a documentary phrase, then a
- * row naming the subject. Null when no row qualifies.
+ * video title or another language); on a tie, a row naming the subject, then
+ * the most searches. Null when no row qualifies. The upgrade path uses this;
+ * a research run uses `pickTargetCandidates`.
  */
 export function chooseTargetKeyword(
   rows: readonly SearchKeyword[],
@@ -138,29 +269,20 @@ export function chooseTargetKeyword(
 ): SearchKeyword | null {
   const name = subject.trim().toLowerCase()
   const kinds = classifySearchTerms(rows.map((r) => r.keyword))
-  const rank = (row: SearchKeyword): [number, number, number] => {
-    const text = row.keyword.toLowerCase()
-    return [
-      row.overall ?? -1,
-      DOCUMENTARY_PHRASES.some((p) => text.includes(p)) ? 1 : 0,
-      name !== '' && text.includes(name) ? 1 : 0,
-    ]
-  }
+  const names = (r: SearchKeyword) =>
+    name !== '' && r.keyword.toLowerCase().includes(name) ? 1 : 0
   let best: SearchKeyword | null = null
-  let bestRank: [number, number, number] = [-2, 0, 0]
   for (const row of rows) {
     if (keywordHasFigure(row.keyword)) continue
-    if (kinds.get(row.keyword.trim().toLowerCase()) !== 'keyword') continue
-    const r = rank(row)
-    const better =
-      r[0] !== bestRank[0]
-        ? r[0] > bestRank[0]
-        : r[1] !== bestRank[1]
-          ? r[1] > bestRank[1]
-          : r[2] > bestRank[2]
-    if (best === null || better) {
+    if (kinds.get(keyOf(row.keyword)) !== 'keyword') continue
+    const lead =
+      best === null
+        ? 1
+        : (row.overall ?? -1) - (best.overall ?? -1) ||
+          names(row) - names(best) ||
+          -byMonthlySearchesDesc(row, best)
+    if (lead > 0) {
       best = row
-      bestRank = r
     }
   }
   return best
@@ -229,12 +351,15 @@ function byOverallDesc(a: SearchKeyword, b: SearchKeyword): number {
  */
 export function upgradeSearchBrief(brief: SearchBrief): SearchBrief {
   const target = brief.targetKeyword
-  const kinds = classifySearchTerms([
-    ...(target ? [target.keyword] : []),
-    ...brief.secondaryKeywords.map((r) => r.keyword),
-    ...brief.searchedTitles.map((r) => r.keyword),
-    ...brief.otherLanguages.map((r) => r.keyword),
-  ])
+  const kinds = classifySearchTerms(
+    [
+      ...(target ? [target.keyword] : []),
+      ...brief.secondaryKeywords.map((r) => r.keyword),
+      ...brief.searchedTitles.map((r) => r.keyword),
+      ...brief.otherLanguages.map((r) => r.keyword),
+    ],
+    { language: brief.language },
+  )
   const kindOf = (r: SearchKeyword) => kinds.get(keyOf(r.keyword))
   const movedFrom = [...(target ? [target] : []), ...brief.secondaryKeywords].filter(
     (r) => kindOf(r) !== 'keyword',

@@ -45,7 +45,7 @@ import type { ScriptClaim } from '../script'
 import { buildShotListRequest, buildShotRepairRequest } from '../shotlist'
 import {
   buildAngleOptionsRequest,
-  buildKeywordFilterRequest,
+  buildKeywordUnderstandingRequest,
   buildWinnersRequest,
 } from '../search-brief'
 import { buildStretchRequest } from '../stretch'
@@ -1568,9 +1568,13 @@ const otherCases: LiftCase[] = [
   liftAware('digest-no-lines', (bible) =>
     buildDigestRequest({ bible, weekOf: '2026-10-26', lines: [] }),
   ),
-  liftAware('search-keyword-filter', () =>
-    buildKeywordFilterRequest({
+  liftAware('search-keyword-understanding', (bible) =>
+    buildKeywordUnderstandingRequest({
+      bible,
       subject: 'WeWork',
+      formatName: 'Documentary',
+      formatKeywords: ['documentary'],
+      pillarLabel: null,
       rows: [
         'wework documentary',
         'wework podcast',
@@ -1613,6 +1617,8 @@ const otherCases: LiftCase[] = [
       secondaryKeywords: ['wework podcast'],
       searchedQuestions: ['why did wework fail'],
       toldAlready: ['the founder rise and the failed listing'],
+      commentThemes: [],
+      fieldSummary: null,
     }),
   ),
 ]

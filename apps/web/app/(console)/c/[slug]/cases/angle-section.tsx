@@ -1,16 +1,22 @@
 'use client'
 
 import type { CaseSummary } from '@boom-busters/db'
-import { angleDemand, briefNeedsResearch, caseResearchJobIsRunning } from '@boom-busters/schemas'
+import {
+  angleDemand,
+  briefNeedsResearch,
+  caseResearchJobIsRunning,
+  pendingNicheJob,
+} from '@boom-busters/schemas'
 import type { AngleOption, SearchBrief } from '@boom-busters/schemas'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/input'
-import { chooseAngleAction, rateAnglesAction, rateAnglesEstimate } from './actions'
+import { chooseAngleAction, rateAnglesAction, rateAnglesEstimate, testAngleAction } from './actions'
 import type { RateAnglesEstimate } from './actions'
 import { briefMatchesSubject } from './search-brief-panel'
 import type { Run } from './search-brief-panel'
+import { EvidenceItem } from './search-demand-section'
 
 /**
  * The panel's Angle section: one card per option with its Demand score, the
@@ -21,6 +27,19 @@ const RESEARCH_SUGGESTION =
   'This brief has no strong keyword to aim at. Research again to measure fresh terms.'
 
 type Demand = ReturnType<typeof angleDemand>
+
+const number = new Intl.NumberFormat('en-US')
+const fmt = (value: number): string => number.format(value)
+
+/** What the target did when an angle was chosen: said when it moved, and why when it stayed. */
+function targetChangeNotice(change: { to: string } | { keptBecause: string } | null | undefined) {
+  if (change === null || change === undefined) return 'Angle chosen'
+  return 'to' in change ? `Target keyword is now ${change.to}` : change.keptBecause
+}
+
+/** The niche test for exactly this angle's text, or undefined. */
+const nicheTestFor = (brief: SearchBrief, option: AngleOption) =>
+  (brief.nicheTests ?? []).find((t) => t.angle === option.angle)
 
 const searchedQuestions = (n: number): string =>
   n === 0 ? 'no searched questions' : `${n} searched ${n === 1 ? 'question' : 'questions'}`
@@ -49,6 +68,8 @@ function AngleCard({
   const demand = angleDemand(option, brief)
   const recommended = brief.recommendedAngle === at
   const chosen = brief.chosenAngle === at
+  const evidence = option.evidence ?? []
+  const test = nicheTestFor(brief, option)
 
   return (
     <li
@@ -107,8 +128,89 @@ function AngleCard({
         </div>
       </div>
 
-      {actions === null ? null : <div className="flex gap-2 sm:col-span-2">{actions}</div>}
+      {evidence.length > 0 ? (
+        <ul className="flex list-disc flex-col gap-0.5 pl-5 text-[13px] sm:col-span-2">
+          {evidence.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {test === undefined ? null : (
+        <div className="flex flex-col gap-1 text-[13px] sm:col-span-2">
+          <p>
+            <span className="text-[var(--color-text-secondary)]">Niche test:</span>{' '}
+            <span className="font-semibold">{test.verdict}</span>
+          </p>
+          {test.evidence.length > 0 ? (
+            <ul className="flex list-disc flex-col gap-0.5 pl-5">
+              {test.evidence.map((line) => (
+                <li key={line.text}>
+                  {line.text}
+                  {line.count === null ? '' : ` (${fmt(line.count)})`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {test.notes === '' ? null : (
+            <p className="text-[12px] text-[var(--color-text-muted)]">{test.notes}</p>
+          )}
+        </div>
+      )}
+
+      {actions === null ? null : (
+        <div className="flex flex-wrap gap-2 sm:col-span-2">{actions}</div>
+      )}
     </li>
+  )
+}
+
+/**
+ * `Test this angle`: buys one niche test for the chosen angle and keeps its
+ * verdict on the brief. When an earlier test ran past the wait it is already
+ * paid for, so the button collects it instead, at no cost.
+ */
+function TestAngleButton({
+  item,
+  option,
+  angle,
+  run,
+}: {
+  item: CaseSummary
+  option: number
+  angle: string
+  run: Run
+}) {
+  const [busy, setBusy] = React.useState(false)
+  const job = item.searchJob
+  const running = job !== null && caseResearchJobIsRunning(job)
+  const collecting =
+    item.searchBrief !== null && pendingNicheJob(item.searchBrief, angle) !== undefined
+  return (
+    <ConfirmButton
+      label={collecting ? 'Collect the angle test' : 'Test this angle'}
+      confirmLabel={collecting ? 'Collect it' : 'Test it'}
+      confirmVariant="primary"
+      consequence={collecting ? 'Free: the test was already paid for.' : 'About 5 VidIQ credits.'}
+      disabled={running}
+      title={running ? 'Research is running' : undefined}
+      busy={busy}
+      onConfirm={async () => {
+        if (busy) return
+        setBusy(true)
+        try {
+          await run(async () => {
+            try {
+              return await testAngleAction(item.id, option)
+            } catch {
+              return { ok: false, error: 'Could not test the angle. Try again.' }
+            }
+          }, 'Angle tested')
+        } finally {
+          setBusy(false)
+        }
+      }}
+    />
   )
 }
 
@@ -170,7 +272,19 @@ export function AngleSection({
     if (pending !== null) return
     setPending(key)
     try {
-      await run(() => chooseAngleAction(item.id, { option }), 'Angle chosen')
+      let change: Awaited<ReturnType<typeof chooseAngleAction>>['targetChange']
+      await run(
+        async () => {
+          try {
+            const result = await chooseAngleAction(item.id, { option })
+            change = result.targetChange
+            return result
+          } catch {
+            return { ok: false, error: 'Could not choose the angle. Try again.' }
+          }
+        },
+        () => targetChangeNotice(change),
+      )
     } finally {
       setPending(null)
     }
@@ -178,9 +292,20 @@ export function AngleSection({
 
   const current = briefMatchesSubject(brief, item.subject)
   const options = brief.angleOptions
+  // Only the chosen angle is tested on demand, and only once, against the brief's niche.
+  const testable = (option: AngleOption, at: number): boolean =>
+    brief.chosenAngle === at && Boolean(brief.niche) && nicheTestFor(brief, option) === undefined
+  const themes = brief.commentThemes ?? []
+  const read = brief.commentsRead
+  // A comments check the run skipped (the cap, or no result) means nothing was read.
+  const commentsSkip = (brief.skipped ?? []).find((s) =>
+    s.trim().toLowerCase().startsWith('comments'),
+  )
+  const nothingRead = read !== undefined && (read.videos === 0 || commentsSkip !== undefined)
+  const skipReason = commentsSkip?.replace(/^comments\s*:?\s*/i, '').trim() ?? ''
 
   return (
-    <section className="flex flex-col gap-3">
+    <section id="evidence-angle" className="flex scroll-mt-4 flex-col gap-3">
       <h3 className="text-[13px] font-semibold text-[var(--color-text-secondary)]">Angle</h3>
 
       {briefNeedsResearch(brief) ? (
@@ -203,22 +328,57 @@ export function AngleSection({
               brief={brief}
               at={at}
               actions={
-                current && brief.chosenAngle !== at ? (
-                  <Button
-                    variant="outline"
-                    aria-label={`Use this angle: ${option.angle.slice(0, 60)}`}
-                    busy={pending === `angle:${at}`}
-                    disabled={pending !== null}
-                    onClick={() => void choose(`angle:${at}`, at)}
-                  >
-                    Use this angle
-                  </Button>
+                current && (brief.chosenAngle !== at || testable(option, at)) ? (
+                  <>
+                    {brief.chosenAngle !== at ? (
+                      <Button
+                        variant="outline"
+                        aria-label={`Use this angle: ${option.angle.slice(0, 60)}`}
+                        busy={pending === `angle:${at}`}
+                        disabled={pending !== null}
+                        onClick={() => void choose(`angle:${at}`, at)}
+                      >
+                        Use this angle
+                      </Button>
+                    ) : null}
+                    {testable(option, at) ? (
+                      <TestAngleButton item={item} option={at} angle={option.angle} run={run} />
+                    ) : null}
+                  </>
                 ) : null
               }
             />
           ))}
         </ul>
       ) : null}
+
+      {read === undefined ? null : (
+        <EvidenceItem
+          title="What viewers asked for"
+          summary={`${themes.length} ${themes.length === 1 ? 'theme' : 'themes'}`}
+        >
+          <p className="text-[var(--color-text-secondary)]">
+            {nothingRead
+              ? `No comments were read${skipReason === '' ? '.' : `: ${skipReason}.`}`
+              : `Read ${fmt(read.comments)} ${read.comments === 1 ? 'comment' : 'comments'} on ${read.videos} ${read.videos === 1 ? 'video' : 'videos'}${themes.length === 0 ? '; no clear requests.' : '.'}`}
+          </p>
+          {themes.length === 0 ? null : (
+            <ul className="mt-2 flex flex-col gap-2">
+              {themes.map((theme) => (
+                <li key={theme.theme}>
+                  <span className="font-medium">{theme.theme}</span>
+                  <span className="font-mono text-[12px] text-[var(--color-text-secondary)] tabular-nums">
+                    {` · ${fmt(theme.count)} ${theme.count === 1 ? 'comment' : 'comments'}`}
+                  </span>
+                  {theme.quote === null ? null : (
+                    <q className="mt-0.5 block text-[var(--color-text-secondary)]">{theme.quote}</q>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </EvidenceItem>
+      )}
 
       {current ? (
         <div className="flex flex-col gap-3">

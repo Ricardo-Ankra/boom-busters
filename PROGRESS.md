@@ -4743,6 +4743,68 @@ Final review and fixes:
 - The layout was seen only in the e2e screenshots (desktop 1440 by 900, and
   390 by 844 with and without `?case=`), not on a real phone or tablet.
 
+## Case research you can trust (2026-11-05)
+
+> Case research now measures what a searcher wants, who ranks today, what
+> viewers ask for and whether the niche exists, and the panel opens on a
+> five-check verdict (Intent, Angle evidence, Channel fit, Demand,
+> Competition). Branch `case-research-trust`; decisions 410 to 421. Spec
+> `docs/superpowers/specs/2026-11-05-case-research-you-can-trust-design.md`,
+> plan `docs/superpowers/plans/2026-11-05-case-research-you-can-trust.md`, live
+> VidIQ probe in `docs/superpowers/specs/2026-11-05-case-research-probe/`. No
+> migration: every new brief and keyword-row field is optional in Zod, so
+> stored briefs parse unchanged.
+
+### Deliverables
+
+- [x] Task 1: language-aware terms, a fit-first target pick from the case's
+      format and pillar words, and the full credit estimate (`09569614`, format
+      fix `d2829e89`).
+- [x] Task 2: brief evidence fields (intent, fit, topic, field checks, comment
+      themes, niche tests, skipped) and the five-check verdict (`c5a03fd7`,
+      `1e76cc02`).
+- [x] Task 3: VidIQ search, video comments and the niche test in the client,
+      shapes and mock, with probe fixtures (`3be65127`).
+- [x] Task 4: keyword understanding, comment themes, and angles that cite
+      evidence (`8afb8d30`, `071a47ec`).
+- [x] Task 5: evidence helpers for the field, comments and the niche test, and
+      the typed cap error (`c188b3d4`, `12bf1be2`).
+- [x] Task 6: the research run measures intent, the field, the comments and the
+      niche (`433f0295`).
+- [x] Task 7: an angle carries its keyword to the target; Check who ranks now
+      and Test this angle on demand (`4ac696d6`).
+- [x] Task 8: the verdict card and its evidence on the case panel (`d65e220a`).
+- [x] Task 9: the end to end spec drives the verdict card, the open door, the
+      figure row and the target change; verdict rows are 40 px tall; this
+      section.
+
+### Owner actions at deploy
+
+1. `PUT /api/inngest` after the Vercel deploy, so Inngest registers the new
+   steps of `case-researcher`.
+2. No migration.
+3. One live research run, with the owner's go-ahead (about 55 to 70 VidIQ
+   credits), to replace the hand-written comment-insights and job-poll fixtures
+   with real responses.
+4. Already handled: Vercel's default 300 s function timeout covers the up to
+   90 s the angle test waits, so no `maxDuration` was set.
+
+### Not verified
+
+- No live run of the new tools except the probe: the research steps, Check who
+  ranks now and Test this angle ran on mock providers and fixtures only.
+- The comment-insights result shape is a guess; the fixture is hand-written.
+- The layout was seen only in e2e screenshots (desktop 1440 by 900, phone
+  390 by 844), not on a real phone or tablet.
+- `workspace-form.test.tsx` fails to load in the web suite. That was already so
+  before this branch and the branch did not touch it.
+- The dev overlay's "1 Issue" badge: a throwaway Playwright run on the case
+  panel with a full-check brief recorded no console error and no page error.
+  The only error in the run was the dev server's "The destination stream closed
+  early" (digest 233116834) on the sign-in landing page, raised when the next
+  navigation aborts its stream, before any case panel renders. It is not from
+  this branch and was left alone.
+
 ---
 
 # Decisions made
@@ -10184,3 +10246,123 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      refresh can buy a second rating (a few cents, no VidIQ credits). This was
      accepted rather than built as a background job, so the spec's "survive a
      refresh" note is not met.
+410. **New keyword-row and brief fields are all optional** (2026-11-05). `intent`,
+     `fit` and `topic` on a row, and `niche`, `offIntent`, `fieldChecks`,
+     `commentThemes`, `commentsRead`, `nicheTests`, `skipped` on the brief, use
+     `.optional()`, never `.default()`, so every stored brief parses unchanged and
+     readers use `?? []` or `?? null`. A brief with none of them reads as
+     researched before the full checks.
+411. **The target pick is fit-first and nothing in it is channel-specific**
+     (2026-11-05). Rows that fit, or were never judged, win; rows that partly fit
+     are used only when none fit; `overall` must be 50 or more; then a row with a
+     whole preferred word, then most searches. Preferred words come from the
+     case's format keywords and its pillar's keywords, language from
+     `bible.language`. The hard-coded `DOCUMENTARY_PHRASES` is deleted. Three
+     candidates are checked for who ranks.
+412. **Staleness is judged from the research date** (2026-11-05, task 2 review).
+     A field is stale when 6 or more of the top ten were published 3 or more years
+     before `checkedAt`, so the verdict does not drift with the viewing date. A
+     check with no results is not a judgement: it warns and reads as not checked.
+     The target always counts in its topic's demand, so an off-intent target still
+     shows its searches while Intent flags it.
+413. **The verdict is computed on read and never stored** (2026-11-05). Intent,
+     Angle evidence, Channel fit, Demand and Competition each carry ok, warn or
+     bad and a sentence. A cross warns; nothing blocks New project. The checked
+     angle is the chosen one, else the recommended one. A brief without full
+     checks gets one line saying so, so a gap is never read as a pass.
+414. **Credits per run** (2026-11-05). Base 20, format seed 5, People seeds 5 each
+     (at most 2), field check 15, comments 15, niche test 5. The estimate shown on
+     Research with VidIQ is the sum. A group the cap stops is listed in `skipped`
+     and the verdict says "Not checked: credit cap" instead of passing it.
+415. **The angle digit guard admits field-summary digits** (2026-11-05, task 4
+     ruling). The model is shown the field summary and may cite its figures;
+     without this a true citation was dropped. Risk: a field figure the model
+     attributes to the wrong thing is not caught.
+416. **A theme's quote must come from the comment it cites** (2026-11-05, task 4
+     fix). A quote that does not appear in that comment is dropped. The field
+     summary goes into the angle prompt as `JSON.stringify` data, matching the rule
+     that third-party text is quoted data, never instructions.
+417. **The cap error keeps its Inngest name** (2026-11-05, task 5 fix).
+     `VidiqCapReached` subclasses `NonRetriableError` and keeps that name, because
+     Inngest reads it; one VidIQ client serves a whole niche wait; an unknown job
+     status from the poll reads as no result rather than retrying for ever.
+418. **An angle carries its keyword to the target** (2026-11-05). Choosing an
+     option whose keyword is a secondary of keyword kind, with no figure and a fit
+     that is not off, makes it the target (the old target joins the secondaries)
+     and the toast says "Target keyword is now ...". Otherwise the target stays and
+     the toast says why: a figure, a searched title, or a keyword that does not
+     fit. The e2e spec now expects the move after Make target followed by the angle
+     whose keyword was the first target.
+419. **Check who ranks now and Test this angle are on demand** (2026-11-05).
+     Each buys about 5 VidIQ credits behind a confirm. Test this angle waits up to
+     90 s for the niche job inside Vercel's default 300 s function timeout, so no
+     `maxDuration`. Only the chosen angle is tested, and only once. Both buttons
+     disable while research runs.
+420. **Verdict rows are 40 px tall** (2026-11-05, task 9). The end to end hit
+     target check found the verdict links 31.5 px tall at 390 px; each row now has
+     `min-h-10` and centres its icon.
+421. **Known gaps, accepted** (2026-11-05, deferred review minors). Verdict links
+     can dangle when there is no target or topic (no `#evidence-intent`,
+     `-competition` or `-demand` anchor); the two buying actions have no
+     server-side in-flight guard (the UI disables them while pending); choosing an
+     angle rewrites `demandNotes` unconditionally, as it did before, so a hand edit
+     is lost on an angle-driven swap; a non-cap failure in the field or comments
+     group adds no `skipped` entry, so the verdict cannot say why; abuse screening
+     of comment quotes is prompt-only, with no deterministic filter. Also left
+     for later, from the final whole-branch review: a paid call whose result then
+     fails to parse (`parseNicheJob` with no job id) leaves its spend unrecorded;
+     the niche result shape is a guess, so `direct` (any evidence line) may read
+     true for indirect evidence until the live run; `awaitNicheTest` counts only
+     its sleeps, so the real wall time is 90 s plus up to 19 poll latencies
+     (still well inside the route's 300 s `maxDuration`); `checkWhoRanksAction`
+     has no row lock, so two simultaneous clicks in two tabs both buy;
+     `saveCaseSearchBrief` and the angle-swap path do not `safeParse` (the run
+     does before it saves, and the swap cannot exceed a cap); an evidence
+     purchase that lands after a fresh research run saves into the new brief,
+     keyed by keyword; and comment text lives only in the Inngest step memo for
+     its retention period, not in the database (the spec scopes storage to the
+     brief).
+422. **Angle evidence is tied to a comment theme** (2026-11-06, final review).
+     The angle prompt asks for each evidence line as `{"text", "theme"}`, where
+     `theme` is the 1-based number of a listed comment theme or null for a field
+     observation. The parser still stores `evidence: string[]` and adds
+     `themeBacked`, the count of lines with a valid theme number; an invalid
+     number counts as null with a repair note, and a bare string line reads as a
+     field observation. The verdict's Angle line is ok only when the checked
+     angle has `themeBacked` above 0 or a direct niche test, so a field-only
+     citation warns even when comment themes exist.
+423. **A timed-out angle test is kept, then collected for free** (2026-11-06,
+     final review). A niche test that outlasts the 90 s wait is already paid for,
+     so the brief gains `nicheJobs` (at most 3: angle, job id, start time). Test
+     this angle saves the pending job under the lock and says so; the next press
+     within 30 minutes only polls that job, which costs nothing, and the button
+     reads "Collect the angle test". An older job is ignored and a new test is
+     bought; a job that failed at VidIQ is dropped. The research run's niche wait
+     records its job the same way, with the time taken inside its step. This
+     replaces the "only once" wording of decision 419 for the timed-out case:
+     there is still no second purchase while a paid job is pending.
+424. **The rating sees the evidence** (2026-11-06, final review). The rate step
+     gets each option's evidence lines and `themeBacked`, plus the brief's
+     comment themes with their counts, and a rule to weigh viewer-comment
+     evidence with demand and the gap. Its digit guard admits the theme counts
+     and the evidence digits.
+425. **One number format on the panel** (2026-11-06, final review). The new
+     blocks (Who ranks now, the Angle section) use en-US grouping, as the rest of
+     the console does. Date formatting that used en-ZA before this branch is left
+     alone.
+426. **The niche verdict is labelled** (2026-11-06, final review). It reads
+     "Niche test: <verdict>" so it no longer looks like a heading.
+427. **An own angle is never judged by the recommended one** (2026-11-06, final
+     review). With `ownAngle` set, the Angle line is a warning, "Your own angle
+     has no evidence check yet".
+428. **The comments block counts and explains** (2026-11-06, final review). It
+     uses "1 video" and "1 comment", and when nothing was read (no video, or a
+     skipped comments check) it says "No comments were read", with the skip
+     reason when there is one, never "no clear requests".
+429. **The fit reason names the pillar by its label** (2026-11-06, final review).
+     `briefVerdict` stays pure: the case panel passes `pillarLabels` (key to
+     label) through its context, and a key the bible no longer lists reads as
+     the key.
+430. **People seeds are de-duplicated** (2026-11-06, final review). Names are
+     trimmed and compared without regard to case before the first two are taken,
+     so one person is never searched twice.

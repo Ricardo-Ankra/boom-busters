@@ -21,6 +21,8 @@ const actions = vi.hoisted(() => ({
   rateAnglesAction: vi.fn(),
   rateAnglesEstimate: vi.fn(),
   setTargetKeywordAction: vi.fn(),
+  checkWhoRanksAction: vi.fn(),
+  testAngleAction: vi.fn(),
   setCaseFormatAction: vi.fn(),
   estimateStartCostAction: vi.fn(),
 }))
@@ -237,5 +239,28 @@ describe('CasePanel', () => {
   it('disables New project with the blocked reason', () => {
     const panel = renderPanel(kase(), 'Complete the channel bible in Settings first')
     expect(within(panel).getByRole('button', { name: 'New project' })).toBeDisabled()
+  })
+
+  it('puts the verdict card under the next-step strip', () => {
+    const panel = renderPanel(
+      kase({ searchBrief: brief({ targetKeyword: { ...GOOD_KEYWORD, fit: 'fits' } }) }),
+    )
+    const strip = within(panel).getByRole('list', { name: 'Progress' })
+    const verdict = within(panel).getByRole('heading', { level: 3, name: 'Verdict' })
+    const angle = within(panel).getByRole('heading', { level: 3, name: 'Angle' })
+    expect(strip.compareDocumentPosition(verdict) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(verdict.compareDocumentPosition(angle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(panel).getAllByRole('link', { name: /Intent|Demand|Competition/ })).toHaveLength(
+      3,
+    )
+    expect(document.getElementById('evidence-fit')).toBeInTheDocument()
+  })
+
+  it('shows the old-brief line and one research control for a brief from before the checks', () => {
+    const panel = renderPanel(kase({ searchBrief: brief() }))
+    expect(panel).toHaveTextContent('Researched before the full checks.')
+    expect(
+      within(panel).getAllByRole('button', { name: /^Research again with VidIQ/ }),
+    ).toHaveLength(1)
   })
 })

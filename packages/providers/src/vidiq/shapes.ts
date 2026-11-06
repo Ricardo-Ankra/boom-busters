@@ -14,6 +14,10 @@ export type VidiqTool =
   | 'vidiq_video_transcript'
   | 'vidiq_keyword_research'
   | 'vidiq_score_title'
+  | 'vidiq_youtube_search'
+  | 'vidiq_video_comments'
+  | 'vidiq_comment_insights'
+  | 'vidiq_job_poll'
 
 export class VidiqError extends Error {
   readonly tool: string
@@ -60,6 +64,34 @@ export interface VidiqBalance {
   totalCredits: number
   renewableResetsAt: string | null
 }
+
+export interface VidiqSearchResult {
+  videoId: string
+  title: string
+  channelTitle: string | null
+  subscribers: number | null
+  views: number | null
+  publishedAt: string | null
+  seconds: number | null
+}
+
+export interface VidiqComment {
+  /** Decoded: HTML entities resolved, `<br>` as a newline, other tags stripped. */
+  text: string
+  likes: number
+  byOwner: boolean
+  isReply: boolean
+}
+
+export interface VidiqNicheJob {
+  jobId: string
+}
+
+/** `result` stays unknown here: the niche test's mapping is tolerant and lives with its reader. */
+export type VidiqJobState =
+  | { status: 'inprogress' }
+  | { status: 'completed'; result: unknown }
+  | { status: 'failed' | 'expired'; refunded: boolean }
 
 export interface VidiqCall<T> {
   data: T
@@ -305,4 +337,114 @@ export function parseBalance(raw: unknown): VidiqBalance {
 
 export function parseScore(raw: unknown): { score: number | null } {
   return { score: num(record(raw)['score']) }
+}
+
+/** "PT2H5M6S" as 7506 seconds; anything that is not an ISO duration is unknown. */
+export function isoDurationSeconds(iso: string | null): number | null {
+  if (iso === null) return null
+  const m = iso.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/)
+  if (!m || iso === 'P' || iso.endsWith('T')) return null
+  return (
+    Number(m[1] ?? 0) * 86400 +
+    Number(m[2] ?? 0) * 3600 +
+    Number(m[3] ?? 0) * 60 +
+    Number(m[4] ?? 0)
+  )
+}
+
+/** `youtube_search`: each result's id is `id`, its channel size is `subscriberCount`. */
+export function parseYoutubeSearch(raw: unknown): VidiqSearchResult[] {
+  const list = record(raw)['results']
+  const rows: VidiqSearchResult[] = []
+  for (const item of Array.isArray(list) ? list : []) {
+    const v = record(item)
+    const videoId = str(v['id'])
+    if (!videoId) continue
+    rows.push({
+      videoId,
+      title: str(v['title']) ?? '',
+      channelTitle: str(v['channelTitle']),
+      subscribers: num(v['subscriberCount']),
+      views: num(v['viewCount']),
+      publishedAt: str(v['publishedAt']),
+      seconds: isoDurationSeconds(str(v['duration'])),
+    })
+  }
+  return rows
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  quot: '"',
+  lt: '<',
+  gt: '>',
+  apos: "'",
+  nbsp: ' ',
+}
+
+/** Tags go first so an escaped `&lt;c&gt;` stays text; every entity is decoded in one pass. */
+function decodeComment(html: string): string {
+  return html
+    .replace(/\r\n/g, '\n')
+    .replace(/\r?<br\s*\/?>/gi, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
+    .replace(
+      /&(?:#(\d+)|#x([0-9a-f]+)|(amp|quot|lt|gt|apos|nbsp));/gi,
+      (whole: string, dec?: string, hex?: string, name?: string) => {
+        if (name) return NAMED_ENTITIES[name.toLowerCase()] ?? whole
+        const code = dec ? Number(dec) : parseInt(hex ?? '', 16)
+        return Number.isInteger(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : whole
+      },
+    )
+    .trim()
+}
+
+function commentOf(raw: unknown, isReply: boolean): VidiqComment | null {
+  const c = record(raw)
+  const text = str(c['text'])
+  if (text === null) return null
+  return {
+    text: decodeComment(text),
+    likes: num(c['likeCount']) ?? 0,
+    byOwner: c['byChannelOwner'] === true,
+    isReply,
+  }
+}
+
+/** `video_comments`: each thread's top comment, then its replies. */
+export function parseVideoComments(raw: unknown): VidiqComment[] {
+  const threads = record(raw)['comments']
+  const out: VidiqComment[] = []
+  for (const thread of Array.isArray(threads) ? threads : []) {
+    const t = record(thread)
+    const top = commentOf(t['topComment'], false)
+    if (top) out.push(top)
+    const replies = t['replies']
+    for (const reply of Array.isArray(replies) ? replies : []) {
+      const parsedReply = commentOf(reply, true)
+      if (parsedReply) out.push(parsedReply)
+    }
+  }
+  return out
+}
+
+/** `comment_insights` starts an asynchronous job and answers with its id. */
+export function parseNicheJob(raw: unknown): VidiqNicheJob {
+  const jobId = str(record(raw)['mcpJobId'])
+  if (!jobId) throw new VidiqError('vidiq_comment_insights', 'The niche test returned no mcpJobId')
+  return { jobId }
+}
+
+export function parseJobPoll(raw: unknown): VidiqJobState {
+  const top = record(raw)
+  const status = str(top['status'])
+  if (status === 'inprogress') return { status }
+  if (status === 'completed') return { status, result: top['result'] }
+  if (status === 'failed' || status === 'expired') {
+    return { status, refunded: top['refunded'] === true }
+  }
+  throw new VidiqError('vidiq_job_poll', `The job poll has an unknown status: ${String(status)}`)
 }
