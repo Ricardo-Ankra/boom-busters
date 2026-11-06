@@ -67,9 +67,9 @@ export function VerdictCard({
             <li key={line.check}>
               <a
                 href={`#evidence-${line.check}`}
-                className="-mx-1.5 flex items-start gap-2.5 rounded-[8px] px-1.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
+                className="-mx-1.5 flex min-h-10 items-center gap-2.5 rounded-[8px] px-1.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
               >
-                <Icon aria-hidden className={`mt-0.5 size-4 shrink-0 ${tone}`} />
+                <Icon aria-hidden className={`size-4 shrink-0 ${tone}`} />
                 <span className="sr-only">{word}</span>
                 <span className="min-w-0">
                   <span className="font-semibold">{NAMES[line.check]}</span>{' '}
