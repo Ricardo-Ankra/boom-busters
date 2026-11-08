@@ -654,7 +654,17 @@ const NICHE_STILL_RUNNING =
  * kept on the brief; the next press only polls that job (free) for thirty
  * minutes instead of buying again.
  */
-export async function testAngleAction(caseId: string, option: number): Promise<ActionResult> {
+/**
+ * `collect` is set when the owner confirmed "Collect the angle test", whose
+ * consequence promised it free. A pending job that expired while the panel
+ * sat open must not then be replaced by a paid one: the action refuses, and
+ * the refreshed panel offers the paid test with its cost.
+ */
+export async function testAngleAction(
+  caseId: string,
+  option: number,
+  intent: { collect?: boolean } = {},
+): Promise<ActionResult> {
   await requireOwner()
   const checked = await evidenceCase(caseId)
   if (!checked.ok) return checked
@@ -668,6 +678,14 @@ export async function testAngleAction(caseId: string, option: number): Promise<A
   if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
 
   const pending = pendingNicheJob(brief, chosen.angle)
+  if (intent.collect && !pending) {
+    revalidatePath('/c/[slug]', 'layout')
+    return {
+      ok: false,
+      error:
+        'The earlier test is more than 30 minutes old, so collecting it is no longer free. Press Test this angle to buy a new one.',
+    }
+  }
   let jobId: string
   let wait: Awaited<ReturnType<typeof awaitNicheTest>>
   try {

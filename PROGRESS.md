@@ -10398,3 +10398,12 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      new key; the technique key is a validated string wherever the channel's
      own can flow (the identity, the rows, the progress, the designer's
      exemplar) and the house catalogue does not change.
+432. **A confirmed free collect never buys** (2026-11-08, the re-review's open
+     finding on decision 423). The button decides "Collect the angle test" when
+     the panel renders, so a panel left open past the 30 minutes still promised
+     "Free" while the action, finding the job expired, bought a new test.
+     `testAngleAction` now takes `{ collect }`: when the owner confirmed a
+     collect and the pending job has expired, it refuses with "The earlier test
+     is more than 30 minutes old, so collecting it is no longer free. Press Test
+     this angle to buy a new one." and refreshes the panel, which then offers the
+     paid test with its cost. Branch `fix-free-collect`.

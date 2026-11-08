@@ -201,7 +201,7 @@ function TestAngleButton({
         try {
           await run(async () => {
             try {
-              return await testAngleAction(item.id, option)
+              return await testAngleAction(item.id, option, { collect: collecting })
             } catch {
               return { ok: false, error: 'Could not test the angle. Try again.' }
             }

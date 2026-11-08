@@ -1135,6 +1135,33 @@ describe('checkWhoRanksAction, testAngleAction and evidenceEstimate', () => {
     expect(store.saveCaseNicheTest).toHaveBeenCalledWith({ marker: 'db' }, CASE_ID, test)
   })
 
+  it('buys nothing when a confirmed free collect finds the pending job expired', async () => {
+    const expired = {
+      angle: 'The board that signed off',
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - 31 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [expired] }) }))
+    expect(await testAngleAction(CASE_ID, 0, { collect: true })).toEqual({
+      ok: false,
+      error:
+        'The earlier test is more than 30 minutes old, so collecting it is no longer free. Press Test this angle to buy a new one.',
+    })
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+    expect(evidence.awaitNicheTest).not.toHaveBeenCalled()
+  })
+
+  it('still collects for free when the owner confirmed a collect in time', async () => {
+    const pending = {
+      angle: 'The board that signed off',
+      jobId: 'job-paid',
+      startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+    }
+    store.getCase.mockResolvedValue(found({ searchBrief: brief({ nicheJobs: [pending] }) }))
+    expect(await testAngleAction(CASE_ID, 0, { collect: true })).toEqual({ ok: true })
+    expect(evidence.startNicheTest).not.toHaveBeenCalled()
+  })
+
   it('keeps the original start time when a collected job is still running', async () => {
     const pending = {
       angle: 'The board that signed off',

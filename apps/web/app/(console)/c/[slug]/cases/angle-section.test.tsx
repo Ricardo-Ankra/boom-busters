@@ -349,7 +349,9 @@ describe('AngleSection', () => {
     await userEvent.click(within(cards[1]!).getByRole('button', { name: 'Test this angle' }))
     expect(screen.getByText('About 5 VidIQ credits.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Test it' }))
-    await waitFor(() => expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1))
+    await waitFor(() =>
+      expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1, { collect: false }),
+    )
   })
 
   it('offers to collect a paid pending test for free, and ignores an old one', async () => {
@@ -368,7 +370,10 @@ describe('AngleSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Collect the angle test' }))
     expect(screen.getByText('Free: the test was already paid for.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Collect it' }))
-    await waitFor(() => expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1))
+    // The collect is sent as one, so an expiry while the panel sat open is refused, never bought.
+    await waitFor(() =>
+      expect(actions.testAngleAction).toHaveBeenCalledWith(CASE_ID, 1, { collect: true }),
+    )
     fresh.unmount()
     renderSection(
       kase({
