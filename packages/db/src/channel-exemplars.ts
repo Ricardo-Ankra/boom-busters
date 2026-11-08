@@ -329,6 +329,8 @@ export async function syncChannelTechniqueInUse(
   db: Database,
   channelId: string,
   technique: TechniqueKey,
+  /** `remove-only` (keep): a key the owner unticked is never put back (final review, issue 1). */
+  options: { mode?: 'follow' | 'remove-only' } = {},
 ): Promise<'added' | 'removed' | 'unchanged'> {
   if (isHouseTechnique(technique)) return 'unchanged'
   const [approved] = await db
@@ -345,6 +347,7 @@ export async function syncChannelTechniqueInUse(
   const motion = (await getChannelSettings(db, channelId)).motion
   const listed = motion.techniques.includes(technique)
   if (approved && !listed) {
+    if (options.mode === 'remove-only') return 'unchanged'
     await updateChannelSettings(db, channelId, {
       motion: { ...motion, techniques: [...motion.techniques, technique] },
     })

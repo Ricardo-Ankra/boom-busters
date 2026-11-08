@@ -1,12 +1,12 @@
 import { jobSpendUsd } from '@boom-busters/cost'
 import {
   appendTechniqueProgress,
-  channelTechniquesFor,
   exemplarVersionById,
   finishDerivation,
   getChannelSettings,
   getDerivation,
   insertExemplarVersion,
+  listChannelExemplars,
   listMotionReferences,
   setDerivationProposal,
   touchDerivation,
@@ -634,7 +634,24 @@ export const motionExemplarDeriver = inngest.createFunction(
               return record(answer.proposal ? { proposal: answer.proposal } : { none: answer.why })
             }
             const channel = await loopChannel(channelId)
-            const own = await channelTechniquesFor(db, channelId)
+            // Every technique the channel holds, approved or not, is taken (final
+            // review, issue 3): the newest version's proposal names each one.
+            const rows = await listChannelExemplars(db, channelId)
+            const own = [...new Set(rows.map((row) => row.technique))]
+              .filter((key) => !isHouseTechnique(key))
+              .sort()
+              .flatMap((key) => {
+                const newest = rows.find((row) => row.technique === key && row.proposal !== null)
+                return newest?.proposal
+                  ? [
+                      {
+                        technique: key,
+                        description: newest.proposal.description,
+                        steerPhrases: newest.proposal.steerPhrases,
+                      },
+                    ]
+                  : []
+              })
             const input = {
               motion: channel.motion,
               readings,
@@ -645,7 +662,9 @@ export const motionExemplarDeriver = inngest.createFunction(
               })),
               channelTechniques: own,
             }
-            const keys = own.map((entry) => entry.technique)
+            const keys = [
+              ...new Set([...rows.map((row) => row.technique), ...derivation.techniques]),
+            ]
             const complete = completeForJob(channelId, derivationId, 'proposal')
             try {
               const answer = await callForAnswer({
@@ -676,10 +695,14 @@ export const motionExemplarDeriver = inngest.createFunction(
     const proposal = proposed && 'proposal' in proposed ? proposed.proposal : null
 
     let stoppedAtCap = proposed !== null && 'cap' in proposed
-    const techniques = [...derivation.techniques, ...(proposal ? [proposal.key] : [])]
+    // Each key once: a proposed key is never a ticked one, and a ticked list is deduped.
+    const techniques = [...new Set([...derivation.techniques, ...(proposal ? [proposal.key] : [])])]
     for (const technique of techniques) {
+      // `begin`, not plan 4's `start`: the output changed shape, and a run parked
+      // across the deploy must run this step afresh rather than replay a number
+      // (final review, issue 5; the memory note on replayed step results).
       const started = await step.run(
-        `${technique}/start`,
+        `${technique}/begin`,
         async (): Promise<{
           before: number
           entry: TechniqueEntry | null

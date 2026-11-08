@@ -197,6 +197,53 @@ describe('the Motion tab (spec 2026-11-04)', () => {
     })
   })
 
+  it('follows an approved channel technique the server added, so the next toggle keeps it (final review, issue 2)', async () => {
+    const user = userEvent.setup()
+    const own = {
+      technique: 'ledger-wipe',
+      description: 'a ruled line wipes the old figure away',
+      channelOnly: true,
+      steerPhrases: ['ledger wipe'],
+    }
+    const before = structuredClone(DEFAULT_SETTINGS)
+    const view = render(
+      <SettingsForm
+        channelId="01J00000000000000000000001"
+        channelSlug="first"
+        channel={FIXTURE_CHANNEL_VIEW}
+        initialSettings={before}
+        modelOptions={modelOptions()}
+        techniqueOptions={TECHNIQUE_OPTIONS}
+      />,
+    )
+    await user.click(screen.getByRole('tab', { name: 'Motion' }))
+    // Approve on the Exemplars tab refreshed the page: the server now lists the key.
+    const after = structuredClone(DEFAULT_SETTINGS)
+    after.motion = { ...after.motion, techniques: [...after.motion.techniques, 'ledger-wipe'] }
+    view.rerender(
+      <SettingsForm
+        channelId="01J00000000000000000000001"
+        channelSlug="first"
+        channel={FIXTURE_CHANNEL_VIEW}
+        initialSettings={after}
+        modelOptions={modelOptions()}
+        techniqueOptions={[...TECHNIQUE_OPTIONS, own]}
+      />,
+    )
+    expect((screen.getByLabelText('ledger-wipe') as HTMLInputElement).checked).toBe(true)
+    await user.click(screen.getByLabelText('racing-chart'))
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+      motion: {
+        techniques: [
+          ...TECHNIQUE_OPTIONS.map((option) => option.technique).filter(
+            (technique) => technique !== 'racing-chart',
+          ),
+          'ledger-wipe',
+        ],
+      },
+    })
+  })
+
   it('cannot untick a last resort', async () => {
     await openMotionTab()
     const wordStack = screen.getByLabelText('kinetic-word-stack') as HTMLInputElement

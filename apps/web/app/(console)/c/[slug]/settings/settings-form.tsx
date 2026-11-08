@@ -159,6 +159,24 @@ export function SettingsForm({
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
+
+  // The techniques in use change on the server when a channel's own technique
+  // is approved or kept on the Exemplars tab (spec 8.5); the refreshed page
+  // brings the new list here. Only a changed list is taken, so this never
+  // resets a field the owner is editing (the memory note on no-op setState).
+  const serverTechniques = initialSettings.motion.techniques
+  React.useEffect(() => {
+    setSettings((current) => {
+      const own = current.motion.techniques
+      const same =
+        own.length === serverTechniques.length &&
+        own.every((key, index) => key === serverTechniques[index])
+      return same
+        ? current
+        : { ...current, motion: { ...current.motion, techniques: serverTechniques } }
+    })
+    // Only the server's list: the rest of the form keeps its own state until a save.
+  }, [serverTechniques])
   const { toast } = useToast()
   const router = useRouter()
 

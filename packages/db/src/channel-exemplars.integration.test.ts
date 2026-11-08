@@ -19,7 +19,12 @@ import {
   syncChannelTechniqueInUse,
   updateExemplarDraft,
 } from './channel-exemplars'
-import { createChannel, ensureFirstChannel, getChannelSettings } from './channels'
+import {
+  createChannel,
+  ensureFirstChannel,
+  getChannelSettings,
+  updateChannelSettings,
+} from './channels'
 import { createDb } from './client'
 import {
   insertMotionReference,
@@ -290,6 +295,28 @@ suite('channel exemplars', () => {
     expect(await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')).toBe('removed')
     expect(await inUse()).not.toContain('ledger-wipe')
     expect(await syncChannelTechniqueInUse(db, channelId, 'stat-counter')).toBe('unchanged')
+  })
+
+  it('a remove-only sync never re-ticks a key the owner unticked (final review, issue 1)', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    const version = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersion(db, version.id)
+    await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')
+    // The owner unticks it on the Motion tab.
+    const motion = (await getChannelSettings(db, channelId)).motion
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: motion.techniques.filter((key) => key !== 'ledger-wipe') },
+    })
+    expect(
+      await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe', { mode: 'remove-only' }),
+    ).toBe('unchanged')
+    expect(await inUse()).not.toContain('ledger-wipe')
+    await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')
+    expect(await inUse()).toContain('ledger-wipe')
+    await retireExemplarVersion(db, version.id)
+    expect(
+      await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe', { mode: 'remove-only' }),
+    ).toBe('removed')
   })
 
   it('copies a channel-only technique with its proposal', async () => {

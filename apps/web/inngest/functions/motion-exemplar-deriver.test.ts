@@ -6,6 +6,7 @@ import {
   createDerivation,
   exemplarVersionById,
   getDerivation,
+  insertExemplarVersion,
   insertMotionReference,
   listChannelExemplars,
   motionDerivations,
@@ -246,6 +247,42 @@ describeDb('motion-exemplar-deriver', () => {
         expect.objectContaining({ technique: 'stat-counter', state: 'ready' }),
       ])
       expect(after.state).toBe('done')
+    })
+
+    it('refuses a key the channel holds as a draft, and lists it to the model (final review, issue 3)', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      await aMechanismReference()
+      const proposal = {
+        key: 'ledger-wipe',
+        name: 'Ledger wipe',
+        description: 'a ruled line wipes the old figure away',
+        steerPhrases: ['ledger wipe'],
+        mechanisms: ['persistent-actor'],
+        slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+        fromReference: 'Ledger scene',
+      }
+      // A draft of the key from an earlier run, never approved.
+      await insertExemplarVersion(db, {
+        channelId: FIRST_CHANNEL_ID,
+        technique: 'ledger-wipe',
+        plan: mockStoryboardPlan(stat),
+        code: {
+          ...mockGraphicCode({ claimTexts: [], intentRefs: [1], durationMs: 6000 }),
+          compiled: 'c',
+          version: 1,
+          motion: 2,
+        } as never,
+        proposal: proposal as never,
+      })
+      const again = { text: JSON.stringify({ proposal, why: 'the same move' }) }
+      callLlm.mockResolvedValueOnce(again).mockResolvedValueOnce(again)
+      const { after } = await launch([], 1, 5, true)
+      expect(after.proposal?.state).toBe('failed')
+      expect(after.proposal?.reason).toMatch(/ledger-wipe is already a technique/)
+      expect(callLlm).toHaveBeenCalledTimes(2)
+      expect(callLlm.mock.calls[0]![0].messages[0].content).toContain('- ledger-wipe:')
+      expect(await listChannelExemplars(db, FIRST_CHANNEL_ID)).toHaveLength(1)
     })
 
     it('fails the proposal after one retry and still derives the ticked techniques', async () => {

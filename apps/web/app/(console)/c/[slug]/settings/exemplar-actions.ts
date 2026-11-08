@@ -220,8 +220,9 @@ export async function keepApprovedAction(
   if (draft.status !== 'draft') return { ok: false, error: 'Only a draft can be set aside.' }
   const approved = await approvedExemplar(db, channelId, draft.technique)
   await retireExemplarVersion(db, draft.id)
-  // A channel's own key leaves the techniques in use when no approved version remains (spec 8.5).
-  await syncChannelTechniqueInUse(db, channelId, draft.technique)
+  // A channel's own key leaves the techniques in use when no approved version remains (spec 8.5);
+  // keep never puts back a key the owner unticked (final review, issue 1).
+  await syncChannelTechniqueInUse(db, channelId, draft.technique, { mode: 'remove-only' })
   await recordVerdict(db, {
     channelId,
     kind: 'keep-approved',

@@ -1119,6 +1119,38 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
     expect(last.content).toContain('Reference 1: Kaye reel (look): one actor')
   })
 
+  it("the review's fix is shown the channel technique the steer named (final review, issue 4)", async () => {
+    const ledger: Schemas.ChannelTechnique = {
+      technique: 'ledger-wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+    }
+    channelTechniquesStub = [ledger]
+    motionSetting = { techniques: [...DEFAULT_MOTION_IDENTITY.techniques, 'ledger-wipe'] }
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['c'],
+        mechanisms: [],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: { description: ledger.description, steerPhrases: ['ledger wipe'] },
+    } as unknown as Db.ChannelExemplarRow
+    const slot = await stored()
+    inspect.mockResolvedValueOnce(photographed()).mockResolvedValueOnce(framed({}))
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: ['Hold the figure a second longer.'] }))
+      .mockResolvedValueOnce({ text: JSON.stringify(planned('$4bn')) })
+    await reviewGraphic(CONTEXT, slot, { guidance: 'as a ledger wipe' })
+    const fix = callLlm.mock.calls[1]![0]
+    expect(fix.messages[1]!.content).toContain('A passing design of this technique (ledger-wipe:')
+    expect(fix.messages[1]!.content).toContain('return "ledger"')
+    channelTechniquesStub = []
+  })
+
   it('the review passes the same exemplar to the fix', async () => {
     approvedStub = {
       technique: 'stat-counter',

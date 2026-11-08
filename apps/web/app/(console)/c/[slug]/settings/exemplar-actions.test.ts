@@ -195,6 +195,19 @@ describeDb('the exemplar actions', () => {
     expect(await inUse()).toContain('ledger-wipe')
   })
 
+  it('keep never re-ticks a channel key the owner unticked (final review, issue 1)', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    const v1 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersionAction(channelId, v1.id)
+    const motion = (await getChannelSettings(db, channelId)).motion
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: motion.techniques.filter((key) => key !== 'ledger-wipe') },
+    })
+    const v2 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL, parentId: v1.id })
+    expect((await keepApprovedAction(channelId, v2.id)).ok).toBe(true)
+    expect(await inUse()).not.toContain('ledger-wipe')
+  })
+
   it('refuses a launch while a derivation runs', async () => {
     await createDerivation(db, { channelId, techniques: ['stat-counter'], rounds: 1, capUsd: 1 })
     const result = await deriveExemplarsAction(channelId, {

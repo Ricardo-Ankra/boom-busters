@@ -177,13 +177,16 @@ export async function reviewGraphic(
   if (!channel.settings.features.graphicReview) return skipped('switched off in Settings')
   if (!framesOn()) return skipped('the browser is off')
   const motion = resolveMotionIdentity(channel.settings)
+  // The same technique the design was built on (final review, issue 4): the
+  // channel's own phrases count here as they do in `designGraphic`.
+  const own = await channelTechniquesInUse(db, inUse.channelId, motion)
   return reviewGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
     motion,
     exemplar: await channelExemplarFor(
       inUse.channelId,
-      slotTechnique(context, slot, motion, options.guidance),
+      slotTechnique(context, slot, motion, options.guidance, own),
     ),
     references: await criticReferencesFor(inUse.channelId),
     frames: browserFrames(),
