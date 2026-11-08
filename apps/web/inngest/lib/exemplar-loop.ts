@@ -15,7 +15,6 @@ import {
   type TechniqueEntry,
   type MsgImage,
   type ReviewFrame,
-  type Technique,
 } from '@boom-busters/providers'
 import {
   resolveBrandKit,
@@ -33,6 +32,7 @@ import type {
   MotionIdentity,
   MotionMetrics,
   PairwiseAnswer,
+  TechniqueKey,
 } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, storyboardMoments } from '@/lib/exemplar-derive'
@@ -90,7 +90,7 @@ export async function loopChannel(channelId: string): Promise<LoopChannel> {
 export function completeForJob(
   channelId: string,
   jobId: string,
-  technique: Technique,
+  technique: TechniqueKey,
 ): GraphicCompleteFn {
   return (request, options) =>
     callLlm(request, { channelId, ...options, meta: { jobId, technique } })

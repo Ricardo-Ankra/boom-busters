@@ -13,7 +13,7 @@ import {
 } from '@boom-busters/db'
 import { MANIFEST, mockGraphicCode, mockStoryboardPlan } from '@boom-busters/providers'
 import { CRITIC_AXES, FIRST_CHANNEL_ID, newId } from '@boom-busters/schemas'
-import type { CriticReport, GraphicCode } from '@boom-busters/schemas'
+import type { CriticReport, GraphicCode, TechniqueProposal } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -293,6 +293,50 @@ describeDb('motion-exemplar-refiner', () => {
       expect(draft.pairwise?.craft).toBe('new')
       expect(draft.frames?.round).toBe(1)
       expect(draft.metrics?.simultaneity).toBe(0.2)
+    })
+  })
+
+  describe("a technique of the channel's own (spec 8.5)", () => {
+    /** The proposal's slot is the stat counter's, so the parent's code passes its checks as it is. */
+    const PROPOSAL: TechniqueProposal = {
+      key: 'ledger-wipe',
+      name: 'Ledger wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+      mechanisms: ['persistent-actor'],
+      slot: {
+        durationMs: stat.slot.durationMs,
+        words: stat.slot.words.map((word) => ({ text: word.text, atMs: word.atMs })),
+        intent: stat.slot.intent,
+      },
+      fromReference: 'Ledger scene',
+    }
+
+    it("refines a channel-only version from its proposal's entry and carries the proposal forward", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      const parent = await insertExemplarVersion(db, {
+        channelId: FIRST_CHANNEL_ID,
+        technique: 'ledger-wipe',
+        plan,
+        code: { ...parentCode(), title: 'The ledger' },
+        proposal: PROPOSAL,
+      })
+      await approveExemplarVersion(db, parent.id)
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify(planned()) })
+      const result = await refine(parent.id, 'slower')
+      expect(result).toMatchObject({ outcome: 'refined' })
+      const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
+        (row) => row.id !== parent.id,
+      )!
+      expect(draft.technique).toBe('ledger-wipe')
+      expect(draft.proposal).toEqual(PROPOSAL)
+      expect(draft.parentId).toBe(parent.id)
+      const slotMessage = (callLlm.mock.calls[0]![0].messages as { content: string }[])
+        .map((message) => message.content)
+        .join('\n')
+      expect(slotMessage).toContain('A passing design of this technique (ledger-wipe:')
+      expect(slotMessage).toContain(PROPOSAL.description)
     })
   })
 })

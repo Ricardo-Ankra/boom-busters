@@ -3,7 +3,12 @@ import { approvedExemplar, channelTechniquesFor, listChannelExemplars } from '@b
 import { MANIFEST, entryFromProposal, exemplarFor } from '@boom-busters/providers'
 import type { Exemplar, TechniqueEntry } from '@boom-busters/providers'
 import { isHouseTechnique } from '@boom-busters/schemas'
-import type { ChannelTechnique, MotionIdentity, TechniqueKey } from '@boom-busters/schemas'
+import type {
+  ChannelTechnique,
+  MotionIdentity,
+  TechniqueKey,
+  TechniqueProposal,
+} from '@boom-busters/schemas'
 
 /**
  * What a derivation or a refine designs from, for any technique key (spec
@@ -14,6 +19,19 @@ import type { ChannelTechnique, MotionIdentity, TechniqueKey } from '@boom-buste
  * design; before one is approved the designer builds from the plan alone.
  */
 
+/** The proposal a channel's own key carries, from its newest version; null for a house key or an unknown one. */
+export async function channelProposalFor(
+  db: Database,
+  channelId: string,
+  technique: TechniqueKey,
+): Promise<TechniqueProposal | null> {
+  if (isHouseTechnique(technique)) return null
+  // Newest version first (`listChannelExemplars` orders version desc within a technique).
+  const rows = await listChannelExemplars(db, channelId)
+  const newest = rows.find((row) => row.technique === technique && row.proposal !== null)
+  return newest?.proposal ?? null
+}
+
 export async function techniqueEntryFor(
   db: Database,
   channelId: string,
@@ -22,10 +40,8 @@ export async function techniqueEntryFor(
   if (isHouseTechnique(technique)) {
     return MANIFEST.find((entry) => entry.technique === technique) ?? null
   }
-  // Newest version first (`listChannelExemplars` orders version desc within a technique).
-  const rows = await listChannelExemplars(db, channelId)
-  const newest = rows.find((row) => row.technique === technique && row.proposal !== null)
-  return newest?.proposal ? entryFromProposal(newest.proposal) : null
+  const proposal = await channelProposalFor(db, channelId, technique)
+  return proposal ? entryFromProposal(proposal) : null
 }
 
 export async function pinnedExemplarFor(

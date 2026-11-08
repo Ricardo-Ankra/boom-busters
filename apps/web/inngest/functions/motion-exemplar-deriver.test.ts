@@ -6,13 +6,17 @@ import {
   createDerivation,
   exemplarVersionById,
   getDerivation,
+  insertMotionReference,
   listChannelExemplars,
   motionDerivations,
+  motionReferences,
   requireTestDatabase,
   seed,
+  setReferenceReading,
   truncateRunMirror,
+  upsertChannelAsset,
 } from '@boom-busters/db'
-import { MANIFEST, mockGraphicCode, mockStoryboardPlan } from '@boom-busters/providers'
+import { DESIGNS, MANIFEST, mockGraphicCode, mockStoryboardPlan } from '@boom-busters/providers'
 import { CRITIC_AXES, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type { CriticReport } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
@@ -133,12 +137,14 @@ describeDb('motion-exemplar-deriver', () => {
     techniques: ('stat-counter' | 'bar-chart' | 'text-highlight')[],
     rounds = 1,
     capUsd = 5,
+    propose = false,
   ) => {
     const row = await createDerivation(db, {
       channelId: FIRST_CHANNEL_ID,
       techniques,
       rounds,
       capUsd,
+      propose,
     })
     const { result } = await engine.execute({
       events: [
@@ -165,12 +171,117 @@ describeDb('motion-exemplar-deriver', () => {
     forgetRunRows()
     await db.delete(channelExemplars)
     await db.delete(motionDerivations)
+    await db.delete(motionReferences)
     await db.delete(costLedger)
   })
 
   afterEach(async () => {
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
+  })
+
+  /** A mechanism reference, read, on the first channel (spec 8.5): what a proposal is made from. */
+  const aMechanismReference = async () => {
+    const asset = await upsertChannelAsset(db, FIRST_CHANNEL_ID, {
+      kind: 'video',
+      r2Key: 'boom-busters/references/first/ledger.mp4',
+      contentHash: `hash-${Date.now()}`,
+      width: 1920,
+      height: 1080,
+      durationMs: 4000,
+      title: 'Ledger scene',
+    })
+    const row = await insertMotionReference(db, FIRST_CHANNEL_ID, {
+      assetId: asset!.id,
+      kind: 'video',
+      title: 'Ledger scene',
+      sourceUrl: null,
+      rights: 'Reference only',
+      purpose: 'mechanism',
+      negative: false,
+      windowStartMs: 0,
+      windowEndMs: 2000,
+      carryOver: 'the ruled line that wipes the old figure away',
+      avoid: '',
+      frames: { dense: [], overview: [] },
+    })
+    await setReferenceReading(db, row.id, {
+      medium: 'flat typography over paper',
+      palette: ['#111'],
+      type: 'grotesk, heavy',
+      enters: 'written in',
+      exits: 'wiped by a rule',
+      motion: 'one line travels and the figure behind it changes',
+      absent: 'no glow',
+      notes: '',
+      readAt: '2026-11-04T00:00:00.000Z',
+      model: 'test/model',
+    })
+    return row
+  }
+
+  describe("a technique of the channel's own (spec 8.5)", () => {
+    it('proposes a technique in mock mode, derives it under the new key and marks it in the row', async () => {
+      await aMechanismReference()
+      const { result, after } = await launch([], 1, 5, true)
+      expect(result).toMatchObject({ outcome: 'done' })
+      expect(after.proposal).toEqual({ state: 'proposed', technique: 'mock-move', reason: null })
+      expect(after.progress).toHaveLength(1)
+      expect(after.progress[0]).toMatchObject({ technique: 'mock-move', state: 'ready' })
+      const [version] = await listChannelExemplars(db, FIRST_CHANNEL_ID)
+      expect(version?.technique).toBe('mock-move')
+      expect(version?.proposal?.steerPhrases).toEqual(['mock move'])
+      expect(version?.proposal?.fromReference).toBe('Ledger scene')
+      expect(version?.code.title).toBe(DESIGNS['kinetic-word-stack']!.title)
+      expect(version?.status).toBe('draft')
+      expect(callLlm).not.toHaveBeenCalled()
+    })
+
+    it('records none when no mechanism reference is read and still derives the ticked techniques', async () => {
+      const { after } = await launch(['stat-counter'], 1, 5, true)
+      expect(after.proposal?.state).toBe('none')
+      expect(after.proposal?.technique).toBeNull()
+      expect(after.proposal?.reason).toMatch(/^\[mock\]/)
+      expect(after.progress).toEqual([
+        expect.objectContaining({ technique: 'stat-counter', state: 'ready' }),
+      ])
+      expect(after.state).toBe('done')
+    })
+
+    it('fails the proposal after one retry and still derives the ticked techniques', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      await aMechanismReference()
+      const taken = {
+        text: JSON.stringify({
+          proposal: {
+            key: 'stat-counter',
+            name: 'Stat counter',
+            description: 'a counter',
+            steerPhrases: ['ledger wipe'],
+            mechanisms: ['drum'],
+            slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+            fromReference: 'Ledger scene',
+          },
+          why: 'a move',
+        }),
+      }
+      callLlm
+        .mockResolvedValueOnce(taken)
+        .mockResolvedValueOnce(taken)
+        .mockResolvedValueOnce(storyboard())
+        .mockResolvedValueOnce(design())
+      const { after } = await launch(['stat-counter'], 1, 5, true)
+      expect(after.proposal?.state).toBe('failed')
+      expect(after.proposal?.reason).toMatch(/already a technique/)
+      expect(callLlm).toHaveBeenCalledTimes(4)
+      expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(
+        'The previous proposal was refused',
+      )
+      expect(after.progress).toEqual([
+        expect.objectContaining({ technique: 'stat-counter', state: 'no-frames' }),
+      ])
+    })
   })
 
   it('derives every technique in mock mode as a playable draft with the mock report and a ready verdict', async () => {
