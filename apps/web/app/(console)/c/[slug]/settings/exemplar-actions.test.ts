@@ -9,6 +9,7 @@ import {
   exemplarVersionById,
   finishDerivation,
   getChannelSettings,
+  getDerivation,
   insertExemplarVersion,
   insertMotionReference,
   listChannelExemplars,
@@ -18,6 +19,7 @@ import {
   motionReferences,
   motionVerdicts,
   requireTestDatabase,
+  retireExemplarVersion,
   seed,
   updateChannelSettings,
   upsertChannelAsset,
@@ -28,7 +30,7 @@ import {
   FIRST_CHANNEL_ID,
   newId,
 } from '@boom-busters/schemas'
-import type { ExemplarPlan, GraphicCode } from '@boom-busters/schemas'
+import type { ExemplarPlan, GraphicCode, TechniqueProposal } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -77,6 +79,17 @@ const CODE = {
   durationMs: 6000,
   motion: 2,
 } as GraphicCode
+
+/** A channel's own technique (spec 8.5). */
+const PROPOSAL: TechniqueProposal = {
+  key: 'ledger-wipe',
+  name: 'Ledger wipe',
+  description: 'a ruled line wipes the old figure away',
+  steerPhrases: ['ledger wipe'],
+  mechanisms: ['persistent-actor'],
+  slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'The old figure is gone.' },
+  fromReference: 'Ledger scene',
+}
 
 describeDb('the exemplar actions', () => {
   beforeEach(async () => {
@@ -130,6 +143,56 @@ describeDb('the exemplar actions', () => {
     ).toMatchObject({
       ok: false,
     })
+  })
+
+  it('launches a derivation with the proposal ticked and no technique (spec 8.5)', async () => {
+    const result = await deriveExemplarsAction(channelId, {
+      techniques: [],
+      rounds: 1,
+      capUsd: 2,
+      propose: true,
+    })
+    expect(result.ok).toBe(true)
+    const row = (await getDerivation(db, result.derivationId!))!
+    expect(row.propose).toBe(true)
+    expect(row.techniques).toEqual([])
+    expect(row.progress).toEqual([])
+    const neither = await deriveExemplarsAction(channelId, { techniques: [], rounds: 1, capUsd: 2 })
+    expect(neither.ok).toBe(false)
+  })
+
+  it('approving a channel-only version puts its key in use (spec 8.5)', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    const before = await inUse()
+    const own = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    expect((await approveExemplarVersionAction(channelId, own.id)).ok).toBe(true)
+    expect(await inUse()).toEqual([...before, 'ledger-wipe'])
+    const house = await aVersion()
+    expect((await approveExemplarVersionAction(channelId, house.id)).ok).toBe(true)
+    expect(await inUse()).toEqual([...before, 'ledger-wipe'])
+  })
+
+  it('keep on a channel-only draft takes the key out of use when nothing is approved (spec 8.5)', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    const v1 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersionAction(channelId, v1.id)
+    const v2 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL, parentId: v1.id })
+    await retireExemplarVersion(db, v1.id)
+    expect((await keepApprovedAction(channelId, v2.id)).ok).toBe(true)
+    expect(await inUse()).not.toContain('ledger-wipe')
+    // With an approved version still standing, keep leaves the key in use.
+    const v3 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersionAction(channelId, v3.id)
+    const v4 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL, parentId: v3.id })
+    expect((await keepApprovedAction(channelId, v4.id)).ok).toBe(true)
+    expect(await inUse()).toContain('ledger-wipe')
+    // Restore puts it back.
+    const v5 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL, parentId: v3.id })
+    await retireExemplarVersion(db, v3.id)
+    expect((await keepApprovedAction(channelId, v5.id)).ok).toBe(true)
+    expect(await inUse()).not.toContain('ledger-wipe')
+    expect((await restoreExemplarVersionAction(channelId, v3.id)).ok).toBe(true)
+    expect(await inUse()).toContain('ledger-wipe')
   })
 
   it('refuses a launch while a derivation runs', async () => {

@@ -22,6 +22,7 @@ import {
   recordVerdict,
   retireExemplarVersion,
   runningDerivation,
+  syncChannelTechniqueInUse,
   updateChannelSettings,
 } from '@boom-busters/db'
 import type { MotionDerivationRow } from '@boom-busters/db'
@@ -31,7 +32,7 @@ import {
   UlidSchema,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { DerivationProgress, DerivationState } from '@boom-busters/schemas'
+import type { DerivationProgress, DerivationProposal, DerivationState } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { channelWriteRefusal, findChannel } from '@/lib/channel-lookup'
@@ -55,6 +56,9 @@ export interface DerivationView {
   capUsd: number
   spentUsd: number
   progress: DerivationProgress
+  /** "Propose a technique" was ticked (spec 8.5), and what the propose step did. */
+  propose: boolean
+  proposal: DerivationProposal | null
   error: string | null
   createdAt: string
   finishedAt: string | null
@@ -96,6 +100,8 @@ function derivationView(row: MotionDerivationRow): DerivationView {
     capUsd: Number(row.capUsd),
     spentUsd: Number(row.spentUsd),
     progress: row.progress,
+    propose: row.propose,
+    proposal: row.proposal,
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
@@ -190,6 +196,8 @@ export async function approveExemplarVersionAction(
   const shownAgainst =
     (await approvedExemplar(db, channelId, version.technique))?.id ?? version.parentId
   await approveExemplarVersion(db, version.id)
+  // A channel's own technique is in use once approved (spec 8.5).
+  await syncChannelTechniqueInUse(db, channelId, version.technique)
   await recordVerdict(db, {
     channelId,
     kind: version.parentId ? 'prefer' : 'approve',
@@ -212,6 +220,8 @@ export async function keepApprovedAction(
   if (draft.status !== 'draft') return { ok: false, error: 'Only a draft can be set aside.' }
   const approved = await approvedExemplar(db, channelId, draft.technique)
   await retireExemplarVersion(db, draft.id)
+  // A channel's own key leaves the techniques in use when no approved version remains (spec 8.5).
+  await syncChannelTechniqueInUse(db, channelId, draft.technique)
   await recordVerdict(db, {
     channelId,
     kind: 'keep-approved',
@@ -234,6 +244,7 @@ export async function restoreExemplarVersionAction(
   if (version.status !== 'retired')
     return { ok: false, error: 'Only a retired version is restored.' }
   await approveExemplarVersion(db, version.id)
+  await syncChannelTechniqueInUse(db, channelId, version.technique)
   await recordVerdict(db, { channelId, kind: 'approve', exemplarId: version.id })
   refresh()
   return { ok: true }

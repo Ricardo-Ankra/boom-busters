@@ -80,6 +80,7 @@ export function SettingsForm({
   channelExemplars = [],
   derivation = null,
   jobRunning = false,
+  mechanismReferences = 0,
   estimateTable,
   draft = null,
   versions = [],
@@ -127,6 +128,8 @@ export function SettingsForm({
   draftEstimateUsd?: number
   /** The channel's own exemplar versions, per technique (spec 2026-11-04, section 11.4). */
   channelExemplars?: readonly ChannelExemplarView[]
+  /** Live mechanism references that are read (spec 8.5): the Derive dialogue offers the proposal when there is one. */
+  mechanismReferences?: number
   /** The latest derivation, for the Motion tab's Derive section (section 11.3). */
   derivation?: DerivationView | null
   /** A derivation is running on this channel: Derive, Refine and Copy wait. */
@@ -318,6 +321,7 @@ export function SettingsForm({
               draftEstimateUsd={draftEstimateUsd}
               derivation={derivation}
               jobRunning={jobRunning}
+              mechanismReferences={mechanismReferences}
               {...(estimateTable ? { estimateTable } : {})}
               approvedTechniques={channelExemplars
                 .filter((view) => view.approved !== null)
@@ -370,6 +374,7 @@ export function SettingsForm({
                     archived: channel.archived,
                     jobRunning,
                     techniqueOptions,
+                    mechanismReferences,
                     estimateTable,
                     storageReady,
                     lastRun:

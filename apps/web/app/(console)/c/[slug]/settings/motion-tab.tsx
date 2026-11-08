@@ -5,7 +5,7 @@ import {
   type MotionIdentity,
   type Settings,
   type SettingsPatch,
-  type Technique,
+  type TechniqueKey,
 } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,8 +27,11 @@ import { ReferencesSection, type ReferenceView } from './references-section'
  */
 
 export interface TechniqueOption {
-  technique: Technique
+  technique: TechniqueKey
   description: string
+  /** A technique of the channel's own (spec 8.5), reached by its phrases. */
+  channelOnly?: boolean
+  steerPhrases?: readonly string[]
 }
 
 interface MotionTabProps {
@@ -50,10 +53,12 @@ interface MotionTabProps {
   derivation?: DerivationView | null
   /** A derivation is running: Derive and Copy wait. */
   jobRunning?: boolean
+  /** Live mechanism references that are read (spec 8.5): the Derive dialogue offers the proposal when there is one. */
+  mechanismReferences?: number
   /** The derivation's prices; absent, the Derive section and Copy are not shown. */
   estimateTable?: DerivationEstimateTable
   /** The techniques with an approved version, so Derive ticks the rest by default. */
-  approvedTechniques?: readonly Technique[]
+  approvedTechniques?: readonly TechniqueKey[]
   /** Every other channel, for Copy motion. */
   copySources?: readonly { id: string; name: string; archived: boolean }[]
 }
@@ -126,7 +131,7 @@ export function MotionTab({
     set('ms', ms)
   }
 
-  const toggleTechnique = (technique: Technique, on: boolean) => {
+  const toggleTechnique = (technique: TechniqueKey, on: boolean) => {
     const techniques = on
       ? techniqueOptions
           .map((option) => option.technique)
@@ -390,7 +395,7 @@ export function MotionTab({
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-2">
           {techniqueOptions.map((option) => {
-            const lastResort = (LAST_RESORT_TECHNIQUES as readonly Technique[]).includes(
+            const lastResort = (LAST_RESORT_TECHNIQUES as readonly string[]).includes(
               option.technique,
             )
             const id = `motion-technique-${option.technique}`
@@ -431,12 +436,7 @@ export function MotionTab({
             derivation={derivation}
             jobRunning={jobRunning}
             techniques={techniqueOptions}
-            // plan 5: widened in Task 7 (TechniqueOption and the dialogue take TechniqueKey).
-            defaults={
-              (motion.techniques as Technique[]).filter(
-                (key) => !approvedTechniques.includes(key),
-              ) as Technique[]
-            }
+            defaults={motion.techniques.filter((key) => !approvedTechniques.includes(key))}
             estimateTable={estimateTable}
             storageReady={storageReady}
             archived={archived}

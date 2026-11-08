@@ -1,6 +1,6 @@
 'use client'
 
-import type { Technique, TechniqueProgress } from '@boom-busters/schemas'
+import type { TechniqueKey, TechniqueProgress } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -70,7 +70,7 @@ export function DeriveSection({
   jobRunning: boolean
   techniques: readonly TechniqueOption[]
   /** The techniques in use with no approved version. */
-  defaults: readonly Technique[]
+  defaults: readonly TechniqueKey[]
   estimateTable: DerivationEstimateTable
   storageReady: boolean
   archived: boolean

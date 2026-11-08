@@ -13,6 +13,8 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }
 const derivation: DerivationView = {
   id: 'd1',
   state: 'stopped',
+  propose: false,
+  proposal: null,
   techniques: ['stat-counter', 'bar-chart', 'lower-third'],
   rounds: 2,
   capUsd: 5,

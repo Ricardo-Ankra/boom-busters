@@ -59,6 +59,8 @@ export interface ChannelExemplarsProps {
   estimateTable: DerivationEstimateTable
   storageReady: boolean
   lastRun: readonly { technique: string; costUsd: number }[] | null
+  /** Live mechanism references that are read (spec 8.5), for the Derive dialogue's proposal tick. */
+  mechanismReferences?: number
 }
 
 export function ExemplarsTab({

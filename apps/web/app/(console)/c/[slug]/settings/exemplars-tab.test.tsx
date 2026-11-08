@@ -114,6 +114,10 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
 
 const channelView = (over: Partial<ChannelExemplarView>): ChannelExemplarView => ({
   technique: 'stat-counter',
+  description: 'one large figure rises out of the sentence',
+  channelOnly: false,
+  steerPhrases: [],
+  fromReference: null,
   approved: null,
   pendingDraft: null,
   versions: [],

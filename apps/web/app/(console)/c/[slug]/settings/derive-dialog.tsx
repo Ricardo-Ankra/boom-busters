@@ -6,7 +6,7 @@ import {
   DERIVE_ROUNDS_MAX,
   DERIVE_ROUNDS_MIN,
 } from '@boom-busters/schemas'
-import type { Technique } from '@boom-busters/schemas'
+import type { TechniqueKey } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -49,7 +49,7 @@ export function DeriveDialog({
   channelId: string
   techniques: readonly TechniqueOption[]
   /** Ticked when the dialogue opens. */
-  defaults: readonly Technique[]
+  defaults: readonly TechniqueKey[]
   /** The last derivation's cost per technique, from its progress; null before one ran. */
   lastRun: readonly { technique: string; costUsd: number }[] | null
   estimateTable: DerivationEstimateTable
@@ -58,7 +58,7 @@ export function DeriveDialog({
   onLaunched: (derivationId: string) => void
 }) {
   const { toast } = useToast()
-  const [ticked, setTicked] = React.useState<Set<Technique>>(new Set(defaults))
+  const [ticked, setTicked] = React.useState<Set<TechniqueKey>>(new Set(defaults))
   const [rounds, setRounds] = React.useState(DERIVE_ROUNDS_DEFAULT)
   const [cap, setCap] = React.useState('')
   const [busy, setBusy] = React.useState(false)
@@ -67,7 +67,7 @@ export function DeriveDialog({
   const chosen = techniques.filter((option) => ticked.has(option.technique))
   const estimate = derivationEstimateUsd(estimateTable, { techniques: chosen.length, rounds })
 
-  const toggle = (technique: Technique, on: boolean) => {
+  const toggle = (technique: TechniqueKey, on: boolean) => {
     setTicked((current) => {
       const next = new Set(current)
       if (on) next.add(technique)

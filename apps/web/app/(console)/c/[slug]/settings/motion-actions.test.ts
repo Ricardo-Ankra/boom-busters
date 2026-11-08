@@ -10,6 +10,7 @@ import {
   requireTestDatabase,
   seed,
   setReferenceReading,
+  updateChannelSettings,
   setReferenceReadState,
   upsertChannelAsset,
 } from '@boom-busters/db'
@@ -343,6 +344,16 @@ describeDb('motion reference actions', () => {
 
     expect((await archiveReferenceAction(channelId, id)).ok).toBe(true)
     expect(await listMotionReferences(db, channelId)).toEqual([])
+  })
+
+  it('the draft keeps a channel-only technique in use (spec 8.5)', async () => {
+    const motion = (await getChannelSettings(db, channelId)).motion
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: [...motion.techniques, 'ledger-wipe'] },
+    })
+    const r = await draftMotionIdentityAction(channelId, { brief: 'slow' })
+    expect(r.ok).toBe(true)
+    expect(r.draft!.identity.techniques).toContain('ledger-wipe')
   })
 
   it('drafts the identity from the brief in mock mode and leaves the settings untouched', async () => {
