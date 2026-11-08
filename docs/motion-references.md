@@ -76,3 +76,6 @@ plain-words steer, shown beside it with "Approve this" and "Keep the approved
 one"; every version stays under "Versions" and a retired one can be restored.
 "Copy motion from another channel" forks that channel's identity, references
 and approved exemplars into this one.
+"Propose a technique from the mechanism references" in the Derive dialogue reads
+those references and, when they carry a move no technique covers, derives a
+technique of this channel's own that a steer phrase reaches once it is approved.

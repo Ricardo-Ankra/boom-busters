@@ -21,6 +21,7 @@ describe('the motion guideline on the tab (spec 2026-11-04, section 6)', () => {
     expect(text).toContain('"Refine"')
     expect(text).toContain('"Versions"')
     expect(text).toContain('"Copy motion from another channel"')
+    expect(text).toContain('"Propose a technique from the mechanism references"')
   })
 
   it('writes no dash a reader would see', () => {

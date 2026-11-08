@@ -4673,11 +4673,12 @@ Final review and fixes:
 - [x] Plan 4: derivation per channel through the critic loop, refine by steer
       with the side by side, versions, copy from another channel, the
       preference ledger (branch `motion-derivation`, decision 398).
-- [ ] Plan 5, open: channel-only techniques (spec 8.5, second paragraph): a
-      technique the derivation proposes from a mechanism reference, stored as
-      a channel exemplar under a new key, reached by steer phrase. Needs the
-      identity's `techniques` enum, the designer's answer schema and the
-      steer phrases to accept a key that is not in `TECHNIQUES`.
+- [x] Plan 5: channel-only techniques (spec 8.5, second paragraph): "Propose
+      a technique from the mechanism references" in the Derive dialogue, one
+      call before the loop that proposes a technique of the channel's own or
+      none; derived under its own key with the proposal on the version;
+      approved, the key joins the techniques in use and its steer phrases
+      reach it on the board (branch `channel-techniques`, decision 431).
 
 ### Next project
 
@@ -10366,3 +10367,34 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
 430. **People seeds are de-duplicated** (2026-11-06, final review). Names are
      trimmed and compared without regard to case before the first two are taken,
      so one person is never searched twice.
+431. **Channel-only techniques** (2026-11-08, plan 5 of the motion references
+     design, branch `channel-techniques`). The Derive dialogue gains a tick,
+     "Propose a technique from the mechanism references", shown only when a
+     live mechanism reference is read and unticked by default; a run may be
+     launched with the tick alone. The deriver runs one call before its loop
+     (`technique-proposal.ts`, graphics route) that reads the mechanism
+     readings against the catalogue and the channel's own techniques and
+     answers one technique (a kebab key, a name, a one-line description, one
+     to four steer phrases of two to four words, the mechanisms, a 3 to 12 s
+     synthetic slot, the reference it came from) or none with the reason; the
+     proposal joins the run as one more technique and its proposal is stored
+     on every version (`channel_exemplars.proposal`; the derivation row
+     records the tick and the outcome; migration 0049). Approve and restore
+     put the key into `settings.motion.techniques`, keep takes it out when no
+     approved version remains, and the owner may untick it; `techniqueFor`
+     tries the channel's phrases after the house list with the same negation
+     rule, only while the key is in use and a version is approved. The
+     Exemplars tab lists the channel's own techniques after the catalogue with
+     no house example; the Motion tab lists them under techniques in use with
+     their phrases; copy carries the proposal with the row.
+     Decisions made where the spec left room: the proposal is part of a
+     derivation, not a button of its own, one per run; the key is the model's,
+     validated against the catalogue and the channel's own, and a phrase the
+     house list already claims is refused at parse time so neither list
+     shadows the other; a channel-only technique is a graphic technique, with
+     no chart; in use follows approval; the identity draft keeps the channel's
+     keys; the loop pins the channel's approved version for its own key and
+     nothing before one, and mock mode stores the word stack design under the
+     new key; the technique key is a validated string wherever the channel's
+     own can flow (the identity, the rows, the progress, the designer's
+     exemplar) and the house catalogue does not change.
