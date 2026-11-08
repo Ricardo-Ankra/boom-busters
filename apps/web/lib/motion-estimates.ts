@@ -7,6 +7,8 @@ import {
   READING_OUTPUT_TOKENS,
   STORYBOARD_INPUT_TOKENS,
   STORYBOARD_OUTPUT_TOKENS,
+  TECHNIQUE_PROPOSAL_INPUT_TOKENS,
+  TECHNIQUE_PROPOSAL_OUTPUT_TOKENS,
 } from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
 import type { Settings, WorkspaceSettings } from '@boom-busters/schemas'
@@ -56,6 +58,7 @@ export const DERIVE_TOKENS = {
   pairwise: { in: 5000, out: 200 },
   fix: { in: GRAPHIC_ANSWER_TOKENS, out: GRAPHIC_ANSWER_TOKENS },
   verify: { in: 14_000, out: CRITIC_OUTPUT_TOKENS },
+  propose: { in: TECHNIQUE_PROPOSAL_INPUT_TOKENS, out: TECHNIQUE_PROPOSAL_OUTPUT_TOKENS },
 } as const
 
 function routeEstimate(
@@ -87,6 +90,7 @@ export function derivationEstimateTable(
       on('graphics', DERIVE_TOKENS.verify),
     perRound: on('critic', DERIVE_TOKENS.critic) + on('graphics', DERIVE_TOKENS.fix),
     perPairwise: on('critic', DERIVE_TOKENS.pairwise),
+    perProposal: on('graphics', DERIVE_TOKENS.propose),
   }
 }
 

@@ -20,7 +20,6 @@ import {
   type CriticReference,
   type Exemplar,
   type GraphicDesignInput,
-  type Technique,
   type LLMTaskRequest,
   type MsgImage,
   type ReviewFrame,
@@ -31,6 +30,8 @@ import {
   DEFAULT_MOTION_IDENTITY,
   graphicIntentOf,
   ValidationError,
+  type ChannelTechnique,
+  type TechniqueKey,
 } from '@boom-busters/schemas'
 import type {
   BibleInUse,
@@ -228,10 +229,11 @@ export function slotTechnique(
   slot: { brief: DesignableBrief },
   motion: MotionIdentity,
   guidance?: string,
-): Technique {
+  /** The channel's own techniques in use (spec 8.5), reached by their phrases. */
+  channelTechniques?: readonly ChannelTechnique[],
+): TechniqueKey {
   const { brief } = slot
   const { intent } = slotIntent(context, brief)
-  // plan 5: widened in Task 4 (slotTechnique returns a TechniqueKey and takes the channel's techniques).
   return techniqueFor({
     type: brief.type,
     ...(brief.type === 'chart'
@@ -247,7 +249,8 @@ export function slotTechnique(
     logos: context.logos.map((logo) => logo.title),
     techniques: motion.techniques,
     ...(guidance ? { guidance } : {}),
-  }) as Technique
+    ...(channelTechniques ? { channelTechniques } : {}),
+  })
 }
 
 /** What every graphics call shares for a slot: the request's base and what the checks read. */

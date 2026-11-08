@@ -1,4 +1,4 @@
-import type { ExemplarEntry, ScriptClaim } from '@boom-busters/providers'
+import type { ScriptClaim, TechniqueEntry } from '@boom-busters/providers'
 import { mechanismName, type ExemplarPlan } from '@boom-busters/schemas'
 import type { ChartBrief, DesignableBrief, GraphicBrief } from '@boom-busters/schemas'
 import type { planIssue } from '@boom-busters/schemas'
@@ -18,7 +18,7 @@ import type { GraphicDesignContext, GraphicSlotTiming } from '@/lib/graphic-desi
 const claimId = (n: number) => `01J${String(n).padStart(23, '0')}`
 
 /** One claim per figure the plan speaks and per charted point, as the corpus builds them. */
-export function derivedContext(entry: ExemplarEntry, plan: ExemplarPlan): GraphicDesignContext {
+export function derivedContext(entry: TechniqueEntry, plan: ExemplarPlan): GraphicDesignContext {
   const texts: string[] = []
   for (const word of plan.slot.words) {
     const figure = word.text.replace(/^[^\d$€£]+|[^\w%]+$/g, '')
@@ -47,7 +47,7 @@ export function derivedContext(entry: ExemplarEntry, plan: ExemplarPlan): Graphi
 
 /** The brief the checks run against: a chart brief for a chart technique with data, a graphic brief otherwise. */
 export function derivedBrief(
-  entry: ExemplarEntry,
+  entry: TechniqueEntry,
   plan: ExemplarPlan,
   context: GraphicDesignContext,
 ): DesignableBrief {
@@ -82,7 +82,7 @@ export function derivedBrief(
 }
 
 export function derivedSlot(
-  entry: ExemplarEntry,
+  entry: TechniqueEntry,
   plan: ExemplarPlan,
   context: GraphicDesignContext,
 ): GraphicSlotTiming & { brief: DesignableBrief } {
@@ -95,7 +95,7 @@ export function derivedSlot(
 }
 
 /** The bounds the storyboard's rewrite is held to (`planIssue`). */
-export function planBounds(entry: ExemplarEntry): Parameters<typeof planIssue>[1] {
+export function planBounds(entry: TechniqueEntry): Parameters<typeof planIssue>[1] {
   const series = entry.chart && entry.slot.data ? entry.slot.data.series : null
   return {
     durationMs: entry.slot.durationMs,

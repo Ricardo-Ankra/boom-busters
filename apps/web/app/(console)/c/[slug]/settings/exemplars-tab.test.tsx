@@ -125,7 +125,7 @@ const channelProps = {
   archived: false,
   jobRunning: false,
   techniqueOptions: [{ technique: 'stat-counter' as const, description: WRITTEN.description }],
-  estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 },
+  estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 },
   storageReady: true,
   lastRun: null,
 }

@@ -13,7 +13,7 @@ const techniques = [
   { technique: 'bar-chart' as const, description: 'bars' },
   { technique: 'lower-third' as const, description: 'a band' },
 ]
-const table = { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }
+const table = { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }
 
 function renderDialog(over: Partial<React.ComponentProps<typeof DeriveDialog>> = {}) {
   const onClose = vi.fn()

@@ -61,4 +61,19 @@ describe('motion estimates (spec 2026-11-04, sections 7.2 and 8.4)', () => {
       6,
     )
   })
+
+  it('adds the proposal call and one technique when the tick is on (spec 8.5)', () => {
+    const table = { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }
+    expect(derivationEstimateUsd(table, { techniques: 1, rounds: 2, propose: true })).toBeCloseTo(
+      0.2 + 2 * (1 + 1 + 0.1),
+      6,
+    )
+    expect(derivationEstimateUsd(table, { techniques: 0, rounds: 2, propose: true })).toBeCloseTo(
+      0.2 + 2.1,
+      6,
+    )
+    expect(derivationEstimateUsd(table, { techniques: 1, rounds: 2 })).toBeCloseTo(2.1, 6)
+    const priced = derivationEstimateTable(DEFAULT_SETTINGS, DEFAULT_WORKSPACE_SETTINGS)
+    expect(priced.perProposal).toBeGreaterThan(0)
+  })
 })

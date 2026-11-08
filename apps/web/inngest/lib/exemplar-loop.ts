@@ -11,12 +11,18 @@ import {
   type CriticInput,
   type CriticPlan,
   type CriticReference,
-  type ExemplarEntry,
+  type Exemplar,
+  type TechniqueEntry,
   type MsgImage,
   type ReviewFrame,
   type Technique,
 } from '@boom-busters/providers'
-import { resolveBrandKit, resolveMotionIdentity, ValidationError } from '@boom-busters/schemas'
+import {
+  resolveBrandKit,
+  resolveMotionIdentity,
+  ValidationError,
+  isHouseTechnique,
+} from '@boom-busters/schemas'
 import type {
   BibleInUse,
   CriticReport,
@@ -91,7 +97,7 @@ export function completeForJob(
 }
 
 /** The critic's slot for a plan: its words on the offset clock. */
-export function loopSlot(entry: ExemplarEntry, plan: ExemplarPlan): CriticInput['slot'] {
+export function loopSlot(entry: TechniqueEntry, plan: ExemplarPlan): CriticInput['slot'] {
   return {
     durationMs: entry.slot.durationMs,
     intent: plan.slot.intent,
@@ -106,14 +112,25 @@ export function loopSlot(entry: ExemplarEntry, plan: ExemplarPlan): CriticInput[
  */
 export async function buildFromPlan(input: {
   channel: LoopChannel
-  entry: ExemplarEntry
+  entry: TechniqueEntry
   plan: ExemplarPlan
   current?: GraphicCode
   guidance: string
   complete: GraphicCompleteFn
   frames?: GraphicFrames
+  /**
+   * The exemplar to pin (spec 8.5): given, used as is (null for none);
+   * absent, the house design for a house key, and none for a channel's own.
+   */
+  exemplar?: Exemplar | null
 }): Promise<GraphicDesignResult> {
   const { channel, entry, plan } = input
+  const exemplar =
+    input.exemplar !== undefined
+      ? input.exemplar
+      : isHouseTechnique(entry.technique)
+        ? (exemplarFor(entry.technique) ?? null)
+        : null
   const context = derivedContext(entry, plan)
   const slot = derivedSlot(entry, plan, context)
   const brief = input.current ? { ...slot.brief, code: input.current } : slot.brief
@@ -125,7 +142,7 @@ export async function buildFromPlan(input: {
       bible: channel.bible,
       motion: channel.motion,
       guidance: input.guidance,
-      exemplar: exemplarFor(entry.technique) ?? null,
+      exemplar,
       ...(input.current ? { redesign: true } : {}),
       ...(input.frames ? { frames: input.frames } : {}),
       brand: channel.brand,
@@ -141,7 +158,7 @@ export async function buildFromPlan(input: {
  */
 export async function photographVersion(input: {
   channel: LoopChannel
-  entry: ExemplarEntry
+  entry: TechniqueEntry
   plan: ExemplarPlan
   versionId: string
   round: number

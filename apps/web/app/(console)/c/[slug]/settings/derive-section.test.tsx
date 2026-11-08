@@ -48,7 +48,7 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning={false}
         techniques={techniques}
         defaults={['lower-third']}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived={false}
       />,
@@ -79,7 +79,7 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning
         techniques={techniques}
         defaults={[]}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived={false}
       />,
@@ -93,7 +93,7 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning={false}
         techniques={techniques}
         defaults={[]}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived
       />,

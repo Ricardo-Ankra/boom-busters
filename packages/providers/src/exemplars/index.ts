@@ -33,12 +33,12 @@ export function exemplars(): readonly (ExemplarEntry & { design?: ExemplarDesign
   })
 }
 
-/** The exemplar for a technique, or undefined while no design is stored for it. */
-export function exemplarFor(technique: Technique): Exemplar | undefined {
+/** The exemplar for a technique, or undefined while no design is stored for it (a channel's own key never has one). */
+export function exemplarFor(technique: TechniqueKey): Exemplar | undefined {
   const entry = exemplars().find((candidate) => candidate.technique === technique)
   if (!entry?.design) return undefined
   return {
-    technique,
+    technique: entry.technique,
     description: entry.description,
     mechanisms: entry.mechanisms,
     title: entry.design.title,

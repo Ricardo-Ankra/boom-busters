@@ -23,6 +23,7 @@ import { FramesUnavailable } from './graphic-code/frames'
 import type * as MotionMetricsModule from './graphic-code/motion-metrics'
 import { NonRetriableError } from 'inngest'
 import type * as Db from '@boom-busters/db'
+import type * as Schemas from '@boom-busters/schemas'
 
 const callLlm = vi.fn()
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
@@ -50,8 +51,11 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
     }),
     // The channel's approved exemplar version for a technique (spec 8.3): none unless a test sets one.
     approvedExemplar: async () => approvedStub,
+    // The channel's own techniques (spec 8.5): none unless a test lists some.
+    channelTechniquesFor: async () => channelTechniquesStub,
   }
 })
+let channelTechniquesStub: Schemas.ChannelTechnique[] = []
 
 // A `channel_exemplars` row, as `channelExemplarFor` reads it; null is "no approved version".
 let approvedStub: Db.ChannelExemplarRow | null = null
@@ -122,8 +126,9 @@ vi.mock('./graphic-code/compile', async (importOriginal) => {
 
 import { graphicCodeIssue } from './graphic-code/check'
 import { criticPlanOf, photographForCritic, slotIntent, slotTechnique } from './graphic-design-core'
-import { DEFAULT_MOTION_IDENTITY, type Technique } from '@boom-busters/schemas'
+import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import {
+  channelExemplarFor,
   designGraphic,
   reviewGraphic,
   designGraphicWith,
@@ -752,7 +757,6 @@ describe('designGraphicWith (the model call is injected)', () => {
     const providers = await import('@boom-busters/providers')
     // The same values designGraphicWith hands techniqueFor: the slot's intent
     // as slotIntent resolves it, and the context's logo titles.
-    // plan 5: widened in Task 4 (exemplarFor keeps the house key; a channel key has no house design).
     const expected = providers.exemplarFor(
       providers.techniqueFor({
         type: 'graphic',
@@ -760,7 +764,7 @@ describe('designGraphicWith (the model call is injected)', () => {
         description: BRIEF.description,
         coversText: BRIEF.coversText,
         logos: CONTEXT.logos.map((logo) => logo.title),
-      }) as Technique,
+      }),
     )
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
     await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
@@ -1312,5 +1316,84 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
       reason: 'switched off in Settings',
     })
     expect(callLlm).not.toHaveBeenCalled()
+  })
+})
+
+describe('channel-only techniques (spec 2026-11-04, section 8.5)', () => {
+  const ledger: Schemas.ChannelTechnique = {
+    technique: 'ledger-wipe',
+    description: 'a ruled line wipes the old figure away',
+    steerPhrases: ['ledger wipe'],
+  }
+  afterEach(() => {
+    channelTechniquesStub = []
+    approvedStub = null
+  })
+
+  it('a steer that says a channel phrase picks the channel technique for the slot', () => {
+    expect(
+      slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY, 'as a ledger wipe', [ledger]),
+    ).toBe('ledger-wipe')
+    expect(slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY, 'as a ledger wipe')).not.toBe(
+      'ledger-wipe',
+    )
+  })
+
+  it("channelExemplarFor hands the designer the channel's approved version of its own technique, and nothing before approval", async () => {
+    expect(await channelExemplarFor('01J00000000000000000000CH1', 'ledger-wipe')).toBeUndefined()
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['0.0 s c'],
+        mechanisms: ['persistent-actor'],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: {
+        key: 'ledger-wipe',
+        name: 'Ledger wipe',
+        description: ledger.description,
+        steerPhrases: ['ledger wipe'],
+        mechanisms: ['persistent-actor'],
+        slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+        fromReference: 'Ledger scene',
+      },
+    } as unknown as Db.ChannelExemplarRow
+    const exemplar = await channelExemplarFor('01J00000000000000000000CH1', 'ledger-wipe')
+    expect(exemplar).toEqual({
+      technique: 'ledger-wipe',
+      description: ledger.description,
+      mechanisms: ['persistent-actor'],
+      title: 'The ledger',
+      source: 'function Graphic(props) {\n  return "ledger"\n}',
+    })
+  })
+
+  it("designGraphic honours the channel's phrase only while the key is in use", async () => {
+    channelTechniquesStub = [ledger]
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['c'],
+        mechanisms: [],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: { description: ledger.description, steerPhrases: ['ledger wipe'] },
+    } as unknown as Db.ChannelExemplarRow
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT, { guidance: 'as a ledger wipe' })
+    const slotMessage = (callLlm.mock.calls[0]![0].messages as { content: string }[])[1]!.content
+    expect(slotMessage).not.toContain('(ledger-wipe:')
+    motionSetting = { techniques: [...DEFAULT_MOTION_IDENTITY.techniques, 'ledger-wipe'] }
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT, { guidance: 'as a ledger wipe' })
+    const second = (callLlm.mock.calls[1]![0].messages as { content: string }[])[1]!.content
+    expect(second).toContain('A passing design of this technique (ledger-wipe:')
+    expect(second).toContain('return "ledger"')
   })
 })

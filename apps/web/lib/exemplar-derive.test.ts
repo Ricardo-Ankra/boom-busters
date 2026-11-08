@@ -1,4 +1,4 @@
-import { MANIFEST } from '@boom-busters/providers'
+import { MANIFEST, entryFromProposal } from '@boom-busters/providers'
 import type { ExemplarPlan } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { DENSE_SHOTS_MAX, denseMoments } from './graphic-code/frames'
@@ -118,5 +118,32 @@ describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
 
   it('writes no dash', () => {
     expect(planSteer(PLAN) + refineSteer('x', PLAN)).not.toMatch(/[–—]/)
+  })
+
+  it("a proposal's entry derives a graphic brief with its own slot (spec 8.5)", () => {
+    const entry = entryFromProposal({
+      key: 'ledger-wipe',
+      name: 'Ledger wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+      mechanisms: ['persistent-actor'],
+      slot: {
+        durationMs: 8000,
+        words: [
+          { text: 'The', atMs: 200 },
+          { text: 'figure', atMs: 650 },
+        ],
+        intent: 'The old figure is gone.',
+      },
+      fromReference: 'Ledger scene',
+    })
+    const plan: ExemplarPlan = { ...PLAN, slot: { intent: 'gone', words: [...entry.slot.words] } }
+    const context = derivedContext(entry, plan)
+    expect(context.chapterTitle).toBe('ledger-wipe')
+    const brief = derivedBrief(entry, plan, context)
+    expect(brief.type).toBe('graphic')
+    expect(brief.description).toBe('a ruled line wipes the old figure away')
+    expect(derivedSlot(entry, plan, context).durationMs).toBe(8000)
+    expect(planBounds(entry)).toEqual({ durationMs: 8000, wordCount: 2 })
   })
 })
