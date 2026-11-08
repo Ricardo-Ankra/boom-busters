@@ -13,7 +13,7 @@ import {
   parseEventData,
   ValidationError,
 } from '@boom-busters/schemas'
-import type { CriticReport, CriticVerify, PairwiseOutcome } from '@boom-busters/schemas'
+import type { CriticReport, CriticVerify, PairwiseOutcome, Technique } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, refineSteer } from '@/lib/exemplar-derive'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
@@ -124,7 +124,7 @@ export const motionExemplarRefiner = inngest.createFunction(
               plan: parent.plan,
               current: parent.code,
               guidance,
-              complete: completeForJob(channelId, jobId, parent.technique),
+              complete: completeForJob(channelId, jobId, parent.technique as Technique), // plan 5: widened in Task 5
               ...(framesOn() ? { frames: browserFrames() } : {}),
             })
           } catch (error) {
@@ -220,7 +220,7 @@ export const motionExemplarRefiner = inngest.createFunction(
           references: [],
           ...(parent.frames ? { previous: parent.frames } : {}),
           verify: { prior, brief: `The producer's steer: ${steer}` },
-          complete: completeForJob(channelId, jobId, parent.technique),
+          complete: completeForJob(channelId, jobId, parent.technique as Technique), // plan 5: widened in Task 5
         })
         const verify = report as CriticVerify
         await updateExemplarDraft(db, versionId, {

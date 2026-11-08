@@ -3,12 +3,14 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { ensureFirstChannel } from './channels'
 import { createDb } from './client'
 import {
+  appendTechniqueProgress,
   createDerivation,
   finishDerivation,
   getDerivation,
   DERIVATION_STALE_MS,
   latestDerivation,
   runningDerivation,
+  setDerivationProposal,
   touchDerivation,
   updateTechniqueProgress,
 } from './motion-derivations'
@@ -100,5 +102,53 @@ suite('motion derivations', () => {
     expect(after?.finishedAt).toBeInstanceOf(Date)
     expect(await runningDerivation(db, channelId)).toBeNull()
     expect((await latestDerivation(db, channelId))?.id).toBe(row.id)
+  })
+
+  it('records the tick and the proposal outcome (spec 8.5)', async () => {
+    const row = await createDerivation(db, {
+      channelId,
+      techniques: [],
+      rounds: 1,
+      capUsd: 1,
+      propose: true,
+    })
+    expect(row.propose).toBe(true)
+    expect(row.proposal).toBeNull()
+    expect(row.progress).toEqual([])
+    const plain = await createDerivation(db, {
+      channelId,
+      techniques: ['bar-chart'],
+      rounds: 1,
+      capUsd: 1,
+    })
+    expect(plain.propose).toBe(false)
+    await setDerivationProposal(db, row.id, {
+      state: 'proposed',
+      technique: 'ledger-wipe',
+      reason: null,
+    })
+    expect((await getDerivation(db, row.id))?.proposal).toEqual({
+      state: 'proposed',
+      technique: 'ledger-wipe',
+      reason: null,
+    })
+  })
+
+  it('appends a technique to the progress once', async () => {
+    const row = await createDerivation(db, {
+      channelId,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 1,
+      propose: true,
+    })
+    await appendTechniqueProgress(db, row.id, 'ledger-wipe')
+    await appendTechniqueProgress(db, row.id, 'ledger-wipe')
+    expect((await getDerivation(db, row.id))?.progress).toEqual([
+      { technique: 'stat-counter', state: 'pending', versionId: null, reason: null, costUsd: 0 },
+      { technique: 'ledger-wipe', state: 'pending', versionId: null, reason: null, costUsd: 0 },
+    ])
+    await updateTechniqueProgress(db, row.id, 'ledger-wipe', { state: 'running' })
+    expect((await getDerivation(db, row.id))?.progress[1]?.state).toBe('running')
   })
 })

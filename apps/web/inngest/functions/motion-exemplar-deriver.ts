@@ -573,7 +573,8 @@ export const motionExemplarDeriver = inngest.createFunction(
       // One technique's failure is its own (final review, issue 6): the rest still run.
       let outcome: TechniqueOutcome
       try {
-        outcome = await deriveTechnique(step, derivation, technique)
+        // plan 5: widened in Task 5 (deriveTechnique takes a TechniqueKey and its entry).
+        outcome = await deriveTechnique(step, derivation, technique as Technique)
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         outcome = { state: 'failed', reason: reason.slice(0, 500), versionId: null }
