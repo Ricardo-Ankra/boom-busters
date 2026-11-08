@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
+import type { TechniqueOption } from './motion-tab'
 import { SettingsForm } from './settings-form'
 
 /**
@@ -102,16 +103,19 @@ beforeEach(() => {
   saveSettings.mockResolvedValue({ ok: true })
 })
 
-async function openMotionTab(): Promise<void> {
+async function openMotionTab(
+  options: readonly TechniqueOption[] = TECHNIQUE_OPTIONS,
+  settings = structuredClone(DEFAULT_SETTINGS),
+): Promise<void> {
   // The house defaults: what a channel that never set its identity reads as.
   render(
     <SettingsForm
       channelId="01J00000000000000000000001"
       channelSlug="first"
       channel={FIXTURE_CHANNEL_VIEW}
-      initialSettings={structuredClone(DEFAULT_SETTINGS)}
+      initialSettings={settings}
       modelOptions={modelOptions()}
-      techniqueOptions={TECHNIQUE_OPTIONS}
+      techniqueOptions={options}
     />,
   )
   await userEvent.click(screen.getByRole('tab', { name: 'Motion' }))
@@ -163,6 +167,33 @@ describe('the Motion tab (spec 2026-11-04)', () => {
           (technique) => technique !== 'racing-chart',
         ),
       },
+    })
+  })
+
+  it('lists a channel-only technique with its phrases and saves it unticked (spec 8.5)', async () => {
+    const user = userEvent.setup()
+    const own = {
+      technique: 'ledger-wipe',
+      description: 'a ruled line wipes the old figure away',
+      channelOnly: true,
+      steerPhrases: ['ledger wipe', 'wipe the ledger'],
+    }
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.motion = {
+      ...settings.motion,
+      techniques: [...settings.motion.techniques, 'ledger-wipe'],
+    }
+    await openMotionTab([...TECHNIQUE_OPTIONS, own], settings)
+    const box = screen.getByLabelText('ledger-wipe') as HTMLInputElement
+    expect(box.checked).toBe(true)
+    expect(
+      screen.getByText(
+        /This channel's own, reached by a steer that says: 'ledger wipe', 'wipe the ledger'\./,
+      ),
+    ).toBeInTheDocument()
+    await user.click(box)
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+      motion: { techniques: TECHNIQUE_OPTIONS.map((option) => option.technique) },
     })
   })
 

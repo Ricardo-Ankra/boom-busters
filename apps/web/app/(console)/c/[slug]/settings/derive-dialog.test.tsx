@@ -88,4 +88,39 @@ describe('DeriveDialog (spec 2026-11-04, section 9.1)', () => {
     })
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('offers the proposal only when a mechanism reference is read, and prices it (spec 8.5)', () => {
+    renderDialog()
+    expect(screen.queryByRole('checkbox', { name: /Propose a technique/ })).toBeNull()
+  })
+
+  it('prices the proposal as one call and one more technique when ticked (spec 8.5)', () => {
+    renderDialog({ mechanismReferences: 1 })
+    const tick = screen.getByRole('checkbox', { name: /Propose a technique/ })
+    expect(tick).not.toBeChecked()
+    expect(screen.getByText('About $4.20 for 2 techniques at 2 rounds')).toBeInTheDocument()
+    fireEvent.click(tick)
+    // 0.2 for the call, then three techniques at 2.1 each.
+    expect(
+      screen.getByText('About $6.50 for 2 techniques and a proposal at 2 rounds'),
+    ).toBeInTheDocument()
+  })
+
+  it('launches with the proposal alone (spec 8.5)', async () => {
+    deriveExemplarsAction.mockResolvedValue({ ok: true, derivationId: 'd2' })
+    const { onLaunched } = renderDialog({ mechanismReferences: 2, defaults: [] })
+    const start = screen.getByRole('button', { name: 'Start deriving' })
+    fireEvent.change(screen.getByLabelText('Cap in dollars'), { target: { value: '3' } })
+    expect(start).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Propose a technique/ }))
+    expect(start).toBeEnabled()
+    fireEvent.click(start)
+    await waitFor(() => expect(onLaunched).toHaveBeenCalledWith('d2'))
+    expect(deriveExemplarsAction).toHaveBeenCalledWith('01J00000000000000000000CH1', {
+      techniques: [],
+      rounds: 2,
+      capUsd: 3,
+      propose: true,
+    })
+  })
 })

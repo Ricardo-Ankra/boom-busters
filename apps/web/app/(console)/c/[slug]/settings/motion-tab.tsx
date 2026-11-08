@@ -89,6 +89,7 @@ export function MotionTab({
   draftEstimateUsd,
   derivation = null,
   jobRunning = false,
+  mechanismReferences = 0,
   estimateTable,
   approvedTechniques = [],
   copySources = [],
@@ -415,6 +416,12 @@ export function MotionTab({
                     {option.description}
                     {lastResort ? ' Always in use.' : ''}
                   </p>
+                  {option.channelOnly ? (
+                    <p className={mutedClass}>
+                      This channel's own, reached by a steer that says:{' '}
+                      {(option.steerPhrases ?? []).map((phrase) => `'${phrase}'`).join(', ')}.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )
@@ -440,6 +447,7 @@ export function MotionTab({
             estimateTable={estimateTable}
             storageReady={storageReady}
             archived={archived}
+            mechanismReferences={mechanismReferences}
           />
           <CopyMotion
             channelId={channelId}

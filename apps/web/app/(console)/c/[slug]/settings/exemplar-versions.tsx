@@ -1,7 +1,7 @@
 'use client'
 
 import { CRITIC_AXES } from '@boom-busters/schemas'
-import type { BrandKitStored, CriticAxis, Technique } from '@boom-busters/schemas'
+import type { BrandKitStored, CriticAxis, TechniqueKey } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -58,7 +58,7 @@ export function SideBySide({
   onRefineAgain,
 }: {
   channelId: string
-  technique: Technique
+  technique: TechniqueKey
   draft: ChannelExemplarVersionView
   /** The version the draft was refined from, or the approved one. */
   against: ChannelExemplarVersionView
