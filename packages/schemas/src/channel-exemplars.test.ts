@@ -90,6 +90,13 @@ describe('the exemplar plan (spec 2026-11-04, section 9.2)', () => {
     expect(DeriveRequestSchema.safeParse({ ...ok, rounds: 0 }).success).toBe(false)
     expect(DeriveRequestSchema.safeParse({ ...ok, capUsd: 0 }).success).toBe(false)
     expect(DeriveRequestSchema.safeParse({ ...ok, techniques: [] }).success).toBe(false)
+    // A derive request may tick the proposal alone (spec 8.5, plan 5).
+    expect(DeriveRequestSchema.parse(ok).propose).toBe(false)
+    expect(DeriveRequestSchema.safeParse({ ...ok, techniques: [], propose: true }).success).toBe(
+      true,
+    )
+    expect(DeriveRequestSchema.safeParse({ ...ok, techniques: ['ledger-wipe'] }).success).toBe(true)
+    expect(DeriveRequestSchema.safeParse({ ...ok, techniques: ['Ledger'] }).success).toBe(false)
     expect(ExemplarSteerSchema.safeParse('a'.repeat(EXEMPLAR_STEER_MAX)).success).toBe(true)
     expect(ExemplarSteerSchema.safeParse('a'.repeat(EXEMPLAR_STEER_MAX + 1)).success).toBe(false)
   })
@@ -114,6 +121,11 @@ describe('the exemplar plan (spec 2026-11-04, section 9.2)', () => {
     }
     expect(TechniqueProgressSchema.safeParse(row).success).toBe(true)
     expect(TechniqueProgressSchema.safeParse({ ...row, state: 'done' }).success).toBe(false)
+    // A progress entry carries a channel-only key (plan 5).
+    expect(TechniqueProgressSchema.safeParse({ ...row, technique: 'ledger-wipe' }).success).toBe(
+      true,
+    )
+    expect(TechniqueProgressSchema.safeParse({ ...row, technique: 'Ledger' }).success).toBe(false)
     const frames = {
       shots: [{ orientation: 'landscape', atMs: 900, r2Key: 'k' }],
       sheets: { landscape: 'sheet' },

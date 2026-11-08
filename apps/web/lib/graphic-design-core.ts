@@ -244,7 +244,8 @@ export function slotTechnique(
     description: brief.description,
     coversText: brief.coversText,
     logos: context.logos.map((logo) => logo.title),
-    techniques: motion.techniques,
+    // plan 5: widened in Task 3 (TechniqueInput.techniques takes TechniqueKey[]).
+    techniques: motion.techniques as Technique[],
     ...(guidance ? { guidance } : {}),
   })
 }

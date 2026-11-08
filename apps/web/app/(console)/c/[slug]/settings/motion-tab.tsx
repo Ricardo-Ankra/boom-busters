@@ -431,7 +431,12 @@ export function MotionTab({
             derivation={derivation}
             jobRunning={jobRunning}
             techniques={techniqueOptions}
-            defaults={motion.techniques.filter((key) => !approvedTechniques.includes(key))}
+            // plan 5: widened in Task 7 (TechniqueOption and the dialogue take TechniqueKey).
+            defaults={
+              (motion.techniques as Technique[]).filter(
+                (key) => !approvedTechniques.includes(key),
+              ) as Technique[]
+            }
             estimateTable={estimateTable}
             storageReady={storageReady}
             archived={archived}

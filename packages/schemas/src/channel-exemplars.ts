@@ -6,7 +6,7 @@ import {
 } from './graphic-code'
 import { UlidSchema } from './ids'
 import { MECHANISMS_PER_DESIGN_MAX, MechanismSchema } from './mechanisms'
-import { TECHNIQUES } from './techniques'
+import { TechniqueKeySchema } from './techniques'
 import { ChartSeriesSchema } from './visuals'
 
 /**
@@ -101,7 +101,7 @@ export const TECHNIQUE_PROGRESS_STATES = [
 export type TechniqueProgressState = (typeof TECHNIQUE_PROGRESS_STATES)[number]
 
 export const TechniqueProgressSchema = z.object({
-  technique: z.enum(TECHNIQUES),
+  technique: TechniqueKeySchema,
   state: z.enum(TECHNIQUE_PROGRESS_STATES),
   versionId: UlidSchema.nullable(),
   reason: z.string().max(500).nullable(),
@@ -120,11 +120,18 @@ export const VERDICT_KINDS = [
 ] as const
 export type VerdictKind = (typeof VERDICT_KINDS)[number]
 
-export const DeriveRequestSchema = z.object({
-  techniques: z.array(z.enum(TECHNIQUES)).min(1),
-  rounds: z.number().int().min(DERIVE_ROUNDS_MIN).max(DERIVE_ROUNDS_MAX),
-  capUsd: z.number().positive().max(10_000),
-})
+/** A derive request ticks techniques, house or the channel's own, or the proposal alone (spec 8.5). */
+export const DeriveRequestSchema = z
+  .object({
+    techniques: z.array(TechniqueKeySchema),
+    rounds: z.number().int().min(DERIVE_ROUNDS_MIN).max(DERIVE_ROUNDS_MAX),
+    capUsd: z.number().positive().max(10_000),
+    propose: z.boolean().default(false),
+  })
+  .refine((request) => request.techniques.length > 0 || request.propose, {
+    message: 'tick a technique or the proposal',
+    path: ['techniques'],
+  })
 export type DeriveRequest = z.infer<typeof DeriveRequestSchema>
 
 export const ExemplarSteerSchema = z.string().trim().min(1).max(EXEMPLAR_STEER_MAX)

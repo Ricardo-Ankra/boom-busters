@@ -9,6 +9,7 @@
  * to the preference ledger. A paid job starts only from these buttons.
  */
 
+import type { Technique } from '@boom-busters/schemas'
 import {
   approveExemplarVersion,
   approvedExemplar,
@@ -114,7 +115,12 @@ export async function deriveExemplarsAction(
     return { ok: false, error: 'Tick at least one technique, choose 1 to 5 rounds and type a cap.' }
   }
   if (await jobRunning(channelId)) return JOB_RUNNING
-  const row = await createDerivation(db, { channelId, ...parsed.data })
+  // plan 5: widened in Task 2 (createDerivation takes TechniqueKey[]).
+  const row = await createDerivation(db, {
+    channelId,
+    ...parsed.data,
+    techniques: parsed.data.techniques as Technique[],
+  })
   try {
     await inngest.send(events.motionExemplarsDerive.create({ channelId, derivationId: row.id }))
   } catch (error) {

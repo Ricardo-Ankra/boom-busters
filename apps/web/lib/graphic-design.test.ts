@@ -122,7 +122,7 @@ vi.mock('./graphic-code/compile', async (importOriginal) => {
 
 import { graphicCodeIssue } from './graphic-code/check'
 import { criticPlanOf, photographForCritic, slotIntent, slotTechnique } from './graphic-design-core'
-import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
+import { DEFAULT_MOTION_IDENTITY, type Technique } from '@boom-busters/schemas'
 import {
   designGraphic,
   reviewGraphic,
@@ -692,7 +692,8 @@ describe('the exemplar handed in, and the photograph for the critic (plan 4)', (
         description: SLOT.brief.description ?? '',
         coversText: SLOT.brief.coversText,
         logos: CONTEXT.logos.map((logo) => logo.title),
-        techniques: DEFAULT_MOTION_IDENTITY.techniques,
+        // plan 5: widened in Task 3.
+        techniques: DEFAULT_MOTION_IDENTITY.techniques as Technique[],
       }),
     )
   })
