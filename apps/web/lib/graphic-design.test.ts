@@ -692,8 +692,7 @@ describe('the exemplar handed in, and the photograph for the critic (plan 4)', (
         description: SLOT.brief.description ?? '',
         coversText: SLOT.brief.coversText,
         logos: CONTEXT.logos.map((logo) => logo.title),
-        // plan 5: widened in Task 3.
-        techniques: DEFAULT_MOTION_IDENTITY.techniques as Technique[],
+        techniques: DEFAULT_MOTION_IDENTITY.techniques,
       }),
     )
   })
@@ -753,6 +752,7 @@ describe('designGraphicWith (the model call is injected)', () => {
     const providers = await import('@boom-busters/providers')
     // The same values designGraphicWith hands techniqueFor: the slot's intent
     // as slotIntent resolves it, and the context's logo titles.
+    // plan 5: widened in Task 4 (exemplarFor keeps the house key; a channel key has no house design).
     const expected = providers.exemplarFor(
       providers.techniqueFor({
         type: 'graphic',
@@ -760,7 +760,7 @@ describe('designGraphicWith (the model call is injected)', () => {
         description: BRIEF.description,
         coversText: BRIEF.coversText,
         logos: CONTEXT.logos.map((logo) => logo.title),
-      }),
+      }) as Technique,
     )
     const complete = vi.fn().mockResolvedValue(answer('$4bn'))
     await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })

@@ -1,6 +1,7 @@
 import {
   LAST_RESORT_TECHNIQUES,
   MOTION_MS,
+  isHouseTechnique,
   MotionIdentityDraftSchema,
   ReferenceReadingEditSchema,
 } from '@boom-busters/schemas'
@@ -256,9 +257,24 @@ export function buildMotionIdentityDraftRequest(input: IdentityDraftInput): LLMT
   }
 }
 
-/** The proposal, read through the identity schema: a refused bound is a refused answer. */
-export function parseMotionIdentityDraft(text: string): MotionIdentityDraft {
-  return parseJsonCompletion(text, MotionIdentityDraftSchema, 'motion identity draft')
+/**
+ * The proposal, read through the identity schema: a refused bound is a
+ * refused answer. The model chooses from the catalogue, so the channel's own
+ * keys in `keep` (spec 8.5) are appended when the draft left them out.
+ */
+export function parseMotionIdentityDraft(
+  text: string,
+  keep: readonly string[] = [],
+): MotionIdentityDraft {
+  const draft = parseJsonCompletion(text, MotionIdentityDraftSchema, 'motion identity draft')
+  const own = keep.filter(
+    (key) => !isHouseTechnique(key) && !draft.identity.techniques.includes(key),
+  )
+  if (own.length === 0) return draft
+  return {
+    ...draft,
+    identity: { ...draft.identity, techniques: [...draft.identity.techniques, ...new Set(own)] },
+  }
 }
 
 /** Mock mode's draft: the current identity with the brief folded into the style guide. */

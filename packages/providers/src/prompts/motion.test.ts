@@ -162,6 +162,16 @@ describe('the identity draft (spec 8.4)', () => {
     expect(draft.identity.techniques).toEqual(DEFAULT_MOTION_IDENTITY.techniques)
   })
 
+  it("keeps the channel's own keys the catalogue does not name (spec 8.5)", () => {
+    const draft = parseMotionIdentityDraft(
+      JSON.stringify({ identity: { techniques: [...TECHNIQUES] }, why: 'all of them' }),
+      ['ledger-wipe', 'stat-counter', 'ledger-wipe'],
+    )
+    expect(draft.identity.techniques.filter((key) => key === 'ledger-wipe')).toHaveLength(1)
+    expect(draft.identity.techniques.at(-1)).toBe('ledger-wipe')
+    expect(draft.identity.techniques.filter((key) => key === 'stat-counter')).toHaveLength(1)
+  })
+
   it('the mock draft differs from the current identity', () => {
     const d = mockMotionIdentityDraft(draftInput({ brief: 'slow and dark' }))
     expect(d.identity.styleGuideMd).toContain('slow and dark')

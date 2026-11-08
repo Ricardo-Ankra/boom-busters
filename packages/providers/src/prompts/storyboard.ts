@@ -14,7 +14,7 @@ import {
 } from '@boom-busters/schemas'
 import type { ExemplarPlan, MotionIdentity } from '@boom-busters/schemas'
 import { z } from 'zod'
-import type { ExemplarEntry } from '../exemplars/manifest'
+import type { TechniqueEntry } from '../exemplars/channel-technique'
 import { outputBudget, type LLMTaskRequest } from '../llm/types'
 import { motionIdentityBlock } from './graphics'
 import { formatIssues, parseJsonCompletion } from './json'
@@ -40,7 +40,8 @@ export const STORYBOARD_INPUT_TOKENS = 6000
 export interface StoryboardInput {
   motion: MotionIdentity
   brand: IdentityDraftInput['brand']
-  entry: Pick<ExemplarEntry, 'technique' | 'description' | 'mechanisms' | 'slot' | 'chart'>
+  /** A catalogue entry, or the one a proposal makes (spec 8.5). */
+  entry: TechniqueEntry
   /** The house design's plan, as mechanics to learn from; null when none is stored. */
   house: { title: string; concept?: string; storyboard?: string[] } | null
   readings: readonly ReadingForDraft[]
@@ -70,7 +71,8 @@ A reference is grammar to learn from, never content to copy. Use no dash charact
 
 const MECHANISMS_LIST = `The mechanisms, by key: ${MECHANISM_KEYS.join(', ')}.`
 
-function readingBlock(entry: ReadingForDraft, index: number): string {
+/** A reference's reading as text, shared with the technique proposal. */
+export function readingBlock(entry: ReadingForDraft, index: number): string {
   const tags = [entry.purpose, ...(entry.negative ? ['negative'] : [])].join(', ')
   const head = `Reference ${index + 1}: "${entry.title}" (${tags}). Carry over: ${entry.carryOver}.${entry.avoid ? ` Avoid: ${entry.avoid}.` : ''}`
   if (!entry.reading) return `${head}\nReading: unread.`
@@ -231,7 +233,7 @@ export function parseStoryboardPlan(
 
 /** Mock mode's plan: the catalogue slot as it is, under a mock concept. */
 export function mockStoryboardPlan(
-  entry: Pick<ExemplarEntry, 'slot' | 'mechanisms' | 'chart'>,
+  entry: Pick<TechniqueEntry, 'slot' | 'mechanisms' | 'chart'>,
 ): ExemplarPlan {
   return {
     slot: {

@@ -2,7 +2,7 @@ import { DESIGNS } from './designs/index'
 import type { ExemplarDesign } from './designs/index'
 import { MANIFEST, TECHNIQUES } from './manifest'
 import type { ExemplarEntry, ExemplarSlot, Technique } from './manifest'
-import type { Mechanism } from '@boom-busters/schemas'
+import type { Mechanism, TechniqueKey } from '@boom-busters/schemas'
 
 export { DESIGNS, MANIFEST, TECHNIQUES }
 export type { ExemplarDesign, ExemplarEntry, ExemplarSlot, Technique }
@@ -12,7 +12,8 @@ export type { Mechanism }
 
 /** What the slot message shows: the technique, its one-line description, and the stored design. */
 export interface Exemplar {
-  technique: Technique
+  /** A house key, or a channel's own (spec 8.5). */
+  technique: TechniqueKey
   description: string
   /** What the design is built on, so the slot message can say "it uses: ..." (spec 8.5). */
   mechanisms: readonly Mechanism[]
@@ -50,5 +51,7 @@ export function vendoredPath(entry: ExemplarEntry): string {
   const name = entry.source.path.split('/').pop() ?? entry.source.path
   return `vendored/${entry.source.repo}/${name}.txt`
 }
-export { techniqueFor } from './technique'
+export { claimedBySteer, techniqueFor } from './technique'
 export type { TechniqueInput } from './technique'
+export { entryFromProposal } from './channel-technique'
+export type { TechniqueEntry } from './channel-technique'

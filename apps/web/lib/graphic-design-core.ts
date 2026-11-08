@@ -231,6 +231,7 @@ export function slotTechnique(
 ): Technique {
   const { brief } = slot
   const { intent } = slotIntent(context, brief)
+  // plan 5: widened in Task 4 (slotTechnique returns a TechniqueKey and takes the channel's techniques).
   return techniqueFor({
     type: brief.type,
     ...(brief.type === 'chart'
@@ -244,10 +245,9 @@ export function slotTechnique(
     description: brief.description,
     coversText: brief.coversText,
     logos: context.logos.map((logo) => logo.title),
-    // plan 5: widened in Task 3 (TechniqueInput.techniques takes TechniqueKey[]).
-    techniques: motion.techniques as Technique[],
+    techniques: motion.techniques,
     ...(guidance ? { guidance } : {}),
-  })
+  }) as Technique
 }
 
 /** What every graphics call shares for a slot: the request's base and what the checks read. */

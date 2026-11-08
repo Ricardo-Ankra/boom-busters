@@ -33,6 +33,7 @@ import { buildRedirectRequest } from '../redirect'
 import { buildRetypeRequest } from '../retype'
 import { buildScoringRequest } from '../scoring'
 import { buildStoryboardRequest } from '../storyboard'
+import { buildTechniqueProposalRequest } from '../technique-proposal'
 import {
   buildChapterRequest,
   buildOutlineRequest,
@@ -1194,6 +1195,39 @@ const graphicsCases: LiftCase[] = [
           reading: null,
         },
       ],
+    }),
+  ),
+  // The technique proposal (spec 8.5): the mechanism readings against the catalogue.
+  liftAware('graphics-technique-proposal', () =>
+    buildTechniqueProposalRequest({
+      motion: { ...DEFAULT_MOTION_IDENTITY, styleGuideMd: 'Dark, slow, one figure at a time.' },
+      readings: [
+        {
+          title: 'Ledger scene',
+          purpose: 'mechanism',
+          negative: false,
+          carryOver: 'the ruled line that wipes the old figure away',
+          avoid: '',
+          reading: {
+            medium: 'flat typography over paper',
+            palette: ['#111', '#eee'],
+            type: 'grotesk, heavy',
+            enters: 'written in',
+            exits: 'wiped by a rule',
+            motion: 'one line travels and the figure behind it changes',
+            absent: 'no glow, no particles',
+            notes: '',
+            readAt: '2026-11-04T00:00:00.000Z',
+            model: 'lift/model',
+          },
+        },
+      ],
+      catalogue: MANIFEST.map((entry) => ({
+        technique: entry.technique,
+        description: entry.description,
+        mechanisms: entry.mechanisms,
+      })),
+      channelTechniques: [],
     }),
   ),
   // The critic's verify ask with a previous version (spec 9.2, steps 4 and 7).

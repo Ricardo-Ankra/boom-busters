@@ -1,5 +1,6 @@
 import { DEFAULT_MOTION_IDENTITY, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
+import { entryFromProposal } from '../exemplars/channel-technique'
 import { MANIFEST } from '../exemplars/manifest'
 import { motionIdentityBlock } from './graphics'
 import {
@@ -176,5 +177,34 @@ describe('parseStoryboardPlan', () => {
     expect(plan.mechanisms).toEqual([...stat.mechanisms])
     expect(plan.leansOn).toEqual([])
     expect(mockStoryboardPlan(bar).slot.data).toEqual(bar.slot.data)
+  })
+
+  it("plans a channel-only technique from its proposal's entry (spec 8.5)", () => {
+    const entry = entryFromProposal({
+      key: 'ledger-wipe',
+      name: 'Ledger wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+      mechanisms: ['persistent-actor'],
+      slot: {
+        durationMs: 6000,
+        words: [
+          { text: 'The', atMs: 200 },
+          { text: 'figure', atMs: 650 },
+        ],
+        intent: 'The old figure is gone.',
+      },
+      fromReference: 'Ledger scene',
+    })
+    expect(entry.technique).toBe('ledger-wipe')
+    expect(entry.chart).toBeUndefined()
+    const request = buildStoryboardRequest({ ...INPUT, entry, house: null })
+    const material = request.messages[1]!.content as string
+    expect(material).toContain('The technique: ledger-wipe, a ruled line wipes')
+    expect(material).toContain('No house design is stored for it.')
+    expect(material).toContain('A graphic technique: no "data".')
+    const plan = mockStoryboardPlan(entry)
+    expect(plan.slot.words).toEqual(entry.slot.words)
+    expect(plan.mechanisms).toEqual(['persistent-actor'])
   })
 })

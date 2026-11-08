@@ -1,5 +1,5 @@
 import { LAST_RESORT_TECHNIQUES } from '@boom-busters/schemas'
-import type { ChartKind, Technique } from '@boom-busters/schemas'
+import type { ChannelTechnique, ChartKind, Technique, TechniqueKey } from '@boom-busters/schemas'
 
 /**
  * Which exemplar a slot gets (decision 305): a pure function of the brief's
@@ -8,7 +8,9 @@ import type { ChartKind, Technique } from '@boom-busters/schemas'
  * techniques are reached by the steer only (the designer does not know a
  * slot's place in its chapter, and the other four are the producer's
  * stylistic choices): chapter-title, typewriter, animated-list, lower-third
- * and progress-bars.
+ * and progress-bars. A channel's own technique (spec 2026-11-04, section
+ * 8.5) is reached the same way, by its own phrases, tried after the house
+ * list.
  */
 export interface TechniqueInput {
   type: 'graphic' | 'chart'
@@ -28,7 +30,14 @@ export interface TechniqueInput {
    * means all. A rule whose technique is switched off is skipped for the next;
    * the two last resorts are always in use, and a steer still wins.
    */
-  techniques?: readonly Technique[]
+  techniques?: readonly TechniqueKey[]
+  /**
+   * The channel's own techniques in use with an approved version (spec 8.5):
+   * their phrases are tried after the house list, with the same negation
+   * rule. The proposal's parse refuses a phrase the house list claims, so
+   * neither list shadows the other.
+   */
+  channelTechniques?: readonly ChannelTechnique[]
 }
 
 /**
@@ -71,10 +80,13 @@ const NEGATORS = new Set([
   'lose',
 ])
 
-function steerTechnique(guidance: string): Technique | undefined {
+function steerMatch<T extends string>(
+  guidance: string,
+  patterns: readonly (readonly [RegExp, T])[],
+): T | undefined {
   // Negation is clause-scoped: a clause ends at , ; : . ! ? or the word "but".
   const clauses = guidance.replace(/[‘’]/g, "'").split(/[,;:.!?]|\bbut\b/i)
-  for (const [pattern, technique] of STEER) {
+  for (const [pattern, technique] of patterns) {
     for (const clause of clauses) {
       for (const match of clause.matchAll(pattern)) {
         const before = clause
@@ -87,6 +99,30 @@ function steerTechnique(guidance: string): Technique | undefined {
     }
   }
   return undefined
+}
+
+function steerTechnique(guidance: string): Technique | undefined {
+  return steerMatch(guidance, STEER)
+}
+
+/** The house technique a phrase would pick when written as a steer, else undefined. */
+export function claimedBySteer(phrase: string): Technique | undefined {
+  return steerMatch(phrase, STEER)
+}
+
+/** A channel phrase as a whole-word pattern, a space or a hyphen between its words. */
+function channelPatterns(
+  techniques: readonly ChannelTechnique[],
+): readonly (readonly [RegExp, TechniqueKey])[] {
+  return techniques.flatMap((entry) =>
+    entry.steerPhrases.map(
+      (phrase) =>
+        [
+          new RegExp(`\\b${phrase.split(' ').map(escapeRegExp).join('[ -]')}\\b`, 'gi'),
+          entry.technique,
+        ] as const,
+    ),
+  )
 }
 
 /**
@@ -178,10 +214,14 @@ function mentionsLogo(intent: string, logos: readonly string[]): boolean {
   })
 }
 
-export function techniqueFor(input: TechniqueInput): Technique {
+export function techniqueFor(input: TechniqueInput): TechniqueKey {
   if (input.guidance) {
     const steered = steerTechnique(input.guidance)
     if (steered) return steered
+    if (input.channelTechniques?.length) {
+      const own = steerMatch(input.guidance, channelPatterns(input.channelTechniques))
+      if (own) return own
+    }
   }
   const inUse = (technique: Technique) =>
     input.techniques === undefined ||

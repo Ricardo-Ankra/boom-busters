@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { techniqueFor } from './technique'
+import { claimedBySteer, techniqueFor } from './technique'
 import type { TechniqueInput } from './technique'
 
 const graphic = (over: Partial<TechniqueInput> = {}): TechniqueInput => ({
@@ -366,5 +366,44 @@ describe('techniqueFor (decision 305)', () => {
         }),
       ).toBe('donut-chart')
     })
+  })
+})
+
+describe('channel-only techniques (spec 2026-11-04, section 8.5)', () => {
+  const ledger = {
+    technique: 'ledger-wipe',
+    description: 'a ruled line wipes the old figure away',
+    steerPhrases: ['ledger wipe', 'wipe the ledger'],
+  }
+
+  it('a channel phrase in the steer picks the channel technique, hyphen or space, any case', () => {
+    expect(
+      techniqueFor(
+        graphic({ guidance: 'make it a Ledger-wipe here', channelTechniques: [ledger] }),
+      ),
+    ).toBe('ledger-wipe')
+    expect(
+      techniqueFor(graphic({ guidance: 'please wipe the ledger', channelTechniques: [ledger] })),
+    ).toBe('ledger-wipe')
+    // Without the channel's techniques the phrase is just words.
+    expect(techniqueFor(graphic({ guidance: 'make it a ledger wipe' }))).not.toBe('ledger-wipe')
+  })
+
+  it('the house list is tried first and a negated channel phrase is a refusal', () => {
+    expect(
+      techniqueFor(
+        graphic({ guidance: 'a word stack, then the ledger wipe', channelTechniques: [ledger] }),
+      ),
+    ).toBe('kinetic-word-stack')
+    const refused = techniqueFor(
+      graphic({ guidance: 'no ledger wipe', channelTechniques: [ledger] }),
+    )
+    expect(refused).toBe(techniqueFor(graphic()))
+  })
+
+  it('claimedBySteer names the house technique a phrase would pick', () => {
+    expect(claimedBySteer('word stack')).toBe('kinetic-word-stack')
+    expect(claimedBySteer('pie chart')).toBe('donut-chart')
+    expect(claimedBySteer('ledger wipe')).toBeUndefined()
   })
 })
