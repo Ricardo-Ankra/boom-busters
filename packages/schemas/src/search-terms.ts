@@ -31,7 +31,7 @@ export function isTitleShaped(term: string): boolean {
 }
 
 /** English, or no language set: the only channels whose accented terms are another language. */
-function isEnglish(language: string | undefined): boolean {
+export function isEnglish(language: string | undefined): boolean {
   const l = (language ?? '').trim().toLowerCase()
   return l === '' || l === 'en' || l.startsWith('en-')
 }
