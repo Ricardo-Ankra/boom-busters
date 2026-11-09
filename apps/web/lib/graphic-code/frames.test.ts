@@ -325,6 +325,29 @@ describe.skipIf(!(await browserAvailable()))(
       }
     }, 60_000)
 
+    it("takes the dense set and both sheets under Vercel's single-process Chromium, on one page (decision 446)", async () => {
+      // A second page is a second browser context, and closing it took the
+      // single-process browser down at the next frame size (the owner's run, 2026-11-09).
+      vi.stubEnv('GRAPHIC_CHROMIUM_ARGS', '--single-process --no-zygote --no-sandbox')
+      try {
+        const result = await browserFrames().inspect({
+          compiled: stored(twoLines(40)),
+          props,
+          durationMs: 3000,
+          shots: true,
+          dense: [250, 1250, 2250],
+          sheets: true,
+        })
+        expect(result.dense).toHaveLength(6)
+        expect(Object.keys(result.sheets).sort()).toEqual(['landscape', 'portrait'])
+        for (const sheet of [result.sheets.landscape!, result.sheets.portrait!]) {
+          expect((await sharp(Buffer.from(sheet, 'base64')).metadata()).width).toBe(1600)
+        }
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    }, 90_000)
+
     it('gives up as unavailable, never hangs, when an inspection outlasts its time', async () => {
       await expect(
         browserFrames().inspect({

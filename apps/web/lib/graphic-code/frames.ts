@@ -660,20 +660,20 @@ async function inspectWith(
     }
     if (cutShort) break
     if (input.sheets && tiles.length > 0 && denseStop - Date.now() > SHEET_RESERVE_MS) {
-      // A second page at full scale, so the sheet is its 1600 px (final
-      // review, issue 2); the frame page stays open, so the single-process
-      // browser keeps a page throughout.
-      const sheetPage = await browser.newPage({
-        viewport: { width: SHEET_WIDTH, height: 800 },
-        deviceScaleFactor: 1,
+      // On the frame page itself (decision 446): a second page is a second
+      // browser context, and Vercel's single-process Chromium went down with
+      // it at the next frame size. One pixel per CSS pixel keeps the sheet's
+      // 1600 px (final review, issue 2) though the frames are shot at half
+      // scale; the next frame size sets its own viewport and document.
+      await page.setViewportSize({ width: SHEET_WIDTH, height: 800 })
+      await page.setContent(sheetDocument(tiles), { waitUntil: 'load', timeout: 15_000 })
+      const sheet = await page.screenshot({
+        type: 'jpeg',
+        quality: 80,
+        fullPage: true,
+        scale: 'css',
       })
-      try {
-        await sheetPage.setContent(sheetDocument(tiles), { waitUntil: 'load', timeout: 15_000 })
-        const sheet = await sheetPage.screenshot({ type: 'jpeg', quality: 80, fullPage: true })
-        result.sheets[size.orientation] = sheet.toString('base64')
-      } finally {
-        await sheetPage.close().catch(() => undefined)
-      }
+      result.sheets[size.orientation] = sheet.toString('base64')
     }
   }
   return done()
