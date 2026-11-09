@@ -14,6 +14,7 @@
     "live:dossier-backtest": "tsx --import ./scripts/stub-server-only.mjs --env-file=../../.env.local scripts/live-dossier-backtest.ts",
     "live:exemplars": "tsx --env-file=../../.env.local scripts/translate-exemplars.ts",
     "live:compare": "tsx scripts/live-compare.ts",
+    "probe:search-terms": "tsx --import ./scripts/stub-server-only.mjs --env-file=../../.env.local scripts/probe-search-terms.ts",
     "exemplar:check": "tsx scripts/check-exemplar.ts"
   },
   "dependencies": {
