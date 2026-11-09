@@ -35,10 +35,14 @@ type CardSubject =
   | ExemplarView
   | {
       technique: TechniqueKey
+      /** The proposal's name. */
+      name: string
       description: string
       channelOnly: true
       steerPhrases: readonly string[]
       fromReference: string | null
+      /** Ticked on the Motion tab, so its phrases reach it. */
+      inUse: boolean
     }
 
 const isHouse = (subject: CardSubject): subject is ExemplarView => 'template' in subject
@@ -77,6 +81,21 @@ export interface ChannelExemplarsProps {
   lastRun: readonly { technique: string; costUsd: number }[] | null
   /** Live mechanism references that are read (spec 8.5), for the Derive dialogue's proposal tick. */
   mechanismReferences?: number
+  /** The techniques in use (the Motion tab's ticks): a channel's own is reached by its phrases only while ticked. */
+  techniquesInUse: readonly TechniqueKey[]
+}
+
+/** How a channel's own technique is reached (spec 8.5): by its phrases, once approved and while ticked. */
+function steerLine(
+  subject: { steerPhrases: readonly string[]; inUse: boolean },
+  approved: boolean,
+) {
+  const phrases = subject.steerPhrases.map((phrase) => `'${phrase}'`).join(', ')
+  if (!approved) return `Once a version is approved, reach it with a steer that says: ${phrases}.`
+  if (!subject.inUse) {
+    return `Unticked on the Motion tab, so a steer that says ${phrases} does not reach it.`
+  }
+  return `Reach it with a steer that says: ${phrases}.`
 }
 
 export function ExemplarsTab({
@@ -130,10 +149,12 @@ export function ExemplarsTab({
             key={view.technique}
             exemplar={{
               technique: view.technique,
+              name: view.name ?? techniqueName(view.technique),
               description: view.description,
               channelOnly: true,
               steerPhrases: view.steerPhrases,
               fromReference: view.fromReference,
+              inUse: perChannel?.techniquesInUse.includes(view.technique) ?? false,
             }}
             brand={brand}
             exemplarLogo={exemplarLogo}
@@ -180,7 +201,7 @@ function ExemplarCard({
   const reviewId = React.useId()
   const router = useRouter()
   const { toast } = useToast()
-  const name = techniqueName(exemplar.technique)
+  const name = isHouse(exemplar) ? techniqueName(exemplar.technique) : exemplar.name
   const approved = own?.approved ?? null
   const draft = own?.pendingDraft ?? null
   const [steer, setSteer] = React.useState('')
@@ -228,9 +249,8 @@ function ExemplarCard({
         {!isHouse(exemplar) ? (
           <CardDescription>
             This channel's own technique
-            {exemplar.fromReference ? `, proposed from "${exemplar.fromReference}"` : ''}. Reach it
-            with a steer that says:{' '}
-            {exemplar.steerPhrases.map((phrase) => `'${phrase}'`).join(', ')}.
+            {exemplar.fromReference ? `, proposed from "${exemplar.fromReference}"` : ''}.{' '}
+            {steerLine(exemplar, approved !== null)}
           </CardDescription>
         ) : null}
       </CardHeader>

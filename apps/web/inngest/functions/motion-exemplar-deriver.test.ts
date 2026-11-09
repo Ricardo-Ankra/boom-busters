@@ -285,6 +285,66 @@ describeDb('motion-exemplar-deriver', () => {
       expect(await listChannelExemplars(db, FIRST_CHANNEL_ID)).toHaveLength(1)
     })
 
+    it('answers none without a call when no mechanism reference is read in real mode (deferred minor)', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      const { after } = await launch([], 1, 5, true)
+      expect(after.proposal).toEqual({
+        state: 'none',
+        technique: null,
+        reason: 'No mechanism reference is read',
+      })
+      expect(callLlm).not.toHaveBeenCalled()
+      expect(after.state).toBe('done')
+    })
+
+    it('says no proposal is stored for a ticked channel key whose rows are gone (deferred minor)', async () => {
+      const { after } = await launch(['ledger-wipe' as never])
+      expect(after.progress[0]).toMatchObject({
+        technique: 'ledger-wipe',
+        state: 'failed',
+        reason: 'No proposal is stored for ledger-wipe',
+      })
+    })
+
+    it('refuses a phrase a technique of the channel already holds (deferred minor)', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      await aMechanismReference()
+      const held = {
+        key: 'ledger-wipe',
+        name: 'Ledger wipe',
+        description: 'a ruled line wipes the old figure away',
+        steerPhrases: ['ledger wipe'],
+        mechanisms: ['persistent-actor'],
+        slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+        fromReference: 'Ledger scene',
+      }
+      await insertExemplarVersion(db, {
+        channelId: FIRST_CHANNEL_ID,
+        technique: 'ledger-wipe',
+        plan: mockStoryboardPlan(stat),
+        code: {
+          ...mockGraphicCode({ claimTexts: [], intentRefs: [1], durationMs: 6000 }),
+          compiled: 'c',
+          version: 1,
+          motion: 2,
+        } as never,
+        proposal: held as never,
+      })
+      const again = {
+        text: JSON.stringify({
+          proposal: { ...held, key: 'ink-blot', name: 'Ink blot' },
+          why: 'the same phrase',
+        }),
+      }
+      callLlm.mockResolvedValueOnce(again).mockResolvedValueOnce(again)
+      const { after } = await launch([], 1, 5, true)
+      expect(after.proposal?.state).toBe('failed')
+      expect(after.proposal?.reason).toMatch(/"ledger wipe" already reaches ledger-wipe/)
+      expect(callLlm).toHaveBeenCalledTimes(2)
+    })
+
     it('fails the proposal after one retry and still derives the ticked techniques', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       vi.stubEnv('GRAPHIC_FRAMES', 'off')

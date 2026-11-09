@@ -393,6 +393,7 @@ export function SettingsForm({
                     jobRunning,
                     techniqueOptions,
                     mechanismReferences,
+                    techniquesInUse: settings.motion.techniques,
                     estimateTable,
                     storageReady,
                     lastRun:

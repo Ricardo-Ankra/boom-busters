@@ -49,8 +49,10 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
       },
       ...schemas.FIRST_CHANNEL_IN_USE,
     }),
-    // The channel's approved exemplar version for a technique (spec 8.3): none unless a test sets one.
-    approvedExemplar: async () => approvedStub,
+    // The channel's approved exemplar version for a technique (spec 8.3): none unless a test
+    // sets one, and only for the technique the row belongs to, as the real query answers.
+    approvedExemplar: async (_db: unknown, _channelId: string, technique: string) =>
+      approvedStub && approvedStub.technique === technique ? approvedStub : null,
     // The channel's own techniques (spec 8.5): none unless a test lists some.
     channelTechniquesFor: async () => channelTechniquesStub,
   }
@@ -293,7 +295,7 @@ describe("the channel's exemplar in the per-shot call (spec 2026-11-04, section 
 
   it("shows the designer the channel's approved exemplar for the slot's technique", async () => {
     approvedStub = {
-      technique: 'stat-counter',
+      technique: 'text-highlight',
       plan: {
         slot: { intent: 'x', words: [] },
         concept: 'c',
@@ -1153,7 +1155,7 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
 
   it('the review passes the same exemplar to the fix', async () => {
     approvedStub = {
-      technique: 'stat-counter',
+      technique: 'text-highlight',
       plan: {
         slot: { intent: 'x', words: [] },
         concept: 'c',

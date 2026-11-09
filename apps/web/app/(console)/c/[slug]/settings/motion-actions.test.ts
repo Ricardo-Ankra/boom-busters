@@ -44,6 +44,8 @@ const authMock = vi.hoisted(() => ({
 }))
 vi.mock('@/auth', () => authMock)
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const callLlm = vi.fn()
+vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
 
 const storage = vi.hoisted(() => ({
   configured: true,
@@ -354,6 +356,25 @@ describeDb('motion reference actions', () => {
     const r = await draftMotionIdentityAction(channelId, { brief: 'slow' })
     expect(r.ok).toBe(true)
     expect(r.draft!.identity.techniques).toContain('ledger-wipe')
+  })
+
+  it('the real draft keeps the channel-only key in use and drops an invented one (deferred minors)', async () => {
+    const motion = (await getChannelSettings(db, channelId)).motion
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: [...motion.techniques, 'ledger-wipe'] },
+    })
+    process.env['MOCK_PROVIDERS'] = ''
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({
+        identity: { techniques: [...motion.techniques, 'ink-blot'] },
+        why: 'the catalogue, and one it made up',
+      }),
+    })
+    const r = await draftMotionIdentityAction(channelId, { brief: 'slow' })
+    expect(r.ok).toBe(true)
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect(r.draft!.identity.techniques).toContain('ledger-wipe')
+    expect(r.draft!.identity.techniques).not.toContain('ink-blot')
   })
 
   it('drafts the identity from the brief in mock mode and leaves the settings untouched', async () => {

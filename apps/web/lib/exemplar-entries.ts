@@ -1,4 +1,4 @@
-import type { Database } from '@boom-busters/db'
+import type { ChannelExemplarRow, Database } from '@boom-busters/db'
 import { approvedExemplar, channelTechniquesFor, listChannelExemplars } from '@boom-busters/db'
 import { MANIFEST, entryFromProposal, exemplarFor } from '@boom-busters/providers'
 import type { Exemplar, TechniqueEntry } from '@boom-busters/providers'
@@ -44,6 +44,24 @@ export async function techniqueEntryFor(
   return proposal ? entryFromProposal(proposal) : null
 }
 
+/**
+ * The exemplar a channel's approved version makes, for the board and the
+ * loop alike: described by the catalogue for a house key, by its proposal
+ * for a channel's own, by its key when neither has words for it.
+ */
+export function exemplarFromApproved(
+  row: Pick<ChannelExemplarRow, 'technique' | 'proposal' | 'plan' | 'code'>,
+): Exemplar {
+  const entry = MANIFEST.find((candidate) => candidate.technique === row.technique)
+  return {
+    technique: row.technique,
+    description: entry?.description ?? row.proposal?.description ?? row.technique,
+    mechanisms: row.plan.mechanisms,
+    title: row.code.title,
+    source: row.code.source,
+  }
+}
+
 export async function pinnedExemplarFor(
   db: Database,
   channelId: string,
@@ -51,14 +69,7 @@ export async function pinnedExemplarFor(
 ): Promise<Exemplar | null> {
   if (isHouseTechnique(technique)) return exemplarFor(technique) ?? null
   const approved = await approvedExemplar(db, channelId, technique)
-  if (!approved) return null
-  return {
-    technique,
-    description: approved.proposal?.description ?? technique,
-    mechanisms: approved.plan.mechanisms,
-    title: approved.code.title,
-    source: approved.code.source,
-  }
+  return approved ? exemplarFromApproved(approved) : null
 }
 
 /** The channel's own techniques the board honours: approved, and ticked in the identity. */
