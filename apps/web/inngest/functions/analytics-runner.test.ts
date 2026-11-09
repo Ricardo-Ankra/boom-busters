@@ -261,6 +261,11 @@ describeDb('analytics-runner (mock mode)', () => {
         expect(snapshot?.views).not.toBeNull()
         expect(snapshot?.retentionCurve).toHaveLength(20)
         expect(snapshot?.rpm).toBeNull()
+        // The live search card reads these: the snapshot must carry them.
+        expect(snapshot?.searchTerms?.length).toBeGreaterThan(0)
+        expect(snapshot?.subscribersGained).not.toBeNull()
+        expect(snapshot?.likes).not.toBeNull()
+        expect(snapshot?.comments).not.toBeNull()
       }
     },
   )

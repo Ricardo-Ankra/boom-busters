@@ -299,7 +299,7 @@ export const analyticsRunner = inngest.createFunction(
 
       // Every live video, with the facts a report needs: when it really went
       // public and how long it runs. `projectId` is set for masters only.
-      const live = await step.run(`list-live-videos-${channelId}`, async () => {
+      const listed = await step.run(`list-live-videos-${channelId}`, async () => {
         const records = (await videoBackedRecords(db, channelId)).filter(
           (record) => record.status === 'live',
         )
@@ -326,6 +326,14 @@ export const analyticsRunner = inngest.createFunction(
         }))
       })
 
+      // A run in flight across the deploy replays the old memo, a plain video id: it still gets
+      // its snapshot, but has no facts, so no report.
+      const live = (listed as (string | (typeof listed)[number])[]).map((entry) =>
+        typeof entry === 'string'
+          ? { videoId: entry, projectId: null, publishedAt: null, durationSec: null }
+          : entry,
+      )
+
       for (const { videoId } of live) {
         await step.run(`snapshot-${channelId}-${videoId}`, async () => {
           const analytics =
@@ -340,6 +348,10 @@ export const analyticsRunner = inngest.createFunction(
             ctrBySource: analytics.viewsBySource,
             views: analytics.views,
             avgViewDurationSec: analytics.avgViewDurationSec,
+            searchTerms: analytics.searchTerms,
+            subscribersGained: analytics.subscribersGained,
+            likes: analytics.likes,
+            comments: analytics.comments,
             // Needs the monetary scope the app never requested — see
             // lib/youtube-analytics.ts. Null beats a guess.
             rpm: null,
