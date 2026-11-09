@@ -135,6 +135,20 @@ describe('WhoRanks', () => {
     expect(rows[2]).toHaveTextContent('0:45')
   })
 
+  it('formats an hour-long video as h:mm:ss', () => {
+    const checked = brief({
+      fieldChecks: [
+        {
+          keyword: 'wirecard documentary',
+          checkedAt: CHECKED_AT,
+          results: [result({ seconds: 3725 })],
+        },
+      ],
+    })
+    render(<WhoRanks item={kase(checked)} run={run} />)
+    expect(screen.getByText(/1:02:05/)).toBeInTheDocument()
+  })
+
   it("who ranks counts open doors with the channel's thresholds", () => {
     const checked = brief({
       fieldChecks: [
