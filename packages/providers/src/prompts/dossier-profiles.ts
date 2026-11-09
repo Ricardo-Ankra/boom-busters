@@ -46,7 +46,7 @@ videos already told.`,
     'Distinguish what a study MEASURED from what its authors or the press CLAIMED it shows.',
     'Say when a finding failed to replicate; never turn a finding into advice to the viewer.',
   ],
-  evidenceRules: `\`established\` needs two distinct scholarly documents in the list, or one scholarly document that reports a meta-analysis or systematic review. One study is \`single_study\`. Use \`contested\` for a finding that other studies failed to replicate or dispute. A press report of a study never makes it established.`,
+  evidenceRules: `\`established\` needs at least two distinct scholarly documents among the claim's \`supports\`, or one scholarly support whose \`quote\` includes the words "meta-analysis" or "systematic review". One study is \`single_study\`. Use \`contested\` for a finding that other studies failed to replicate or dispute. A press report of a study never makes it established.`,
 }
 
 export const PROFILE_PROMPTS: Record<ResearchProfileKey, ProfilePrompt> = {

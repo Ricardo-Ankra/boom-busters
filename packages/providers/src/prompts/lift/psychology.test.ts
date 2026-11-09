@@ -79,6 +79,8 @@ describe('the science profile on a psychology channel', () => {
       const request = cases.find((c) => c.name === name)!.build(inUse)
       const last = request.messages[request.messages.length - 1]!
       expect(String(last.content)).toContain('"evidence"')
+      expect(String(last.content)).toContain("among the claim's `supports`")
+      expect(String(last.content)).toContain('whose `quote` includes the words "meta-analysis"')
     }
   })
 })
