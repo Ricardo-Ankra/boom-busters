@@ -1,0 +1,44 @@
+{
+  "url": "https://youtubeanalytics.googleapis.com/v2/reports?ids=channel%3D%3DMINE&filters=video%3D%3DXO14X8k4_sM&metrics=views%2CaverageViewDuration%2CsubscribersGained%2Clikes%2Ccomments&startDate=2026-10-29&endDate=2026-11-05",
+  "status": 200,
+  "ok": true,
+  "body": {
+    "kind": "youtubeAnalytics#resultTable",
+    "columnHeaders": [
+      {
+        "name": "views",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      },
+      {
+        "name": "averageViewDuration",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      },
+      {
+        "name": "subscribersGained",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      },
+      {
+        "name": "likes",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      },
+      {
+        "name": "comments",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      }
+    ],
+    "rows": [
+      [
+        359,
+        302,
+        0,
+        1,
+        2
+      ]
+    ]
+  }
+}

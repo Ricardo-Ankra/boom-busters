@@ -1,0 +1,109 @@
+{
+  "url": "https://www.googleapis.com/youtube/v3/videos?part=status%2Csnippet%2CcontentDetails&id=XO14X8k4_sM",
+  "status": 200,
+  "ok": true,
+  "body": {
+    "kind": "youtube#videoListResponse",
+    "etag": "SFq4ezS_5cBpJTWtyLs4eIHL4aY",
+    "items": [
+      {
+        "kind": "youtube#video",
+        "etag": "PJtSIHP0kBoh8SgjCvmKKWebJbo",
+        "id": "XO14X8k4_sM",
+        "snippet": {
+          "publishedAt": "2026-10-29T20:00:15Z",
+          "channelId": "UCzgd02HrspamnkL-6sW8BDQ",
+          "title": "From a $9 Billion Valuation to 135 Months in Prison: The Fall of Elizabeth Holmes",
+          "description": "Theranos promised revolutionary blood testing from a fingerstick, reaching a peak valuation of $9 billion before collapsing after raising over $700 million from investors. The company reportedly ran only about 12 tests on its proprietary analyzer, faced regulatory sanctions for deficiencies posing immediate jeopardy to patients, and eventually shut down with around $5 million left for unsecured creditors.\n\nThe film examines the pitch that attracted hundreds of millions from financiers, the alleged fabrication of validation reports, the reliance on third-party machines, the investigative reporting that exposed the lab, the regulatory findings that halted operations, the paper trail leading to federal fraud charges, and the contrasting trial verdicts that divided criminal liability between Elizabeth Holmes and Sunny Balwani.\n\nChapters:\n0:00 The Nine-Billion-Dollar Illusion: How Theranos reached a $9 billion peak valuation pitching fingerstick tests\n1:41 The Binders and the Battlefield: Alleged doctored pharma reports and claims of military deployments\n4:17 The Secret Inside the Box: Running only about 12 tests on proprietary analyzers and diluting samples\n6:28 The Exposure and the Spin: John Carreyrou's October 2015 Wall Street Journal investigation and the response\n9:01 Immediate Jeopardy: Medicare regulators finding immediate jeopardy to patients in the Newark lab\n11:51 The Paper Trail in San Jose: SEC depositions and the federal wire fraud indictment of Elizabeth Holmes\n14:25 Two Trials, Two Realities: Contrasting jury verdicts and prison sentences for Holmes and Sunny Balwani\n\nSources:\nnbcnews.com: https://www.nbcnews.com/business/business-news/former-theranos-executive-sunny-balwani-sentenced-fraud-conviction-rcna60512\nnews.theranos.com: https://news.theranos.com/2017/04/18/theranos-arizona-attorney-general-reach-agreement-full-restitution-state-consumers/\nMarketWatch, \"Theranos closes deal with Fortress to shut down embattled firm\": https://www.marketwatch.com/story/theranos-closes-deal-with-fortress-to-shut-down-embattled-firm-2018-09-13\nfortune.com: http://fortune.com/2018/04/10/theranos-layoffs-most-of-workforce/\nnews.yahoo.com: https://news.yahoo.com/investigators-fingerprints-over-financial-crimes-083042002.html\nabcnews.go.com: https://abcnews.go.com/Business/theranos-remarkable-blood-test-claims-began-unravel/story?id=61173853\nnews.yahoo.com: https://news.yahoo.com/finance/news/court-denies-elizabeth-holmes-request-021033063.html\nThe New York Times, \"Elizabeth Holmes Is Found Guilty of Four Counts of Fraud\": https://www.nytimes.com/2022/01/03/technology/elizabeth-holmes-guilty.html\nsec.gov: https://www.sec.gov/litigation/complaints/2018/comp-pr2018-41-theranos-holmes.pdf\nCNBC, \"\"....Holmes, who was able to persuade sophisticated investors to raise $945 million for Theranos...\"\": https://www.cnbc.com/2021/12/02/elizabeth-holmes-relies-on-entourage-of-friends-as-theranos-trial-nears-end.html\nsec.gov: https://www.sec.gov/news/press-release/2018-41\nforbes.com: https://www.forbes.com/sites/matthewherper/2016/06/01/from-4-5-billion-to-nothing-forbes-revises-estimated-net-worth-of-theranos-founder-elizabeth-holmes\n\n#Theranos #ElizabethHolmes #SunnyBalwani\n\nThis video is documentary commentary for education. It is not financial advice. Narration is AI-generated. Some visuals are AI re-creations for illustration, including likenesses of real people; they are not photographs of real events. Sources are listed above.\n\nHow did a revolutionary vision for blood testing turn into one of the most infamous examples of startup fraud in history? In this video, we explore the rise and collapse of Theranos, tracking the journey from a 9 billion dollar valuation to Elizabeth Holmes receiving a 135-month prison sentence. \n\nWe break down the Theranos scandal, examining the roles played by Elizabeth Holmes and Sunny Balwani in deceiving investors and the public. You will learn the true story behind the company, including the critical work of John Carreyrou in exposing the truth and the bravery of whistleblowers like Tyler Shultz. \n\nThis documentary-style deep dive covers the details of the wire fraud trial and how a company backed by figures like Rupert Murdoch ultimately crumbled under the weight of its own deception. If you have been searching for a comprehensive Theranos explained video that covers the business scandal, the court proceedings, and the downfall of its founder, this is the definitive account. Discover how the promise of medical innovation turned into a true crime saga that changed Silicon Valley forever. \n\nWatch as we uncover the evidence that proved you can see everything when you look past the hype. This is the complete timeline of the Elizabeth Holmes Theranos trial and the legal consequences that followed.",
+          "thumbnails": {
+            "default": {
+              "url": "https://i.ytimg.com/vi/XO14X8k4_sM/default.jpg",
+              "width": 120,
+              "height": 90
+            },
+            "medium": {
+              "url": "https://i.ytimg.com/vi/XO14X8k4_sM/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+            },
+            "high": {
+              "url": "https://i.ytimg.com/vi/XO14X8k4_sM/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+            },
+            "standard": {
+              "url": "https://i.ytimg.com/vi/XO14X8k4_sM/sddefault.jpg",
+              "width": 640,
+              "height": 480
+            },
+            "maxres": {
+              "url": "https://i.ytimg.com/vi/XO14X8k4_sM/maxresdefault.jpg",
+              "width": 1280,
+              "height": 720
+            }
+          },
+          "channelTitle": "Boom & Busters",
+          "tags": [
+            "Business case study",
+            "Business stories",
+            "Company downfall",
+            "Elizabeth Holmes",
+            "John Carreyrou",
+            "Theranos",
+            "business documentary",
+            "business scandal",
+            "documentary for sleep",
+            "elizabeth holmes",
+            "elizabeth holmes documentary",
+            "elizabeth holmes theranos",
+            "elizabeth holmes trial",
+            "financial crime",
+            "financial fraud",
+            "rupert murdoch",
+            "silicon valley",
+            "sunny balwani",
+            "theranos",
+            "theranos explained",
+            "theranos whistleblower",
+            "true crime",
+            "true story",
+            "tyler shultz",
+            "wire fraud",
+            "you can see everything"
+          ],
+          "categoryId": "22",
+          "liveBroadcastContent": "none",
+          "defaultLanguage": "en",
+          "localized": {
+            "title": "From a $9 Billion Valuation to 135 Months in Prison: The Fall of Elizabeth Holmes",
+            "description": "Theranos promised revolutionary blood testing from a fingerstick, reaching a peak valuation of $9 billion before collapsing after raising over $700 million from investors. The company reportedly ran only about 12 tests on its proprietary analyzer, faced regulatory sanctions for deficiencies posing immediate jeopardy to patients, and eventually shut down with around $5 million left for unsecured creditors.\n\nThe film examines the pitch that attracted hundreds of millions from financiers, the alleged fabrication of validation reports, the reliance on third-party machines, the investigative reporting that exposed the lab, the regulatory findings that halted operations, the paper trail leading to federal fraud charges, and the contrasting trial verdicts that divided criminal liability between Elizabeth Holmes and Sunny Balwani.\n\nChapters:\n0:00 The Nine-Billion-Dollar Illusion: How Theranos reached a $9 billion peak valuation pitching fingerstick tests\n1:41 The Binders and the Battlefield: Alleged doctored pharma reports and claims of military deployments\n4:17 The Secret Inside the Box: Running only about 12 tests on proprietary analyzers and diluting samples\n6:28 The Exposure and the Spin: John Carreyrou's October 2015 Wall Street Journal investigation and the response\n9:01 Immediate Jeopardy: Medicare regulators finding immediate jeopardy to patients in the Newark lab\n11:51 The Paper Trail in San Jose: SEC depositions and the federal wire fraud indictment of Elizabeth Holmes\n14:25 Two Trials, Two Realities: Contrasting jury verdicts and prison sentences for Holmes and Sunny Balwani\n\nSources:\nnbcnews.com: https://www.nbcnews.com/business/business-news/former-theranos-executive-sunny-balwani-sentenced-fraud-conviction-rcna60512\nnews.theranos.com: https://news.theranos.com/2017/04/18/theranos-arizona-attorney-general-reach-agreement-full-restitution-state-consumers/\nMarketWatch, \"Theranos closes deal with Fortress to shut down embattled firm\": https://www.marketwatch.com/story/theranos-closes-deal-with-fortress-to-shut-down-embattled-firm-2018-09-13\nfortune.com: http://fortune.com/2018/04/10/theranos-layoffs-most-of-workforce/\nnews.yahoo.com: https://news.yahoo.com/investigators-fingerprints-over-financial-crimes-083042002.html\nabcnews.go.com: https://abcnews.go.com/Business/theranos-remarkable-blood-test-claims-began-unravel/story?id=61173853\nnews.yahoo.com: https://news.yahoo.com/finance/news/court-denies-elizabeth-holmes-request-021033063.html\nThe New York Times, \"Elizabeth Holmes Is Found Guilty of Four Counts of Fraud\": https://www.nytimes.com/2022/01/03/technology/elizabeth-holmes-guilty.html\nsec.gov: https://www.sec.gov/litigation/complaints/2018/comp-pr2018-41-theranos-holmes.pdf\nCNBC, \"\"....Holmes, who was able to persuade sophisticated investors to raise $945 million for Theranos...\"\": https://www.cnbc.com/2021/12/02/elizabeth-holmes-relies-on-entourage-of-friends-as-theranos-trial-nears-end.html\nsec.gov: https://www.sec.gov/news/press-release/2018-41\nforbes.com: https://www.forbes.com/sites/matthewherper/2016/06/01/from-4-5-billion-to-nothing-forbes-revises-estimated-net-worth-of-theranos-founder-elizabeth-holmes\n\n#Theranos #ElizabethHolmes #SunnyBalwani\n\nThis video is documentary commentary for education. It is not financial advice. Narration is AI-generated. Some visuals are AI re-creations for illustration, including likenesses of real people; they are not photographs of real events. Sources are listed above.\n\nHow did a revolutionary vision for blood testing turn into one of the most infamous examples of startup fraud in history? In this video, we explore the rise and collapse of Theranos, tracking the journey from a 9 billion dollar valuation to Elizabeth Holmes receiving a 135-month prison sentence. \n\nWe break down the Theranos scandal, examining the roles played by Elizabeth Holmes and Sunny Balwani in deceiving investors and the public. You will learn the true story behind the company, including the critical work of John Carreyrou in exposing the truth and the bravery of whistleblowers like Tyler Shultz. \n\nThis documentary-style deep dive covers the details of the wire fraud trial and how a company backed by figures like Rupert Murdoch ultimately crumbled under the weight of its own deception. If you have been searching for a comprehensive Theranos explained video that covers the business scandal, the court proceedings, and the downfall of its founder, this is the definitive account. Discover how the promise of medical innovation turned into a true crime saga that changed Silicon Valley forever. \n\nWatch as we uncover the evidence that proved you can see everything when you look past the hype. This is the complete timeline of the Elizabeth Holmes Theranos trial and the legal consequences that followed."
+          },
+          "defaultAudioLanguage": "en-US"
+        },
+        "contentDetails": {
+          "duration": "PT16M39S",
+          "dimension": "2d",
+          "definition": "hd",
+          "caption": "false",
+          "licensedContent": false,
+          "contentRating": {},
+          "projection": "rectangular",
+          "hasCustomThumbnail": false
+        },
+        "status": {
+          "uploadStatus": "processed",
+          "privacyStatus": "public",
+          "license": "youtube",
+          "embeddable": true,
+          "publicStatsViewable": true,
+          "madeForKids": false,
+          "selfDeclaredMadeForKids": false
+        }
+      }
+    ],
+    "pageInfo": {
+      "totalResults": 1,
+      "resultsPerPage": 1
+    }
+  }
+}

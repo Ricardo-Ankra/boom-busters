@@ -1,0 +1,42 @@
+{
+  "url": "https://youtubeanalytics.googleapis.com/v2/reports?ids=channel%3D%3DMINE&dimensions=insightTrafficSourceDetail&filters=video%3D%3DXO14X8k4_sM%3BinsightTrafficSourceType%3D%3DYT_SEARCH&metrics=views%2CestimatedMinutesWatched&sort=-views&maxResults=25&startDate=2020-01-01&endDate=2026-11-09",
+  "status": 200,
+  "ok": true,
+  "body": {
+    "kind": "youtubeAnalytics#resultTable",
+    "columnHeaders": [
+      {
+        "name": "insightTrafficSourceDetail",
+        "columnType": "DIMENSION",
+        "dataType": "STRING"
+      },
+      {
+        "name": "views",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      },
+      {
+        "name": "estimatedMinutesWatched",
+        "columnType": "METRIC",
+        "dataType": "INTEGER"
+      }
+    ],
+    "rows": [
+      [
+        "jeopardy full",
+        1,
+        0
+      ],
+      [
+        "john carreyrou",
+        1,
+        0
+      ],
+      [
+        "you can see everything review",
+        1,
+        0
+      ]
+    ]
+  }
+}
