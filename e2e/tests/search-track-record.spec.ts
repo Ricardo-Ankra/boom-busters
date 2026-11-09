@@ -18,7 +18,7 @@ import { channelPath, signIn } from './fixtures'
 const SEARCHES = [300, 400, 500, 600, 700]
 const PUBLISHED = '2026-09-01T10:00:00.000Z'
 
-let projectIds: string[] = []
+const projectIds: string[] = []
 
 async function seed(): Promise<void> {
   const { createDb, createProjectFromCase, pendingReport, freezeSearchReport, FIXTURE_CASE_ID } =

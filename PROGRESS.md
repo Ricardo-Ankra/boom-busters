@@ -10512,8 +10512,7 @@ Part 2 checklist:
      warned, searches under the line, yet found for the target) and raise
      (searches at or over the line, competition fine, yet not found);
      `demandOk` lower (between the two lines, yet found for the target);
-     `openDoorMaxSubscribers` raise (competition warned, yet ranked in the top
-     10) and lower (competition passed, yet it did not rank). A suggestion
+     `openDoorMaxSubscribers` raise (competition warned, yet ranked in the top 10) and lower (competition passed, yet it did not rank). A suggestion
      moves a value by at most a factor of 2, and that limit wins over the
      1, 2, 5 rounding, then the hard bounds apply. A dismissed suggestion
      returns only once 2 more videos support it. A video frozen under another

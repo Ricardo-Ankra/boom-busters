@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import type * as DbModule from '@boom-busters/db'
 import { eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -152,7 +153,7 @@ describeDb('apply against the real store', () => {
     vi.resetModules()
     vi.doUnmock('@boom-busters/db')
     vi.doUnmock('./track-record-data')
-    const real = await vi.importActual<typeof import('@boom-busters/db')>('@boom-busters/db')
+    const real = await vi.importActual<typeof DbModule>('@boom-busters/db')
     const realDb = real.getDb(process.env['DATABASE_URL'] as string)
     vi.doMock('@/lib/db', () => ({ db: realDb }))
     // Only what this case created: its projects with their reports, and the
