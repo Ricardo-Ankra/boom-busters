@@ -625,22 +625,23 @@ export async function publishModel(
   // Everything below the fold runs while the items assemble (decision 237):
   // the card renders in one batch instead of one lookup per Short, and the
   // attribution and retention reads stop serialising behind the loop.
-  const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs] = await Promise.all([
-    getRendersByIds(
-      db,
-      shorts.flatMap((short) => (short.renderId ? [short.renderId] : [])),
-    ),
-    timelineMusicAttribution(db, master),
-    // The retention overlay (M8): only once the master has a YouTube video
-    // and the analytics cron has snapshotted it — absent, not empty, before.
-    masterRecord?.youtubeVideoId
-      ? latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
-      : Promise.resolve(undefined),
-    masterRecord?.youtubeVideoId
-      ? firstSnapshotDateForVideo(db, masterRecord.youtubeVideoId)
-      : Promise.resolve(null),
-    masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
-  ])
+  const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs] =
+    await Promise.all([
+      getRendersByIds(
+        db,
+        shorts.flatMap((short) => (short.renderId ? [short.renderId] : [])),
+      ),
+      timelineMusicAttribution(db, master),
+      // The retention overlay (M8): only once the master has a YouTube video
+      // and the analytics cron has snapshotted it — absent, not empty, before.
+      masterRecord?.youtubeVideoId
+        ? latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
+        : Promise.resolve(undefined),
+      masterRecord?.youtubeVideoId
+        ? firstSnapshotDateForVideo(db, masterRecord.youtubeVideoId)
+        : Promise.resolve(null),
+      masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
+    ])
 
   // The master's copy against the topic, the format and the pillar, from the
   // frozen bible. The opening is the saved body alone (the description starts

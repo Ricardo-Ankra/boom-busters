@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { briefVerdict, type FrozenVerdict, type VerdictCheck, type VerdictState } from './brief-verdict'
+import {
+  briefVerdict,
+  type FrozenVerdict,
+  type VerdictCheck,
+  type VerdictState,
+} from './brief-verdict'
 import type { SearchBrief } from './search-brief'
 import { DEFAULT_RESEARCH_THRESHOLDS, type ResearchThresholds } from './research-thresholds'
 import { buildSearchReport, type SearchOutcome, type SearchReport } from './search-report'
