@@ -4825,13 +4825,13 @@ Final review and fixes:
       0052 in `8cdf7da6`).
 - [x] Task 2: `ChannelBible.researchProfile` and `RESEARCH_PROFILES`
       (`a3fdc5fa`).
-- [x] Task 3: the gather follows the profile: topic subjects and scholarly
-      hosts (`f6b453ff`).
-- [x] Task 4: the research passes follow the profile (`f43329f4`).
-- [x] Task 5: grounding earns an evidence upgrade and carries the standing on
-      the claim (`bcdf3c4a`).
-- [x] Task 6: the gate names the bible's noun, and a video-led claim is typed
-      `other` (`6843ef59`).
+- [x] Task 3: the profile data, with the investigation rules moved out
+      unchanged, and the science profile's data (`f6b453ff`).
+- [x] Task 4: the gather resolves, finds and ranks by the profile (`f43329f4`).
+- [x] Task 5: the gate names the bible's noun, and a video is not a news outlet
+      (`bcdf3c4a`).
+- [x] Task 6: the evidence axis from prompt to grounding: the model writes a
+      status and grounding earns an upgrade (`6843ef59`).
 - [x] Task 7: the science profile's prompts and evidence rule, with new
       `-science.json` lift fixtures (`3468b42a`, `28a319f7`).
 - [x] Task 8: a claim's evidence standing reaches the script and the dossier
@@ -4839,7 +4839,7 @@ Final review and fixes:
 - [x] Merge of master into the branch (`369390aa`).
 - [x] Task 9: a back-test per profile, the five science cases, the scholarly
       share and evidence mix measures, `--profile science`, this section and
-      decision 446.
+      decision 446 (`f7a2947a`).
 
 ### Owner actions at deploy
 
@@ -10719,7 +10719,9 @@ Part 2 checklist:
      an evidence axis (`established`, `single_study`, `contested`) where an
      upgrade is earned by grounding and a downgrade is free: the model may
      write any status, and grounding lowers an unearned one to the profile's
-     fallback with a repair note. A topic subject skips disambiguation pages
+     fallback with a repair note. A status grounding cannot place, an unknown
+     status or one whose document was not given, falls to the profile's
+     fallback, never to "no finding". A topic subject skips disambiguation pages
      and lists. Scholarly hosts are classified before government hosts, so an
      NIH paper is `scholarly`, not `regulator`. The gate names the bible's
      noun ("topic", "company"). A video is not a news outlet: a claim led by a
