@@ -29,7 +29,11 @@ import {
 } from '@boom-busters/providers'
 import type { CorpusDocument, LLMTaskRequest, PassPart, Repair } from '@boom-busters/providers'
 import { videoIdFromUrl } from '@boom-busters/providers/vidiq'
-import type { SearchBrief } from '@boom-busters/schemas'
+import {
+  RESEARCH_PROFILE_KEYS,
+  type ResearchProfileKey,
+  type SearchBrief,
+} from '@boom-busters/schemas'
 import type {
   BibleInUse,
   CaseBrief,
@@ -554,19 +558,24 @@ export function predatesCorpus(loaded: object): boolean {
  * The case subject and people of a replayed `load-case` result. One stored
  * before cases had a subject has neither, and the case title stands in, as
  * the gather was searched with it then. The keys are typed `unknown` so a
- * key today's type always carries is still checked.
+ * key today's type always carries is still checked. One stored before
+ * research profiles has none and reads as the investigation.
  */
 export function replayedCase(stored: {
   title: string
   subject?: unknown
   people?: unknown
   sourceLinks?: unknown
+  researchProfile?: unknown
 }): {
   subject: string
   people: string[]
   sourceLinks: { url: string }[]
+  researchProfile: ResearchProfileKey
 } {
   return {
+    researchProfile:
+      RESEARCH_PROFILE_KEYS.find((key) => key === stored.researchProfile) ?? 'investigation',
     subject:
       typeof stored.subject === 'string' && stored.subject.trim() !== ''
         ? stored.subject

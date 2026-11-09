@@ -131,6 +131,7 @@ async function main(): Promise<void> {
           people,
           sourceLinks: [],
           competitorLinks: [],
+          profile: 'investigation',
           round: 0,
         },
         { db, sources: () => sources, mocked: false },

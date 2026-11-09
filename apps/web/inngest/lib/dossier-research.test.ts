@@ -796,7 +796,16 @@ describe('replayedCase', () => {
       subject: 'Wirecard',
       people: ['Markus Braun'],
       sourceLinks: [{ url: 'https://example.com/long-read' }],
+      researchProfile: 'investigation',
     })
+  })
+
+  it('reads the research profile, and investigation when none is stored', () => {
+    expect(replayedCase({ title: 't' }).researchProfile).toBe('investigation')
+    expect(replayedCase({ title: 't', researchProfile: 'science' }).researchProfile).toBe('science')
+    expect(replayedCase({ title: 't', researchProfile: 'bogus' }).researchProfile).toBe(
+      'investigation',
+    )
   })
 
   it('falls back to the case title for a load-case stored before cases had a subject', () => {
@@ -804,6 +813,7 @@ describe('replayedCase', () => {
       subject: 'Wirecard',
       people: [],
       sourceLinks: [],
+      researchProfile: 'investigation',
     })
   })
 })

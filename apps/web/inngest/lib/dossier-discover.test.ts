@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { EntityFacts } from '@boom-busters/case-finder'
-import { PERSON_REFERENCE_CAP } from '@boom-busters/schemas'
+import { PERSON_REFERENCE_CAP, RESEARCH_PROFILES } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import type { z } from 'zod'
 import type { ResearchSources } from '@/lib/research-sources'
@@ -732,5 +732,104 @@ describe('discoverCandidates', () => {
     const reporting = candidates.filter((c) => c.tier === 2)
     expect(reporting).toHaveLength(REFERENCE_CAPS.reporting)
     expect(reporting[0]?.url).toBe('https://news.example.org/story/1')
+  })
+})
+
+describe('the science profile', () => {
+  const science = RESEARCH_PROFILES.science
+  const topicSources = (hits: { title: string; classes: string[] }[]) =>
+    fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        search: async () => hits.map((hit, i) => ({ title: hit.title, pageid: i })),
+        qidsFor: async () => new Map(hits.map((hit, i) => [hit.title, `Q${i + 1}`])),
+      },
+      wikidata: {
+        sparql: subclassWalk([]),
+        facts: async () =>
+          new Map(
+            hits.map((hit, i) => [`Q${i + 1}`, facts(`Q${i + 1}`, { instanceOf: hit.classes })]),
+          ),
+      },
+    })
+  const linkSources = (externalLinks: string[]) =>
+    fakeSources({
+      wikipedia: {
+        ...fakeSources().wikipedia,
+        currentItems: async () => ({ categories: [], externalLinks, links: [] }),
+      },
+    })
+  const input = { competitorLinks: [], sourceLinks: [], subject: 'Mockco' }
+
+  it('resolves a topic subject under the science profile', async () => {
+    const sources = topicSources([{ title: 'Stanford prison experiment', classes: ['Q2695280'] }])
+    const query = { subject: 'Stanford prison experiment', people: [] }
+
+    const topic = await resolveEntity(sources, query, science)
+    expect(topic.unresolved).toBe(false)
+    expect(topic.businessTitle).toBe('Stanford prison experiment')
+
+    const business = await resolveEntity(sources, query)
+    expect(business.unresolved).toBe(true)
+  })
+
+  it('skips a disambiguation page or a list for a topic', async () => {
+    const sources = topicSources([
+      { title: 'Milgram (disambiguation)', classes: ['Q4167410'] },
+      { title: 'List of experiments', classes: ['Q13406463'] },
+      { title: 'Milgram experiment', classes: ['Q2695280'] },
+    ])
+    const resolved = await resolveEntity(sources, { subject: 'Milgram', people: [] }, science)
+    expect(resolved.businessTitle).toBe('Milgram experiment')
+  })
+
+  it('files nih.gov journal links as scholarly under science', async () => {
+    const sources = linkSources([
+      'https://pubmed.ncbi.nlm.nih.gov/123/',
+      'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1/',
+      'https://doi.org/10.1037/x',
+      'https://www.sec.gov/x',
+    ])
+    const kindsOf = (found: { kind: string }[]) => found.map((c) => c.kind)
+
+    const under = await discoverCandidates(sources, entity(), input, science)
+    expect(kindsOf(under)).toEqual(['scholarly', 'scholarly', 'scholarly', 'regulator'])
+    expect(under.slice(0, 3).map((c) => c.tier)).toEqual([1, 1, 1])
+
+    const before = await discoverCandidates(sources, entity(), input)
+    expect(kindsOf(before).sort()).toEqual(['regulator', 'regulator', 'regulator', 'reporting'])
+    expect(before.find((c) => c.url.includes('pubmed'))?.kind).toBe('regulator')
+    expect(before.find((c) => c.url.includes('/pmc/'))?.kind).toBe('regulator')
+    expect(before.find((c) => c.url.includes('doi.org'))?.kind).toBe('reporting')
+  })
+
+  it('caps scholarly links at forty, in page order', async () => {
+    const links = Array.from({ length: 45 }, (_, i) => `https://doi.org/10.1/${i}`)
+    const out = await discoverCandidates(linkSources(links), entity(), input, science)
+    expect(REFERENCE_CAPS.scholarly).toBe(40)
+    expect(out.map((c) => c.url)).toEqual(links.slice(0, 40))
+  })
+
+  it('asks no keyed source under science', async () => {
+    const exhibits = vi.fn(async () => [])
+    const latestFiling = vi.fn(async () => null)
+    const captures = vi.fn(async () => [])
+    const dockets = vi.fn(async () => [])
+    const sources = fakeSources({
+      edgar: { filings: unexpected('filings'), exhibits, latestFiling },
+      wayback: { captures },
+      courtlistener: { dockets },
+    })
+    const out = await discoverCandidates(
+      sources,
+      entity({ cik: '123', website: 'https://www.mockco.com', ticker: 'MCK', exchange: 'Q13677' }),
+      input,
+      science,
+    )
+    expect(exhibits).not.toHaveBeenCalled()
+    expect(latestFiling).not.toHaveBeenCalled()
+    expect(captures).not.toHaveBeenCalled()
+    expect(dockets).not.toHaveBeenCalled()
+    expect(out.some((c) => c.kind === 'figures')).toBe(false)
   })
 })

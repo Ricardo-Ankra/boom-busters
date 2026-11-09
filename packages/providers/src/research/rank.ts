@@ -3,6 +3,7 @@ import {
   DOSSIER_DOCUMENT_TOKENS,
   DOSSIER_TIER_SHARES,
   type DocumentKind,
+  type Tier,
 } from '@boom-busters/schemas'
 import { estimateTokens, truncateAtParagraph } from './tokens'
 
@@ -26,6 +27,8 @@ export interface RankOptions {
   corpusTokens?: number
   documentTokens?: number
   anchorDate?: string | null
+  /** The share of the corpus each tier may spend; the investigation's by default. */
+  tierShares?: Record<Tier, number>
 }
 
 const TIERS = [1, 2, 3, 4, 5] as const
@@ -116,6 +119,7 @@ export function rankCorpus(
   const corpusTokens = options.corpusTokens ?? DOSSIER_CORPUS_TOKENS
   const documentTokens = options.documentTokens ?? DOSSIER_DOCUMENT_TOKENS
   const anchor = dateMs(options.anchorDate)
+  const tierShares = options.tierShares ?? DOSSIER_TIER_SHARES
 
   const cut = docs.map((d) => {
     const { text, truncated } = truncateAtParagraph(d.text, documentTokens)
@@ -128,7 +132,7 @@ export function rankCorpus(
   let rollOver = 0
 
   for (const tier of TIERS) {
-    let budget = DOSSIER_TIER_SHARES[tier] * corpusTokens + rollOver
+    let budget = tierShares[tier] * corpusTokens + rollOver
     const inTier = tierOrder(
       tier,
       cut.filter((d) => d.tier === tier),

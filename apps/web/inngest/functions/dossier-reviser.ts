@@ -10,7 +10,7 @@ import {
 } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
 import type { ResearchEntity } from '@boom-busters/schemas'
-import { parseEventData, serialiseError } from '@boom-busters/schemas'
+import { parseEventData, researchProfileOf, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
@@ -156,7 +156,7 @@ export const dossierReviser = inngest.createFunction(
       if (!project) throw new NonRetriableError(`Project ${projectId} no longer exists`)
 
       // The research below reads the bible lazily, in later steps; refuse here, before any mock branch.
-      requireCompleteBible(await channelForProject(db, projectId))
+      const { bible } = requireCompleteBible(await channelForProject(db, projectId))
 
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
@@ -206,6 +206,8 @@ export const dossierReviser = inngest.createFunction(
         linkedDocuments: linked.length,
         regather,
         approvedBefore,
+        // Read here, in the step: a revision parked before profiles replays a result with none.
+        researchProfile: researchProfileOf(bible).key,
       }
     })
 
@@ -250,6 +252,7 @@ export const dossierReviser = inngest.createFunction(
           people: named.people,
           sourceLinks: named.sourceLinks,
           competitorLinks: withOutlierLinks(context.competitorLinks, searchBrief),
+          profile: named.researchProfile,
           round: context.round,
         },
         { db, sources: () => liveResearchSources(), mocked: mockProvidersEnabled() },

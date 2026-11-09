@@ -709,6 +709,42 @@ describeDb('dossier-runner', () => {
     )
   })
 
+  it("gathers by the research profile the project's frozen bible names", async () => {
+    const other = await createChannel(db, {
+      name: 'Science channel',
+      handle: null,
+      slug: `science-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: { ...FIRST_CHANNEL_BIBLE, researchProfile: 'science' },
+    })
+    const otherCase = await createCase(db, { channelId: other.id, title: 'S', category: 'con' })
+    const otherProject = await createProjectFromCase(db, { caseId: otherCase.id, title: 'On S' })
+    saveDossier.mockResolvedValue(savedRows(['single_source']))
+    gatherCorpus.mockClear()
+
+    // No stored load-case: it runs for real and reads the bible inside its own step.
+    await engine.executeStep('save-dossier', {
+      events: [
+        {
+          name: 'project/created',
+          data: { projectId: otherProject.id, caseId: otherCase.id },
+        },
+      ],
+      steps: stored().filter((entry) => entry.id !== 'load-case'),
+    })
+    expect(gatherCorpus.mock.calls[0]![1].profile).toBe('science')
+
+    // A load-case stored before profiles existed names none: the investigation.
+    gatherCorpus.mockClear()
+    await truncateRunMirror(db)
+    forgetRunRows()
+    await new InngestTestEngine({ function: dossierRunner }).executeStep('save-dossier', {
+      events: created(),
+      steps: stored(),
+    })
+    expect(gatherCorpus.mock.calls[0]![1].profile).toBe('investigation')
+  })
+
   it('runs a replayed load-case with no search brief as before', async () => {
     researchDossier.mockClear()
     gatherCorpus.mockClear()

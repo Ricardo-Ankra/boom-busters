@@ -204,6 +204,7 @@ suite('gatherCorpus', () => {
     people: [] as string[],
     sourceLinks: [] as { url: string }[],
     competitorLinks: [],
+    profile: 'investigation' as const,
     round,
   })
 

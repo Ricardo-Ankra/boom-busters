@@ -18,7 +18,13 @@ import {
   rankCorpus,
   xbrlFactsText,
 } from '@boom-busters/providers'
-import { DOCUMENT_TIERS, type ResearchEntity } from '@boom-busters/schemas'
+import {
+  DOCUMENT_TIERS,
+  RESEARCH_PROFILES,
+  type ResearchEntity,
+  type ResearchProfile,
+  type ResearchProfileKey,
+} from '@boom-busters/schemas'
 import type { ResearchSources } from '@/lib/research-sources'
 import { discoverCandidates, resolveEntity, type Candidate, EMPTY_ENTITY } from './dossier-discover'
 import type { Steps } from './steps'
@@ -48,6 +54,8 @@ export interface GatherInput {
   /** The owner's own links, read first. */
   sourceLinks: readonly { url: string }[]
   competitorLinks: readonly { url: string }[]
+  /** The profile the channel's bible chose, as plain JSON across steps; the gather resolves it. */
+  profile: ResearchProfileKey
   round: number
 }
 
@@ -95,6 +103,7 @@ export async function gatherCorpus(
   const { db, sources, mocked } = deps
   const now = deps.now ?? (() => new Date())
   const { round } = input
+  const profile = RESEARCH_PROFILES[input.profile]
 
   const resolved = await steps.run(`gather-entity-${round}`, async () =>
     mocked
@@ -104,7 +113,7 @@ export async function gatherCorpus(
           subject: input.subject,
           people: input.people.map((name) => ({ name, qid: null, title: null })),
         }
-      : resolveEntity(sources(), { subject: input.subject, people: input.people }),
+      : resolveEntity(sources(), { subject: input.subject, people: input.people }, profile),
   )
   const entity: ResearchEntity = {
     qid: resolved.qid,
@@ -126,11 +135,16 @@ export async function gatherCorpus(
   }
 
   const candidates = await steps.run(`gather-discover-${round}`, () =>
-    discoverCandidates(sources(), resolved, {
-      competitorLinks: input.competitorLinks,
-      sourceLinks: input.sourceLinks,
-      subject: input.subject,
-    }),
+    discoverCandidates(
+      sources(),
+      resolved,
+      {
+        competitorLinks: input.competitorLinks,
+        sourceLinks: input.sourceLinks,
+        subject: input.subject,
+      },
+      profile,
+    ),
   )
 
   const videos = candidates.filter((c) => c.kind === 'video')
@@ -150,7 +164,7 @@ export async function gatherCorpus(
   }
 
   const ranked = await steps.run(`gather-rank-${round}`, () =>
-    rankAndLink(db, input.projectId, placed(candidates, ids), resolved.dissolved),
+    rankAndLink(db, input.projectId, placed(candidates, ids), resolved.dissolved, profile),
   )
   return { entity, ...ranked }
 }
@@ -523,6 +537,7 @@ async function rankAndLink(
   projectId: string,
   docs: readonly Placed[],
   anchorDate: string | null,
+  profile: ResearchProfile,
 ): Promise<{ read: string[]; unread: string[]; failed: number }> {
   const placement = new Map<string, Placed>()
   for (const doc of docs) if (!placement.has(doc.id)) placement.set(doc.id, doc)
@@ -532,7 +547,7 @@ async function rankAndLink(
   // Candidate order, so documents the ranker cannot tell apart keep the order discovery gave them.
   const rows = [...placement.keys()].flatMap((id) => byId.get(id) ?? [])
   const tierOf = (row: ResearchDocumentRow) =>
-    placement.get(row.id)?.tier ?? DOCUMENT_TIERS[row.kind]
+    placement.get(row.id)?.tier ?? profile.tiers[row.kind]
   const usable = rows.filter((row) => row.failure === null)
   const failed = rows.filter((row) => row.failure !== null)
 
@@ -546,7 +561,7 @@ async function rankAndLink(
       text: row.text,
       pinned: placement.get(row.id)?.pinned === true,
     })),
-    { anchorDate },
+    { anchorDate, tierShares: profile.tierShares },
   )
 
   await linkDossierDocuments(db, projectId, [

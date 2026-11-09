@@ -6,7 +6,7 @@ import {
   setProjectStage,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, renderDossierMarkdown } from '@boom-busters/providers'
-import { parseEventData, serialiseError } from '@boom-busters/schemas'
+import { parseEventData, researchProfileOf, serialiseError } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import type { GetStepTools } from 'inngest'
 import { completeForProject } from '@/lib/answer-call'
@@ -108,7 +108,7 @@ export const dossierRunner = inngest.createFunction(
 
       // Every later stage follows a dossier, so this one stops a blank channel.
       // The channel is read here, in the step, never from an earlier step's output.
-      requireCompleteBible(await channelForProject(db, projectId))
+      const { bible } = requireCompleteBible(await channelForProject(db, projectId))
 
       const source = await getCase(db, project.caseId)
       if (!source) throw new NonRetriableError(`Case ${project.caseId} no longer exists`)
@@ -131,6 +131,8 @@ export const dossierRunner = inngest.createFunction(
         sourceLinks: source.sourceLinks,
         competitorLinks: source.competitorLinks.map((link) => ({ url: link.url })),
         searchBrief: project.searchBrief,
+        // Read here, in the step: a run parked before profiles replays a result with none.
+        researchProfile: researchProfileOf(bible).key,
       }
     })
     // Parked runs replay old step results: a run parked at the gate before the
@@ -148,6 +150,7 @@ export const dossierRunner = inngest.createFunction(
       subject: caseSubject,
       people: casePeople,
       sourceLinks: caseSourceLinks,
+      researchProfile,
     } = replayedCase(loaded)
     // Every pass opens on the subject and people the gather searched with.
     const caseContext = {
@@ -171,6 +174,7 @@ export const dossierRunner = inngest.createFunction(
         people: casePeople,
         sourceLinks: caseSourceLinks,
         competitorLinks,
+        profile: researchProfile,
         round: 0,
       },
       { db, sources: () => liveResearchSources(), mocked },

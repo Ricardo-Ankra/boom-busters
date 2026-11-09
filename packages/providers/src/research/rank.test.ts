@@ -115,4 +115,14 @@ describe('rankCorpus', () => {
     expect(read[0]?.truncated).toBe(false)
     expect(read[0]?.text).toBe('short')
   })
+
+  it('spends the tier shares it is given', () => {
+    const shares = { 1: 0.4, 2: 0.3, 3: 0.1, 4: 0.05, 5: 0.15 } as const
+    const budget = { corpusTokens: 100_000, documentTokens: 100_000 }
+    const reads = (tokens: number, tierShares?: typeof shares) =>
+      rankCorpus([doc('a', 1, tokens)], { ...budget, tierShares }).read.length
+    expect(reads(45_000, shares)).toBe(0)
+    expect(reads(40_000, shares)).toBe(1)
+    expect(reads(40_000)).toBe(0)
+  })
 })

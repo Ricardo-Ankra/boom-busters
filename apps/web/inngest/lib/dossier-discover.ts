@@ -8,10 +8,12 @@ import {
 import { normaliseDocumentUrl } from '@boom-busters/db'
 import { registrableDomain } from '@boom-busters/providers'
 import {
-  DOCUMENT_TIERS,
   PERSON_REFERENCE_CAP,
+  RESEARCH_PROFILES,
   type DocumentKind,
   type ResearchEntity,
+  type ResearchProfile,
+  type Tier,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import type { ResearchSources } from '@/lib/research-sources'
@@ -25,7 +27,7 @@ import type { ResearchSources } from '@/lib/research-sources'
 export interface Candidate {
   url: string
   kind: DocumentKind
-  tier: 1 | 2 | 3 | 4 | 5
+  tier: Tier
   title: string | null
   publishedAt: string | null
   meta: Record<string, unknown> | null
@@ -37,6 +39,10 @@ export interface Candidate {
  * Wayback window and the ranking anchor).
  */
 export type ResolvedEntity = Omit<ResearchEntity, 'sourceUrls'> & {
+  /**
+   * The subject's article. The name is kept because replayed step results
+   * carry it; under a topic profile it holds the topic's article.
+   */
   businessTitle: string | null
   relatedTitles: string[]
   exchange: string | null
@@ -57,10 +63,12 @@ const BUSINESS_ROOTS = ['Q4830453', 'Q43229']
 /** Wikidata's "human". */
 const HUMAN = 'Q5'
 
+/** Wikidata's disambiguation page and Wikimedia list article: never a topic's subject. */
+const NOT_A_TOPIC = ['Q4167410', 'Q13406463']
+
 const SEARCH_HITS = 5
 const PERSON_SEARCH_HITS = 3
 const MAX_RELATED = 2
-const RELATED_WORDS = /\b(scandal|collapse|bankruptcy|fraud|affair)\b/i
 
 /** No entity: what a search with no hits resolves to, and what mock mode researches. */
 export const EMPTY_ENTITY: ResolvedEntity = {
@@ -85,7 +93,12 @@ export const EMPTY_ENTITY: ResolvedEntity = {
  * which keeps the run to minutes and still offers the ranker more of each tier
  * than its share of the corpus budget can read.
  */
-export const REFERENCE_CAPS = { pressRelease: 20, reporting: 60, primary: 30 } as const
+export const REFERENCE_CAPS = {
+  pressRelease: 20,
+  reporting: 60,
+  primary: 30,
+  scholarly: 40,
+} as const
 
 const itemBindings = z.object({
   results: z.object({ bindings: z.array(z.object({ item: z.object({ value: z.string() }) })) }),
@@ -143,10 +156,15 @@ async function personSearch(sources: ResearchSources, name: string) {
  * the hits above the first direct match; the first hit that passes either
  * test is the entity. Each person is searched too, and the first human hit is
  * their article; a person whose search fails is kept unresolved.
+ *
+ * A topic profile (science) has no business to find: the subject is the first
+ * hit that is neither a disambiguation page nor a list, and a hit Wikidata
+ * knows nothing about is accepted.
  */
 export async function resolveEntity(
   sources: ResearchSources,
   input: { subject: string; people: readonly string[] },
+  profile: ResearchProfile = RESEARCH_PROFILES.investigation,
 ): Promise<ResolvedEntity> {
   const { subject } = input
   const [subjectHits, ...peopleHits] = await Promise.all([
@@ -177,9 +195,14 @@ export async function resolveEntity(
   // The first hit that passes either test. The chain is walked only over the
   // hits above the first direct match, so a top hit that matches directly
   // sends no query, and FTX at the top beats Alameda Research below it.
-  const direct = hits.findIndex((title) => isA(title, BUSINESS_CLASSES))
-  let business = direct === 0 ? hits[0]! : null
-  if (direct !== 0) {
+  const topic = profile.subject.accept === 'topic'
+  const direct = topic ? -1 : hits.findIndex((title) => isA(title, BUSINESS_CLASSES))
+  let business = topic
+    ? (hits.find((title) => !isA(title, NOT_A_TOPIC)) ?? null)
+    : direct === 0
+      ? hits[0]!
+      : null
+  if (!topic && direct !== 0) {
     const above = direct === -1 ? hits : hits.slice(0, direct)
     const hitQids = [...new Set(above.flatMap((title) => qids.get(title) ?? []))]
     const bySubclass = await businessesBySubclass(sources, hitQids)
@@ -188,7 +211,7 @@ export async function resolveEntity(
       (direct === -1 ? null : hits[direct]!)
   }
   const relatedTitles = hits
-    .filter((title) => title !== business && RELATED_WORDS.test(title))
+    .filter((title) => title !== business && profile.subject.relatedWords.test(title))
     .slice(0, MAX_RELATED)
   if (business === null) {
     return { ...EMPTY_ENTITY, people, unresolved: true, subject, relatedTitles }
@@ -300,10 +323,15 @@ export async function discoverCandidates(
     sourceLinks: readonly { url: string }[]
     subject: string
   },
+  profile: ResearchProfile = RESEARCH_PROFILES.investigation,
 ): Promise<Candidate[]> {
   const today = new Date()
   const { youtube } = sources
   const { cik, website, businessTitle } = entity
+  // A source the profile does not use is never asked, whatever the entity carries.
+  const { sources: allowed } = profile
+  const scholarly = (host: string) =>
+    profile.scholarlyHosts.some((domain) => onDomain(host, domain))
   // An unresolved subject has no company article, and its hits' pages are about something else.
   const pages = entity.unresolved
     ? []
@@ -315,15 +343,15 @@ export async function discoverCandidates(
   // still spaces requests to any one host.
   const [exhibits, tenK, captures, references, personReferences, searched, dockets] =
     await Promise.all([
-      cik === null
+      cik === null || !allowed.edgar
         ? []
         : listing('EDGAR exhibits', [], () =>
             sources.edgar.exhibits(cik, { items: ['2.02', '8.01'], newest: 6 }),
           ),
-      cik === null
+      cik === null || !allowed.edgar
         ? null
         : listing('EDGAR 10-K', null, () => sources.edgar.latestFiling(cik, '10-K')),
-      website === null
+      website === null || !allowed.wayback
         ? []
         : listing('Wayback captures', [], () =>
             // CDX lists oldest first; a negative limit takes the last six, the newest years.
@@ -334,7 +362,7 @@ export async function discoverCandidates(
       youtube === null
         ? null
         : listing('YouTube search', null, () => youtube.search(input.subject)),
-      businessTitle === null
+      businessTitle === null || !allowed.courtlistener
         ? []
         : listing('CourtListener dockets', [], () =>
             // "Wirecard (company)" is the article's name, not the company's.
@@ -364,7 +392,7 @@ export async function discoverCandidates(
     out.push({
       url,
       kind,
-      tier: extra.tier ?? DOCUMENT_TIERS[kind],
+      tier: extra.tier ?? profile.tiers[kind],
       title: extra.title ?? null,
       publishedAt: extra.publishedAt ?? null,
       meta: extra.meta ?? null,
@@ -390,8 +418,13 @@ export async function discoverCandidates(
     ({ link }) => ownDomain !== null && registrableDomain(link) === ownDomain,
   )
   const rest = links.filter((entry) => !own.includes(entry))
-  const primary = rest.filter(({ link }) => isPrimaryReference(link))
-  const reporting = rest.filter((entry) => !primary.includes(entry))
+  // A journal host is checked before the primary test: PubMed is a regulator's
+  // domain to `isPrimaryReference`, and a study to a profile that reads studies.
+  const journals = rest.filter(({ host }) => scholarly(host))
+  const primary = rest.filter(
+    (entry) => !journals.includes(entry) && isPrimaryReference(entry.link),
+  )
+  const reporting = rest.filter((entry) => !journals.includes(entry) && !primary.includes(entry))
 
   // Tier 1, the owner's own sources (outside every cap, read first), then the company's own voice.
   for (const { url } of input.sourceLinks) {
@@ -404,6 +437,8 @@ export async function discoverCandidates(
     add(capture.url, 'web-archive', { title: `${website} as archived on ${day}`, publishedAt: day })
   }
   addCapped(own, REFERENCE_CAPS.pressRelease, () => 'press-release')
+  // Journals take the profile's tier for scholarly documents (the first, for science).
+  addCapped(journals, REFERENCE_CAPS.scholarly, () => 'scholarly')
 
   // Tier 2, reporting: the company's articles, then each person's. A person's
   // court and regulator links count toward their cap and are filed at tier 5
@@ -416,6 +451,10 @@ export async function discoverCandidates(
     let taken = 0
     for (const entry of referenceEntries(personLinks)) {
       if (taken >= PERSON_REFERENCE_CAP) break
+      if (scholarly(entry.host)) {
+        if (add(entry.link, 'scholarly')) taken++
+        continue
+      }
       if (!isPrimaryReference(entry.link)) {
         if (add(entry.link, 'reporting')) taken++
         continue
@@ -442,13 +481,14 @@ export async function discoverCandidates(
   }
 
   // Tier 4, numbers. Listed without a request: the fetch step reads them.
-  if (cik !== null) {
+  if (cik !== null && allowed.xbrl) {
     add(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik.padStart(10, '0')}.json`, 'figures', {
       title: `XBRL company facts, CIK ${cik}`,
       meta: { cik },
     })
   }
-  const symbol = entity.ticker === null ? null : stooqSymbol(entity.ticker, entity.exchange)
+  const symbol =
+    entity.ticker === null || !allowed.stooq ? null : stooqSymbol(entity.ticker, entity.exchange)
   if (symbol !== null) {
     add(`https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol)}&i=d`, 'figures', {
       title: `Daily prices, ${symbol}`,
