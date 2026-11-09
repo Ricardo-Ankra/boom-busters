@@ -10398,7 +10398,7 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      new key; the technique key is a validated string wherever the channel's
      own can flow (the identity, the rows, the progress, the designer's
      exemplar) and the house catalogue does not change.
-432. **Channel-only techniques, the review's deferred minors** (2026-11-09,
+433. **Channel-only techniques, the review's deferred minors** (2026-11-09,
      branch `channel-techniques-minors`). The twelve minors the final review
      of plan 5 left, in one round. Copy keeps the target's own techniques in
      use: the source's identity comes across with the target's approved
