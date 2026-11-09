@@ -10598,13 +10598,16 @@ Part 2 checklist:
      and add-keyword refuse an archived channel like the tuning actions do.
 444. **The rank follows the model answer, and three small corrections**
      (2026-11-09). The day-28 rank is now bought after the term-match model
-     has answered (or the deterministic-only fallback is chosen), just
-     before the report is built and frozen, so a model deferral never buys
-     it twice and a rank bought late in the cap ladder is not discarded.
+     has answered (or the deterministic-only fallback is chosen) and the
+     baselines are read, immediately before the report is built and frozen,
+     so a model deferral never buys it twice and a rank bought late in the
+     cap ladder is not discarded. It is bought once unless the freeze write
+     itself fails after the purchase.
      Before the model, a free budget check (`checkVidiqBudget` for one
      search, which spends nothing) keeps a capped month from calling the
      model every day: a refusal defers on the same 7-run rank ladder and
-     freezes with "credit cap" on the last. A rank failure after the model
+     freezes on the last with "credit cap" when the cap refused it, else
+     "rank check failed" (no key, VidIQ down, a throwing check). A rank failure after the model
      answered uses the same ladder, and the retry repeats the model call,
      which costs cents and never VidIQ credits. The window rule is
      unchanged. An own angle is a check that never ran, so its verdict line

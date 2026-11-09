@@ -19,7 +19,7 @@ import { env } from '@/lib/env'
  */
 
 export type VidiqBudget =
-  { ok: true; balance: number; capLeft: number } | { ok: false; error: string }
+  { ok: true; balance: number; capLeft: number } | { ok: false; error: string; capped?: true }
 
 /**
  * Whether a run estimated at `estimate` credits may start: a key is stored,
@@ -48,6 +48,7 @@ export async function checkVidiqBudget(estimate: number): Promise<VidiqBudget> {
       return {
         ok: false,
         error: `This run needs about ${estimate} credits; ${capLeft} are left of this month's cap of ${cap}.`,
+        capped: true,
       }
     }
     if (estimate > balance) {

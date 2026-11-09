@@ -49,6 +49,7 @@ describeDb('vidiq-spend (mock mode)', () => {
       expect(await checkVidiqBudget(20)).toEqual({
         ok: false,
         error: "This run needs about 20 credits; 10 are left of this month's cap of 10.",
+        capped: true,
       })
     })
 

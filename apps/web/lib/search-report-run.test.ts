@@ -358,13 +358,55 @@ describe('runSearchReport', () => {
   })
 
   it('a capped month on the last rank attempt freezes without buying a rank', async () => {
-    h.checkVidiqBudget.mockResolvedValue({ ok: false, error: 'cap' })
+    h.checkVidiqBudget.mockResolvedValue({ ok: false, error: 'cap', capped: true })
     h.row.rankAttempts = RANK_DEFER_MAX - 1
 
     expect((await runSearchReport(input(28))).state).toBe('frozen')
 
     expect(h.rankFor).not.toHaveBeenCalled()
     expect(frozenReport().rankSkipped).toBe('credit cap')
+  })
+
+  it('a budget refusal that is not the cap freezes with rank check failed on the last attempt', async () => {
+    h.checkVidiqBudget.mockResolvedValue({ ok: false, error: 'Add a VidIQ key in Settings' })
+    h.row.rankAttempts = RANK_DEFER_MAX - 1
+
+    expect((await runSearchReport(input(28))).state).toBe('frozen')
+
+    expect(h.rankFor).not.toHaveBeenCalled()
+    expect(frozenReport().rankSkipped).toBe('rank check failed')
+  })
+
+  it('a budget check that throws defers on the rank ladder', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    h.checkVidiqBudget.mockRejectedValue(new Error('db down'))
+
+    expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
+
+    expect(h.recordReportDeferral).toHaveBeenCalledWith({}, 'row-1', 'rank')
+    expect(h.callLlm).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(VIDEO))
+    warn.mockRestore()
+  })
+
+  it('a rank failure after the model answered defers, then freezes with rank check failed on the last attempt', async () => {
+    h.rankFor.mockRejectedValue(new Error('vidiq down'))
+
+    expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
+    expect(h.recordReportDeferral).toHaveBeenCalledWith({}, 'row-1', 'rank')
+    expect(h.freezeSearchReport).not.toHaveBeenCalled()
+
+    h.row.rankAttempts = RANK_DEFER_MAX - 1
+    expect((await runSearchReport(input(28))).state).toBe('frozen')
+    expect(frozenReport().rankSkipped).toBe('rank check failed')
+  })
+
+  it('buys the rank only after the baselines are read', async () => {
+    h.frozenReportsForChannel.mockRejectedValue(new Error('db down'))
+
+    await expect(runSearchReport(input(28))).rejects.toThrow('db down')
+
+    expect(h.rankFor).not.toHaveBeenCalled()
   })
 
   it('a model deferral buys no rank', async () => {

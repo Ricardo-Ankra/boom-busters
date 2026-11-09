@@ -194,14 +194,22 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
       // A rank cannot be backdated: bought now it would not be the day-28 rank.
       rankSkipped = 'too late for a day-28 rank'
     } else {
-      const budget = await checkVidiqBudget(VIDIQ_CREDIT_COST.youtubeSearch)
+      let budget: Awaited<ReturnType<typeof checkVidiqBudget>>
+      try {
+        budget = await checkVidiqBudget(VIDIQ_CREDIT_COST.youtubeSearch)
+      } catch (error) {
+        console.warn(
+          `[analytics] rank budget check for ${videoId} at day ${checkpoint} threw: ${error instanceof Error ? error.message : String(error)}`,
+        )
+        budget = { ok: false, error: 'The VidIQ budget check failed' }
+      }
       if (budget.ok) {
         rankDue = true
       } else if (row.rankAttempts + 1 < RANK_DEFER_MAX) {
         await recordReportDeferral(db, row.id, 'rank')
         return { state: 'deferred' }
       } else {
-        rankSkipped = 'credit cap'
+        rankSkipped = budget.capped ? 'credit cap' : 'rank check failed'
       }
     }
   }
@@ -252,6 +260,24 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     )
   }
 
+  // 6. Baselines: the channel's other frozen reports at this checkpoint.
+  const band = lengthBand(input.durationSec)
+  const others = (await frozenReportsForChannel(db, channelId, checkpoint)).filter(
+    (other) => other.videoId !== videoId,
+  )
+  const inBand = others.filter(
+    (other) => band !== null && lengthBand(other.report.durationSec) === band,
+  )
+  const baselineInputs = {
+    holdBand: present(inBand.map((o) => overallHold(o.report))),
+    holdChannel: present(others.map((o) => overallHold(o.report))),
+    dropBand: present(inBand.map((o) => o.report.earlyDrop)),
+    dropChannel: present(others.map((o) => o.report.earlyDrop)),
+    subsBand: present(inBand.map((o) => o.report.engagement.subscribersPer1k)),
+    subsChannel: present(others.map((o) => o.report.engagement.subscribersPer1k)),
+  }
+
+  // The paid rank is the last read before the freeze write, so only that write can lose it.
   if (rankDue && target !== null) {
     try {
       const position = await rankFor(target, videoId, channelId)
@@ -273,23 +299,6 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
       }
       rankSkipped = error instanceof CapReached ? 'credit cap' : 'rank check failed'
     }
-  }
-
-  // 6. Baselines: the channel's other frozen reports at this checkpoint.
-  const band = lengthBand(input.durationSec)
-  const others = (await frozenReportsForChannel(db, channelId, checkpoint)).filter(
-    (other) => other.videoId !== videoId,
-  )
-  const inBand = others.filter(
-    (other) => band !== null && lengthBand(other.report.durationSec) === band,
-  )
-  const baselineInputs = {
-    holdBand: present(inBand.map((o) => overallHold(o.report))),
-    holdChannel: present(others.map((o) => overallHold(o.report))),
-    dropBand: present(inBand.map((o) => o.report.earlyDrop)),
-    dropChannel: present(others.map((o) => o.report.earlyDrop)),
-    subsBand: present(inBand.map((o) => o.report.engagement.subscribersPer1k)),
-    subsChannel: present(others.map((o) => o.report.engagement.subscribersPer1k)),
   }
 
   // 7 and 8. Build the report and freeze it.
