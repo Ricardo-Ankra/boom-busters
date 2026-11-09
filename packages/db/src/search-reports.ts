@@ -3,6 +3,7 @@ import {
   SearchReportSchema,
   StoredSearchBriefSchema,
   frozenVerdictFor,
+  topicDemand,
   type Checkpoint,
   type CountedVideo,
   type SearchOutcome,
@@ -152,7 +153,7 @@ export async function countedVideosForChannel(
       title: row.title,
       verdict,
       report,
-      targetSearches: target?.estimatedMonthlySearch ?? null,
+      demandSearches: brief === null ? null : topicDemand(brief).searches,
       ...(target?.intent ? { targetIntent: target.intent } : {}),
       ...(target?.topic ? { targetTopic: target.topic } : {}),
     })

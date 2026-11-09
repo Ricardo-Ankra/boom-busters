@@ -504,3 +504,66 @@ describe('frozenVerdictFor', () => {
     expect(frozenVerdictFor({ stored: null, brief: null, caseCategory: null })).toBeNull()
   })
 })
+
+describe('lines for checks that never ran', () => {
+  const lineOf = (b: SearchBrief, check: string) =>
+    briefVerdict(b, { caseCategory: null, checkedAngle: null }).find((l) => l.check === check)!
+
+  it('flag measured false on every not-measured reason and nowhere else', () => {
+    const b = brief({
+      targetKeyword: kw('wework documentary', { estimatedMonthlySearch: null }),
+      fit: null,
+      fieldChecks: undefined,
+    })
+    for (const check of ['intent', 'fit', 'demand', 'competition']) {
+      expect(lineOf(b, check).measured).toBe(false)
+    }
+    expect(lineOf(b, 'demand').reason).toBe('Demand for "wework documentary" was not measured')
+    const capped = brief({ skipped: ['field check: credit cap', 'comments: credit cap'] })
+    expect(lineOf(capped, 'competition')).toMatchObject({
+      reason: 'Not checked: credit cap',
+      measured: false,
+    })
+    expect(lineOf(capped, 'angle')).toMatchObject({
+      reason: 'Not checked: credit cap',
+      measured: false,
+    })
+    expect(lineOf({ ...capped, angleOptions: [] }, 'angle').measured).toBeUndefined()
+    const measured = brief()
+    expect(lineOf(measured, 'intent').measured).toBeUndefined()
+    expect(lineOf(measured, 'demand').measured).toBeUndefined()
+  })
+
+  it('is stored in the frozen verdict shape and still parses without it', async () => {
+    const { FrozenVerdictSchema } = await import('./brief-verdict')
+    const base = { thresholds: DEFAULT_RESEARCH_THRESHOLDS, frozenAt: '2026-11-01T00:00:00.000Z' }
+    const withFlag = FrozenVerdictSchema.parse({
+      ...base,
+      lines: [{ check: 'intent', state: 'warn', reason: 'x', measured: false }],
+    })
+    expect(withFlag.lines[0]?.measured).toBe(false)
+    expect(
+      FrozenVerdictSchema.safeParse({
+        ...base,
+        lines: [{ check: 'intent', state: 'warn', reason: 'x' }],
+      }).success,
+    ).toBe(true)
+  })
+
+  it('frozenVerdictFor gives nothing for a brief without full checks and nothing stored', () => {
+    const quick = brief({
+      targetKeyword: kw('wework documentary', { estimatedMonthlySearch: 6000 }),
+      secondaryKeywords: [],
+      fieldChecks: undefined,
+    })
+    expect(briefHasFullChecks(quick)).toBe(false)
+    expect(frozenVerdictFor({ stored: null, brief: quick, caseCategory: null })).toBeNull()
+    // a stored verdict still wins
+    const stored = {
+      lines: [{ check: 'demand', state: 'ok', reason: 'x' }],
+      thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+      frozenAt: '2026-11-01T00:00:00.000Z',
+    }
+    expect(frozenVerdictFor({ stored, brief: quick, caseCategory: null })).toEqual(stored)
+  })
+})

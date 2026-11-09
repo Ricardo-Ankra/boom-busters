@@ -33,6 +33,8 @@ export interface VerdictLine {
   check: VerdictCheck
   state: VerdictState
   reason: string
+  /** False when the check never ran, so the line says nothing about the video. */
+  measured?: false
 }
 
 const keyOf = (term: string) => term.trim().toLowerCase()
@@ -162,7 +164,7 @@ function intentLine(brief: SearchBrief): VerdictLine {
         reason: `Searchers for ${name} want something this channel does not make`,
       }
     default:
-      return { check: 'intent', state: 'warn', reason: 'Intent was not measured' }
+      return { check: 'intent', state: 'warn', reason: 'Intent was not measured', measured: false }
   }
 }
 
@@ -196,7 +198,7 @@ function angleLine(brief: SearchBrief, checkedAngle: number | null): VerdictLine
   }
   const anyEvidence = themes.length > 0 || (brief.nicheTests ?? []).length > 0
   if (!anyEvidence && (skippedGroup(brief, 'comments') || skippedGroup(brief, 'niche test'))) {
-    return { check: 'angle', state: 'warn', reason: CREDIT_CAP }
+    return { check: 'angle', state: 'warn', reason: CREDIT_CAP, measured: false }
   }
   const found =
     themes.length > 0
@@ -213,7 +215,8 @@ function fitLine(
   pillarLabels: Readonly<Record<string, string>> = {},
 ): VerdictLine {
   const fit = brief.fit
-  if (fit === null) return { check: 'fit', state: 'warn', reason: 'Channel fit was not measured' }
+  if (fit === null)
+    return { check: 'fit', state: 'warn', reason: 'Channel fit was not measured', measured: false }
   if (!fit.inScope)
     return { check: 'fit', state: 'bad', reason: 'The subject is outside the channel scope' }
   if (fit.pillarKey === null || fit.pillarKey === caseCategory) {
@@ -233,7 +236,12 @@ function demandLine(
   const { topic, searches, growth } = topicDemand(brief)
   const target = brief.targetKeyword
   if (target === null)
-    return { check: 'demand', state: 'bad', reason: 'Demand was not measured: no target keyword' }
+    return {
+      check: 'demand',
+      state: 'bad',
+      reason: 'Demand was not measured: no target keyword',
+      measured: false,
+    }
   const name = topic ?? `"${target.keyword}"`
   if (searches === null || searches < t.demandWarn) {
     return {
@@ -243,6 +251,7 @@ function demandLine(
         searches === null
           ? `Demand for ${name} was not measured`
           : `Only ${searches.toLocaleString('en-US')} searches a month for ${name}`,
+      ...(searches === null ? { measured: false as const } : {}),
     }
   }
   const figure = `${searches.toLocaleString('en-US')} searches a month for ${name}`
@@ -270,6 +279,7 @@ function competitionLine(
       check: 'competition',
       state: 'warn',
       reason: skippedGroup(brief, 'field check') ? CREDIT_CAP : NOT_CHECKED,
+      measured: false,
     }
   }
   if (found.results.length === 0) {
@@ -323,6 +333,7 @@ export const FrozenVerdictSchema = z.object({
       check: z.enum(['intent', 'angle', 'fit', 'demand', 'competition']),
       state: z.enum(['ok', 'warn', 'bad']),
       reason: z.string(),
+      measured: z.literal(false).optional(),
     }),
   ),
   thresholds: ResearchThresholdsSchema,
@@ -333,8 +344,8 @@ export type FrozenVerdict = z.infer<typeof FrozenVerdictSchema>
 
 /**
  * The verdict a project was created with: the stored value when it parses,
- * else (with a brief) a recomputation under the default thresholds, marked
- * `recomputed`. Null without a stored value or a brief. Pure; callers join the
+ * else (with a brief that came from the full checks) a recomputation under the default thresholds, marked
+ * `recomputed`. Null without a stored value, or without a brief that has full checks (its lines would mostly be unmeasured). Pure; callers join the
  * case for its category.
  */
 export function frozenVerdictFor(input: {
@@ -344,7 +355,7 @@ export function frozenVerdictFor(input: {
 }): FrozenVerdict | null {
   const parsed = FrozenVerdictSchema.safeParse(input.stored)
   if (parsed.success) return parsed.data
-  if (input.brief === null) return null
+  if (input.brief === null || !briefHasFullChecks(input.brief)) return null
   return {
     lines: briefVerdict(input.brief, {
       caseCategory: input.caseCategory,

@@ -51,6 +51,7 @@ function report(over: {
   holdBaseline?: number | null
   subs?: number | null
   subsBaseline?: number | null
+  subsBasis?: 'band' | 'channel' | 'own'
   rank?: number | null | 'none'
   thresholds?: ResearchThresholds
 }): SearchReport {
@@ -72,6 +73,7 @@ function report(over: {
       subscribersPer1k: {
         ...base.baselines.subscribersPer1k,
         value: over.subsBaseline === undefined ? 5 : over.subsBaseline,
+        basis: over.subsBasis ?? 'channel',
       },
     },
     engagement: {
@@ -102,21 +104,29 @@ function verdict(
   }
 }
 
+function unmeasuredLines(v: FrozenVerdict, checks: VerdictCheck[]): FrozenVerdict {
+  return {
+    ...v,
+    lines: v.lines.map((l) => (checks.includes(l.check) ? { ...l, measured: false as const } : l)),
+  }
+}
+
 let n = 0
 function video(
   over: {
     states?: Partial<Record<VerdictCheck, VerdictState>>
     searches?: number | null
     vThresholds?: ResearchThresholds
+    unmeasured?: VerdictCheck[]
   } & Parameters<typeof report>[0],
 ): CountedVideo {
   n += 1
   return {
     projectId: `p${n}`,
     title: `Video ${n}`,
-    verdict: verdict(over.states ?? {}, over.vThresholds),
+    verdict: unmeasuredLines(verdict(over.states ?? {}, over.vThresholds), over.unmeasured ?? []),
     report: report(over),
-    targetSearches: over.searches === undefined ? 3000 : over.searches,
+    demandSearches: over.searches === undefined ? 3000 : over.searches,
   }
 }
 
@@ -219,6 +229,58 @@ describe('trackRecord', () => {
   })
 })
 
+describe('unmeasured lines and own baselines', () => {
+  test('a line that never ran counts for no check', () => {
+    const rows = trackRecord([
+      video({
+        states: { demand: 'bad', competition: 'warn', intent: 'warn', angle: 'warn', fit: 'warn' },
+        unmeasured: ['demand', 'competition', 'intent', 'angle', 'fit'],
+        found: false,
+        hold: 10,
+        subs: 1,
+        subsBaseline: 5,
+        rank: 3,
+        outcome: 'missed-target',
+      }),
+    ])
+    expect(rows.every((r) => r.counted === 0)).toBe(true)
+  })
+
+  test('only the unmeasured check is skipped', () => {
+    const rows = trackRecord([
+      video({
+        states: { demand: 'ok', intent: 'warn' },
+        unmeasured: ['intent'],
+        hold: 10,
+      }),
+    ])
+    expect(rows.find((r) => r.check === 'demand')?.counted).toBe(1)
+    expect(rows.find((r) => r.check === 'intent')?.counted).toBe(0)
+  })
+
+  test('an unmeasured competition line is not evidence for the open door rule', () => {
+    const unchecked = many(3, () =>
+      video({
+        states: { competition: 'warn' },
+        unmeasured: ['competition'],
+        rank: 3,
+        found: true,
+      }),
+    )
+    const out = suggestTuning([...unchecked, ...filler(2)], T, [])
+    expect(out.find((s) => s.key === 'openDoorMaxSubscribers')).toBeUndefined()
+  })
+
+  test('a subscribers baseline that is the video itself says nothing about channel fit', () => {
+    const rows = trackRecord([
+      video({ states: { fit: 'ok' }, subs: 10, subsBaseline: 10, subsBasis: 'own' }),
+      video({ states: { fit: 'ok' }, subs: 10, subsBaseline: 5, subsBasis: 'channel' }),
+    ])
+    const fit = rows.find((r) => r.check === 'fit')
+    expect(fit?.counted).toBe(1)
+  })
+})
+
 describe('suggestTuning', () => {
   test('no suggestions under five counted videos', () => {
     const four = many(4, () => video({ states: { demand: 'warn' }, searches: 600, found: true }))
@@ -261,10 +323,40 @@ describe('suggestTuning', () => {
     })
   })
 
+  test('judges demand on the topic figure the verdict used, not the target alone', () => {
+    // Topic total 3,000 (a warn): not under 1,000, so no "lower the warning line".
+    const topic = many(3, () => video({ states: { demand: 'warn' }, searches: 3000, found: true }))
+    const out = suggestTuning([...topic, ...filler(2)], T, [])
+    expect(out.find((s) => s.key === 'demandWarn')).toBeUndefined()
+    // A topic total over the strong line, already ok, does not support lowering it.
+    const ok = many(3, () => video({ states: { demand: 'ok' }, searches: 6000, found: true }))
+    expect(
+      suggestTuning([...ok, ...filler(2)], T, []).find((s) => s.key === 'demandOk'),
+    ).toBeUndefined()
+  })
+
+  test('never offers a warning line at or above the strong demand line', () => {
+    const near = { ...T, demandOk: 1500 }
+    const missed = many(3, () =>
+      video({
+        states: { demand: 'ok', competition: 'ok' },
+        searches: 1200,
+        found: false,
+        outcome: 'missed-target',
+        vThresholds: near,
+      }),
+    )
+    const five = [
+      ...missed,
+      ...filler(2).map((v) => ({ ...v, verdict: { ...v.verdict, thresholds: near } })),
+    ]
+    expect(suggestTuning(five, near, []).find((s) => s.key === 'demandWarn')).toBeUndefined()
+  })
+
   test('lowers the strong demand line from three found videos between the lines', () => {
     const mid = many(3, () => video({ states: { demand: 'warn' }, searches: 3000, found: true }))
     const out = suggestTuning(
-      [...mid, ...filler(2).map((v) => ({ ...v, targetSearches: 9000 }))],
+      [...mid, ...filler(2).map((v) => ({ ...v, demandSearches: 9000 }))],
       T,
       [],
     )

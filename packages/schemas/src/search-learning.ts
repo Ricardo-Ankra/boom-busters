@@ -8,8 +8,8 @@ export interface CountedVideo {
   title: string
   verdict: FrozenVerdict
   report: SearchReport
-  /** The frozen brief target's estimated monthly searches. */
-  targetSearches: number | null
+  /** The monthly searches over the target's topic, the figure the demand line judged. */
+  demandSearches: number | null
 }
 
 export const COUNTED_OUTCOMES: SearchOutcome[] = [
@@ -30,7 +30,7 @@ function isCounted(v: CountedVideo): boolean {
 
 function stateOf(v: CountedVideo, check: VerdictCheck): 'ok' | 'not-ok' | null {
   const line = v.verdict.lines.find((l) => l.check === check)
-  if (!line) return null
+  if (!line || line.measured === false) return null
   return line.state === 'ok' ? 'ok' : 'not-ok'
 }
 
@@ -45,7 +45,10 @@ export function holdGood(report: SearchReport): boolean | null {
 function subscribersGood(report: SearchReport): boolean | null {
   const subs = report.engagement.subscribersPer1k
   const base = report.baselines.subscribersPer1k.value
-  if (subs === null || base === null) return null
+  // Against its own figure a video always passes: no evidence either way.
+  if (subs === null || base === null || report.baselines.subscribersPer1k.basis === 'own') {
+    return null
+  }
   return subs >= base
 }
 
@@ -70,16 +73,21 @@ export function trackRecord(videos: CountedVideo[]): {
   check: VerdictCheck
   right: number
   counted: number
-  videos: { projectId: string; title: string; right: boolean }[]
+  videos: { projectId: string; title: string; right: boolean; recomputed?: true }[]
 }[] {
   const counted = videos.filter(isCounted)
   return CHECK_ORDER.map((check) => {
-    const rows: { projectId: string; title: string; right: boolean }[] = []
+    const rows: { projectId: string; title: string; right: boolean; recomputed?: true }[] = []
     for (const v of counted) {
       const state = stateOf(v, check)
       const outcome = OUTCOME_OF[check](v.report)
       if (state === null || outcome === null) continue
-      rows.push({ projectId: v.projectId, title: v.title, right: (state === 'ok') === outcome })
+      rows.push({
+        projectId: v.projectId,
+        title: v.title,
+        right: (state === 'ok') === outcome,
+        ...(v.verdict.recomputed ? { recomputed: true as const } : {}),
+      })
     }
     return {
       check,
@@ -136,7 +144,7 @@ export function suggestTuning(
 
   const under = (key: keyof ResearchThresholds) =>
     counted.filter((v) => v.verdict.thresholds[key] === current[key])
-  const searchesOf = (v: CountedVideo) => v.targetSearches as number
+  const searchesOf = (v: CountedVideo) => v.demandSearches as number
 
   const out: Suggestion[] = []
   const add = (
@@ -146,6 +154,7 @@ export function suggestTuning(
     rawTo: number,
     sentence: (count: number, to: number) => string,
     aboveExclusive?: number,
+    belowExclusive?: number,
   ) => {
     if (support.length < SUGGESTION_MIN_SUPPORT) return
     const from = current[key]
@@ -153,6 +162,7 @@ export function suggestTuning(
     // The factor-of-two limit wins over nice rounding, then the hard bounds.
     const to = clamp(key, Math.min(from * 2, Math.max(from / 2, nice)))
     if (aboveExclusive !== undefined && to <= aboveExclusive) return
+    if (belowExclusive !== undefined && to >= belowExclusive) return
     if (to === from) return
     const dismissed = dismissals
       .filter((d) => d.key === key && d.direction === direction)
@@ -173,8 +183,8 @@ export function suggestTuning(
     const s = under('demandWarn').filter(
       (v) =>
         stateOf(v, 'demand') === 'not-ok' &&
-        v.targetSearches !== null &&
-        v.targetSearches < current.demandWarn &&
+        v.demandSearches !== null &&
+        v.demandSearches < current.demandWarn &&
         v.report.foundForTarget === true,
     )
     if (s.length > 0) {
@@ -194,8 +204,8 @@ export function suggestTuning(
   {
     const s = under('demandWarn').filter(
       (v) =>
-        v.targetSearches !== null &&
-        v.targetSearches >= current.demandWarn &&
+        v.demandSearches !== null &&
+        v.demandSearches >= current.demandWarn &&
         stateOf(v, 'competition') === 'ok' &&
         v.report.foundForTarget === false,
     )
@@ -209,6 +219,8 @@ export function suggestTuning(
         raw,
         (n, to) =>
           `${videosWord(n)} at ${fmt(current.demandWarn)} searches or more with clear competition were each not found for their target. Raise the warning line to ${fmt(to)}?`,
+        undefined,
+        current.demandOk,
       )
     }
   }
@@ -217,9 +229,9 @@ export function suggestTuning(
   {
     const s = under('demandOk').filter(
       (v) =>
-        v.targetSearches !== null &&
-        v.targetSearches >= current.demandWarn &&
-        v.targetSearches < current.demandOk &&
+        v.demandSearches !== null &&
+        v.demandSearches >= current.demandWarn &&
+        v.demandSearches < current.demandOk &&
         v.report.foundForTarget === true,
     )
     if (s.length > 0) {

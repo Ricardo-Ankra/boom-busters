@@ -318,7 +318,7 @@ suite('search reports', () => {
     expect(list[0]!.title).toBe('Mine')
     expect(list[0]!.verdict.lines[0]!.check).toBe('demand')
     expect(list[0]!.verdict.recomputed).toBeUndefined()
-    expect(list[0]!.targetSearches).toBe(3200)
+    expect(list[0]!.demandSearches).toBe(3200)
     expect(list[0]!.targetIntent).toBe('how it collapsed')
     expect(list[0]!.targetTopic).toBe('collapse')
     expect(list[0]!.report.checkpoint).toBe(28)
