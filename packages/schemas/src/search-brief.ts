@@ -219,7 +219,7 @@ export function maskFigures(keyword: string): string {
 }
 
 /** Below this `overall` a keyword is never offered as the target. */
-const PICK_FLOOR = 50
+export const PICK_FLOOR = 50
 const CANDIDATES_MAX = 3
 
 /**
