@@ -295,6 +295,44 @@ describe('runSearchReport', () => {
     expect(report.rankSkipped).toBe('credit cap')
   })
 
+  it('defers without counting when the bounded analytics fetch fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const analytics = await import('./youtube-analytics')
+    const fetcher = vi
+      .spyOn(analytics, 'fetchVideoAnalytics')
+      .mockRejectedValue(new Error('403 forbidden'))
+    try {
+      const result = await runSearchReport({
+        ...input(7),
+        token: { mode: 'live', accessToken: 'ya29.secret' },
+      })
+      expect(result).toEqual({ state: 'deferred' })
+      expect(h.recordReportDeferral).not.toHaveBeenCalled()
+      expect(h.freezeSearchReport).not.toHaveBeenCalled()
+      const said = String(warn.mock.calls[0]![0])
+      expect(said).toContain(VIDEO)
+      expect(said).not.toContain('ya29.secret')
+    } finally {
+      fetcher.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
+  it('keeps a paid rank when recording it fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    h.addRankCheck.mockRejectedValue(new Error('db down'))
+    try {
+      const result = await runSearchReport(input(28))
+      expect(result.state).toBe('frozen')
+      expect(h.rankFor).toHaveBeenCalledTimes(1)
+      expect(h.recordReportDeferral).not.toHaveBeenCalled()
+      expect(frozenReport().rank).toMatchObject({ keyword: 'alpha', position: 4 })
+      expect(frozenReport().rankSkipped).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('baselines exclude the video itself and split by length band', async () => {
     // This video is 15 minutes: the mid band. Three mid reports and one short.
     h.frozenReportsForChannel.mockResolvedValue([

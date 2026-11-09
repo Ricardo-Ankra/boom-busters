@@ -39,6 +39,7 @@ import { CapReached, rankFor } from '@/lib/case-evidence'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
 import { fetchVideoAnalytics, mockVideoAnalytics, SEARCH_SOURCE_KEY } from '@/lib/youtube-analytics'
+import type { VideoAnalytics } from '@/lib/youtube-analytics'
 
 /**
  * The frozen search report of one live master at one checkpoint (7, 28 or 90
@@ -137,10 +138,19 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
   // 2. The window runs from the publish day to the publish day plus N.
   const startMs = utcDay(new Date(input.publishedAt))
   const range = { start: isoDay(startMs), end: isoDay(startMs + checkpoint * DAY_MS) }
-  const analytics =
-    input.token.mode === 'mock'
-      ? mockVideoAnalytics(videoId, range)
-      : await fetchVideoAnalytics(input.token.accessToken, videoId, range)
+  let analytics: VideoAnalytics
+  try {
+    analytics =
+      input.token.mode === 'mock'
+        ? mockVideoAnalytics(videoId, range)
+        : await fetchVideoAnalytics(input.token.accessToken, videoId, range)
+  } catch (error) {
+    // Neither a model nor a rank failure, so nothing is counted: the next daily run tries again.
+    console.warn(
+      `[analytics] search report ${checkpoint} for ${videoId} deferred, analytics read failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return { state: 'deferred' }
+  }
 
   // 3. The research the video was made from, frozen on the project.
   const project = await getProject(db, projectId)
@@ -189,8 +199,17 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     } else {
       try {
         const position = await rankFor(target, videoId, channelId)
-        const saved = await addRankCheck(db, { channelId, videoId, keyword: target, position })
-        rank = { keyword: target, position, checkedAt: saved.checkedAt.toISOString() }
+        let checkedAt = new Date()
+        try {
+          checkedAt = (await addRankCheck(db, { channelId, videoId, keyword: target, position }))
+            .checkedAt
+        } catch (recordError) {
+          // Paid for already: freeze with the position in hand rather than buy it again.
+          console.warn(
+            `[analytics] rank check for ${videoId} was paid for but not recorded: ${recordError instanceof Error ? recordError.message : String(recordError)}`,
+          )
+        }
+        rank = { keyword: target, position, checkedAt: checkedAt.toISOString() }
       } catch (error) {
         if (row.rankAttempts + 1 < RANK_DEFER_MAX) {
           await recordReportDeferral(db, row.id, 'rank')
