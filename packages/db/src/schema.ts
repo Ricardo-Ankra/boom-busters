@@ -1105,6 +1105,11 @@ export const channelExemplars = pgTable(
     copiedFrom: text('copied_from'),
     /** A channel's own technique (spec 8.5): the proposal it was derived from; null for a catalogue technique. */
     proposal: jsonb('proposal').$type<TechniqueProposal>(),
+    /**
+     * A build the browser's layout check refused, kept as a draft to refine
+     * (decision 445): the refusal. Such a version is never approved as it is.
+     */
+    refusal: text('refusal'),
     costUsd: usd('cost_usd'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

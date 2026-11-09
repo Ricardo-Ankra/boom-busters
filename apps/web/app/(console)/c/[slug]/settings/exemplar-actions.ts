@@ -18,6 +18,7 @@ import {
   exemplarVersionById,
   finishDerivation,
   getChannelSettings,
+  getDerivation,
   latestDerivation,
   listChannelExemplars,
   recordVerdict,
@@ -34,6 +35,7 @@ import {
   ValidationError,
 } from '@boom-busters/schemas'
 import type { DerivationProgress, DerivationProposal, DerivationState } from '@boom-busters/schemas'
+import { jobSpendUsd } from '@boom-busters/cost'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { channelWriteRefusal, findChannel } from '@/lib/channel-lookup'
@@ -192,6 +194,13 @@ export async function approveExemplarVersionAction(
   const version = await ownVersion(channelId, versionId)
   if (!version) return UNKNOWN_VERSION
   if (version.status === 'approved') return { ok: true }
+  // A build the layout check refused is kept to refine, never to approve (decision 445).
+  if (version.refusal) {
+    return {
+      ok: false,
+      error: `The layout check refused this version (${version.refusal}). Refine it first.`,
+    }
+  }
   // The preference is against the version it was shown beside: the one
   // approved at this moment, else its parent (final review, issue 7).
   const shownAgainst =
@@ -290,6 +299,40 @@ export async function copyMotionFromChannelAction(
 }
 
 /** The latest derivation, for the Derive section's poll. */
+const NOT_RUNNING: ActionResult = { ok: false, error: 'That derivation is not running.' }
+const STOPPED_HERE = 'Stopped from the Derive section'
+
+/**
+ * "Stop the derivation" (decision 445): the stop event cancels the run
+ * between steps, so the call in flight finishes and is paid; then the row is
+ * closed with the spend so far, which frees the channel for the next launch.
+ * Drafts already stored stay. A stop that cannot be sent leaves it running.
+ */
+export async function stopDerivationAction(
+  channelId: string,
+  derivationId: string,
+): Promise<ActionResult> {
+  const refusal = await channelGate(channelId)
+  if (refusal) return refusal
+  if (!UlidSchema.safeParse(derivationId).success) return NOT_RUNNING
+  const row = await getDerivation(db, derivationId)
+  if (!row || row.channelId !== channelId || row.state !== 'running') return NOT_RUNNING
+  try {
+    await inngest.send(events.motionExemplarsDeriveStop.create({ channelId, derivationId }))
+  } catch (error) {
+    console.error('[exemplars] could not send the stop', error)
+    return { ok: false, error: INNGEST_DOWN }
+  }
+  const spent = await jobSpendUsd(db, derivationId).catch(() => 0)
+  await finishDerivation(db, derivationId, {
+    state: 'stopped',
+    spentUsd: spent,
+    error: STOPPED_HERE,
+  })
+  refresh()
+  return { ok: true }
+}
+
 export async function latestDerivationAction(
   channelId: string,
 ): Promise<ActionResult & { derivation?: DerivationView }> {
