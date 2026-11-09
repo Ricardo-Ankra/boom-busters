@@ -1,6 +1,6 @@
 # Learning from real search: design
 
-Date: 2026-11-09. Status: draft for the owner's approval.
+Date: 2026-11-09. Status: approved by the owner on 2026-11-09.
 
 ## Why
 
