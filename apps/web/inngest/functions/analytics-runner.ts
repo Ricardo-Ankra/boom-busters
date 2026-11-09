@@ -20,6 +20,7 @@ import {
   BudgetExceededError,
   FIRST_CHANNEL_SLUG,
   missingBibleFields,
+  OUTCOME_COPY,
   parseEventData,
 } from '@boom-busters/schemas'
 import type { Checkpoint } from '@boom-busters/schemas'
@@ -431,6 +432,23 @@ export const analyticsRunner = inngest.createFunction(
           byVideo.set(snapshot.videoId, list)
         }
 
+        // The report frozen within the week, per video; the higher checkpoint
+        // when two froze together. Read here, in the step.
+        const reportOf = new Map<string, NonNullable<DigestLine['searchReport']>>()
+        for (const videoId of byVideo.keys()) {
+          for (const row of await searchReportsForVideo(db, videoId)) {
+            if (row.state !== 'frozen' || row.report === null) continue
+            if (row.frozenAt === null || row.frozenAt < weekAgo) continue
+            const held = reportOf.get(videoId)
+            if (held && held.checkpoint >= row.checkpoint) continue
+            reportOf.set(videoId, {
+              checkpoint: row.report.checkpoint,
+              outcome: row.report.outcome,
+              label: OUTCOME_COPY[row.report.outcome].label,
+            })
+          }
+        }
+
         const lines: DigestLine[] = [...byVideo.entries()].map(([videoId, rows]) => {
           const first = rows[0]!
           const last = rows[rows.length - 1]!
@@ -448,6 +466,7 @@ export const analyticsRunner = inngest.createFunction(
             avgViewDurationSec: last.avgViewDurationSec,
             topSource,
             worstDropPct: worstRetentionDrop(last.retentionCurve),
+            ...(reportOf.has(videoId) ? { searchReport: reportOf.get(videoId)! } : {}),
           }
         })
 

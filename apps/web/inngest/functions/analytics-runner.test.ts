@@ -5,8 +5,10 @@ import {
   channelYoutubeConnection,
   createChannel,
   FIXTURE_PROJECT_ID,
+  freezeSearchReport,
   getPublishRecord,
   latestSnapshotForVideo,
+  pendingReport,
   publishRecords,
   recordChannelYoutubeVerify,
   requireTestDatabase,
@@ -24,7 +26,9 @@ import {
 import { buildDigestRequest } from '@boom-busters/providers'
 import type { DigestLine } from '@boom-busters/providers'
 import {
+  buildSearchReport,
   BudgetExceededError,
+  DEFAULT_RESEARCH_THRESHOLDS,
   DEFAULT_SETTINGS,
   EMPTY_BIBLE,
   FIRST_CHANNEL_BIBLE,
@@ -336,6 +340,63 @@ describeDb('analytics-runner (mock mode)', () => {
           ([notification]) => (notification as { kind: string }).kind === 'weekly-digest',
         ),
       ).toBe(false)
+    },
+  )
+
+  it(
+    "the Monday digest carries this week's frozen report outcome",
+    { timeout: 60_000 },
+    async () => {
+      const frozen = async (checkpoint: 7 | 28, outcome: 'hit-then-left' | 'missed-target') => {
+        const row = await pendingReport(db, {
+          channelId: FIRST_CHANNEL_ID,
+          projectId: FIXTURE_PROJECT_ID,
+          videoId: LIVE_VIDEO,
+          checkpoint,
+        })
+        const report = buildSearchReport({
+          checkpoint,
+          range: { start: '2026-08-20', end: '2026-09-17' },
+          publishedAt: '2026-08-20T15:00:00.000Z',
+          durationSec: 150,
+          views: 1000,
+          searchViews: 400,
+          avgViewDurationSec: 60,
+          subscribersGained: 10,
+          likes: 50,
+          comments: 5,
+          retentionCurve: null,
+          terms: [{ term: 't', views: 100, minutes: 100, bucket: 'target' }],
+          targetKeyword: 't',
+          matching: 'full',
+          rank: null,
+          baselineInputs: {
+            holdBand: [],
+            holdChannel: [],
+            dropBand: [],
+            dropChannel: [],
+            subsBand: [],
+            subsChannel: [],
+          },
+          thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+          now: new Date('2026-09-20T10:00:00.000Z'),
+        })
+        await freezeSearchReport(db, row.id, { ...report, outcome })
+      }
+      // Two froze this week: the higher checkpoint is the one named.
+      await frozen(7, 'missed-target')
+      await frozen(28, 'hit-then-left')
+
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-08-31T06:00:05Z')) // a Monday
+
+      await engine.execute({ events: refreshEvent() })
+
+      const digest = notify.mock.calls
+        .map(([notification]) => notification as { kind: string; body: string })
+        .find((notification) => notification.kind === 'weekly-digest')
+      expect(digest!.body).toContain('Day 28 search report: Hit, then left')
+      expect(digest!.body).not.toContain('Day 7 search report')
     },
   )
 

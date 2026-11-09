@@ -1,4 +1,4 @@
-import type { BibleInUse } from '@boom-busters/schemas'
+import type { BibleInUse, Checkpoint, SearchOutcome } from '@boom-busters/schemas'
 import { fillSlots } from './bible'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
@@ -22,6 +22,14 @@ export interface DigestLine {
   topSource: string | null
   /** Where the retention curve dips hardest, as a percent through the video. */
   worstDropPct: number | null
+  /** Set when this video's search report froze within the digest's week. */
+  searchReport?: { checkpoint: Checkpoint; outcome: SearchOutcome; label: string }
+}
+
+function searchReportLine(line: DigestLine): string | null {
+  return line.searchReport
+    ? `Day ${line.searchReport.checkpoint} search report: ${line.searchReport.label}`
+    : null
 }
 
 export function buildDigestRequest(input: {
@@ -31,8 +39,8 @@ export function buildDigestRequest(input: {
   lines: readonly DigestLine[]
 }): LLMTaskRequest {
   const table = input.lines
-    .map((line) =>
-      [
+    .map((line) => {
+      const head = [
         `- ${line.label} (${line.targetType})`,
         `views ${line.views ?? 'n/a'}`,
         `+${line.viewsDelta ?? 'n/a'} this week`,
@@ -41,8 +49,10 @@ export function buildDigestRequest(input: {
         line.worstDropPct === null ? null : `retention dips at ${line.worstDropPct}%`,
       ]
         .filter(Boolean)
-        .join(' · '),
-    )
+        .join(' · ')
+      const report = searchReportLine(line)
+      return report === null ? head : `${head}\n  ${report}`
+    })
     .join('\n')
 
   return {
@@ -67,6 +77,12 @@ export function mockDigest(input: { weekOf: string; lines: readonly DigestLine[]
   return (
     `[mock] Week of ${input.weekOf}: ${input.lines.length} video(s) tracked, ` +
     `${total} views gained.\n\n` +
-    input.lines.map((line) => `- ${line.label}: ${line.views ?? 'n/a'} views`).join('\n')
+    input.lines
+      .map((line) => {
+        const report = searchReportLine(line)
+        const base = `- ${line.label}: ${line.views ?? 'n/a'} views`
+        return report === null ? base : `${base}\n  ${report}`
+      })
+      .join('\n')
   )
 }
