@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, min, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { analyticsSnapshots } from './schema'
 import type { AnalyticsSnapshotRow } from './schema'
@@ -89,6 +89,21 @@ export async function latestSnapshotForVideo(
     .orderBy(desc(analyticsSnapshots.date))
     .limit(1)
   return row
+}
+
+/**
+ * The day of a video's earliest snapshot, or null when it has none. Snapshots start the day the
+ * daily run first sees the video live and never move, so this is a stable publish date.
+ */
+export async function firstSnapshotDateForVideo(
+  db: Database,
+  videoId: string,
+): Promise<Date | null> {
+  const [row] = await db
+    .select({ first: min(analyticsSnapshots.date) })
+    .from(analyticsSnapshots)
+    .where(eq(analyticsSnapshots.videoId, videoId))
+  return row?.first ?? null
 }
 
 /** Snapshots on or after a moment, oldest first — the weekly digest's read. */

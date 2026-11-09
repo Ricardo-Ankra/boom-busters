@@ -5,6 +5,7 @@ import {
   dismissedTermKeys,
   getArticleSources,
   getDossier,
+  firstSnapshotDateForVideo,
   getProject,
   getRendersByIds,
   latestRender,
@@ -624,7 +625,7 @@ export async function publishModel(
   // Everything below the fold runs while the items assemble (decision 237):
   // the card renders in one batch instead of one lookup per Short, and the
   // attribution and retention reads stop serialising behind the loop.
-  const [rendersById, musicAttribution, snapshot, masterThumbs] = await Promise.all([
+  const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs] = await Promise.all([
     getRendersByIds(
       db,
       shorts.flatMap((short) => (short.renderId ? [short.renderId] : [])),
@@ -635,6 +636,9 @@ export async function publishModel(
     masterRecord?.youtubeVideoId
       ? latestSnapshotForVideo(db, masterRecord.youtubeVideoId)
       : Promise.resolve(undefined),
+    masterRecord?.youtubeVideoId
+      ? firstSnapshotDateForVideo(db, masterRecord.youtubeVideoId)
+      : Promise.resolve(null),
     masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
   ])
 
@@ -767,8 +771,7 @@ export async function publishModel(
     brief: project.searchBrief,
     bibleLanguage: channel.bible.language,
     videoId: masterRecord?.youtubeVideoId ?? null,
-    // No scheduled time: the record's last update is when it was flipped to live.
-    publishedAt: masterRecord?.publishAt ?? masterRecord?.updatedAt ?? null,
+    publishedAt: livePublishedAt(masterRecord ?? null, firstSnapshotDate),
     snapshot,
     durationSec: masterDurationMs !== null ? masterDurationMs / 1000 : null,
   })
@@ -792,6 +795,19 @@ export async function publishModel(
     analytics,
     searchReports,
   }
+}
+
+/**
+ * When the master went public for the live view: the scheduled time, else the day of its first
+ * analytics snapshot (it starts the day the daily run first sees the video live and never moves),
+ * else the record's last update, which drifts with every edit and is the last resort.
+ */
+export function livePublishedAt(
+  record: { publishAt: Date | null; updatedAt: Date } | null,
+  firstSnapshot: Date | null,
+): Date | null {
+  if (!record) return null
+  return record.publishAt ?? firstSnapshot ?? record.updatedAt
 }
 
 async function searchReportsModel(

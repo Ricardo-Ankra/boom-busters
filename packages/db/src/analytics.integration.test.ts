@@ -1,6 +1,7 @@
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import {
+  firstSnapshotDateForVideo,
   latestSnapshotForVideo,
   snapshotsSince,
   truncateAnalytics,
@@ -78,6 +79,27 @@ suite('analytics snapshots', () => {
     const latest = await latestSnapshotForVideo(db, VIDEO)
     expect(latest?.views).toBe(150)
     expect(await latestSnapshotForVideo(db, 'never-seen')).toBeUndefined()
+  })
+
+  it('firstSnapshotDateForVideo reads the earliest day, per video, and null when none', async () => {
+    for (const [videoId, date] of [
+      [VIDEO, '2026-08-27'],
+      [VIDEO, '2026-08-25'],
+      [VIDEO, '2026-08-26'],
+      ['other', '2026-08-01'],
+    ] as const) {
+      await upsertAnalyticsSnapshot(db, {
+        channelId: FIRST_CHANNEL_ID,
+        videoId,
+        date: day(date),
+        views: 1,
+      })
+    }
+
+    expect((await firstSnapshotDateForVideo(db, VIDEO))?.toISOString()).toBe(
+      '2026-08-25T00:00:00.000Z',
+    )
+    expect(await firstSnapshotDateForVideo(db, 'never-seen')).toBeNull()
   })
 
   it('snapshotsSince bounds the digest week honestly', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveIngredients,
   liveSearchReport,
+  livePublishedAt,
   openingIsStale,
   syntheticLikenesses,
 } from './publish-review'
@@ -241,5 +242,31 @@ describe('liveSearchReport', () => {
     const report = liveSearchReport({ ...base, brief: null, anyFrozen: false })
     expect(report.targetKeyword).toBeNull()
     expect(report.terms.every((t) => t.bucket === 'unmatched')).toBe(true)
+  })
+})
+
+describe('livePublishedAt', () => {
+  const scheduled = new Date('2026-10-01T15:00:00Z')
+  const firstSnapshot = new Date('2026-10-02T00:00:00Z')
+  const edited = new Date('2026-11-07T09:00:00Z')
+
+  it('uses the scheduled time when the record has one', () => {
+    expect(livePublishedAt({ publishAt: scheduled, updatedAt: edited }, firstSnapshot)).toBe(
+      scheduled,
+    )
+  })
+
+  it('uses the first snapshot, not the last edit, when nothing was scheduled', () => {
+    expect(livePublishedAt({ publishAt: null, updatedAt: edited }, firstSnapshot)).toBe(
+      firstSnapshot,
+    )
+  })
+
+  it('falls back to the last update only when there is no snapshot', () => {
+    expect(livePublishedAt({ publishAt: null, updatedAt: edited }, null)).toBe(edited)
+  })
+
+  it('is null without a record', () => {
+    expect(livePublishedAt(null, firstSnapshot)).toBeNull()
   })
 })
