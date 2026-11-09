@@ -38,11 +38,10 @@ export function groundEvidence(
 ): GroundedClaim['evidence'] {
   const axis = profile.evidence
   if (!axis || !claim.evidence) return null
+  // A document that was not given costs the claim its link, not its standing:
+  // the status is still graded from the supports the claim itself found.
   const shown = documentByNumber(documents, claim.evidence.doc)
-  if (!shown) {
-    note({ action: 'dropped', field: `claim ${n} evidence`, reason: NOT_GIVEN })
-    return null
-  }
+  if (!shown) note({ action: 'dropped', field: `claim ${n} evidence`, reason: NOT_GIVEN })
   let status = claim.evidence.status
   if (status === axis.earned.status) {
     const scholarly = found.filter(({ doc, support }) => support.found && doc.kind === 'scholarly')
@@ -58,5 +57,5 @@ export function groundEvidence(
       })
     }
   }
-  return { status, documentId: shown.id }
+  return { status, documentId: shown?.id ?? null }
 }

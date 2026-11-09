@@ -160,7 +160,8 @@ export const LegalSchema = z.object({
  */
 export const ClaimEvidenceSchema = z.object({
   status: z.string().trim().min(1).max(40),
-  doc: z.number().int().min(1),
+  // 0 means the model named no usable document; grounding reads it as one that was not given.
+  doc: z.number().int().min(0),
 })
 
 /**

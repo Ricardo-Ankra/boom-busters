@@ -339,9 +339,11 @@ interface ClaimLabels {
 }
 
 /**
- * The evidence the model wrote, kept only when the profile has an axis and the
- * status is one of its own. An unknown status costs the claim its grading, not
- * the claim: grounding reads a null evidence as "no finding stated".
+ * The evidence the model wrote, kept only when the profile has an axis. A
+ * status outside the axis falls to the axis's fallback, and a listed status
+ * whose document is unusable keeps the status with document 0, which
+ * grounding reads as a document that was not given. Either way the claim
+ * keeps a standing; it is never read as "no finding stated".
  */
 function repairEvidence(
   evidence: unknown,
@@ -352,19 +354,25 @@ function repairEvidence(
   if (evidence === null || evidence === undefined) return null
   // A profile with no axis never asked for it, so there is nothing to report.
   if (!axis) return null
+  const field = `the evidence of ${claim}`
   const keys = axis.statuses.map((status) => status.key)
-  const usable =
-    isRecord(evidence) &&
-    typeof evidence['status'] === 'string' &&
-    keys.includes(evidence['status']) &&
-    ClaimEvidenceSchema.safeParse(evidence).success
-  if (usable) return evidence
-  note({
-    action: 'dropped',
-    field: `the evidence of ${claim}`,
-    reason: `its evidence status was not one of ${keys.join(', ')}`,
-  })
-  return null
+  const record = isRecord(evidence) ? evidence : {}
+  const parsed = ClaimEvidenceSchema.shape.doc.safeParse(record['doc'])
+  const doc = parsed.success && parsed.data >= 1 ? parsed : { success: false as const }
+  const status = typeof record['status'] === 'string' ? record['status'].trim() : ''
+  if (!keys.includes(status)) {
+    note({
+      action: 'dropped',
+      field,
+      reason: `its evidence status was not one of ${keys.join(', ')}, so ${axis.fallback} was used`,
+    })
+    return { status: axis.fallback, doc: doc.success ? doc.data : 0 }
+  }
+  if (!doc.success) {
+    note({ action: 'dropped', field, reason: 'its evidence named no usable document' })
+    return { status, doc: 0 }
+  }
+  return { status, doc: doc.data }
 }
 
 /**

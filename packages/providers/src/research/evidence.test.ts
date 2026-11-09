@@ -121,14 +121,28 @@ describe('groundEvidence', () => {
     expect(repairs).toEqual([])
   })
 
-  it('gives null with a note when the evidence document is not in the corpus', () => {
-    expect(groundEvidence(claim('contested', 9), [], documents, PROFILE, note, 4)).toBeNull()
+  it('grades the status with no document when the evidence document is not in the corpus', () => {
+    expect(groundEvidence(claim('contested', 9), [], documents, PROFILE, note, 4)).toEqual({
+      status: 'contested',
+      documentId: null,
+    })
     expect(repairs).toEqual([
       {
         action: 'dropped',
         field: 'claim 4 evidence',
         reason: 'cites a document that was not given',
       },
+    ])
+  })
+
+  it('lowers an unearned established to the fallback when its document is not in the corpus', () => {
+    expect(groundEvidence(claim('established', 9), [], documents, PROFILE, note, 4)).toEqual({
+      status: 'single_study',
+      documentId: null,
+    })
+    expect(repairs.map((r) => (r.action === 'dropped' ? r.field : ''))).toEqual([
+      'claim 4 evidence',
+      'claim 4 evidence status',
     ])
   })
 

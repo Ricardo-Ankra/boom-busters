@@ -1074,7 +1074,7 @@ describe('the evidence axis in parseClaims and the claim prompts', () => {
     expect(claim?.evidence).toEqual({ status: 'contested', doc: 1 })
   })
 
-  it('keeps the claim but drops a status outside the axis, and says so', () => {
+  it('keeps the claim and gives a status outside the axis the fallback, and says so', () => {
     const repairs: Repair[] = []
     const [claim] = parseClaims(
       JSON.stringify({ claims: [{ ...CLAIM, evidence: { status: 'replicated', doc: 1 } }] }),
@@ -1082,12 +1082,30 @@ describe('the evidence axis in parseClaims and the claim prompts', () => {
       AXIS_PROFILE,
     )
     expect(claim?.text).toBe(CLAIM.text)
-    expect(claim?.evidence).toBeNull()
+    expect(claim?.evidence).toEqual({ status: 'single_study', doc: 1 })
     expect(repairs).toEqual([
       {
         action: 'dropped',
         field: 'the evidence of claim 1',
-        reason: 'its evidence status was not one of established, single_study, contested',
+        reason:
+          'its evidence status was not one of established, single_study, contested, so single_study was used',
+      },
+    ])
+  })
+
+  it('keeps a listed status whose document is unusable, and says why', () => {
+    const repairs: Repair[] = []
+    const [claim] = parseClaims(
+      JSON.stringify({ claims: [{ ...CLAIM, evidence: { status: 'contested', doc: 'x' } }] }),
+      (r) => repairs.push(r),
+      AXIS_PROFILE,
+    )
+    expect(claim?.evidence).toEqual({ status: 'contested', doc: 0 })
+    expect(repairs).toEqual([
+      {
+        action: 'dropped',
+        field: 'the evidence of claim 1',
+        reason: 'its evidence named no usable document',
       },
     ])
   })
