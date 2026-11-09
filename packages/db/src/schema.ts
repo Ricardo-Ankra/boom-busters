@@ -633,6 +633,12 @@ export const projects = pgTable(
     visualsJob: jsonb('visuals_job').$type<Record<string, unknown>>(),
     /** The case's search brief, frozen when the project started (null when none or for another subject). */
     searchBrief: jsonb('search_brief').$type<SearchBrief>(),
+    /**
+     * The research verdict as it read when the project was created, with the
+     * thresholds that produced it (`FrozenVerdictSchema` in schemas). Null
+     * when there was no frozen brief.
+     */
+    researchVerdict: jsonb('research_verdict').$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1759,6 +1765,42 @@ export const searchTermDismissals = pgTable(
   (t) => [uniqueIndex('search_term_dismissals_key').on(t.channelId, t.termKey)],
 )
 
+/** One applied research threshold for a channel; absent means the default. */
+export const researchTuning = pgTable(
+  'research_tuning',
+  {
+    id: id(),
+    channelId: channelId().notNull(),
+    /** A key of `ResearchThresholds`. */
+    key: text('key').notNull(),
+    value: numeric('value', { mode: 'number' }).notNull(),
+    previous: numeric('previous', { mode: 'number' }),
+    evidence: text('evidence').notNull().default(''),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('research_tuning_channel_key').on(t.channelId, t.key)],
+)
+
+/** A threshold suggestion the owner dismissed, with the support it had then. */
+export const researchSuggestionDismissals = pgTable(
+  'research_suggestion_dismissals',
+  {
+    id: id(),
+    channelId: channelId().notNull(),
+    key: text('key').notNull(),
+    direction: text('direction').$type<'raise' | 'lower'>().notNull(),
+    supportAtDismissal: integer('support_at_dismissal').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('research_suggestion_dismissals_key').on(t.channelId, t.key, t.direction),
+    check(
+      'research_suggestion_dismissals_direction_check',
+      sql`${t.direction} in ('raise', 'lower')`,
+    ),
+  ],
+)
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -1946,6 +1988,7 @@ export type RunEventRow = typeof runEvents.$inferSelect
 export type AnalyticsSnapshotRow = typeof analyticsSnapshots.$inferSelect
 export type SearchReportRow = typeof searchReports.$inferSelect
 export type SearchRankCheckRow = typeof searchRankChecks.$inferSelect
+export type ResearchTuningRow = typeof researchTuning.$inferSelect
 export type ArticleSourceRow = typeof articleSources.$inferSelect
 export type NewArticleSource = typeof articleSources.$inferInsert
 export type SocialPostRow = typeof socialPosts.$inferSelect

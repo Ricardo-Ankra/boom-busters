@@ -1,6 +1,16 @@
 import { and, desc, eq, notInArray, sql } from 'drizzle-orm'
-import { StoredSearchBriefSchema } from '@boom-busters/schemas'
-import type { DirectorsBook, SearchBrief, VisualsJob, VisualsJobOp } from '@boom-busters/schemas'
+import {
+  DEFAULT_RESEARCH_THRESHOLDS,
+  StoredSearchBriefSchema,
+  briefVerdict,
+} from '@boom-busters/schemas'
+import type {
+  DirectorsBook,
+  ResearchThresholds,
+  SearchBrief,
+  VisualsJob,
+  VisualsJobOp,
+} from '@boom-busters/schemas'
 import type { Database } from './client'
 import { cases, channelBibles, channels, costLedger, dossiers, projects, scripts } from './schema'
 import type { ProjectRow, ProjectStage, StageStatus } from './schema'
@@ -497,6 +507,12 @@ export async function createProjectFromCase(
     targetRuntimeMin?: number
     bibleId?: string
     formatKey?: string
+    /**
+     * What the frozen verdict is computed with: the channel's pillar labels
+     * and research thresholds. Omitted, the labels are the keys and the
+     * thresholds are the defaults.
+     */
+    verdictContext?: { pillarLabels?: Record<string, string>; thresholds?: ResearchThresholds }
   },
 ): Promise<ProjectRow> {
   if (input.bibleId !== undefined) {
@@ -519,7 +535,11 @@ export async function createProjectFromCase(
   // under a lock so an edit cannot land between the check and the insert.
   return db.transaction(async (tx) => {
     const [kase] = await tx
-      .select({ subject: cases.subject, searchBrief: cases.searchBrief })
+      .select({
+        subject: cases.subject,
+        searchBrief: cases.searchBrief,
+        category: cases.category,
+      })
       .from(cases)
       .where(eq(cases.id, input.caseId))
       .for('update')
@@ -530,6 +550,23 @@ export async function createProjectFromCase(
       brief.subject.trim().toLowerCase() === kase.subject.trim().toLowerCase()
         ? brief
         : null
+    const thresholds = input.verdictContext?.thresholds ?? DEFAULT_RESEARCH_THRESHOLDS
+    const researchVerdict =
+      frozen === null
+        ? null
+        : {
+            lines: briefVerdict(
+              frozen,
+              {
+                caseCategory: kase?.category ?? null,
+                checkedAngle: frozen.chosenAngle ?? frozen.recommendedAngle,
+                pillarLabels: input.verdictContext?.pillarLabels,
+              },
+              thresholds,
+            ),
+            thresholds: { ...thresholds },
+            frozenAt: new Date().toISOString(),
+          }
 
     const [row] = await tx
       .insert(projects)
@@ -544,6 +581,7 @@ export async function createProjectFromCase(
         stage: 'dossier',
         stageStatus: 'queued',
         searchBrief: frozen,
+        researchVerdict,
         ...(input.formatKey === undefined ? {} : { formatKey: input.formatKey }),
         ...(input.targetRuntimeMin === undefined
           ? {}
