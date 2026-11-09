@@ -75,6 +75,7 @@ const claim = (over: Partial<GroundedClaim> = {}): GroundedClaim => ({
   legalStatusDate: null,
   legalStatusDocumentId: null,
   series: null,
+  evidence: null,
   supports: [],
   ...over,
 })

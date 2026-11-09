@@ -30,6 +30,7 @@ import {
 import type { CorpusDocument, LLMTaskRequest, PassPart, Repair } from '@boom-busters/providers'
 import { videoIdFromUrl } from '@boom-busters/providers/vidiq'
 import {
+  RESEARCH_PROFILES,
   RESEARCH_PROFILE_KEYS,
   type ResearchProfileKey,
   type SearchBrief,
@@ -216,6 +217,8 @@ export async function researchDossier(
     round: number
     note?: string | undefined
     entity: ResearchEntity
+    /** The research profile the case was started under; it decides the evidence axis. */
+    profile: ResearchProfileKey
     /** The read documents in rank order: a citation's number is its position here. */
     documents: readonly CorpusDocument[]
     corpus: CorpusCounts
@@ -228,6 +231,7 @@ export async function researchDossier(
   },
 ): Promise<ResearchResult> {
   const { caseContext, round, note, documents } = input
+  const profile = RESEARCH_PROFILES[input.profile]
   const mocked = deps.mocked ?? mockProvidersEnabled()
   const complete = deps.complete ?? completeForProject(input.projectId)
   const corpus = renderCorpus(documents)
@@ -298,7 +302,7 @@ export async function researchDossier(
               await deps.bible(),
             ),
           ),
-          parse: parseClaims,
+          parse: (text, repair) => parseClaims(text, repair, profile),
           complete,
         }),
       )
@@ -352,7 +356,7 @@ export async function researchDossier(
               await deps.bible(),
             ),
           ),
-          parse: parseAnswers,
+          parse: (text, repair) => parseAnswers(text, repair, profile),
           complete,
         }),
       )
@@ -391,6 +395,7 @@ export async function researchDossier(
         answers: answers.answers,
         documents,
         corpus: input.corpus,
+        profile,
       },
       (repair) => {
         repairs.push(repair)
@@ -506,6 +511,8 @@ export function toDraftClaims(claims: readonly GroundedClaim[]): DraftClaimInput
     legalStatusDate: claim.legalStatusDate,
     legalStatusDocumentId: claim.legalStatusDocumentId,
     series: claim.series,
+    evidenceStatus: claim.evidence?.status ?? null,
+    evidenceDocumentId: claim.evidence?.documentId ?? null,
     supports: claim.supports.map((support) => ({
       documentId: support.documentId,
       rank: support.rank,

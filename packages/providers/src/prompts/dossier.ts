@@ -1,6 +1,7 @@
 import {
   BriefCastMemberSchema,
   CaseBriefSchema,
+  ClaimEvidenceSchema,
   ClaimsSchema,
   DOSSIER_ANSWER_CLAIMS_MAX,
   DOSSIER_ANSWER_MAX,
@@ -22,6 +23,8 @@ import {
   DOSSIER_TOLD_ALREADY_MAX,
   DOSSIER_TURNING_POINT_MAX,
   LegalSchema,
+  RESEARCH_PROFILES,
+  researchProfileOf,
   ResearchAnswersSchema,
   SceneSchema,
   ScenesSchema,
@@ -36,7 +39,9 @@ import type {
   CaseBrief,
   ChannelBible,
   ResearchAnswers,
+  EvidenceAxis,
   ResearchClaim,
+  ResearchProfile,
   Scene,
   SearchBrief,
 } from '@boom-busters/schemas'
@@ -334,6 +339,35 @@ interface ClaimLabels {
 }
 
 /**
+ * The evidence the model wrote, kept only when the profile has an axis and the
+ * status is one of its own. An unknown status costs the claim its grading, not
+ * the claim: grounding reads a null evidence as "no finding stated".
+ */
+function repairEvidence(
+  evidence: unknown,
+  axis: EvidenceAxis | null,
+  claim: string,
+  note: Note,
+): unknown {
+  if (evidence === null || evidence === undefined) return null
+  // A profile with no axis never asked for it, so there is nothing to report.
+  if (!axis) return null
+  const keys = axis.statuses.map((status) => status.key)
+  const usable =
+    isRecord(evidence) &&
+    typeof evidence['status'] === 'string' &&
+    keys.includes(evidence['status']) &&
+    ClaimEvidenceSchema.safeParse(evidence).success
+  if (usable) return evidence
+  note({
+    action: 'dropped',
+    field: `the evidence of ${claim}`,
+    reason: `its evidence status was not one of ${keys.join(', ')}`,
+  })
+  return null
+}
+
+/**
  * A figure series loses a point whose date or printed number runs over (both
  * are facts the check reads), keeps its first points over the cap, and is
  * dropped whole when no point is left, since a series with no points says
@@ -407,7 +441,12 @@ function unusableAllegation(legal: unknown): string | null {
  * and a claim with no support left is dropped in turn, because a claim that
  * cites nothing is exactly what this pipeline exists to stop narrating.
  */
-function repairClaims(value: unknown, labels: ClaimLabels, note: Note): unknown {
+function repairClaims(
+  value: unknown,
+  labels: ClaimLabels,
+  note: Note,
+  profile: ResearchProfile,
+): unknown {
   if (!Array.isArray(value)) return value
   const supported = value.map((claim: unknown, at: number) => {
     if (!isRecord(claim)) return claim
@@ -430,6 +469,9 @@ function repairClaims(value: unknown, labels: ClaimLabels, note: Note): unknown 
       supports,
       ...('legal' in claim ? { legal: repairLegal(claim['legal'], label, note) } : {}),
       ...('series' in claim ? { series: repairSeries(claim['series'], label, note) } : {}),
+      ...('evidence' in claim
+        ? { evidence: repairEvidence(claim['evidence'], profile.evidence, label, note) }
+        : {}),
     }
   })
   return repairList(
@@ -456,13 +498,13 @@ function repairClaims(value: unknown, labels: ClaimLabels, note: Note): unknown 
 // The claim shape, shared by the claims and answers passes
 // ---------------------------------------------------------------------------
 
-const CLAIM_SHAPE = `{"text": string,
+const CLAIM_SHAPE_BASE = `{"text": string,
   "supports": [{"doc": number, "quote": string}],
   "legal": {"status": "ruled"|"alleged"|"none", "date": string, "doc": number} | null,
   "series": {"label": string, "unit": string, "currency": string|null,
     "points": [{"at": string, "value": number, "asWritten": string}]} | null}`
 
-const CLAIM_RULES = `- \`text\` is one fact in one plain sentence, as a script could narrate it.
+const CLAIM_RULES_BASE = `- \`text\` is one fact in one plain sentence, as a script could narrate it.
   Figures, dates and quotes each get their own claim.
 - \`supports\` are the documents that say it, the strongest first: a filing, a
   regulator or court record, or the reporting that broke it. A figure claim is
@@ -487,6 +529,34 @@ const CLAIM_RULES = `- \`text\` is one fact in one plain sentence, as a script c
   claim's first support is the document that prints the numbers, even where
   another document is stronger, and every point's \`asWritten\` must appear in
   it. A claim without a figure has \`series\` null.`
+
+const LEGAL_SHAPE_LINE = `  "legal": {"status": "ruled"|"alleged"|"none", "date": string, "doc": number} | null,\n`
+const LEGAL_RULE_END = `"alleged", so do not guess it.\n`
+
+/**
+ * The claim JSON the claims and answers passes ask for. A profile with an
+ * evidence axis adds its line after \`legal\`; one without gets the shape
+ * unchanged, so a channel without an axis keeps its prompt as it was.
+ */
+export function claimShape(profile: ResearchProfile): string {
+  const axis = profile.evidence
+  if (!axis) return CLAIM_SHAPE_BASE
+  const statuses = axis.statuses.map((status) => `"${status.key}"`).join('|')
+  return CLAIM_SHAPE_BASE.replace(
+    LEGAL_SHAPE_LINE,
+    `${LEGAL_SHAPE_LINE}  "evidence": {"status": ${statuses}, "doc": number} | null,\n`,
+  )
+}
+
+/** The claim rules, with the evidence rule after \`legal\` when the profile has an axis. */
+export function claimRules(profile: ResearchProfile): string {
+  const axis = profile.evidence
+  if (!axis) return CLAIM_RULES_BASE
+  const keys = axis.statuses.map((status) => `\`${status.key}\``).join(', ')
+  const extra = PROFILE_PROMPTS[profile.key].evidenceRules
+  const rule = `- \`evidence\` grades how well the finding behind the claim holds up. \`evidence.status\` is one of ${keys}; \`evidence.doc\` is the document that shows it. It is null for a claim that states no finding, such as a date or who did what. The app lowers a standing the documents do not earn, so claim the strongest only where the documents show it.${extra ? `\n  ${extra}` : ''}\n`
+  return CLAIM_RULES_BASE.replace(LEGAL_RULE_END, `${LEGAL_RULE_END}${rule}`)
+}
 
 /** The per-claim limits both claim-bearing passes state after their claim count. */
 const CLAIM_LIMITS = `each \`text\` 10 to ${DOSSIER_CLAIM_TEXT_MAX} characters; 1 to ${DOSSIER_SUPPORTS_MAX} supports
@@ -731,6 +801,7 @@ export function buildClaimsRequest(
   part: PassPart,
   bible: BibleInUse,
 ): LLMTaskRequest {
+  const profile = researchProfileOf(bible.bible)
   // A pass run as one part has no other part to defer to.
   const share =
     part.of > 1
@@ -743,9 +814,9 @@ export function buildClaimsRequest(
     `Now extract the facts the script will narrate, each with the words that prove
 it: [[example:dossier-claims-focus]]. The
 brief and the scenes tell you which facts the story rests on.
-${share}{"claims": [${CLAIM_SHAPE}]}
+${share}{"claims": [${claimShape(profile)}]}
 
-${CLAIM_RULES}
+${claimRules(profile)}
 
 Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LIMITS}.`,
     8_000,
@@ -759,7 +830,11 @@ Limits (the app checks them): 0 to ${DOSSIER_CLAIMS_PER_PASS} claims; ${CLAIM_LI
  * with the reason, the model can fix what it wrote, which an empty part
  * would silently throw away.
  */
-export function parseClaims(text: string, note: Note = ignoreRepairs): ResearchClaim[] {
+export function parseClaims(
+  text: string,
+  note: Note = ignoreRepairs,
+  profile: ResearchProfile = RESEARCH_PROFILES.investigation,
+): ResearchClaim[] {
   let written = 0
   const { claims } = parseRepaired(text, ClaimsSchema, 'claims', (raw) => {
     written = Array.isArray(raw['claims']) ? raw['claims'].length : 0
@@ -774,6 +849,7 @@ export function parseClaims(text: string, note: Note = ignoreRepairs): ResearchC
           support: (at, supportAt) => `claim ${at + 1} support ${supportAt + 1}`,
         },
         note,
+        profile,
       ),
     }
   })
@@ -809,6 +885,7 @@ export function buildAnswersRequest(
   part: PassPart,
   bible: BibleInUse,
 ): LLMTaskRequest {
+  const profile = researchProfileOf(bible.bible)
   // Numbered, not bulleted: the number is the join key the renderer places
   // each answer by (decision 203). Text matching alone lost every answer of
   // the first live run to paraphrased questions.
@@ -828,7 +905,7 @@ export function buildAnswersRequest(
 finished brief, so answer each one from the documents now:
 {"answers": [{"index": number, "question": string, "answer": string|null,
   "doc": number}],
- "claims": [${CLAIM_SHAPE}]}
+ "claims": [${claimShape(profile)}]}
 
 - Answer only from what the documents say. \`doc\` is the document the answer
   rests on; leave it out when \`answer\` is null.
@@ -843,7 +920,7 @@ finished brief, so answer each one from the documents now:
   the question verbatim as well.
 
 Claims follow the same rules as the claims pass:
-${CLAIM_RULES}
+${claimRules(profile)}
 
 Limits (the app checks them): at most ${DOSSIER_ANSWERS_MAX} answers; each "question" 10 to
 ${DOSSIER_QUESTION_MAX} characters; each "answer" at most ${DOSSIER_ANSWER_MAX} characters; at most
@@ -856,7 +933,11 @@ ${literalBibleText(questions)}`,
   )
 }
 
-export function parseAnswers(text: string, note: Note = ignoreRepairs): ResearchAnswers {
+export function parseAnswers(
+  text: string,
+  note: Note = ignoreRepairs,
+  profile: ResearchProfile = RESEARCH_PROFILES.investigation,
+): ResearchAnswers {
   return parseRepaired(text, ResearchAnswersSchema, 'answers', (raw) => ({
     ...raw,
     answers: repairList(
@@ -893,6 +974,7 @@ export function parseAnswers(text: string, note: Note = ignoreRepairs): Research
           `claim ${at + 1} found while answering, support ${supportAt + 1}`,
       },
       note,
+      profile,
     ),
   }))
 }

@@ -75,6 +75,7 @@ describe('groundResearch', () => {
         {
           text: 'The founder promised everything would be fine.',
           supports: [{ doc: 3, quote: 'The founder promised everything would be fine always.' }],
+          evidence: null,
           legal: null,
           series: null,
         },
@@ -90,6 +91,7 @@ describe('groundResearch', () => {
         {
           text: 'x'.repeat(20),
           supports: [{ doc: 99, quote: 'anything at all here' }],
+          evidence: null,
           legal: null,
           series: null,
         },
@@ -115,12 +117,14 @@ describe('groundResearch', () => {
         {
           text: 'The company misled investors about its revenue.',
           supports: [{ doc: 1, quote: 'reported revenue of $5 million in 2020' }],
+          evidence: null,
           legal: { status: 'ruled', date: '2021', doc: 1 },
           series: null,
         },
         {
           text: 'The court ruled on it.',
           supports: [{ doc: 2, quote: 'had misled investors about its revenue' }],
+          evidence: null,
           legal: { status: 'ruled', date: '2021', doc: 2 },
           series: null,
         },
@@ -174,6 +178,7 @@ describe('groundResearch', () => {
     const ruledOn = (doc: number, text: string, quote: string): ResearchClaim => ({
       text,
       supports: [{ doc, quote }],
+      evidence: null,
       legal: { status: 'ruled', date: '2022-01', doc },
       series: null,
     })
@@ -270,6 +275,7 @@ describe('groundResearch', () => {
             { doc: 2, quote: 'had misled investors about its revenue' },
             { doc: 1, quote: 'reported revenue of $5 million in 2020' },
           ],
+          evidence: null,
           legal: null,
           series: null,
         },
@@ -291,6 +297,7 @@ describe('groundResearch', () => {
         {
           text: 'Revenue grew.',
           supports: [{ doc: 1, quote: 'reported revenue of $5 million in 2020' }],
+          evidence: null,
           legal: null,
           series: {
             label: 'Revenue',
@@ -318,6 +325,7 @@ describe('groundResearch', () => {
         {
           text: 'Revenue grew.',
           supports: [{ doc: 1, quote: 'reported revenue of $5 million in 2020' }],
+          evidence: null,
           legal: null,
           series: {
             label: 'Revenue',
@@ -405,6 +413,7 @@ describe('groundResearch', () => {
             { doc: 99, quote: 'a document that was never given' },
             { doc: 1, quote: 'reported revenue of $5 million in 2020' },
           ],
+          evidence: null,
           legal: null,
           series: {
             label: 'Revenue',
@@ -440,6 +449,7 @@ describe('groundResearch', () => {
         {
           text: 'The court ruled on it.',
           supports: [{ doc: 2, quote: 'had misled investors about its revenue' }],
+          evidence: null,
           legal: { status: 'ruled', date: '2020-06', doc: 99 },
           series: null,
         },
@@ -466,6 +476,7 @@ describe('groundResearch', () => {
         {
           text: 'No court has ruled on it.',
           supports: [{ doc: 2, quote: 'had misled investors about its revenue' }],
+          evidence: null,
           legal: { status: 'none', date: '2001-03', doc: 2 },
           series: null,
         },
@@ -514,6 +525,7 @@ describe('groundResearch', () => {
       {
         text: 'Revenue moved.',
         supports: [{ doc: 1, quote: 'filings show revenue in 2015 of' }],
+        evidence: null,
         legal: null,
         series: {
           label: 'Revenue',
@@ -551,6 +563,7 @@ describe('groundResearch', () => {
             { doc: 1, quote: 'a quote that is nowhere in the document' },
             { doc: 2, quote: 'had misled investors about its revenue' },
           ],
+          evidence: null,
           legal: null,
           series: null,
         },
@@ -560,6 +573,7 @@ describe('groundResearch', () => {
             { doc: 2, quote: 'a quote that is nowhere in the court record' },
             { doc: 1, quote: 'another quote that is nowhere at all' },
           ],
+          evidence: null,
           legal: null,
           series: null,
         },
@@ -614,5 +628,24 @@ describe('groundResearch', () => {
         reason: 'its quote is not found in a video transcript',
       },
     ])
+  })
+})
+
+describe('groundResearch under the investigation profile', () => {
+  it('gives every grounded claim a null evidence', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'The company reported revenue of five million.',
+          supports: [{ doc: 1, quote: 'reported revenue of $5 million in 2020' }],
+          legal: null,
+          series: null,
+          evidence: { status: 'established', doc: 1 },
+        },
+      ]),
+      note,
+    )
+    expect(out.claims.every((claim) => claim.evidence === null)).toBe(true)
+    expect(repairs).toEqual([])
   })
 })

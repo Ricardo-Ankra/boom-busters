@@ -79,6 +79,7 @@ export function mockClaims(): ResearchClaim[] {
         { doc: 2, quote: 'the mock ledger listed cash that no bank could confirm' },
         { doc: 4, quote: 'mock ledger listed cash that did not exist' },
       ],
+      evidence: null,
       legal: null,
       series: null,
     },
@@ -87,12 +88,14 @@ export function mockClaims(): ResearchClaim[] {
       // e2e fixture parks at the gate as a real dossier with a gap would.
       text: 'MOCK CLAIM: this quote is in no document, so the claim stays unverified.',
       supports: [{ doc: 2, quote: 'a sentence the mock article never printed' }],
+      evidence: null,
       legal: null,
       series: null,
     },
     {
       text: 'MOCK CLAIM: Mockco reported mock revenue rising from 2017 to 2018.',
       supports: [{ doc: 1, quote: 'Revenue for 2018 was MOCK EUR 2,000,000,000' }],
+      evidence: null,
       legal: null,
       series: {
         label: 'Mock revenue',
@@ -107,6 +110,7 @@ export function mockClaims(): ResearchClaim[] {
     {
       text: 'MOCK CLAIM: the mock regulator ruled against Mockco in February 2019.',
       supports: [{ doc: 4, quote: 'the mock regulator ruled that Mockco' }],
+      evidence: null,
       legal: { status: 'ruled', date: '2019-02', doc: 4 },
       series: null,
     },

@@ -194,6 +194,7 @@ export const dossierRunner = inngest.createFunction(
           caseContext,
           round,
           entity: gathered.entity,
+          profile: researchProfile,
           documents,
           corpus,
         },

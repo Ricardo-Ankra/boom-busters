@@ -217,6 +217,7 @@ function grounded(documentId: string, over: Partial<GroundedClaim> = {}): Ground
     legalStatusDate: null,
     legalStatusDocumentId: null,
     series: null,
+    evidence: null,
     supports: [
       {
         documentId,
@@ -538,6 +539,8 @@ describeDb('dossier-runner', () => {
         legalStatusDate: null,
         legalStatusDocumentId: null,
         series: null,
+        evidenceStatus: null,
+        evidenceDocumentId: null,
         // The URLs are the document's; the row keeps only the reference.
         supports: [
           {

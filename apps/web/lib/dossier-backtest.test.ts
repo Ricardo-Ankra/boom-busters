@@ -47,6 +47,7 @@ const claim = (
   legalStatusDate: null,
   legalStatusDocumentId: null,
   series,
+  evidence: null,
   supports: found.map((f, i) => ({
     documentId: 'd1',
     rank: i + 1,

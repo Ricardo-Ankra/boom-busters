@@ -4,6 +4,7 @@ import {
   DOSSIER_QUOTE_MAX,
   DOSSIER_QUOTE_MIN_FOLDED,
   FIRST_CHANNEL_IN_USE,
+  RESEARCH_PROFILES,
   DOSSIER_STATUS_MAX,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -16,12 +17,15 @@ import {
   buildBriefRequest,
   buildClaimsRequest,
   buildScenesRequest,
+  claimRules,
+  claimShape,
   parseAnswers,
   parseBrief,
   parseClaims,
   parseScenes,
   withNote,
 } from './dossier'
+import { ignoreRepairs } from './repair'
 import type { Note, Repair } from './repair'
 
 const caseContext = {
@@ -698,7 +702,7 @@ describe('parseScenes', () => {
 describe('parseClaims', () => {
   it('reads a well-formed claim, defaulting legal status and series to null', () => {
     expect(parseClaims(JSON.stringify({ claims: [CLAIM] }))).toEqual([
-      { ...CLAIM, legal: null, series: null },
+      { ...CLAIM, legal: null, series: null, evidence: null },
     ])
   })
 
@@ -1028,5 +1032,100 @@ describe('parseAnswers', () => {
       },
       { action: 'capped', field: 'claims found while answering', kept: DOSSIER_ANSWER_CLAIMS_MAX },
     ])
+  })
+})
+
+describe('the evidence axis in parseClaims and the claim prompts', () => {
+  const AXIS_PROFILE = {
+    ...RESEARCH_PROFILES.science,
+    evidence: {
+      statuses: [
+        { key: 'established', scriptLabel: 'ESTABLISHED FINDING', reviewLabel: 'Established' },
+        { key: 'single_study', scriptLabel: 'ONE STUDY', reviewLabel: 'One study' },
+        { key: 'contested', scriptLabel: 'CONTESTED', reviewLabel: 'Contested' },
+      ],
+      earned: {
+        status: 'established',
+        minScholarlyDocuments: 2,
+        reviewWords: ['meta-analysis'],
+      },
+      fallback: 'single_study',
+    },
+  }
+
+  it('ignores evidence under a profile with no axis, without a repair note', () => {
+    const repairs: Repair[] = []
+    const [claim] = parseClaims(
+      JSON.stringify({
+        claims: [{ ...CLAIM, evidence: { status: 'established', doc: 1 } }],
+      }),
+      (r) => repairs.push(r),
+    )
+    expect(claim?.evidence).toBeNull()
+    expect(repairs).toEqual([])
+  })
+
+  it('reads a status the axis lists', () => {
+    const [claim] = parseClaims(
+      JSON.stringify({ claims: [{ ...CLAIM, evidence: { status: 'contested', doc: 1 } }] }),
+      ignoreRepairs,
+      AXIS_PROFILE,
+    )
+    expect(claim?.evidence).toEqual({ status: 'contested', doc: 1 })
+  })
+
+  it('keeps the claim but drops a status outside the axis, and says so', () => {
+    const repairs: Repair[] = []
+    const [claim] = parseClaims(
+      JSON.stringify({ claims: [{ ...CLAIM, evidence: { status: 'replicated', doc: 1 } }] }),
+      (r) => repairs.push(r),
+      AXIS_PROFILE,
+    )
+    expect(claim?.text).toBe(CLAIM.text)
+    expect(claim?.evidence).toBeNull()
+    expect(repairs).toEqual([
+      {
+        action: 'dropped',
+        field: 'the evidence of claim 1',
+        reason: 'its evidence status was not one of established, single_study, contested',
+      },
+    ])
+  })
+
+  it('labels an answers-pass claim "found while answering"', () => {
+    const repairs: Repair[] = []
+    parseAnswers(
+      JSON.stringify({
+        answers: [],
+        claims: [{ ...CLAIM, evidence: { status: 'replicated', doc: 1 } }],
+      }),
+      (r) => repairs.push(r),
+      AXIS_PROFILE,
+    )
+    expect(repairs.map((r) => (r.action === 'dropped' ? r.field : ''))).toContain(
+      'the evidence of claim 1 found while answering',
+    )
+  })
+
+  it('leaves the investigation claim shape and rules exactly as they were', () => {
+    const request = asked(
+      buildClaimsRequest(caseContext, corpus, brief, scenes, claimsPart, FIRST_CHANNEL_IN_USE),
+    )
+    expect(request).not.toContain('"evidence"')
+    expect(request).not.toContain('evidence')
+    expect(claimShape(RESEARCH_PROFILES.investigation)).not.toContain('evidence')
+    expect(claimRules(RESEARCH_PROFILES.investigation)).not.toContain('evidence')
+  })
+
+  it('adds the evidence line and its rule for a profile with an axis, after legal', () => {
+    const shape = claimShape(AXIS_PROFILE)
+    expect(shape).toContain(
+      '"evidence": {"status": "established"|"single_study"|"contested", "doc": number} | null',
+    )
+    expect(shape.indexOf('"legal"')).toBeLessThan(shape.indexOf('"evidence"'))
+    const rules = claimRules(AXIS_PROFILE)
+    expect(rules).toContain('`established`, `single_study`, `contested`')
+    expect(rules.indexOf('`legal` is the one')).toBeLessThan(rules.indexOf('`evidence`'))
+    expect(rules.indexOf('`evidence`')).toBeLessThan(rules.indexOf('Numbers draw the arc'))
   })
 })

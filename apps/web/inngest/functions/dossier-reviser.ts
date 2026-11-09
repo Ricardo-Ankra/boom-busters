@@ -283,6 +283,7 @@ export const dossierReviser = inngest.createFunction(
         round: context.round,
         note,
         entity,
+        profile: named.researchProfile,
         documents,
         corpus,
       },

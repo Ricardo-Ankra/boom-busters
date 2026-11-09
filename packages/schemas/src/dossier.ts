@@ -154,6 +154,16 @@ export const LegalSchema = z.object({
 })
 
 /**
+ * How well the finding behind a claim holds up, graded by the profile's axis.
+ * The status is text because each profile has its own list; the profile
+ * validates it on read and grounding earns it.
+ */
+export const ClaimEvidenceSchema = z.object({
+  status: z.string().trim().min(1).max(40),
+  doc: z.number().int().min(1),
+})
+
+/**
  * A figure over time. `asWritten` is the number as the document prints it
  * ("EUR 1.9 billion"), kept beside the parsed `value` so a unit or scale slip
  * in parsing is visible on review rather than silently narrated.
@@ -176,6 +186,7 @@ export const ResearchClaimSchema = z.object({
   supports: z.array(SupportSchema).min(1).max(DOSSIER_SUPPORTS_MAX),
   legal: LegalSchema.nullable().default(null),
   series: SeriesSchema.nullable().default(null),
+  evidence: ClaimEvidenceSchema.nullable().default(null),
 })
 export type ResearchClaim = z.infer<typeof ResearchClaimSchema>
 
@@ -314,6 +325,10 @@ export const GroundedClaimSchema = z.object({
   legalStatusDate: z.string().nullable(),
   legalStatusDocumentId: z.string().nullable(),
   series: SeriesSchema.nullable(),
+  evidence: z
+    .object({ status: z.string().min(1).max(40), documentId: z.string().nullable() })
+    .nullable()
+    .default(null),
   supports: z.array(GroundedSupportSchema),
 })
 export type GroundedClaim = z.infer<typeof GroundedClaimSchema>

@@ -25,6 +25,7 @@ import {
   replayedCase,
   researchDossier as research,
   splitRange,
+  toDraftClaims,
   unfetchedClaims,
   withOutlierLinks,
 } from './dossier-research'
@@ -99,6 +100,7 @@ const input = {
   caseContext: CASE,
   round: 0,
   entity: ENTITY,
+  profile: 'investigation' as const,
   documents: DOCUMENTS,
   corpus: { read: 2, unread: 1, failed: 1 },
 }
@@ -685,6 +687,7 @@ describe('unfetchedClaims', () => {
     legalStatusDate: null,
     legalStatusDocumentId: null,
     series: null,
+    evidence: null,
     supports,
   })
   const docs = [
@@ -964,5 +967,29 @@ describe('withOutlierLinks', () => {
       { url: 'https://x.test/a' },
     ])
     expect(withOutlierLinks([], undefined)).toEqual([])
+  })
+})
+
+describe('toDraftClaims', () => {
+  const grounded = (evidence: { status: string; documentId: string | null } | null) => ({
+    text: 'A claim.',
+    sourceUrl: null,
+    sourceType: 'other' as const,
+    confidence: 'single_source' as const,
+    legalStatus: 'none' as const,
+    legalStatusDate: null,
+    legalStatusDocumentId: null,
+    series: null,
+    evidence,
+    supports: [],
+  })
+
+  it('carries the evidence status and document onto the row, or null for none', () => {
+    const [graded, ungraded] = toDraftClaims([
+      grounded({ status: 'single_study', documentId: 'doc-1' }),
+      grounded(null),
+    ])
+    expect(graded).toMatchObject({ evidenceStatus: 'single_study', evidenceDocumentId: 'doc-1' })
+    expect(ungraded).toMatchObject({ evidenceStatus: null, evidenceDocumentId: null })
   })
 })

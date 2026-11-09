@@ -8,13 +8,15 @@ import type {
   GroundedSupport,
   ResearchAnswer,
   ResearchClaim,
+  ResearchProfile,
   Scene,
   Series,
 } from '@boom-busters/schemas'
-import { VERDICT_WORDS } from '@boom-busters/schemas'
+import { RESEARCH_PROFILES, VERDICT_WORDS } from '@boom-busters/schemas'
 import type { Note } from '../prompts/repair'
 import { computeConfidence } from './confidence'
 import { documentByNumber, type CorpusDocument } from './corpus'
+import { groundEvidence, NOT_GIVEN } from './evidence'
 import { foldDocument, foldText, locatorSeconds, quoteFoundIn, type Folded } from './fold'
 
 export interface GroundInput {
@@ -25,6 +27,8 @@ export interface GroundInput {
   answers: readonly ResearchAnswer[]
   documents: readonly CorpusDocument[]
   corpus: { read: number; unread: number; failed: number }
+  /** How this case grades its claims; the investigation's when absent. */
+  profile?: ResearchProfile
 }
 
 const SOURCE_TYPES: Record<DocumentKind, ClaimSourceTypeName> = {
@@ -38,8 +42,6 @@ const SOURCE_TYPES: Record<DocumentKind, ClaimSourceTypeName> = {
   figures: 'other',
   scholarly: 'other',
 }
-
-const NOT_GIVEN = 'cites a document that was not given'
 
 /** Any verdict word as a whole phrase, any case, any run of spaces between its words. */
 const VERDICT = new RegExp(
@@ -70,6 +72,7 @@ export function groundResearch(
   note: Note,
 ): { research: GroundedResearch; claims: GroundedClaim[] } {
   const { documents } = input
+  const profile = input.profile ?? RESEARCH_PROFILES.investigation
   // Each document is folded once; every quote of the run searches the same copy.
   const folds = new Map<string, Folded>()
   const foldOf = (doc: CorpusDocument): Folded => {
@@ -197,6 +200,14 @@ export function groundResearch(
       }
     }
 
+    const evidence = groundEvidence(
+      claim,
+      supports.map((support, at) => ({ doc: docs[at]!, support })),
+      documents,
+      profile,
+      note,
+      n,
+    )
     const series = groundSeries(claim.series, docs[0], n)
     // The claim's headline source is one whose quote was found; a support the
     // check could not place is only the fallback.
@@ -212,6 +223,7 @@ export function groundResearch(
       legalStatusDate,
       legalStatusDocumentId,
       series,
+      evidence,
       supports,
     }
   }

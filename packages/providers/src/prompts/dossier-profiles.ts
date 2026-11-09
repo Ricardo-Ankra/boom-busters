@@ -14,6 +14,11 @@ export interface ProfilePrompt {
   opening: (bible: ChannelBible) => string
   stakes: (bible: ChannelBible) => string
   extraRules: readonly string[]
+  /**
+   * Rules for the evidence axis, appended to the generic one in the claim
+   * rules. Empty for a profile with no axis.
+   */
+  evidenceRules: string
 }
 
 const investigation: ProfilePrompt = {
@@ -26,6 +31,7 @@ what earlier videos already told.`,
     `Real ${literalBibleText(noun(bible, 'plural'))} and living people are the
 subject, so:`,
   extraRules: [],
+  evidenceRules: '',
 }
 
 export const PROFILE_PROMPTS: Record<ResearchProfileKey, ProfilePrompt> = {

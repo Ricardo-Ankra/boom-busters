@@ -160,6 +160,7 @@ async function main(): Promise<void> {
           },
           round: 0,
           entity: gathered.entity,
+          profile: 'investigation',
           documents: loaded.documents,
           corpus: loaded.corpus,
         },
