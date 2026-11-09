@@ -24,5 +24,14 @@ describe('dossier profile prompts', () => {
       expect(PROFILE_PROMPTS[key].stakes(FIRST_CHANNEL_IN_USE.bible)).not.toBe('')
     }
     expect(PROFILE_PROMPTS.investigation.extraRules).toEqual([])
+    const bible = FIRST_CHANNEL_IN_USE.bible
+    expect(PROFILE_PROMPTS.science.opening(bible)).not.toBe(
+      PROFILE_PROMPTS.investigation.opening(bible),
+    )
+    expect(PROFILE_PROMPTS.science.stakes(bible)).not.toBe(
+      PROFILE_PROMPTS.investigation.stakes(bible),
+    )
+    expect(PROFILE_PROMPTS.science.extraRules).toHaveLength(2)
+    expect(PROFILE_PROMPTS.science.evidenceRules).not.toBe('')
   })
 })

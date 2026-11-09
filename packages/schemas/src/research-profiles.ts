@@ -111,7 +111,19 @@ export const RESEARCH_PROFILES: Record<ResearchProfileKey, ResearchProfile> = {
     ],
     tiers: { ...INVESTIGATION_TIERS, scholarly: 1 },
     tierShares: { 1: 0.4, 2: 0.3, 3: 0.1, 4: 0.05, 5: 0.15 },
-    evidence: null,
+    evidence: {
+      statuses: [
+        { key: 'established', scriptLabel: 'ESTABLISHED FINDING', reviewLabel: 'Established' },
+        { key: 'single_study', scriptLabel: 'ONE STUDY', reviewLabel: 'One study' },
+        { key: 'contested', scriptLabel: 'CONTESTED', reviewLabel: 'Contested' },
+      ],
+      earned: {
+        status: 'established',
+        minScholarlyDocuments: 2,
+        reviewWords: ['meta-analysis', 'meta-analyses', 'meta-analytic', 'systematic review'],
+      },
+      fallback: 'single_study',
+    },
   },
 }
 

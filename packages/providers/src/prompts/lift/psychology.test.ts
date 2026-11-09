@@ -50,6 +50,39 @@ describe.each(LIFT_CASES.filter((c) => c.bibleAware))('$name for a psychology ch
   })
 })
 
+describe('the science profile on a psychology channel', () => {
+  const inUse = {
+    bible: { ...PSYCHOLOGY_TEST_BIBLE, researchProfile: 'science' as const },
+    slotIds: EXAMPLE_SLOT_IDS,
+  }
+  const cases = LIFT_CASES.filter(
+    (c) => c.name.startsWith('dossier-') && c.name.includes('science'),
+  )
+
+  it('has a science case for the brief, scenes, claims and answers', () => {
+    expect(cases.map((c) => c.name).sort()).toEqual([
+      'dossier-answers-science',
+      'dossier-brief-science',
+      'dossier-claims-science',
+      'dossier-scenes-science',
+    ])
+  })
+
+  it.each(cases)('$name speaks of what a study MEASURED and refuses advice', (c) => {
+    const { system } = c.build(inUse)
+    expect(system).toContain('MEASURED')
+    expect(system).toContain('never turn a finding into advice')
+  })
+
+  it('asks for the evidence axis in the claims and answers requests', () => {
+    for (const name of ['dossier-claims-science', 'dossier-answers-science']) {
+      const request = cases.find((c) => c.name === name)!.build(inUse)
+      const last = request.messages[request.messages.length - 1]!
+      expect(String(last.content)).toContain('"evidence"')
+    }
+  })
+})
+
 describe('the lift is complete', () => {
   it('every case in LIFT_CASES reads the bible', () => {
     expect(LIFT_CASES.filter((c) => !c.bibleAware).map((c) => c.name)).toEqual([])

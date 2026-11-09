@@ -66,8 +66,28 @@ describe('research profiles', () => {
       expect(p.scholarlyHosts).toContain('psycnet.apa.org')
     })
 
-    it('has no evidence axis yet', () => {
-      expect(p.evidence).toBeNull()
+    it('grades a finding established, one study or contested', () => {
+      expect(p.evidence?.statuses.map((s) => s.key)).toEqual([
+        'established',
+        'single_study',
+        'contested',
+      ])
+      expect(evidenceLabel(p, 'established', 'script')).toBe('ESTABLISHED FINDING')
+      expect(evidenceLabel(p, 'single_study', 'script')).toBe('ONE STUDY')
+      expect(evidenceLabel(p, 'contested', 'script')).toBe('CONTESTED')
+      expect(evidenceLabel(p, 'established', 'review')).toBe('Established')
+      expect(evidenceLabel(p, 'single_study', 'review')).toBe('One study')
+      expect(evidenceLabel(p, 'contested', 'review')).toBe('Contested')
+      expect(evidenceLabel(p, 'nonsense', 'review')).toBeNull()
+    })
+
+    it('earns established from two scholarly documents or a review word, else falls to one study', () => {
+      expect(p.evidence?.earned).toEqual({
+        status: 'established',
+        minScholarlyDocuments: 2,
+        reviewWords: ['meta-analysis', 'meta-analyses', 'meta-analytic', 'systematic review'],
+      })
+      expect(p.evidence?.fallback).toBe('single_study')
     })
   })
 

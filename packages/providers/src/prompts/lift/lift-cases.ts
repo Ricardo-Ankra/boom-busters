@@ -1509,6 +1509,39 @@ const dossierCases: LiftCase[] = [
       bible,
     ),
   ),
+  // The science profile, forced inside the build: the harness hands every case the first channel's bible.
+  liftAware('dossier-brief-science', (inUse) =>
+    buildBriefRequest(CASE_FULL, CORPUS, {
+      ...inUse,
+      bible: { ...inUse.bible, researchProfile: 'science' },
+    }),
+  ),
+  liftAware('dossier-scenes-science', (inUse) =>
+    buildScenesRequest(CASE_FULL, CORPUS, DOSSIER_BRIEF, {
+      ...inUse,
+      bible: { ...inUse.bible, researchProfile: 'science' },
+    }),
+  ),
+  liftAware('dossier-claims-science', (inUse) =>
+    buildClaimsRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      { index: 1, of: 1, from: 1, to: 24 },
+      { ...inUse, bible: { ...inUse.bible, researchProfile: 'science' } },
+    ),
+  ),
+  liftAware('dossier-answers-science', (inUse) =>
+    buildAnswersRequest(
+      CASE_FULL,
+      CORPUS,
+      DOSSIER_BRIEF,
+      DOSSIER_SCENES,
+      { index: 1, of: 1, from: 1, to: 3 },
+      { ...inUse, bible: { ...inUse.bible, researchProfile: 'science' } },
+    ),
+  ),
 ]
 
 // ---------------------------------------------------------------------------
