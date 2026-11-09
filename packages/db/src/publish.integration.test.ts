@@ -269,6 +269,8 @@ suite('publish bookkeeping', () => {
 
       const firstVideos = await videoBackedRecords(db, FIRST_CHANNEL_ID)
       expect(firstVideos.map((r) => r.youtubeVideoId)).toEqual(['vid-first'])
+      // The creation time rides along: the mock publish date falls back to it.
+      expect(firstVideos[0]?.createdAt).toBeInstanceOf(Date)
       const otherVideos = await videoBackedRecords(db, second.channelId)
       expect(otherVideos.map((r) => r.youtubeVideoId)).toEqual(['vid-second'])
     })

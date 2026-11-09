@@ -257,7 +257,7 @@ export async function videoBackedRecords(
 ): Promise<
   Pick<
     PublishRecordRow,
-    'id' | 'targetType' | 'targetId' | 'youtubeVideoId' | 'status' | 'publishAt'
+    'id' | 'targetType' | 'targetId' | 'youtubeVideoId' | 'status' | 'publishAt' | 'createdAt'
   >[]
 > {
   return db
@@ -268,6 +268,7 @@ export async function videoBackedRecords(
       youtubeVideoId: publishRecords.youtubeVideoId,
       status: publishRecords.status,
       publishAt: publishRecords.publishAt,
+      createdAt: publishRecords.createdAt,
     })
     .from(publishRecords)
     .where(and(isNotNull(publishRecords.youtubeVideoId), eq(publishRecords.channelId, channelId)))
