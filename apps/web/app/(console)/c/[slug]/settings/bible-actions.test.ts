@@ -171,6 +171,7 @@ describeDb('the bible research actions', () => {
     expect(await estimateBibleResearchAction(FIRST_CHANNEL_ID, INPUTS)).toEqual({
       ok: false,
       error: `This run needs about ${ESTIMATE} credits; 10 are left of this month's cap of 1000.`,
+      capped: true,
     })
   })
 
@@ -636,6 +637,7 @@ describeDb('the bible edit, approve, save and discard actions', () => {
       expect(await measureKeywordsAction(FIRST_CHANNEL_ID)).toEqual({
         ok: false,
         error: "This run needs about 10 credits; 5 are left of this month's cap of 1000.",
+        capped: true,
       })
       expect(inngestMock.send).not.toHaveBeenCalled()
     })
@@ -751,6 +753,7 @@ describeDb('the bible edit, approve, save and discard actions', () => {
       expect(await analyseSearchSpaceAction(FIRST_CHANNEL_ID, key)).toEqual({
         ok: false,
         error: "This run needs about 20 credits; 15 are left of this month's cap of 1000.",
+        capped: true,
       })
       expect(inngestMock.send).not.toHaveBeenCalled()
     })
