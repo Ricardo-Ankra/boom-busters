@@ -3,6 +3,7 @@
 import {
   createCase,
   createChannel,
+  archiveChannel,
   createProjectFromCase,
   dismissedTermKeys,
   ensurePublishRecord,
@@ -192,6 +193,22 @@ describeDb('checkRankAction and dismissTermAction', () => {
       error: 'The monthly VidIQ credit cap is reached.',
     })
     expect(await rankChecksForVideo(db, 'yt-rank-1')).toHaveLength(2)
+  })
+
+  it('an archived channel refuses all three actions before any spend or write', async () => {
+    await setBrief(BRIEF)
+    await goLive('yt-rank-archived')
+    await archiveChannel(db, channelId)
+
+    const refused = { ok: false, error: 'This channel is archived' }
+    expect(await checkRankAction(projectId)).toEqual(refused)
+    expect(seam.rankFor).not.toHaveBeenCalled()
+    expect(await rankChecksForVideo(db, 'yt-rank-archived')).toHaveLength(0)
+    expect(await dismissTermAction(projectId, 'enron')).toEqual(refused)
+    expect((await dismissedTermKeys(db, channelId)).size).toBe(0)
+    expect(await addTermToKeywordsAction(projectId, 'enron collapse')).toEqual(refused)
+    const versions = await listBibleVersions(db, channelId)
+    expect(versions.at(-1)!.bible.formats[0]!.keywords ?? []).toEqual([])
   })
 
   it('checkRankAction refuses a project with no target', async () => {

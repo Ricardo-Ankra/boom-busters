@@ -13,6 +13,7 @@ import { normaliseTerm } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
 import { CapReached, rankFor } from '@/lib/case-evidence'
+import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 
 /**
@@ -55,6 +56,8 @@ export async function addTermToKeywordsAction(
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
   const { channelId } = await channelForProject(db, projectId)
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
   const result = await addFormatKeyword(db, channelId, project.formatKey, cleaned)
 
   if (result.outcome === 'full') {
@@ -77,7 +80,7 @@ export async function addTermToKeywordsAction(
 /**
  * One VidIQ search for the rank of the master for its researched target. The
  * target comes from the brief the project froze; the result is kept as a
- * manual check, so the card lists it and the day 28 report can reuse it.
+ * manual check, so the card lists it. The frozen day 28 report never takes it.
  */
 export async function checkRankAction(projectId: string): Promise<RankCheckResult> {
   await requireOwner()
@@ -90,6 +93,8 @@ export async function checkRankAction(projectId: string): Promise<RankCheckResul
   if (!videoId) return { ok: false, error: 'This video is not on YouTube yet, so it has no rank.' }
 
   const { channelId } = await channelForProject(db, projectId)
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
   let position: number | null
   try {
     position = await rankFor(target, videoId, channelId)
@@ -128,6 +133,8 @@ export async function dismissTermAction(
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
   const { channelId } = await channelForProject(db, projectId)
+  const refusal = await channelWriteRefusal(channelId)
+  if (refusal) return refusal
   const language =
     project.searchBrief?.language ||
     (await currentBible(db, channelId).then(

@@ -6,7 +6,6 @@ import {
   frozenReportsForChannel,
   getProject,
   pendingReport,
-  rankChecksForVideo,
   recordReportDeferral,
 } from '@boom-busters/db'
 import {
@@ -181,21 +180,15 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     else leftovers.push(term)
   }
 
-  // Rank first, so a model deferral never re-buys it (the check is reused next run).
+  // Rank first: a cap or a failed check defers before the model is asked. Only a check bought
+  // here counts; a manual one is never carried into the frozen report.
   let rank: SearchReport['rank'] = null
   let rankSkipped: string | undefined
   if (checkpoint === 28 && target !== null) {
     const due = startMs + (checkpoint + REPORT_LAG_DAYS) * DAY_MS
-    const wanted = target.trim().toLowerCase()
-    const earlier = (await rankChecksForVideo(db, videoId)).find(
-      (check) => check.keyword.trim().toLowerCase() === wanted && check.checkedAt.getTime() >= due,
-    )
-    if (earlier) {
-      rank = {
-        keyword: target,
-        position: earlier.position,
-        checkedAt: earlier.checkedAt.toISOString(),
-      }
+    if (Date.now() >= due + RANK_DEFER_MAX * DAY_MS) {
+      // A rank cannot be backdated: bought now it would not be the day-28 rank.
+      rankSkipped = 'too late for a day-28 rank'
     } else {
       try {
         const position = await rankFor(target, videoId, channelId)

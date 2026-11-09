@@ -297,22 +297,29 @@ describe('runSearchReport', () => {
     expect(frozenReport().rank).toMatchObject({ keyword: 'alpha', position: 4 })
   })
 
-  it('reuses a rank check made since the checkpoint fell due, and buys none', async () => {
+  it('never carries a manual rank check into the frozen report: it buys its own', async () => {
     // Day 28 is due on 2026-11-01 (published 10-01, 28 + 3 days).
     h.rankChecksForVideo.mockResolvedValue([
-      { keyword: 'Alpha', position: null, checkedAt: new Date('2026-10-30T10:00:00Z') },
       { keyword: 'alpha', position: 2, checkedAt: new Date('2026-11-02T10:00:00Z') },
     ])
 
     await runSearchReport(input(28))
 
+    expect(h.rankFor).toHaveBeenCalledTimes(1)
+    expect(frozenReport().rank).toMatchObject({ keyword: 'alpha', position: 4 })
+  })
+
+  it('does not buy a rank for a day-28 report made long after it was due', async () => {
+    // Due 2026-11-01; the seven-day window closed on 2026-11-08.
+    vi.setSystemTime(new Date('2026-11-30T12:00:00Z'))
+
+    expect((await runSearchReport(input(28))).state).toBe('frozen')
+
     expect(h.rankFor).not.toHaveBeenCalled()
     expect(h.addRankCheck).not.toHaveBeenCalled()
-    expect(frozenReport().rank).toEqual({
-      keyword: 'alpha',
-      position: 2,
-      checkedAt: '2026-11-02T10:00:00.000Z',
-    })
+    const report = frozenReport()
+    expect(report.rank).toBeNull()
+    expect(report.rankSkipped).toBe('too late for a day-28 rank')
   })
 
   it('waits for the credit cap up to seven runs, then freezes with rank skipped', async () => {
