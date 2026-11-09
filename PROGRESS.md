@@ -10768,3 +10768,21 @@ Part 2 checklist:
      `graphicCodeIssue` returns only the reason and is shared with the
      board's designer. Shipping: a Vercel deploy; no migration, no Inngest
      change.
+447. **New window from a stored clip** (2026-11-09, owner: "Proceed with your
+     offer", branch `reference-windows`). A clip marked once can give
+     another window without being uploaded again: "New window" on a video
+     reference's card opens the marker on the stored clip (as Re-mark does,
+     played from its presigned link with `crossOrigin` anonymous), with the
+     full words form, and saves a reference of its own on the same asset
+     through `addReferenceWindowAction`. Only the window's frames travel;
+     they are keyed by the clip's fingerprint as every frame is, and no
+     frame file is ever deleted, so two references sharing one clip's
+     frames is safe. The source link and rights carry over from the source
+     (the same video); the title, purpose, carry-over, avoid and negative
+     are the window's own. The window starts where the stored one ends,
+     two seconds long, or at the clip's start when that would run past its
+     end. The title must differ from every live reference's (case and
+     spaces ignored), since the storyboard and the critic name references
+     by title. Each window counts towards the twelve: the button is
+     disabled at twelve, without storage, and on an archived channel. No
+     migration, no Inngest change; a Vercel deploy ships it.
