@@ -269,7 +269,7 @@ describe('suggestTuning', () => {
       [],
     )
     expect(out).toHaveLength(1)
-    expect(out[0]).toMatchObject({ key: 'demandOk', direction: 'lower', from: 5000, to: 2000 })
+    expect(out[0]).toMatchObject({ key: 'demandOk', direction: 'lower', from: 5000, to: 2500 })
   })
 
   test('raises and lowers the open door size', () => {
@@ -376,6 +376,39 @@ describe('suggestTuning', () => {
         [],
       ),
     ).toEqual([])
+  })
+
+  test('never moves a value past a factor of two from a non-nice current value', () => {
+    const warn700 = { ...T, demandWarn: 700 }
+    const lows = many(3, () =>
+      video({ states: { demand: 'warn' }, searches: 300, found: true, vThresholds: warn700 }),
+    )
+    const down = suggestTuning(
+      [...lows, ...filler(2)].map((v) => ({ ...v })),
+      warn700,
+      [],
+    )
+    expect(down.find((s) => s.key === 'demandWarn')).toMatchObject({ from: 700, to: 350 })
+    const door = { ...T, openDoorMaxSubscribers: 150_000 }
+    const ranked = many(3, () =>
+      video({
+        states: { competition: 'warn' },
+        searches: 9000,
+        rank: 2,
+        found: true,
+        vThresholds: door,
+      }),
+    )
+    const up = suggestTuning(
+      [...ranked, ...filler(2).map((v) => ({ ...v, verdict: { ...v.verdict, thresholds: door } }))],
+      door,
+      [],
+    )
+    expect(up.find((s) => s.key === 'openDoorMaxSubscribers')).toMatchObject({
+      direction: 'raise',
+      from: 150_000,
+      to: 300_000,
+    })
   })
 
   test('the sentence names the count, the change and the new value', () => {

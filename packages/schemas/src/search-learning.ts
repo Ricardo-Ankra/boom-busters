@@ -145,10 +145,14 @@ export function suggestTuning(
     support: CountedVideo[],
     rawTo: number,
     sentence: (count: number, to: number) => string,
+    aboveExclusive?: number,
   ) => {
     if (support.length < SUGGESTION_MIN_SUPPORT) return
     const from = current[key]
-    const to = clamp(key, niceRound(rawTo, direction === 'lower' ? 'down' : 'up'))
+    const nice = niceRound(rawTo, direction === 'lower' ? 'down' : 'up')
+    // The factor-of-two limit wins over nice rounding, then the hard bounds.
+    const to = clamp(key, Math.min(from * 2, Math.max(from / 2, nice)))
+    if (aboveExclusive !== undefined && to <= aboveExclusive) return
     if (to === from) return
     const dismissed = dismissals
       .filter((d) => d.key === key && d.direction === direction)
@@ -220,7 +224,6 @@ export function suggestTuning(
     )
     if (s.length > 0) {
       const raw = Math.max(Math.min(...s.map(searchesOf)), current.demandOk / 2, current.demandWarn)
-      const before = out.length
       add(
         'demandOk',
         'lower',
@@ -228,9 +231,8 @@ export function suggestTuning(
         raw,
         (n, to) =>
           `${videosWord(n)} between ${fmt(current.demandWarn)} and ${fmt(current.demandOk)} searches were each found for their target. Lower the strong demand line to ${fmt(to)}?`,
+        current.demandWarn,
       )
-      // Keep the line above the warning line.
-      if (out.length > before && out[out.length - 1]!.to <= current.demandWarn) out.pop()
     }
   }
 
