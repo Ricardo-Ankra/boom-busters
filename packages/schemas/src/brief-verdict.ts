@@ -1,3 +1,9 @@
+import { z } from 'zod'
+import {
+  DEFAULT_RESEARCH_THRESHOLDS,
+  ResearchThresholdsSchema,
+  type ResearchThresholds,
+} from './research-thresholds'
 import { classifySearchTerms } from './search-terms'
 import {
   type FieldCheck,
@@ -7,17 +13,17 @@ import {
 } from './search-brief'
 
 /** An open door: a channel under this many subscribers... */
-export const OPEN_DOOR_MAX_SUBSCRIBERS = 100_000
+export const OPEN_DOOR_MAX_SUBSCRIBERS = DEFAULT_RESEARCH_THRESHOLDS.openDoorMaxSubscribers
 /** ...whose video has at least this many views. Ranking alone is not winnability. */
-export const OPEN_DOOR_MIN_VIEWS = 10_000
+export const OPEN_DOOR_MIN_VIEWS = DEFAULT_RESEARCH_THRESHOLDS.openDoorMinViews
 /** A field is stale when STALE_MIN of its results are STALE_YEARS or more old. */
 export const STALE_YEARS = 3
 export const STALE_MIN = 6
 /** A Short runs 60 seconds or less. */
 export const SHORT_MAX_SECONDS = 60
 export const SHORTS_BAD = 6
-export const DEMAND_OK = 5_000
-export const DEMAND_WARN = 1_000
+export const DEMAND_OK = DEFAULT_RESEARCH_THRESHOLDS.demandOk
+export const DEMAND_WARN = DEFAULT_RESEARCH_THRESHOLDS.demandWarn
 /** Growth at or above this percentage reads as a news spike. */
 export const SPIKE_GROWTH = 200
 
@@ -72,17 +78,20 @@ export function topicDemand(brief: SearchBrief): {
   return { topic, searches, growth: target.growthPct }
 }
 
-function isOpenDoor(r: FieldResult): boolean {
+function isOpenDoor(r: FieldResult, t: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS): boolean {
   return (
     r.subscribers !== null &&
     r.views !== null &&
-    r.subscribers < OPEN_DOOR_MAX_SUBSCRIBERS &&
-    r.views >= OPEN_DOOR_MIN_VIEWS
+    r.subscribers < t.openDoorMaxSubscribers &&
+    r.views >= t.openDoorMinViews
   )
 }
 
-export function openDoors(check: FieldCheck): number {
-  return check.results.filter(isOpenDoor).length
+export function openDoors(
+  check: FieldCheck,
+  thresholds: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
+): number {
+  return check.results.filter((r) => isOpenDoor(r, thresholds)).length
 }
 
 /** Six or more of the results published three or more years before `now`; unknown dates do not count. */
@@ -105,10 +114,13 @@ export function shortCount(check: FieldCheck): number {
  * research date (`checkedAt`), so the verdict does not drift with the viewing
  * date. A check with no results is not a judgement: warn.
  */
-export function fieldCompetition(check: FieldCheck): VerdictState {
+export function fieldCompetition(
+  check: FieldCheck,
+  thresholds: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
+): VerdictState {
   if (check.results.length === 0) return 'warn'
   if (shortCount(check) >= SHORTS_BAD) return 'bad'
-  const doors = openDoors(check)
+  const doors = openDoors(check, thresholds)
   if (doors >= 3) return 'ok'
   if (doors >= 1) return 'warn'
   return isStaleField(check, new Date(check.checkedAt)) ? 'warn' : 'bad'
@@ -211,13 +223,16 @@ function fitLine(
   }
 }
 
-function demandLine(brief: SearchBrief): VerdictLine {
+function demandLine(
+  brief: SearchBrief,
+  t: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
+): VerdictLine {
   const { topic, searches, growth } = topicDemand(brief)
   const target = brief.targetKeyword
   if (target === null)
     return { check: 'demand', state: 'bad', reason: 'Demand was not measured: no target keyword' }
   const name = topic ?? `"${target.keyword}"`
-  if (searches === null || searches < DEMAND_WARN) {
+  if (searches === null || searches < t.demandWarn) {
     return {
       check: 'demand',
       state: 'bad',
@@ -235,10 +250,13 @@ function demandLine(brief: SearchBrief): VerdictLine {
       reason: `${figure}, up ${Math.round(growth)}%: may be a news spike`,
     }
   }
-  return { check: 'demand', state: searches >= DEMAND_OK ? 'ok' : 'warn', reason: figure }
+  return { check: 'demand', state: searches >= t.demandOk ? 'ok' : 'warn', reason: figure }
 }
 
-function competitionLine(brief: SearchBrief): VerdictLine {
+function competitionLine(
+  brief: SearchBrief,
+  t: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
+): VerdictLine {
   const target = brief.targetKeyword
   const found =
     target === null
@@ -258,8 +276,8 @@ function competitionLine(brief: SearchBrief): VerdictLine {
       reason: `No results came back for "${found.keyword}"`,
     }
   }
-  const state = fieldCompetition(found)
-  const doors = openDoors(found)
+  const state = fieldCompetition(found, t)
+  const doors = openDoors(found, t)
   const shorts = shortCount(found)
   const name = `"${found.keyword}"`
   const reason =
@@ -285,12 +303,52 @@ export function briefVerdict(
     /** The channel's pillar labels by key, so a reason names the pillar as the owner does. */
     pillarLabels?: Readonly<Record<string, string>>
   },
+  thresholds: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
 ): VerdictLine[] {
   return [
     intentLine(brief),
     angleLine(brief, context.checkedAngle),
     fitLine(brief, context.caseCategory, context.pillarLabels),
-    demandLine(brief),
-    competitionLine(brief),
+    demandLine(brief, thresholds),
+    competitionLine(brief, thresholds),
   ]
+}
+
+export const FrozenVerdictSchema = z.object({
+  lines: z.array(
+    z.object({
+      check: z.enum(['intent', 'angle', 'fit', 'demand', 'competition']),
+      state: z.enum(['ok', 'warn', 'bad']),
+      reason: z.string(),
+    }),
+  ),
+  thresholds: ResearchThresholdsSchema,
+  frozenAt: z.string(),
+  recomputed: z.literal(true).optional(),
+})
+export type FrozenVerdict = z.infer<typeof FrozenVerdictSchema>
+
+/**
+ * The verdict a project was created with: the stored value when it parses,
+ * else (with a brief) a recomputation under the default thresholds, marked
+ * `recomputed`. Null without a stored value or a brief. Pure; callers join the
+ * case for its category.
+ */
+export function frozenVerdictFor(input: {
+  stored: unknown
+  brief: SearchBrief | null
+  caseCategory: string | null
+}): FrozenVerdict | null {
+  const parsed = FrozenVerdictSchema.safeParse(input.stored)
+  if (parsed.success) return parsed.data
+  if (input.brief === null) return null
+  return {
+    lines: briefVerdict(input.brief, {
+      caseCategory: input.caseCategory,
+      checkedAngle: input.brief.chosenAngle ?? input.brief.recommendedAngle,
+    }),
+    thresholds: { ...DEFAULT_RESEARCH_THRESHOLDS },
+    frozenAt: new Date().toISOString(),
+    recomputed: true,
+  }
 }

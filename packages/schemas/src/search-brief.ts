@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_RESEARCH_THRESHOLDS } from './research-thresholds'
 import {
   SEARCHED_TERMS_MAX,
   byMonthlySearchesDesc,
@@ -219,7 +220,7 @@ export function maskFigures(keyword: string): string {
 }
 
 /** Below this `overall` a keyword is never offered as the target. */
-export const PICK_FLOOR = 50
+export const PICK_FLOOR = DEFAULT_RESEARCH_THRESHOLDS.pickFloor
 const CANDIDATES_MAX = 3
 
 /**
@@ -231,7 +232,7 @@ const CANDIDATES_MAX = 3
  */
 export function pickTargetCandidates(
   rows: readonly SearchKeyword[],
-  options: { preferredWords: readonly string[]; language?: string },
+  options: { preferredWords: readonly string[]; language?: string; floor?: number },
 ): SearchKeyword[] {
   const kinds = classifySearchTerms(
     rows.map((r) => r.keyword),
@@ -241,7 +242,7 @@ export function pickTargetCandidates(
     (r) =>
       !keywordHasFigure(r.keyword) &&
       kinds.get(keyOf(r.keyword)) === 'keyword' &&
-      (r.overall ?? -1) >= PICK_FLOOR,
+      (r.overall ?? -1) >= (options.floor ?? PICK_FLOOR),
   )
   const fitting = eligible.filter((r) => r.fit === undefined || r.fit === 'fits')
   const pool = fitting.length > 0 ? fitting : eligible.filter((r) => r.fit === 'partly')

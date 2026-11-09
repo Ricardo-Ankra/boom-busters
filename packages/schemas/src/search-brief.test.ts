@@ -263,6 +263,17 @@ describe('pickTargetCandidates', () => {
       'wework stock',
     ])
   })
+  test('pickTargetCandidates honours a lower floor', () => {
+    const low = [kw('wework low', 40, { fit: 'fits' }), kw('wework high', 60, { fit: 'fits' })]
+    expect(pickTargetCandidates(low, { preferredWords: [] }).map((r) => r.keyword)).toEqual([
+      'wework high',
+    ])
+    expect(
+      pickTargetCandidates(low, { preferredWords: [], floor: 40 })
+        .map((r) => r.keyword)
+        .sort(),
+    ).toEqual(['wework high', 'wework low'])
+  })
   test('an undefined fit counts as fitting', () => {
     const out = pickTargetCandidates([kw('wework news', 60, { estimatedMonthlySearch: 10 })], {
       preferredWords: [],

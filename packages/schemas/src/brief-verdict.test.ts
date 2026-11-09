@@ -6,8 +6,10 @@ import {
   type SearchBrief,
   type SearchKeyword,
 } from './search-brief'
+import { DEFAULT_RESEARCH_THRESHOLDS } from './research-thresholds'
 import {
   briefHasFullChecks,
+  frozenVerdictFor,
   briefVerdict,
   fieldCompetition,
   isStaleField,
@@ -450,5 +452,55 @@ describe('old briefs', () => {
     expect(briefHasFullChecks(parsed)).toBe(false)
     expect(JSON.parse(JSON.stringify(parsed)).secondaryKeywords).toEqual(old.secondaryKeywords)
     expect(briefVerdict(parsed, ctx)).toHaveLength(5)
+  })
+})
+
+describe('tuned thresholds', () => {
+  const six = (b = brief()) =>
+    brief({ targetKeyword: { ...b.targetKeyword!, estimatedMonthlySearch: 600 } })
+
+  it('briefVerdict with tuned demand lines judges 600 searches ok when demandWarn is 500 and demandOk is 600', () => {
+    const tuned = { ...DEFAULT_RESEARCH_THRESHOLDS, demandWarn: 500, demandOk: 600 }
+    const lineOf = (t?: typeof tuned) =>
+      briefVerdict(six(), ctx, t).find((l) => l.check === 'demand')!
+    expect(lineOf(tuned).state).toBe('ok')
+    expect(lineOf().state).toBe('bad')
+  })
+
+  it("the default thresholds give today's verdicts", () => {
+    const b = brief({ fieldChecks: [check(WEWORK)] })
+    expect(briefVerdict(b, ctx, DEFAULT_RESEARCH_THRESHOLDS)).toEqual(briefVerdict(b, ctx))
+    expect(openDoors(check(WEWORK), DEFAULT_RESEARCH_THRESHOLDS)).toBe(openDoors(check(WEWORK)))
+    expect(fieldCompetition(check(WEWORK), DEFAULT_RESEARCH_THRESHOLDS)).toBe(
+      fieldCompetition(check(WEWORK)),
+    )
+  })
+
+  it('a looser open door rule counts a larger channel', () => {
+    const loose = { ...DEFAULT_RESEARCH_THRESHOLDS, openDoorMaxSubscribers: 2_000_000 }
+    expect(openDoors(check(WEWORK), loose)).toBeGreaterThan(openDoors(check(WEWORK)))
+  })
+})
+
+describe('frozenVerdictFor', () => {
+  const stored = {
+    lines: [{ check: 'demand', state: 'ok', reason: 'x' }],
+    thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+    frozenAt: '2026-11-01T00:00:00.000Z',
+  }
+  it('returns a stored verdict as it is', () => {
+    expect(frozenVerdictFor({ stored, brief: brief(), caseCategory: 'business' })).toEqual(stored)
+  })
+  it('recomputes with the defaults when nothing parses, marked recomputed', () => {
+    const out = frozenVerdictFor({ stored: null, brief: brief(), caseCategory: 'business' })
+    expect(out?.recomputed).toBe(true)
+    expect(out?.lines).toHaveLength(5)
+    expect(out?.thresholds).toEqual(DEFAULT_RESEARCH_THRESHOLDS)
+    expect(
+      frozenVerdictFor({ stored: { junk: 1 }, brief: brief(), caseCategory: null })?.recomputed,
+    ).toBe(true)
+  })
+  it('is null without a brief', () => {
+    expect(frozenVerdictFor({ stored: null, brief: null, caseCategory: null })).toBeNull()
   })
 })
