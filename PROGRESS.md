@@ -10484,9 +10484,9 @@ Part 2 checklist:
      punctuation, years, word order, and for English accents, stop words and
      a trailing plural s), then one model call
      covers only the leftovers. A term the model does not return is stored as
-     `unmatched`. The day-28 rank check runs before the model call and is
-     recorded, and a report whose rank was paid for but not recorded still
-     freezes with it. A manual check is never carried into the frozen report
+     `unmatched`. The day-28 rank check runs after the model has answered
+     (see 444) and is recorded, and a report whose rank was paid for but not
+     recorded still freezes with it. A manual check is never carried into the frozen report
      (see 443). It reads VidIQ's top 10: the spec said 20, but VidIQ's search
      returns 10, so copy says "not in the top 10" and the stored position
      reads that way. A rank failure that is not the credit cap defers on the
@@ -10592,7 +10592,25 @@ Part 2 checklist:
      checked: the report was made too late for a day-28 rank", because a rank
      cannot be backdated. The runner no longer reuses any recorded rank
      check: a manual check could otherwise land in the frozen report. The
-     price is that a model failure after the runner has paid for the rank
-     buys it again on the next run (5 credits, at most twice per report);
-     the alternative was a new column to tell the two apart. Rank, dismiss
+     price was that a model failure after the runner had paid for the rank
+     bought it again on the next run; decision 444 replaced that by buying
+     the rank after the model answers. Rank, dismiss
      and add-keyword refuse an archived channel like the tuning actions do.
+444. **The rank follows the model answer, and three small corrections**
+     (2026-11-09). The day-28 rank is now bought after the term-match model
+     has answered (or the deterministic-only fallback is chosen), just
+     before the report is built and frozen, so a model deferral never buys
+     it twice and a rank bought late in the cap ladder is not discarded.
+     Before the model, a free budget check (`checkVidiqBudget` for one
+     search, which spends nothing) keeps a capped month from calling the
+     model every day: a refusal defers on the same 7-run rank ladder and
+     freezes with "credit cap" on the last. A rank failure after the model
+     answered uses the same ladder, and the retry repeats the model call,
+     which costs cents and never VidIQ credits. The window rule is
+     unchanged. An own angle is a check that never ran, so its verdict line
+     carries `measured: false` and the track record no longer scores it as
+     a warning. The live view's publish date, when the record has no
+     scheduled time, is the day of the video's first analytics snapshot
+     (`firstSnapshotDateForVideo`), which never moves; the record's last
+     update stays as the last resort when there is no snapshot, because it
+     drifts with every metadata or thumbnail edit.
