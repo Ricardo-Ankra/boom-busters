@@ -154,7 +154,8 @@ export async function buildFromPlan(input: {
 /**
  * The frames (spec 9.2, step 3): the rest shots and the dense moments four
  * a frame apart from each storyboard line, both sheets, stored under the
- * version's round. Null without storage to keep them or without a shot.
+ * version's round. Without them, the reason (decision 445): no storage to
+ * keep them, or the browser's own.
  */
 export async function photographVersion(input: {
   channel: LoopChannel
@@ -164,8 +165,10 @@ export async function photographVersion(input: {
   round: number
   code: GraphicCode
   frames: GraphicFrames
-}): Promise<{ frames: ExemplarFrames; findings: string[]; metrics: MotionMetrics | null } | null> {
-  if (!storageConfigured()) return null
+}): Promise<
+  { frames: ExemplarFrames; findings: string[]; metrics: MotionMetrics | null } | { none: string }
+> {
+  if (!storageConfigured()) return { none: 'no storage to keep the frames' }
   const { channel, entry, plan } = input
   const context = derivedContext(entry, plan)
   const slot = derivedSlot(entry, plan, context)
@@ -177,7 +180,7 @@ export async function photographVersion(input: {
     dense: storyboardMoments(plan.storyboard, entry.slot.durationMs),
     deadline: Date.now() + GRAPHIC_DESIGN_DEADLINE_MS,
   })
-  if (!shot) return null
+  if ('none' in shot) return shot
   const { photographed, metrics } = shot
   const keyInput = { channelId: channel.channelId, versionId: input.versionId, round: input.round }
   const shots: ExemplarFrames['shots'] = []

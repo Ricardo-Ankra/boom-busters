@@ -138,6 +138,14 @@ export function planSteer(plan: ExemplarPlan): string {
 }
 
 /** The refine's steer: the owner's words first, then what is kept, then the plan. */
-export function refineSteer(steer: string, plan: ExemplarPlan): string {
-  return `The producer's steer: ${steer}\nWhat the steer does not name is kept exactly as it is.\n${planSteer(plan)}`
+export function refineSteer(
+  steer: string,
+  plan: ExemplarPlan,
+  /** The layout check's refusal of the version refined, first (decision 445). */
+  refusal?: string | null,
+): string {
+  const refused = refusal
+    ? `The layout check refused the version this refines: ${refusal}. Fix that first.\n`
+    : ''
+  return `${refused}The producer's steer: ${steer}\nWhat the steer does not name is kept exactly as it is.\n${planSteer(plan)}`
 }

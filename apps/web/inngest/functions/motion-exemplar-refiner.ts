@@ -93,7 +93,7 @@ export const motionExemplarRefiner = inngest.createFunction(
           }
         }
         const channel = await loopChannel(channelId)
-        const guidance = refineSteer(steer, parent.plan)
+        const guidance = refineSteer(steer, parent.plan, parent.refusal)
         let result: Awaited<ReturnType<typeof buildFromPlan>>
         if (mock) {
           const context = derivedContext(entry, parent.plan)
@@ -182,7 +182,10 @@ export const motionExemplarRefiner = inngest.createFunction(
         code: version.code,
         frames: browserFrames(),
       })
-      if (!photographed) return null
+      if ('none' in photographed) {
+        channel.log(`the refine of ${parent.technique} has no frames: ${photographed.none}`)
+        return null
+      }
       try {
         await updateExemplarDraft(db, versionId, {
           frames: photographed.frames,

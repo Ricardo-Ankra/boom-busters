@@ -1,5 +1,5 @@
 {
-  "id": "ec328d42-ea64-4eec-afaa-ada3f12dea6d",
+  "id": "14a703a1-7cfa-4186-9604-c5603f447d16",
   "prevId": "b18cba37-b7a2-4c94-a233-1aecd1ee3ce5",
   "version": "7",
   "dialect": "postgresql",
@@ -1062,6 +1062,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "refusal": {
+          "name": "refusal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cost_usd": {
           "name": "cost_usd",
           "type": "numeric(12, 4)",
@@ -1782,18 +1788,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "evidence_status": {
-          "name": "evidence_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "evidence_document_id": {
-          "name": "evidence_document_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "series": {
           "name": "series",
           "type": "jsonb",
@@ -1858,19 +1852,6 @@
           "tableTo": "research_documents",
           "columnsFrom": [
             "legal_status_document_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "claims_evidence_document_id_research_documents_id_fk": {
-          "name": "claims_evidence_document_id_research_documents_id_fk",
-          "tableFrom": "claims",
-          "tableTo": "research_documents",
-          "columnsFrom": [
-            "evidence_document_id"
           ],
           "columnsTo": [
             "id"
@@ -6331,8 +6312,7 @@
         "video",
         "figures",
         "regulator",
-        "court",
-        "scholarly"
+        "court"
       ]
     },
     "public.edit_type": {

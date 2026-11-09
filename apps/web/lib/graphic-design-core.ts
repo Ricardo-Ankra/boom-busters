@@ -90,7 +90,19 @@ export interface GraphicSlotTiming {
   durationMs: number
 }
 
-export type GraphicDesignResult = { ok: true; code: GraphicCode } | { ok: false; issue: string }
+export type GraphicDesignResult =
+  | { ok: true; code: GraphicCode }
+  | {
+      ok: false
+      issue: string
+      /**
+       * The last design that passed every static check and was refused only by
+       * the browser's layout check, with that refusal (decision 445): a near
+       * miss worth keeping as a draft to refine, where a static refusal leaves
+       * nothing that plays.
+       */
+      nearMiss?: { code: GraphicCode; issue: string }
+    }
 
 /**
  * Whatever completes a request: the app's ledgered `callLlm`, or a test's
@@ -335,8 +347,11 @@ function inspector(
   checkSlot: ReturnType<typeof designInput>['checkSlot'],
   options: FramesOptions,
   deadline: number,
+  /** Told why an inspection gave nothing (decision 445). */
+  onNone?: (reason: string) => void,
 ) {
   let framesDown = !options.frames
+  let downReason = 'the browser is off'
   return async (
     code: GraphicCode,
     mode: {
@@ -346,9 +361,15 @@ function inspector(
       sheets?: boolean
     },
   ): Promise<FramesResult | null> => {
-    if (framesDown || !options.frames) return null
+    if (framesDown || !options.frames) {
+      onNone?.(downReason)
+      return null
+    }
     const left = deadline - Date.now() - FRAMES_MARGIN_MS
-    if (left < FRAMES_MIN_MS) return null
+    if (left < FRAMES_MIN_MS) {
+      onNone?.('too little of the step was left to start the browser')
+      return null
+    }
     try {
       return await options.frames.inspect({
         compiled: code.compiled,
@@ -360,7 +381,9 @@ function inspector(
     } catch (error) {
       if (!(error instanceof FramesUnavailable)) throw error
       framesDown = true
+      downReason = error.message
       options.log?.(`without the browser: ${error.message}`)
+      onNone?.(error.message)
       return null
     }
   }
@@ -414,6 +437,7 @@ export async function designGraphicWith(
     options.log?.(`refused: ${issue}`)
     throw new ValidationError(issue, { field: 'graphic code' })
   }
+  let nearMiss: { code: GraphicCode; issue: string } | undefined
 
   try {
     // At most two calls (decision 292): the checks refuse a design inside the
@@ -429,7 +453,10 @@ export async function designGraphicWith(
         })
         if ('issue' in checked) return refuse(checked.issue)
         const inspected = await inspect(checked.code, { shots: false, measure: true })
-        if (inspected?.layoutIssue) return refuse(inspected.layoutIssue)
+        if (inspected?.layoutIssue) {
+          nearMiss = { code: checked.code, issue: inspected.layoutIssue }
+          return refuse(inspected.layoutIssue)
+        }
         return checked.code
       },
       complete: call,
@@ -438,7 +465,8 @@ export async function designGraphicWith(
       retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
       cutOffIssue: CUT_OFF_ISSUE,
     })
-    return answer.ok ? { ok: true, code: answer.value } : { ok: false, issue: answer.issue }
+    if (answer.ok) return { ok: true, code: answer.value }
+    return { ok: false, issue: answer.issue, ...(nearMiss ? { nearMiss } : {}) }
   } catch (error) {
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
     // A budget stop parks the run whenever it comes. Anything else once the
@@ -474,22 +502,27 @@ export function criticPlanOf(code: GraphicCode, context: GraphicDesignContext): 
 /**
  * The design photographed for the critic (spec 10.2 and 10.4): the rest
  * moments, the dense moments given, both sheets, the findings and the
- * measured motion. Null when the browser is off, cannot start, or returns
- * no rest shot; the dense set and the sheets are best effort.
+ * measured motion. When there are none, the reason (decision 445): the
+ * browser is off, too little time was left, the browser's own failure, or
+ * no rest shot came back; the dense set and the sheets are best effort.
  */
 export async function photographForCritic(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
   code: GraphicCode,
   options: FramesOptions & { motion: MotionIdentity; dense: readonly number[]; deadline: number },
-): Promise<{ photographed: FramesResult; metrics: MotionMetrics | null } | null> {
+): Promise<{ photographed: FramesResult; metrics: MotionMetrics | null } | { none: string }> {
   const words = slotWords(context, slot)
+  let why = 'the browser is off'
   const inspect = inspector(
     context,
     slot,
     { brief: slot.brief, durationMs: slot.durationMs, words },
     options,
     options.deadline,
+    (reason) => {
+      why = reason
+    },
   )
   const photographed = await inspect(code, {
     shots: true,
@@ -497,7 +530,8 @@ export async function photographForCritic(
     dense: options.dense,
     sheets: true,
   })
-  if (!photographed || photographed.shots.length === 0) return null
+  if (!photographed) return { none: why }
+  if (photographed.shots.length === 0) return { none: 'the browser returned no rest shot' }
   const metrics = await motionMetrics(
     photographed.dense,
     slot.durationMs,
@@ -568,7 +602,7 @@ export async function reviewGraphicWith(
       dense: denseMoments(slot.durationMs),
       deadline,
     })
-    if (!shot) return skipped('no frames to show')
+    if ('none' in shot) return skipped('no frames to show')
     const { photographed, metrics } = shot
     const frames: ReviewFrame[] = photographed.shots.map((shot) => ({
       label: frameLabel(shot),

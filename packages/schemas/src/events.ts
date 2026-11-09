@@ -461,6 +461,12 @@ export const MotionExemplarsDeriveSchema = z.object({
   derivationId: UlidSchema,
 })
 
+/** "Stop the derivation" (decision 445): the run of this derivation is cancelled between steps. */
+export const MotionExemplarsDeriveStopSchema = z.object({
+  channelId: UlidSchema,
+  derivationId: UlidSchema,
+})
+
 /** A refine (section 9.3): one build from the parent version under the steer. */
 export const MotionExemplarRefineSchema = z.object({
   channelId: UlidSchema,
@@ -525,6 +531,7 @@ export const EVENT_SCHEMAS = {
 
   'motion/reference.ingested': MotionReferenceIngestedSchema,
   'motion/exemplars.derive': MotionExemplarsDeriveSchema,
+  'motion/exemplars.derive.stop': MotionExemplarsDeriveStopSchema,
   'motion/exemplar.refine': MotionExemplarRefineSchema,
 } as const
 

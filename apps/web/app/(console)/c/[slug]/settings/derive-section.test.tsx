@@ -1,11 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { DerivationView } from './exemplar-actions'
 import { DeriveSection } from './derive-section'
 
+const stopDerivationAction = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
 vi.mock('./exemplar-actions', () => ({
   deriveExemplarsAction: vi.fn(),
   latestDerivationAction: vi.fn(async () => ({ ok: true })),
+  stopDerivationAction,
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
@@ -102,6 +104,70 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
     )
     expect(screen.getByRole('button', { name: 'Derive exemplars' })).toBeDisabled()
     expect(screen.getByText('No derivation has run yet.')).toBeInTheDocument()
+  })
+
+  it('offers Stop while a derivation runs, and sends it (decision 445)', async () => {
+    render(
+      <DeriveSection
+        channelId="01J00000000000000000000CH1"
+        derivation={{ ...derivation, state: 'running', finishedAt: null }}
+        jobRunning
+        techniques={techniques}
+        defaults={[]}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
+        storageReady
+        archived={false}
+      />,
+    )
+    expect(
+      screen.getByText('Stop ends the run after the call in progress. Drafts already stored stay.'),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the derivation' }))
+    await waitFor(() =>
+      expect(stopDerivationAction).toHaveBeenCalledWith('01J00000000000000000000CH1', 'd1'),
+    )
+  })
+
+  it('has no Stop once the derivation ended, and says how a stopped one ended (decision 445)', () => {
+    render(
+      <DeriveSection
+        channelId="01J00000000000000000000CH1"
+        derivation={{
+          ...derivation,
+          spentUsd: 1.2,
+          error: 'Stopped from the Derive section',
+          progress: [
+            {
+              technique: 'stat-counter',
+              state: 'ready',
+              versionId: 'v1',
+              reason: null,
+              costUsd: 1.2,
+            },
+            { technique: 'bar-chart', state: 'running', versionId: null, reason: null, costUsd: 0 },
+            {
+              technique: 'lower-third',
+              state: 'pending',
+              versionId: null,
+              reason: null,
+              costUsd: 0,
+            },
+          ],
+        }}
+        jobRunning={false}
+        techniques={techniques}
+        defaults={[]}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
+        storageReady
+        archived={false}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Stop the derivation' })).toBeNull()
+    expect(
+      screen.getByText('Stopped from the Derive section, $1.20 of $5 spent.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('stopped before it finished')).toBeInTheDocument()
+    expect(screen.getByText('not run')).toBeInTheDocument()
   })
 
   it('says what the proposal did (spec 8.5)', () => {

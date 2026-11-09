@@ -48,6 +48,7 @@ const version = (over: Partial<ChannelExemplarVersionView>): ChannelExemplarVers
   createdAt: '2026-11-04T10:00:00.000Z',
   approvedAt: null,
   copiedFrom: null,
+  refusal: null,
   ...over,
 })
 

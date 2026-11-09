@@ -204,7 +204,10 @@ function ExemplarCard({
   const name = isHouse(exemplar) ? techniqueName(exemplar.technique) : exemplar.name
   const approved = own?.approved ?? null
   const draft = own?.pendingDraft ?? null
-  const [steer, setSteer] = React.useState('')
+  // A refused draft with nothing approved is what Refine works on: its steer is ready (decision 445).
+  const [steer, setSteer] = React.useState(
+    !approved && draft?.refusal ? 'Fix what the layout check refused.' : '',
+  )
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [versionsOpen, setVersionsOpen] = React.useState(false)
   const [refiningSince, setRefiningSince] = React.useState<number | null>(null)
@@ -368,6 +371,12 @@ function ExemplarCard({
                 : ''}
             </p>
             <p className="text-[13px]">{draft.concept}</p>
+            {draft.refusal ? (
+              <p role="status" className="text-[13px] text-[var(--color-danger)]">
+                The layout check refused this draft: {draft.refusal}. Refine it to fix that; it
+                cannot be approved as it is.
+              </p>
+            ) : null}
             <CriticLines version={draft} />
             <GraphicPlayback
               slotId={`exemplar-${exemplar.technique}-${draft.id}`}
@@ -471,7 +480,7 @@ function DraftApprove({
   }
   return (
     <div>
-      <Button type="button" onClick={approve} disabled={disabled || busy}>
+      <Button type="button" onClick={approve} disabled={disabled || busy || draft.refusal !== null}>
         Approve this
       </Button>
     </div>

@@ -7,6 +7,7 @@ import {
   MediaJobCompletedSchema,
   MotionExemplarRefineSchema,
   MotionExemplarsDeriveSchema,
+  MotionExemplarsDeriveStopSchema,
   MotionReferenceIngestedSchema,
   DemoRequestedSchema,
   EVENT_NAMES,
@@ -167,6 +168,9 @@ export const events = {
   }),
   motionExemplarsDerive: eventType('motion/exemplars.derive', {
     schema: MotionExemplarsDeriveSchema,
+  }),
+  motionExemplarsDeriveStop: eventType('motion/exemplars.derive.stop', {
+    schema: MotionExemplarsDeriveStopSchema,
   }),
   motionExemplarRefine: eventType('motion/exemplar.refine', {
     schema: MotionExemplarRefineSchema,
