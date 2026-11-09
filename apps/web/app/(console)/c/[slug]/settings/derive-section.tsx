@@ -5,9 +5,14 @@ import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/components/ui/toast'
 import type { DerivationEstimateTable } from '@/lib/derivation-estimate'
 import { DeriveDialog, techniqueName } from './derive-dialog'
-import { latestDerivationAction, type DerivationView } from './exemplar-actions'
+import {
+  latestDerivationAction,
+  stopDerivationAction,
+  type DerivationView,
+} from './exemplar-actions'
 import type { TechniqueOption } from './motion-tab'
 
 /**
@@ -20,13 +25,13 @@ import type { TechniqueOption } from './motion-tab'
 const POLL_MS = 5000
 const money = (usd: number) => `$${usd.toFixed(2)}`
 
-/** A technique's state in words. */
-export function progressLine(entry: TechniqueProgress): string {
+/** A technique's state in words; once the run ended, an unfinished one says so (decision 445). */
+export function progressLine(entry: TechniqueProgress, runEnded = false): string {
   switch (entry.state) {
     case 'pending':
-      return 'waiting'
+      return runEnded ? 'not run' : 'waiting'
     case 'running':
-      return 'running'
+      return runEnded ? 'stopped before it finished' : 'running'
     case 'ready':
       return 'ready for your review'
     case 'wants-pass':
@@ -66,7 +71,10 @@ function stateLine(derivation: DerivationView): string {
     case 'done':
       return `Done, ${money(derivation.spentUsd)} spent.`
     case 'stopped':
-      return `Stopped at the cap, ${money(derivation.spentUsd)} of $${derivation.capUsd} spent.`
+      // The cap stops a run with no error; a stop (here or outside the app) says which.
+      return derivation.error
+        ? `${derivation.error}, ${money(derivation.spentUsd)} of $${derivation.capUsd} spent.`
+        : `Stopped at the cap, ${money(derivation.spentUsd)} of $${derivation.capUsd} spent.`
     case 'failed':
       return `Failed: ${derivation.error ?? 'no reason given'}`
   }
@@ -96,7 +104,9 @@ export function DeriveSection({
   mechanismReferences?: number
 }) {
   const router = useRouter()
+  const { toast } = useToast()
   const [open, setOpen] = React.useState(false)
+  const [stopping, setStopping] = React.useState(false)
   const [latest, setLatest] = React.useState<DerivationView | null>(derivation)
   React.useEffect(() => setLatest(derivation), [derivation])
 
@@ -119,6 +129,26 @@ export function DeriveSection({
       : null
   const running = jobRunning || latest?.state === 'running'
 
+  const stop = async () => {
+    if (!latest) return
+    setStopping(true)
+    try {
+      const result = await stopDerivationAction(channelId, latest.id)
+      if (!result.ok) {
+        toast({
+          title: 'Could not stop the derivation',
+          description: result.error,
+          variant: 'error',
+        })
+        return
+      }
+      toast({ title: 'Stopped. The call in progress finishes first.' })
+      router.refresh()
+    } finally {
+      setStopping(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -129,11 +159,21 @@ export function DeriveSection({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={() => setOpen(true)} disabled={archived || running}>
             Derive exemplars
           </Button>
+          {latest?.state === 'running' ? (
+            <Button type="button" variant="outline" onClick={stop} disabled={stopping}>
+              {stopping ? 'Stopping' : 'Stop the derivation'}
+            </Button>
+          ) : null}
         </div>
+        {latest?.state === 'running' ? (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Stop ends the run after the call in progress. Drafts already stored stay.
+          </p>
+        ) : null}
         {latest ? (
           <div className="flex flex-col gap-2 text-[13px]">
             <p>{stateLine(latest)}</p>
@@ -142,7 +182,9 @@ export function DeriveSection({
               {latest.progress.map((entry) => (
                 <li key={entry.technique} className="flex flex-wrap items-baseline gap-x-3">
                   <span className="font-medium">{techniqueName(entry.technique)}</span>
-                  <span className="text-[var(--color-text-secondary)]">{progressLine(entry)}</span>
+                  <span className="text-[var(--color-text-secondary)]">
+                    {progressLine(entry, latest.state !== 'running')}
+                  </span>
                   <span className="text-[var(--color-text-muted)]">{money(entry.costUsd)}</span>
                 </li>
               ))}

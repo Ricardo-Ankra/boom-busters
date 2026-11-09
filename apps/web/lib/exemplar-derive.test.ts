@@ -116,6 +116,17 @@ describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
     expect(refined.endsWith(steer)).toBe(true)
   })
 
+  it("puts the version's layout refusal in front of the refine's steer (decision 445)", () => {
+    const refused = 'at 5.4 s in landscape, "LOSS" is set at 25 px'
+    const refined = refineSteer('slower', PLAN, refused)
+    expect(
+      refined.startsWith(
+        `The layout check refused the version this refines: ${refused}. Fix that first.\nThe producer's steer: slower\n`,
+      ),
+    ).toBe(true)
+    expect(refineSteer('slower', PLAN, null)).toBe(refineSteer('slower', PLAN))
+  })
+
   it('writes no dash', () => {
     expect(planSteer(PLAN) + refineSteer('x', PLAN)).not.toMatch(/[–—]/)
   })

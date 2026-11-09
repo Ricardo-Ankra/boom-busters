@@ -245,6 +245,22 @@ describeDb('motion-exemplar-refiner', () => {
       expect(approved.verify).toBeNull()
     })
 
+    it("builds a refused draft's refine with the refusal in front of the steer (decision 445)", async () => {
+      const parent = await insertExemplarVersion(db, {
+        channelId: FIRST_CHANNEL_ID,
+        technique: 'stat-counter',
+        plan,
+        code: parentCode(),
+        refusal: 'at 5.4 s in landscape, "LOSS" is set at 25 px',
+      })
+      callLlm.mockResolvedValue({ text: JSON.stringify(planned()) })
+      await refine(parent.id, 'Fix what the layout check refused.')
+      const [build] = callLlm.mock.calls[0]!
+      expect(build.messages.at(-1).content).toContain(
+        'The layout check refused the version this refines: at 5.4 s in landscape, "LOSS" is set at 25 px. Fix that first.',
+      )
+    })
+
     it('a refused build inserts nothing and leaves a heads-up', async () => {
       const parent = await aParent()
       callLlm.mockResolvedValue({

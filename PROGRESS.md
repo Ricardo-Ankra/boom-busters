@@ -10618,3 +10618,37 @@ Part 2 checklist:
      (`firstSnapshotDateForVideo`), which never moves; the record's last
      update stays as the last resort when there is no snapshot, because it
      drifts with every metadata or thumbnail edit.
+445. **A derivation that can be stopped, and says why it fell short**
+     (2026-11-09, branch `derive-recovery`, migration 0052). The owner's
+     first two production derivations ended with a stat counter "refused"
+     at $0.51 with nothing stored, a bar chart "stored without frames" at
+     $0.42, and no way to stop a run. Three changes. A build only the
+     browser's layout check refused is a near miss: `designGraphicWith`
+     hands back the last such design with its refusal (`nearMiss`; a
+     static refusal from the scan, compile, dry run or facts leaves none),
+     and the deriver stores it as a draft with `channel_exemplars.refusal`,
+     state `refused` with its version, and runs no critic on it, as spec
+     9.2 step 2 says. Approve refuses such a version ("Refine it first");
+     the Exemplars card shows the refusal, disables Approve and fills the
+     steer with "Fix what the layout check refused.", and the refine puts
+     the refusal in front of the steer (`refineSteer`). No frames now names
+     its cause: the browser switched off on the host, no storage, too
+     little of the step left, the browser's own failure (its message), or
+     no rest shot; `photographForCritic` and `photographVersion` answer
+     `{ none: reason }` in place of null, and a technique's reason is cut
+     at 500 characters when the progress is written. The 45 s inspection
+     cap is unchanged: the dense set runs on a soft clock after the rest
+     shots and is cut short, not failed, so the cap alone does not empty
+     the frames; the next run's reason will say what did. "Stop the
+     derivation" in the Derive section, while a run is live, sends
+     `motion/exemplars.derive.stop`, which the deriver's `cancelOn` matches
+     by derivation id, then closes the row as stopped with the spend so far
+     and "Stopped from the Derive section". Inngest cancels between steps,
+     so the call in flight finishes and is paid; drafts already stored
+     stay. A stop that cannot be sent leaves the run running. The section
+     says how a stopped run ended (the cap, here, or outside the app) and
+     marks a technique left mid-way "stopped before it finished" and one
+     never reached "not run". Shipping: migration 0052, a Vercel deploy and
+     `PUT /api/inngest` (the deriver's options changed). Production rows
+     were not read: the permission classifier refused it this session, so
+     the bar chart's actual browser failure is unknown.

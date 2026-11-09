@@ -63,7 +63,6 @@ import { derivedContext, derivedSlot, planBounds, planSteer } from '@/lib/exempl
 import { channelProposalFor, pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
-import { storageConfigured } from '@/lib/storage'
 import { criticPlanOf, criticSteer } from '@/lib/graphic-design-core'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -233,7 +232,9 @@ async function deriveTechnique(
   // 2. The build, stored as a draft.
   const built = await step.run(
     name('build'),
-    async (): Promise<{ versionId: string } | { cap: string } | { refused: string }> => {
+    async (): Promise<
+      { versionId: string } | { cap: string } | { refused: string; versionId?: string }
+    > => {
       const cap = await overCap()
       if (cap) return { cap }
       const channel = await loopChannel(channelId)
@@ -276,7 +277,22 @@ async function deriveTechnique(
           return { refused: failedWith(error) }
         }
       }
-      if (!result.ok) return { refused: result.issue }
+      if (!result.ok) {
+        // A design only the browser refused is kept as a draft with the refusal,
+        // to refine for one call (spec 9.2 step 2, decision 445); a static
+        // refusal leaves nothing that plays.
+        if (!result.nearMiss) return { refused: result.issue }
+        const kept = await insertExemplarVersion(db, {
+          channelId,
+          technique,
+          plan,
+          code: result.nearMiss.code,
+          derivationId: derivation.id,
+          proposal,
+          refusal: result.nearMiss.issue,
+        })
+        return { refused: result.nearMiss.issue, versionId: kept.id }
+      }
       const row = await insertExemplarVersion(db, {
         channelId,
         technique,
@@ -289,7 +305,9 @@ async function deriveTechnique(
     },
   )
   if ('cap' in built) return stopped(built.cap, null)
-  if ('refused' in built) return { state: 'refused', reason: built.refused, versionId: null }
+  if ('refused' in built) {
+    return { state: 'refused', reason: built.refused, versionId: built.versionId ?? null }
+  }
   const { versionId } = built
 
   // 3 to 6. The rounds. A critic and, unless it passed or asked nothing, a
@@ -313,7 +331,7 @@ async function deriveTechnique(
         | { none: string }
       > => {
         if (mock) return { none: 'mock providers' }
-        if (!framesOn()) return { none: 'no frames to show' }
+        if (!framesOn()) return { none: 'the browser is switched off on this host' }
         const version = await exemplarVersionById(db, versionId)
         if (!version) return { none: 'the version is gone' }
         if (version.status !== 'draft') return { none: 'the owner decided on the version' }
@@ -327,11 +345,7 @@ async function deriveTechnique(
           code: version.code,
           frames: browserFrames(),
         })
-        if (!photographed) {
-          return {
-            none: storageConfigured() ? 'no frames to show' : 'no storage to keep the frames',
-          }
-        }
+        if ('none' in photographed) return photographed
         try {
           await updateExemplarDraft(db, versionId, {
             frames: photographed.frames,
@@ -577,6 +591,9 @@ export const motionExemplarDeriver = inngest.createFunction(
     // stale lock must never swallow a relaunch (decision 233); the launch
     // action refuses while one runs, so nothing is cancelled by accident.
     singleton: { key: 'event.data.channelId', mode: 'cancel' },
+    // "Stop the derivation" (decision 445): cancelled between steps, so the
+    // call in flight finishes; the action has already closed the row.
+    cancelOn: [{ event: 'motion/exemplars.derive.stop', match: 'data.derivationId' }],
     onFailure: async ({ event }) => {
       const derivationId = event.data.event.data['derivationId']
       if (typeof derivationId !== 'string') return
@@ -753,7 +770,9 @@ export const motionExemplarDeriver = inngest.createFunction(
       await step.run(`${technique}/done`, async () => {
         const spent = await jobSpendUsd(db, derivationId)
         const costUsd = Math.max(0, Math.round((spent - before) * 10_000) / 10_000)
-        await updateTechniqueProgress(db, derivationId, technique, { ...outcome, costUsd })
+        // A reason from the browser or the model can run long; the progress keeps 500 characters.
+        const reason = outcome.reason?.slice(0, 500) ?? null
+        await updateTechniqueProgress(db, derivationId, technique, { ...outcome, reason, costUsd })
         if (outcome.versionId) {
           const version = await exemplarVersionById(db, outcome.versionId)
           if (version?.status === 'draft')

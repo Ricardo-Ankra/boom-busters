@@ -1,0 +1,1 @@
+ALTER TABLE "channel_exemplars" ADD COLUMN "refusal" text;

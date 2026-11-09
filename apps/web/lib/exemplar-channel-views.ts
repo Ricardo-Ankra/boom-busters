@@ -41,6 +41,8 @@ export interface ChannelExemplarVersionView {
   createdAt: string
   approvedAt: string | null
   copiedFrom: string | null
+  /** The layout check's refusal of a kept build (decision 445): refine it, never approve it. */
+  refusal: string | null
 }
 
 export interface ChannelExemplarView {
@@ -77,6 +79,7 @@ function versionView(row: ChannelExemplarRow): ChannelExemplarVersionView {
     createdAt: row.createdAt.toISOString(),
     approvedAt: row.approvedAt?.toISOString() ?? null,
     copiedFrom: row.copiedFrom,
+    refusal: row.refusal,
   }
 }
 

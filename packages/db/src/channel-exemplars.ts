@@ -37,6 +37,8 @@ export async function insertExemplarVersion(
     copiedFrom?: string | null
     /** A channel's own technique carries the proposal it was derived from (spec 8.5). */
     proposal?: TechniqueProposal | null
+    /** The layout check's refusal of a build kept as a draft (decision 445). */
+    refusal?: string | null
     status?: ExemplarStatus
   },
 ): Promise<ChannelExemplarRow> {
@@ -63,6 +65,7 @@ export async function insertExemplarVersion(
         derivationId: input.derivationId ?? null,
         copiedFrom: input.copiedFrom ?? null,
         proposal: input.proposal ?? null,
+        refusal: input.refusal ?? null,
         status: input.status ?? 'draft',
         ...(input.status === 'approved' ? { approvedAt: new Date() } : {}),
       })

@@ -109,6 +109,7 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
   createdAt: '2026-11-04T10:00:00.000Z',
   approvedAt: '2026-11-04T10:00:00.000Z',
   copiedFrom: null,
+  refusal: null,
   ...over,
 })
 
@@ -229,6 +230,44 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
       ),
     )
     expect(refresh).toHaveBeenCalled()
+  })
+
+  it('shows a refused draft with its refusal, no Approve, and Refine ready to fix it (decision 445)', async () => {
+    actions.refineExemplarAction.mockResolvedValue({ ok: true })
+    const draft = channelVersion({
+      id: 'v1',
+      status: 'draft',
+      approvedAt: null,
+      scores: null,
+      verdict: null,
+      refusal: 'at 5.4 s in landscape, "LOSS" is set at 25 px',
+    })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[channelView({ pendingDraft: draft, versions: [draft] })]}
+      />,
+    )
+    const card = screen.getByRole('region', { name: 'Stat counter' })
+    expect(
+      within(card).getByText(
+        'The layout check refused this draft: at 5.4 s in landscape, "LOSS" is set at 25 px. Refine it to fix that; it cannot be approved as it is.',
+      ),
+    ).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Approve this' })).toBeDisabled()
+    expect(within(card).getByLabelText(/Refine with a steer/)).toHaveValue(
+      'Fix what the layout check refused.',
+    )
+    fireEvent.click(within(card).getByRole('button', { name: 'Refine' }))
+    await waitFor(() =>
+      expect(actions.refineExemplarAction).toHaveBeenCalledWith(
+        '01J00000000000000000000CH1',
+        'v1',
+        'Fix what the layout check refused.',
+      ),
+    )
   })
 
   it('lists the versions behind Versions with Restore on a retired one', async () => {

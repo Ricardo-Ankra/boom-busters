@@ -735,9 +735,10 @@ describe('the exemplar handed in, and the photograph for the critic (plan 4)', (
       dense: [100, 200],
       deadline: Date.now() + 240_000,
     })
-    expect(photographed?.photographed.shots).toEqual([shot])
-    expect(photographed?.photographed.findings).toHaveLength(1)
-    expect(photographed?.metrics?.simultaneity).toBe(0.2)
+    if ('none' in photographed) throw new Error(`no frames: ${photographed.none}`)
+    expect(photographed.photographed.shots).toEqual([shot])
+    expect(photographed.photographed.findings).toHaveLength(1)
+    expect(photographed.metrics?.simultaneity).toBe(0.2)
     expect(inspect.mock.calls[0]![0]).toMatchObject({
       shots: true,
       measure: 'findings',
@@ -749,8 +750,48 @@ describe('the exemplar handed in, and the photograph for the critic (plan 4)', (
       dense: [],
       deadline: Date.now() + 240_000,
     })
-    expect(none).toBeNull()
+    expect(none).toEqual({ none: 'the browser is off' })
     expect(criticPlanOf(code.code, CONTEXT)).toMatchObject({ title: code.code.title })
+  })
+})
+
+describe('photographForCritic says why it has no frames (decision 445)', () => {
+  const designed = async () =>
+    (
+      (await designGraphicWith(vi.fn().mockResolvedValue(answer('$4bn')), CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+      })) as { ok: true; code: GraphicCode }
+    ).code
+  const options = (deadline = Date.now() + 240_000) => ({
+    frames: { inspect },
+    motion: DEFAULT_MOTION_IDENTITY,
+    dense: [100],
+    deadline,
+  })
+
+  it("names the browser's own failure", async () => {
+    const code = await designed()
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { FramesUnavailable } = await vi.importActual<typeof Frames>('./graphic-code/frames')
+    inspect.mockRejectedValueOnce(
+      new FramesUnavailable("the designer's frames: the inspection did not finish in 45 s"),
+    )
+    expect(await photographForCritic(CONTEXT, SLOT, code, options())).toEqual({
+      none: "the designer's frames: the inspection did not finish in 45 s",
+    })
+  })
+
+  it('says when the browser returned no rest shot, and when too little time was left', async () => {
+    const code = await designed()
+    inspect.mockResolvedValueOnce(framed({ layoutIssue: null, shots: [] }))
+    expect(await photographForCritic(CONTEXT, SLOT, code, options())).toEqual({
+      none: 'the browser returned no rest shot',
+    })
+    inspect.mockClear()
+    expect(await photographForCritic(CONTEXT, SLOT, code, options(Date.now() + 5_000))).toEqual({
+      none: 'too little of the step was left to start the browser',
+    })
+    expect(inspect).not.toHaveBeenCalled()
   })
 })
 
@@ -980,6 +1021,39 @@ describe('the layout check in the design (decision 389)', () => {
       `[graphics] ${CONTEXT.projectId} c1 at 0.0 s: refused: ${LAYOUT}`,
     )
     logged.mockRestore()
+  })
+
+  it('hands back the last design only the browser refused, as a near miss (decision 445)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const SMALL =
+      'at 5.4 s in landscape, "LOSS" is set at 25 px, too small to read on a phone; set it at least 32 px'
+    inspect
+      .mockResolvedValueOnce(framed({ layoutIssue: LAYOUT, shots: [] }))
+      .mockResolvedValueOnce(framed({ layoutIssue: SMALL, shots: [] }))
+    callLlm.mockResolvedValueOnce(answer('$4bn')).mockResolvedValueOnce(answer('$4bn'))
+    const result = await designGraphic(CONTEXT, SLOT)
+    if (result.ok) throw new Error('the design should be refused')
+    expect(result.issue).toBe(SMALL)
+    expect(result.nearMiss?.issue).toBe(SMALL)
+    expect(result.nearMiss?.code.source).toBe(figureSource('$4bn'))
+    expect(result.nearMiss?.code.compiled.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the layout near miss when the retry fails a static check, and has none without one (decision 445)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    inspect.mockResolvedValueOnce(framed({ layoutIssue: LAYOUT, shots: [] }))
+    callLlm.mockResolvedValueOnce(answer('$4bn')).mockResolvedValueOnce(answer('$5bn'))
+    const mixed = await designGraphic(CONTEXT, SLOT)
+    if (mixed.ok) throw new Error('the design should be refused')
+    expect(mixed.issue).toBe(issueOf(planned('$5bn')))
+    expect(mixed.nearMiss?.issue).toBe(LAYOUT)
+    expect(mixed.nearMiss?.code.source).toBe(figureSource('$4bn'))
+
+    callLlm.mockReset()
+    callLlm.mockResolvedValue(answer('$5bn'))
+    const staticOnly = await designGraphic(CONTEXT, SLOT)
+    if (staticOnly.ok) throw new Error('the design should be refused')
+    expect(staticOnly.nearMiss).toBeUndefined()
   })
 
   it('asks no review inside the design: one call, unmarked', async () => {

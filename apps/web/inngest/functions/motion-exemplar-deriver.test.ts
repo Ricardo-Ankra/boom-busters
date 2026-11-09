@@ -451,6 +451,13 @@ describeDb('motion-exemplar-deriver', () => {
     expect(opts['singleton']).toEqual({ key: 'event.data.channelId', mode: 'cancel' })
   })
 
+  it('is cancelled by the stop event for its own derivation (decision 445)', () => {
+    const opts = (motionExemplarDeriver as unknown as { opts: Record<string, unknown> }).opts
+    expect(opts['cancelOn']).toEqual([
+      { event: 'motion/exemplars.derive.stop', match: 'data.derivationId' },
+    ])
+  })
+
   it('stops the technique at the cap with what it has and skips the rest', async () => {
     // Nothing spent until the build is stored; then the cap is crossed.
     // The start, the storyboard and the build see nothing spent; the critic sees the cap crossed.
@@ -504,11 +511,55 @@ describeDb('motion-exemplar-deriver', () => {
       callLlm.mockResolvedValueOnce(storyboard()).mockResolvedValueOnce(design())
       const { after } = await launch(['stat-counter'])
       expect(callLlm).toHaveBeenCalledTimes(2)
-      expect(after.progress[0]).toMatchObject({ state: 'no-frames', reason: 'no frames to show' })
+      expect(after.progress[0]).toMatchObject({
+        state: 'no-frames',
+        reason: 'the browser is switched off on this host',
+      })
       const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
       expect(version?.code.compiled.length).toBeGreaterThan(0)
       expect(version?.critique).toBeNull()
       expect(version?.verify).toBeNull()
+    })
+
+    it('keeps a design only the browser refused as a draft with its refusal, and runs no critic (decision 445)', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const SMALL =
+        'at 5.4 s in landscape, "LOSS" is set at 25 px, too small to read on a phone; set it at least 32 px'
+      inspect.mockResolvedValue({ ...framed(), layoutIssue: SMALL })
+      callLlm
+        .mockResolvedValueOnce(storyboard())
+        .mockResolvedValueOnce(design())
+        .mockResolvedValueOnce(design())
+      const { after } = await launch(['stat-counter'], 2)
+      // The storyboard and the two builds: no critic on a refused draft.
+      expect(callLlm).toHaveBeenCalledTimes(3)
+      expect(after.progress[0]).toMatchObject({ state: 'refused', reason: SMALL })
+      const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+      expect(version?.status).toBe('draft')
+      expect(version?.refusal).toBe(SMALL)
+      expect(version?.code.compiled.length).toBeGreaterThan(0)
+      expect(version?.critique).toBeNull()
+    })
+
+    it("says why there are no frames in the browser's own words, cut at 500 characters (decision 445)", async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const { FramesUnavailable } = await import('@/lib/graphic-code/frames')
+      const why = `the designer's frames cannot start a browser: ${'x'.repeat(600)}`
+      inspect.mockResolvedValueOnce(framed()).mockRejectedValueOnce(new FramesUnavailable(why))
+      callLlm.mockResolvedValueOnce(storyboard()).mockResolvedValueOnce(design())
+      const { after } = await launch(['stat-counter'])
+      expect(after.progress[0]!.state).toBe('no-frames')
+      expect(after.progress[0]!.reason).toBe(why.slice(0, 500))
+    })
+
+    it('says when the browser returned no rest shot (decision 445)', async () => {
+      inspect.mockResolvedValue(framed())
+      callLlm.mockResolvedValueOnce(storyboard()).mockResolvedValueOnce(design())
+      const { after } = await launch(['stat-counter'])
+      expect(after.progress[0]).toMatchObject({
+        state: 'no-frames',
+        reason: 'the browser returned no rest shot',
+      })
     })
 
     it('stops early when the critic passes every axis in round one', async () => {

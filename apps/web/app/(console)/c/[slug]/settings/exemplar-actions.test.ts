@@ -41,6 +41,7 @@ import {
   latestDerivationAction,
   refineExemplarAction,
   restoreExemplarVersionAction,
+  stopDerivationAction,
 } from './exemplar-actions'
 
 /**
@@ -206,6 +207,62 @@ describeDb('the exemplar actions', () => {
     const v2 = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL, parentId: v1.id })
     expect((await keepApprovedAction(channelId, v2.id)).ok).toBe(true)
     expect(await inUse()).not.toContain('ledger-wipe')
+  })
+
+  it('refuses to approve a draft the layout check refused, until a refine fixes it (decision 445)', async () => {
+    const draft = await aVersion({ refusal: 'at 5.4 s in landscape, "LOSS" is set at 25 px' })
+    expect(await approveExemplarVersionAction(channelId, draft.id)).toEqual({
+      ok: false,
+      error:
+        'The layout check refused this version (at 5.4 s in landscape, "LOSS" is set at 25 px). Refine it first.',
+    })
+    expect((await exemplarVersionById(db, draft.id))?.status).toBe('draft')
+    expect(await listVerdicts(db, channelId)).toHaveLength(0)
+  })
+
+  it('stops a running derivation: the stop event, then the row closed with what it spent (decision 445)', async () => {
+    const row = await createDerivation(db, {
+      channelId,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 5,
+    })
+    expect(await stopDerivationAction(channelId, row.id)).toEqual({ ok: true })
+    expect(sent.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'motion/exemplars.derive.stop',
+        data: { channelId, derivationId: row.id },
+      }),
+    )
+    const after = (await getDerivation(db, row.id))!
+    expect(after.state).toBe('stopped')
+    expect(after.error).toBe('Stopped from the Derive section')
+    expect(after.finishedAt).toBeInstanceOf(Date)
+  })
+
+  it("refuses to stop a derivation that is not running or not this channel's, and keeps one running when the stop cannot be sent (decision 445)", async () => {
+    const done = await createDerivation(db, {
+      channelId,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 5,
+    })
+    await finishDerivation(db, done.id, { state: 'done', spentUsd: 1 })
+    const notRunning = { ok: false, error: 'That derivation is not running.' }
+    expect(await stopDerivationAction(channelId, done.id)).toEqual(notRunning)
+    expect(await stopDerivationAction(channelId, newId())).toEqual(notRunning)
+    expect(sent.send).not.toHaveBeenCalled()
+
+    const running = await createDerivation(db, {
+      channelId,
+      techniques: ['stat-counter'],
+      rounds: 1,
+      capUsd: 5,
+    })
+    sent.send.mockRejectedValueOnce(new Error('offline'))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    expect(await stopDerivationAction(channelId, running.id)).toMatchObject({ ok: false })
+    expect((await getDerivation(db, running.id))!.state).toBe('running')
   })
 
   it('refuses a launch while a derivation runs', async () => {
