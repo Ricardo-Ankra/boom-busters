@@ -167,32 +167,54 @@ describe('SearchReportCard', () => {
     ).toBeTruthy()
   })
 
-  it('words each baseline basis', () => {
-    const peers = { 28: { band: 4, channel: 6 } }
+  it('words each baseline basis with the count the freeze used', () => {
     const { unmount } = render(
-      <SearchReportCard projectId={PROJECT} reports={reports({ frozen: [report(28)], peers })} />,
+      <SearchReportCard projectId={PROJECT} reports={reports({ frozen: [report(28)] })} />,
     )
-    expect(screen.getAllByText(/against 4 videos of similar length/).length).toBeGreaterThan(0)
+    // holdBand, dropBand and subsBand all hold four values in the fixture.
+    expect(screen.getAllByText(/against 4 videos of similar length/).length).toBe(3)
     unmount()
 
-    const channelOnly = report(28, {
+    // The three inputs differ in length: each row prints its own count and group.
+    const mixed = report(28, {
       baselineInputs: {
-        holdBand: [],
-        holdChannel: [300, 300, 300],
+        holdBand: [300, 300, 300, 300, 300],
+        holdChannel: [],
         dropBand: [],
-        dropChannel: [0.3, 0.3, 0.3],
-        subsBand: [],
-        subsChannel: [4, 4, 4],
+        dropChannel: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+        subsBand: [4, 4, 4],
+        subsChannel: [],
       },
     })
     const second = render(
-      <SearchReportCard
-        projectId={PROJECT}
-        reports={reports({ frozen: [channelOnly], peers: { 28: { band: 0, channel: 2 } } })}
-      />,
+      <SearchReportCard projectId={PROJECT} reports={reports({ frozen: [mixed] })} />,
     )
-    expect(screen.getAllByText(/against all 2 earlier videos/).length).toBeGreaterThan(0)
+    const rowOf = (label: RegExp) => screen.getByText(label)
+    expect(rowOf(/Search hold \(search viewers\)/)).toHaveTextContent(
+      'against 5 videos of similar length',
+    )
+    expect(rowOf(/Early drop \(all viewers\)/)).toHaveTextContent('against all 7 earlier videos')
+    expect(rowOf(/Subscribers per 1,000 views/)).toHaveTextContent(
+      'against 3 videos of similar length',
+    )
     second.unmount()
+
+    // A report frozen before counts were kept words it without a number.
+    const older = report(28)
+    const stripped = {
+      ...older,
+      baselines: {
+        searchHoldSec: { value: 300, basis: 'band' as const },
+        earlyDrop: { value: 0.3, basis: 'channel' as const },
+        subscribersPer1k: { value: 4, basis: 'band' as const },
+      },
+    }
+    const third = render(
+      <SearchReportCard projectId={PROJECT} reports={reports({ frozen: [stripped] })} />,
+    )
+    expect(rowOf(/Search hold/)).toHaveTextContent('against videos of similar length')
+    expect(rowOf(/Early drop/)).toHaveTextContent('against all earlier videos')
+    third.unmount()
 
     render(<SearchReportCard projectId={PROJECT} reports={reports({ live: live() })} />)
     expect(screen.getAllByText(/against this video's own average/).length).toBeGreaterThan(0)

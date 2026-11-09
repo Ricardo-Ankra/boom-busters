@@ -17,7 +17,7 @@ import {
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, defaultFormat } from '@boom-busters/schemas'
 import type { SearchBrief } from '@boom-busters/schemas'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
   addTermToKeywordsAction,
@@ -147,6 +147,11 @@ describeDb('checkRankAction and dismissTermAction', () => {
     channelId = channel.id
     const kase = await createCase(db, { title: 'Enron', category: 'collapse', channelId })
     projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Enron' })).id
+  })
+
+  // The brief is set on every project row: leave none behind for other suites.
+  afterEach(async () => {
+    await db.update(projects).set({ searchBrief: null })
   })
 
   const goLive = async (videoId: string) => {

@@ -93,10 +93,10 @@ describe('holdSec, median, baseline', () => {
     expect(median([1, 2, 3, 4])).toBe(2.5)
   })
   test('baseline uses the band at three, widens to the channel, then falls back to own', () => {
-    expect(baseline(9, [1, 2, 3], [100, 200, 300])).toEqual({ value: 2, basis: 'band' })
-    expect(baseline(9, [1, 2], [100, 200, 300])).toEqual({ value: 200, basis: 'channel' })
-    expect(baseline(9, [1, 2], [100, 200])).toEqual({ value: 9, basis: 'own' })
-    expect(baseline(null, [], [])).toEqual({ value: null, basis: 'own' })
+    expect(baseline(9, [1, 2, 3], [100, 200, 300])).toEqual({ value: 2, basis: 'band', count: 3 })
+    expect(baseline(9, [1, 2], [100, 200, 300])).toEqual({ value: 200, basis: 'channel', count: 3 })
+    expect(baseline(9, [1, 2], [100, 200])).toEqual({ value: 9, basis: 'own', count: 0 })
+    expect(baseline(null, [], [])).toEqual({ value: null, basis: 'own', count: 0 })
   })
 })
 
@@ -234,7 +234,7 @@ describe('buildSearchReport', () => {
     const r = buildSearchReport({ ...input, thresholds: custom })
     expect(SearchReportSchema.parse(r)).toEqual(r)
     expect(r.thresholds.holdRatio).toBe(0.9)
-    expect(r.baselines.searchHoldSec).toEqual({ value: 60, basis: 'own' })
+    expect(r.baselines.searchHoldSec).toEqual({ value: 60, basis: 'own', count: 0 })
     expect(r.baselines.earlyDrop.basis).toBe('own')
     expect(r.earlyDrop).toBeCloseTo(0.4, 10)
     expect(r.engagement.subscribersPer1k).toBe(10)
@@ -246,7 +246,21 @@ describe('buildSearchReport', () => {
       ...input,
       baselineInputs: { ...emptyBaselines, holdBand: [30, 40, 50] },
     })
-    expect(wide.baselines.searchHoldSec).toEqual({ value: 40, basis: 'band' })
+    expect(wide.baselines.searchHoldSec).toEqual({ value: 40, basis: 'band', count: 3 })
+  })
+  test('each baseline records its own count when the three inputs differ in length', () => {
+    const r = buildSearchReport({
+      ...input,
+      baselineInputs: {
+        ...emptyBaselines,
+        holdBand: [30, 40, 50, 60],
+        dropChannel: [0.1, 0.2, 0.3, 0.4, 0.5],
+        subsBand: [1, 2],
+      },
+    })
+    expect(r.baselines.searchHoldSec).toMatchObject({ basis: 'band', count: 4 })
+    expect(r.baselines.earlyDrop).toMatchObject({ basis: 'channel', count: 5 })
+    expect(r.baselines.subscribersPer1k).toMatchObject({ basis: 'own', count: 0 })
   })
   test('keeps at most 25 terms, biggest first', () => {
     const many = Array.from({ length: 30 }, (_, i) => term(`x${i}`, i + 1, 'unmatched'))

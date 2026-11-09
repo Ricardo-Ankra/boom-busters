@@ -138,7 +138,7 @@ export async function addRankCheck(
     channelId: string
     videoId: string
     keyword: string
-    /** Null means "not in the top 20". */
+    /** Null means "not in the top 10". */
     position: number | null
     checkedAt?: Date
   },

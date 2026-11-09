@@ -104,10 +104,11 @@ export function baseline(
   own: number | null,
   band: number[],
   channel: number[],
-): { value: number | null; basis: BaselineBasis } {
-  if (band.length >= 3) return { value: median(band), basis: 'band' }
-  if (channel.length >= 3) return { value: median(channel), basis: 'channel' }
-  return { value: own, basis: 'own' }
+): { value: number | null; basis: BaselineBasis; count: number } {
+  if (band.length >= 3) return { value: median(band), basis: 'band', count: band.length }
+  if (channel.length >= 3)
+    return { value: median(channel), basis: 'channel', count: channel.length }
+  return { value: own, basis: 'own', count: 0 }
 }
 
 const BucketSchema = z.enum(['target', 'researched', 'unresearched', 'unmatched'])
@@ -115,6 +116,8 @@ const BucketStatSchema = z.object({ views: z.number(), holdSec: z.number().nulla
 const BaselineSchema = z.object({
   value: z.number().nullable(),
   basis: z.enum(['band', 'channel', 'own']),
+  /** How many other videos' figures the baseline drew on; absent in a report frozen before it was kept. */
+  count: z.number().int().min(0).optional(),
 })
 
 export const SearchReportSchema = z.object({

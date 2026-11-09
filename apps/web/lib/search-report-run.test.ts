@@ -349,9 +349,9 @@ describe('runSearchReport', () => {
     expect(h.frozenReportsForChannel).toHaveBeenCalledWith({}, CHANNEL, 7)
     const { baselines } = frozenReport()
     // Band median of the three mid reports, not the short one, not itself.
-    expect(baselines.searchHoldSec).toEqual({ value: 200, basis: 'band' })
-    expect(baselines.earlyDrop).toEqual({ value: 0.2, basis: 'band' })
-    expect(baselines.subscribersPer1k).toEqual({ value: 4, basis: 'band' })
+    expect(baselines.searchHoldSec).toEqual({ value: 200, basis: 'band', count: 3 })
+    expect(baselines.earlyDrop).toEqual({ value: 0.2, basis: 'band', count: 3 })
+    expect(baselines.subscribersPer1k).toEqual({ value: 4, basis: 'band', count: 3 })
   })
 
   it('widens to the channel when the band has fewer than three reports', async () => {
@@ -364,7 +364,11 @@ describe('runSearchReport', () => {
 
     await runSearchReport(input(7))
 
-    expect(frozenReport().baselines.searchHoldSec).toEqual({ value: 200, basis: 'channel' })
+    expect(frozenReport().baselines.searchHoldSec).toEqual({
+      value: 200,
+      basis: 'channel',
+      count: 3,
+    })
   })
 
   it('takes the language from the brief, then the bible', async () => {

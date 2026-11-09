@@ -3,7 +3,6 @@ import {
   channelForProject,
   countUploadsSince,
   dismissedTermKeys,
-  frozenReportsForChannel,
   getArticleSources,
   getDossier,
   getProject,
@@ -23,11 +22,9 @@ import {
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
   buildSearchReport,
-  CHECKPOINTS,
   cohesionReport,
   DEFAULT_RESEARCH_THRESHOLDS,
   dropFixedParagraphs,
-  lengthBand,
   matchTermDeterministic,
   nameMatches,
   normaliseArticleUrl,
@@ -218,8 +215,6 @@ export interface SearchReportsModel {
   language?: string
   /** When the master went public, for the date a checkpoint becomes due. */
   publishedAt?: string | null
-  /** How many other videos each checkpoint's baselines drew on, by checkpoint. */
-  peers?: Partial<Record<number, { band: number; channel: number }>>
 }
 
 export function emptySearchReports(): SearchReportsModel {
@@ -289,41 +284,6 @@ export function liveSearchReport(input: {
     now: input.now,
   })
   return input.anyFrozen ? report : { ...report, outcome: 'too-early' }
-}
-
-/** Seconds watched per view, over the buckets of a frozen report that have a hold. */
-function reportHold(report: SearchReport): number | null {
-  let views = 0
-  let seconds = 0
-  for (const bucket of Object.values(report.buckets)) {
-    if (bucket.holdSec === null) continue
-    views += bucket.views
-    seconds += bucket.views * bucket.holdSec
-  }
-  return views > 0 ? seconds / views : null
-}
-
-/**
- * How many other videos of the channel stand behind a frozen report's
- * baselines: those frozen at the same checkpoint before it, and the ones of a
- * similar length among them. Only videos that have a hold figure count.
- */
-export function peerCounts(
-  report: SearchReport,
-  videoId: string,
-  others: { videoId: string; report: SearchReport }[],
-): { band: number; channel: number } {
-  const earlier = others.filter(
-    (other) =>
-      other.videoId !== videoId &&
-      other.report.computedAt <= report.computedAt &&
-      reportHold(other.report) !== null,
-  )
-  const band = lengthBand(report.durationSec)
-  const inBand = earlier.filter(
-    (other) => band !== null && lengthBand(other.report.durationSec) === band,
-  )
-  return { band: inBand.length, channel: earlier.length }
 }
 
 export interface PublishModel {
@@ -856,17 +816,17 @@ async function searchReportsModel(
   for (const row of rows) {
     if (row.state === 'frozen' && row.report) frozen.push(row.report)
   }
-  const peers: NonNullable<SearchReportsModel['peers']> = {}
-  for (const report of frozen) {
-    if (!CHECKPOINTS.includes(report.checkpoint)) continue
-    const others = await frozenReportsForChannel(db, input.channelId, report.checkpoint)
-    peers[report.checkpoint] = peerCounts(report, input.videoId, others)
-  }
+  // YouTube's own publish time, as the first frozen report read it, wins over the record's.
+  const frozenPublished = frozen[0] ? new Date(frozen[0].publishedAt) : null
+  const publishedAt =
+    frozenPublished && !Number.isNaN(frozenPublished.getTime())
+      ? frozenPublished
+      : input.publishedAt
   const live =
-    input.snapshot && input.publishedAt
+    input.snapshot && publishedAt
       ? liveSearchReport({
           snapshot: input.snapshot,
-          publishedAt: input.publishedAt,
+          publishedAt,
           durationSec: input.durationSec,
           brief: input.brief,
           language,
@@ -884,7 +844,6 @@ async function searchReportsModel(
     })),
     dismissed: [...dismissed],
     ...(language ? { language } : {}),
-    publishedAt: input.publishedAt?.toISOString() ?? null,
-    peers,
+    publishedAt: publishedAt?.toISOString() ?? null,
   }
 }

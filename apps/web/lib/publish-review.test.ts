@@ -3,7 +3,6 @@ import {
   deriveIngredients,
   liveSearchReport,
   openingIsStale,
-  peerCounts,
   syntheticLikenesses,
 } from './publish-review'
 
@@ -242,28 +241,5 @@ describe('liveSearchReport', () => {
     const report = liveSearchReport({ ...base, brief: null, anyFrozen: false })
     expect(report.targetKeyword).toBeNull()
     expect(report.terms.every((t) => t.bucket === 'unmatched')).toBe(true)
-  })
-})
-
-describe('peerCounts', () => {
-  const frozen = (videoId: string, durationSec: number, computedAt: string) => ({
-    videoId,
-    report: {
-      computedAt,
-      durationSec,
-      buckets: { target: { views: 10, holdSec: 100 } },
-    } as never,
-  })
-
-  it('counts earlier videos at the checkpoint, and those of a similar length', () => {
-    const own = frozen('own', 900, '2026-11-01T00:00:00.000Z')
-    const counts = peerCounts(own.report, 'own', [
-      own,
-      frozen('a', 800, '2026-10-20T00:00:00.000Z'),
-      frozen('b', 1_000, '2026-10-25T00:00:00.000Z'),
-      frozen('c', 2_400, '2026-10-26T00:00:00.000Z'),
-      frozen('later', 900, '2026-12-01T00:00:00.000Z'),
-    ])
-    expect(counts).toEqual({ band: 2, channel: 3 })
   })
 })

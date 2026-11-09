@@ -45,11 +45,11 @@ export async function searchField(keyword: string, channelId: string): Promise<F
 }
 
 /** How far down a search the rank check looks. */
-const RANK_DEPTH = 20
+const RANK_DEPTH = 10
 
 /**
  * Where a video stands in a YouTube search for one keyword: its 1-based place
- * among the first 20 results, or null when it is not there. One purchase.
+ * among the first 10 results, or null when it is not there. One purchase.
  */
 export async function rankFor(
   keyword: string,

@@ -58,17 +58,17 @@ function dueLabel(publishedAt: string | null | undefined, checkpoint: Checkpoint
   return `Due ${dayLabel(new Date(start + (checkpoint + REPORT_LAG_DAYS) * DAY_MS))}`
 }
 
-function basisWords(
-  basis: BaselineBasis,
-  peers: { band: number; channel: number } | undefined,
-): string {
+function basisWords(baseline: { basis: BaselineBasis; count?: number | undefined }): string {
+  const { basis, count } = baseline
   if (basis === 'band') {
-    return peers
-      ? `against ${peers.band} videos of similar length`
-      : 'against videos of similar length'
+    return count === undefined
+      ? 'against videos of similar length'
+      : `against ${count} videos of similar length`
   }
   if (basis === 'channel') {
-    return peers ? `against all ${peers.channel} earlier videos` : 'against all earlier videos'
+    return count === undefined
+      ? 'against all earlier videos'
+      : `against all ${count} earlier videos`
   }
   return "against this video's own average"
 }
@@ -218,7 +218,6 @@ export function SearchReportCard({
             report={report}
             verdict={verdict}
             frozenView={view !== 'latest'}
-            peers={view === 'latest' ? undefined : reports.peers?.[report.checkpoint]}
             isHidden={isHidden}
             notes={notes}
             busy={busy}
@@ -247,7 +246,6 @@ function ReportBody({
   report,
   verdict,
   frozenView,
-  peers,
   isHidden,
   notes,
   busy,
@@ -257,7 +255,6 @@ function ReportBody({
   report: SearchReport
   verdict: { label: string; advice: string } | null
   frozenView: boolean
-  peers: { band: number; channel: number } | undefined
   isHidden: (term: string) => boolean
   notes: Record<string, { text: string; error: boolean }>
   busy: string | null
@@ -267,6 +264,16 @@ function ReportBody({
   const holdBase = report.baselines.searchHoldSec.value
   const held = (hold: number | null): boolean =>
     holdBase !== null && hold !== null && hold >= report.thresholds.holdRatio * holdBase
+  const overallHold = (() => {
+    let views = 0
+    let seconds = 0
+    for (const bucket of Object.values(report.buckets)) {
+      if (bucket.holdSec === null) continue
+      views += bucket.views
+      seconds += bucket.views * bucket.holdSec
+    }
+    return views > 0 ? seconds / views : null
+  })()
   const muted = 'text-[12px] text-[var(--color-text-muted)]'
 
   return (
@@ -372,12 +379,21 @@ function ReportBody({
       <div className="flex flex-col gap-1.5">
         <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">Delivery</p>
         <DeliveryRow
+          label="Search hold (search viewers)"
+          value={overallHold === null ? 'not known yet' : `${number(Math.round(overallHold))} s`}
+          baseline={
+            holdBase === null
+              ? null
+              : `${number(Math.round(holdBase))} s, ${basisWords(report.baselines.searchHoldSec)}`
+          }
+        />
+        <DeliveryRow
           label="Early drop (all viewers)"
           value={report.earlyDrop === null ? 'not known yet' : percent(report.earlyDrop)}
           baseline={
             report.baselines.earlyDrop.value === null
               ? null
-              : `${percent(report.baselines.earlyDrop.value)}, ${basisWords(report.baselines.earlyDrop.basis, peers)}`
+              : `${percent(report.baselines.earlyDrop.value)}, ${basisWords(report.baselines.earlyDrop)}`
           }
         />
         <DeliveryRow
@@ -390,7 +406,7 @@ function ReportBody({
           baseline={
             report.baselines.subscribersPer1k.value === null
               ? null
-              : `${one(report.baselines.subscribersPer1k.value)}, ${basisWords(report.baselines.subscribersPer1k.basis, peers)}`
+              : `${one(report.baselines.subscribersPer1k.value)}, ${basisWords(report.baselines.subscribersPer1k)}`
           }
         />
         <DeliveryRow
