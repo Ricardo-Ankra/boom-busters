@@ -33,6 +33,8 @@ const FIELD_NOTES: Record<keyof ChannelBible, string> = {
   subjectKind: 'string: what kind of thing each film is about, and how its common name is chosen',
   subjectNoun: "object { singular: string, plural: string }: the one word for a film's subject",
   audience: 'string: who watches, in one line',
+  researchProfile:
+    '"investigation" or "science": how the dossier researches a case; "science" for channels about studies and findings',
   narrationRegister: "string: the narrator's manner, a few plain adjectives",
   voiceDos: 'array of up to 12 strings, each up to 300 characters: things the narration does',
   voiceDonts:

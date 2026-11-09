@@ -478,11 +478,33 @@ describe('BibleTab', () => {
     expect(channelId).toBe(CHANNEL.id)
     expect(section).toBe('identity')
     expect(Object.keys(patch as object).sort()).toEqual(
-      ['audience', 'caseCategories', 'subject', 'subjectKind', 'subjectNoun', 'whatACaseIs'].sort(),
+      [
+        'audience',
+        'caseCategories',
+        'researchProfile',
+        'subject',
+        'subjectKind',
+        'subjectNoun',
+        'whatACaseIs',
+      ].sort(),
     )
     expect(patch).toMatchObject({ audience: 'curious adults' })
     // Back to reading.
     expect(screen.getByRole('button', { name: 'Edit Identity' })).toBeInTheDocument()
+  })
+
+  it('edits the research profile in Identity', async () => {
+    editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+    renderTab(null)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Identity' }))
+
+    const profile = screen.getByLabelText('Research profile')
+    expect(within(profile).getByRole('option', { name: 'Investigation' })).toBeInTheDocument()
+    expect(within(profile).getByRole('option', { name: 'Science' })).toBeInTheDocument()
+    await userEvent.selectOptions(profile, 'science')
+    await userEvent.click(screen.getByRole('button', { name: 'Done editing Identity' }))
+
+    expect(editBibleSectionAction.mock.calls[0]![2]).toMatchObject({ researchProfile: 'science' })
   })
 
   it('stays in the editor when the save is refused', async () => {

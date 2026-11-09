@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, it, test } from 'vitest'
 import {
   BIBLE_SECTIONS,
   ChannelBibleReadSchema,
@@ -104,6 +104,17 @@ describe('channels', () => {
   test('slugFromName', () => {
     expect(slugFromName('Boom & Busters')).toBe('boom-busters')
     expect(slugFromName('  Psychology: The Mind!! ')).toBe('psychology-the-mind')
+  })
+})
+
+describe('research profile', () => {
+  it('reads a stored bible without a research profile as investigation', () => {
+    const { researchProfile: _drop, ...stored } = FIRST_CHANNEL_BIBLE
+    expect(ChannelBibleReadSchema.parse(stored).researchProfile).toBe('investigation')
+  })
+
+  it('refuses a profile that does not exist', () => {
+    expect(ChannelBibleSchema.safeParse({ researchProfile: 'history' }).success).toBe(false)
   })
 })
 

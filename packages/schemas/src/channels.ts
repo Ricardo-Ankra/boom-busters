@@ -4,6 +4,7 @@ import { FIRST_CHANNEL_EXAMPLES } from './first-channel-examples'
 import { defaultFormat, FormatsSchema } from './formats'
 import { UlidSchema } from './ids'
 import { PUBLISH_DISCLAIMER } from './publish'
+import { ResearchProfileKeySchema } from './research-profiles'
 
 /** A channel slug: lower-case letters, digits and inner dashes, 1 to 40 characters. */
 export const CHANNEL_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
@@ -81,6 +82,7 @@ export const ChannelBibleSchema = z
       })
       .default({ singular: '', plural: '' }),
     audience: z.string().max(2000).default(''),
+    researchProfile: ResearchProfileKeySchema.default('investigation'),
     narrationRegister: z.string().max(2000).default(''),
     voiceDos: z.array(z.string().max(300)).max(12).default([]),
     voiceDonts: z.array(z.string().max(300)).max(12).default([]),
@@ -168,7 +170,15 @@ export type BibleSection =
 
 /** The units the owner drafts, approves and redrafts. Every field sits in exactly one. */
 export const BIBLE_SECTIONS: Record<BibleSection, readonly (keyof ChannelBible)[]> = {
-  identity: ['subject', 'whatACaseIs', 'subjectKind', 'subjectNoun', 'caseCategories', 'audience'],
+  identity: [
+    'subject',
+    'whatACaseIs',
+    'subjectKind',
+    'subjectNoun',
+    'caseCategories',
+    'audience',
+    'researchProfile',
+  ],
   formats: ['formats'],
   voice: ['narrationRegister', 'voiceDos', 'voiceDonts', 'hedgingRules', 'scriptRulesMd'],
   look: ['visualRegister', 'directionRulesMd'],
@@ -237,6 +247,7 @@ export const FIRST_CHANNEL_BIBLE: ChannelBible = {
     'A good case has: a documented paper trail (court filings, regulator actions, major-outlet reporting), a clear turn where the story changes, and consequences that can be shown rather than described. A bad case is one where the only sources are other YouTube videos, or where the interesting part is speculation about what someone was thinking.',
   subjectKind: "the company's common name as Wikipedia titles it",
   audience: 'adults who watch long-form money documentaries',
+  researchProfile: 'investigation',
   narrationRegister: 'plain, specific, unhurried',
   visualRegister:
     "the Netflix money documentary. Dark, patient, photographic realism. The people, in the rooms where it happened: principals at the table, in the corridor, at the podium, re-created with a reconstruction's restraint. Empty rooms, documents and objects are punctuation between them, not the film.",

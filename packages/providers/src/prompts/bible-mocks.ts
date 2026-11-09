@@ -37,6 +37,7 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
   subjectKind: "the idea's common name as the textbooks title it",
   subjectNoun: { singular: 'idea', plural: 'ideas' },
   audience: 'curious adults who like long-form explanations of why people act as they do',
+  researchProfile: 'investigation',
   narrationRegister: 'warm, precise, unhurried',
   voiceDos: [],
   voiceDonts: [],

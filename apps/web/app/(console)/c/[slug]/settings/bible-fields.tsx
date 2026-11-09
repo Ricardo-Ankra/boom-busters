@@ -3,6 +3,8 @@
 import {
   BIBLE_SECTIONS,
   ChannelBibleSchema,
+  RESEARCH_PROFILE_KEYS,
+  RESEARCH_PROFILE_LABELS,
   RUNTIME_OUTER_MAX,
   RUNTIME_OUTER_MIN,
   TITLE_SLOTS,
@@ -43,6 +45,7 @@ type Kind =
   | 'examples'
   | 'entries'
   | 'formats'
+  | 'profile'
 
 interface FieldMeta {
   label: string
@@ -65,6 +68,11 @@ const FIELD_META: Partial<Record<keyof ChannelBible, FieldMeta>> = {
     label: 'The subject noun',
     hint: 'What one subject is called, singular and plural.',
     kind: 'noun',
+  },
+  researchProfile: {
+    label: 'Research profile',
+    hint: 'How the dossier researches a case.',
+    kind: 'profile',
   },
   caseCategories: {
     label: 'Case categories',
@@ -425,6 +433,10 @@ function ValueView({
       </p>
     )
   }
+  if (kind === 'profile') {
+    const known = RESEARCH_PROFILE_KEYS.find((key) => key === value)
+    return <p className="text-[14px]">{RESEARCH_PROFILE_LABELS[known ?? 'investigation'].label}</p>
+  }
   if (kind === 'categories') {
     const categories = value as ChannelBible['caseCategories']
     return categories.length === 0 ? (
@@ -508,6 +520,31 @@ export function SectionEditor({
               />
               {meta.hint ? <p className={mutedClass}>{meta.hint}</p> : null}
               <FieldIssues messages={issuesAt(issues, key)} />
+            </div>
+          )
+        }
+
+        if (meta.kind === 'profile') {
+          const profile = RESEARCH_PROFILE_KEYS.includes(value as never)
+            ? (value as (typeof RESEARCH_PROFILE_KEYS)[number])
+            : 'investigation'
+          return (
+            <div key={key} className="flex flex-col gap-1.5">
+              <Label htmlFor={fieldId}>{meta.label}</Label>
+              <Select
+                id={fieldId}
+                value={profile}
+                disabled={disabled}
+                className="w-48"
+                onChange={(event) => onChange(key, event.target.value)}
+              >
+                {RESEARCH_PROFILE_KEYS.map((option) => (
+                  <option key={option} value={option}>
+                    {RESEARCH_PROFILE_LABELS[option].label}
+                  </option>
+                ))}
+              </Select>
+              <p className={mutedClass}>{RESEARCH_PROFILE_LABELS[profile].description}</p>
             </div>
           )
         }

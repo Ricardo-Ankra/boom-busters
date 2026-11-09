@@ -57,6 +57,7 @@ export function sectionIsEmpty(bible: ChannelBible, section: BibleSection): bool
       const noun = bible.subjectNoun
       return noun.singular === '' && noun.plural === ''
     }
+    if (key === 'researchProfile') return bible.researchProfile === 'investigation'
     return valueIsEmpty(value)
   })
 }
@@ -89,6 +90,7 @@ export function sectionProgress(bible: ChannelBible, section: BibleSection): str
     if (key === 'subjectNoun') {
       return bible.subjectNoun.singular !== '' || bible.subjectNoun.plural !== ''
     }
+    if (key === 'researchProfile') return bible.researchProfile !== 'investigation'
     return !valueIsEmpty(bible[key])
   }).length
   return `${filled} of ${keys.length} filled`

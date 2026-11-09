@@ -948,6 +948,21 @@ describeDb('copying the bible from another channel', () => {
     expect(draft.statuses.formats).toBe('drafted')
   })
 
+  it('copies the source research profile', async () => {
+    const source = await makeChannel('Source')
+    await saveBibleVersion(
+      db,
+      source.id,
+      { ...ChannelBibleSchema.parse({}), researchProfile: 'science' },
+      'v2',
+    )
+    const target = await makeChannel('Target')
+
+    const result = await copyBibleFromChannelAction(target.id, source.id, ['identity'])
+    expect(result.ok).toBe(true)
+    expect((await getBibleDraft(db, target.id))!.bible.researchProfile).toBe('science')
+  })
+
   it('copies the source current version, not an older one', async () => {
     const source = await makeChannel('Source')
     await saveBibleVersion(db, source.id, { ...ChannelBibleSchema.parse({}), language: 'de' }, 'v2')

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, it, test } from 'vitest'
 import {
   BIBLE_SECTION_LABELS,
   BIBLE_SECTION_ORDER,
@@ -126,6 +126,11 @@ describe('sectionIsEmpty', () => {
     for (const s of BIBLE_SECTION_ORDER) expect(sectionIsEmpty(EMPTY_BIBLE, s)).toBe(true)
     expect(sectionIsEmpty(FIRST_CHANNEL_BIBLE, 'voice')).toBe(false)
     expect(sectionIsEmpty(FIRST_CHANNEL_BIBLE, 'hooks')).toBe(true)
+  })
+
+  it('counts an identity section holding only the default profile as empty', () => {
+    expect(sectionIsEmpty(EMPTY_BIBLE, 'identity')).toBe(true)
+    expect(sectionIsEmpty({ ...EMPTY_BIBLE, researchProfile: 'science' }, 'identity')).toBe(false)
   })
 
   test('identity is not empty when only case categories are set', () => {
