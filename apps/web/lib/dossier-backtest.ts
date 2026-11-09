@@ -197,7 +197,7 @@ export interface CaseRun {
     /** A video whose transcript was fetched: `meta.transcript` on the stored row. */
     transcript?: boolean
   }[]
-  /** Documents the research read (no failure), counted by kind: the base of the scholarly share. */
+  /** Documents the research passes read (ranked, not failed), counted by kind: the base of the scholarly share. */
   readKinds: Partial<Record<DocumentKind, number>>
   /** The SEC company-facts JSON for the case's filer; null when it has none. */
   xbrl: unknown | null
@@ -460,6 +460,20 @@ const rowOf = (run: CaseRun, t: Tally): CaseRow => ({
 /** The profile a run's case belongs to; a title the closed list does not know reads as the investigation. */
 const profileOfTitle = (title: string): ResearchProfileKey =>
   BACKTEST_CASES.find((c) => c.title === title)?.profile ?? 'investigation'
+
+/**
+ * The documents the research passes read, counted by kind: ranked and not
+ * failed. A stored row with no rank was ranked out and never reached a pass.
+ */
+export function countReadKinds(
+  rows: readonly { kind: DocumentKind; failure: string | null; rank: number | null }[],
+): Partial<Record<DocumentKind, number>> {
+  const kinds: Partial<Record<DocumentKind, number>> = {}
+  for (const row of rows) {
+    if (row.failure === null && row.rank !== null) kinds[row.kind] = (kinds[row.kind] ?? 0) + 1
+  }
+  return kinds
+}
 
 /** Profiles whose science-style measures are gated: the scholarly share and the evidence mix. */
 const SCHOLARLY_PROFILES: readonly ResearchProfileKey[] = ['science']

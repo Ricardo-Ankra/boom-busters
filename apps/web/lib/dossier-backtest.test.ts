@@ -7,6 +7,7 @@ import {
 import {
   BACKTEST_CASES,
   BACKTEST_TARGETS,
+  countReadKinds,
   figureMatches,
   parseBacktestArgs,
   renderReport,
@@ -757,5 +758,20 @@ describe('renderReport', () => {
 
   it('says the rollout may go on when nothing fails', () => {
     expect(renderReport(scoreRuns([run()]), '2026-10-30')).toContain('Pass')
+  })
+})
+
+describe('countReadKinds', () => {
+  it('counts only the documents the passes read: ranked and not failed', () => {
+    expect(
+      countReadKinds([
+        { kind: 'scholarly', failure: null, rank: 1 },
+        { kind: 'scholarly', failure: null, rank: 2 },
+        { kind: 'scholarly', failure: null, rank: null },
+        { kind: 'reporting', failure: 'http 404', rank: 3 },
+        { kind: 'reporting', failure: null, rank: 4 },
+        { kind: 'reporting', failure: null, rank: null },
+      ]),
+    ).toEqual({ scholarly: 2, reporting: 1 })
   })
 })

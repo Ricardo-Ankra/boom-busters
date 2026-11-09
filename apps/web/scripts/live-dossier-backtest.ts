@@ -12,16 +12,12 @@ import {
   ensureFirstChannel,
 } from '@boom-busters/db'
 import { mockProvidersEnabled, PSYCHOLOGY_TEST_BIBLE } from '@boom-busters/providers'
-import {
-  EXAMPLE_SLOT_IDS,
-  type BibleInUse,
-  type DocumentKind,
-  type ResearchProfileKey,
-} from '@boom-busters/schemas'
+import { EXAMPLE_SLOT_IDS, type BibleInUse, type ResearchProfileKey } from '@boom-busters/schemas'
 import type { AnswerComplete } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import {
   BACKTEST_CASES,
+  countReadKinds,
   parseBacktestArgs,
   renderReport,
   scoreRuns,
@@ -175,10 +171,7 @@ async function main(): Promise<void> {
       }
       const ledger = await projectLedgerSummary(db, project.id)
       spent = before + ledger.costUsd
-      const readKinds: Partial<Record<DocumentKind, number>> = {}
-      for (const doc of rows) {
-        if (doc.failure === null) readKinds[doc.kind] = (readKinds[doc.kind] ?? 0) + 1
-      }
+      const readKinds = countReadKinds(rows)
       runs.push({
         title,
         resolvedTitle: gathered.entity.titles[0] ?? null,
