@@ -44,6 +44,31 @@ export async function searchField(keyword: string, channelId: string): Promise<F
   }
 }
 
+/** How far down a search the rank check looks. */
+const RANK_DEPTH = 20
+
+/**
+ * Where a video stands in a YouTube search for one keyword: its 1-based place
+ * among the first 20 results, or null when it is not there. One purchase.
+ */
+export async function rankFor(
+  keyword: string,
+  videoId: string,
+  channelId: string,
+): Promise<number | null> {
+  const { data } = await spendVidiq(
+    {
+      channelId,
+      purpose: 'search-report',
+      tool: 'vidiq_youtube_search',
+      cost: VIDIQ_CREDIT_COST.youtubeSearch,
+    },
+    (client) => client.youtubeSearch(keyword),
+  )
+  const at = data.slice(0, RANK_DEPTH).findIndex((result) => result.videoId === videoId)
+  return at < 0 ? null : at + 1
+}
+
 /** Comments on one video, without the creator's own words: they are not the audience. */
 export async function readComments(
   videoId: string,

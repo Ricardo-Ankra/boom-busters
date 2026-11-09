@@ -7,6 +7,7 @@ import {
   awaitNicheTest,
   CAP_REACHED,
   CapReached,
+  rankFor,
   readComments,
   searchField,
   startNicheTest,
@@ -65,6 +66,33 @@ describe('searchField', () => {
     spend.cap = true
     await expect(searchField('x', CHANNEL)).rejects.toBeInstanceOf(CapReached)
     expect(CAP_REACHED).toBe('credit cap')
+  })
+})
+
+describe('rankFor', () => {
+  it('is the 1-based place of the video among the first 20 results, else null', async () => {
+    const results = Array.from({ length: 25 }, (_, i) => ({
+      videoId: `v${i + 1}`,
+      title: 't',
+      channelTitle: null,
+      subscribers: null,
+      views: null,
+      publishedAt: null,
+      seconds: null,
+    }))
+    spend.client = {
+      ...mockVidiqClient(),
+      youtubeSearch: () => Promise.resolve({ data: results, credits: 5, args: {} }),
+    } as unknown as VidiqClient
+    expect(await rankFor('x', 'v3', CHANNEL)).toBe(3)
+    expect(await rankFor('x', 'v20', CHANNEL)).toBe(20)
+    expect(await rankFor('x', 'v21', CHANNEL)).toBeNull()
+    expect(await rankFor('x', 'missing', CHANNEL)).toBeNull()
+  })
+
+  it('turns a cap refusal into CapReached', async () => {
+    spend.cap = true
+    await expect(rankFor('x', 'v1', CHANNEL)).rejects.toBeInstanceOf(CapReached)
   })
 })
 
