@@ -85,12 +85,14 @@ export function sectionProgress(bible: ChannelBible, section: BibleSection): str
   if (section === 'formats') {
     return plural(sectionIsEmpty(bible, section) ? 0 : bible.formats.length, 'format', 'formats')
   }
-  const keys = BIBLE_SECTIONS[section]
+  // The default profile is not a thing to fill in: it counts only once it is chosen away from.
+  const keys = BIBLE_SECTIONS[section].filter(
+    (key) => key !== 'researchProfile' || bible.researchProfile !== 'investigation',
+  )
   const filled = keys.filter((key) => {
     if (key === 'subjectNoun') {
       return bible.subjectNoun.singular !== '' || bible.subjectNoun.plural !== ''
     }
-    if (key === 'researchProfile') return bible.researchProfile !== 'investigation'
     return !valueIsEmpty(bible[key])
   }).length
   return `${filled} of ${keys.length} filled`

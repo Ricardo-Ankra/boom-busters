@@ -271,6 +271,15 @@ describe('sectionProgress', () => {
     ).toBe('44 of 44 examples written')
   })
 
+  test('leaves the default research profile out of the Identity count, and counts science', () => {
+    expect(
+      sectionProgress({ ...FIRST_CHANNEL_BIBLE, researchProfile: 'investigation' }, 'identity'),
+    ).toBe('6 of 6 filled')
+    expect(
+      sectionProgress({ ...FIRST_CHANNEL_BIBLE, researchProfile: 'science' }, 'identity'),
+    ).toBe('7 of 7 filled')
+  })
+
   test('counts formats, and agrees with the empty chip about an untouched default', () => {
     expect(sectionIsEmpty({ ...FIRST_CHANNEL_BIBLE, formats: [defaultFormat()] }, 'formats')).toBe(
       true,
