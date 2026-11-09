@@ -7,12 +7,12 @@ import {
   mockGraphicCode,
   mockProvidersEnabled,
   type Exemplar,
-  type Technique,
 } from '@boom-busters/providers'
 import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
-import type { DesignableBrief } from '@boom-busters/schemas'
+import type { DesignableBrief, TechniqueKey } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { criticReferencesFor } from '@/lib/critic-references'
+import { channelTechniquesInUse } from '@/lib/exemplar-entries'
 import { slotTechnique } from '@/lib/graphic-design-core'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
@@ -85,14 +85,15 @@ const framesOn = () => process.env['GRAPHIC_FRAMES'] !== 'off'
  */
 export async function channelExemplarFor(
   channelId: string,
-  technique: Technique,
+  technique: TechniqueKey,
 ): Promise<Exemplar | undefined> {
   const approved = await approvedExemplar(db, channelId, technique)
+  // A channel's own key has no house design (spec 8.5): nothing before approval.
   if (!approved) return exemplarFor(technique)
   const entry = MANIFEST.find((candidate) => candidate.technique === technique)
   return {
     technique,
-    description: entry?.description ?? technique,
+    description: entry?.description ?? approved.proposal?.description ?? technique,
     mechanisms: approved.plan.mechanisms,
     title: approved.code.title,
     source: approved.code.source,
@@ -134,13 +135,15 @@ export async function designGraphic(
   }
 
   const motion = resolveMotionIdentity(channel.settings)
+  // The channel's own techniques (spec 8.5): a steer phrase of theirs picks one.
+  const own = await channelTechniquesInUse(db, inUse.channelId, motion)
   return designGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
     motion,
     exemplar: await channelExemplarFor(
       inUse.channelId,
-      slotTechnique(context, slot, motion, options.guidance),
+      slotTechnique(context, slot, motion, options.guidance, own),
     ),
     // The browser's layout check (decision 389), in the channel's own faces
     // and colours. The review is a step of its own: `reviewGraphic`.
@@ -174,13 +177,16 @@ export async function reviewGraphic(
   if (!channel.settings.features.graphicReview) return skipped('switched off in Settings')
   if (!framesOn()) return skipped('the browser is off')
   const motion = resolveMotionIdentity(channel.settings)
+  // The same technique the design was built on (final review, issue 4): the
+  // channel's own phrases count here as they do in `designGraphic`.
+  const own = await channelTechniquesInUse(db, inUse.channelId, motion)
   return reviewGraphicWith(ledgered(context.projectId, inUse.channelId), context, slot, {
     ...options,
     bible: inUse,
     motion,
     exemplar: await channelExemplarFor(
       inUse.channelId,
-      slotTechnique(context, slot, motion, options.guidance),
+      slotTechnique(context, slot, motion, options.guidance, own),
     ),
     references: await criticReferencesFor(inUse.channelId),
     frames: browserFrames(),

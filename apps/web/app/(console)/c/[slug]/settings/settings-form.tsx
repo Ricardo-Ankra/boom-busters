@@ -80,6 +80,7 @@ export function SettingsForm({
   channelExemplars = [],
   derivation = null,
   jobRunning = false,
+  mechanismReferences = 0,
   estimateTable,
   draft = null,
   versions = [],
@@ -127,6 +128,8 @@ export function SettingsForm({
   draftEstimateUsd?: number
   /** The channel's own exemplar versions, per technique (spec 2026-11-04, section 11.4). */
   channelExemplars?: readonly ChannelExemplarView[]
+  /** Live mechanism references that are read (spec 8.5): the Derive dialogue offers the proposal when there is one. */
+  mechanismReferences?: number
   /** The latest derivation, for the Motion tab's Derive section (section 11.3). */
   derivation?: DerivationView | null
   /** A derivation is running on this channel: Derive, Refine and Copy wait. */
@@ -156,6 +159,24 @@ export function SettingsForm({
 }) {
   const [settings, setSettings] = React.useState(initialSettings)
   const [saving, setSaving] = React.useState(false)
+
+  // The techniques in use change on the server when a channel's own technique
+  // is approved or kept on the Exemplars tab (spec 8.5); the refreshed page
+  // brings the new list here. Only a changed list is taken, so this never
+  // resets a field the owner is editing (the memory note on no-op setState).
+  const serverTechniques = initialSettings.motion.techniques
+  React.useEffect(() => {
+    setSettings((current) => {
+      const own = current.motion.techniques
+      const same =
+        own.length === serverTechniques.length &&
+        own.every((key, index) => key === serverTechniques[index])
+      return same
+        ? current
+        : { ...current, motion: { ...current.motion, techniques: serverTechniques } }
+    })
+    // Only the server's list: the rest of the form keeps its own state until a save.
+  }, [serverTechniques])
   const { toast } = useToast()
   const router = useRouter()
 
@@ -318,6 +339,7 @@ export function SettingsForm({
               draftEstimateUsd={draftEstimateUsd}
               derivation={derivation}
               jobRunning={jobRunning}
+              mechanismReferences={mechanismReferences}
               {...(estimateTable ? { estimateTable } : {})}
               approvedTechniques={channelExemplars
                 .filter((view) => view.approved !== null)
@@ -370,6 +392,7 @@ export function SettingsForm({
                     archived: channel.archived,
                     jobRunning,
                     techniqueOptions,
+                    mechanismReferences,
                     estimateTable,
                     storageReady,
                     lastRun:

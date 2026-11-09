@@ -13,15 +13,19 @@ export interface DerivationEstimateTable {
   perRound: number
   /** The pairwise ask with the order swapped: paid from round two. */
   perPairwise: number
+  /** The technique proposal (spec 8.5): paid once when the tick is on. */
+  perProposal: number
 }
 
+/** With `propose`, the proposal call plus one more technique's loop for what it proposes. */
 export function derivationEstimateUsd(
   table: DerivationEstimateTable,
-  input: { techniques: number; rounds: number },
+  input: { techniques: number; rounds: number; propose?: boolean },
 ): number {
   const perTechnique =
     table.perTechniqueFixed +
     input.rounds * table.perRound +
     Math.max(0, input.rounds - 1) * table.perPairwise
-  return input.techniques * perTechnique
+  const techniques = input.techniques + (input.propose ? 1 : 0)
+  return techniques * perTechnique + (input.propose ? table.perProposal : 0)
 }

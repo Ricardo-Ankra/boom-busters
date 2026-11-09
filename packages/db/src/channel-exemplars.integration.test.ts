@@ -1,18 +1,30 @@
 import { DEFAULT_SETTINGS, FIRST_CHANNEL_BIBLE, ValidationError } from '@boom-busters/schemas'
-import type { ExemplarPlan, GraphicCode, ReferenceFrames } from '@boom-busters/schemas'
+import type {
+  ExemplarPlan,
+  GraphicCode,
+  ReferenceFrames,
+  TechniqueProposal,
+} from '@boom-busters/schemas'
 import { sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   approveExemplarVersion,
   approvedExemplar,
+  channelTechniquesFor,
   copyMotionFromChannel,
   exemplarVersionById,
   insertExemplarVersion,
   listChannelExemplars,
   retireExemplarVersion,
+  syncChannelTechniqueInUse,
   updateExemplarDraft,
 } from './channel-exemplars'
-import { createChannel, ensureFirstChannel } from './channels'
+import {
+  createChannel,
+  ensureFirstChannel,
+  getChannelSettings,
+  updateChannelSettings,
+} from './channels'
 import { createDb } from './client'
 import {
   insertMotionReference,
@@ -49,6 +61,17 @@ const CODE = {
   durationMs: 6000,
   motion: 2,
 } as GraphicCode
+
+/** A channel's own technique (spec 8.5), as the derivation proposes it. */
+const PROPOSAL: TechniqueProposal = {
+  key: 'ledger-wipe',
+  name: 'Ledger wipe',
+  description: 'a ruled line wipes the old figure away',
+  steerPhrases: ['ledger wipe'],
+  mechanisms: ['persistent-actor'],
+  slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'The old figure is gone.' },
+  fromReference: 'Ledger scene',
+}
 
 const FRAMES: ReferenceFrames = {
   dense: [
@@ -237,5 +260,71 @@ suite('channel exemplars', () => {
     await expect(copyMotionFromChannel(db, otherId, channelId)).rejects.toThrow(
       /Archive this channel's references first/,
     )
+  })
+
+  it('stores a proposal on a version and lists it as a channel technique (spec 8.5)', async () => {
+    const draft = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    expect(draft.proposal).toEqual(PROPOSAL)
+    expect(await channelTechniquesFor(db, channelId)).toEqual([])
+    await approveExemplarVersion(db, draft.id)
+    expect(await channelTechniquesFor(db, channelId)).toEqual([
+      {
+        technique: 'ledger-wipe',
+        description: PROPOSAL.description,
+        steerPhrases: ['ledger wipe'],
+      },
+    ])
+    // A house technique never lists, proposal or not.
+    const house = await aVersion({ technique: 'stat-counter' })
+    await approveExemplarVersion(db, house.id)
+    expect((await channelTechniquesFor(db, channelId)).map((t) => t.technique)).toEqual([
+      'ledger-wipe',
+    ])
+  })
+
+  it('syncs the key into use on approval and out of use when nothing is approved', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    expect(await inUse()).not.toContain('ledger-wipe')
+    const version = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    expect(await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')).toBe('unchanged')
+    await approveExemplarVersion(db, version.id)
+    expect(await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')).toBe('added')
+    expect(await inUse()).toContain('ledger-wipe')
+    expect(await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')).toBe('unchanged')
+    await retireExemplarVersion(db, version.id)
+    expect(await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')).toBe('removed')
+    expect(await inUse()).not.toContain('ledger-wipe')
+    expect(await syncChannelTechniqueInUse(db, channelId, 'stat-counter')).toBe('unchanged')
+  })
+
+  it('a remove-only sync never re-ticks a key the owner unticked (final review, issue 1)', async () => {
+    const inUse = async () => (await getChannelSettings(db, channelId)).motion.techniques
+    const version = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersion(db, version.id)
+    await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')
+    // The owner unticks it on the Motion tab.
+    const motion = (await getChannelSettings(db, channelId)).motion
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: motion.techniques.filter((key) => key !== 'ledger-wipe') },
+    })
+    expect(
+      await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe', { mode: 'remove-only' }),
+    ).toBe('unchanged')
+    expect(await inUse()).not.toContain('ledger-wipe')
+    await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe')
+    expect(await inUse()).toContain('ledger-wipe')
+    await retireExemplarVersion(db, version.id)
+    expect(
+      await syncChannelTechniqueInUse(db, channelId, 'ledger-wipe', { mode: 'remove-only' }),
+    ).toBe('removed')
+  })
+
+  it('copies a channel-only technique with its proposal', async () => {
+    const source = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    await approveExemplarVersion(db, source.id)
+    await copyMotionFromChannel(db, otherId, channelId)
+    const copied = await approvedExemplar(db, otherId, 'ledger-wipe')
+    expect(copied?.proposal).toEqual(PROPOSAL)
+    expect(copied?.copiedFrom).toBe(source.id)
   })
 })

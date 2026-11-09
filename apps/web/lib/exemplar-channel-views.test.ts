@@ -95,9 +95,53 @@ describe('channelExemplarViewsFrom (spec 2026-11-04, section 11.4)', () => {
     const empty = views.find((view) => view.technique === 'lower-third')!
     expect(empty).toEqual({
       technique: 'lower-third',
+      description: MANIFEST.find((entry) => entry.technique === 'lower-third')!.description,
+      channelOnly: false,
+      steerPhrases: [],
+      fromReference: null,
       approved: null,
       pendingDraft: null,
       versions: [],
     })
+  })
+
+  it("lists a channel-only technique after the catalogue with its proposal's words (spec 8.5)", () => {
+    const proposal = {
+      key: 'ledger-wipe',
+      name: 'Ledger wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+      mechanisms: ['persistent-actor' as const],
+      slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+      fromReference: 'Ledger scene',
+    }
+    const views = channelExemplarViewsFrom([
+      row({ id: 'w1', technique: 'ledger-wipe', version: 1, status: 'approved', proposal }),
+      row({
+        id: 'w2',
+        technique: 'ledger-wipe',
+        version: 2,
+        proposal: { ...proposal, description: 'the newer words' },
+      }),
+      row({
+        id: 'a1',
+        technique: 'another-move',
+        version: 1,
+        proposal: { ...proposal, key: 'another-move' },
+      }),
+    ])
+    expect(views).toHaveLength(MANIFEST.length + 2)
+    expect(views.slice(MANIFEST.length).map((view) => view.technique)).toEqual([
+      'another-move',
+      'ledger-wipe',
+    ])
+    const ledger = views.at(-1)!
+    expect(ledger.channelOnly).toBe(true)
+    expect(ledger.description).toBe('the newer words')
+    expect(ledger.steerPhrases).toEqual(['ledger wipe'])
+    expect(ledger.fromReference).toBe('Ledger scene')
+    expect(ledger.approved?.id).toBe('w1')
+    expect(ledger.pendingDraft?.id).toBe('w2')
+    expect(views[0]!.channelOnly).toBe(false)
   })
 })

@@ -541,7 +541,8 @@ export async function draftMotionIdentityAction(
   try {
     const answer = await callForAnswer({
       request: buildMotionIdentityDraftRequest(request),
-      parse: (text) => parseMotionIdentityDraft(text),
+      // The draft chooses from the catalogue; the channel's own keys in use stay (spec 8.5).
+      parse: (text) => parseMotionIdentityDraft(text, request.current.techniques),
       complete: completeForChannel(channelId, { estimateOutputTokens: DRAFT_OUTPUT_TOKENS }),
     })
     if (!answer.ok) return { ok: false, error: answer.issue }

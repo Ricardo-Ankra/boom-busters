@@ -90,4 +90,16 @@ describe('the motion identity', () => {
       overshoot: 'none',
     })
   })
+
+  it("techniques accept a channel's own key beside the catalogue (spec 8.5)", () => {
+    const own = MotionIdentitySchema.safeParse({ techniques: [...TECHNIQUES, 'ledger-wipe'] })
+    expect(own.success).toBe(true)
+    expect(own.data!.techniques).toContain('ledger-wipe')
+    expect(
+      MotionIdentitySchema.safeParse({ techniques: [...TECHNIQUES, 'Ledger Wipe'] }).success,
+    ).toBe(false)
+    expect(
+      MotionIdentitySchema.safeParse({ techniques: ['kinetic-word-stack', 'ledger-wipe'] }).success,
+    ).toBe(false)
+  })
 })

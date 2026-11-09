@@ -23,6 +23,7 @@ import { FramesUnavailable } from './graphic-code/frames'
 import type * as MotionMetricsModule from './graphic-code/motion-metrics'
 import { NonRetriableError } from 'inngest'
 import type * as Db from '@boom-busters/db'
+import type * as Schemas from '@boom-busters/schemas'
 
 const callLlm = vi.fn()
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
@@ -50,8 +51,11 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
     }),
     // The channel's approved exemplar version for a technique (spec 8.3): none unless a test sets one.
     approvedExemplar: async () => approvedStub,
+    // The channel's own techniques (spec 8.5): none unless a test lists some.
+    channelTechniquesFor: async () => channelTechniquesStub,
   }
 })
+let channelTechniquesStub: Schemas.ChannelTechnique[] = []
 
 // A `channel_exemplars` row, as `channelExemplarFor` reads it; null is "no approved version".
 let approvedStub: Db.ChannelExemplarRow | null = null
@@ -124,6 +128,7 @@ import { graphicCodeIssue } from './graphic-code/check'
 import { criticPlanOf, photographForCritic, slotIntent, slotTechnique } from './graphic-design-core'
 import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import {
+  channelExemplarFor,
   designGraphic,
   reviewGraphic,
   designGraphicWith,
@@ -1114,6 +1119,38 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
     expect(last.content).toContain('Reference 1: Kaye reel (look): one actor')
   })
 
+  it("the review's fix is shown the channel technique the steer named (final review, issue 4)", async () => {
+    const ledger: Schemas.ChannelTechnique = {
+      technique: 'ledger-wipe',
+      description: 'a ruled line wipes the old figure away',
+      steerPhrases: ['ledger wipe'],
+    }
+    channelTechniquesStub = [ledger]
+    motionSetting = { techniques: [...DEFAULT_MOTION_IDENTITY.techniques, 'ledger-wipe'] }
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['c'],
+        mechanisms: [],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: { description: ledger.description, steerPhrases: ['ledger wipe'] },
+    } as unknown as Db.ChannelExemplarRow
+    const slot = await stored()
+    inspect.mockResolvedValueOnce(photographed()).mockResolvedValueOnce(framed({}))
+    callLlm
+      .mockResolvedValueOnce(report({ keep: false, fixes: ['Hold the figure a second longer.'] }))
+      .mockResolvedValueOnce({ text: JSON.stringify(planned('$4bn')) })
+    await reviewGraphic(CONTEXT, slot, { guidance: 'as a ledger wipe' })
+    const fix = callLlm.mock.calls[1]![0]
+    expect(fix.messages[1]!.content).toContain('A passing design of this technique (ledger-wipe:')
+    expect(fix.messages[1]!.content).toContain('return "ledger"')
+    channelTechniquesStub = []
+  })
+
   it('the review passes the same exemplar to the fix', async () => {
     approvedStub = {
       technique: 'stat-counter',
@@ -1311,5 +1348,84 @@ describe('reviewGraphic, the critic in a step of its own (decision 389, spec 202
       reason: 'switched off in Settings',
     })
     expect(callLlm).not.toHaveBeenCalled()
+  })
+})
+
+describe('channel-only techniques (spec 2026-11-04, section 8.5)', () => {
+  const ledger: Schemas.ChannelTechnique = {
+    technique: 'ledger-wipe',
+    description: 'a ruled line wipes the old figure away',
+    steerPhrases: ['ledger wipe'],
+  }
+  afterEach(() => {
+    channelTechniquesStub = []
+    approvedStub = null
+  })
+
+  it('a steer that says a channel phrase picks the channel technique for the slot', () => {
+    expect(
+      slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY, 'as a ledger wipe', [ledger]),
+    ).toBe('ledger-wipe')
+    expect(slotTechnique(CONTEXT, SLOT, DEFAULT_MOTION_IDENTITY, 'as a ledger wipe')).not.toBe(
+      'ledger-wipe',
+    )
+  })
+
+  it("channelExemplarFor hands the designer the channel's approved version of its own technique, and nothing before approval", async () => {
+    expect(await channelExemplarFor('01J00000000000000000000CH1', 'ledger-wipe')).toBeUndefined()
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['0.0 s c'],
+        mechanisms: ['persistent-actor'],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: {
+        key: 'ledger-wipe',
+        name: 'Ledger wipe',
+        description: ledger.description,
+        steerPhrases: ['ledger wipe'],
+        mechanisms: ['persistent-actor'],
+        slot: { durationMs: 6000, words: [{ text: 'one', atMs: 0 }], intent: 'i' },
+        fromReference: 'Ledger scene',
+      },
+    } as unknown as Db.ChannelExemplarRow
+    const exemplar = await channelExemplarFor('01J00000000000000000000CH1', 'ledger-wipe')
+    expect(exemplar).toEqual({
+      technique: 'ledger-wipe',
+      description: ledger.description,
+      mechanisms: ['persistent-actor'],
+      title: 'The ledger',
+      source: 'function Graphic(props) {\n  return "ledger"\n}',
+    })
+  })
+
+  it("designGraphic honours the channel's phrase only while the key is in use", async () => {
+    channelTechniquesStub = [ledger]
+    approvedStub = {
+      technique: 'ledger-wipe',
+      plan: {
+        slot: { intent: 'x', words: [] },
+        concept: 'c',
+        storyboard: ['c'],
+        mechanisms: [],
+        leansOn: [],
+      },
+      code: { title: 'The ledger', source: 'function Graphic(props) {\n  return "ledger"\n}' },
+      proposal: { description: ledger.description, steerPhrases: ['ledger wipe'] },
+    } as unknown as Db.ChannelExemplarRow
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT, { guidance: 'as a ledger wipe' })
+    const slotMessage = (callLlm.mock.calls[0]![0].messages as { content: string }[])[1]!.content
+    expect(slotMessage).not.toContain('(ledger-wipe:')
+    motionSetting = { techniques: [...DEFAULT_MOTION_IDENTITY.techniques, 'ledger-wipe'] }
+    callLlm.mockResolvedValueOnce(answer('$4bn'))
+    await designGraphic(CONTEXT, SLOT, { guidance: 'as a ledger wipe' })
+    const second = (callLlm.mock.calls[1]![0].messages as { content: string }[])[1]!.content
+    expect(second).toContain('A passing design of this technique (ledger-wipe:')
+    expect(second).toContain('return "ledger"')
   })
 })

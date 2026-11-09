@@ -13,6 +13,8 @@ vi.mock('@/components/ui/toast', () => ({ useToast: () => ({ toast: vi.fn() }) }
 const derivation: DerivationView = {
   id: 'd1',
   state: 'stopped',
+  propose: false,
+  proposal: null,
   techniques: ['stat-counter', 'bar-chart', 'lower-third'],
   rounds: 2,
   capUsd: 5,
@@ -48,7 +50,7 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning={false}
         techniques={techniques}
         defaults={['lower-third']}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived={false}
       />,
@@ -79,7 +81,7 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning
         techniques={techniques}
         defaults={[]}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived={false}
       />,
@@ -93,12 +95,49 @@ describe('DeriveSection (spec 2026-11-04, section 11.3)', () => {
         jobRunning={false}
         techniques={techniques}
         defaults={[]}
-        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 }}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
         storageReady
         archived
       />,
     )
     expect(screen.getByRole('button', { name: 'Derive exemplars' })).toBeDisabled()
     expect(screen.getByText('No derivation has run yet.')).toBeInTheDocument()
+  })
+
+  it('says what the proposal did (spec 8.5)', () => {
+    const { rerender } = render(
+      <DeriveSection
+        channelId="01J00000000000000000000CH1"
+        derivation={{
+          ...derivation,
+          propose: true,
+          proposal: { state: 'proposed', technique: 'ledger-wipe', reason: null },
+        }}
+        jobRunning={false}
+        techniques={techniques}
+        defaults={['lower-third']}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
+        storageReady
+        archived={false}
+      />,
+    )
+    expect(screen.getByText('Proposal: Ledger wipe proposed')).toBeInTheDocument()
+    rerender(
+      <DeriveSection
+        channelId="01J00000000000000000000CH1"
+        derivation={{
+          ...derivation,
+          propose: true,
+          proposal: { state: 'none', technique: null, reason: 'every move is covered' },
+        }}
+        jobRunning={false}
+        techniques={techniques}
+        defaults={['lower-third']}
+        estimateTable={{ perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 }}
+        storageReady
+        archived={false}
+      />,
+    )
+    expect(screen.getByText('Proposal: none, every move is covered')).toBeInTheDocument()
   })
 })

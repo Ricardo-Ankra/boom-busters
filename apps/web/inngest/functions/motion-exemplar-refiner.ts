@@ -1,11 +1,6 @@
 import { jobSpendUsd } from '@boom-busters/cost'
 import { exemplarVersionById, insertExemplarVersion, updateExemplarDraft } from '@boom-busters/db'
-import {
-  MANIFEST,
-  mockCriticReport,
-  mockCriticVerify,
-  mockProvidersEnabled,
-} from '@boom-busters/providers'
+import { mockCriticReport, mockCriticVerify, mockProvidersEnabled } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   CRITIC_AXES,
@@ -16,6 +11,7 @@ import {
 import type { CriticReport, CriticVerify, PairwiseOutcome } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, refineSteer } from '@/lib/exemplar-derive'
+import { pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
 import { criticPlanOf } from '@/lib/graphic-design-core'
@@ -87,7 +83,7 @@ export const motionExemplarRefiner = inngest.createFunction(
       async (): Promise<{ versionId: string } | { gone: true } | { refused: string }> => {
         const parent = await exemplarVersionById(db, parentId)
         if (!parent || parent.channelId !== channelId) return { gone: true }
-        const entry = MANIFEST.find((candidate) => candidate.technique === parent.technique)
+        const entry = await techniqueEntryFor(db, channelId, parent.technique)
         if (!entry) return { refused: `No catalogue entry for ${parent.technique}` }
         const channel = await loopChannel(channelId)
         const guidance = refineSteer(steer, parent.plan)
@@ -125,6 +121,8 @@ export const motionExemplarRefiner = inngest.createFunction(
               current: parent.code,
               guidance,
               complete: completeForJob(channelId, jobId, parent.technique),
+              // The house design for a house key; the approved version, this parent, for a channel's own (spec 8.5).
+              exemplar: await pinnedExemplarFor(db, channelId, parent.technique),
               ...(framesOn() ? { frames: browserFrames() } : {}),
             })
           } catch (error) {
@@ -148,6 +146,8 @@ export const motionExemplarRefiner = inngest.createFunction(
           code: result.code,
           parentId,
           steer,
+          // A channel's own technique keeps its proposal on every version (spec 8.5).
+          proposal: parent.proposal,
         })
         return { versionId: row.id }
       },
@@ -163,7 +163,7 @@ export const motionExemplarRefiner = inngest.createFunction(
       if (!version || !parent) return null
       // The owner may have decided on the draft already (final review, issue 4): it is theirs now.
       if (version.status !== 'draft') return null
-      const entry = MANIFEST.find((candidate) => candidate.technique === parent.technique)
+      const entry = await techniqueEntryFor(db, channelId, parent.technique)
       if (!entry) return null
       const channel = await loopChannel(channelId)
       const photographed = await photographVersion({
@@ -193,7 +193,7 @@ export const motionExemplarRefiner = inngest.createFunction(
       const version = await exemplarVersionById(db, versionId)
       const parent = await exemplarVersionById(db, parentId)
       if (!version || !parent) return
-      const entry = MANIFEST.find((candidate) => candidate.technique === parent.technique)
+      const entry = await techniqueEntryFor(db, channelId, parent.technique)
       if (!entry) return
       const channel = await loopChannel(channelId)
       if (version.status !== 'draft') return

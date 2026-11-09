@@ -1,11 +1,14 @@
 import { jobSpendUsd } from '@boom-busters/cost'
 import {
+  appendTechniqueProgress,
   exemplarVersionById,
   finishDerivation,
   getChannelSettings,
   getDerivation,
   insertExemplarVersion,
+  listChannelExemplars,
   listMotionReferences,
+  setDerivationProposal,
   touchDerivation,
   updateExemplarDraft,
   updateTechniqueProgress,
@@ -13,19 +16,26 @@ import {
 import type { MotionDerivationRow } from '@boom-busters/db'
 import {
   buildStoryboardRequest,
+  buildTechniqueProposalRequest,
   DESIGNS,
+  entryFromProposal,
   MANIFEST,
   mockCriticReport,
   mockCriticVerify,
   mockProvidersEnabled,
   mockStoryboardPlan,
+  mockTechniqueProposal,
   parseStoryboardPlan,
+  parseTechniqueProposal,
   STORYBOARD_OUTPUT_TOKENS,
+  TECHNIQUE_PROPOSAL_OUTPUT_TOKENS,
   type ReadingForDraft,
+  type TechniqueEntry,
 } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   criticPasses,
+  isHouseTechnique,
   pairwiseOutcome,
   parseEventData,
   resolveBrandKit,
@@ -40,14 +50,16 @@ import type {
   MotionMetrics,
   PairwiseAnswer,
   PairwiseOutcome,
-  Technique,
+  TechniqueKey,
   TechniqueProgress,
+  TechniqueProposal,
 } from '@boom-busters/schemas'
 import type { GetStepTools } from 'inngest'
 import { callForAnswer } from '@/lib/answer'
 import { criticReferencesFor } from '@/lib/critic-references'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, planBounds, planSteer } from '@/lib/exemplar-derive'
+import { channelProposalFor, pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
 import { storageConfigured } from '@/lib/storage'
@@ -76,6 +88,11 @@ import {
  * the cap the owner typed; over it, the technique keeps what it has and
  * the rest stop at once. Mock mode stores the house design, checked under
  * the channel's identity, with the fixture report and a ready verdict.
+ *
+ * With "Propose a technique" ticked (spec 8.5), one call before the loop
+ * reads the mechanism references and proposes a technique of the channel's
+ * own, or none; a proposal joins the loop as one more technique, derived
+ * under its own key with the proposal stored on the version.
  */
 
 const FUNCTION_ID = 'motion-exemplar-deriver'
@@ -141,13 +158,14 @@ type DerivationAsked = Pick<
 async function deriveTechnique(
   step: StepTools,
   derivation: DerivationAsked,
-  technique: Technique,
+  technique: TechniqueKey,
+  /** The catalogue's entry, or the one the proposal makes (spec 8.5). */
+  entry: TechniqueEntry,
+  /** A channel's own technique carries its proposal onto the version. */
+  proposal: TechniqueProposal | null,
 ): Promise<TechniqueOutcome> {
   const { channelId } = derivation
   const capUsd = Number(derivation.capUsd)
-  const entry = MANIFEST.find((candidate) => candidate.technique === technique)
-  if (!entry)
-    return { state: 'failed', reason: `No catalogue entry for ${technique}`, versionId: null }
   const mock = mockProvidersEnabled()
   const complete = completeForJob(channelId, derivation.id, technique)
   const name = (part: string) => `${technique}/${part}`
@@ -174,7 +192,7 @@ async function deriveTechnique(
       if (mock) return { plan: mockStoryboardPlan(entry) }
       const channel = await loopChannel(channelId)
       const brand = resolveBrandKit(await getChannelSettings(db, channelId))
-      const house = DESIGNS[technique]
+      const house = isHouseTechnique(technique) ? DESIGNS[technique] : undefined
       const input = {
         motion: channel.motion,
         brand: brandForPrompt(brand),
@@ -214,7 +232,10 @@ async function deriveTechnique(
       const channel = await loopChannel(channelId)
       let result: Awaited<ReturnType<typeof buildFromPlan>>
       if (mock) {
-        const design = DESIGNS[technique]
+        // A channel's own technique has no house design: the word stack stands in (spec 8.5).
+        const design =
+          (isHouseTechnique(technique) ? DESIGNS[technique] : undefined) ??
+          DESIGNS['kinetic-word-stack']
         if (!design) return { refused: `No house design is stored for ${technique}` }
         const context = derivedContext(entry, plan)
         const slot = derivedSlot(entry, plan, context)
@@ -240,6 +261,7 @@ async function deriveTechnique(
             plan,
             guidance: planSteer(plan),
             complete,
+            exemplar: await pinnedExemplarFor(db, channelId, technique),
             ...(framesOn() ? { frames: browserFrames() } : {}),
           })
         } catch (error) {
@@ -254,6 +276,7 @@ async function deriveTechnique(
         plan,
         code: result.code,
         derivationId: derivation.id,
+        proposal,
       })
       return { versionId: row.id }
     },
@@ -434,6 +457,7 @@ async function deriveTechnique(
             current: version.code,
             guidance: criticSteer(judged.report.fixes, planSteer(plan)),
             complete,
+            exemplar: await pinnedExemplarFor(db, channelId, technique),
             ...(framesOn() ? { frames: browserFrames() } : {}),
           })
           if (!result.ok) return { kept: result.issue }
@@ -563,17 +587,153 @@ export const motionExemplarDeriver = inngest.createFunction(
     const { derivationId } = parseEventData('motion/exemplars.derive', event.data)
     const derivation = await step.run('load', () => getDerivation(db, derivationId))
     if (!derivation) return { derivationId, outcome: 'gone' as const }
+    const { channelId } = derivation
+    const capUsd = Number(derivation.capUsd)
 
-    let stoppedAtCap = false
-    for (const technique of derivation.techniques) {
-      const before = await step.run(`${technique}/start`, async () => {
-        await updateTechniqueProgress(db, derivationId, technique, { state: 'running' })
-        return jobSpendUsd(db, derivationId)
-      })
+    // The proposal (spec 8.5): one call, before the loop, when the owner ticked it.
+    const proposed = derivation.propose
+      ? await step.run(
+          'propose',
+          async (): Promise<
+            | { proposal: TechniqueProposal }
+            | { none: string }
+            | { cap: string }
+            | { failed: string }
+          > => {
+            const record = async (
+              outcome:
+                | { proposal: TechniqueProposal }
+                | { none: string }
+                | { cap: string }
+                | { failed: string },
+            ) => {
+              await setDerivationProposal(
+                db,
+                derivationId,
+                'proposal' in outcome
+                  ? { state: 'proposed', technique: outcome.proposal.key, reason: null }
+                  : 'none' in outcome
+                    ? { state: 'none', technique: null, reason: outcome.none.slice(0, 500) }
+                    : 'cap' in outcome
+                      ? { state: 'stopped-at-cap', technique: null, reason: outcome.cap }
+                      : { state: 'failed', technique: null, reason: outcome.failed },
+              )
+              if ('proposal' in outcome) {
+                await appendTechniqueProgress(db, derivationId, outcome.proposal.key)
+              }
+              return outcome
+            }
+            await touchDerivation(db, derivationId)
+            const spent = await jobSpendUsd(db, derivationId)
+            if (spent >= capUsd) return record({ cap: capReason(capUsd, spent) })
+            const readings = (await readingsFor(channelId)).filter(
+              (entry) => entry.purpose === 'mechanism' && !entry.negative && entry.reading !== null,
+            )
+            if (mockProvidersEnabled()) {
+              const answer = mockTechniqueProposal(readings)
+              return record(answer.proposal ? { proposal: answer.proposal } : { none: answer.why })
+            }
+            const channel = await loopChannel(channelId)
+            // Every technique the channel holds, approved or not, is taken (final
+            // review, issue 3): the newest version's proposal names each one.
+            const rows = await listChannelExemplars(db, channelId)
+            const own = [...new Set(rows.map((row) => row.technique))]
+              .filter((key) => !isHouseTechnique(key))
+              .sort()
+              .flatMap((key) => {
+                const newest = rows.find((row) => row.technique === key && row.proposal !== null)
+                return newest?.proposal
+                  ? [
+                      {
+                        technique: key,
+                        description: newest.proposal.description,
+                        steerPhrases: newest.proposal.steerPhrases,
+                      },
+                    ]
+                  : []
+              })
+            const input = {
+              motion: channel.motion,
+              readings,
+              catalogue: MANIFEST.map((entry) => ({
+                technique: entry.technique,
+                description: entry.description,
+                mechanisms: entry.mechanisms,
+              })),
+              channelTechniques: own,
+            }
+            const keys = [
+              ...new Set([...rows.map((row) => row.technique), ...derivation.techniques]),
+            ]
+            const complete = completeForJob(channelId, derivationId, 'proposal')
+            try {
+              const answer = await callForAnswer({
+                request: buildTechniqueProposalRequest(input),
+                parse: (text) => parseTechniqueProposal(text, { keys }),
+                retryWithReason: (reason) =>
+                  buildTechniqueProposalRequest({ ...input, rejection: reason }),
+                complete: (request, call) =>
+                  complete(request, {
+                    ...(call === 'answer'
+                      ? { estimateOutputTokens: TECHNIQUE_PROPOSAL_OUTPUT_TOKENS }
+                      : { purpose: call }),
+                  } as Parameters<typeof complete>[1]),
+              })
+              if (!answer.ok) return record({ failed: answer.issue })
+              return record(
+                answer.value.proposal
+                  ? { proposal: answer.value.proposal }
+                  : { none: answer.value.why },
+              )
+            } catch (error) {
+              if (error instanceof BudgetExceededError) return record({ cap: error.message })
+              return record({ failed: failedWith(error) })
+            }
+          },
+        )
+      : null
+    const proposal = proposed && 'proposal' in proposed ? proposed.proposal : null
+
+    let stoppedAtCap = proposed !== null && 'cap' in proposed
+    // Each key once: a proposed key is never a ticked one, and a ticked list is deduped.
+    const techniques = [...new Set([...derivation.techniques, ...(proposal ? [proposal.key] : [])])]
+    for (const technique of techniques) {
+      // `begin`, not plan 4's `start`: the output changed shape, and a run parked
+      // across the deploy must run this step afresh rather than replay a number
+      // (final review, issue 5; the memory note on replayed step results).
+      const started = await step.run(
+        `${technique}/begin`,
+        async (): Promise<{
+          before: number
+          entry: TechniqueEntry | null
+          proposal: TechniqueProposal | null
+        }> => {
+          await updateTechniqueProgress(db, derivationId, technique, { state: 'running' })
+          // The entry (spec 8.5): the proposal's for the proposed key, the newest
+          // version's for a channel key ticked again, the catalogue's otherwise.
+          const own =
+            proposal && proposal.key === technique
+              ? proposal
+              : await channelProposalFor(db, channelId, technique)
+          const entry = own
+            ? entryFromProposal(own)
+            : await techniqueEntryFor(db, channelId, technique)
+          return { before: await jobSpendUsd(db, derivationId), entry, proposal: own }
+        },
+      )
+      const before = started.before
       // One technique's failure is its own (final review, issue 6): the rest still run.
       let outcome: TechniqueOutcome
       try {
-        outcome = await deriveTechnique(step, derivation, technique)
+        outcome = started.entry
+          ? await deriveTechnique(
+              step,
+              derivation,
+              technique,
+              started.entry as TechniqueEntry,
+              started.proposal,
+            )
+          : { state: 'failed', reason: `No catalogue entry for ${technique}`, versionId: null }
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         outcome = { state: 'failed', reason: reason.slice(0, 500), versionId: null }

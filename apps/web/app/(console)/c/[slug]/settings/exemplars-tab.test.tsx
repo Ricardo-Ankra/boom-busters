@@ -114,6 +114,10 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
 
 const channelView = (over: Partial<ChannelExemplarView>): ChannelExemplarView => ({
   technique: 'stat-counter',
+  description: 'one large figure rises out of the sentence',
+  channelOnly: false,
+  steerPhrases: [],
+  fromReference: null,
   approved: null,
   pendingDraft: null,
   versions: [],
@@ -125,7 +129,7 @@ const channelProps = {
   archived: false,
   jobRunning: false,
   techniqueOptions: [{ technique: 'stat-counter' as const, description: WRITTEN.description }],
-  estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1 },
+  estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 },
   storageReady: true,
   lastRun: null,
 }
@@ -264,5 +268,55 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
     const card = screen.getByRole('region', { name: 'Stat counter' })
     expect(within(card).getByRole('button', { name: 'Refine' })).toBeDisabled()
     expect(within(card).getByRole('button', { name: 'Derive this one' })).toBeDisabled()
+  })
+
+  it("shows a channel-only technique's card after the catalogue with the reference and the phrase (spec 8.5)", () => {
+    const approved = channelVersion({ id: 'w1' })
+    render(
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        channel={[
+          channelView({}),
+          channelView({
+            technique: 'ledger-wipe',
+            description: 'a ruled line wipes the old figure away',
+            channelOnly: true,
+            steerPhrases: ['ledger wipe'],
+            fromReference: 'Ledger scene',
+            approved,
+            versions: [approved],
+          }),
+          channelView({
+            technique: 'ink-blot',
+            description: 'an ink blot spreads',
+            channelOnly: true,
+            steerPhrases: ['ink blot'],
+            fromReference: 'Blot scene',
+          }),
+        ]}
+      />,
+    )
+    const regions = screen.getAllByRole('region')
+    expect(
+      regions.map(
+        (region) =>
+          region.getAttribute('aria-labelledby') && within(region).getByRole('heading').textContent,
+      ),
+    ).toEqual(['Stat counter', 'Ledger wipe', 'Ink blot'])
+    const card = screen.getByRole('region', { name: 'Ledger wipe' })
+    expect(
+      within(card).getByText(/This channel's own technique, proposed from "Ledger scene"/),
+    ).toBeInTheDocument()
+    expect(
+      within(card).getByText(/Reach it with a steer that says: 'ledger wipe'\./),
+    ).toBeInTheDocument()
+    expect(within(card).queryByText('House exemplar')).toBeNull()
+    expect(within(card).getByText('The channel version')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Refine' })).toBeInTheDocument()
+    const blot = screen.getByRole('region', { name: 'Ink blot' })
+    expect(within(blot).getByText('No version is approved yet')).toBeInTheDocument()
+    expect(within(blot).getByRole('button', { name: 'Derive this one' })).toBeEnabled()
   })
 })

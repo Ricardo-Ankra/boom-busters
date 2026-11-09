@@ -20,6 +20,7 @@ import type {
   CriticReport,
   CriticVerify,
   DerivationProgress,
+  DerivationProposal,
   ExemplarFrames,
   ExemplarPlan,
   GraphicCode,
@@ -27,7 +28,8 @@ import type {
   PairwiseOutcome,
   ReferenceFrames,
   ReferenceReading,
-  Technique,
+  TechniqueKey,
+  TechniqueProposal,
   SearchBrief,
   CaseResearchJob,
   Series,
@@ -1080,7 +1082,7 @@ export const channelExemplars = pgTable(
     channelId: text('channel_id')
       .notNull()
       .references(() => channels.id, { onDelete: 'restrict' }),
-    technique: text('technique').notNull().$type<Technique>(),
+    technique: text('technique').notNull().$type<TechniqueKey>(),
     version: integer('version').notNull(),
     status: exemplarStatusEnum('status').notNull().default('draft'),
     parentId: text('parent_id'),
@@ -1094,6 +1096,8 @@ export const channelExemplars = pgTable(
     frames: jsonb('frames').$type<ExemplarFrames>(),
     derivationId: text('derivation_id'),
     copiedFrom: text('copied_from'),
+    /** A channel's own technique (spec 8.5): the proposal it was derived from; null for a catalogue technique. */
+    proposal: jsonb('proposal').$type<TechniqueProposal>(),
     costUsd: usd('cost_usd'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1116,8 +1120,12 @@ export const motionDerivations = pgTable(
     channelId: text('channel_id')
       .notNull()
       .references(() => channels.id, { onDelete: 'restrict' }),
-    techniques: jsonb('techniques').notNull().$type<Technique[]>(),
+    techniques: jsonb('techniques').notNull().$type<TechniqueKey[]>(),
     rounds: integer('rounds').notNull(),
+    /** "Propose a technique from the mechanism references" was ticked (spec 8.5). */
+    propose: boolean('propose').notNull().default(false),
+    /** What the propose step did; null until it ran. */
+    proposal: jsonb('proposal').$type<DerivationProposal>(),
     capUsd: usd('cap_usd').notNull(),
     state: derivationStateEnum('state').notNull().default('running'),
     progress: jsonb('progress').notNull().$type<DerivationProgress>(),

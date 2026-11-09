@@ -1,7 +1,7 @@
 'use client'
 
 import { CRITIC_AXES, EXEMPLAR_STEER_MAX } from '@boom-busters/schemas'
-import type { BrandKitStored, Technique } from '@boom-busters/schemas'
+import type { BrandKitStored, TechniqueKey } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -24,8 +24,24 @@ import type { TechniqueOption } from './motion-tab'
  * (or the house exemplar when none), its player, its concept and the
  * critic's last scores, with Refine, Derive this one and Versions. The
  * side by side after a refine lives here. One plays at a time. The
- * logo-reveal example plays the channel mark, when one is set.
+ * logo-reveal example plays the channel mark, when one is set. A
+ * technique of the channel's own (spec 8.5) has a card after the
+ * catalogue with no house example: the proposal's words, the reference it
+ * came from and the phrases that reach it.
  */
+
+/** A card's subject: a house technique with its example, or a channel's own with its proposal's words. */
+type CardSubject =
+  | ExemplarView
+  | {
+      technique: TechniqueKey
+      description: string
+      channelOnly: true
+      steerPhrases: readonly string[]
+      fromReference: string | null
+    }
+
+const isHouse = (subject: CardSubject): subject is ExemplarView => 'template' in subject
 
 const REFINE_POLL_MS = 5000
 const REFINE_WAIT_MS = 5 * 60_000
@@ -59,6 +75,8 @@ export interface ChannelExemplarsProps {
   estimateTable: DerivationEstimateTable
   storageReady: boolean
   lastRun: readonly { technique: string; costUsd: number }[] | null
+  /** Live mechanism references that are read (spec 8.5), for the Derive dialogue's proposal tick. */
+  mechanismReferences?: number
 }
 
 export function ExemplarsTab({
@@ -74,7 +92,8 @@ export function ExemplarsTab({
 } & Partial<ChannelExemplarsProps>) {
   const written = exemplars.filter((exemplar) => exemplar.title !== undefined).length
   const perChannel = channelProps.channelId ? (channelProps as ChannelExemplarsProps) : null
-  const [deriving, setDeriving] = React.useState<Technique | null>(null)
+  const [deriving, setDeriving] = React.useState<TechniqueKey | null>(null)
+  const ownTechniques = perChannel ? perChannel.channel.filter((view) => view.channelOnly) : []
   const router = useRouter()
   return (
     <GraphicPlaybackProvider>
@@ -106,6 +125,23 @@ export function ExemplarsTab({
             onDerive={() => setDeriving(exemplar.technique)}
           />
         ))}
+        {ownTechniques.map((view) => (
+          <ExemplarCard
+            key={view.technique}
+            exemplar={{
+              technique: view.technique,
+              description: view.description,
+              channelOnly: true,
+              steerPhrases: view.steerPhrases,
+              fromReference: view.fromReference,
+            }}
+            brand={brand}
+            exemplarLogo={exemplarLogo}
+            perChannel={perChannel}
+            own={view}
+            onDerive={() => setDeriving(view.technique)}
+          />
+        ))}
         {perChannel && deriving ? (
           <DeriveDialog
             channelId={perChannel.channelId}
@@ -114,6 +150,7 @@ export function ExemplarsTab({
             lastRun={perChannel.lastRun}
             estimateTable={perChannel.estimateTable}
             storageReady={perChannel.storageReady}
+            mechanismReferences={perChannel.mechanismReferences ?? 0}
             onClose={() => setDeriving(null)}
             onLaunched={() => router.refresh()}
           />
@@ -131,7 +168,7 @@ function ExemplarCard({
   own,
   onDerive,
 }: {
-  exemplar: ExemplarView
+  exemplar: CardSubject
   brand: BrandKitStored
   exemplarLogo: ExemplarLogo | null
   perChannel: ChannelExemplarsProps | null
@@ -188,6 +225,14 @@ function ExemplarCard({
       <CardHeader>
         <CardTitle id={headingId}>{name}</CardTitle>
         <CardDescription>{exemplar.description}</CardDescription>
+        {!isHouse(exemplar) ? (
+          <CardDescription>
+            This channel's own technique
+            {exemplar.fromReference ? `, proposed from "${exemplar.fromReference}"` : ''}. Reach it
+            with a steer that says:{' '}
+            {exemplar.steerPhrases.map((phrase) => `'${phrase}'`).join(', ')}.
+          </CardDescription>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {shown ? (
@@ -232,6 +277,8 @@ function ExemplarCard({
               durationMs={shown.code.durationMs}
             />
           </>
+        ) : !isHouse(exemplar) ? (
+          <p className="text-[14px] text-[var(--color-text-muted)]">No version is approved yet</p>
         ) : (
           <>
             {perChannel ? (

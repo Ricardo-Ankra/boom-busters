@@ -1,6 +1,6 @@
 'use client'
 
-import type { Technique, TechniqueProgress } from '@boom-busters/schemas'
+import type { TechniqueKey, TechniqueProgress } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,23 @@ export function progressLine(entry: TechniqueProgress): string {
   }
 }
 
+/** What the propose step did (spec 8.5), in words. */
+export function proposalLine(derivation: DerivationView): string | null {
+  if (!derivation.propose) return null
+  const proposal = derivation.proposal
+  if (!proposal) return 'Proposal: waiting'
+  switch (proposal.state) {
+    case 'proposed':
+      return `Proposal: ${techniqueName(proposal.technique ?? '')} proposed`
+    case 'none':
+      return `Proposal: none${proposal.reason ? `, ${proposal.reason}` : ''}`
+    case 'failed':
+      return `Proposal: failed${proposal.reason ? `, ${proposal.reason}` : ''}`
+    case 'stopped-at-cap':
+      return 'Proposal: stopped at cap'
+  }
+}
+
 function stateLine(derivation: DerivationView): string {
   switch (derivation.state) {
     case 'running':
@@ -64,16 +81,19 @@ export function DeriveSection({
   estimateTable,
   storageReady,
   archived,
+  mechanismReferences = 0,
 }: {
   channelId: string
   derivation: DerivationView | null
   jobRunning: boolean
   techniques: readonly TechniqueOption[]
   /** The techniques in use with no approved version. */
-  defaults: readonly Technique[]
+  defaults: readonly TechniqueKey[]
   estimateTable: DerivationEstimateTable
   storageReady: boolean
   archived: boolean
+  /** Live mechanism references that are read (spec 8.5), for the dialogue's proposal tick. */
+  mechanismReferences?: number
 }) {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -117,6 +137,7 @@ export function DeriveSection({
         {latest ? (
           <div className="flex flex-col gap-2 text-[13px]">
             <p>{stateLine(latest)}</p>
+            {proposalLine(latest) ? <p>{proposalLine(latest)}</p> : null}
             <ul className="flex list-none flex-col gap-1 pl-0">
               {latest.progress.map((entry) => (
                 <li key={entry.technique} className="flex flex-wrap items-baseline gap-x-3">
@@ -139,6 +160,7 @@ export function DeriveSection({
           lastRun={lastRun}
           estimateTable={estimateTable}
           storageReady={storageReady}
+          mechanismReferences={mechanismReferences}
           onClose={() => setOpen(false)}
           onLaunched={() => router.refresh()}
         />

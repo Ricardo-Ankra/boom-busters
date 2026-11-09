@@ -266,10 +266,26 @@ export default async function SettingsPage({
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}
-        techniqueOptions={MANIFEST.map((entry) => ({
-          technique: entry.technique,
-          description: entry.description,
-        }))}
+        techniqueOptions={[
+          ...MANIFEST.map((entry) => ({
+            technique: entry.technique,
+            description: entry.description,
+          })),
+          // The channel's own techniques (spec 8.5), after the catalogue.
+          ...channelExemplars
+            .filter((view) => view.channelOnly)
+            .map((view) => ({
+              technique: view.technique,
+              description: view.description,
+              channelOnly: true,
+              steerPhrases: view.steerPhrases,
+            })),
+        ]}
+        mechanismReferences={
+          references.filter(
+            (row) => row.purpose === 'mechanism' && !row.negative && row.readState === 'read',
+          ).length
+        }
         exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
         references={referenceViews}
         storageReady={storageConfigured()}
@@ -286,6 +302,8 @@ export default async function SettingsPage({
                 capUsd: Number(derivationRow.capUsd),
                 spentUsd: Number(derivationRow.spentUsd),
                 progress: derivationRow.progress,
+                propose: derivationRow.propose,
+                proposal: derivationRow.proposal,
                 error: derivationRow.error,
                 createdAt: derivationRow.createdAt.toISOString(),
                 finishedAt: derivationRow.finishedAt?.toISOString() ?? null,

@@ -1,6 +1,14 @@
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
-import { ValidationError } from '@boom-busters/schemas'
-import type { ExemplarPlan, ExemplarStatus, GraphicCode, Technique } from '@boom-busters/schemas'
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { ValidationError, isHouseTechnique } from '@boom-busters/schemas'
+import type {
+  ChannelTechnique,
+  ExemplarPlan,
+  ExemplarStatus,
+  GraphicCode,
+  TechniqueKey,
+  TechniqueProposal,
+} from '@boom-busters/schemas'
+import { getChannelSettings, updateChannelSettings } from './channels'
 import type { Database } from './client'
 import { channelExemplars, motionReferences } from './schema'
 import type { ChannelExemplarRow } from './schema'
@@ -20,13 +28,15 @@ export async function insertExemplarVersion(
   db: Database,
   input: {
     channelId: string
-    technique: Technique
+    technique: TechniqueKey
     plan: ExemplarPlan
     code: GraphicCode
     parentId?: string | null
     steer?: string | null
     derivationId?: string | null
     copiedFrom?: string | null
+    /** A channel's own technique carries the proposal it was derived from (spec 8.5). */
+    proposal?: TechniqueProposal | null
     status?: ExemplarStatus
   },
 ): Promise<ChannelExemplarRow> {
@@ -52,6 +62,7 @@ export async function insertExemplarVersion(
         steer: input.steer ?? null,
         derivationId: input.derivationId ?? null,
         copiedFrom: input.copiedFrom ?? null,
+        proposal: input.proposal ?? null,
         status: input.status ?? 'draft',
         ...(input.status === 'approved' ? { approvedAt: new Date() } : {}),
       })
@@ -111,7 +122,7 @@ export async function listChannelExemplars(
 export async function approvedExemplar(
   db: Database,
   channelId: string,
-  technique: Technique,
+  technique: TechniqueKey,
 ): Promise<ChannelExemplarRow | null> {
   const [row] = await db
     .select()
@@ -268,9 +279,85 @@ export async function copyMotionFromChannel(
         metrics: row.metrics,
         frames: row.frames,
         copiedFrom: row.id,
+        proposal: row.proposal,
         costUsd: row.costUsd,
       })
     }
     return { references: references.length, exemplars: approved.length }
   })
+}
+
+/**
+ * A channel's own techniques (spec 8.5): the approved versions whose key is
+ * not in the catalogue, with the words and the steer phrases the proposal
+ * gave them, in key order. The caller filters by the identity's in-use list.
+ */
+export async function channelTechniquesFor(
+  db: Database,
+  channelId: string,
+): Promise<ChannelTechnique[]> {
+  const rows = await db
+    .select({ technique: channelExemplars.technique, proposal: channelExemplars.proposal })
+    .from(channelExemplars)
+    .where(
+      and(
+        eq(channelExemplars.channelId, channelId),
+        eq(channelExemplars.status, 'approved'),
+        isNotNull(channelExemplars.proposal),
+      ),
+    )
+    .orderBy(asc(channelExemplars.technique))
+  return rows.flatMap((row) =>
+    row.proposal && !isHouseTechnique(row.technique)
+      ? [
+          {
+            technique: row.technique,
+            description: row.proposal.description,
+            steerPhrases: row.proposal.steerPhrases,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * In use follows approval (spec 8.5): a channel's own key sits in
+ * `settings.motion.techniques` exactly while an approved version of it
+ * exists. A house key is never touched here; the owner ticks those.
+ */
+export async function syncChannelTechniqueInUse(
+  db: Database,
+  channelId: string,
+  technique: TechniqueKey,
+  /** `remove-only` (keep): a key the owner unticked is never put back (final review, issue 1). */
+  options: { mode?: 'follow' | 'remove-only' } = {},
+): Promise<'added' | 'removed' | 'unchanged'> {
+  if (isHouseTechnique(technique)) return 'unchanged'
+  const [approved] = await db
+    .select({ id: channelExemplars.id })
+    .from(channelExemplars)
+    .where(
+      and(
+        eq(channelExemplars.channelId, channelId),
+        eq(channelExemplars.technique, technique),
+        eq(channelExemplars.status, 'approved'),
+      ),
+    )
+    .limit(1)
+  const motion = (await getChannelSettings(db, channelId)).motion
+  const listed = motion.techniques.includes(technique)
+  if (approved && !listed) {
+    if (options.mode === 'remove-only') return 'unchanged'
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: [...motion.techniques, technique] },
+    })
+    return 'added'
+  }
+  if (!approved && listed) {
+    await updateChannelSettings(db, channelId, {
+      motion: { ...motion, techniques: motion.techniques.filter((key) => key !== technique) },
+    })
+    return 'removed'
+  }
+  return 'unchanged'
 }

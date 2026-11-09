@@ -66,6 +66,7 @@ export const MOTION_GUIDELINE_FULL: readonly { heading: string; lines: readonly 
       '"Derive exemplars" on the Motion tab plans each technique from the readings, builds it, has the critic judge and fix it round by round under a cap you type, and stores the result as a draft version; nothing is approved for you.',
       'Each technique on the Exemplars tab shows its approved version or the house example, and "Refine" builds one new version from the approved one under a plain-words steer, shown beside it with "Approve this" and "Keep the approved one"; every version stays under "Versions" and a retired one can be restored.',
       '"Copy motion from another channel" forks that channel\'s identity, references and approved exemplars into this one.',
+      '"Propose a technique from the mechanism references" in the Derive dialogue reads those references and, when they carry a move no technique covers, derives a technique of this channel\'s own that a steer phrase reaches once it is approved.',
     ],
   },
 ]

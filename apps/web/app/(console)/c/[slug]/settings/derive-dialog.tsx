@@ -6,7 +6,7 @@ import {
   DERIVE_ROUNDS_MAX,
   DERIVE_ROUNDS_MIN,
 } from '@boom-busters/schemas'
-import type { Technique } from '@boom-busters/schemas'
+import type { TechniqueKey } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
@@ -22,7 +22,9 @@ import type { TechniqueOption } from './motion-tab'
  * rounds per technique, and the cap in dollars the owner types every
  * time; above $20 the field says so in red and still allows it. The
  * estimate follows the ticks and the rounds; the last run's cost per
- * technique sits beside it.
+ * technique sits beside it. With a mechanism reference read, a tick offers
+ * the proposal of a technique of the channel's own (spec 8.5), priced as
+ * one call and one more technique.
  */
 
 const ROUNDS_IN_WORDS = 'one round gives a correct exemplar, two a tuned one, three a polished one'
@@ -43,31 +45,39 @@ export function DeriveDialog({
   lastRun,
   estimateTable,
   storageReady,
+  mechanismReferences = 0,
   onClose,
   onLaunched,
 }: {
   channelId: string
   techniques: readonly TechniqueOption[]
   /** Ticked when the dialogue opens. */
-  defaults: readonly Technique[]
+  defaults: readonly TechniqueKey[]
   /** The last derivation's cost per technique, from its progress; null before one ran. */
   lastRun: readonly { technique: string; costUsd: number }[] | null
   estimateTable: DerivationEstimateTable
   storageReady: boolean
+  /** Live mechanism references that are read: the proposal is offered when there is one (spec 8.5). */
+  mechanismReferences?: number
   onClose: () => void
   onLaunched: (derivationId: string) => void
 }) {
   const { toast } = useToast()
-  const [ticked, setTicked] = React.useState<Set<Technique>>(new Set(defaults))
+  const [ticked, setTicked] = React.useState<Set<TechniqueKey>>(new Set(defaults))
   const [rounds, setRounds] = React.useState(DERIVE_ROUNDS_DEFAULT)
   const [cap, setCap] = React.useState('')
+  const [propose, setPropose] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const capUsd = Number(cap)
   const capValid = cap.trim() !== '' && Number.isFinite(capUsd) && capUsd > 0
   const chosen = techniques.filter((option) => ticked.has(option.technique))
-  const estimate = derivationEstimateUsd(estimateTable, { techniques: chosen.length, rounds })
+  const estimate = derivationEstimateUsd(estimateTable, {
+    techniques: chosen.length,
+    rounds,
+    propose,
+  })
 
-  const toggle = (technique: Technique, on: boolean) => {
+  const toggle = (technique: TechniqueKey, on: boolean) => {
     setTicked((current) => {
       const next = new Set(current)
       if (on) next.add(technique)
@@ -83,6 +93,7 @@ export function DeriveDialog({
         techniques: chosen.map((option) => option.technique),
         rounds,
         capUsd,
+        ...(propose ? { propose: true } : {}),
       })
       if (!result.ok || !result.derivationId) {
         toast({
@@ -120,10 +131,31 @@ export function DeriveDialog({
               <span>
                 {techniqueName(option.technique)}
                 <span className="text-[var(--color-text-muted)]"> {option.description}</span>
+                {option.channelOnly ? (
+                  <span className="text-[var(--color-text-muted)]"> (this channel's own)</span>
+                ) : null}
               </span>
             </label>
           ))}
         </fieldset>
+        {mechanismReferences > 0 ? (
+          <label className="flex min-h-10 items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={propose}
+              onChange={(event) => setPropose(event.target.checked)}
+              disabled={busy}
+            />
+            <span>
+              Propose a technique from the mechanism references
+              <span className="block text-[12px] text-[var(--color-text-muted)]">
+                One call reads the mechanism references and proposes a technique of this channel's
+                own, or says every move is covered. It is derived like the others.
+              </span>
+            </span>
+          </label>
+        ) : null}
         <div className="flex flex-col gap-1">
           <Label htmlFor="derive-rounds">Rounds</Label>
           <Select
@@ -159,8 +191,8 @@ export function DeriveDialog({
         </div>
         <p>
           About {money(estimate)} for {chosen.length}{' '}
-          {chosen.length === 1 ? 'technique' : 'techniques'} at {rounds}{' '}
-          {rounds === 1 ? 'round' : 'rounds'}
+          {chosen.length === 1 ? 'technique' : 'techniques'}
+          {propose ? ' and a proposal' : ''} at {rounds} {rounds === 1 ? 'round' : 'rounds'}
         </p>
         {lastRun && lastRun.length > 0 ? (
           <p className="text-[12px] text-[var(--color-text-muted)]">
@@ -174,7 +206,11 @@ export function DeriveDialog({
           </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={start} disabled={busy || chosen.length === 0 || !capValid}>
+          <Button
+            type="button"
+            onClick={start}
+            disabled={busy || (chosen.length === 0 && !propose) || !capValid}
+          >
             {busy ? 'Starting' : 'Start deriving'}
           </Button>
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>

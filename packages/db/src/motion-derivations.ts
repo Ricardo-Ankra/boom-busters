@@ -1,5 +1,10 @@
 import { and, desc, eq, gt } from 'drizzle-orm'
-import type { DerivationState, Technique, TechniqueProgress } from '@boom-busters/schemas'
+import type {
+  DerivationProposal,
+  DerivationState,
+  TechniqueKey,
+  TechniqueProgress,
+} from '@boom-busters/schemas'
 import type { Database } from './client'
 import { motionDerivations } from './schema'
 import type { MotionDerivationRow } from './schema'
@@ -12,7 +17,14 @@ import type { MotionDerivationRow } from './schema'
 
 export async function createDerivation(
   db: Database,
-  input: { channelId: string; techniques: Technique[]; rounds: number; capUsd: number },
+  input: {
+    channelId: string
+    techniques: TechniqueKey[]
+    rounds: number
+    capUsd: number
+    /** "Propose a technique from the mechanism references" (spec 8.5). */
+    propose?: boolean
+  },
 ): Promise<MotionDerivationRow> {
   const progress: TechniqueProgress[] = input.techniques.map((technique) => ({
     technique,
@@ -28,6 +40,7 @@ export async function createDerivation(
       techniques: input.techniques,
       rounds: input.rounds,
       capUsd: input.capUsd.toFixed(4),
+      propose: input.propose ?? false,
       progress,
     })
     .returning()
@@ -96,7 +109,7 @@ export async function runningDerivation(
 export async function updateTechniqueProgress(
   db: Database,
   id: string,
-  technique: Technique,
+  technique: TechniqueKey,
   patch: Partial<Omit<TechniqueProgress, 'technique'>>,
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -131,4 +144,43 @@ export async function finishDerivation(
       updatedAt: new Date(),
     })
     .where(eq(motionDerivations.id, id))
+}
+
+/** What the propose step did (spec 8.5), written once it ran. */
+export async function setDerivationProposal(
+  db: Database,
+  id: string,
+  proposal: DerivationProposal,
+): Promise<void> {
+  await db
+    .update(motionDerivations)
+    .set({ proposal, updatedAt: new Date() })
+    .where(eq(motionDerivations.id, id))
+}
+
+/** A proposed technique joins the progress as pending, once. */
+export async function appendTechniqueProgress(
+  db: Database,
+  id: string,
+  technique: TechniqueKey,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ progress: motionDerivations.progress })
+      .from(motionDerivations)
+      .where(eq(motionDerivations.id, id))
+      .for('update')
+    if (!row || row.progress.some((entry) => entry.technique === technique)) return
+    const entry: TechniqueProgress = {
+      technique,
+      state: 'pending',
+      versionId: null,
+      reason: null,
+      costUsd: 0,
+    }
+    await tx
+      .update(motionDerivations)
+      .set({ progress: [...row.progress, entry], updatedAt: new Date() })
+      .where(eq(motionDerivations.id, id))
+  })
 }
