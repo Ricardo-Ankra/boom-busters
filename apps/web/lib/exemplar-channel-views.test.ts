@@ -95,6 +95,7 @@ describe('channelExemplarViewsFrom (spec 2026-11-04, section 11.4)', () => {
     const empty = views.find((view) => view.technique === 'lower-third')!
     expect(empty).toEqual({
       technique: 'lower-third',
+      name: null,
       description: MANIFEST.find((entry) => entry.technique === 'lower-third')!.description,
       channelOnly: false,
       steerPhrases: [],

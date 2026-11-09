@@ -5,6 +5,7 @@ import type { ReadingForDraft } from './motion'
 import {
   TECHNIQUE_PROPOSAL_OUTPUT_TOKENS,
   buildTechniqueProposalRequest,
+  isReadMechanismReading,
   mockTechniqueProposal,
   parseTechniqueProposal,
   type TechniqueProposalInput,
@@ -128,6 +129,32 @@ describe('parseTechniqueProposal', () => {
     expect(parse({ steerPhrases: ['ledger wipe', 'pie chart'] })).toThrow(
       /"pie chart" already reaches donut-chart/,
     )
+  })
+
+  it('refuses a phrase another technique of the channel holds, and one with a negation word (deferred minor)', () => {
+    const parse =
+      (steerPhrases: string[], techniques: TechniqueProposalInput['channelTechniques'] = []) =>
+      () =>
+        parseTechniqueProposal(
+          JSON.stringify({ proposal: { ...proposal, steerPhrases }, why: 'x' }),
+          { keys: [], techniques },
+        )
+    expect(
+      parse(
+        ['ledger wipe'],
+        [{ technique: 'ink-blot', description: 'd', steerPhrases: ['ledger wipe'] }],
+      ),
+    ).toThrow(/"ledger wipe" already reaches ink-blot/)
+    expect(parse(['no ledger'])).toThrow(/"no ledger" contains a negation word/)
+    expect(parse(['wipe without ink'])).toThrow(/negation word/)
+    expect(parse(['ledger wipe'])).not.toThrow()
+  })
+
+  it('names a reading the proposal may use: a mechanism, not negative, read (deferred minor)', () => {
+    expect(isReadMechanismReading(mechanismReading)).toBe(true)
+    expect(isReadMechanismReading({ ...mechanismReading, purpose: 'look' })).toBe(false)
+    expect(isReadMechanismReading({ ...mechanismReading, negative: true })).toBe(false)
+    expect(isReadMechanismReading({ ...mechanismReading, reading: null })).toBe(false)
   })
 
   it('mocks a proposal from the first read mechanism reference and none without one', () => {

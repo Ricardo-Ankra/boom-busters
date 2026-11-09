@@ -248,6 +248,38 @@ export async function getChannelSettings(db: Database, channelId: string): Promi
  * the result passes `SettingsSchema` before it is stored, exactly as the
  * single settings row did.
  */
+/** The transaction handle a caller already holds, for a settings write that must share it. */
+export type ChannelTransaction = Parameters<Parameters<Database['transaction']>[0]>[0]
+
+/** The channel's settings, its row held for update until the caller's transaction ends. */
+export async function lockChannelSettings(
+  tx: ChannelTransaction,
+  channelId: string,
+): Promise<Settings> {
+  const [row] = await tx
+    .select({ settings: channels.settings })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .for('update')
+  if (!row) throw new ChannelNotFoundError(channelId)
+  return normaliseSettings(row.settings)
+}
+
+/** `updateChannelSettings` within a caller's transaction, after `lockChannelSettings`. */
+export async function updateChannelSettingsWithin(
+  tx: ChannelTransaction,
+  channelId: string,
+  current: Settings,
+  patch: SettingsPatch,
+): Promise<Settings> {
+  const next = mergeSettings(current, patch)
+  await tx
+    .update(channels)
+    .set({ settings: next, updatedAt: new Date() })
+    .where(eq(channels.id, channelId))
+  return next
+}
+
 export async function updateChannelSettings(
   db: Database,
   channelId: string,

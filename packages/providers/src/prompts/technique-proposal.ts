@@ -20,7 +20,7 @@ import type {
   TechniqueProposalAnswer,
 } from '@boom-busters/schemas'
 import { z } from 'zod'
-import { claimedBySteer } from '../exemplars/technique'
+import { claimedBySteer, hasNegator } from '../exemplars/technique'
 import { outputBudget, type LLMTaskRequest } from '../llm/types'
 import { motionIdentityBlock } from './graphics'
 import { parseJsonCompletion } from './json'
@@ -126,7 +126,8 @@ export function buildTechniqueProposalRequest(input: TechniqueProposalInput): LL
  */
 export function parseTechniqueProposal(
   text: string,
-  taken: { keys: readonly string[] },
+  /** Every key the channel holds or ticked, and its own techniques with their phrases. */
+  taken: { keys: readonly string[]; techniques?: readonly ChannelTechnique[] },
 ): TechniqueProposalAnswer {
   // The key is checked on the raw answer, before the schema's own refusal of
   // a house key, so the retry carries the reason in words.
@@ -145,14 +146,29 @@ export function parseTechniqueProposal(
   const proposal = answer.proposal
   if (!proposal) return answer
   for (const phrase of proposal.steerPhrases) {
-    const claimed = claimedBySteer(phrase)
+    const claimed =
+      claimedBySteer(phrase) ??
+      taken.techniques?.find((entry) => entry.steerPhrases.includes(phrase))?.technique
     if (claimed) {
       throw new ValidationError(`The phrase "${phrase}" already reaches ${claimed}`, {
         field: 'technique proposal',
       })
     }
+    if (hasNegator(phrase)) {
+      throw new ValidationError(
+        `The phrase "${phrase}" contains a negation word, which a steer reads as a refusal`,
+        { field: 'technique proposal' },
+      )
+    }
   }
   return answer
+}
+
+/** A reading the proposal may use: a mechanism reference, not a negative one, read. The same test gates the tick and the call. */
+export function isReadMechanismReading(
+  entry: Pick<ReadingForDraft, 'purpose' | 'negative' | 'reading'>,
+): boolean {
+  return entry.purpose === 'mechanism' && !entry.negative && entry.reading !== null
 }
 
 /** Words spread evenly from `fromMs`, `stepMs` apart. */
@@ -163,9 +179,7 @@ const spoken = (text: string, fromMs: number, stepMs: number) =>
 export function mockTechniqueProposal(
   readings: readonly ReadingForDraft[],
 ): TechniqueProposalAnswer {
-  const source = readings.find(
-    (entry) => entry.purpose === 'mechanism' && !entry.negative && entry.reading !== null,
-  )
+  const source = readings.find(isReadMechanismReading)
   if (!source) return { proposal: null, why: '[mock] no mechanism reference is read' }
   return {
     proposal: {

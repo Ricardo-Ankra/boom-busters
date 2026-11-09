@@ -3,7 +3,6 @@ import { approvedExemplar, channelForProject } from '@boom-busters/db'
 import { requireCompleteBible } from '@/inngest/lib/channel'
 import {
   exemplarFor,
-  MANIFEST,
   mockGraphicCode,
   mockProvidersEnabled,
   type Exemplar,
@@ -12,7 +11,7 @@ import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { DesignableBrief, TechniqueKey } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { criticReferencesFor } from '@/lib/critic-references'
-import { channelTechniquesInUse } from '@/lib/exemplar-entries'
+import { channelTechniquesInUse, exemplarFromApproved } from '@/lib/exemplar-entries'
 import { slotTechnique } from '@/lib/graphic-design-core'
 import { callLlm } from '@/lib/llm'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
@@ -89,15 +88,7 @@ export async function channelExemplarFor(
 ): Promise<Exemplar | undefined> {
   const approved = await approvedExemplar(db, channelId, technique)
   // A channel's own key has no house design (spec 8.5): nothing before approval.
-  if (!approved) return exemplarFor(technique)
-  const entry = MANIFEST.find((candidate) => candidate.technique === technique)
-  return {
-    technique,
-    description: entry?.description ?? approved.proposal?.description ?? technique,
-    mechanisms: approved.plan.mechanisms,
-    title: approved.code.title,
-    source: approved.code.source,
-  }
+  return approved ? exemplarFromApproved(approved) : exemplarFor(technique)
 }
 
 export async function designGraphic(

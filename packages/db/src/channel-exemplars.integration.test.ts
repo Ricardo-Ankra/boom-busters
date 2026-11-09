@@ -319,6 +319,23 @@ suite('channel exemplars', () => {
     ).toBe('removed')
   })
 
+  it('two syncs at once both land (deferred minor: the sync holds the channel row)', async () => {
+    const a = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+    const b = await aVersion({
+      technique: 'ink-blot',
+      proposal: { ...PROPOSAL, key: 'ink-blot', name: 'Ink blot', steerPhrases: ['ink blot'] },
+    })
+    await approveExemplarVersion(db, a.id)
+    await approveExemplarVersion(db, b.id)
+    await Promise.all([
+      syncChannelTechniqueInUse(db, channelId, 'ledger-wipe'),
+      syncChannelTechniqueInUse(db, channelId, 'ink-blot'),
+    ])
+    const inUse = (await getChannelSettings(db, channelId)).motion.techniques
+    expect(inUse).toContain('ledger-wipe')
+    expect(inUse).toContain('ink-blot')
+  })
+
   it('copies a channel-only technique with its proposal', async () => {
     const source = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
     await approveExemplarVersion(db, source.id)

@@ -10407,3 +10407,32 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      is more than 30 minutes old, so collecting it is no longer free. Press Test
      this angle to buy a new one." and refreshes the panel, which then offers the
      paid test with its cost. Branch `fix-free-collect`.
+433. **Channel-only techniques, the review's deferred minors** (2026-11-09,
+     branch `channel-techniques-minors`). The twelve minors the final review
+     of plan 5 left, in one round. Copy keeps the target's own techniques in
+     use: the source's identity comes across with the target's approved
+     channel keys appended, since the copy retires only the techniques the
+     source has. The identity draft keeps a channel key in use and drops a
+     non-house key the model made up that no version holds. The proposal
+     parse refuses a phrase another technique of the channel already holds
+     and a phrase with a negation word (which a steer reads as a refusal);
+     the deriver passes the channel's own techniques for that check. In real
+     mode the propose step answers none without a call when no mechanism
+     reference is read; the tick's count on the page and the deriver's
+     filter share one predicate (`isReadMechanismReading`: a mechanism
+     reference, not negative, with a reading). A failed or capped proposal
+     reason is cut at 500 characters like none. A ticked channel key whose
+     versions are gone fails with "No proposal is stored for <key>", a
+     house key off the catalogue with "No catalogue entry" as before, in the
+     deriver and the refiner. `exemplarFromApproved` is the one rule that
+     makes an exemplar of an approved version, for the board and the loop
+     (catalogue words for a house key, the proposal's for a channel's own,
+     the key when neither). The Exemplars card names a channel's own
+     technique by its proposal's name and says how it is reached by state:
+     approved and ticked, "Reach it with a steer that says"; approved and
+     unticked, "Unticked on the Motion tab, so a steer ... does not reach
+     it"; not approved, "Once a version is approved, reach it with a steer
+     that says". The in-use sync holds the channel row for its read and
+     write in one transaction, so two approvals landing together cannot
+     drop each other's key. The real draft's `keep` wiring has a test of its
+     own through the parse.

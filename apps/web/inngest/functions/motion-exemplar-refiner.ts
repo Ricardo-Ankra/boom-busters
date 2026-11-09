@@ -5,6 +5,7 @@ import {
   BudgetExceededError,
   CRITIC_AXES,
   CRITIC_BAR,
+  isHouseTechnique,
   parseEventData,
   ValidationError,
 } from '@boom-busters/schemas'
@@ -84,7 +85,13 @@ export const motionExemplarRefiner = inngest.createFunction(
         const parent = await exemplarVersionById(db, parentId)
         if (!parent || parent.channelId !== channelId) return { gone: true }
         const entry = await techniqueEntryFor(db, channelId, parent.technique)
-        if (!entry) return { refused: `No catalogue entry for ${parent.technique}` }
+        if (!entry) {
+          return {
+            refused: isHouseTechnique(parent.technique)
+              ? `No catalogue entry for ${parent.technique}`
+              : `No proposal is stored for ${parent.technique}`,
+          }
+        }
         const channel = await loopChannel(channelId)
         const guidance = refineSteer(steer, parent.plan)
         let result: Awaited<ReturnType<typeof buildFromPlan>>

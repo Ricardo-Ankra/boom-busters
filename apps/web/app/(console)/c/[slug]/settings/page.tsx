@@ -25,7 +25,7 @@ import { redirect } from 'next/navigation'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 import { loadModelOptions } from '@/lib/model-catalogue'
-import { MANIFEST } from '@boom-busters/providers'
+import { MANIFEST, isReadMechanismReading } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
 import { channelExemplarViews } from '@/lib/exemplar-channel-views'
 import {
@@ -281,11 +281,7 @@ export default async function SettingsPage({
               steerPhrases: view.steerPhrases,
             })),
         ]}
-        mechanismReferences={
-          references.filter(
-            (row) => row.purpose === 'mechanism' && !row.negative && row.readState === 'read',
-          ).length
-        }
+        mechanismReferences={references.filter(isReadMechanismReading).length}
         exemplarLogo={exemplarLogoFor(logoViews, settings.brandKit.look.logoR2Key)}
         references={referenceViews}
         storageReady={storageConfigured()}

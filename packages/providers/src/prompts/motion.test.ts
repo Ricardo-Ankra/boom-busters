@@ -172,6 +172,17 @@ describe('the identity draft (spec 8.4)', () => {
     expect(draft.identity.techniques.filter((key) => key === 'stat-counter')).toHaveLength(1)
   })
 
+  it('drops a key the model invented that the channel does not hold (deferred minor)', () => {
+    const draft = parseMotionIdentityDraft(
+      JSON.stringify({
+        identity: { techniques: [...TECHNIQUES, 'ink-blot', 'ledger-wipe'] },
+        why: 'two of its own',
+      }),
+      ['ledger-wipe'],
+    )
+    expect(draft.identity.techniques).toEqual([...TECHNIQUES, 'ledger-wipe'])
+  })
+
   it('the mock draft differs from the current identity', () => {
     const d = mockMotionIdentityDraft(draftInput({ brief: 'slow and dark' }))
     expect(d.identity.styleGuideMd).toContain('slow and dark')

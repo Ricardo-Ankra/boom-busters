@@ -114,6 +114,7 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
 
 const channelView = (over: Partial<ChannelExemplarView>): ChannelExemplarView => ({
   technique: 'stat-counter',
+  name: null,
   description: 'one large figure rises out of the sentence',
   channelOnly: false,
   steerPhrases: [],
@@ -132,6 +133,7 @@ const channelProps = {
   estimateTable: { perTechniqueFixed: 1, perRound: 0.5, perPairwise: 0.1, perProposal: 0.2 },
   storageReady: true,
   lastRun: null,
+  techniquesInUse: ['stat-counter'] as const,
 }
 
 describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', () => {
@@ -277,6 +279,7 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
         exemplars={[WRITTEN]}
         brand={brand}
         {...channelProps}
+        techniquesInUse={['stat-counter', 'ledger-wipe']}
         channel={[
           channelView({}),
           channelView({
@@ -318,5 +321,47 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
     const blot = screen.getByRole('region', { name: 'Ink blot' })
     expect(within(blot).getByText('No version is approved yet')).toBeInTheDocument()
     expect(within(blot).getByRole('button', { name: 'Derive this one' })).toBeEnabled()
+  })
+
+  it('names a channel-only technique by its proposal, and says when its steer reaches it (deferred minors)', () => {
+    const approved = channelVersion({ id: 'w1' })
+    const ledger = {
+      technique: 'ledger-wipe',
+      name: 'The ledger wipe',
+      description: 'a ruled line wipes the old figure away',
+      channelOnly: true,
+      steerPhrases: ['ledger wipe'],
+      fromReference: 'Ledger scene',
+    } as const
+    const tab = (inUse: readonly string[], view: Partial<ChannelExemplarView>) => (
+      <ExemplarsTab
+        exemplars={[WRITTEN]}
+        brand={brand}
+        {...channelProps}
+        techniquesInUse={inUse}
+        channel={[channelView(view)]}
+      />
+    )
+    const { rerender } = render(
+      tab(['stat-counter', 'ledger-wipe'], { ...ledger, approved, versions: [approved] }),
+    )
+    const card = () => screen.getByRole('region', { name: 'The ledger wipe' })
+    expect(
+      within(card()).getByText(/Reach it with a steer that says: 'ledger wipe'\./),
+    ).toBeInTheDocument()
+
+    rerender(tab(['stat-counter'], { ...ledger, approved, versions: [approved] }))
+    expect(
+      within(card()).getByText(
+        /Unticked on the Motion tab, so a steer that says 'ledger wipe' does not reach it\./,
+      ),
+    ).toBeInTheDocument()
+
+    rerender(tab(['stat-counter'], ledger))
+    expect(
+      within(card()).getByText(
+        /Once a version is approved, reach it with a steer that says: 'ledger wipe'\./,
+      ),
+    ).toBeInTheDocument()
   })
 })

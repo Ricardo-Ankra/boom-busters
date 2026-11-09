@@ -45,6 +45,8 @@ export interface ChannelExemplarVersionView {
 
 export interface ChannelExemplarView {
   technique: TechniqueKey
+  /** The proposal's name for a channel's own technique; null for a house one, which is named from its key. */
+  name: string | null
   /** The catalogue's line, or the proposal's for a channel's own technique. */
   description: string
   /** A technique of the channel's own (spec 8.5): no house example, reached by its phrases. */
@@ -91,7 +93,7 @@ export function channelExemplarViewsFrom(
     technique: TechniqueKey,
     words: Pick<
       ChannelExemplarView,
-      'description' | 'channelOnly' | 'steerPhrases' | 'fromReference'
+      'name' | 'description' | 'channelOnly' | 'steerPhrases' | 'fromReference'
     >,
   ): ChannelExemplarView => {
     const own = versionsOf(technique)
@@ -105,6 +107,7 @@ export function channelExemplarViewsFrom(
   }
   const house = MANIFEST.map((entry) =>
     view(entry.technique, {
+      name: null,
       description: entry.description,
       channelOnly: false,
       steerPhrases: [],
@@ -122,6 +125,7 @@ export function channelExemplarViewsFrom(
     if (!newest?.proposal) return []
     return [
       view(technique, {
+        name: newest.proposal.name,
         description: newest.proposal.description,
         channelOnly: true,
         steerPhrases: newest.proposal.steerPhrases,
