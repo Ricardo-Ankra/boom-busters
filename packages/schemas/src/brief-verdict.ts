@@ -78,7 +78,10 @@ export function topicDemand(brief: SearchBrief): {
   return { topic, searches, growth: target.growthPct }
 }
 
-function isOpenDoor(r: FieldResult, t: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS): boolean {
+export function isOpenDoor(
+  r: FieldResult,
+  t: ResearchThresholds = DEFAULT_RESEARCH_THRESHOLDS,
+): boolean {
   return (
     r.subscribers !== null &&
     r.views !== null &&

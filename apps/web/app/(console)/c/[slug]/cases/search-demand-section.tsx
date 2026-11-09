@@ -2,7 +2,7 @@
 
 import type { CaseSummary } from '@boom-busters/db'
 import { briefHasFullChecks, keywordHasFigure, topicDemand } from '@boom-busters/schemas'
-import type { SearchBrief, SearchKeyword } from '@boom-busters/schemas'
+import type { ResearchThresholds, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { setTargetKeywordAction } from './actions'
@@ -264,7 +264,16 @@ export function EvidenceItem({
   )
 }
 
-export function SearchDemandSection({ item, run }: { item: CaseSummary; run: Run }) {
+export function SearchDemandSection({
+  item,
+  run,
+  thresholds,
+}: {
+  item: CaseSummary
+  run: Run
+  /** The channel's research thresholds, for the Who ranks panel. */
+  thresholds?: ResearchThresholds
+}) {
   const brief = item.searchBrief
   // The chooser in flight; the others wait so a double click sends once.
   const [pending, setPending] = React.useState<string | null>(null)
@@ -313,7 +322,7 @@ export function SearchDemandSection({ item, run }: { item: CaseSummary; run: Run
         </p>
       )}
 
-      <WhoRanks item={item} run={run} />
+      <WhoRanks item={item} run={run} thresholds={thresholds} />
 
       {brief.secondaryKeywords.length > 0 ? (
         <div className="flex flex-col gap-2">

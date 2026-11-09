@@ -224,7 +224,7 @@ export function CasePanel({
         </section>
       ) : null}
 
-      <SearchDemandSection item={item} run={run} />
+      <SearchDemandSection item={item} run={run} thresholds={thresholds} />
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-4">
         <p className="min-w-0 text-[13px] text-[var(--color-text-secondary)]">

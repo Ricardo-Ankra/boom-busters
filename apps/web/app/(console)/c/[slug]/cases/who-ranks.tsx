@@ -2,14 +2,14 @@
 
 import type { CaseSummary } from '@boom-busters/db'
 import {
-  OPEN_DOOR_MAX_SUBSCRIBERS,
-  OPEN_DOOR_MIN_VIEWS,
+  DEFAULT_RESEARCH_THRESHOLDS,
   SHORT_MAX_SECONDS,
   briefHasFullChecks,
   caseResearchJobIsRunning,
+  isOpenDoor,
   openDoors,
 } from '@boom-busters/schemas'
-import type { FieldCheck, FieldResult } from '@boom-busters/schemas'
+import type { FieldCheck, FieldResult, ResearchThresholds } from '@boom-busters/schemas'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
@@ -47,13 +47,15 @@ function ageYears(result: FieldResult, checkedAt: string): number | null {
   return Math.max(0, (at - published) / YEAR_MS)
 }
 
-const isOpenDoor = (r: FieldResult): boolean =>
-  r.subscribers !== null &&
-  r.views !== null &&
-  r.subscribers < OPEN_DOOR_MAX_SUBSCRIBERS &&
-  r.views >= OPEN_DOOR_MIN_VIEWS
-
-function ResultRow({ result, checkedAt }: { result: FieldResult; checkedAt: string }) {
+function ResultRow({
+  result,
+  checkedAt,
+  thresholds,
+}: {
+  result: FieldResult
+  checkedAt: string
+  thresholds: ResearchThresholds
+}) {
   const age = ageYears(result, checkedAt)
   const figures = [
     result.subscribers === null ? null : `${fmt(result.subscribers)} subscribers`,
@@ -75,7 +77,7 @@ function ResultRow({ result, checkedAt }: { result: FieldResult; checkedAt: stri
           Short
         </span>
       ) : null}
-      {isOpenDoor(result) ? (
+      {isOpenDoor(result, thresholds) ? (
         <span className="rounded-full bg-[color-mix(in_srgb,var(--color-success)_18%,transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
           Open door
         </span>
@@ -84,8 +86,8 @@ function ResultRow({ result, checkedAt }: { result: FieldResult; checkedAt: stri
   )
 }
 
-function Field({ check }: { check: FieldCheck }) {
-  const doors = openDoors(check)
+function Field({ check, thresholds }: { check: FieldCheck; thresholds: ResearchThresholds }) {
+  const doors = openDoors(check, thresholds)
   return (
     <div className="flex flex-col gap-1">
       <p className="text-[12px] text-[var(--color-text-muted)]">
@@ -97,7 +99,12 @@ function Field({ check }: { check: FieldCheck }) {
       ) : (
         <ul aria-label={`Who ranks for ${check.keyword}`} className="flex flex-col">
           {check.results.map((result) => (
-            <ResultRow key={result.videoId} result={result} checkedAt={check.checkedAt} />
+            <ResultRow
+              key={result.videoId}
+              result={result}
+              checkedAt={check.checkedAt}
+              thresholds={thresholds}
+            />
           ))}
         </ul>
       )}
@@ -105,7 +112,16 @@ function Field({ check }: { check: FieldCheck }) {
   )
 }
 
-export function WhoRanks({ item, run }: { item: CaseSummary; run: Run }) {
+export function WhoRanks({
+  item,
+  run,
+  thresholds = DEFAULT_RESEARCH_THRESHOLDS,
+}: {
+  item: CaseSummary
+  run: Run
+  /** The channel's research thresholds; the defaults when absent. */
+  thresholds?: ResearchThresholds
+}) {
   const brief = item.searchBrief
   const [others, setOthers] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
@@ -121,12 +137,12 @@ export function WhoRanks({ item, run }: { item: CaseSummary; run: Run }) {
     <section id="evidence-competition" className="flex scroll-mt-4 flex-col gap-2">
       <h4 className="text-[13px] font-semibold">Who ranks now</h4>
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        An open door is a channel under {fmt(OPEN_DOOR_MAX_SUBSCRIBERS)} subscribers with{' '}
-        {fmt(OPEN_DOOR_MIN_VIEWS)} views or more on its video.
+        An open door is a channel under {fmt(thresholds.openDoorMaxSubscribers)} subscribers with{' '}
+        {fmt(thresholds.openDoorMinViews)} views or more on its video.
       </p>
 
       {target !== undefined ? (
-        <Field check={target} />
+        <Field check={target} thresholds={thresholds} />
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-[13px] text-[var(--color-text-secondary)]">
@@ -166,7 +182,11 @@ export function WhoRanks({ item, run }: { item: CaseSummary; run: Run }) {
               {others ? 'Hide the other keywords checked' : 'Show the other keywords checked'}
             </Button>
           </div>
-          {others ? rest.map((check) => <Field key={check.keyword} check={check} />) : null}
+          {others
+            ? rest.map((check) => (
+                <Field key={check.keyword} check={check} thresholds={thresholds} />
+              ))
+            : null}
         </div>
       ) : null}
     </section>

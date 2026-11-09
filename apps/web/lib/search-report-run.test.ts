@@ -176,6 +176,20 @@ describe('runSearchReport', () => {
     expect(report.range).toEqual({ start: '2026-10-01', end: '2026-10-08' })
   })
 
+  it("freezes with the channel's thresholds and the outcome follows them", async () => {
+    h.getProject.mockResolvedValue({ searchBrief: null })
+    const tuned = { ...DEFAULT_RESEARCH_THRESHOLDS, tooEarlyViews: 10_000_000 }
+    h.channelResearchThresholds.mockResolvedValue(tuned)
+
+    await runSearchReport(input())
+
+    const report = frozenReport()
+    expect(h.channelResearchThresholds).toHaveBeenCalledWith(expect.anything(), CHANNEL)
+    expect(report.thresholds).toEqual(tuned)
+    // The default would read 'no-research' (see the test above); the tuned floor makes it too early.
+    expect(report.outcome).toBe('too-early')
+  })
+
   it('matches deterministically first and asks the model only for the rest', async () => {
     // The mock terms are "<word> <seed>"; make one of them contain the target's words.
     const { mockVideoAnalytics } = await import('./youtube-analytics')
@@ -214,6 +228,31 @@ describe('runSearchReport', () => {
     // A term the model left out is unmatched.
     expect(byTerm.get(rest[2]!)?.bucket).toBe('unmatched')
     expect(report.matching).toBe('full')
+  })
+
+  it('a tuned share threshold flips found-for-target', async () => {
+    // A target that is not the top term, so only the share rule can find it.
+    const { mockVideoAnalytics } = await import('./youtube-analytics')
+    const terms = mockVideoAnalytics(VIDEO).searchTerms.map((t) => t.term)
+    h.getProject.mockResolvedValue({
+      searchBrief: brief({ targetKeyword: keyword(terms[2]!) as never }),
+    })
+    const floors = { listedViewsMin: 1, targetViewsMin: 1 }
+
+    const strict = { ...DEFAULT_RESEARCH_THRESHOLDS, ...floors, targetShareMin: 0.99 }
+    h.channelResearchThresholds.mockResolvedValue(strict)
+    await runSearchReport(input())
+    const missed = frozenReport()
+    expect(missed.thresholds).toEqual(strict)
+    expect(missed.outcome).toMatch(/^(missed-target|found-another-way)$/)
+
+    h.freezeSearchReport.mockClear()
+    const loose = { ...DEFAULT_RESEARCH_THRESHOLDS, ...floors, targetShareMin: 0.01 }
+    h.channelResearchThresholds.mockResolvedValue(loose)
+    await runSearchReport(input())
+    const hit = frozenReport()
+    expect(hit.thresholds).toEqual(loose)
+    expect(hit.outcome).toMatch(/^hit-/)
   })
 
   it('defers on a model failure, then freezes deterministic-only on the third', async () => {

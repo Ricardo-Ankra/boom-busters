@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
+import { DEFAULT_RESEARCH_THRESHOLDS } from '@boom-busters/schemas'
 import type { FieldResult, SearchBrief } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WhoRanks } from './who-ranks'
@@ -134,18 +135,26 @@ describe('WhoRanks', () => {
     expect(rows[2]).toHaveTextContent('0:45')
   })
 
-  it('formats an hour-long video as h:mm:ss', () => {
+  it("who ranks counts open doors with the channel's thresholds", () => {
     const checked = brief({
       fieldChecks: [
         {
           keyword: 'wirecard documentary',
           checkedAt: CHECKED_AT,
-          results: [result({ seconds: 3725 })],
+          results: [result({ subscribers: 150_000 })],
         },
       ],
     })
-    render(<WhoRanks item={kase(checked)} run={run} />)
-    expect(screen.getByText(/1:02:05/)).toBeInTheDocument()
+    const { rerender } = render(<WhoRanks item={kase(checked)} run={run} />)
+    expect(screen.queryByText('Open door')).not.toBeInTheDocument()
+    expect(screen.getByText(/0 open doors/)).toBeInTheDocument()
+    expect(screen.getByText(/under 100,000 subscribers/)).toBeInTheDocument()
+
+    const tuned = { ...DEFAULT_RESEARCH_THRESHOLDS, openDoorMaxSubscribers: 200_000 }
+    rerender(<WhoRanks item={kase(checked)} run={run} thresholds={tuned} />)
+    expect(screen.getByText('Open door')).toBeInTheDocument()
+    expect(screen.getByText(/ 1 open door$/)).toBeInTheDocument()
+    expect(screen.getByText(/under 200,000 subscribers/)).toBeInTheDocument()
   })
 
   it('keeps the other keywords behind a toggle', async () => {
