@@ -30,6 +30,11 @@ export interface AnalyticsSnapshotInput {
   /** Stays null until the yt-analytics-monetary scope is granted. */
   rpm?: number | null
   shortsFeedStats?: Record<string, number> | null
+  /** YouTube search terms for the snapshot's range. */
+  searchTerms?: { term: string; views: number; minutes: number }[] | null
+  subscribersGained?: number | null
+  likes?: number | null
+  comments?: number | null
 }
 
 export async function upsertAnalyticsSnapshot(
@@ -46,6 +51,10 @@ export async function upsertAnalyticsSnapshot(
     views: input.views ?? null,
     rpm: input.rpm === undefined || input.rpm === null ? null : String(input.rpm),
     shortsFeedStats: input.shortsFeedStats ?? null,
+    searchTerms: input.searchTerms ?? null,
+    subscribersGained: input.subscribersGained ?? null,
+    likes: input.likes ?? null,
+    comments: input.comments ?? null,
   }
   await db
     .insert(analyticsSnapshots)
@@ -59,6 +68,10 @@ export async function upsertAnalyticsSnapshot(
         views: values.views,
         rpm: values.rpm,
         shortsFeedStats: values.shortsFeedStats,
+        searchTerms: values.searchTerms,
+        subscribersGained: values.subscribersGained,
+        likes: values.likes,
+        comments: values.comments,
         updatedAt: sql`now()`,
       },
     })

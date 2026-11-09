@@ -31,6 +31,7 @@ import type {
   TechniqueKey,
   TechniqueProposal,
   SearchBrief,
+  SearchReport,
   CaseResearchJob,
   Series,
   Settings,
@@ -1686,6 +1687,11 @@ export const analyticsSnapshots = pgTable(
     views: integer('views'),
     rpm: usd('rpm'),
     shortsFeedStats: jsonb('shorts_feed_stats').$type<Record<string, number>>(),
+    /** YouTube search terms for the snapshot's range, [{ term, views, minutes }]. */
+    searchTerms: jsonb('search_terms').$type<{ term: string; views: number; minutes: number }[]>(),
+    subscribersGained: integer('subscribers_gained'),
+    likes: integer('likes'),
+    comments: integer('comments'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1693,6 +1699,64 @@ export const analyticsSnapshots = pgTable(
     uniqueIndex('analytics_video_date_key').on(t.videoId, t.date),
     index('analytics_snapshots_channel_idx').on(t.channelId),
   ],
+)
+
+/**
+ * One frozen search report per video per checkpoint (7, 28 or 90 days). The
+ * row is pending while the report waits for its data (or for a deferred model
+ * or rank step) and frozen once written; a frozen report never changes.
+ */
+export const searchReports = pgTable(
+  'search_reports',
+  {
+    id: id(),
+    channelId: channelId().notNull(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    videoId: text('video_id').notNull(),
+    checkpoint: integer('checkpoint').notNull(),
+    state: text('state').$type<'pending' | 'frozen'>().notNull().default('pending'),
+    modelAttempts: integer('model_attempts').notNull().default(0),
+    rankAttempts: integer('rank_attempts').notNull().default(0),
+    report: jsonb('report').$type<SearchReport>(),
+    frozenAt: timestamp('frozen_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('search_reports_video_checkpoint_key').on(t.videoId, t.checkpoint),
+    index('search_reports_channel_idx').on(t.channelId),
+    index('search_reports_project_idx').on(t.projectId),
+    check('search_reports_state_check', sql`${t.state} in ('pending', 'frozen')`),
+  ],
+)
+
+/** A manual VidIQ rank check of one keyword against one video. */
+export const searchRankChecks = pgTable(
+  'search_rank_checks',
+  {
+    id: id(),
+    channelId: channelId().notNull(),
+    videoId: text('video_id').notNull(),
+    keyword: text('keyword').notNull(),
+    /** Null means "not in the top 20". */
+    position: integer('position'),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('search_rank_checks_video_idx').on(t.videoId)],
+)
+
+/** A search term the owner dismissed from the suggestions, per channel. */
+export const searchTermDismissals = pgTable(
+  'search_term_dismissals',
+  {
+    id: id(),
+    channelId: channelId().notNull(),
+    termKey: text('term_key').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('search_term_dismissals_key').on(t.channelId, t.termKey)],
 )
 
 // ---------------------------------------------------------------------------
@@ -1880,6 +1944,8 @@ export type CostLedgerRow = typeof costLedger.$inferSelect
 export type RunRow = typeof runs.$inferSelect
 export type RunEventRow = typeof runEvents.$inferSelect
 export type AnalyticsSnapshotRow = typeof analyticsSnapshots.$inferSelect
+export type SearchReportRow = typeof searchReports.$inferSelect
+export type SearchRankCheckRow = typeof searchRankChecks.$inferSelect
 export type ArticleSourceRow = typeof articleSources.$inferSelect
 export type NewArticleSource = typeof articleSources.$inferInsert
 export type SocialPostRow = typeof socialPosts.$inferSelect
