@@ -285,7 +285,8 @@ describe('SearchReportCard', () => {
       />,
     )
     // The earlier manual check is listed with its date, keyword and position.
-    expect(screen.getByText(/1 Nov 2026/)).toBeInTheDocument()
+    expect(screen.getAllByText(/1 Nov 2026/)).toHaveLength(2)
+    expect(screen.getByText(/^Latest manual check, 1 Nov 2026:/)).toBeInTheDocument()
     expect(screen.getAllByText(/Not in the top 10 for enron collapse/)).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: 'Check where it ranks (5 credits)' }))
@@ -302,6 +303,60 @@ describe('SearchReportCard', () => {
     render(<SearchReportCard projectId={PROJECT} reports={reports({ frozen: [report(28)] })} />)
     await user.click(screen.getByRole('button', { name: 'Check where it ranks (5 credits)' }))
     expect(await screen.findByText('The monthly VidIQ credit cap is reached.')).toBeInTheDocument()
+  })
+
+  it('prints no baseline for early drop and subscribers that are the video itself', () => {
+    const ownBaselines = report(28, {
+      baselineInputs: {
+        holdBand: [],
+        holdChannel: [],
+        dropBand: [],
+        dropChannel: [],
+        subsBand: [],
+        subsChannel: [],
+      },
+    })
+    render(<SearchReportCard projectId={PROJECT} reports={reports({ frozen: [ownBaselines] })} />)
+    expect(screen.getByText(/Early drop \(all viewers\)/)).not.toHaveTextContent('baseline')
+    expect(screen.getByText(/Subscribers per 1,000 views/)).not.toHaveTextContent('baseline')
+    // Hold keeps its own-basis fallback.
+    expect(screen.getByText(/Search hold \(search viewers\)/)).toHaveTextContent(
+      "against this video's own average",
+    )
+  })
+
+  it('shows each group views and hold in its header', () => {
+    render(<SearchReportCard projectId={PROJECT} reports={reports({ frozen: [report(28)] })} />)
+    // Target: 400 views, 2,000 minutes: 300 s hold.
+    expect(screen.getByText('The target')).toHaveTextContent('400 views · 300 s hold')
+  })
+
+  it('says why a frozen report has no rank, and dates the manual check in its place', () => {
+    const skipped = (reason: string) => report(28, { rankSkipped: reason, rank: null })
+    const manual = [
+      { keyword: 'enron collapse', position: 6, checkedAt: '2026-11-12T10:00:00.000Z' },
+    ]
+    const cases: [string, string][] = [
+      ['credit cap', 'Rank not checked: the monthly VidIQ credit cap was reached'],
+      ['rank check failed', 'Rank not checked: the check failed'],
+      [
+        'too late for a day-28 rank',
+        'Rank not checked: the report was made too late for a day-28 rank',
+      ],
+    ]
+    for (const [reason, words] of cases) {
+      const { unmount } = render(
+        <SearchReportCard
+          projectId={PROJECT}
+          reports={reports({ frozen: [skipped(reason)], rankChecks: manual })}
+        />,
+      )
+      expect(screen.getByText(words)).toBeInTheDocument()
+      expect(
+        screen.getByText('Latest manual check, 12 Nov 2026: Ranked 6 for enron collapse'),
+      ).toBeInTheDocument()
+      unmount()
+    }
   })
 
   it('has nothing to show without any numbers', () => {

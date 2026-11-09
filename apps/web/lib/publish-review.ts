@@ -767,7 +767,8 @@ export async function publishModel(
     brief: project.searchBrief,
     bibleLanguage: channel.bible.language,
     videoId: masterRecord?.youtubeVideoId ?? null,
-    publishedAt: masterRecord?.publishAt ?? null,
+    // No scheduled time: the record's last update is when it was flipped to live.
+    publishedAt: masterRecord?.publishAt ?? masterRecord?.updatedAt ?? null,
     snapshot,
     durationSec: masterDurationMs !== null ? masterDurationMs / 1000 : null,
   })

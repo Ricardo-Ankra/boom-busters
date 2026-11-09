@@ -79,6 +79,16 @@ function rankWords(keyword: string, position: number | null): string {
     : `Ranked ${position} for ${keyword}`
 }
 
+/** Why a frozen report has no day-28 rank, in plain words. */
+function rankSkippedWords(reason: string): string {
+  if (reason === 'credit cap') return 'Rank not checked: the monthly VidIQ credit cap was reached'
+  if (reason === 'rank check failed') return 'Rank not checked: the check failed'
+  if (reason === 'too late for a day-28 rank') {
+    return 'Rank not checked: the report was made too late for a day-28 rank'
+  }
+  return `Rank not checked: ${reason}`
+}
+
 const GROUPS = [
   { bucket: 'target', title: 'The target' },
   { bucket: 'researched', title: 'Researched terms' },
@@ -313,7 +323,15 @@ function ReportBody({
         if (rows.length === 0) return null
         return (
           <div key={bucket} className="flex flex-col gap-1.5">
-            <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{title}</p>
+            <p className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+              {title}
+              <span className="font-normal text-[var(--color-text-muted)]">
+                {` · ${number(report.buckets[bucket].views)} views`}
+                {report.buckets[bucket].holdSec === null
+                  ? ''
+                  : ` · ${number(Math.round(report.buckets[bucket].holdSec as number))} s hold`}
+              </span>
+            </p>
             <ul className="flex flex-col gap-1.5">
               {rows.map((row) => {
                 const hold = holdSec(row.views, row.minutes)
@@ -391,7 +409,7 @@ function ReportBody({
           label="Early drop (all viewers)"
           value={report.earlyDrop === null ? 'not known yet' : percent(report.earlyDrop)}
           baseline={
-            report.baselines.earlyDrop.value === null
+            report.baselines.earlyDrop.value === null || report.baselines.earlyDrop.basis === 'own'
               ? null
               : `${percent(report.baselines.earlyDrop.value)}, ${basisWords(report.baselines.earlyDrop)}`
           }
@@ -404,7 +422,8 @@ function ReportBody({
               : one(report.engagement.subscribersPer1k)
           }
           baseline={
-            report.baselines.subscribersPer1k.value === null
+            report.baselines.subscribersPer1k.value === null ||
+            report.baselines.subscribersPer1k.basis === 'own'
               ? null
               : `${one(report.baselines.subscribersPer1k.value)}, ${basisWords(report.baselines.subscribersPer1k)}`
           }
@@ -470,19 +489,28 @@ function RankBlock({
 }) {
   const target = report?.targetKeyword ?? reports.live?.targetKeyword ?? null
   const latestCheck = reports.rankChecks[0]
-  const current =
-    fresh ??
-    (report?.rank
-      ? { keyword: report.rank.keyword, position: report.rank.position }
-      : latestCheck
-        ? { keyword: latestCheck.keyword, position: latestCheck.position }
-        : null)
+  const frozenRank = report?.rank
+    ? { keyword: report.rank.keyword, position: report.rank.position }
+    : null
+  const current = fresh ?? frozenRank
+  // Without a frozen or fresh rank the newest manual check stands in, dated.
+  const manual = current === null && latestCheck ? latestCheck : null
+  const skipped = fresh === null && report && !report.rank ? (report.rankSkipped ?? null) : null
 
   return (
     <>
-      <p className="text-[13px] text-[var(--color-text-primary)]">
-        {current ? rankWords(current.keyword, current.position) : 'Rank: not checked yet'}
-      </p>
+      {skipped !== null ? (
+        <p className="text-[13px] text-[var(--color-text-primary)]">{rankSkippedWords(skipped)}</p>
+      ) : null}
+      {skipped !== null && current === null && manual === null ? null : (
+        <p className="text-[13px] text-[var(--color-text-primary)]">
+          {current
+            ? rankWords(current.keyword, current.position)
+            : manual
+              ? `Latest manual check, ${dayLabel(manual.checkedAt)}: ${rankWords(manual.keyword, manual.position)}`
+              : 'Rank: not checked yet'}
+        </p>
+      )}
       {target ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" busy={busy} disabled={disabled} onClick={onCheck}>
