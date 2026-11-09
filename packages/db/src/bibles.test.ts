@@ -9,7 +9,13 @@ import {
 } from '@boom-busters/schemas'
 import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { bibleVersionById, currentBible, listBibleVersions, saveBibleVersion } from './bibles'
+import {
+  addFormatKeyword,
+  bibleVersionById,
+  currentBible,
+  listBibleVersions,
+  saveBibleVersion,
+} from './bibles'
 import { createCase } from './cases'
 import {
   channelForProject,
@@ -293,5 +299,54 @@ suite('bible versions', () => {
       saveBibleVersion(db, '01BB0000000000000000000009', EMPTY_BIBLE, 'Edited in Settings'),
     ).rejects.toThrow()
     expect(await db.select().from(channelBibles)).toHaveLength(0)
+  })
+
+  it("addFormatKeyword appends to the current bible's format, falls back to the primary, refuses a seventh, and folds duplicates", async () => {
+    const main = defaultFormat()
+    const sleep = { ...defaultFormat('Sleep'), key: 'sleep', primary: false }
+    const channel = await createChannel(db, {
+      ...channelInput('kw'),
+      bible: { ...EMPTY_BIBLE, language: 'en', formats: [main, sleep] },
+    })
+
+    expect(await addFormatKeyword(db, channel.id, 'sleep', '  true crime  ')).toMatchObject({
+      outcome: 'added',
+      formatKey: 'sleep',
+      fellBack: false,
+    })
+    const versions = await listBibleVersions(db, channel.id)
+    expect(versions).toHaveLength(2)
+    expect(versions[1]!.note).toBe('Added search term "true crime" to the Sleep keywords')
+    expect(versions[1]!.bible.formats.find((f) => f.key === 'sleep')!.keywords).toEqual([
+      'true crime',
+    ])
+    expect(versions[1]!.bible.formats.find((f) => f.key === 'main')!.keywords).toEqual([])
+
+    // Word order, case and a plural fold to the same term.
+    expect(await addFormatKeyword(db, channel.id, 'sleep', 'Crimes TRUE')).toMatchObject({
+      outcome: 'already',
+    })
+    expect(await listBibleVersions(db, channel.id)).toHaveLength(2)
+
+    // A key that no longer exists goes to the primary.
+    expect(await addFormatKeyword(db, channel.id, 'gone', 'enron collapse')).toMatchObject({
+      outcome: 'added',
+      formatKey: 'main',
+      fellBack: true,
+    })
+
+    for (const t of ['a1', 'a2', 'a3', 'a4', 'a5'])
+      await addFormatKeyword(db, channel.id, 'sleep', t)
+    expect((await currentBible(db, channel.id)).bible.formats[1]!.keywords).toHaveLength(6)
+    const before = await listBibleVersions(db, channel.id)
+    expect(await addFormatKeyword(db, channel.id, 'sleep', 'seventh')).toMatchObject({
+      outcome: 'full',
+    })
+    expect(await listBibleVersions(db, channel.id)).toHaveLength(before.length)
+
+    // Cut to the schema's 60 characters.
+    const main2 = await addFormatKeyword(db, channel.id, 'main', 'x'.repeat(80))
+    expect(main2.outcome).toBe('added')
+    expect((await currentBible(db, channel.id)).bible.formats[0]!.keywords.at(-1)).toHaveLength(60)
   })
 })

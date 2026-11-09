@@ -16,6 +16,7 @@ import { AddCaseForm } from './case-forms'
 import type { CaseCategoryOption } from './case-forms'
 import { CaseList } from './case-list'
 import { CasePanel } from './case-panel'
+import type { CaseSearchOutcome } from './case-panel'
 import { FormatsContext } from './search-brief-panel'
 import type { Run } from './search-brief-panel'
 
@@ -44,6 +45,7 @@ export function CaseLibrary({
   notices = [],
   bibleComplete = true,
   archived = false,
+  searchOutcomes = {},
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
@@ -65,6 +67,8 @@ export function CaseLibrary({
   bibleComplete?: boolean
   /** An archived channel is read-only: nothing here starts or adds work. */
   archived?: boolean
+  /** The latest search report outcome per case id, for published cases. */
+  searchOutcomes?: Readonly<Record<string, CaseSearchOutcome>>
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -170,6 +174,7 @@ export function CaseLibrary({
                 categories={categories}
                 sort={sort}
                 explicit={explicit}
+                searchOutcome={searchOutcomes[selected.id] ?? null}
               />
             ) : (
               <section

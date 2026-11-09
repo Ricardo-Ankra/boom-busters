@@ -2,8 +2,10 @@
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { briefHasFullChecks, briefNeedsResearch } from '@boom-busters/schemas'
-import type { Notice } from '@boom-busters/schemas'
+import { OUTCOME_COPY } from '@boom-busters/schemas'
+import type { Notice, SearchOutcome } from '@boom-busters/schemas'
 import { ArrowLeft, Check, X } from 'lucide-react'
+import type { Route } from 'next'
 import Link from 'next/link'
 import * as React from 'react'
 import { ConfirmButton } from '@/components/confirm-button'
@@ -44,6 +46,13 @@ const STEP_CLASS: Record<StepState, string> = {
 
 const STEP_WORD: Record<StepState, string> = { done: 'done', current: 'next', todo: 'not yet' }
 
+/** A case's latest search report outcome and the project whose publish screen shows it. */
+export interface CaseSearchOutcome {
+  projectId: string
+  checkpoint: number
+  outcome: SearchOutcome
+}
+
 export function CasePanel({
   slug,
   channelId,
@@ -54,6 +63,7 @@ export function CasePanel({
   categories,
   sort,
   explicit,
+  searchOutcome = null,
 }: {
   slug: string
   channelId: string
@@ -66,6 +76,8 @@ export function CasePanel({
   sort: CaseSort
   /** Whether the URL named this case; below `xl` only then is the panel shown, with Back to cases. */
   explicit: boolean
+  /** The latest frozen search report of a project made from this case, for a published case. */
+  searchOutcome?: CaseSearchOutcome | null
 }) {
   const titleId = React.useId()
   const brief = item.searchBrief
@@ -126,6 +138,18 @@ export function CasePanel({
           )}
         </div>
       </header>
+
+      {item.status === 'published' && searchOutcome !== null ? (
+        <p className="text-[13px] text-[var(--color-text-secondary)]">
+          <Link
+            href={`/projects/${searchOutcome.projectId}?stage=publish` as Route}
+            className="underline underline-offset-2 hover:text-[var(--color-text-primary)]"
+          >
+            Search report, day {searchOutcome.checkpoint}:{' '}
+            {OUTCOME_COPY[searchOutcome.outcome].label}
+          </Link>
+        </p>
+      ) : null}
 
       {notices.length === 0 ? null : (
         <div className="w-full">

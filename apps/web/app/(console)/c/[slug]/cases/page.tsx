@@ -1,7 +1,8 @@
-import { listCaseNotices, listCases } from '@boom-busters/db'
+import { latestOutcomeByProject, listCaseNotices, listCases, listProjects } from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
 import { EXAMPLE_SLOT_IDS, isBibleComplete } from '@boom-busters/schemas'
 import { CaseLibrary } from './case-library'
+import type { CaseSearchOutcome } from './case-panel'
 import { resolveSelected } from './case-progress'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
@@ -46,6 +47,21 @@ export default async function CasesPage({
     cases.map((item) => item.id),
   )
 
+  // A published case shows its latest search report: the highest checkpoint among its projects.
+  const [outcomes, projects] = await Promise.all([
+    latestOutcomeByProject(db, channel.id),
+    listProjects(db, channel.id),
+  ])
+  const searchOutcomes: Record<string, CaseSearchOutcome> = {}
+  for (const project of projects) {
+    const found = outcomes.get(project.id)
+    if (!found) continue
+    const kept = searchOutcomes[project.caseId]
+    if (!kept || found.checkpoint > kept.checkpoint) {
+      searchOutcomes[project.caseId] = { projectId: project.id, ...found }
+    }
+  }
+
   return (
     <CaseLibrary
       slug={slug}
@@ -57,6 +73,7 @@ export default async function CasesPage({
       selectedId={selectedId}
       explicit={explicit}
       notices={notices}
+      searchOutcomes={searchOutcomes}
       bibleComplete={isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS)}
       archived={channel.archivedAt !== null}
     />

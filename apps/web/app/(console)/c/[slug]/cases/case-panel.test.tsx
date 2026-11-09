@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { CaseSummary } from '@boom-busters/db'
 import { FIRST_CHANNEL_BIBLE, FIRST_CHANNEL_ID as CHANNEL_ID } from '@boom-busters/schemas'
 import type { SearchBrief } from '@boom-busters/schemas'
+import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CasePanel } from './case-panel'
 
@@ -90,7 +91,11 @@ function brief(over: Partial<SearchBrief> = {}): SearchBrief {
 
 const run = vi.fn(async (action: () => Promise<{ ok: boolean }>) => (await action()).ok)
 
-function renderPanel(item: CaseSummary, blocked: string | null = null) {
+function renderPanel(
+  item: CaseSummary,
+  blocked: string | null = null,
+  searchOutcome?: ComponentProps<typeof CasePanel>['searchOutcome'],
+) {
   render(
     <CasePanel
       slug="psychology"
@@ -102,6 +107,7 @@ function renderPanel(item: CaseSummary, blocked: string | null = null) {
       categories={CATEGORIES}
       sort="newest"
       explicit
+      searchOutcome={searchOutcome}
     />,
   )
   return screen.getByRole('region', { name: item.title })
@@ -262,5 +268,26 @@ describe('CasePanel', () => {
     expect(
       within(panel).getAllByRole('button', { name: /^Research again with VidIQ/ }),
     ).toHaveLength(1)
+  })
+
+  it('shows the latest search outcome on a published case and links to the project', () => {
+    const outcome = {
+      projectId: '01J0000000000000000000000P',
+      checkpoint: 28,
+      outcome: 'hit-and-held' as const,
+    }
+    const panel = renderPanel(kase({ status: 'published' }), null, outcome)
+    const link = within(panel).getByRole('link', { name: 'Search report, day 28: Hit and held' })
+    expect(link).toHaveAttribute('href', '/projects/01J0000000000000000000000P?stage=publish')
+  })
+
+  it('shows no search outcome on a case that is not published', () => {
+    const outcome = {
+      projectId: '01J0000000000000000000000P',
+      checkpoint: 28,
+      outcome: 'hit-and-held' as const,
+    }
+    const panel = renderPanel(kase({ status: 'shortlisted' }), null, outcome)
+    expect(within(panel).queryByText(/Search report, day/)).not.toBeInTheDocument()
   })
 })

@@ -3,6 +3,8 @@ import {
   ChannelNotFoundError,
   EXAMPLE_SLOT_IDS,
   isBibleComplete,
+  normaliseTerm,
+  resolveFormat,
 } from '@boom-busters/schemas'
 import type { ChannelBible } from '@boom-busters/schemas'
 import { asc, eq, sql } from 'drizzle-orm'
@@ -189,5 +191,71 @@ export async function restoreBibleVersion(
       ChannelBibleReadSchema.parse(version.bible),
       `Restored version ${version.version}`,
     )
+  })
+}
+
+/** Where a search term landed: kept, already there, or turned away because the format is full. */
+export interface AddFormatKeywordResult {
+  outcome: 'added' | 'already' | 'full'
+  /** The key of the format the term went to (or would have). */
+  formatKey: string
+  /** The format name, for the confirmation line. */
+  formatName: string
+  /** The named format no longer exists, so the primary was used. */
+  fellBack: boolean
+}
+
+const KEYWORD_MAX = 60
+const KEYWORDS_PER_FORMAT = 6
+
+/**
+ * Add a YouTube search term to one format's keywords, as the bible's next
+ * version. In one transaction: lock the channel, read the current bible, pick
+ * the format with that key (else the primary, `fellBack`), and append. A term
+ * whose normalised words equal an existing keyword's is `already`; six
+ * keywords is `full`. Neither of those writes a version.
+ */
+export async function addFormatKeyword(
+  db: Database,
+  channelId: string,
+  formatKey: string,
+  term: string,
+): Promise<AddFormatKeywordResult> {
+  const keyword = term.trim().slice(0, KEYWORD_MAX).trim()
+  if (keyword === '') throw new Error('A keyword cannot be empty')
+  return db.transaction(async (tx) => {
+    const { currentBibleId } = await lockChannelBible(tx, channelId)
+    if (!currentBibleId) throw new Error(`channel ${channelId} has no current bible version`)
+    const [row] = await tx
+      .select()
+      .from(channelBibles)
+      .where(eq(channelBibles.id, currentBibleId))
+      .limit(1)
+    if (!row) throw new Error(`bible version ${currentBibleId} not found`)
+    const bible = ChannelBibleReadSchema.parse(row.bible)
+
+    const format = resolveFormat(bible.formats, formatKey)
+    const fellBack = format.key !== formatKey
+    const base = { formatKey: format.key, formatName: format.name, fellBack }
+    const language = bible.language === '' ? undefined : bible.language
+    const words = normaliseTerm(keyword, language).join(' ')
+    if (format.keywords.some((k) => normaliseTerm(k, language).join(' ') === words)) {
+      return { outcome: 'already' as const, ...base }
+    }
+    if (format.keywords.length >= KEYWORDS_PER_FORMAT) return { outcome: 'full' as const, ...base }
+
+    const next: ChannelBible = {
+      ...bible,
+      formats: bible.formats.map((f) =>
+        f.key === format.key ? { ...f, keywords: [...f.keywords, keyword] } : f,
+      ),
+    }
+    await appendBibleVersion(
+      tx,
+      channelId,
+      next,
+      `Added search term "${keyword}" to the ${format.name} keywords`,
+    )
+    return { outcome: 'added' as const, ...base }
   })
 }
