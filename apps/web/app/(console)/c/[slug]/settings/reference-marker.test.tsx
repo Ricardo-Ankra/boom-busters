@@ -19,6 +19,7 @@ const actions = vi.hoisted(() => ({
   createReferenceFrameUploadsAction: vi.fn(),
   finaliseReferenceAction: vi.fn(),
   remarkReferenceAction: vi.fn(),
+  addReferenceWindowAction: vi.fn(),
 }))
 vi.mock('./motion-actions', () => actions)
 
@@ -111,7 +112,35 @@ beforeEach(() => {
   )
   actions.finaliseReferenceAction.mockResolvedValue({ ok: true, id: 'r1' })
   actions.remarkReferenceAction.mockResolvedValue({ ok: true })
+  actions.addReferenceWindowAction.mockResolvedValue({ ok: true, id: 'r2' })
 })
+
+/** A clip already stored, its first window 1 to 3 s of 10 s. */
+const STORED = {
+  id: '01J000000000000000000000R1',
+  kind: 'video' as const,
+  title: 'A reel',
+  sourceUrl: 'https://example.com/reel by Studio A',
+  rights: 'Reference only',
+  purpose: 'mechanism' as const,
+  negative: false,
+  windowStartMs: 1000,
+  windowEndMs: 3000,
+  carryOver: 'borrow the hold',
+  avoid: '',
+  readState: 'read' as const,
+  readStale: false,
+  readError: null,
+  reading: null,
+  thumbUrl: null,
+  denseSheetUrl: null,
+  contactSheetUrl: null,
+  clipUrl: 'https://r2.example/clip.mp4?signed',
+  contentHash: 'a'.repeat(64),
+  durationMs: 10_000,
+  width: 1920,
+  height: 1080,
+}
 
 describe('ReferenceMarker', () => {
   it('uploads a still through presign, PUT and finalise, and reads it on Save and read', async () => {
@@ -254,6 +283,56 @@ describe('ReferenceMarker', () => {
     expect(video).toHaveAttribute('crossorigin', 'anonymous')
     expect(video).toHaveAttribute('src', 'https://r2.example/clip.mp4?signed')
     expect(screen.getByRole('dialog', { name: 'Re-mark reference' })).toBeInTheDocument()
+  })
+
+  it('marks a new window on a stored clip with no file and no clip upload, as a reference of its own (decision 447)', async () => {
+    renderMarker({ mode: { kind: 'window', reference: STORED } })
+    expect(screen.getByRole('dialog', { name: 'New window from this clip' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Choose file' })).toBeNull()
+    const video = screen.getByLabelText('The clip') as HTMLVideoElement
+    expect(video).toHaveAttribute('src', STORED.clipUrl)
+    expect(video).toHaveAttribute('crossorigin', 'anonymous')
+    // The same video: its source and rights carry over; the words are this window's own.
+    expect(screen.getByLabelText('Source link and whose work it is')).toHaveValue(STORED.sourceUrl)
+    expect(screen.getByLabelText('Rights')).toHaveValue('Reference only')
+    expect(screen.getByLabelText('Title')).toHaveValue('')
+    expect(screen.getByLabelText('Carry over')).toHaveValue('')
+    // The window starts where the stored one ends.
+    expect(screen.getByLabelText('Window start (s)')).toHaveValue(3)
+    expect(screen.getByLabelText('Window end (s)')).toHaveValue(5)
+    await fillWords()
+    await userEvent.click(screen.getByRole('button', { name: 'Save without reading' }))
+    await waitFor(() => expect(actions.addReferenceWindowAction).toHaveBeenCalled())
+    expect(actions.createReferenceUploadAction).not.toHaveBeenCalled()
+    expect(actions.createReferenceFrameUploadsAction.mock.calls[0]![1]).toMatchObject({
+      contentHash: STORED.contentHash,
+    })
+    // 24 dense frames for the 2 s window and 20 overview frames: one PUT each, no clip PUT.
+    expect(fetchMock).toHaveBeenCalledTimes(44)
+    const [channel, sent] = actions.addReferenceWindowAction.mock.calls[0]!
+    expect(channel).toBe(CH)
+    expect(sent).toMatchObject({
+      fromId: STORED.id,
+      read: false,
+      input: expect.objectContaining({
+        kind: 'video',
+        title: 'A board of type',
+        purpose: 'look',
+        sourceUrl: STORED.sourceUrl,
+        windowStartMs: 3000,
+        windowEndMs: 5000,
+      }),
+    })
+    expect(sent.frames).toHaveLength(44)
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('starts a new window at the beginning when the stored one leaves no room after it (decision 447)', () => {
+    renderMarker({
+      mode: { kind: 'window', reference: { ...STORED, windowStartMs: 7000, windowEndMs: 9500 } },
+    })
+    expect(screen.getByLabelText('Window start (s)')).toHaveValue(0)
+    expect(screen.getByLabelText('Window end (s)')).toHaveValue(2)
   })
 
   it('disables saving without storage and says why', () => {

@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { referenceFrameKey, referenceKey } from '@/lib/reference-keys'
 import {
+  addReferenceWindowAction,
   archiveReferenceAction,
   createReferenceFrameUploadsAction,
   createReferenceUploadAction,
@@ -481,6 +482,136 @@ describeDb('motion reference actions', () => {
     sent.send.mockClear()
     expect((await readReferenceAction(channelId, id)).ok).toBe(true)
     expect(sent.send).toHaveBeenCalledTimes(1)
+  })
+
+  describe('a new window on a stored clip (decision 447)', () => {
+    /** A clip stored with its first window, 1 to 3 s of 10 s. */
+    const aClip = async () => {
+      await finaliseReferenceAction(channelId, {
+        contentHash: HASH,
+        fileType: 'video/mp4',
+        width: 1920,
+        height: 1080,
+        durationMs: 10_000,
+        frames: clipFrames({ startMs: 1000, endMs: 3000 }, 10_000),
+        input: { ...still, kind: 'video', windowStartMs: 1000, windowEndMs: 3000 },
+        read: false,
+      })
+      return (await listMotionReferences(db, channelId))[0]!
+    }
+    const second = {
+      ...still,
+      kind: 'video' as const,
+      title: 'The hold after the count',
+      purpose: 'pacing' as const,
+      windowStartMs: 4000,
+      windowEndMs: 6000,
+    }
+
+    it('stores the window as its own reference on the same stored clip, and reads it on the word', async () => {
+      const source = await aClip()
+      const r = await addReferenceWindowAction(channelId, {
+        fromId: source.id,
+        frames: clipFrames({ startMs: 4000, endMs: 6000 }, 10_000),
+        input: second,
+        read: true,
+      })
+      expect(r.ok).toBe(true)
+      const rows = await listMotionReferences(db, channelId)
+      expect(rows).toHaveLength(2)
+      const added = rows.find((row) => row.id === r.id)!
+      expect(added.assetId).toBe(source.assetId)
+      expect(added).toMatchObject({
+        title: 'The hold after the count',
+        purpose: 'pacing',
+        windowStartMs: 4000,
+        windowEndMs: 6000,
+        readState: 'reading',
+      })
+      expect(added.frames.dense[0]?.r2Key).toBe(
+        referenceFrameKey({ channelId, contentHash: HASH, set: 'dense', atMs: 4000 }),
+      )
+      // The source keeps its own window.
+      expect(rows.find((row) => row.id === source.id)).toMatchObject({
+        windowStartMs: 1000,
+        windowEndMs: 3000,
+      })
+      expect(sent.send).toHaveBeenCalledTimes(1)
+      expect(sent.send.mock.calls[0]![0]).toMatchObject({
+        name: 'motion/reference.ingested',
+        data: { channelId, referenceId: r.id },
+      })
+      expect(storage.deleted).toEqual([])
+    })
+
+    it('refuses a title another reference holds, frames that do not match, a still, and an unknown source', async () => {
+      const source = await aClip()
+      const frames = clipFrames({ startMs: 4000, endMs: 6000 }, 10_000)
+      const taken = await addReferenceWindowAction(channelId, {
+        fromId: source.id,
+        frames,
+        input: { ...second, title: still.title },
+        read: false,
+      })
+      expect(taken).toEqual({
+        ok: false,
+        error: 'Another reference is already called that. Give this window its own title.',
+      })
+      const mismatch = await addReferenceWindowAction(channelId, {
+        fromId: source.id,
+        frames: clipFrames({ startMs: 1000, endMs: 3000 }, 10_000),
+        input: second,
+        read: false,
+      })
+      expect(mismatch.error).toMatch(/do not match the window/)
+      await finaliseReferenceAction(channelId, {
+        contentHash: 'b'.repeat(64),
+        fileType: 'image/png',
+        width: 10,
+        height: 10,
+        frames: [],
+        input: { ...still, title: 'A still' },
+        read: false,
+      })
+      const stillRow = (await listMotionReferences(db, channelId)).find(
+        (row) => row.title === 'A still',
+      )!
+      expect(
+        (
+          await addReferenceWindowAction(channelId, {
+            fromId: stillRow.id,
+            frames,
+            input: second,
+            read: false,
+          })
+        ).error,
+      ).toBe('A still has no window to mark.')
+      expect(
+        (
+          await addReferenceWindowAction(channelId, {
+            fromId: '01J0000000000000000000NONE',
+            frames,
+            input: second,
+            read: false,
+          })
+        ).ok,
+      ).toBe(false)
+      expect(await listMotionReferences(db, channelId)).toHaveLength(2)
+      expect(sent.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses a window when the pack is full', async () => {
+      const source = await aClip()
+      await fillPack(11)
+      const r = await addReferenceWindowAction(channelId, {
+        fromId: source.id,
+        frames: clipFrames({ startMs: 4000, endMs: 6000 }, 10_000),
+        input: second,
+        read: false,
+      })
+      expect(r.ok).toBe(false)
+      expect(r.error).toMatch(/twelve references/)
+    })
   })
 
   it('puts the state back when the read cannot be queued (final review, issue 4)', async () => {
