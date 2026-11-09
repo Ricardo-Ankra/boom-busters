@@ -6,16 +6,17 @@ import {
   buildSearchReport,
   type Checkpoint,
 } from '@boom-busters/schemas'
-import { sql as dsql } from 'drizzle-orm'
+import { eq, sql as dsql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { latestSnapshotForVideo, truncateAnalytics, upsertAnalyticsSnapshot } from './analytics'
 import { createCase } from './cases'
 import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
 import { createDb } from './client'
 import { createProjectFromCase } from './projects'
-import { cases } from './schema'
+import { cases, projects } from './schema'
 import {
   addRankCheck,
+  countedVideosForChannel,
   dismissSearchTerm,
   dismissedTermKeys,
   freezeSearchReport,
@@ -245,5 +246,81 @@ suite('search reports', () => {
     expect(row?.subscribersGained).toBe(2)
     expect(row?.likes).toBe(7)
     expect(row?.comments).toBe(1)
+  })
+
+  it('counted videos read day-28 frozen reports with their frozen verdicts', async () => {
+    const other = await secondChannel()
+    const mine = await project(FIRST_CHANNEL_ID, 'Mine')
+    const noVerdict = await project(FIRST_CHANNEL_ID, 'No verdict')
+    const day7 = await project(FIRST_CHANNEL_ID, 'Day seven')
+    const theirs = await project(other.id, 'Theirs')
+    const brief = {
+      subject: 'Mine',
+      measuredAt: '2026-10-01T10:00:00.000Z',
+      targetKeyword: {
+        keyword: 't',
+        volume: 1,
+        competition: 1,
+        overall: 1,
+        estimatedMonthlySearch: 3200,
+        growthPct: null,
+        fit: 'fits',
+        intent: 'how it collapsed',
+        topic: 'collapse',
+      },
+      secondaryKeywords: [],
+      searchedQuestions: [],
+      outliers: [],
+      titlePatterns: [],
+      toldAlready: [],
+      angleOptions: [],
+      chosenAngle: null,
+      formatKey: null,
+      fit: null,
+      searchedTitles: [],
+      otherLanguages: [],
+      recommendedAngle: null,
+      recommendationReason: null,
+      ownAngle: false,
+      fieldChecks: [],
+    }
+    const verdict = {
+      lines: [{ check: 'demand', state: 'ok', reason: 'fine' }],
+      thresholds: { ...DEFAULT_RESEARCH_THRESHOLDS },
+      frozenAt: '2026-10-01T10:00:00.000Z',
+    }
+    await db
+      .update(projects)
+      .set({ searchBrief: brief as never, researchVerdict: verdict })
+      .where(eq(projects.id, mine))
+    await db
+      .update(projects)
+      .set({ searchBrief: brief as never })
+      .where(eq(projects.id, theirs))
+    const freeze = async (
+      channelId: string,
+      projectId: string,
+      videoId: string,
+      cp: Checkpoint,
+      views = 1000,
+    ) => {
+      const row = await pendingReport(db, { channelId, projectId, videoId, checkpoint: cp })
+      await freezeSearchReport(db, row.id, reportFor(cp, views))
+    }
+    await freeze(FIRST_CHANNEL_ID, mine, 'vm', 28)
+    await freeze(FIRST_CHANNEL_ID, noVerdict, 'vn', 28)
+    await freeze(FIRST_CHANNEL_ID, day7, 'v7', 7)
+    await freeze(other.id, theirs, 'vt', 28)
+    await freeze(FIRST_CHANNEL_ID, mine, 'vm90', 90)
+    const list = await countedVideosForChannel(db, FIRST_CHANNEL_ID)
+    expect(list).toHaveLength(1)
+    expect(list[0]!.projectId).toBe(mine)
+    expect(list[0]!.title).toBe('Mine')
+    expect(list[0]!.verdict.lines[0]!.check).toBe('demand')
+    expect(list[0]!.verdict.recomputed).toBeUndefined()
+    expect(list[0]!.targetSearches).toBe(3200)
+    expect(list[0]!.targetIntent).toBe('how it collapsed')
+    expect(list[0]!.targetTopic).toBe('collapse')
+    expect(list[0]!.report.checkpoint).toBe(28)
   })
 })

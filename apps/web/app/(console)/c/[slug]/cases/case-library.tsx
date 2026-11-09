@@ -18,6 +18,8 @@ import { CaseList } from './case-list'
 import { CasePanel } from './case-panel'
 import type { CaseSearchOutcome } from './case-panel'
 import { FormatsContext } from './search-brief-panel'
+import type { TrackRecordData } from './track-record-data'
+import { TrackRecordPanel } from './track-record-panel'
 import type { Run } from './search-brief-panel'
 
 /**
@@ -47,6 +49,7 @@ export function CaseLibrary({
   archived = false,
   searchOutcomes = {},
   thresholds,
+  trackRecord,
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
@@ -72,15 +75,19 @@ export function CaseLibrary({
   searchOutcomes?: Readonly<Record<string, CaseSearchOutcome>>
   /** The channel's research thresholds, for the verdict card. */
   thresholds?: ResearchThresholds
+  /** The Search track record panel's data; without it there is no button. */
+  trackRecord?: TrackRecordData
 }) {
   const router = useRouter()
   const { toast } = useToast()
   const [adding, setAdding] = React.useState(false)
+  const [tracking, setTracking] = React.useState(false)
   // Opening another case closes the add form.
   const [seenId, setSeenId] = React.useState(selectedId)
   if (selectedId !== seenId) {
     setSeenId(selectedId)
     setAdding(false)
+    setTracking(false)
   }
 
   const run: Run = React.useCallback(
@@ -104,14 +111,17 @@ export function CaseLibrary({
       : BIBLE_INCOMPLETE_MESSAGE
   const selected = cases.find((item) => item.id === selectedId) ?? null
   // An empty library keeps its Add case button in the panel's prompt, once.
-  const empty = selected === null && !adding
+  const empty = selected === null && !adding && !tracking
 
   const addButton = (
     <Button
       variant="primary"
       disabled={archived}
       title={archived ? CHANNEL_ARCHIVED_MESSAGE : undefined}
-      onClick={() => setAdding(true)}
+      onClick={() => {
+        setTracking(false)
+        setAdding(true)
+      }}
     >
       <Plus aria-hidden />
       Add case
@@ -119,7 +129,7 @@ export function CaseLibrary({
   )
 
   // Below xl the add form, like an open case, takes the screen from the list.
-  const panelAlone = explicit || adding
+  const panelAlone = explicit || adding || tracking
   const listClass = panelAlone ? 'hidden xl:flex' : 'flex'
   const panelClass = panelAlone || selected === null ? 'block' : 'hidden xl:block'
 
@@ -128,7 +138,21 @@ export function CaseLibrary({
       <div className="flex flex-col gap-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-[20px] font-semibold">Case Library</h1>
-          {empty ? null : <div className="flex flex-wrap items-center gap-2">{addButton}</div>}
+          <div className="flex flex-wrap items-center gap-2">
+            {trackRecord ? (
+              <Button
+                variant="outline"
+                aria-pressed={tracking}
+                onClick={() => {
+                  setAdding(false)
+                  setTracking((open) => !open)
+                }}
+              >
+                Search track record
+              </Button>
+            ) : null}
+            {empty ? null : addButton}
+          </div>
         </header>
 
         {blockedReason === null ? null : (
@@ -158,7 +182,14 @@ export function CaseLibrary({
             className={listClass}
           />
           <div className={`min-w-0 ${panelClass}`}>
-            {adding ? (
+            {tracking && trackRecord ? (
+              <TrackRecordPanel
+                channelId={channelId}
+                data={trackRecord}
+                run={run}
+                onClose={() => setTracking(false)}
+              />
+            ) : adding ? (
               <AddCaseForm
                 channelId={channelId}
                 categories={categories}

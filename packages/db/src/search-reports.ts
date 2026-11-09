@@ -1,12 +1,16 @@
 import {
+  COUNTED_OUTCOMES,
   SearchReportSchema,
+  StoredSearchBriefSchema,
+  frozenVerdictFor,
   type Checkpoint,
+  type CountedVideo,
   type SearchOutcome,
   type SearchReport,
 } from '@boom-busters/schemas'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { searchRankChecks, searchReports, searchTermDismissals } from './schema'
+import { cases, projects, searchRankChecks, searchReports, searchTermDismissals } from './schema'
 import type { SearchRankCheckRow, SearchReportRow } from './schema'
 
 /**
@@ -93,6 +97,64 @@ export async function frozenReportsForChannel(
       videoId: row.videoId,
       projectId: row.projectId,
       report: SearchReportSchema.parse(row.report),
+    })
+  }
+  return out
+}
+
+/**
+ * The day-28 frozen reports the learning counts: joined to their project and
+ * case, each with its frozen verdict (recomputed when none was stored), the
+ * target's estimated searches and its intent and topic. Reports whose outcome
+ * is not a counted one, and projects with no verdict, are left out.
+ */
+export async function countedVideosForChannel(
+  db: Database,
+  channelId: string,
+): Promise<(CountedVideo & { targetIntent?: string; targetTopic?: string })[]> {
+  const rows = await db
+    .select({
+      projectId: projects.id,
+      title: projects.title,
+      searchBrief: projects.searchBrief,
+      researchVerdict: projects.researchVerdict,
+      category: cases.category,
+      report: searchReports.report,
+    })
+    .from(searchReports)
+    .innerJoin(projects, eq(projects.id, searchReports.projectId))
+    .innerJoin(cases, eq(cases.id, projects.caseId))
+    .where(
+      and(
+        eq(searchReports.channelId, channelId),
+        eq(projects.channelId, channelId),
+        eq(searchReports.checkpoint, 28),
+        eq(searchReports.state, 'frozen'),
+      ),
+    )
+    .orderBy(searchReports.createdAt)
+  const out: (CountedVideo & { targetIntent?: string; targetTopic?: string })[] = []
+  for (const row of rows) {
+    if (row.report === null) continue
+    const report = SearchReportSchema.parse(row.report)
+    if (!COUNTED_OUTCOMES.includes(report.outcome)) continue
+    const parsedBrief = StoredSearchBriefSchema.nullable().safeParse(row.searchBrief ?? null)
+    const brief = parsedBrief.success ? parsedBrief.data : null
+    const verdict = frozenVerdictFor({
+      stored: row.researchVerdict,
+      brief,
+      caseCategory: row.category,
+    })
+    if (verdict === null) continue
+    const target = brief?.targetKeyword ?? null
+    out.push({
+      projectId: row.projectId,
+      title: row.title,
+      verdict,
+      report,
+      targetSearches: target?.estimatedMonthlySearch ?? null,
+      ...(target?.intent ? { targetIntent: target.intent } : {}),
+      ...(target?.topic ? { targetTopic: target.topic } : {}),
     })
   }
   return out

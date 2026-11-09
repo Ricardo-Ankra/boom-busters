@@ -1,15 +1,19 @@
 import {
   channelResearchThresholds,
+  countedVideosForChannel,
   latestOutcomeByProject,
+  listResearchTuning,
   listCaseNotices,
   listCases,
   listProjects,
+  suggestionDismissals,
 } from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
 import { EXAMPLE_SLOT_IDS, isBibleComplete } from '@boom-busters/schemas'
 import { CaseLibrary } from './case-library'
 import type { CaseSearchOutcome } from './case-panel'
 import { resolveSelected } from './case-progress'
+import { buildTrackRecordData } from './track-record-data'
 import { channelFromSlug } from '@/lib/channel-context'
 import { db } from '@/lib/db'
 
@@ -68,7 +72,30 @@ export default async function CasesPage({
     }
   }
 
-  const thresholds = await channelResearchThresholds(db, channel.id)
+  const [thresholds, counted, dismissals, tuning] = await Promise.all([
+    channelResearchThresholds(db, channel.id),
+    countedVideosForChannel(db, channel.id),
+    suggestionDismissals(db, channel.id),
+    listResearchTuning(db, channel.id),
+  ])
+  const trackRecord = buildTrackRecordData({
+    videos: counted,
+    current: thresholds,
+    dismissals,
+    applied: tuning.flatMap((row) =>
+      row.key in thresholds
+        ? [
+            {
+              key: row.key as keyof typeof thresholds,
+              value: row.value,
+              previous: row.previous,
+              appliedAt: row.appliedAt.toISOString(),
+              evidence: row.evidence,
+            },
+          ]
+        : [],
+    ),
+  })
 
   return (
     <CaseLibrary
@@ -83,6 +110,7 @@ export default async function CasesPage({
       notices={notices}
       searchOutcomes={searchOutcomes}
       thresholds={thresholds}
+      trackRecord={trackRecord}
       bibleComplete={isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS)}
       archived={channel.archivedAt !== null}
     />

@@ -32,6 +32,12 @@ const actions = vi.hoisted(() => ({
   estimateStartCostAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
+// The track record's Apply, Dismiss and Reset are server actions that load next-auth.
+vi.mock('./tuning-actions', () => ({
+  applySuggestionAction: vi.fn(),
+  dismissSuggestionAction: vi.fn(),
+  resetTuningAction: vi.fn(),
+}))
 // The notice's Dismiss is a server action whose module loads next-auth,
 // which cannot load under jsdom.
 vi.mock('@/app/(console)/notice-actions', () => ({ dismissNoticeAction: vi.fn() }))
@@ -100,6 +106,27 @@ beforeEach(() => {
   actions.estimateStartCostAction.mockResolvedValue({
     usd: null,
     basis: 'No estimate yet: no finished projects',
+  })
+})
+
+describe('the Search track record button', () => {
+  it('opens the panel in place of the open case', async () => {
+    const trackRecord = { counted: 2, checks: [], suggestions: [], applied: [], intents: [] }
+    render(
+      <Library
+        slug="psychology"
+        channelId={CHANNEL_ID}
+        categories={CATEGORIES}
+        cases={[kase({})]}
+        sort="priority"
+        selectedId={WIRECARD}
+        trackRecord={trackRecord}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Search track record' }))
+    expect(
+      screen.getByText('The track record starts after 5 videos have a day-28 report. So far: 2.'),
+    ).toBeTruthy()
   })
 })
 

@@ -35,7 +35,7 @@ function stateOf(v: CountedVideo, check: VerdictCheck): 'ok' | 'not-ok' | null {
 }
 
 /** Target hold at or above holdRatio times the baseline; null when either side is missing. */
-function holdGood(report: SearchReport): boolean | null {
+export function holdGood(report: SearchReport): boolean | null {
   const hold = report.buckets.target.holdSec
   const base = report.baselines.searchHoldSec.value
   if (hold === null || base === null) return null
