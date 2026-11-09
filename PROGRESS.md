@@ -10407,3 +10407,74 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
      is more than 30 minutes old, so collecting it is no longer free. Press Test
      this angle to buy a new one." and refreshes the panel, which then offers the
      paid test with its cost. Branch `fix-free-collect`.
+
+### Learning from real search
+
+Part 1 of the learning-from-real-search plan (2026-11-09, branch
+`search-learning`). Part 1 is the per-video report; learning per channel is
+Part 2 and is not built.
+
+Part 1 checklist:
+
+- [x] Date-bounded analytics reads with search terms, engagement and video facts
+- [x] Search report measures, outcomes and research thresholds (schemas)
+- [x] `search_reports`, rank checks and term dismissals (migration 0050)
+- [x] The term matching step, and `rankFor` for one VidIQ search
+- [x] The analytics run freezes a report at each checkpoint
+- [x] The weekly digest names new search reports
+- [x] Add a term to the channel keywords; the search outcome on the case
+- [x] The search report card on the publish screen
+- [x] An e2e test of the card (`e2e/tests/search-report.spec.ts`)
+- [ ] Part 2, learning per channel (migration 0051)
+
+434. **A frozen search report at day 7, 28 and 90** (2026-11-09). A live
+     master gets a report at each checkpoint, fetched on the first daily
+     analytics run at or after checkpoint plus 3 days. The reads are date
+     bounded, from the publish day to the publish day plus N, so day 7 holds
+     the first week and not the lifetime. The report is frozen once in
+     `search_reports` (migration 0050) together with the thresholds it used
+     and the number of reports each baseline was built from, so a later change
+     to a threshold or to the channel's history never rewrites a verdict. A
+     failed analytics read defers the report and does not count against it. A
+     failed model match defers up to 3 daily runs, then the report freezes
+     deterministic-only and says so on the card. The outcome is one row of a
+     fixed table (too early, no research, search barely played, no terms, too
+     little search, hit and held, hit then left, found another way, missed the
+     target), with its own advice line. The Monday digest names new reports,
+     and the case carries the latest outcome of its video.
+435. **Matching and rank** (2026-11-09). Terms are matched to the brief's
+     researched keywords deterministically first (normalisation rules: case,
+     punctuation, years, word order, and for English accents, stop words and
+     a trailing plural s), then one model call
+     covers only the leftovers. A term the model does not return is stored as
+     `unmatched`. The day-28 rank check runs before the model call and its
+     result is recorded and reused, so a retry of the step never buys a second
+     search. It reads VidIQ's top 10: the spec said 20, but VidIQ's search
+     returns 10, so copy says "not in the top 10" and the stored position
+     reads that way. A rank failure that is not the credit cap defers on the
+     same 7-run ladder as a cap refusal.
+436. **Decisions made where the spec left room** (2026-11-09). Video duration
+     and publish time come from YouTube's `videos.list` (`contentDetails` and
+     `snippet`), not from the rendered timeline as the spec worded it: that is
+     the length viewers actually watched, and the runner has it without
+     loading the timeline. The Latest view is lifetime numbers, matched
+     deterministically, and never shows a verdict, because a lifetime figure
+     is not a checkpoint. Add to channel keywords and Not for us show only on
+     frozen reports. Dismissals are per channel, by normalised term, so a
+     reworded term stays dismissed. Add to channel keywords writes to the
+     current bible's format (the primary when the video's format is gone),
+     refuses a seventh keyword and folds duplicates. Nothing listens on bible
+     saves, so adding a keyword regenerates nothing. Test hygiene: the
+     report actions' test cleared `searchBrief` on every project row in the
+     shared test database; it now touches only the projects it created, which
+     needed `drizzle-orm` as a dev dependency of `apps/web`.
+437. **The probe** (2026-11-09,
+     `docs/superpowers/specs/2026-11-09-search-learning-probe/README.md`).
+     Run read-only against the newest live master. Every report was accepted,
+     including the date-bounded ranges and the combined video and
+     `YT_SEARCH` filter. `estimatedMinutesWatched` comes back as whole
+     numbers, so hold from one or two views means nothing; the existing
+     floors (20 target views, 50 listed views) already keep such a video out
+     of judgement, so no constant changed. The newest video drew 3 search
+     views of 359, so most reports will read "Search barely played" until
+     search traffic grows, and the track record in Part 2 will wait for it.

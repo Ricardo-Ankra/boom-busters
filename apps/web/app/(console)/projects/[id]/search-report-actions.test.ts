@@ -17,6 +17,7 @@ import {
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, EMPTY_BIBLE, defaultFormat } from '@boom-busters/schemas'
 import type { SearchBrief } from '@boom-busters/schemas'
+import { eq, inArray } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
@@ -132,6 +133,7 @@ const BRIEF: SearchBrief = {
 describeDb('checkRankAction and dismissTermAction', () => {
   let channelId = ''
   let projectId = ''
+  const created: string[] = []
 
   beforeEach(async () => {
     seam.rankFor.mockReset()
@@ -147,18 +149,23 @@ describeDb('checkRankAction and dismissTermAction', () => {
     channelId = channel.id
     const kase = await createCase(db, { title: 'Enron', category: 'collapse', channelId })
     projectId = (await createProjectFromCase(db, { caseId: kase.id, title: 'Enron' })).id
+    created.push(projectId)
   })
 
-  // The brief is set on every project row: leave none behind for other suites.
+  // The brief is set on this file's own projects: clear only those, so rows
+  // other suites share in the test database are never touched.
   afterEach(async () => {
-    await db.update(projects).set({ searchBrief: null })
+    if (created.length > 0) {
+      await db.update(projects).set({ searchBrief: null }).where(inArray(projects.id, created))
+    }
   })
 
   const goLive = async (videoId: string) => {
     const record = await ensurePublishRecord(db, 'master', projectId)
     await updatePublishRecord(db, record.id, { youtubeVideoId: videoId, status: 'live' })
   }
-  const setBrief = (value: SearchBrief | null) => db.update(projects).set({ searchBrief: value })
+  const setBrief = (value: SearchBrief | null) =>
+    db.update(projects).set({ searchBrief: value }).where(eq(projects.id, projectId))
 
   it('checkRankAction records a rank check and refuses at the cap', async () => {
     await setBrief(BRIEF)
