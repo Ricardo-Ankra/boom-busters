@@ -55,6 +55,15 @@ vi.mock('../c/[slug]/settings/motion-actions', () => ({
   archiveReferenceAction: vi.fn(),
   draftMotionIdentityAction: vi.fn(),
 }))
+vi.mock('../c/[slug]/settings/exemplar-actions', () => ({
+  deriveExemplarsAction: vi.fn(),
+  refineExemplarAction: vi.fn(),
+  approveExemplarVersionAction: vi.fn(),
+  keepApprovedAction: vi.fn(),
+  restoreExemplarVersionAction: vi.fn(),
+  copyMotionFromChannelAction: vi.fn(),
+  latestDerivationAction: vi.fn(async () => ({ ok: true })),
+}))
 vi.mock('../c/[slug]/settings/logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
