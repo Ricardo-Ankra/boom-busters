@@ -171,7 +171,12 @@ function intentLine(brief: SearchBrief): VerdictLine {
 function angleLine(brief: SearchBrief, checkedAngle: number | null): VerdictLine {
   // The owner's own text is not an option: never judge the recommended one in its place.
   if (brief.ownAngle) {
-    return { check: 'angle', state: 'warn', reason: 'Your own angle has no evidence check yet' }
+    return {
+      check: 'angle',
+      state: 'warn',
+      reason: 'Your own angle has no evidence check yet',
+      measured: false,
+    }
   }
   if (brief.angleOptions.length === 0) {
     return { check: 'angle', state: 'bad', reason: 'There are no angles to check' }

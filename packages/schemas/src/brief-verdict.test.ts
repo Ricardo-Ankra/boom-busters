@@ -384,6 +384,7 @@ describe('intent, fit and angle', () => {
     const out = line(own, 'angle')
     expect(out.state).toBe('warn')
     expect(out.reason).toBe('Your own angle has no evidence check yet')
+    expect(out.measured).toBe(false)
   })
 
   it('names the pillar by its label, not its key', () => {

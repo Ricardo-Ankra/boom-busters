@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import type { FrozenVerdict, VerdictCheck, VerdictState } from './brief-verdict'
+import { briefVerdict, type FrozenVerdict, type VerdictCheck, type VerdictState } from './brief-verdict'
+import type { SearchBrief } from './search-brief'
 import { DEFAULT_RESEARCH_THRESHOLDS, type ResearchThresholds } from './research-thresholds'
 import { buildSearchReport, type SearchOutcome, type SearchReport } from './search-report'
 import {
@@ -244,6 +245,25 @@ describe('unmeasured lines and own baselines', () => {
       }),
     ])
     expect(rows.every((r) => r.counted === 0)).toBe(true)
+  })
+
+  test('an own-angle video is not counted for the angle check', () => {
+    const own = {
+      subject: 'WeWork',
+      targetKeyword: { keyword: 't', estimatedMonthlySearch: 3000, fit: 'fits', topic: 't' },
+      secondaryKeywords: [],
+      angleOptions: [],
+      fit: { inScope: true, pillarKey: 'business', reason: '' },
+      ownAngle: true,
+    } as unknown as SearchBrief
+    const lines = briefVerdict(own, { caseCategory: 'business', checkedAngle: null })
+    const rows = trackRecord([
+      {
+        ...video({ hold: 10 }),
+        verdict: { lines, thresholds: T, frozenAt: '2026-09-01T00:00:00.000Z' },
+      },
+    ])
+    expect(rows.find((r) => r.check === 'angle')?.counted).toBe(0)
   })
 
   test('only the unmeasured check is skipped', () => {
