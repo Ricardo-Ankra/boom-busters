@@ -123,7 +123,7 @@ export const EXAMPLE_SLOTS: readonly ExampleSlot[] = [
   {
     id: 'dossier-channel-subject',
     title: 'What the researcher looks for',
-    source: 'dossier.ts',
+    source: 'dossier-profiles.ts',
     teaches: 'The kinds of story the channel researches, after "You research".',
     kind: 'line',
     maxLength: 200,

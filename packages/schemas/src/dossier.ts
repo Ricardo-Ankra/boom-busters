@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RESEARCH_PROFILES } from './research-profiles'
 
 /**
  * Provider IO for the dossier-runner's research passes (build spec section 7).
@@ -75,7 +76,7 @@ export const DOSSIER_CAST_MAX = 30
 export const DOSSIER_TOLD_ALREADY_MAX = 30
 export const DOCUMENT_BODY_CAP_BYTES = 4 * 1024 * 1024
 /** Share of the corpus budget each tier may fill, so one tier cannot crowd out the rest. */
-export const DOSSIER_TIER_SHARES = { 1: 0.25, 2: 0.3, 3: 0.15, 4: 0.1, 5: 0.2 } as const
+export const DOSSIER_TIER_SHARES = RESEARCH_PROFILES.investigation.tierShares
 /**
  * References the gather takes from each person's Wikipedia article. A
  * founder's article carries the aftermath (sentence, appeal, prison) that the
@@ -107,17 +108,9 @@ export const DOCUMENT_KINDS = [
 export const DocumentKindSchema = z.enum(DOCUMENT_KINDS)
 export type DocumentKind = z.infer<typeof DocumentKindSchema>
 
-export const DOCUMENT_TIERS: Record<DocumentKind, 1 | 2 | 3 | 4 | 5> = {
-  filing: 1,
-  'web-archive': 1,
-  'press-release': 1,
-  reporting: 2,
-  video: 3,
-  figures: 4,
-  regulator: 5,
-  court: 5,
-  scholarly: 2,
-}
+/** The investigation profile's tiers; a profile chooses its own (research-profiles.ts). */
+export const DOCUMENT_TIERS: Record<DocumentKind, 1 | 2 | 3 | 4 | 5> =
+  RESEARCH_PROFILES.investigation.tiers
 
 /**
  * Whether a court or regulator has actually ruled, tracked apart from how well

@@ -42,6 +42,7 @@ import type {
 } from '@boom-busters/schemas'
 import { z } from 'zod'
 import { fillSlots, literalBibleText, noun } from './bible'
+import { PROFILE_PROMPTS } from './dossier-profiles'
 import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
@@ -67,11 +68,9 @@ import type { LLMTaskRequest, Msg } from '../llm/types'
  */
 
 function houseRules(bible: ChannelBible): string {
-  return `You research [[example:dossier-channel-subject]] for a documentary
-channel with commentary. You work as the story researcher: you look for the
-scenes, the people and what they wanted, the numbers that draw the arc, and
-what earlier videos already told. Real ${literalBibleText(noun(bible, 'plural'))} and living people are the
-subject, so:
+  const profile = PROFILE_PROMPTS[bible.researchProfile ?? 'investigation']
+  const extra = profile.extraRules.map((rule) => `\n- ${rule}`).join('')
+  return `${profile.opening(bible)} ${profile.stakes(bible)}
 
 - Write only what the documents in front of you say. A fact you remember but cannot quote from a document is an open question, not a claim.
 - Cite a document by its number in the list: [D3] is "doc": 3. Never cite a
@@ -81,7 +80,7 @@ subject, so:
   text, and a quote it cannot find counts as no source at all.
 - Distinguish what a court or regulator FOUND from what was ALLEGED or reported.
 - Where the documents do not settle something, say so. An open question is
-  useful; a confident invention is a liability.
+  useful; a confident invention is a liability.${extra}
 
 Answer with JSON only, no prose around it.`
 }
