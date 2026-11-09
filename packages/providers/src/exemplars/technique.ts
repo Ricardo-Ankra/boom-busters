@@ -110,6 +110,14 @@ export function claimedBySteer(phrase: string): Technique | undefined {
   return steerMatch(phrase, STEER)
 }
 
+/** A phrase that carries a negation word would read as a refusal on the board, so no technique may claim it. */
+export function hasNegator(phrase: string): boolean {
+  return phrase
+    .toLowerCase()
+    .split(/\s+/)
+    .some((word) => NEGATORS.has(word.replace(/[^a-z']/g, '')))
+}
+
 /** A channel phrase as a whole-word pattern, a space or a hyphen between its words. */
 function channelPatterns(
   techniques: readonly ChannelTechnique[],

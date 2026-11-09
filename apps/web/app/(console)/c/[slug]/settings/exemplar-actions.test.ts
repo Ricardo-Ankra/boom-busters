@@ -357,6 +357,17 @@ describeDb('the exemplar actions', () => {
       })
     })
 
+    it("keeps the target's own technique in use when the source lacks it (deferred minor)", async () => {
+      const own = await aVersion({ technique: 'ledger-wipe', proposal: PROPOSAL })
+      expect((await approveExemplarVersionAction(channelId, own.id)).ok).toBe(true)
+      expect((await getChannelSettings(db, channelId)).motion.techniques).toContain('ledger-wipe')
+      expect((await copyMotionFromChannelAction(channelId, sourceId)).ok).toBe(true)
+      const techniques = (await getChannelSettings(db, channelId)).motion.techniques
+      expect(techniques.filter((key) => key === 'ledger-wipe')).toHaveLength(1)
+      // The source's identity came across with it.
+      expect((await getChannelSettings(db, channelId)).motion.cameraRule).toBe('never moves')
+    })
+
     it('copies the identity, the references and the exemplars from another channel', async () => {
       const result = await copyMotionFromChannelAction(channelId, sourceId)
       expect(result).toMatchObject({

@@ -12,6 +12,7 @@
 import {
   approveExemplarVersion,
   approvedExemplar,
+  channelTechniquesFor,
   copyMotionFromChannel,
   createDerivation,
   exemplarVersionById,
@@ -272,7 +273,15 @@ export async function copyMotionFromChannelAction(
     throw error
   }
   const motion = (await getChannelSettings(db, sourceChannelId)).motion
-  await updateChannelSettings(db, channelId, { motion })
+  // The source's identity, with this channel's own techniques still in use
+  // (spec 8.5): the copy retires only the techniques the source has, so the
+  // target's approved versions of its own keep their place.
+  const own = (await channelTechniquesFor(db, channelId)).map((entry) => entry.technique)
+  const techniques = [
+    ...motion.techniques,
+    ...own.filter((key) => !motion.techniques.includes(key)),
+  ]
+  await updateChannelSettings(db, channelId, { motion: { ...motion, techniques } })
   refresh()
   return {
     ok: true,

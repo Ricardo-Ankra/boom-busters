@@ -19,6 +19,7 @@ import {
   buildTechniqueProposalRequest,
   DESIGNS,
   entryFromProposal,
+  isReadMechanismReading,
   MANIFEST,
   mockCriticReport,
   mockCriticVerify,
@@ -129,6 +130,12 @@ function brandForPrompt(brand: ReturnType<typeof resolveBrandKit>): {
 /** A thrown call as the technique's reason, contained in its step so the other techniques still run (final review, issue 6). */
 const failedWith = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).slice(0, 500)
+
+/** A key with nothing to design from: a house key off the catalogue, or a channel's own whose versions are gone. */
+const missingEntry = (technique: TechniqueKey) =>
+  isHouseTechnique(technique)
+    ? `No catalogue entry for ${technique}`
+    : `No proposal is stored for ${technique}`
 
 const capReason = (capUsd: number, spent: number) =>
   `The cap of $${capUsd} was reached at $${spent.toFixed(2)}`
@@ -615,8 +622,12 @@ export const motionExemplarDeriver = inngest.createFunction(
                   : 'none' in outcome
                     ? { state: 'none', technique: null, reason: outcome.none.slice(0, 500) }
                     : 'cap' in outcome
-                      ? { state: 'stopped-at-cap', technique: null, reason: outcome.cap }
-                      : { state: 'failed', technique: null, reason: outcome.failed },
+                      ? {
+                          state: 'stopped-at-cap',
+                          technique: null,
+                          reason: outcome.cap.slice(0, 500),
+                        }
+                      : { state: 'failed', technique: null, reason: outcome.failed.slice(0, 500) },
               )
               if ('proposal' in outcome) {
                 await appendTechniqueProgress(db, derivationId, outcome.proposal.key)
@@ -626,13 +637,14 @@ export const motionExemplarDeriver = inngest.createFunction(
             await touchDerivation(db, derivationId)
             const spent = await jobSpendUsd(db, derivationId)
             if (spent >= capUsd) return record({ cap: capReason(capUsd, spent) })
-            const readings = (await readingsFor(channelId)).filter(
-              (entry) => entry.purpose === 'mechanism' && !entry.negative && entry.reading !== null,
-            )
+            // The same test as the tick's count on the page: a mechanism reference, not negative, read.
+            const readings = (await readingsFor(channelId)).filter(isReadMechanismReading)
             if (mockProvidersEnabled()) {
               const answer = mockTechniqueProposal(readings)
               return record(answer.proposal ? { proposal: answer.proposal } : { none: answer.why })
             }
+            // Nothing to read is none, not a paid call that would say so.
+            if (readings.length === 0) return record({ none: 'No mechanism reference is read' })
             const channel = await loopChannel(channelId)
             // Every technique the channel holds, approved or not, is taken (final
             // review, issue 3): the newest version's proposal names each one.
@@ -669,7 +681,7 @@ export const motionExemplarDeriver = inngest.createFunction(
             try {
               const answer = await callForAnswer({
                 request: buildTechniqueProposalRequest(input),
-                parse: (text) => parseTechniqueProposal(text, { keys }),
+                parse: (text) => parseTechniqueProposal(text, { keys, techniques: own }),
                 retryWithReason: (reason) =>
                   buildTechniqueProposalRequest({ ...input, rejection: reason }),
                 complete: (request, call) =>
@@ -733,7 +745,7 @@ export const motionExemplarDeriver = inngest.createFunction(
               started.entry as TechniqueEntry,
               started.proposal,
             )
-          : { state: 'failed', reason: `No catalogue entry for ${technique}`, versionId: null }
+          : { state: 'failed', reason: missingEntry(technique), versionId: null }
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error)
         outcome = { state: 'failed', reason: reason.slice(0, 500), versionId: null }

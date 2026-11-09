@@ -267,14 +267,13 @@ export function parseMotionIdentityDraft(
   keep: readonly string[] = [],
 ): MotionIdentityDraft {
   const draft = parseJsonCompletion(text, MotionIdentityDraftSchema, 'motion identity draft')
-  const own = keep.filter(
-    (key) => !isHouseTechnique(key) && !draft.identity.techniques.includes(key),
-  )
-  if (own.length === 0) return draft
-  return {
-    ...draft,
-    identity: { ...draft.identity, techniques: [...draft.identity.techniques, ...new Set(own)] },
-  }
+  // The draft chooses from the catalogue (spec 8.4); a key of the channel's own
+  // stays in use whether or not the draft named it, and a key the model made
+  // up, which no version holds, is dropped (spec 8.5).
+  const own = new Set(keep.filter((key) => !isHouseTechnique(key)))
+  const chosen = draft.identity.techniques.filter((key) => isHouseTechnique(key) || own.has(key))
+  const kept = [...own].filter((key) => !chosen.includes(key))
+  return { ...draft, identity: { ...draft.identity, techniques: [...chosen, ...kept] } }
 }
 
 /** Mock mode's draft: the current identity with the brief folded into the style guide. */

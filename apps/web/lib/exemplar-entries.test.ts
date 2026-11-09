@@ -9,10 +9,16 @@ import {
 } from '@boom-busters/db'
 import { MANIFEST, exemplarFor } from '@boom-busters/providers'
 import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
+import type { ChannelExemplarRow } from '@boom-busters/db'
 import type { ExemplarPlan, GraphicCode, TechniqueProposal } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { channelTechniquesInUse, pinnedExemplarFor, techniqueEntryFor } from './exemplar-entries'
+import {
+  channelTechniquesInUse,
+  exemplarFromApproved,
+  pinnedExemplarFor,
+  techniqueEntryFor,
+} from './exemplar-entries'
 
 /**
  * The entry a derivation designs from, for a house key or a channel's own
@@ -109,5 +115,24 @@ describeDb('exemplar entries (spec 8.5)', () => {
         steerPhrases: ['ledger wipe'],
       },
     ])
+  })
+})
+
+describe('exemplarFromApproved (deferred minor: one rule for the board and the loop)', () => {
+  const row = (technique: string, proposal: TechniqueProposal | null) =>
+    ({ technique, proposal, plan: PLAN, code: CODE }) as unknown as ChannelExemplarRow
+
+  it('describes a house key from the catalogue, a channel key from its proposal, else by its key', () => {
+    expect(exemplarFromApproved(row('stat-counter', null))).toEqual({
+      technique: 'stat-counter',
+      description: MANIFEST.find((entry) => entry.technique === 'stat-counter')!.description,
+      mechanisms: PLAN.mechanisms,
+      title: CODE.title,
+      source: CODE.source,
+    })
+    expect(exemplarFromApproved(row('ledger-wipe', PROPOSAL)).description).toBe(
+      PROPOSAL.description,
+    )
+    expect(exemplarFromApproved(row('ledger-wipe', null)).description).toBe('ledger-wipe')
   })
 })

@@ -8,7 +8,7 @@ import type {
   TechniqueKey,
   TechniqueProposal,
 } from '@boom-busters/schemas'
-import { getChannelSettings, updateChannelSettings } from './channels'
+import { lockChannelSettings, updateChannelSettingsWithin } from './channels'
 import type { Database } from './client'
 import { channelExemplars, motionReferences } from './schema'
 import type { ChannelExemplarRow } from './schema'
@@ -333,31 +333,36 @@ export async function syncChannelTechniqueInUse(
   options: { mode?: 'follow' | 'remove-only' } = {},
 ): Promise<'added' | 'removed' | 'unchanged'> {
   if (isHouseTechnique(technique)) return 'unchanged'
-  const [approved] = await db
-    .select({ id: channelExemplars.id })
-    .from(channelExemplars)
-    .where(
-      and(
-        eq(channelExemplars.channelId, channelId),
-        eq(channelExemplars.technique, technique),
-        eq(channelExemplars.status, 'approved'),
-      ),
-    )
-    .limit(1)
-  const motion = (await getChannelSettings(db, channelId)).motion
-  const listed = motion.techniques.includes(technique)
-  if (approved && !listed) {
-    if (options.mode === 'remove-only') return 'unchanged'
-    await updateChannelSettings(db, channelId, {
-      motion: { ...motion, techniques: [...motion.techniques, technique] },
-    })
-    return 'added'
-  }
-  if (!approved && listed) {
-    await updateChannelSettings(db, channelId, {
-      motion: { ...motion, techniques: motion.techniques.filter((key) => key !== technique) },
-    })
-    return 'removed'
-  }
-  return 'unchanged'
+  // The channel row is held from the read to the write, so two syncs at once
+  // (two approvals landing together) cannot drop each other's key.
+  return db.transaction(async (tx) => {
+    const settings = await lockChannelSettings(tx, channelId)
+    const [approved] = await tx
+      .select({ id: channelExemplars.id })
+      .from(channelExemplars)
+      .where(
+        and(
+          eq(channelExemplars.channelId, channelId),
+          eq(channelExemplars.technique, technique),
+          eq(channelExemplars.status, 'approved'),
+        ),
+      )
+      .limit(1)
+    const motion = settings.motion
+    const listed = motion.techniques.includes(technique)
+    if (approved && !listed) {
+      if (options.mode === 'remove-only') return 'unchanged'
+      await updateChannelSettingsWithin(tx, channelId, settings, {
+        motion: { ...motion, techniques: [...motion.techniques, technique] },
+      })
+      return 'added'
+    }
+    if (!approved && listed) {
+      await updateChannelSettingsWithin(tx, channelId, settings, {
+        motion: { ...motion, techniques: motion.techniques.filter((key) => key !== technique) },
+      })
+      return 'removed'
+    }
+    return 'unchanged'
+  })
 }
