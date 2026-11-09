@@ -11,18 +11,24 @@ import {
   projectLedgerSummary,
   ensureFirstChannel,
 } from '@boom-busters/db'
-import { mockProvidersEnabled } from '@boom-busters/providers'
+import { mockProvidersEnabled, PSYCHOLOGY_TEST_BIBLE } from '@boom-busters/providers'
+import {
+  EXAMPLE_SLOT_IDS,
+  type BibleInUse,
+  type DocumentKind,
+  type ResearchProfileKey,
+} from '@boom-busters/schemas'
 import type { AnswerComplete } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import {
   BACKTEST_CASES,
+  parseBacktestArgs,
   renderReport,
   scoreRuns,
   timedSteps,
   type CaseRun,
 } from '@/lib/dossier-backtest'
 import { db } from '@/lib/db'
-import { optionalText, readRawFlags } from '@/lib/live-set-args'
 import { liveResearchSources } from '@/lib/research-sources'
 import { gatherCorpus } from '@/inngest/lib/dossier-gather'
 import { loadCorpus, researchDossier } from '@/inngest/lib/dossier-research'
@@ -38,35 +44,27 @@ import { inlineSteps } from '@/inngest/lib/steps'
  * cost ledger rows stay (the spend was real) but lose their project link, so
  * cost and model are read before the delete.
  *
+ * `--profile science` runs the five science cases under the psychology test
+ * bible with the science profile on; with no flag it runs the investigation
+ * cases, as before. `--cases` narrows within the chosen profile.
+ *
  * The cap is checked before every model call, not inside one: a single call
  * can overshoot it, which is why the default is $1 and a higher cap is the
  * owner's word. The ledger's own monthly guard still applies on top.
  */
 
-const MAX_CAP_USD = 30
-
-function parseArgs(argv: readonly string[]): { cap: number; titles: string[] } {
-  const raw = readRawFlags(argv)
-  const capText = raw.cap
-  const cap = capText === undefined || capText.trim() === '' ? 1 : Number(capText)
-  if (!Number.isFinite(cap) || cap <= 0) {
-    throw new Error(`--cap "${capText}" is not a valid dollar amount; give a number above 0.`)
-  }
-  if (cap > MAX_CAP_USD) throw new Error(`--cap may not pass $${MAX_CAP_USD}.`)
-
-  const known = BACKTEST_CASES.map((c) => c.title)
-  const chosen = optionalText(raw, 'cases')
-  // A case may be named by its subject too, since Theranos's title is a headline.
-  const asTitle = (name: string): string =>
-    BACKTEST_CASES.find((c) => c.title === name || c.subject === name)?.title ?? name
-  const titles = chosen ? chosen.split(',').map((name) => asTitle(name.trim())) : [...known]
-  const unknown = titles.filter((title) => !known.some((name) => name === title))
-  if (unknown.length > 0) {
-    throw new Error(
-      `Unknown case ${unknown.join(', ')}; the back-test cases are ${known.join(', ')}.`,
-    )
-  }
-  return { cap, titles }
+/**
+ * The bible a case is researched under. An investigation case reads the
+ * project's own channel bible, as production does. A science case reads the
+ * psychology test bible with the science profile on, since no live channel
+ * has chosen it yet.
+ */
+function bibleFor(profile: ResearchProfileKey, projectId: string): () => Promise<BibleInUse> {
+  if (profile === 'investigation') return () => channelForProject(db, projectId)
+  return async () => ({
+    bible: { ...PSYCHOLOGY_TEST_BIBLE, researchProfile: profile },
+    slotIds: EXAMPLE_SLOT_IDS,
+  })
 }
 
 /** Refuses a call once the run's spend has reached the cap. */
@@ -94,7 +92,7 @@ async function main(): Promise<void> {
       "MOCK_PROVIDERS=1 is set. The back-test measures the real gather and the real passes, so a mock run would score fixtures. Unset it and run again with the owner's go-ahead. Nothing was spent.",
     )
   }
-  const { cap, titles } = parseArgs(process.argv.slice(2))
+  const { cap, profile, titles } = parseBacktestArgs(process.argv.slice(2))
   const sources = liveResearchSources()
   const runs: CaseRun[] = []
   const skipped: { title: string; reason: string }[] = []
@@ -131,7 +129,7 @@ async function main(): Promise<void> {
           people,
           sourceLinks: [],
           competitorLinks: [],
-          profile: 'investigation',
+          profile,
           round: 0,
         },
         { db, sources: () => sources, mocked: false },
@@ -160,11 +158,11 @@ async function main(): Promise<void> {
           },
           round: 0,
           entity: gathered.entity,
-          profile: 'investigation',
+          profile,
           documents: loaded.documents,
           corpus: loaded.corpus,
         },
-        { complete, mocked: false, bible: () => channelForProject(db, project.id) },
+        { complete, mocked: false, bible: bibleFor(profile, project.id) },
       )
       if (result.budgetGate)
         throw new Error('A budget guard parked the passes before they finished.')
@@ -177,6 +175,10 @@ async function main(): Promise<void> {
       }
       const ledger = await projectLedgerSummary(db, project.id)
       spent = before + ledger.costUsd
+      const readKinds: Partial<Record<DocumentKind, number>> = {}
+      for (const doc of rows) {
+        if (doc.failure === null) readKinds[doc.kind] = (readKinds[doc.kind] ?? 0) + 1
+      }
       runs.push({
         title,
         resolvedTitle: gathered.entity.titles[0] ?? null,
@@ -192,6 +194,7 @@ async function main(): Promise<void> {
           failure: doc.failure,
           transcript: doc.kind === 'video' && doc.meta?.transcript === true,
         })),
+        readKinds,
         xbrl,
         // Grounding notes each beat it drops for lacking a transcript quote;
         // they are the only trace of the beats the model wrote but lost.

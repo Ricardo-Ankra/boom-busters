@@ -4806,6 +4806,61 @@ Final review and fixes:
   navigation aborts its stream, before any case panel renders. It is not from
   this branch and was left alone.
 
+## Dossier research profiles (2026-11-09 to 2026-11-10)
+
+> The dossier now researches by a profile the channel bible chooses:
+> `investigation` (Boom & Busters, unchanged byte for byte) or `science`
+> (topic subjects, scholarly sources first, and an evidence axis of
+> established, single study or contested that grounding earns). Branch
+> `dossier-profiles`; decision 446. Spec
+> `docs/superpowers/specs/2026-11-09-dossier-research-profiles-design.md`, plan
+> `docs/superpowers/plans/2026-11-09-dossier-research-profiles.md`. One
+> migration, `0053_lyrical_gabe_jones`: `document_kind` gains `scholarly` and
+> `claims` gains `evidence_status` and `evidence_document_id`.
+
+### Deliverables
+
+- [x] Task 1: the `scholarly` document kind, the claim evidence columns and the
+      migration (`d8b3eba1`; its migration was renumbered to 0053 after master's
+      0052 in `8cdf7da6`).
+- [x] Task 2: `ChannelBible.researchProfile` and `RESEARCH_PROFILES`
+      (`a3fdc5fa`).
+- [x] Task 3: the gather follows the profile: topic subjects and scholarly
+      hosts (`f6b453ff`).
+- [x] Task 4: the research passes follow the profile (`f43329f4`).
+- [x] Task 5: grounding earns an evidence upgrade and carries the standing on
+      the claim (`bcdf3c4a`).
+- [x] Task 6: the gate names the bible's noun, and a video-led claim is typed
+      `other` (`6843ef59`).
+- [x] Task 7: the science profile's prompts and evidence rule, with new
+      `-science.json` lift fixtures (`3468b42a`, `28a319f7`).
+- [x] Task 8: a claim's evidence standing reaches the script and the dossier
+      review (`544a46f0`).
+- [x] Merge of master into the branch (`369390aa`).
+- [x] Task 9: a back-test per profile, the five science cases, the scholarly
+      share and evidence mix measures, `--profile science`, this section and
+      decision 446.
+
+### Owner actions at deploy
+
+1. Migration 0053 runs with the production build (`scripts/deploy-migrate.mjs`).
+2. `PUT /api/inngest` after the Vercel deploy.
+3. Optional and paid, with the owner's go-ahead: the live science back-test,
+   `pnpm --filter @boom-busters/web live:dossier-backtest --profile science`,
+   under the usual $1 cap.
+4. To use the profile, set Real Power Pyschology's bible Identity "Research
+   profile" to Science. Until then every channel researches as before.
+
+### Not verified
+
+- No live run of any profile: the gather, the passes and the back-test ran on
+  mock providers and fixtures only.
+- Scholarly references are often paywalled, so a scholarly document may be only
+  an abstract.
+- The topic resolver on ambiguous subjects.
+- The science prompts' effect on a real model: the lift fixtures prove what is
+  sent, not what comes back.
+
 ---
 
 # Decisions made
@@ -10652,3 +10707,35 @@ Part 2 checklist:
      `PUT /api/inngest` (the deriver's options changed). Production rows
      were not read: the permission classifier refused it this session, so
      the bar chart's actual browser failure is unknown.
+446. **Research profiles, chosen per channel** (2026-11-10, branch
+     `dossier-profiles`, migration 0053). The dossier's gather, passes and
+     grounding follow a profile the channel bible names in
+     `researchProfile`. `investigation` is Boom & Busters' behaviour byte for
+     byte (the lift fixtures are unchanged, and a stored bible or a replayed
+     step result without the field reads as it). `science` is first; `history`
+     comes later; a format may later override depth only, never the profile.
+     The legal grading (`ruled / alleged / none`, `VERDICT_WORDS`, the
+     court-or-regulator rule) stays for every profile. The science profile adds
+     an evidence axis (`established`, `single_study`, `contested`) where an
+     upgrade is earned by grounding and a downgrade is free: the model may
+     write any status, and grounding lowers an unearned one to the profile's
+     fallback with a repair note. A topic subject skips disambiguation pages
+     and lists. Scholarly hosts are classified before government hosts, so an
+     NIH paper is `scholarly`, not `regulator`. The gate names the bible's
+     noun ("topic", "company"). A video is not a news outlet: a claim led by a
+     video is typed `other`. The `dossier-channel-subject` example slot now
+     lives in `dossier-profiles.ts`, which adds one drafting unit to a full
+     Draft with AI. The science evidence rule names the claim's own supports
+     and asks for a review word in the quote. A project keeps its frozen
+     profile, so a revision never regathers for a profile change. The
+     back-test gains a profile per case, five science cases (Stanford prison
+     experiment, Ego depletion, Stanford marshmallow experiment, Power
+     posing, Milgram experiment), the scholarly share of read documents
+     (target 0.2 for science), the evidence status mix with "no finding" for a
+     claim without one, and a resolved rate per profile; a science run whose
+     axis shows no contested or single_study claim fails. `--profile science`
+     runs them under the psychology test bible with the science profile on;
+     no flag runs the investigation cases. The science cases carry the
+     category `collapse` as a placeholder the case row needs. Shipping:
+     migration 0053, a Vercel deploy and `PUT /api/inngest`. No profile has run
+     live.

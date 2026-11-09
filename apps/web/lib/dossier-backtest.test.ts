@@ -8,6 +8,7 @@ import {
   BACKTEST_CASES,
   BACKTEST_TARGETS,
   figureMatches,
+  parseBacktestArgs,
   renderReport,
   scoreRuns,
   timedSteps,
@@ -123,6 +124,7 @@ const runOf = (over: Partial<CaseRun> = {}): CaseRun => ({
   claims: [claim('Revenue grew.', null, [true, true])],
   research: research(),
   documents: [{ url: 'https://a.test', kind: 'reporting', ...page }],
+  readKinds: { reporting: 1 },
   xbrl: null,
   costUsd: 3,
   model: 'claude-opus-5',
@@ -132,7 +134,8 @@ const runOf = (over: Partial<CaseRun> = {}): CaseRun => ({
 
 describe('the back-test constants', () => {
   it('names the five cases and the targets', () => {
-    expect(BACKTEST_CASES.map((c) => c.title)).toEqual([
+    const investigation = BACKTEST_CASES.filter((c) => c.profile === 'investigation')
+    expect(investigation.map((c) => c.title)).toEqual([
       'Wirecard',
       'Enron',
       'Theranos on the Record: Why the Jury Convicted Elizabeth Holmes for Defrauding Investors but Not Patients',
@@ -140,7 +143,7 @@ describe('the back-test constants', () => {
       'SVB Financial',
     ])
     expect(
-      BACKTEST_CASES.map((c) => [c.subject, c.expectedTitle, c.recentOutcome, c.people.length]),
+      investigation.map((c) => [c.subject, c.expectedTitle, c.recentOutcome, c.people.length]),
     ).toEqual([
       ['Wirecard', 'Wirecard', false, 2],
       ['Enron', 'Enron', false, 2],
@@ -148,11 +151,170 @@ describe('the back-test constants', () => {
       ['FTX', 'FTX', true, 1],
       ['SVB Financial Group', 'SVB Financial Group', false, 1],
     ])
+    expect(BACKTEST_CASES.map((c) => c.profile)).toEqual([
+      ...Array(5).fill('investigation'),
+      ...Array(5).fill('science'),
+    ])
     expect(BACKTEST_CURRENT_WITHIN_DAYS).toBe(540)
     expect(BACKTEST_TARGETS.costUsd).toBe(6)
     expect(BACKTEST_TARGETS.urlResolved).toBe(0.7)
     expect(BACKTEST_TARGETS).not.toHaveProperty('toldAlready')
     expect(BACKTEST_TARGETS.maxPassMs).toBe(200_000)
+    expect(BACKTEST_TARGETS.scholarlyShare).toBe(0.2)
+  })
+
+  it('adds the five science cases, each named by its Wikipedia title', () => {
+    const science = BACKTEST_CASES.filter((c) => c.profile === 'science')
+    expect(science.map((c) => [c.title, c.subject, c.expectedTitle, c.recentOutcome])).toEqual([
+      [
+        'Stanford prison experiment',
+        'Stanford prison experiment',
+        'Stanford prison experiment',
+        false,
+      ],
+      ['Ego depletion', 'Ego depletion', 'Ego depletion', false],
+      [
+        'Stanford marshmallow experiment',
+        'Stanford marshmallow experiment',
+        'Stanford marshmallow experiment',
+        false,
+      ],
+      ['Power posing', 'Power posing', 'Power posing', false],
+      ['Milgram experiment', 'Milgram experiment', 'Milgram experiment', false],
+    ])
+    expect(science.flatMap((c) => c.people)).toEqual([
+      'Philip Zimbardo',
+      'Roy Baumeister',
+      'Walter Mischel',
+      'Amy Cuddy',
+      'Stanley Milgram',
+    ])
+  })
+})
+
+describe('parseBacktestArgs', () => {
+  it('reads today as the default: the investigation cases, the $1 cap', () => {
+    const args = parseBacktestArgs([])
+    expect(args.profile).toBe('investigation')
+    expect(args.cap).toBe(1)
+    expect(args.titles).toEqual(
+      BACKTEST_CASES.filter((c) => c.profile === 'investigation').map((c) => c.title),
+    )
+  })
+
+  it('--profile science selects the five science cases', () => {
+    const args = parseBacktestArgs(['--profile', 'science'])
+    expect(args.profile).toBe('science')
+    expect(args.titles).toEqual([
+      'Stanford prison experiment',
+      'Ego depletion',
+      'Stanford marshmallow experiment',
+      'Power posing',
+      'Milgram experiment',
+    ])
+  })
+
+  it('narrows to named cases within the profile, by title or subject', () => {
+    expect(parseBacktestArgs(['--profile=science', '--cases', 'Power posing']).titles).toEqual([
+      'Power posing',
+    ])
+    expect(parseBacktestArgs(['--cases', 'Theranos']).titles).toHaveLength(1)
+  })
+
+  it('refuses an unknown profile, and a case that belongs to another profile', () => {
+    expect(() => parseBacktestArgs(['--profile', 'history'])).toThrow(/history/)
+    expect(() => parseBacktestArgs(['--profile', 'science', '--cases', 'Enron'])).toThrow(
+      /Unknown case Enron/,
+    )
+    expect(() => parseBacktestArgs(['--profile'])).toThrow(/needs a value/)
+  })
+
+  it('keeps the cap rules', () => {
+    expect(() => parseBacktestArgs(['--cap', '0'])).toThrow(/valid dollar amount/)
+    expect(() => parseBacktestArgs(['--cap', '31'])).toThrow(/may not pass/)
+  })
+})
+
+describe('the science measures', () => {
+  const science = (over: Partial<CaseRun> = {}): CaseRun => run({ title: 'Power posing', ...over })
+  const withStatus = (status: string | null): GroundedClaim => ({
+    ...claim('A finding.', null),
+    evidence: status === null ? null : { status, documentId: 'd1' },
+  })
+
+  it('reports the scholarly share of read documents and passes it at 0.3', () => {
+    const report = scoreRuns([
+      science({ readKinds: { scholarly: 3, reporting: 7 }, claims: [withStatus('contested')] }),
+    ])
+    const row = report.profiles.find((p) => p.profile === 'science')!
+    expect(row.scholarlyShare).toBeCloseTo(0.3)
+    expect(report.cases[0]!.scholarlyShare).toBeCloseTo(0.3)
+    expect(report.verdict.failing.filter((f) => f.startsWith('scholarlyShare'))).toEqual([])
+  })
+
+  it('marks a share of 0.1 below the target', () => {
+    const report = scoreRuns([science({ readKinds: { scholarly: 1, reporting: 9 } })])
+    expect(report.profiles[0]!.scholarlyShare).toBeCloseTo(0.1)
+    expect(report.verdict.pass).toBe(false)
+    expect(report.verdict.failing).toContainEqual(
+      'scholarlyShare: science 10.0% is under the 20.0% target',
+    )
+  })
+
+  it('pools the share across the profile cases and never gates investigation on it', () => {
+    const report = scoreRuns([
+      science({ readKinds: { scholarly: 4, reporting: 6 } }),
+      run({ title: 'Enron', readKinds: { reporting: 5 } }),
+    ])
+    expect(report.profiles.map((p) => p.profile)).toEqual(['investigation', 'science'])
+    expect(report.profiles.find((p) => p.profile === 'investigation')!.scholarlyShare).toBe(0)
+    expect(report.verdict.failing.filter((f) => f.startsWith('scholarlyShare'))).toEqual([])
+  })
+
+  it('says not measured when no document was read', () => {
+    const report = scoreRuns([science({ readKinds: {} })])
+    expect(report.profiles[0]!.scholarlyShare).toBe('not measured')
+  })
+
+  it('counts claims by evidence status, null as "no finding"', () => {
+    const report = scoreRuns([
+      science({
+        readKinds: { scholarly: 3, reporting: 7 },
+        claims: [
+          withStatus('established'),
+          withStatus('contested'),
+          withStatus('contested'),
+          withStatus('single_study'),
+          withStatus(null),
+        ],
+      }),
+    ])
+    expect(report.profiles[0]!.evidenceMix).toEqual({
+      established: 1,
+      contested: 2,
+      single_study: 1,
+      'no finding': 1,
+    })
+    expect(report.verdict.failing.filter((f) => f.startsWith('evidenceMix'))).toEqual([])
+  })
+
+  it('fails a science run whose axis shows only established claims', () => {
+    const report = scoreRuns([
+      science({ readKinds: { scholarly: 3, reporting: 7 }, claims: [withStatus('established')] }),
+    ])
+    expect(report.verdict.failing).toContainEqual(
+      'evidenceMix: science shows no contested or single_study claim',
+    )
+  })
+
+  it('reports the resolved rate per profile', () => {
+    const report = scoreRuns([
+      science({ readKinds: { scholarly: 3 }, resolvedTitle: 'Power posing' }),
+      science({ title: 'Ego depletion', readKinds: { scholarly: 3 }, resolvedTitle: null }),
+      run({ title: 'Enron' }),
+    ])
+    expect(report.profiles.find((p) => p.profile === 'science')!.resolvedRate).toBe(0.5)
+    expect(report.profiles.find((p) => p.profile === 'investigation')!.resolvedRate).toBe(1)
   })
 })
 
@@ -553,6 +715,44 @@ describe('renderReport', () => {
     expect(md).toContain(`| ${theranos} | 2026-02 |`)
     expect(md).toContain('| FTX | none |')
     expect(md.indexOf('## Subject')).toBeLessThan(md.indexOf('## Cost'))
+  })
+
+  it('groups its tables by profile, each with its own rows and overall', () => {
+    const md = renderReport(
+      scoreRuns([
+        run({ title: 'Enron' }),
+        run({
+          title: 'Power posing',
+          readKinds: { scholarly: 3, reporting: 7 },
+          claims: [
+            { ...claim('A finding.', null), evidence: { status: 'contested', documentId: 'd1' } },
+          ],
+        }),
+      ]),
+      '2026-11-10',
+    )
+    const inv = md.indexOf('# Profile: investigation')
+    const sci = md.indexOf('# Profile: science')
+    expect(inv).toBeGreaterThan(-1)
+    expect(sci).toBeGreaterThan(inv)
+    const invPart = md.slice(inv, sci)
+    const sciPart = md.slice(sci, md.indexOf('## Verdict'))
+    expect(invPart).toContain('| Enron | 100.0% |')
+    expect(invPart).not.toContain('Power posing')
+    expect(sciPart).toContain('| Power posing | 100.0% |')
+    expect(sciPart).not.toContain('| Enron |')
+    expect(sciPart).toContain('## Scholarly share')
+    expect(sciPart).toContain('Target: at least 20.0% of read documents.')
+    expect(sciPart).toContain('| Power posing | 30.0% |')
+    expect(sciPart).toContain('## Evidence status mix')
+    expect(sciPart).toContain('| contested | 1 |')
+    expect(sciPart).toContain('Resolved rate: 100.0%.')
+    expect(md.split('## Verdict')).toHaveLength(2)
+  })
+
+  it('writes no Scholarly share table for a profile with no target for it', () => {
+    const md = renderReport(scoreRuns([run()]), '2026-11-10')
+    expect(md).not.toContain('## Scholarly share')
   })
 
   it('says the rollout may go on when nothing fails', () => {

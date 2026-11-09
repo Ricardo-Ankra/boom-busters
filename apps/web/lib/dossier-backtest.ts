@@ -1,12 +1,16 @@
 import { annualXbrlFacts, type AnnualFact } from '@boom-busters/providers'
 import {
   BACKTEST_CURRENT_WITHIN_DAYS,
+  RESEARCH_PROFILE_KEYS,
+  RESEARCH_PROFILES,
   type DocumentKind,
   type GroundedClaim,
   type GroundedResearch,
+  type ResearchProfileKey,
   type Series,
 } from '@boom-busters/schemas'
 import type { Steps } from '@/inngest/lib/steps'
+import { optionalText, readRawFlags } from './live-set-args'
 
 /**
  * The dossier back-test's pure half (spec section 9): the five closed cases,
@@ -23,6 +27,7 @@ export const BACKTEST_CASES = [
     people: ['Markus Braun', 'Jan Marsalek'],
     expectedTitle: 'Wirecard',
     recentOutcome: false,
+    profile: 'investigation',
   },
   {
     title: 'Enron',
@@ -31,6 +36,7 @@ export const BACKTEST_CASES = [
     people: ['Kenneth Lay', 'Jeffrey Skilling'],
     expectedTitle: 'Enron',
     recentOutcome: false,
+    profile: 'investigation',
   },
   {
     // The headline title that failed in production: the subject, not the title, must find the company.
@@ -41,6 +47,7 @@ export const BACKTEST_CASES = [
     people: ['Elizabeth Holmes', 'Ramesh Balwani'],
     expectedTitle: 'Theranos',
     recentOutcome: true,
+    profile: 'investigation',
   },
   {
     title: 'FTX',
@@ -49,6 +56,7 @@ export const BACKTEST_CASES = [
     people: ['Sam Bankman-Fried'],
     expectedTitle: 'FTX',
     recentOutcome: true,
+    profile: 'investigation',
   },
   {
     title: 'SVB Financial',
@@ -57,6 +65,56 @@ export const BACKTEST_CASES = [
     people: ['Greg Becker'],
     expectedTitle: 'SVB Financial Group',
     recentOutcome: false,
+    profile: 'investigation',
+  },
+  // The science cases (spec section 11). The replication crisis runs through
+  // all five, so a working evidence axis must show contested and single-study
+  // claims, not only established ones. Their category is a placeholder the
+  // case row needs; the science profile does not read it.
+  {
+    title: 'Stanford prison experiment',
+    category: 'collapse',
+    subject: 'Stanford prison experiment',
+    people: ['Philip Zimbardo'],
+    expectedTitle: 'Stanford prison experiment',
+    recentOutcome: false,
+    profile: 'science',
+  },
+  {
+    title: 'Ego depletion',
+    category: 'collapse',
+    subject: 'Ego depletion',
+    people: ['Roy Baumeister'],
+    expectedTitle: 'Ego depletion',
+    recentOutcome: false,
+    profile: 'science',
+  },
+  {
+    title: 'Stanford marshmallow experiment',
+    category: 'collapse',
+    subject: 'Stanford marshmallow experiment',
+    people: ['Walter Mischel'],
+    expectedTitle: 'Stanford marshmallow experiment',
+    recentOutcome: false,
+    profile: 'science',
+  },
+  {
+    title: 'Power posing',
+    category: 'collapse',
+    subject: 'Power posing',
+    people: ['Amy Cuddy'],
+    expectedTitle: 'Power posing',
+    recentOutcome: false,
+    profile: 'science',
+  },
+  {
+    title: 'Milgram experiment',
+    category: 'collapse',
+    subject: 'Milgram experiment',
+    people: ['Stanley Milgram'],
+    expectedTitle: 'Milgram experiment',
+    recentOutcome: false,
+    profile: 'science',
   },
 ] as const
 
@@ -73,6 +131,8 @@ export const BACKTEST_TARGETS = {
    */
   urlResolved: 0.7,
   figureMatch: 0.8,
+  /** Of the documents a science case read, the share that are scholarly (spec section 11). */
+  scholarlyShare: 0.2,
   costUsd: 6,
   /**
    * Each Inngest step has 300 s (the function limit), and a pass is one step
@@ -137,6 +197,8 @@ export interface CaseRun {
     /** A video whose transcript was fetched: `meta.transcript` on the stored row. */
     transcript?: boolean
   }[]
+  /** Documents the research read (no failure), counted by kind: the base of the scholarly share. */
+  readKinds: Partial<Record<DocumentKind, number>>
   /** The SEC company-facts JSON for the case's filer; null when it has none. */
   xbrl: unknown | null
   /**
@@ -256,6 +318,8 @@ interface Tally {
   beats: number
   transcripts: number
   videos: number
+  scholarly: number
+  read: number
 }
 
 function tally(run: CaseRun): Tally {
@@ -282,6 +346,8 @@ function tally(run: CaseRun): Tally {
     beats: beats.length + (run.beatsDropped ?? 0),
     transcripts: videos.filter((doc) => doc.transcript === true).length,
     videos: videos.length,
+    scholarly: run.readKinds.scholarly ?? 0,
+    read: Object.values(run.readKinds).reduce((a, b) => a + b, 0),
   }
 }
 
@@ -296,6 +362,8 @@ function sum(tallies: readonly Tally[]): Tally {
     beats: 0,
     transcripts: 0,
     videos: 0,
+    scholarly: 0,
+    read: 0,
   }
   for (const t of tallies) {
     total.supportsFound += t.supportsFound
@@ -309,6 +377,8 @@ function sum(tallies: readonly Tally[]): Tally {
     total.beats += t.beats
     total.transcripts += t.transcripts
     total.videos += t.videos
+    total.scholarly += t.scholarly
+    total.read += t.read
   }
   return total
 }
@@ -320,6 +390,8 @@ export interface Rates {
   figures: FigureCounts
   toldAlready: Rate
   transcriptAvailability: Rate
+  /** Of the documents read, the share that are scholarly. */
+  scholarlyShare: Rate
 }
 
 function ratesOf(t: Tally): Rates {
@@ -330,18 +402,34 @@ function ratesOf(t: Tally): Rates {
     figures: t.figures,
     toldAlready: ratio(t.beatsFound, t.beats),
     transcriptAvailability: ratio(t.transcripts, t.videos),
+    scholarlyShare: ratio(t.scholarly, t.read),
   }
 }
 
+export type CaseRow = Rates & {
+  title: string
+  resolvedTitle: string | null
+  currentStatusAsOf: string | null
+  costUsd: number
+  model: string
+  passDurationsMs: PassDurations
+}
+
+/** One research profile's cases, pooled: the report groups its tables by these. */
+export interface ProfileReport {
+  profile: ResearchProfileKey
+  cases: CaseRow[]
+  overall: Rates & { costUsd: number; maxCostUsd: number }
+  /** Cases that resolved to the Wikipedia article they expect, over the cases run. */
+  resolvedRate: Rate
+  scholarlyShare: Rate
+  /** Claims by `evidence.status`; a claim with no finding is counted as "no finding". */
+  evidenceMix: Record<string, number>
+}
+
 export interface Report {
-  cases: (Rates & {
-    title: string
-    resolvedTitle: string | null
-    currentStatusAsOf: string | null
-    costUsd: number
-    model: string
-    passDurationsMs: PassDurations
-  })[]
+  cases: CaseRow[]
+  profiles: ProfileReport[]
   overall: Rates & { costUsd: number; maxCostUsd: number }
   transcriptAvailability: Rate
   models: string[]
@@ -359,6 +447,44 @@ function periodStart(asOf: string): number {
   return Date.parse(`${year}-${month}-${day}T00:00:00Z`)
 }
 
+const rowOf = (run: CaseRun, t: Tally): CaseRow => ({
+  ...ratesOf(t),
+  title: run.title,
+  resolvedTitle: run.resolvedTitle,
+  currentStatusAsOf: run.currentStatusAsOf,
+  costUsd: run.costUsd,
+  model: run.model,
+  passDurationsMs: run.passDurationsMs,
+})
+
+/** The profile a run's case belongs to; a title the closed list does not know reads as the investigation. */
+const profileOfTitle = (title: string): ResearchProfileKey =>
+  BACKTEST_CASES.find((c) => c.title === title)?.profile ?? 'investigation'
+
+/** Profiles whose science-style measures are gated: the scholarly share and the evidence mix. */
+const SCHOLARLY_PROFILES: readonly ResearchProfileKey[] = ['science']
+
+const NO_FINDING = 'no finding'
+
+function evidenceMixOf(runs: readonly CaseRun[]): Record<string, number> {
+  const mix: Record<string, number> = {}
+  for (const run of runs) {
+    for (const claim of run.claims) {
+      const key = claim.evidence?.status ?? NO_FINDING
+      mix[key] = (mix[key] ?? 0) + 1
+    }
+  }
+  return mix
+}
+
+function costsOf(runs: readonly CaseRun[]): { costUsd: number; maxCostUsd: number } {
+  const costs = runs.map((run) => run.costUsd)
+  return {
+    costUsd: costs.length === 0 ? 0 : costs.reduce((a, b) => a + b, 0) / costs.length,
+    maxCostUsd: Math.max(0, ...costs),
+  }
+}
+
 export function scoreRuns(
   runs: readonly CaseRun[],
   skipped: readonly string[] = [],
@@ -366,12 +492,7 @@ export function scoreRuns(
 ): Report {
   const tallies = runs.map(tally)
   const overallRates = ratesOf(sum(tallies))
-  const costs = runs.map((run) => run.costUsd)
-  const overall = {
-    ...overallRates,
-    costUsd: costs.length === 0 ? 0 : costs.reduce((a, b) => a + b, 0) / costs.length,
-    maxCostUsd: Math.max(0, ...costs),
-  }
+  const overall = { ...overallRates, ...costsOf(runs) }
 
   const failing: string[] = []
   for (const key of ['quoteFound', 'urlResolved', 'figureMatch'] as const) {
@@ -416,21 +537,53 @@ export function scoreRuns(
     }
   }
 
+  const profiles: ProfileReport[] = RESEARCH_PROFILE_KEYS.flatMap((profile) => {
+    const members = runs.flatMap((run, index) =>
+      profileOfTitle(run.title) === profile ? [{ run, index }] : [],
+    )
+    if (members.length === 0) return []
+    const inProfile = members.map((member) => member.run)
+    const rates = ratesOf(sum(members.map((member) => tallies[member.index]!)))
+    const resolved = inProfile.filter(
+      (run) =>
+        run.resolvedTitle !== null &&
+        run.resolvedTitle === BACKTEST_CASES.find((c) => c.title === run.title)?.expectedTitle,
+    ).length
+    return [
+      {
+        profile,
+        cases: members.map((member) => rowOf(member.run, tallies[member.index]!)),
+        overall: { ...rates, ...costsOf(inProfile) },
+        resolvedRate: ratio(resolved, inProfile.length),
+        scholarlyShare: rates.scholarlyShare,
+        evidenceMix: evidenceMixOf(inProfile),
+      },
+    ]
+  })
+
+  for (const row of profiles) {
+    if (!SCHOLARLY_PROFILES.includes(row.profile)) continue
+    const share = row.scholarlyShare
+    if (share !== 'not measured' && share < BACKTEST_TARGETS.scholarlyShare) {
+      failing.push(
+        `scholarlyShare: ${row.profile} ${percent(share)} is under the ${percent(BACKTEST_TARGETS.scholarlyShare)} target`,
+      )
+    }
+    // The replication crisis runs through the science cases: an axis that
+    // never leaves "established" is not telling the claims apart.
+    if ((row.evidenceMix.contested ?? 0) + (row.evidenceMix.single_study ?? 0) === 0) {
+      failing.push(`evidenceMix: ${row.profile} shows no contested or single_study claim`)
+    }
+  }
+
   // A case that was never measured cannot count as passing: a report over
   // fewer cases than asked for would read as a pass on evidence it lacks.
   if (skipped.length > 0) failing.unshift(`skipped: ${skipped.join(', ')}`)
   else if (runs.length === 0) failing.unshift('skipped: no case was scored')
 
   return {
-    cases: runs.map((run, index) => ({
-      ...ratesOf(tallies[index]!),
-      title: run.title,
-      resolvedTitle: run.resolvedTitle,
-      currentStatusAsOf: run.currentStatusAsOf,
-      costUsd: run.costUsd,
-      model: run.model,
-      passDurationsMs: run.passDurationsMs,
-    })),
+    cases: runs.map((run, index) => rowOf(run, tallies[index]!)),
+    profiles,
     overall,
     transcriptAvailability: overallRates.transcriptAvailability,
     models: [...new Set(runs.map((run) => run.model))],
@@ -444,7 +597,7 @@ function rateTable(
   heading: string,
   target: string,
   pick: (rates: Rates) => string,
-  report: Report,
+  profile: ProfileReport,
 ): string[] {
   return [
     `## ${heading}`,
@@ -453,8 +606,8 @@ function rateTable(
     '',
     '| Case | Rate |',
     '| --- | --- |',
-    ...report.cases.map((row) => `| ${row.title} | ${pick(row)} |`),
-    `| Overall | ${pick(report.overall)} |`,
+    ...profile.cases.map((row) => `| ${row.title} | ${pick(row)} |`),
+    `| Overall | ${pick(profile.overall)} |`,
     '',
   ]
 }
@@ -462,53 +615,79 @@ function rateTable(
 const counts = (c: FigureCounts): string =>
   `${c.matched} matched, ${c.mismatched} mismatched, ${c.notCheckable} not checkable`
 
-export function renderReport(report: Report, date: string): string {
+/** Every table for one profile's cases; the report repeats this block per profile. */
+function profileSection(profile: ProfileReport): string[] {
   const t = BACKTEST_TARGETS
-  const lines = [
-    `# Dossier back-test, ${date}`,
-    '',
-    `Five closed cases, the real gather and the four research passes. Model on the ledger: ${report.models.join(', ') || 'none'}.`,
+  const mix = Object.entries(profile.evidenceMix).sort(
+    ([a, x], [b, y]) => y - x || a.localeCompare(b),
+  )
+  return [
+    `# Profile: ${profile.profile}`,
     '',
     ...rateTable(
       'Quote-found rate',
       `at least ${percent(t.quoteFound)}`,
       (r) => show(r.quoteFound),
-      report,
+      profile,
     ),
     ...rateTable(
       'URL resolution rate',
       `at least ${percent(t.urlResolved)}`,
       (r) => show(r.urlResolved),
-      report,
+      profile,
     ),
     ...rateTable(
       'Figure match rate',
       `at least ${percent(t.figureMatch)} of checkable points`,
       (r) => `${show(r.figureMatch)} (${counts(r.figures)})`,
-      report,
+      profile,
     ),
     ...rateTable(
       'Told-already rate',
       'Reported only; no transcript source exists (the YouTube caption endpoint answers 404 to unsigned requests, confirmed 2026-10-22)',
       (r) => show(r.toldAlready),
-      report,
+      profile,
     ),
     ...rateTable(
       'Transcript availability',
       'reported only, no target',
       (r) => show(r.transcriptAvailability),
-      report,
+      profile,
     ),
+    ...(SCHOLARLY_PROFILES.includes(profile.profile)
+      ? rateTable(
+          'Scholarly share',
+          `at least ${percent(t.scholarlyShare)} of read documents`,
+          (r) => show(r.scholarlyShare),
+          profile,
+        )
+      : []),
+    ...(RESEARCH_PROFILES[profile.profile].evidence === null
+      ? []
+      : [
+          '## Evidence status mix',
+          '',
+          'Reported, and for a science case checked: the axis must show contested or single_study claims, not only established ones. A claim with no finding carries no status.',
+          '',
+          '| Status | Claims |',
+          '| --- | --- |',
+          ...(mix.length === 0
+            ? ['| none | 0 |']
+            : mix.map(([status, claims]) => `| ${status} | ${claims} |`)),
+          '',
+        ]),
     '## Subject',
     '',
     'Target: each case resolves to the Wikipedia article named here.',
     '',
     '| Case | Expected | Resolved |',
     '| --- | --- | --- |',
-    ...report.cases.map((row) => {
+    ...profile.cases.map((row) => {
       const expected = BACKTEST_CASES.find((c) => c.title === row.title)?.expectedTitle ?? 'unknown'
       return `| ${row.title} | ${expected} | ${row.resolvedTitle ?? 'nothing'} |`
     }),
+    '',
+    `Resolved rate: ${show(profile.resolvedRate)}.`,
     '',
     '## Current status',
     '',
@@ -516,7 +695,7 @@ export function renderReport(report: Report, date: string): string {
     '',
     '| Case | As of |',
     '| --- | --- |',
-    ...report.cases.map((row) => `| ${row.title} | ${row.currentStatusAsOf ?? 'none'} |`),
+    ...profile.cases.map((row) => `| ${row.title} | ${row.currentStatusAsOf ?? 'none'} |`),
     '',
     '## Cost',
     '',
@@ -524,8 +703,8 @@ export function renderReport(report: Report, date: string): string {
     '',
     '| Case | Cost | Model |',
     '| --- | --- | --- |',
-    ...report.cases.map((row) => `| ${row.title} | $${row.costUsd.toFixed(2)} | ${row.model} |`),
-    `| Overall | $${report.overall.costUsd.toFixed(2)} mean, $${report.overall.maxCostUsd.toFixed(2)} highest | |`,
+    ...profile.cases.map((row) => `| ${row.title} | $${row.costUsd.toFixed(2)} | ${row.model} |`),
+    `| Overall | $${profile.overall.costUsd.toFixed(2)} mean, $${profile.overall.maxCostUsd.toFixed(2)} highest | |`,
     '',
     '## Pass durations',
     '',
@@ -533,11 +712,21 @@ export function renderReport(report: Report, date: string): string {
     '',
     '| Case | Brief | Scenes | Claims | Answers |',
     '| --- | --- | --- | --- | --- |',
-    ...report.cases.map(
+    ...profile.cases.map(
       (row) =>
         `| ${row.title} | ${RESEARCH_PASSES.map((pass) => seconds(row.passDurationsMs[pass])).join(' | ')} |`,
     ),
     '',
+  ]
+}
+
+export function renderReport(report: Report, date: string): string {
+  const lines = [
+    `# Dossier back-test, ${date}`,
+    '',
+    `${report.cases.length} closed ${report.cases.length === 1 ? 'case' : 'cases'}, the real gather and the four research passes, grouped by research profile. Model on the ledger: ${report.models.join(', ') || 'none'}.`,
+    '',
+    ...report.profiles.flatMap(profileSection),
     '## Verdict',
     '',
     report.verdict.failing.some((item) => item.startsWith('skipped'))
@@ -551,4 +740,51 @@ export function renderReport(report: Report, date: string): string {
     lines.push('Failing:', '', ...report.verdict.failing.map((item) => `- ${item}`), '')
   }
   return lines.join('\n')
+}
+
+const MAX_CAP_USD = 30
+
+export interface BacktestArgs {
+  cap: number
+  profile: ResearchProfileKey
+  titles: string[]
+}
+
+/**
+ * The back-test script's flags, pure so they can be tested without running
+ * the script (it spends money on load). `--profile` picks which profile's
+ * cases run (default `investigation`, today's behaviour); `--cases` narrows
+ * within that profile; `--cap` is the dollar cap, $1 unless the owner says.
+ */
+export function parseBacktestArgs(argv: readonly string[]): BacktestArgs {
+  const raw = readRawFlags(argv)
+  const capText = raw.cap
+  const cap = capText === undefined || capText.trim() === '' ? 1 : Number(capText)
+  if (!Number.isFinite(cap) || cap <= 0) {
+    throw new Error(`--cap "${capText}" is not a valid dollar amount; give a number above 0.`)
+  }
+  if (cap > MAX_CAP_USD) throw new Error(`--cap may not pass $${MAX_CAP_USD}.`)
+
+  const profileText = optionalText(raw, 'profile') ?? 'investigation'
+  const profile = RESEARCH_PROFILE_KEYS.find((key) => key === profileText)
+  if (profile === undefined) {
+    throw new Error(
+      `Unknown profile ${profileText}; the profiles are ${RESEARCH_PROFILE_KEYS.join(', ')}.`,
+    )
+  }
+
+  const inProfile = BACKTEST_CASES.filter((c) => c.profile === profile)
+  const known: string[] = inProfile.map((c) => c.title)
+  const chosen = optionalText(raw, 'cases')
+  // A case may be named by its subject too, since Theranos's title is a headline.
+  const asTitle = (name: string): string =>
+    inProfile.find((c) => c.title === name || c.subject === name)?.title ?? name
+  const titles = chosen ? chosen.split(',').map((name) => asTitle(name.trim())) : [...known]
+  const unknown = titles.filter((title) => !known.includes(title))
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown case ${unknown.join(', ')}; the ${profile} back-test cases are ${known.join(', ')}.`,
+    )
+  }
+  return { cap, profile, titles }
 }
