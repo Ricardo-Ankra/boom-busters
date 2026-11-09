@@ -409,6 +409,24 @@ describe('runSearchReport', () => {
     expect(h.rankFor).not.toHaveBeenCalled()
   })
 
+  it('reads the channel thresholds before buying the rank', async () => {
+    await runSearchReport(input(28))
+
+    expect(h.channelResearchThresholds).toHaveBeenCalledTimes(1)
+    expect(h.rankFor).toHaveBeenCalledTimes(1)
+    expect(h.channelResearchThresholds.mock.invocationCallOrder[0]).toBeLessThan(
+      h.rankFor.mock.invocationCallOrder[0] as number,
+    )
+  })
+
+  it('buys no rank when the channel thresholds cannot be read', async () => {
+    h.channelResearchThresholds.mockRejectedValue(new Error('db down'))
+
+    await expect(runSearchReport(input(28))).rejects.toThrow('db down')
+
+    expect(h.rankFor).not.toHaveBeenCalled()
+  })
+
   it('a model deferral buys no rank', async () => {
     h.callLlm.mockRejectedValue(new Error('provider down'))
 

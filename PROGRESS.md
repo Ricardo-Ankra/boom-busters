@@ -10607,7 +10607,8 @@ Part 2 checklist:
      search, which spends nothing) keeps a capped month from calling the
      model every day: a refusal defers on the same 7-run rank ladder and
      freezes on the last with "credit cap" when the cap refused it, else
-     "rank check failed" (no key, VidIQ down, a throwing check). A rank failure after the model
+     "rank check failed" (no key, VidIQ down, a throwing check).
+     A rank failure after the model
      answered uses the same ladder, and the retry repeats the model call,
      which costs cents and never VidIQ credits. The window rule is
      unchanged. An own angle is a check that never ran, so its verdict line

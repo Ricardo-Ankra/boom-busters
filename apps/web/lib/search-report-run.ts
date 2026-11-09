@@ -277,6 +277,8 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     subsChannel: present(others.map((o) => o.report.engagement.subscribersPer1k)),
   }
 
+  const thresholds = await channelResearchThresholds(db, channelId)
+
   // The paid rank is the last read before the freeze write, so only that write can lose it.
   if (rankDue && target !== null) {
     try {
@@ -320,7 +322,7 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     rank,
     ...(rankSkipped === undefined ? {} : { rankSkipped }),
     baselineInputs,
-    thresholds: await channelResearchThresholds(db, channelId),
+    thresholds,
     now: new Date(),
   })
   await freezeSearchReport(db, row.id, report)
