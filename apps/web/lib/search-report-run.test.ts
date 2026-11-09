@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { MODEL_DEFER_MAX, RANK_DEFER_MAX } from '@boom-busters/schemas'
+import { DEFAULT_RESEARCH_THRESHOLDS, MODEL_DEFER_MAX, RANK_DEFER_MAX } from '@boom-busters/schemas'
 import type { Checkpoint, SearchBrief, SearchReport } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dueCheckpoints, runSearchReport } from './search-report-run'
@@ -30,6 +30,7 @@ const h = vi.hoisted(() => {
     addRankCheck: vi.fn(),
     getProject: vi.fn(),
     currentBible: vi.fn(),
+    channelResearchThresholds: vi.fn(),
     rankFor: vi.fn(),
     callLlm: vi.fn(),
   }
@@ -44,6 +45,7 @@ vi.mock('@boom-busters/db', () => ({
   addRankCheck: h.addRankCheck,
   getProject: h.getProject,
   currentBible: h.currentBible,
+  channelResearchThresholds: h.channelResearchThresholds,
 }))
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('@/lib/llm', () => ({ callLlm: h.callLlm }))
@@ -133,6 +135,7 @@ beforeEach(() => {
   )
   h.getProject.mockResolvedValue({ searchBrief: brief() })
   h.currentBible.mockResolvedValue({ bible: { language: 'pt-BR' } })
+  h.channelResearchThresholds.mockResolvedValue({ ...DEFAULT_RESEARCH_THRESHOLDS })
   h.rankFor.mockResolvedValue(4)
   h.callLlm.mockResolvedValue({ text: '{"terms": []}' })
 })

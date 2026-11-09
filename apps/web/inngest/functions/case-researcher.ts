@@ -1,5 +1,6 @@
 import {
   channelForCase,
+  channelResearchThresholds,
   currentBible,
   getCase,
   saveCaseSearchBrief,
@@ -496,7 +497,18 @@ export const caseResearcher = inngest.createFunction(
       [...(loaded.formatKeywords ?? []), ...(loaded.pillarKeywords ?? [])],
       subject,
     )
-    const candidates = pickTargetCandidates(keywords, { preferredWords: preferred, language })
+    // The thresholds are read in a step, so a replayed run keeps the values it started with.
+    const { candidates, thresholds } = await step.run('target-candidates', async () => {
+      const channelThresholds = await channelResearchThresholds(db, channelId)
+      return {
+        thresholds: channelThresholds,
+        candidates: pickTargetCandidates(keywords, {
+          preferredWords: preferred,
+          language,
+          floor: channelThresholds.pickFloor,
+        }),
+      }
+    })
     const skipped: string[] = []
 
     // 6b. Who ranks now for each candidate: one search a step. The cap ends the group.
@@ -518,7 +530,7 @@ export const caseResearcher = inngest.createFunction(
     const target: SearchKeyword | null =
       candidates.find((found) => {
         const check = checkOf(found.keyword)
-        return check === undefined || fieldCompetition(check) !== 'bad'
+        return check === undefined || fieldCompetition(check, thresholds) !== 'bad'
       }) ??
       candidates[0] ??
       null
@@ -532,7 +544,7 @@ export const caseResearcher = inngest.createFunction(
     const fieldSummary =
       target === null || targetCheck === undefined
         ? null
-        : `${openDoors(targetCheck)} open ${openDoors(targetCheck) === 1 ? 'door' : 'doors'} in the top ten for ${target.keyword}; the field is ${
+        : `${openDoors(targetCheck, thresholds)} open ${openDoors(targetCheck, thresholds) === 1 ? 'door' : 'doors'} in the top ten for ${target.keyword}; the field is ${
             isStaleField(targetCheck, new Date(targetCheck.checkedAt)) ? 'stale' : 'recent'
           }`
 

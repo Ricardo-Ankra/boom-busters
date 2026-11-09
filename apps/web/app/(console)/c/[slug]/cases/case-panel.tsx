@@ -3,7 +3,7 @@
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { briefHasFullChecks, briefNeedsResearch } from '@boom-busters/schemas'
 import { OUTCOME_COPY } from '@boom-busters/schemas'
-import type { Notice, SearchOutcome } from '@boom-busters/schemas'
+import type { Notice, ResearchThresholds, SearchOutcome } from '@boom-busters/schemas'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import type { Route } from 'next'
 import Link from 'next/link'
@@ -64,6 +64,7 @@ export function CasePanel({
   sort,
   explicit,
   searchOutcome = null,
+  thresholds,
 }: {
   slug: string
   channelId: string
@@ -78,6 +79,8 @@ export function CasePanel({
   explicit: boolean
   /** The latest frozen search report of a project made from this case, for a published case. */
   searchOutcome?: CaseSearchOutcome | null
+  /** The channel's research thresholds; the verdict reads them. Defaults when absent. */
+  thresholds?: ResearchThresholds
 }) {
   const titleId = React.useId()
   const brief = item.searchBrief
@@ -179,6 +182,7 @@ export function CasePanel({
           brief={brief}
           caseCategory={item.category}
           pillarLabels={Object.fromEntries(categories.map((c) => [c.key, c.label]))}
+          thresholds={thresholds}
         />
       )}
 

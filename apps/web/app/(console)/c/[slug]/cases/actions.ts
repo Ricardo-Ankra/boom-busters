@@ -3,6 +3,7 @@
 import {
   caseSubjectTaken,
   channelForCase,
+  channelResearchThresholds,
   chooseCaseAngle,
   costPerMinute,
   createCase,
@@ -312,6 +313,11 @@ export async function startProjectFromCase(
     targetRuntimeMin: runtime,
     // Always the resolved key: left unset, the column default (`main`) would win over the primary.
     formatKey: format.key,
+    // The verdict is frozen with this channel's pillar labels and research thresholds.
+    verdictContext: {
+      pillarLabels: Object.fromEntries(channel.bible.caseCategories.map((c) => [c.key, c.label])),
+      thresholds: await channelResearchThresholds(db, channel.id),
+    },
   })
   await markCaseInProduction(db, id)
   revalidatePath('/c/[slug]', 'layout')

@@ -1,5 +1,10 @@
 import { briefHasFullChecks, briefVerdict } from '@boom-busters/schemas'
-import type { SearchBrief, VerdictCheck, VerdictState } from '@boom-busters/schemas'
+import type {
+  ResearchThresholds,
+  SearchBrief,
+  VerdictCheck,
+  VerdictState,
+} from '@boom-busters/schemas'
 import { Check, TriangleAlert, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -31,11 +36,14 @@ export function VerdictCard({
   brief,
   caseCategory,
   pillarLabels,
+  thresholds,
 }: {
   brief: SearchBrief
   caseCategory: string | null
   /** The channel's pillar labels by key. */
   pillarLabels?: Readonly<Record<string, string>>
+  /** The channel's research thresholds; the defaults when absent. */
+  thresholds?: ResearchThresholds
 }) {
   if (!briefHasFullChecks(brief)) {
     return (
@@ -50,7 +58,7 @@ export function VerdictCard({
 
   // The angle the owner chose, else the one the model recommended.
   const checkedAngle = brief.chosenAngle ?? brief.recommendedAngle ?? null
-  const lines = briefVerdict(brief, { caseCategory, checkedAngle, pillarLabels })
+  const lines = briefVerdict(brief, { caseCategory, checkedAngle, pillarLabels }, thresholds)
 
   return (
     <section

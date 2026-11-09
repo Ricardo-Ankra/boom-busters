@@ -12,6 +12,7 @@ import {
 import {
   EMPTY_BIBLE,
   defaultFormat,
+  DEFAULT_RESEARCH_THRESHOLDS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID as CHANNEL_ID,
 } from '@boom-busters/schemas'
@@ -54,6 +55,7 @@ const store = vi.hoisted(() => ({
   currentBible: vi.fn(),
   getChannelSettings: vi.fn(),
   getWorkspace: vi.fn(),
+  channelResearchThresholds: vi.fn(async () => ({ ...DEFAULT_RESEARCH_THRESHOLDS })),
 }))
 const findChannel = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/channel-lookup', async (importOriginal) => ({
@@ -654,7 +656,18 @@ describe('startProjectFromCase and the search brief', () => {
     expect(await startProjectFromCase(CASE_ID, 12)).toEqual({ ok: true, projectId: 'P1' })
     expect(store.createProjectFromCase).toHaveBeenCalledWith(
       { marker: 'db' },
-      { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 12, formatKey: 'main' },
+      {
+        caseId: CASE_ID,
+        title: 'WeWork',
+        targetRuntimeMin: 12,
+        formatKey: 'main',
+        verdictContext: {
+          pillarLabels: Object.fromEntries(
+            FIRST_CHANNEL_BIBLE.caseCategories.map((c) => [c.key, c.label]),
+          ),
+          thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+        },
+      },
     )
     expect(checkVidiqBudget).not.toHaveBeenCalled()
     expect(store.writeCaseResearchJob).not.toHaveBeenCalled()
@@ -694,7 +707,13 @@ describe('startProjectFromCase and the search brief', () => {
       expect(await startProjectFromCase(CASE_ID)).toEqual({ ok: true, projectId: 'P1' })
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 30, formatKey: 'long' },
+        {
+          caseId: CASE_ID,
+          title: 'WeWork',
+          targetRuntimeMin: 30,
+          formatKey: 'long',
+          verdictContext: expect.objectContaining({ thresholds: DEFAULT_RESEARCH_THRESHOLDS }),
+        },
       )
     })
 
@@ -710,7 +729,13 @@ describe('startProjectFromCase and the search brief', () => {
       expect(await startProjectFromCase(CASE_ID, 30)).toEqual({ ok: true, projectId: 'P1' })
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 30, formatKey: 'long' },
+        {
+          caseId: CASE_ID,
+          title: 'WeWork',
+          targetRuntimeMin: 30,
+          formatKey: 'long',
+          verdictContext: expect.objectContaining({ thresholds: DEFAULT_RESEARCH_THRESHOLDS }),
+        },
       )
       store.createProjectFromCase.mockClear()
       expect(await startProjectFromCase(CASE_ID, 31)).toEqual({
@@ -735,7 +760,13 @@ describe('startProjectFromCase and the search brief', () => {
       })
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 8, formatKey: 'short' },
+        {
+          caseId: CASE_ID,
+          title: 'WeWork',
+          targetRuntimeMin: 8,
+          formatKey: 'short',
+          verdictContext: expect.anything(),
+        },
       )
       expect((await startProjectFromCase(CASE_ID, 12, 'short')).error).toBe(
         'This format runs 5 to 10 minutes',
@@ -779,7 +810,13 @@ describe('startProjectFromCase and the search brief', () => {
       await startProjectFromCase(CASE_ID)
       expect(store.createProjectFromCase).toHaveBeenCalledWith(
         { marker: 'db' },
-        { caseId: CASE_ID, title: 'WeWork', targetRuntimeMin: 15, formatKey: 'main' },
+        {
+          caseId: CASE_ID,
+          title: 'WeWork',
+          targetRuntimeMin: 15,
+          formatKey: 'main',
+          verdictContext: expect.anything(),
+        },
       )
     })
 

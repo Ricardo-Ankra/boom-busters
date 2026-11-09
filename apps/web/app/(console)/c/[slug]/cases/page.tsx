@@ -1,4 +1,10 @@
-import { latestOutcomeByProject, listCaseNotices, listCases, listProjects } from '@boom-busters/db'
+import {
+  channelResearchThresholds,
+  latestOutcomeByProject,
+  listCaseNotices,
+  listCases,
+  listProjects,
+} from '@boom-busters/db'
 import type { CaseSort } from '@boom-busters/db'
 import { EXAMPLE_SLOT_IDS, isBibleComplete } from '@boom-busters/schemas'
 import { CaseLibrary } from './case-library'
@@ -62,6 +68,8 @@ export default async function CasesPage({
     }
   }
 
+  const thresholds = await channelResearchThresholds(db, channel.id)
+
   return (
     <CaseLibrary
       slug={slug}
@@ -74,6 +82,7 @@ export default async function CasesPage({
       explicit={explicit}
       notices={notices}
       searchOutcomes={searchOutcomes}
+      thresholds={thresholds}
       bibleComplete={isBibleComplete(channel.bible, EXAMPLE_SLOT_IDS)}
       archived={channel.archivedAt !== null}
     />

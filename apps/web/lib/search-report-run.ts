@@ -1,5 +1,6 @@
 import {
   addRankCheck,
+  channelResearchThresholds,
   currentBible,
   freezeSearchReport,
   frozenReportsForChannel,
@@ -18,7 +19,6 @@ import type { TermMatch, TermMatchInput } from '@boom-busters/providers'
 import {
   buildSearchReport,
   CHECKPOINTS,
-  DEFAULT_RESEARCH_THRESHOLDS,
   lengthBand,
   MODEL_DEFER_MAX,
   matchTermDeterministic,
@@ -302,7 +302,7 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     rank,
     ...(rankSkipped === undefined ? {} : { rankSkipped }),
     baselineInputs,
-    thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+    thresholds: await channelResearchThresholds(db, channelId),
     now: new Date(),
   })
   await freezeSearchReport(db, row.id, report)

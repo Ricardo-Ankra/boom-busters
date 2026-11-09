@@ -2,7 +2,7 @@
 
 import type { CaseSort, CaseSummary } from '@boom-busters/db'
 import { noticesFor } from '@boom-busters/schemas'
-import type { ChannelFormat, Notice } from '@boom-busters/schemas'
+import type { ChannelFormat, Notice, ResearchThresholds } from '@boom-busters/schemas'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -46,6 +46,7 @@ export function CaseLibrary({
   bibleComplete = true,
   archived = false,
   searchOutcomes = {},
+  thresholds,
 }: {
   /** The channel whose library this is; navigation stays inside it. */
   slug: string
@@ -69,6 +70,8 @@ export function CaseLibrary({
   archived?: boolean
   /** The latest search report outcome per case id, for published cases. */
   searchOutcomes?: Readonly<Record<string, CaseSearchOutcome>>
+  /** The channel's research thresholds, for the verdict card. */
+  thresholds?: ResearchThresholds
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -175,6 +178,7 @@ export function CaseLibrary({
                 sort={sort}
                 explicit={explicit}
                 searchOutcome={searchOutcomes[selected.id] ?? null}
+                thresholds={thresholds}
               />
             ) : (
               <section
