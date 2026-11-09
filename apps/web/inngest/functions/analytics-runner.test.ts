@@ -12,10 +12,13 @@ import {
   requireTestDatabase,
   saveBibleVersion,
   saveChannelYoutubeConnection,
+  searchReportsForVideo,
   seed,
   snapshotsSince,
   truncateAnalytics,
   truncateRunMirror,
+  truncateSearchReports,
+  updatePublishRecord,
   youtubeConnections,
 } from '@boom-busters/db'
 import { buildDigestRequest } from '@boom-busters/providers'
@@ -36,7 +39,7 @@ import { env } from '@/lib/env'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { YoutubeAuthError } from '@/lib/youtube'
 import type * as YoutubeAnalytics from '@/lib/youtube-analytics'
-import { mockVideoAnalytics } from '@/lib/youtube-analytics'
+import { mockVideoAnalytics, mockVideoFacts } from '@/lib/youtube-analytics'
 import { analyticsRunner, worstRetentionDrop, writeDigestWith } from './analytics-runner'
 
 /**
@@ -67,11 +70,13 @@ vi.mock('@/lib/youtube', () => ({
 const analytics = vi.hoisted(() => ({
   fetchPrivacyStatuses: vi.fn(),
   fetchVideoAnalytics: vi.fn(),
+  fetchVideoFacts: vi.fn(),
 }))
 vi.mock('@/lib/youtube-analytics', async (importOriginal) => ({
   ...(await importOriginal<typeof YoutubeAnalytics>()),
   fetchPrivacyStatuses: (...args: unknown[]) => analytics.fetchPrivacyStatuses(...args),
   fetchVideoAnalytics: (...args: unknown[]) => analytics.fetchVideoAnalytics(...args),
+  fetchVideoFacts: (...args: unknown[]) => analytics.fetchVideoFacts(...args),
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
@@ -189,6 +194,7 @@ describeDb('analytics-runner (mock mode)', () => {
     await seed(db)
     await truncateRunMirror(db)
     await truncateAnalytics(db)
+    await truncateSearchReports(db)
     forgetRunRows()
     await db.delete(publishRecords)
     // Only the first channel is connected unless a test says otherwise.
@@ -256,6 +262,34 @@ describeDb('analytics-runner (mock mode)', () => {
   )
 
   it(
+    'freezes the due reports in mock mode and reports the count',
+    { timeout: 60_000 },
+    async () => {
+      // Published 40 days ago: day 7 and day 28 are due, day 90 is not.
+      const publishedAt = new Date(Date.now() - 40 * 86_400_000)
+      const master = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      await updatePublishRecord(db, master!.id, { publishAt: publishedAt })
+
+      const { result } = await engine.execute({ events: refreshEvent() })
+
+      expect(result).toMatchObject({ channels: [{ outcome: 'ran', searchReports: 2 }] })
+      const rows = await searchReportsForVideo(db, LIVE_VIDEO)
+      expect(rows.map((row) => [row.checkpoint, row.state])).toEqual([
+        [7, 'frozen'],
+        [28, 'frozen'],
+      ])
+      // The fixture project has no search brief, so there is nothing to judge.
+      expect(rows[0]?.report).toMatchObject({ checkpoint: 7, outcome: 'no-research' })
+      expect(rows[1]?.report).toMatchObject({ checkpoint: 28, outcome: 'no-research' })
+
+      // The next day's run finds both frozen and does nothing more.
+      engine = new InngestTestEngine({ function: analyticsRunner })
+      const again = await engine.execute({ events: refreshEvent() })
+      expect(again.result).toMatchObject({ channels: [{ outcome: 'ran', searchReports: 0 }] })
+    },
+  )
+
+  it(
     're-running the same day updates the row rather than duplicating it',
     { timeout: 60_000 },
     async () => {
@@ -314,6 +348,10 @@ describeDb('analytics-runner (mock mode)', () => {
       google.refreshAccessToken.mockResolvedValue({ accessToken: 'ya29.fresh' })
       google.pingChannel.mockResolvedValue({ ok: true, channelId: 'UC-first' })
       analytics.fetchPrivacyStatuses.mockResolvedValue(new Map())
+      // No publish dates: the live runs here take snapshots and no search reports.
+      analytics.fetchVideoFacts.mockImplementation((_token: string, ids: string[]) =>
+        Promise.resolve(mockVideoFacts(ids, new Map())),
+      )
       analytics.fetchVideoAnalytics.mockImplementation((_token: string, videoId: string) =>
         Promise.resolve(mockVideoAnalytics(videoId)),
       )

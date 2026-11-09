@@ -5,8 +5,10 @@ import {
   connectedChannelIds,
   currentBible,
   getChannel,
+  getProject,
   recordChannelYoutubeVerify,
   scheduledPublishItems,
+  searchReportsForVideo,
   snapshotsSince,
   updatePublishRecord,
   upsertAnalyticsSnapshot,
@@ -20,17 +22,22 @@ import {
   missingBibleFields,
   parseEventData,
 } from '@boom-busters/schemas'
+import type { Checkpoint } from '@boom-busters/schemas'
 import { answerOrStop, callForText, type AnswerComplete } from '@/lib/answer'
 import { channelHref } from '@/lib/channel-href'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { callLlm } from '@/lib/llm'
 import { notify } from '@/lib/notify'
+import { dueCheckpoints, runSearchReport } from '@/lib/search-report-run'
 import {
   fetchPrivacyStatuses,
   fetchVideoAnalytics,
+  fetchVideoFacts,
   mockVideoAnalytics,
+  mockVideoFacts,
 } from '@/lib/youtube-analytics'
+import type { VideoFacts } from '@/lib/youtube-analytics'
 import { pingChannel, refreshAccessToken, youtubeConfigured, YoutubeAuthError } from '@/lib/youtube'
 import { inngest } from '../client'
 import { events } from '../events'
@@ -42,7 +49,7 @@ import { events } from '../events'
  *
  * It loops the channels that hold a YouTube connection, whatever its last verdict (archived ones
  * left out; a refresh request that names a channel runs only that one) and
- * does four jobs for each, in order:
+ * does five jobs for each, in order:
  *
  * 1. **The health ping** (decision 171): `channels.list` with a token minted
  *    from the channel's stored refresh token. A dead refresh token stamps
@@ -53,7 +60,11 @@ import { events } from '../events'
  *    part=status` is how records learn they went live.
  * 3. **Snapshots**: lifetime-to-date numbers per live video into
  *    `analytics_snapshots`, one row per video per UTC day, upserted.
- * 4. **The Monday digest**: deltas computed in code, narrated by the
+ * 4. **Search reports**: a live master's search report is frozen at day 7, 28
+ *    and 90 (three days late, so YouTube's numbers have settled), one step per
+ *    report. A report that cannot finish (the model, the VidIQ cap) is
+ *    deferred to the next daily run by the step itself, never thrown.
+ * 5. **The Monday digest**: deltas computed in code, narrated by the
  *    `digest`-routed model, delivered through `notify()`.
  *
  * Mock mode does all four against deterministic fixtures and no network.
@@ -149,6 +160,7 @@ export const analyticsRunner = inngest.createFunction(
           outcome: 'ran'
           reconciled: number
           snapshots: number
+          searchReports: number
           digestSent: boolean
         }
 
@@ -284,14 +296,36 @@ export const analyticsRunner = inngest.createFunction(
       // 3. Snapshots, one step per video — a video that errors retries alone
       // ---------------------------------------------------------------------
 
+      // Every live video, with the facts a report needs: when it really went
+      // public and how long it runs. `projectId` is set for masters only.
       const live = await step.run(`list-live-videos-${channelId}`, async () => {
-        const records = await videoBackedRecords(db, channelId)
-        return records
-          .filter((record) => record.status === 'live')
-          .map((record) => record.youtubeVideoId!)
+        const records = (await videoBackedRecords(db, channelId)).filter(
+          (record) => record.status === 'live',
+        )
+        const ids = records.map((record) => record.youtubeVideoId!)
+        let facts = new Map<string, VideoFacts>()
+        if (token.mode === 'mock') {
+          facts = mockVideoFacts(
+            ids,
+            new Map(records.map((r) => [r.youtubeVideoId!, r.publishAt ?? r.createdAt])),
+          )
+        } else if (ids.length > 0) {
+          try {
+            facts = await fetchVideoFacts(token.accessToken, ids)
+          } catch (error) {
+            // Snapshots do not need the facts: no reports today, tomorrow tries again.
+            console.warn('[analytics] video facts unavailable, no search reports this run', error)
+          }
+        }
+        return records.map((record) => ({
+          videoId: record.youtubeVideoId!,
+          projectId: record.targetType === 'master' ? record.targetId : null,
+          publishedAt: facts.get(record.youtubeVideoId!)?.publishedAt ?? null,
+          durationSec: facts.get(record.youtubeVideoId!)?.durationSec ?? null,
+        }))
       })
 
-      for (const videoId of live) {
+      for (const { videoId } of live) {
         await step.run(`snapshot-${channelId}-${videoId}`, async () => {
           const analytics =
             token.mode === 'mock'
@@ -313,7 +347,53 @@ export const analyticsRunner = inngest.createFunction(
       }
 
       // ---------------------------------------------------------------------
-      // 4. The Monday digest
+      // 4. Search reports, one step per video and checkpoint
+      // ---------------------------------------------------------------------
+
+      const dueReports = await step.run(`due-search-reports-${channelId}`, async () => {
+        const now = new Date()
+        const due: {
+          videoId: string
+          projectId: string
+          publishedAt: string
+          durationSec: number | null
+          checkpoint: Checkpoint
+        }[] = []
+        for (const video of live) {
+          if (video.projectId === null || video.publishedAt === null) continue
+          const done = new Set(
+            (await searchReportsForVideo(db, video.videoId))
+              .filter((row) => row.state === 'frozen')
+              .map((row) => row.checkpoint as Checkpoint),
+          )
+          const checkpoints = dueCheckpoints(new Date(video.publishedAt), now, done)
+          if (checkpoints.length === 0) continue
+          // A report row belongs to a project; a record whose project is gone has none.
+          if (!(await getProject(db, video.projectId))) continue
+          for (const checkpoint of checkpoints) {
+            due.push({
+              videoId: video.videoId,
+              projectId: video.projectId,
+              publishedAt: video.publishedAt,
+              durationSec: video.durationSec,
+              checkpoint,
+            })
+          }
+        }
+        return due
+      })
+
+      let searchReports = 0
+      for (const item of dueReports) {
+        const result = await step.run(
+          `search-report-${channelId}-${item.videoId}-${item.checkpoint}`,
+          () => runSearchReport({ channelId, ...item, token }),
+        )
+        if (result.state === 'frozen') searchReports += 1
+      }
+
+      // ---------------------------------------------------------------------
+      // 5. The Monday digest
       // ---------------------------------------------------------------------
 
       const digestSent = await step.run(`weekly-digest-${channelId}`, async () => {
@@ -410,6 +490,7 @@ export const analyticsRunner = inngest.createFunction(
         outcome: 'ran',
         reconciled,
         snapshots: live.length,
+        searchReports,
         digestSent,
       })
     }
