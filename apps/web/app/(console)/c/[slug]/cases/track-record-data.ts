@@ -16,7 +16,7 @@ export interface TrackRecordCheck {
   check: VerdictCheck
   right: number
   counted: number
-  videos: { projectId: string; title: string; right: boolean }[]
+  videos: { projectId: string; title: string; right: boolean; recomputed?: true }[]
 }
 
 export interface AppliedValue {

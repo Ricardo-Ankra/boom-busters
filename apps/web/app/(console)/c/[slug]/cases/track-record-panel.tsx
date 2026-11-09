@@ -1,5 +1,6 @@
 'use client'
 
+import { LEARNING_MIN_VIDEOS } from '@boom-busters/schemas'
 import type { ResearchThresholds, VerdictCheck } from '@boom-busters/schemas'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import * as React from 'react'
@@ -69,6 +70,11 @@ function CheckRow({ row }: { row: TrackRecordData['checks'][number] }) {
             <li key={v.projectId} className="flex gap-2">
               <span>{v.title}</span>
               <span>{v.right ? 'Right' : 'Wrong'}</span>
+              {v.recomputed ? (
+                <span className="text-[var(--color-text-muted)]">
+                  (verdict recomputed with the default thresholds)
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -97,7 +103,7 @@ export function TrackRecordPanel({
       setBusy(false)
     }
   }
-  const waiting = data.counted < 5
+  const waiting = data.counted < LEARNING_MIN_VIDEOS
 
   return (
     <section aria-labelledby="track-record" className="flex flex-col gap-4">
@@ -112,7 +118,7 @@ export function TrackRecordPanel({
 
       {waiting ? (
         <p className={`${SECTION} text-[14px]`}>
-          {`The track record starts after 5 videos have a day-28 report. So far: ${fmt(data.counted)}.`}
+          {`The track record starts after ${LEARNING_MIN_VIDEOS} videos have a day-28 report. So far: ${fmt(data.counted)}.`}
         </p>
       ) : (
         <div className={SECTION}>

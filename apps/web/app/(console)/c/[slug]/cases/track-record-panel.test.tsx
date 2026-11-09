@@ -80,6 +80,19 @@ describe('TrackRecordPanel', () => {
     expect(screen.getByText('WeWork rise')).toBeTruthy()
   })
 
+  it('marks a video whose verdict was recomputed', async () => {
+    const d = data()
+    d.checks[0]!.videos[1] = {
+      projectId: 'p2',
+      title: 'WeWork rise',
+      right: false,
+      recomputed: true,
+    }
+    setup(d)
+    await userEvent.click(screen.getByRole('button', { name: /Demand called it right/ }))
+    expect(screen.getAllByText('(verdict recomputed with the default thresholds)')).toHaveLength(1)
+  })
+
   it('Apply and Dismiss call their actions', async () => {
     setup(data())
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))

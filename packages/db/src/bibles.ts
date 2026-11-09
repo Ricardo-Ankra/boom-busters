@@ -2,6 +2,8 @@ import {
   ChannelBibleReadSchema,
   ChannelNotFoundError,
   EXAMPLE_SLOT_IDS,
+  FORMAT_KEYWORD_MAX_LENGTH,
+  FORMAT_KEYWORDS_MAX,
   isBibleComplete,
   normaliseTerm,
   resolveFormat,
@@ -205,9 +207,6 @@ export interface AddFormatKeywordResult {
   fellBack: boolean
 }
 
-const KEYWORD_MAX = 60
-const KEYWORDS_PER_FORMAT = 6
-
 /**
  * Add a YouTube search term to one format's keywords, as the bible's next
  * version. In one transaction: lock the channel, read the current bible, pick
@@ -221,7 +220,7 @@ export async function addFormatKeyword(
   formatKey: string,
   term: string,
 ): Promise<AddFormatKeywordResult> {
-  const keyword = term.trim().slice(0, KEYWORD_MAX).trim()
+  const keyword = term.trim().slice(0, FORMAT_KEYWORD_MAX_LENGTH).trim()
   if (keyword === '') throw new Error('A keyword cannot be empty')
   return db.transaction(async (tx) => {
     const { currentBibleId } = await lockChannelBible(tx, channelId)
@@ -242,7 +241,7 @@ export async function addFormatKeyword(
     if (format.keywords.some((k) => normaliseTerm(k, language).join(' ') === words)) {
       return { outcome: 'already' as const, ...base }
     }
-    if (format.keywords.length >= KEYWORDS_PER_FORMAT) return { outcome: 'full' as const, ...base }
+    if (format.keywords.length >= FORMAT_KEYWORDS_MAX) return { outcome: 'full' as const, ...base }
 
     const next: ChannelBible = {
       ...bible,

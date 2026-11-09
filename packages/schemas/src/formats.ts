@@ -12,7 +12,11 @@ export const RUNTIME_START_MAX = 30
 export const DEFAULT_WORDS_PER_MINUTE = 150
 export const DEFAULT_SHOT_HOLD = 1
 
-const KeywordSchema = z.string().trim().min(1).max(60)
+/** Keywords a format holds, and the characters one keyword may run to. */
+export const FORMAT_KEYWORDS_MAX = 6
+export const FORMAT_KEYWORD_MAX_LENGTH = 60
+
+const KeywordSchema = z.string().trim().min(1).max(FORMAT_KEYWORD_MAX_LENGTH)
 
 const RuntimeSchema = z
   .strictObject({
@@ -37,7 +41,7 @@ export const ChannelFormatSchema = z
     key: z.string().regex(/^[a-z][a-z0-9-]{0,23}$/),
     name: z.string().min(1).max(40),
     primary: z.boolean(),
-    keywords: z.array(KeywordSchema).max(6).default([]),
+    keywords: z.array(KeywordSchema).max(FORMAT_KEYWORDS_MAX).default([]),
     intent: z.enum(['tension', 'calm']).default('tension'),
     runtime: RuntimeSchema.default({ default: 15, min: RUNTIME_OUTER_MIN, max: RUNTIME_START_MAX }),
     wordsPerMinute: z.number().min(80).max(200).default(DEFAULT_WORDS_PER_MINUTE),
