@@ -31,7 +31,7 @@ const SOURCE_TYPES: Record<DocumentKind, ClaimSourceTypeName> = {
   court: 'court',
   regulator: 'regulator',
   reporting: 'major_outlet',
-  video: 'major_outlet',
+  video: 'other',
   filing: 'other',
   'web-archive': 'other',
   'press-release': 'other',

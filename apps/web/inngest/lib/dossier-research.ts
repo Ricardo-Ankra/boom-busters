@@ -593,6 +593,8 @@ export interface GateSubject {
   people: readonly string[]
   /** No company among Wikipedia's top hits for the subject (decision 3). */
   unresolved: boolean
+  /** The bible's singular noun for a subject ("company", "topic"); blank prints no brackets. */
+  noun: string
 }
 
 /**
@@ -601,19 +603,22 @@ export interface GateSubject {
  */
 export function gateSubject(
   entity: Partial<ResearchEntity>,
-  fallback: { subject: string; people: readonly string[] },
+  fallback: { subject: string; people: readonly string[]; noun: string },
 ): GateSubject {
   const people = entity.people?.map((person) => person.name) ?? []
   return {
     subject: entity.subject ?? fallback.subject,
     people: people.length > 0 ? people : fallback.people,
     unresolved: entity.unresolved === true,
+    noun: fallback.noun,
   }
 }
 
 function subjectLine(who: GateSubject): string {
   if (who.unresolved) return "Subject not found on Wikipedia: check the case's Subject"
-  return [`Subject: ${who.subject} (company)`, ...who.people].join(', ')
+  const noun = who.noun.trim()
+  const subject = noun === '' ? who.subject : `${who.subject} (${noun})`
+  return [`Subject: ${subject}`, ...who.people].join(', ')
 }
 
 /** The one-line context the gate card shows (spec sections 7 and 11.3). */

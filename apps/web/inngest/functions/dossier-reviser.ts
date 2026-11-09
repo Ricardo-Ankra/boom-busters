@@ -320,13 +320,16 @@ export const dossierReviser = inngest.createFunction(
       return gateCounts(saved.claims, research.claims, documents)
     })
 
-    await step.run('reopen-gate', () =>
-      openReviewGate(ctx, {
+    await step.run('reopen-gate', async () => {
+      // Read inside the step, never outside it (a parked run replays step results).
+      const { bible } = requireCompleteBible(await channelForProject(db, projectId))
+      const who = gateSubject(entity, { ...named, noun: bible.subjectNoun.singular })
+      return openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
-        summary: `${gateSummary(counts, corpus, gateSubject(entity, named))} · revision ${context.round}`,
-      }),
-    )
+        summary: `${gateSummary(counts, corpus, who)} · revision ${context.round}`,
+      })
+    })
 
     // Before approval the runner is parked on the gate and closes it on the
     // Approve. After approval it has finished, so this run holds the gate:

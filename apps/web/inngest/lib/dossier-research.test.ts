@@ -714,7 +714,23 @@ describe('gateSummary', () => {
     subject: 'Wirecard',
     people: ['Markus Braun', 'Jan Marsalek'],
     unresolved: false,
+    noun: 'company',
   }
+
+  it('names the bible noun, and prints no brackets for a blank one', () => {
+    const counts = { total: 1, unverified: 0, quarantined: 0 }
+    const corpus = { read: 1, unread: 0, failed: 0 }
+    const topic = { subject: 'Ego depletion', people: [], unresolved: false, noun: 'topic' }
+    expect(gateSummary(counts, corpus, topic).startsWith('Subject: Ego depletion (topic)')).toBe(
+      true,
+    )
+    expect(
+      gateSummary(counts, corpus, { ...topic, noun: '' }).startsWith('Subject: Ego depletion · '),
+    ).toBe(true)
+    expect(gateSummary(counts, corpus, WIRECARD).startsWith('Subject: Wirecard (company)')).toBe(
+      true,
+    )
+  })
 
   it('opens with the subject and its people, and ends with the corpus line', () => {
     expect(
@@ -744,7 +760,7 @@ describe('gateSummary', () => {
 })
 
 describe('gateSubject', () => {
-  const CASE = { subject: 'Wirecard', people: ['Markus Braun'] }
+  const CASE = { subject: 'Wirecard', people: ['Markus Braun'], noun: 'company' }
 
   it("names the entity's subject and people", () => {
     expect(
@@ -763,6 +779,7 @@ describe('gateSubject', () => {
       subject: 'Wirecard AG',
       people: ['Markus Braun', 'Jan Marsalek'],
       unresolved: false,
+      noun: 'company',
     })
   })
 
@@ -773,6 +790,7 @@ describe('gateSubject', () => {
       subject: 'Wirecard',
       people: ['Markus Braun'],
       unresolved: false,
+      noun: 'company',
     })
   })
 

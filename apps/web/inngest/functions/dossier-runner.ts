@@ -241,17 +241,24 @@ export const dossierRunner = inngest.createFunction(
     // The gate always opens (design decision 1): the script starts only on the
     // owner's Approve, never on its own, however clean the dossier reads.
     // Unverified claims still block that Approve, server-side.
-    await step.run('open-gate', () =>
-      openReviewGate(ctx, {
+    await step.run('open-gate', async () => {
+      // The noun is read here, inside the step: a run parked before a deploy
+      // replays its step results and must not read the database outside one.
+      const { bible } = requireCompleteBible(await channelForProject(db, projectId))
+      return openReviewGate(ctx, {
         stage: 'dossier',
         projectStage: 'dossier',
         summary: gateSummary(
           counts,
           corpus,
-          gateSubject(gathered.entity, { subject: caseSubject, people: casePeople }),
+          gateSubject(gathered.entity, {
+            subject: caseSubject,
+            people: casePeople,
+            noun: bible.subjectNoun.singular,
+          }),
         ),
-      }),
-    )
+      })
+    })
 
     const outcome = await awaitDossierApproval(step, ctx)
     return { projectId, outcome, claims: counts.total }

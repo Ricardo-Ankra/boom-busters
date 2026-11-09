@@ -69,6 +69,21 @@ function withClaims(claims: ResearchClaim[]): GroundInput {
 }
 
 describe('groundResearch', () => {
+  it('types a claim led by a video as other, never a major outlet', () => {
+    const out = groundResearch(
+      withClaims([
+        {
+          text: 'The founder promised everything would be fine.',
+          supports: [{ doc: 3, quote: 'The founder promised everything would be fine always.' }],
+          legal: null,
+          series: null,
+        },
+      ]),
+      note,
+    )
+    expect(out.claims[0]?.sourceType).toBe('other')
+  })
+
   it('drops a support that cites a document not given and leaves the claim unverified', () => {
     const out = groundResearch(
       withClaims([

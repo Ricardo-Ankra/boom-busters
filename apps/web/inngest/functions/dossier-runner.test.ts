@@ -370,7 +370,7 @@ describeDb('dossier-runner', () => {
           research: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
         },
       },
-      bible: EMPTY_BIBLE,
+      bible: FIRST_CHANNEL_BIBLE,
     })
     await updateWorkspace(db, { budgets: { monthlyCeilingUsd: 100 } })
     await updateChannelSettings(db, FIRST_CHANNEL_ID, {
