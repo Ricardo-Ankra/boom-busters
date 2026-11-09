@@ -15,6 +15,7 @@ import {
   parseTermMatch,
 } from '@boom-busters/providers'
 import type { TermMatch, TermMatchInput } from '@boom-busters/providers'
+import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import {
   buildSearchReport,
   CHECKPOINTS,
@@ -37,6 +38,7 @@ import type { AnswerComplete } from '@/lib/answer'
 import { CapReached, rankFor } from '@/lib/case-evidence'
 import { db } from '@/lib/db'
 import { callLlm } from '@/lib/llm'
+import { checkVidiqBudget } from '@/lib/vidiq-spend'
 import { fetchVideoAnalytics, mockVideoAnalytics, SEARCH_SOURCE_KEY } from '@/lib/youtube-analytics'
 import type { VideoAnalytics } from '@/lib/youtube-analytics'
 
@@ -180,35 +182,26 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
     else leftovers.push(term)
   }
 
-  // Rank first: a cap or a failed check defers before the model is asked. Only a check bought
-  // here counts; a manual one is never carried into the frozen report.
+  // The day-28 rank is bought after the model has answered, so a model deferral never buys it
+  // twice. Before the model, a free budget check keeps a capped month from calling it every day.
+  // Only a check bought here counts; a manual one is never carried into the frozen report.
   let rank: SearchReport['rank'] = null
   let rankSkipped: string | undefined
+  let rankDue = false
   if (checkpoint === 28 && target !== null) {
     const due = startMs + (checkpoint + REPORT_LAG_DAYS) * DAY_MS
     if (Date.now() >= due + RANK_DEFER_MAX * DAY_MS) {
       // A rank cannot be backdated: bought now it would not be the day-28 rank.
       rankSkipped = 'too late for a day-28 rank'
     } else {
-      try {
-        const position = await rankFor(target, videoId, channelId)
-        let checkedAt = new Date()
-        try {
-          checkedAt = (await addRankCheck(db, { channelId, videoId, keyword: target, position }))
-            .checkedAt
-        } catch (recordError) {
-          // Paid for already: freeze with the position in hand rather than buy it again.
-          console.warn(
-            `[analytics] rank check for ${videoId} was paid for but not recorded: ${recordError instanceof Error ? recordError.message : String(recordError)}`,
-          )
-        }
-        rank = { keyword: target, position, checkedAt: checkedAt.toISOString() }
-      } catch (error) {
-        if (row.rankAttempts + 1 < RANK_DEFER_MAX) {
-          await recordReportDeferral(db, row.id, 'rank')
-          return { state: 'deferred' }
-        }
-        rankSkipped = error instanceof CapReached ? 'credit cap' : 'rank check failed'
+      const budget = await checkVidiqBudget(VIDIQ_CREDIT_COST.youtubeSearch)
+      if (budget.ok) {
+        rankDue = true
+      } else if (row.rankAttempts + 1 < RANK_DEFER_MAX) {
+        await recordReportDeferral(db, row.id, 'rank')
+        return { state: 'deferred' }
+      } else {
+        rankSkipped = 'credit cap'
       }
     }
   }
@@ -257,6 +250,29 @@ export async function runSearchReport(input: SearchReportRunInput): Promise<Sear
           }
         : { ...term, bucket: 'unmatched' },
     )
+  }
+
+  if (rankDue && target !== null) {
+    try {
+      const position = await rankFor(target, videoId, channelId)
+      let checkedAt = new Date()
+      try {
+        checkedAt = (await addRankCheck(db, { channelId, videoId, keyword: target, position }))
+          .checkedAt
+      } catch (recordError) {
+        // Paid for already: freeze with the position in hand rather than buy it again.
+        console.warn(
+          `[analytics] rank check for ${videoId} was paid for but not recorded: ${recordError instanceof Error ? recordError.message : String(recordError)}`,
+        )
+      }
+      rank = { keyword: target, position, checkedAt: checkedAt.toISOString() }
+    } catch (error) {
+      if (row.rankAttempts + 1 < RANK_DEFER_MAX) {
+        await recordReportDeferral(db, row.id, 'rank')
+        return { state: 'deferred' }
+      }
+      rankSkipped = error instanceof CapReached ? 'credit cap' : 'rank check failed'
+    }
   }
 
   // 6. Baselines: the channel's other frozen reports at this checkpoint.

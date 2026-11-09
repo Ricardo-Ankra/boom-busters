@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { DEFAULT_RESEARCH_THRESHOLDS, MODEL_DEFER_MAX, RANK_DEFER_MAX } from '@boom-busters/schemas'
 import type { Checkpoint, SearchBrief, SearchReport } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,6 +33,7 @@ const h = vi.hoisted(() => {
     currentBible: vi.fn(),
     channelResearchThresholds: vi.fn(),
     rankFor: vi.fn(),
+    checkVidiqBudget: vi.fn(),
     callLlm: vi.fn(),
   }
 })
@@ -49,6 +51,7 @@ vi.mock('@boom-busters/db', () => ({
 }))
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('@/lib/llm', () => ({ callLlm: h.callLlm }))
+vi.mock('@/lib/vidiq-spend', () => ({ checkVidiqBudget: h.checkVidiqBudget }))
 vi.mock('@/lib/case-evidence', () => ({ rankFor: h.rankFor, CapReached: h.CapReached }))
 
 const CHANNEL = 'channel-1'
@@ -137,6 +140,7 @@ beforeEach(() => {
   h.currentBible.mockResolvedValue({ bible: { language: 'pt-BR' } })
   h.channelResearchThresholds.mockResolvedValue({ ...DEFAULT_RESEARCH_THRESHOLDS })
   h.rankFor.mockResolvedValue(4)
+  h.checkVidiqBudget.mockResolvedValue({ ok: true, balance: 100, capLeft: 100 })
   h.callLlm.mockResolvedValue({ text: '{"terms": []}' })
 })
 
@@ -328,8 +332,6 @@ describe('runSearchReport', () => {
     h.row.rankAttempts = 0
     expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
     expect(h.recordReportDeferral).toHaveBeenCalledWith({}, 'row-1', 'rank')
-    // The model is not asked while the rank is unsettled.
-    expect(h.callLlm).not.toHaveBeenCalled()
 
     h.row.rankAttempts = RANK_DEFER_MAX - 2
     expect((await runSearchReport(input(28))).state).toBe('deferred')
@@ -342,6 +344,59 @@ describe('runSearchReport', () => {
     const report = frozenReport()
     expect(report.rank).toBeNull()
     expect(report.rankSkipped).toBe('credit cap')
+  })
+
+  it('a capped month defers before the model call', async () => {
+    h.checkVidiqBudget.mockResolvedValue({ ok: false, error: 'cap' })
+
+    expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
+
+    expect(h.checkVidiqBudget).toHaveBeenCalledWith(VIDIQ_CREDIT_COST.youtubeSearch)
+    expect(h.recordReportDeferral).toHaveBeenCalledWith({}, 'row-1', 'rank')
+    expect(h.callLlm).not.toHaveBeenCalled()
+    expect(h.rankFor).not.toHaveBeenCalled()
+  })
+
+  it('a capped month on the last rank attempt freezes without buying a rank', async () => {
+    h.checkVidiqBudget.mockResolvedValue({ ok: false, error: 'cap' })
+    h.row.rankAttempts = RANK_DEFER_MAX - 1
+
+    expect((await runSearchReport(input(28))).state).toBe('frozen')
+
+    expect(h.rankFor).not.toHaveBeenCalled()
+    expect(frozenReport().rankSkipped).toBe('credit cap')
+  })
+
+  it('a model deferral buys no rank', async () => {
+    h.callLlm.mockRejectedValue(new Error('provider down'))
+
+    expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
+
+    expect(h.recordReportDeferral).toHaveBeenCalledWith({}, 'row-1', 'model')
+    expect(h.rankFor).not.toHaveBeenCalled()
+    expect(h.addRankCheck).not.toHaveBeenCalled()
+  })
+
+  it('the rank is bought once, after the model answers', async () => {
+    h.callLlm.mockRejectedValueOnce(new Error('provider down'))
+
+    expect(await runSearchReport(input(28))).toEqual({ state: 'deferred' })
+    expect(h.rankFor).not.toHaveBeenCalled()
+
+    h.row.modelAttempts = 1
+    expect((await runSearchReport(input(28))).state).toBe('frozen')
+    expect(h.rankFor).toHaveBeenCalledTimes(1)
+    expect(frozenReport().rank).toMatchObject({ keyword: 'alpha', position: 4 })
+  })
+
+  it('buys no budget check outside day 28 or after the window', async () => {
+    await runSearchReport(input(7))
+    expect(h.checkVidiqBudget).not.toHaveBeenCalled()
+
+    h.freezeSearchReport.mockClear()
+    vi.setSystemTime(new Date('2026-11-30T12:00:00Z'))
+    await runSearchReport(input(28))
+    expect(h.checkVidiqBudget).not.toHaveBeenCalled()
   })
 
   it('defers without counting when the bounded analytics fetch fails', async () => {
