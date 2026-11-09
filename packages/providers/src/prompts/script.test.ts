@@ -948,6 +948,8 @@ describe('mock script output', () => {
 })
 
 describe('claimList', () => {
+  // Built from a code point so this source file carries no dash itself.
+  const DASH = String.fromCharCode(0x2014)
   const base = { text: 'A newspaper reported the accounts were empty.', confidence: 'sourced' }
 
   it('marks the claims a headline card may cite (decision 257)', () => {
@@ -993,6 +995,18 @@ describe('claimList', () => {
     // The marker is bracketed, never the em dash the other markers use.
     // Built from a code point so this source file carries no dash itself.
     expect(list).not.toContain(String.fromCharCode(0x2014) + ' X POST')
+  })
+
+  it("appends a claim's evidence standing after the other markers", () => {
+    const list = claimList([
+      { ...base, id: 'c1', text: 'Text', sourceUrl: null, standing: 'ONE STUDY' },
+    ])
+    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated ${DASH} ONE STUDY`)
+  })
+
+  it('lists a claim without a standing exactly as before', () => {
+    const list = claimList([{ ...base, id: 'c1', text: 'Text', sourceUrl: null }])
+    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated`)
   })
 
   it('does not mark an article claim as an X post', () => {

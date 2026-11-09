@@ -332,6 +332,65 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     ])
   })
 
+  describe("a claim's evidence standing", () => {
+    const stored = (): ClaimRow => ({
+      id: 'c-standing',
+      dossierId: 'dossier-1',
+      text: 'The drug halves the risk.',
+      sourceUrl: 'https://journal.example/paper',
+      sourceType: 'other',
+      confidence: 'sourced',
+      quarantined: false,
+      legalStatus: 'none',
+      legalStatusDate: null,
+      legalStatusDocumentId: null,
+      evidenceStatus: 'contested',
+      evidenceDocumentId: null,
+      series: null,
+      createdAt: new Date('2026-10-01'),
+      updatedAt: new Date('2026-10-01'),
+    })
+
+    it('reaches the outline request under a science bible', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(mockOutline(10)) })
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      channelForProject.mockImplementation(async (...args: unknown[]) => {
+        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+        return { ...channel, bible: { ...channel.bible, researchProfile: 'science' } }
+      })
+      try {
+        scriptableClaims.mockResolvedValueOnce([stored()])
+        const { result } = await engine.executeStep('load-dossier', { events: approved() })
+        expect((result as { claims: { standing?: string }[] }).claims[0]!.standing).toBe(
+          'CONTESTED',
+        )
+
+        await engine
+          .executeStep('outline', {
+            events: approved(),
+            steps: [{ id: 'load-dossier', handler: () => result }],
+          })
+          .catch(() => undefined)
+        const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+        expect(sent.messages.map((message) => message.content).join(' ')).toContain(
+          '— NOT adjudicated — CONTESTED',
+        )
+      } finally {
+        channelForProject.mockImplementation(actual.channelForProject)
+      }
+    })
+
+    it("carries none under the first channel's bible", async () => {
+      scriptableClaims.mockResolvedValueOnce([stored()])
+      const { result } = await engine.executeStep('load-dossier', { events: approved() })
+      const claims = (result as { claims: { standing?: string }[] }).claims
+      expect(claims).toHaveLength(1)
+      expect(claims[0]!.standing).toBeUndefined()
+    })
+  })
+
   it("builds a chapter request from the project's bible although no earlier step carried one", async () => {
     vi.stubEnv('MOCK_PROVIDERS', '')
     callLlm.mockReset()

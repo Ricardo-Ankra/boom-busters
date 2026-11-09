@@ -647,6 +647,7 @@ export default async function ProjectPage({
           projectId={project.id}
           contentMd={dossier.contentMd}
           claims={dossier.claims}
+          researchProfile={channel.bible.researchProfile}
           supports={dossier.supports}
           research={dossier.research}
           downstream={downstreamOf('dossier', views)}

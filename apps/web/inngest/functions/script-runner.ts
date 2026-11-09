@@ -24,7 +24,13 @@ import {
   tensionFromOutline,
 } from '@boom-busters/providers'
 import type { Repair, ScriptClaim } from '@boom-busters/providers'
-import type { NoticeTarget, Outline, ShortsCandidate } from '@boom-busters/schemas'
+import {
+  evidenceLabel,
+  researchProfileOf,
+  type NoticeTarget,
+  type Outline,
+  type ShortsCandidate,
+} from '@boom-busters/schemas'
 import {
   BudgetExceededError,
   dropFixedParagraphs,
@@ -224,6 +230,12 @@ export const scriptRunner = inngest.createFunction(
       // The quarantine rule, read from the one query that enforces it.
       const usable = await scriptableClaims(db, projectId)
 
+      // The channel's research profile decides how a claim's evidence standing
+      // is worded; a bible stored before profiles reads as the investigation.
+      const profile = researchProfileOf(
+        requireCompleteBible(await channelForProject(db, projectId)).bible,
+      )
+
       await setProjectStage(db, projectId, { stage: 'script', stageStatus: 'running' })
       const script = await createScriptVersion(db, projectId)
 
@@ -241,6 +253,7 @@ export const scriptRunner = inngest.createFunction(
           // Only a court or regulator ruling lets the script drop "alleged"
           // (spec 6.4); before the legal status existed this was never set.
           adjudicated: claim.legalStatus === 'ruled',
+          standing: evidenceLabel(profile, claim.evidenceStatus, 'script') ?? undefined,
         })) satisfies ScriptClaim[],
       }
     })

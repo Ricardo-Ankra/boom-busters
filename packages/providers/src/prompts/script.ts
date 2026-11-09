@@ -64,6 +64,12 @@ export interface ScriptClaim {
    * marks those and the runner enforces it.
    */
   sourceType?: string
+  /**
+   * What the research profile says about the claim's evidence, in the profile's
+   * script wording (for example "ONE STUDY"). Absent for a profile with no
+   * evidence axis, and for a claim stored without one.
+   */
+  standing?: string
 }
 
 /**
@@ -82,6 +88,7 @@ export function claimList(claims: readonly ScriptClaim[]): string {
         `[${index + 1}] (id: ${claim.id}) ${claim.text}` +
         `${claim.adjudicated ? ' — ADJUDICATED' : ' — NOT adjudicated'}` +
         `${claim.confidence === 'unverified' ? ' — UNVERIFIED' : ''}` +
+        `${claim.standing ? ` — ${claim.standing}` : ''}` +
         `${claimCarriesArticle(claim) ? ' — NEWS ARTICLE' : ''}` +
         `${claimCarriesPost(claim) ? ' (X POST)' : ''}`,
     )

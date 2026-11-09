@@ -97,6 +97,36 @@ describe('DossierReview', () => {
     expect(quarantineClaim).toHaveBeenCalledWith('p1', 'claim-1', true)
   })
 
+  it("shows a claim's evidence standing beside its confidence under the science profile", async () => {
+    const user = userEvent.setup()
+    render(
+      <DossierReview
+        projectId="p1"
+        contentMd={MD}
+        claims={[claim({ evidenceStatus: 'single_study' })]}
+        researchProfile="science"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /Review claim: Wirecard filed/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Claim' })
+    expect(within(dialog).getByText('One study')).toBeInTheDocument()
+  })
+
+  it('shows no evidence standing under the investigation profile', async () => {
+    const user = userEvent.setup()
+    render(
+      <DossierReview
+        projectId="p1"
+        contentMd={MD}
+        claims={[claim({ evidenceStatus: 'single_study' })]}
+        researchProfile="investigation"
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: /Review claim: Wirecard filed/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Claim' })
+    expect(within(dialog).queryByText('One study')).not.toBeInTheDocument()
+  })
+
   it('always lists a blocking claim the text never states', () => {
     const missing = claim({
       id: 'claim-2',

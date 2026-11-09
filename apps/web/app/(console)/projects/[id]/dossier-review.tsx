@@ -1,7 +1,16 @@
 'use client'
 
 import type { ClaimRow, ClaimSupportRow } from '@boom-busters/db'
-import type { DocumentKind, GroundedRef, GroundedResearch, Notice } from '@boom-busters/schemas'
+import {
+  evidenceLabel,
+  RESEARCH_PROFILES,
+  type DocumentKind,
+  type GroundedRef,
+  type GroundedResearch,
+  type Notice,
+  type ResearchProfile,
+  type ResearchProfileKey,
+} from '@boom-busters/schemas'
 import { ChevronRight, ExternalLink, List, Pencil, ShieldAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
@@ -70,6 +79,7 @@ export function DossierReview({
   projectId,
   contentMd,
   claims,
+  researchProfile = 'investigation',
   notices = [],
   supports = NO_SUPPORTS,
   research = null,
@@ -80,6 +90,8 @@ export function DossierReview({
   projectId: string
   contentMd: string
   claims: ClaimRow[]
+  /** The channel's research profile; decides which evidence standing a claim row shows. */
+  researchProfile?: ResearchProfileKey
   /** What the research passes trimmed or dropped (decision 293). */
   notices?: readonly Notice[]
   /** The quotes behind each claim, by claim id, in rank order. */
@@ -212,6 +224,7 @@ export function DossierReview({
                     claim={claim}
                     supports={supports[claim.id] ?? []}
                     documentsById={documentsById}
+                    profile={RESEARCH_PROFILES[researchProfile]}
                   />
                 </li>
               ))}
@@ -277,6 +290,7 @@ export function DossierReview({
                   claim={claim}
                   supports={supports[claim.id] ?? []}
                   documentsById={documentsById}
+                  profile={RESEARCH_PROFILES[researchProfile]}
                 />
               </li>
             ))}
@@ -515,12 +529,15 @@ function ClaimRowView({
   claim,
   supports,
   documentsById,
+  profile,
 }: {
   projectId: string
   claim: ClaimRow
   supports: readonly ClaimSupportRow[]
   documentsById: ReadonlyMap<string, ReviewDocument>
+  profile: ResearchProfile
 }) {
+  const standing = evidenceLabel(profile, claim.evidenceStatus, 'review')
   const router = useRouter()
   const { toast } = useToast()
   const [editing, setEditing] = React.useState(false)
@@ -571,6 +588,11 @@ function ClaimRowView({
         >
           {CONFIDENCE_LABELS[claim.confidence]}
         </span>
+        {standing ? (
+          <span className="rounded-[4px] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[var(--color-text-secondary)]">
+            {standing}
+          </span>
+        ) : null}
         <span className="rounded-[4px] bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[var(--color-text-secondary)]">
           {claim.sourceType.replace('_', ' ')}
         </span>
