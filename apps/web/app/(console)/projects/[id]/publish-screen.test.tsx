@@ -55,6 +55,13 @@ vi.mock('./shorts-actions', () => ({
   setShortRelatedLink: (...args: unknown[]) => setShortRelatedLink(...args),
 }))
 
+// The Search report card's buttons run these; the screen tests never press them.
+vi.mock('./search-report-actions', () => ({
+  addTermToKeywordsAction: vi.fn(),
+  checkRankAction: vi.fn(),
+  dismissTermAction: vi.fn(),
+}))
+
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
@@ -144,6 +151,7 @@ function model(overrides: Partial<PublishModel> = {}): PublishModel {
     uploadsToday: 1,
     masterDurationMs: 900_000,
     analytics: null,
+    searchReports: { frozen: [], live: null, rankChecks: [], dismissed: [] },
     ...overrides,
   }
 }

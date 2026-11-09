@@ -24,6 +24,7 @@ import {
 } from '@/lib/publish-status'
 import { CohesionPanel } from './cohesion-panel'
 import { RetentionOverlay } from './retention-overlay'
+import { SearchReportCard } from './search-report-card'
 import {
   generateDescription,
   generateTitles,
@@ -237,6 +238,8 @@ export function PublishScreen({
           durationMs={model.masterDurationMs}
         />
       ) : null}
+
+      <SearchReportCard projectId={projectId} reports={model.searchReports} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[12px] text-[var(--color-text-muted)]">

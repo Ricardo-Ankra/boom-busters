@@ -2,6 +2,8 @@ import {
   approvedTalkingPointSet,
   channelForProject,
   countUploadsSince,
+  dismissedTermKeys,
+  frozenReportsForChannel,
   getArticleSources,
   getDossier,
   getProject,
@@ -15,15 +17,23 @@ import {
   listShorts,
   listShotSlots,
   musicBedByR2Key,
+  rankChecksForVideo,
+  searchReportsForVideo,
 } from '@boom-busters/db'
 import type { Database, PublishRecordRow } from '@boom-busters/db'
 import {
+  buildSearchReport,
+  CHECKPOINTS,
   cohesionReport,
+  DEFAULT_RESEARCH_THRESHOLDS,
   dropFixedParagraphs,
+  lengthBand,
+  matchTermDeterministic,
   nameMatches,
   normaliseArticleUrl,
   PublishDraftSchema,
   quotaDayStartUtc,
+  researchKeywords,
   ShotBriefSchema,
   SlotCandidateSchema,
   sourceLabel,
@@ -37,10 +47,14 @@ import type {
   DescriptionSource,
   FixedLines,
   ScheduleSlot,
+  SearchBrief,
+  SearchReport,
+  TermBucket,
   TitleSlot,
 } from '@boom-busters/schemas'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
+import { SEARCH_SOURCE_KEY } from './youtube-analytics'
 import { pillarOf } from './pillar'
 import { shortSlotsAfter } from './schedule-slots'
 
@@ -181,6 +195,137 @@ export interface MasterAnalytics {
   retentionCurve: { pct: number; ratio: number }[] | null
 }
 
+/**
+ * The search report card's data: the reports frozen at each checkpoint, the
+ * live view built from the latest snapshot, the manual rank checks and the
+ * dismissed term keys.
+ */
+export interface SearchReportsModel {
+  /** Frozen reports, by checkpoint ascending. */
+  frozen: SearchReport[]
+  /**
+   * Built on read from the latest snapshot (lifetime numbers, deterministic
+   * matching only). Null when the master has no snapshot. Its outcome is
+   * `too-early` until a report has frozen, and the card shows no verdict for
+   * it either way.
+   */
+  live: SearchReport | null
+  /** Manual VidIQ rank checks, newest first. */
+  rankChecks: { keyword: string; position: number | null; checkedAt: string }[]
+  /** Dismissed terms as `normaliseTerm(term, language).join(' ')`. */
+  dismissed: string[]
+  /** The language the terms are normalised in (the frozen brief's, else the bible's). */
+  language?: string
+  /** When the master went public, for the date a checkpoint becomes due. */
+  publishedAt?: string | null
+  /** How many other videos each checkpoint's baselines drew on, by checkpoint. */
+  peers?: Partial<Record<number, { band: number; channel: number }>>
+}
+
+export function emptySearchReports(): SearchReportsModel {
+  return { frozen: [], live: null, rankChecks: [], dismissed: [] }
+}
+
+/**
+ * The live view of a video's search numbers: the latest snapshot's lifetime
+ * figures, terms placed by words alone (no model call, so whatever the
+ * research does not name is `unmatched`), and baselines that fall back to the
+ * video's own figures. No outcome is judged: before any report has frozen it
+ * is `too-early`.
+ */
+export function liveSearchReport(input: {
+  snapshot: {
+    views: number | null
+    avgViewDurationSec: number | null
+    retentionCurve: { pct: number; ratio: number }[] | null
+    searchTerms: { term: string; views: number; minutes: number }[] | null
+    subscribersGained: number | null
+    likes: number | null
+    comments: number | null
+    ctrBySource: Record<string, number> | null
+  }
+  publishedAt: Date
+  durationSec: number | null
+  brief: SearchBrief | null
+  language: string | undefined
+  anyFrozen: boolean
+  now: Date
+}): SearchReport {
+  const keywords = input.brief ? researchKeywords(input.brief) : { target: null, researched: [] }
+  const terms = (input.snapshot.searchTerms ?? []).map((row) => {
+    const hit = matchTermDeterministic(row.term, keywords, input.language)
+    return {
+      ...row,
+      bucket: (hit ? hit.bucket : 'unmatched') as TermBucket,
+      ...(hit ? { keyword: hit.keyword } : {}),
+    }
+  })
+  const day = (moment: Date) => moment.toISOString().slice(0, 10)
+  const report = buildSearchReport({
+    checkpoint: 7,
+    range: { start: day(input.publishedAt), end: day(input.now) },
+    publishedAt: input.publishedAt.toISOString(),
+    durationSec: input.durationSec,
+    views: input.snapshot.views ?? 0,
+    searchViews: input.snapshot.ctrBySource?.[SEARCH_SOURCE_KEY] ?? 0,
+    avgViewDurationSec: input.snapshot.avgViewDurationSec,
+    subscribersGained: input.snapshot.subscribersGained,
+    likes: input.snapshot.likes,
+    comments: input.snapshot.comments,
+    retentionCurve: input.snapshot.retentionCurve,
+    terms,
+    targetKeyword: keywords.target,
+    matching: 'none',
+    rank: null,
+    baselineInputs: {
+      holdBand: [],
+      holdChannel: [],
+      dropBand: [],
+      dropChannel: [],
+      subsBand: [],
+      subsChannel: [],
+    },
+    thresholds: DEFAULT_RESEARCH_THRESHOLDS,
+    now: input.now,
+  })
+  return input.anyFrozen ? report : { ...report, outcome: 'too-early' }
+}
+
+/** Seconds watched per view, over the buckets of a frozen report that have a hold. */
+function reportHold(report: SearchReport): number | null {
+  let views = 0
+  let seconds = 0
+  for (const bucket of Object.values(report.buckets)) {
+    if (bucket.holdSec === null) continue
+    views += bucket.views
+    seconds += bucket.views * bucket.holdSec
+  }
+  return views > 0 ? seconds / views : null
+}
+
+/**
+ * How many other videos of the channel stand behind a frozen report's
+ * baselines: those frozen at the same checkpoint before it, and the ones of a
+ * similar length among them. Only videos that have a hold figure count.
+ */
+export function peerCounts(
+  report: SearchReport,
+  videoId: string,
+  others: { videoId: string; report: SearchReport }[],
+): { band: number; channel: number } {
+  const earlier = others.filter(
+    (other) =>
+      other.videoId !== videoId &&
+      other.report.computedAt <= report.computedAt &&
+      reportHold(other.report) !== null,
+  )
+  const band = lengthBand(report.durationSec)
+  const inBand = earlier.filter(
+    (other) => band !== null && lengthBand(other.report.durationSec) === band,
+  )
+  return { band: inBand.length, channel: earlier.length }
+}
+
 export interface PublishModel {
   items: PublishItemModel[]
   /** For the description's chapter block — from the master timeline. */
@@ -213,6 +358,8 @@ export interface PublishModel {
   masterDurationMs: number | null
   /** Null until the master has a video AND a snapshot. */
   analytics: MasterAnalytics | null
+  /** The search report card's data; empty before the master has a video. */
+  searchReports: SearchReportsModel
 }
 
 export function emptyPublishModel(): PublishModel {
@@ -233,6 +380,7 @@ export function emptyPublishModel(): PublishModel {
     uploadsToday: 0,
     masterDurationMs: null,
     analytics: null,
+    searchReports: emptySearchReports(),
   }
 }
 
@@ -654,6 +802,16 @@ export async function publishModel(
         }
       : null
 
+  const searchReports = await searchReportsModel(db, {
+    channelId: channel.channelId,
+    brief: project.searchBrief,
+    bibleLanguage: channel.bible.language,
+    videoId: masterRecord?.youtubeVideoId ?? null,
+    publishedAt: masterRecord?.publishAt ?? null,
+    snapshot,
+    durationSec: masterDurationMs !== null ? masterDurationMs / 1000 : null,
+  })
+
   return {
     items,
     chapters,
@@ -671,5 +829,62 @@ export async function publishModel(
     uploadsToday,
     masterDurationMs,
     analytics,
+    searchReports,
+  }
+}
+
+async function searchReportsModel(
+  db: Database,
+  input: {
+    channelId: string
+    brief: SearchBrief | null
+    bibleLanguage: string
+    videoId: string | null
+    publishedAt: Date | null
+    snapshot: Awaited<ReturnType<typeof latestSnapshotForVideo>>
+    durationSec: number | null
+  },
+): Promise<SearchReportsModel> {
+  if (!input.videoId) return emptySearchReports()
+  const language = input.brief?.language || input.bibleLanguage || undefined
+  const [rows, checks, dismissed] = await Promise.all([
+    searchReportsForVideo(db, input.videoId),
+    rankChecksForVideo(db, input.videoId),
+    dismissedTermKeys(db, input.channelId),
+  ])
+  const frozen: SearchReport[] = []
+  for (const row of rows) {
+    if (row.state === 'frozen' && row.report) frozen.push(row.report)
+  }
+  const peers: NonNullable<SearchReportsModel['peers']> = {}
+  for (const report of frozen) {
+    if (!CHECKPOINTS.includes(report.checkpoint)) continue
+    const others = await frozenReportsForChannel(db, input.channelId, report.checkpoint)
+    peers[report.checkpoint] = peerCounts(report, input.videoId, others)
+  }
+  const live =
+    input.snapshot && input.publishedAt
+      ? liveSearchReport({
+          snapshot: input.snapshot,
+          publishedAt: input.publishedAt,
+          durationSec: input.durationSec,
+          brief: input.brief,
+          language,
+          anyFrozen: frozen.length > 0,
+          now: new Date(),
+        })
+      : null
+  return {
+    frozen,
+    live,
+    rankChecks: checks.map((check) => ({
+      keyword: check.keyword,
+      position: check.position,
+      checkedAt: check.checkedAt.toISOString(),
+    })),
+    dismissed: [...dismissed],
+    ...(language ? { language } : {}),
+    publishedAt: input.publishedAt?.toISOString() ?? null,
+    peers,
   }
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { deriveIngredients, openingIsStale, syntheticLikenesses } from './publish-review'
+import {
+  deriveIngredients,
+  liveSearchReport,
+  openingIsStale,
+  peerCounts,
+  syntheticLikenesses,
+} from './publish-review'
 
 /**
  * The label rule (decision 252): a generated still that depicts a real
@@ -182,5 +188,82 @@ describe('openingIsStale (decision 303)', () => {
     expect(openingIsStale({ body: '   ', bodyScriptVersion: 1, hook, scriptVersion: 4 })).toBe(
       false,
     )
+  })
+})
+
+describe('liveSearchReport', () => {
+  const snapshot = {
+    views: 4_000,
+    avgViewDurationSec: 280,
+    retentionCurve: null,
+    searchTerms: [
+      { term: 'the enron collapse', views: 300, minutes: 900 },
+      { term: 'odd search', views: 40, minutes: 10 },
+    ],
+    subscribersGained: 12,
+    likes: 100,
+    comments: 8,
+    ctrBySource: { YT_SEARCH: 1_000 },
+  }
+  const brief = {
+    targetKeyword: { keyword: 'enron collapse' },
+    secondaryKeywords: [],
+    searchedQuestions: [],
+    angleOptions: [],
+    chosenAngle: null,
+    recommendedAngle: null,
+  } as never
+  const base = {
+    snapshot,
+    publishedAt: new Date('2026-10-01T15:00:00Z'),
+    durationSec: 900,
+    brief,
+    language: 'en',
+    now: new Date('2026-11-09T06:00:00Z'),
+  }
+
+  it('places terms by words alone and runs from the publish day to today', () => {
+    const report = liveSearchReport({ ...base, anyFrozen: false })
+    expect(report.range).toEqual({ start: '2026-10-01', end: '2026-11-09' })
+    expect(report.matching).toBe('none')
+    expect(report.searchViews).toBe(1_000)
+    expect(report.terms.find((t) => t.term === 'the enron collapse')?.bucket).toBe('target')
+    expect(report.terms.find((t) => t.term === 'odd search')?.bucket).toBe('unmatched')
+    // No other videos: every baseline is the video's own figure.
+    expect(report.baselines.searchHoldSec.basis).toBe('own')
+  })
+
+  it('is too early until a report has frozen, and judged by the numbers after', () => {
+    expect(liveSearchReport({ ...base, anyFrozen: false }).outcome).toBe('too-early')
+    expect(liveSearchReport({ ...base, anyFrozen: true }).outcome).not.toBe('too-early')
+  })
+
+  it('lists every term as unmatched when there is no brief', () => {
+    const report = liveSearchReport({ ...base, brief: null, anyFrozen: false })
+    expect(report.targetKeyword).toBeNull()
+    expect(report.terms.every((t) => t.bucket === 'unmatched')).toBe(true)
+  })
+})
+
+describe('peerCounts', () => {
+  const frozen = (videoId: string, durationSec: number, computedAt: string) => ({
+    videoId,
+    report: {
+      computedAt,
+      durationSec,
+      buckets: { target: { views: 10, holdSec: 100 } },
+    } as never,
+  })
+
+  it('counts earlier videos at the checkpoint, and those of a similar length', () => {
+    const own = frozen('own', 900, '2026-11-01T00:00:00.000Z')
+    const counts = peerCounts(own.report, 'own', [
+      own,
+      frozen('a', 800, '2026-10-20T00:00:00.000Z'),
+      frozen('b', 1_000, '2026-10-25T00:00:00.000Z'),
+      frozen('c', 2_400, '2026-10-26T00:00:00.000Z'),
+      frozen('later', 900, '2026-12-01T00:00:00.000Z'),
+    ])
+    expect(counts).toEqual({ band: 2, channel: 3 })
   })
 })
