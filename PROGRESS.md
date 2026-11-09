@@ -10455,9 +10455,10 @@ Part 2 checklist:
      punctuation, years, word order, and for English accents, stop words and
      a trailing plural s), then one model call
      covers only the leftovers. A term the model does not return is stored as
-     `unmatched`. The day-28 rank check runs before the model call and its
-     result is recorded and reused, so a retry of the step never buys a second
-     search. It reads VidIQ's top 10: the spec said 20, but VidIQ's search
+     `unmatched`. The day-28 rank check runs before the model call and is
+     recorded, and a report whose rank was paid for but not recorded still
+     freezes with it. A manual check is never carried into the frozen report
+     (see 443). It reads VidIQ's top 10: the spec said 20, but VidIQ's search
      returns 10, so copy says "not in the top 10" and the stored position
      reads that way. A rank failure that is not the credit cap defers on the
      same 7-run ladder as a cap refusal.
@@ -10493,7 +10494,11 @@ Part 2 checklist:
      stored verdict, so a later change to a threshold never rewrites what the
      research said at the time. A project started before this change has no
      stored verdict: it is recomputed from its frozen brief with the default
-     thresholds and marked `recomputed`, and the card says so.
+     thresholds and marked `recomputed`, and the track record panel says so
+     beside that video ("verdict recomputed with the default thresholds").
+     Only a brief that came from the full checks is recomputed: a quick
+     research brief has nothing but unmeasured lines, so its project is left
+     out of the record (see 443).
 439. **Per-channel research thresholds** (2026-11-09, migration 0051).
      `research_tuning` holds one row per channel and key, with the value, the
      value it replaced, the evidence sentence and the date. A value is
@@ -10526,9 +10531,9 @@ Part 2 checklist:
      share, target share, target and listed views, hold ratio, too early
      views) can be tuned through the record, but no rule proposes them yet:
      the day-28 outcomes do not say which side of such a line a video should
-     have fallen on, and a rule would only be guessing. They stay editable
-     values and are open for a later rule once there is evidence to write one
-     from.
+     have fallen on, and a rule would only be guessing. The values are stored
+     per channel, but no rule and no screen changes them yet; a later rule or
+     a settings control can, once there is evidence to write one from.
 442. **The Search track record panel** (2026-11-09). A Search track record
      button on the Case Library opens the panel: how each check did, the
      live suggestions, the applied values with Reset to default, and the
@@ -10541,3 +10546,24 @@ Part 2 checklist:
      that runs the real store against the test database and asserts the
      stored value equals what `suggestTuning` computes for the stored videos;
      the e2e test seeds five counted videos and presses Apply.
+443. **Fixes from the final review of the search learning** (2026-11-09).
+     The daily snapshot now stores the search terms, subscribers gained,
+     likes and comments, which the live card reads. A verdict line for a
+     check that never ran (intent, fit, a competition or angle check skipped
+     or capped, demand with no figure) carries `measured: false`, and the
+     track record and every suggestion rule skip it instead of counting it
+     as a warning. The demand rules judge the topic's total searches, the
+     figure the verdict itself used, not the target's own. A baseline that is
+     the video's own figure (early drop, subscribers) says nothing about
+     channel fit, so Fit skips it and the card prints no baseline for it;
+     the hold baseline keeps its own fallback as the spec defines. The
+     demandWarn raise is refused when it would reach the strong demand line.
+     The day-28 rank is bought only while the report is within the seven day
+     window after it fell due; a later one (a backfill) freezes with "Rank not
+     checked: the report was made too late for a day-28 rank", because a rank
+     cannot be backdated. The runner no longer reuses any recorded rank
+     check: a manual check could otherwise land in the frozen report. The
+     price is that a model failure after the runner has paid for the rank
+     buys it again on the next run (5 credits, at most twice per report);
+     the alternative was a new column to tell the two apart. Rank, dismiss
+     and add-keyword refuse an archived channel like the tuning actions do.
