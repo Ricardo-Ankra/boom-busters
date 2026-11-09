@@ -10410,9 +10410,9 @@ boom-busters-broker`; merge and deploy to Vercel, then `PUT
 
 ### Learning from real search
 
-Part 1 of the learning-from-real-search plan (2026-11-09, branch
-`search-learning`). Part 1 is the per-video report; learning per channel is
-Part 2 and is not built.
+Parts 1 and 2 of the learning-from-real-search plan (2026-11-09, branch
+`search-learning`). Part 1 is the per-video report; Part 2 is learning per
+channel.
 
 Part 1 checklist:
 
@@ -10425,7 +10425,15 @@ Part 1 checklist:
 - [x] Add a term to the channel keywords; the search outcome on the case
 - [x] The search report card on the publish screen
 - [x] An e2e test of the card (`e2e/tests/search-report.spec.ts`)
-- [ ] Part 2, learning per channel (migration 0051)
+- [x] Part 2, learning per channel (migration 0051), checked off below
+
+Part 2 checklist:
+
+- [x] Frozen research verdicts, written with the brief freeze
+- [x] Per-channel thresholds (`research_tuning`, migration 0051) read by the verdict card, Who ranks, the target pick and the search report
+- [x] The track record and the tuning suggestions (schemas)
+- [x] The Search track record panel with Apply, Dismiss and Reset to default
+- [x] An e2e test of the panel (`e2e/tests/search-track-record.spec.ts`) and an unmocked Apply test
 
 434. **A frozen search report at day 7, 28 and 90** (2026-11-09). A live
      master gets a report at each checkpoint, fetched on the first daily
@@ -10436,8 +10444,8 @@ Part 1 checklist:
      and the number of reports each baseline was built from, so a later change
      to a threshold or to the channel's history never rewrites a verdict. A
      failed analytics read defers the report and does not count against it. A
-     failed model match defers up to 3 daily runs, then the report freezes
-     deterministic-only and says so on the card. The outcome is one row of a
+     failed model match defers on the first two daily runs and freezes
+     deterministic-only on the third, saying so on the card. The outcome is one row of a
      fixed table (too early, no research, search barely played, no terms, too
      little search, hit and held, hit then left, found another way, missed the
      target), with its own advice line. The Monday digest names new reports,
@@ -10478,3 +10486,59 @@ Part 1 checklist:
      of judgement, so no constant changed. The newest video drew 3 search
      views of 359, so most reports will read "Search barely played" until
      search traffic grows, and the track record in Part 2 will wait for it.
+438. **Research verdicts are frozen** (2026-11-09). `createProjectFromCase`
+     writes the verdict into `projects.research_verdict` in the same step
+     that freezes the brief, together with the thresholds that produced it
+     and the freeze time. The track record judges each check against that
+     stored verdict, so a later change to a threshold never rewrites what the
+     research said at the time. A project started before this change has no
+     stored verdict: it is recomputed from its frozen brief with the default
+     thresholds and marked `recomputed`, and the card says so.
+439. **Per-channel research thresholds** (2026-11-09, migration 0051).
+     `research_tuning` holds one row per channel and key, with the value, the
+     value it replaced, the evidence sentence and the date. A value is
+     clamped to its bounds on write and again on read, so a hand-edited row
+     cannot push a threshold out of range. `demandOk` must stay above
+     `demandWarn`: a write that would break that is refused with a plain
+     message. Reset to default deletes the row. The channel's thresholds now
+     reach the verdict card, Who ranks (the open door size and views), the
+     target pick (a new `target-candidates` step in the case researcher, so
+     the pick floor is read inside a step and replays safely) and the search
+     report, which freezes the thresholds it used as before. Migration 0051
+     also adds `research_suggestion_dismissals`.
+440. **The suggestion rules** (2026-11-09). Nothing is suggested until 5
+     videos have a counted day-28 report, and each suggestion needs at least
+     3 supporting videos. The rules that exist: `demandWarn` lower (demand
+     warned, searches under the line, yet found for the target) and raise
+     (searches at or over the line, competition fine, yet not found);
+     `demandOk` lower (between the two lines, yet found for the target);
+     `openDoorMaxSubscribers` raise (competition warned, yet ranked in the top
+     10) and lower (competition passed, yet it did not rank). A suggestion
+     moves a value by at most a factor of 2, and that limit wins over the
+     1, 2, 5 rounding, then the hard bounds apply. A dismissed suggestion
+     returns only once 2 more videos support it. A video frozen under another
+     value of the same threshold is left out of that rule's evidence, per
+     rule, so changing one line does not discard the evidence for another.
+441. **Why `pickFloor` and the outcome thresholds have no rule**
+     (2026-11-09). A chosen target always clears the pick floor, because the
+     floor is what decides which candidates can be chosen. So no published
+     video can show that the floor was too high: the only videos with an
+     outcome are the ones it let through. The outcome thresholds (search
+     share, target share, target and listed views, hold ratio, too early
+     views) can be tuned through the record, but no rule proposes them yet:
+     the day-28 outcomes do not say which side of such a line a video should
+     have fallen on, and a rule would only be guessing. They stay editable
+     values and are open for a later rule once there is evidence to write one
+     from.
+442. **The Search track record panel** (2026-11-09). A Search track record
+     button on the Case Library opens the panel: how each check did, the
+     live suggestions, the applied values with Reset to default, and the
+     intents and topics that held. Apply recomputes the suggestion on the
+     server from the stored videos, the channel's thresholds and the
+     dismissals, and takes no value from the browser: the client sends only
+     the channel, the key and the direction, and a suggestion that no longer
+     stands is refused. The intent list is information only and changes
+     nothing. The action test that mocks the recomputation is joined by one
+     that runs the real store against the test database and asserts the
+     stored value equals what `suggestTuning` computes for the stored videos;
+     the e2e test seeds five counted videos and presses Apply.
