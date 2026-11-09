@@ -102,6 +102,7 @@ export const DOCUMENT_KINDS = [
   'figures',
   'regulator',
   'court',
+  'scholarly',
 ] as const
 export const DocumentKindSchema = z.enum(DOCUMENT_KINDS)
 export type DocumentKind = z.infer<typeof DocumentKindSchema>
@@ -115,6 +116,7 @@ export const DOCUMENT_TIERS: Record<DocumentKind, 1 | 2 | 3 | 4 | 5> = {
   figures: 4,
   regulator: 5,
   court: 5,
+  scholarly: 2,
 }
 
 /**

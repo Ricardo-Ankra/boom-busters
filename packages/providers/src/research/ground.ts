@@ -36,6 +36,7 @@ const SOURCE_TYPES: Record<DocumentKind, ClaimSourceTypeName> = {
   'web-archive': 'other',
   'press-release': 'other',
   figures: 'other',
+  scholarly: 'other',
 }
 
 const NOT_GIVEN = 'cites a document that was not given'

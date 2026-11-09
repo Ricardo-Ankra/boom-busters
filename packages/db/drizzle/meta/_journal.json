@@ -365,6 +365,13 @@
       "when": 1794229496959,
       "tag": "0051_happy_cable",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794255894767,
+      "tag": "0052_cuddly_lyja",
+      "breakpoints": true
     }
   ]
 }

@@ -294,6 +294,23 @@ suite('dossier research, supports and legal status', () => {
     expect(saved.supports[claim.id]?.[0]?.quote).toBe('filed for insolvency')
   })
 
+  it("stores a claim's evidence status and document", async () => {
+    const a = await makeDoc()
+    const saved = await saveDossier(db, {
+      projectId,
+      contentMd: '# x',
+      claims: [
+        { ...plain[0]!, evidenceStatus: 'single_study', evidenceDocumentId: a.id },
+        { ...plain[0]!, text: 'A second claim with no evidence fields.' },
+      ],
+    })
+    const withEvidence = saved.claims.find((c) => c.evidenceStatus === 'single_study')!
+    expect(withEvidence.evidenceDocumentId).toBe(a.id)
+    const without = saved.claims.find((c) => c.id !== withEvidence.id)!
+    expect(without.evidenceStatus).toBeNull()
+    expect(without.evidenceDocumentId).toBeNull()
+  })
+
   it('defaults legal status to none and supports to empty', async () => {
     const saved = await saveDossier(db, { projectId, contentMd: '# x', claims: plain })
     expect(saved.claims[0]!.legalStatus).toBe('none')

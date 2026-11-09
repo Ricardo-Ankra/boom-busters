@@ -67,6 +67,11 @@ describe('DOCUMENT_TIERS', () => {
   it('assigns every kind a tier from one to five', () => {
     for (const kind of DOCUMENT_KINDS) expect([1, 2, 3, 4, 5]).toContain(DOCUMENT_TIERS[kind])
   })
+
+  it('knows the scholarly kind', () => {
+    expect(DOCUMENT_KINDS).toContain('scholarly')
+    expect(DOCUMENT_TIERS.scholarly).toBe(2)
+  })
 })
 
 describe('current status and entity defaults', () => {

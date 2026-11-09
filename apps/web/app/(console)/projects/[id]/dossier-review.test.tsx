@@ -53,6 +53,8 @@ function claim(patch: Partial<ClaimRow>): ClaimRow {
     legalStatus: 'none',
     legalStatusDate: null,
     legalStatusDocumentId: null,
+    evidenceStatus: null,
+    evidenceDocumentId: null,
     series: null,
     createdAt: new Date('2026-08-01'),
     updatedAt: new Date('2026-08-01'),

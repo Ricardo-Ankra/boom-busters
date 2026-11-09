@@ -303,6 +303,8 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       legalStatus: 'none',
       legalStatusDate: null,
       legalStatusDocumentId: null,
+      evidenceStatus: null,
+      evidenceDocumentId: null,
       series: null,
       createdAt: new Date('2026-10-01'),
       updatedAt: new Date('2026-10-01'),

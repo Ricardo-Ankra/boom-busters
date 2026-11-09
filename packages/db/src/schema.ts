@@ -716,6 +716,13 @@ export const claims = pgTable(
       (): AnyPgColumn => researchDocuments.id,
       { onDelete: 'set null' },
     ),
+    /** How well the evidence stands, by the research profile's own vocabulary. */
+    evidenceStatus: text('evidence_status'),
+    /** The document that establishes the evidence status. */
+    evidenceDocumentId: text('evidence_document_id').references(
+      (): AnyPgColumn => researchDocuments.id,
+      { onDelete: 'set null' },
+    ),
     series: jsonb('series').$type<Series>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

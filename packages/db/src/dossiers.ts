@@ -33,6 +33,8 @@ export interface DraftClaimInput {
   legalStatus?: LegalStatus
   legalStatusDate?: string | null
   legalStatusDocumentId?: string | null
+  evidenceStatus?: string | null
+  evidenceDocumentId?: string | null
   series?: Series | null
   supports?: readonly DraftSupportInput[]
 }
@@ -119,6 +121,8 @@ export async function saveDossier(
             legalStatus: claim.legalStatus ?? 'none',
             legalStatusDate: claim.legalStatusDate ?? null,
             legalStatusDocumentId: claim.legalStatusDocumentId ?? null,
+            evidenceStatus: claim.evidenceStatus ?? null,
+            evidenceDocumentId: claim.evidenceDocumentId ?? null,
             series: claim.series ?? null,
           })),
         )
