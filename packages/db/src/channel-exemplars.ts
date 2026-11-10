@@ -190,7 +190,7 @@ export async function retireExemplarVersion(db: Database, id: string): Promise<C
 }
 
 /**
- * Every draft waiting on one channel's technique, retired (decision 455).
+ * Every draft waiting on one channel's technique, retired (decision 456).
  * Each derive and refine stores a draft of its own, so several can wait; a
  * decision on the one shown settles the technique, and the rest stay in
  * Versions to restore.

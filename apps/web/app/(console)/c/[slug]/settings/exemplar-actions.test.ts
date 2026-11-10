@@ -349,7 +349,7 @@ describeDb('the exemplar actions', () => {
     })
   })
 
-  it('keep sets aside every draft waiting on the technique, so nothing is left to review (decision 455)', async () => {
+  it('keep sets aside every draft waiting on the technique, so nothing is left to review (decision 456)', async () => {
     const v1 = await aVersion()
     await approveExemplarVersion(db, v1.id)
     // Two refines before a decision: each stored a draft of its own.
@@ -364,7 +364,7 @@ describeDb('the exemplar actions', () => {
     expect((await exemplarVersionById(db, bar.id))?.status).toBe('draft')
   })
 
-  it('approving one draft sets aside the others waiting on the technique (decision 455)', async () => {
+  it('approving one draft sets aside the others waiting on the technique (decision 456)', async () => {
     const v1 = await aVersion()
     await approveExemplarVersion(db, v1.id)
     const v2 = await aVersion({ parentId: v1.id, steer: 'slower' })

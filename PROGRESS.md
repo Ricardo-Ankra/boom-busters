@@ -11043,7 +11043,7 @@ Part 2 checklist:
      first live parts render is still outstanding: it needs a film over 30
      minutes at the preview gate, and the read of production that would find
      one was refused by the permission classifier, so the owner picks it.
-455. **One decision settles the technique's drafts** (2026-11-10, branch
+456. **One decision settles the technique's drafts** (2026-11-10, branch
      `one-draft-waits`). "Keep the approved one" left the side by side on
      screen. Every derive and every refine stores a draft of its own, and
      nothing set the older ones aside, so several waited at once; the card
