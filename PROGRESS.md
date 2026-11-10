@@ -11015,6 +11015,9 @@ Part 2 checklist:
 
 - Paste the scoped hedging rules from spec section 6.2 into Boom & Busters'
   bible in the Bible tab.
+- A fresh database seeds the old hedging rules from migration 0039 (the applied
+  migration literal is unchanged by design), so the paste into the Bible tab is
+  needed on any new database too, not only on production.
 - Check the `scripting` model route in Settings.
 - `PUT /api/inngest` after the deploy.
 - No migration.
@@ -11047,12 +11050,13 @@ Part 2 checklist:
 
 ### Measured
 
-`pnpm script:score` on the local test database, key columns:
+`pnpm script:score` on the local test database (the first row re-measured after
+an e2e reseed), key columns:
 
-| Project                                 | words | warnings by kind                                                | blocking | advisory |
-| --------------------------------------- | ----- | --------------------------------------------------------------- | -------- | -------- |
-| A chapter with every warning kind (E2E) | 242   | missing-alleged 9, unsourced-claim 9, unsupported-attribution 4 | 22       | 0        |
-| Narration ready for review (E2E)        | 33    | none                                                            | 0        | 0        |
+| Project                                 | words | warnings by kind                                                         | blocking | advisory |
+| --------------------------------------- | ----- | ------------------------------------------------------------------------ | -------- | -------- |
+| A chapter with every warning kind (E2E) | 242   | missing-alleged 7, style 4, unsourced-claim 7, unsupported-attribution 4 | 18       | 4        |
+| Narration ready for review (E2E)        | 33    | none                                                                     | 0        | 0        |
 
 Hedges, tags and same-ending counts are zero in every fixture. The edit
 columns are only unit-tested through `classifyEdit`, as the fixtures carry no
