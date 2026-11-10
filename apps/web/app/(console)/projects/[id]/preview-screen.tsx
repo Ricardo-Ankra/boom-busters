@@ -50,6 +50,8 @@ export interface PreviewRenderProp {
   error: { message?: string } | null
   startedAt: string | null
   completedAt: string | null
+  /** Where each part of a long master starts; null for a single render. */
+  parts: { index: number; startMs: number }[] | null
 }
 
 /** A draft also says which timeline version it rendered — staleness is visible. */
@@ -73,6 +75,9 @@ interface RenderPoll {
   startedAt: string | null
   completedAt: string | null
   costUsd: string
+  /** "Part 5 of 12", while a long master renders in parts. */
+  partNote?: string
+  parts?: { index: number; startMs: number }[] | null
 }
 
 function fmtClock(ms: number): string {
@@ -709,6 +714,7 @@ function FileStage({
   footer: string | undefined
 }) {
   const { current, poll, inFlight } = state
+  const parts = poll?.parts ?? current?.parts ?? null
 
   if (handedOff && (!current || !inFlight)) {
     return (
@@ -728,7 +734,11 @@ function FileStage({
     return (
       <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
         <p className="text-[14px] font-medium">
-          {current.status === 'qc' ? 'Quality check running' : renderingLabel}
+          {current.status === 'qc'
+            ? 'Quality check running'
+            : current.partNote
+              ? `${renderingLabel} · ${current.partNote}`
+              : renderingLabel}
         </p>
         <div
           role="progressbar"
@@ -768,6 +778,21 @@ function FileStage({
           Fetching the file&apos;s playable link…
         </div>
       )}
+      {poll?.outputUrl && parts && parts.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {parts.map((part) => (
+            <Button
+              key={part.index}
+              variant="ghost"
+              onClick={() => {
+                if (fileRef.current) fileRef.current.currentTime = part.startMs / 1000
+              }}
+            >
+              Part {part.index + 1} · {fmtClock(part.startMs)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       {footer ? (
         // suppressHydrationWarning: the footer carries a toLocaleString()
         // timestamp, and the server's locale is not the browser's (the
@@ -892,8 +917,11 @@ function RenderActionsCard({
               confirmLabel="Stop the run"
               consequence={
                 live
-                  ? "Render can't be aborted mid-flight; it will finish in the background, be " +
-                    'discarded, and cost ≈ $0.25.'
+                  ? current?.parts
+                    ? "The parts in flight can't be aborted; they finish in the background and " +
+                      `are discarded, about $${(Number(current.costUsd) / current.parts.length).toFixed(2)} each.`
+                    : "Render can't be aborted mid-flight; it will finish in the background, be " +
+                      'discarded, and cost ≈ $0.25.'
                   : 'The local render is abandoned; the file is discarded. Nothing was spent.'
               }
               busy={pressed === 'stop'}

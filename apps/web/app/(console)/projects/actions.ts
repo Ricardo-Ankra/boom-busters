@@ -509,7 +509,20 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   const inFlight = await renderInFlight(db, projectId)
   if (inFlight) {
     await updateRender(db, inFlight.id, { status: 'cancelled', completedAt: new Date() })
-    if (brokerConfigured() && inFlight.brokerRenderId) {
+    if (inFlight.parts) {
+      // A master in parts: the broker knows the parts' own ids, never the
+      // row's. Each rendering part is tombstoned on its own.
+      if (brokerConfigured()) {
+        for (const part of inFlight.parts) {
+          if (part.status !== 'rendering') continue
+          try {
+            await cancelRender(part.renderId)
+          } catch {
+            // As below: the row already says cancelled, the honest state.
+          }
+        }
+      }
+    } else if (brokerConfigured() && inFlight.brokerRenderId) {
       try {
         await cancelRender(inFlight.id)
       } catch {

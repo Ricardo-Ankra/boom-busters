@@ -338,6 +338,7 @@ export default async function ProjectPage({
     error: (row.error ?? null) as PreviewRenderProp['error'],
     startedAt: row.startedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
+    parts: row.parts?.map((part) => ({ index: part.index, startMs: part.startMs })) ?? null,
   })
   const previewRender: PreviewRenderProp | null = preview.render
     ? toRenderProp(preview.render)
@@ -409,6 +410,9 @@ export default async function ProjectPage({
                 preview.render !== undefined &&
                 ['queued', 'invoking', 'rendering', 'qc'].includes(preview.render.status)
               }
+              {...(preview.render?.parts && preview.render.parts.length > 0
+                ? { partEstimateUsd: Number(preview.render.costUsd) / preview.render.parts.length }
+                : {})}
             />
           ) : null}
           {control.kind === 'restart' && viewingCurrent ? (

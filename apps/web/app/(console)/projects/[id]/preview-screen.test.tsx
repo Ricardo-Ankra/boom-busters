@@ -253,6 +253,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date(Date.now() - 60_000).toISOString(),
       completedAt: null,
+      parts: null,
     }
     render(<PreviewScreen {...props({ render: render_ })} />)
 
@@ -264,6 +265,75 @@ describe('PreviewScreen', () => {
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Stop the run/ }))
     expect(stopProject).toHaveBeenCalledWith(PROJECT)
+  })
+
+  const THREE_PARTS = [
+    { index: 0, startMs: 0 },
+    { index: 1, startMs: 900_000 },
+    { index: 2, startMs: 1_800_000 },
+  ]
+
+  it('seeks the master to a part', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: 'done',
+              progressPct: 100,
+              outputUrl: 'https://signed.example.com/master.mp4',
+              qcReport: null,
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              costUsd: '0.60',
+              parts: THREE_PARTS,
+            }),
+        } as unknown as Response),
+      ),
+    )
+    const master: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.60',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      parts: THREE_PARTS,
+    }
+    render(<PreviewScreen {...props({ render: master, atGate: false })} />)
+
+    const video = await screen.findByTestId('master-video')
+    await user.click(screen.getByRole('button', { name: 'Part 2 · 15:00' }))
+    expect((video as HTMLVideoElement).currentTime).toBe(900)
+  })
+
+  it('names the parts in the Stop confirm', async () => {
+    const user = userEvent.setup()
+    const render_: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'rendering',
+      progressPct: 10,
+      costUsd: '0.60',
+      qcReport: null,
+      error: null,
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      completedAt: null,
+      parts: [...THREE_PARTS, { index: 3, startMs: 2_700_000 }],
+    }
+    render(<PreviewScreen {...props({ render: render_ })} />)
+
+    await user.click(screen.getByRole('button', { name: /Stop/ }))
+    expect(
+      screen.getByText(
+        "The parts in flight can't be aborted; they finish in the background and are discarded, about $0.15 each.",
+      ),
+    ).toBeInTheDocument()
   })
 
   it('offers draft and master side by side, each behind its own confirm', async () => {
@@ -299,6 +369,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: null,
+      parts: null,
       timelineVersion: 2,
     }
     render(<PreviewScreen {...props({ draft })} />)
@@ -319,6 +390,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      parts: null,
       timelineVersion: 1,
     }
     render(<PreviewScreen {...props({ draft })} />)
@@ -338,6 +410,7 @@ describe('PreviewScreen', () => {
       error: { message: 'render timeout' },
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      parts: null,
       timelineVersion: 2,
     }
     render(<PreviewScreen {...props({ draft })} />)
@@ -362,6 +435,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      parts: null,
     }
     const draft: PreviewDraftProp = {
       id: '01J0000000000000000000000C',
@@ -372,6 +446,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      parts: null,
       timelineVersion: 2,
     }
     render(<PreviewScreen {...props({ render: master, draft, atGate: false })} />)
@@ -409,6 +484,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      parts: null,
     }
     render(<PreviewScreen {...props({ render: render_, atGate: false })} />)
 
@@ -446,6 +522,7 @@ describe('PreviewScreen', () => {
       error: null,
       startedAt: new Date().toISOString(),
       completedAt: null,
+      parts: null,
     }
     view.rerender(<PreviewScreen {...props({ render: inFlight })} />)
     expect(screen.getByText('Rendering master')).toBeInTheDocument()
@@ -457,6 +534,7 @@ describe('PreviewScreen', () => {
       status: 'done',
       progressPct: 100,
       completedAt: new Date().toISOString(),
+      parts: null,
       qcReport: {
         passed: false,
         integratedLufs: -18.7,

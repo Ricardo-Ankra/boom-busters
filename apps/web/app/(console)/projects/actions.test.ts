@@ -7,6 +7,8 @@ import {
   createScriptVersion,
   deleteProject,
   ensureRun,
+  getRender,
+  insertRender,
   listShotSlots,
   replaceShotList,
   requireTestDatabase,
@@ -17,11 +19,14 @@ import {
   setRunStatus,
   setSlotJob,
   truncateRunMirror,
+  updateRender,
+  updateRenderParts,
 } from '@boom-busters/db'
 import { newId } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as BrokerModule from '@/lib/broker'
 import { db } from '@/lib/db'
-import { approveGate, requestChanges } from './actions'
+import { approveGate, requestChanges, stopProject } from './actions'
 
 /**
  * The dossier's change request and approval against the test database, with
@@ -32,6 +37,12 @@ import { approveGate, requestChanges } from './actions'
 
 vi.mock('@/auth', () => ({ auth: async () => ({ user: { email: 'owner@example.com' } }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const broker = vi.hoisted(() => ({ cancelRender: vi.fn() }))
+vi.mock('@/lib/broker', async (importOriginal) => ({
+  ...(await importOriginal<typeof BrokerModule>()),
+  brokerConfigured: () => true,
+  cancelRender: (...args: unknown[]) => broker.cancelRender(...args),
+}))
 const inngest = vi.hoisted(() => ({ send: vi.fn() }))
 vi.mock('@/inngest/client', () => ({
   inngest: { send: (...args: unknown[]) => inngest.send(...args) },
@@ -237,5 +248,54 @@ describeDb('approving the visuals gate while a stretch re-plan runs', () => {
       error: 'Wait for the stretch re-plan to finish.',
     })
     expect(inngest.send).not.toHaveBeenCalled()
+  })
+})
+
+describeDb('stopping a master rendered in parts', () => {
+  let projectId = ''
+
+  beforeEach(async () => {
+    inngest.send.mockReset()
+    inngest.send.mockResolvedValue(undefined)
+    broker.cancelRender.mockReset()
+    broker.cancelRender.mockResolvedValue({})
+    await seed(db)
+    await truncateRunMirror(db)
+    projectId = (
+      await createProjectFromCase(db, { caseId: FIXTURE_CASE_ID, title: 'Stop parts test (unit)' })
+    ).id
+  })
+
+  afterEach(async () => {
+    await deleteProject(db, projectId)
+    await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
+  })
+
+  it('cancels every rendering part, not the master row', async () => {
+    const row = await insertRender(db, {
+      projectId,
+      timelineVersion: 1,
+      kind: 'master',
+      costUsd: '0.60',
+    })
+    const parts = Array.from({ length: 12 }, (_, index) => ({
+      index,
+      renderId: newId(),
+      frameRange: [index * 100, index * 100 + 99] as [number, number],
+      startMs: index * 1000,
+      durationMs: 1000,
+      status: index < 2 ? ('rendering' as const) : ('queued' as const),
+      attempt: 1,
+      priorRenderIds: [],
+    }))
+    await updateRender(db, row.id, { status: 'rendering', startedAt: new Date() })
+    await updateRenderParts(db, row.id, parts)
+
+    expect((await stopProject(projectId)).ok).toBe(true)
+
+    const called = broker.cancelRender.mock.calls.map((call) => call[0]).sort()
+    expect(called).toEqual([parts[0]!.renderId, parts[1]!.renderId].sort())
+    expect(called).not.toContain(row.id)
+    expect((await getRender(db, row.id))?.status).toBe('cancelled')
   })
 })
