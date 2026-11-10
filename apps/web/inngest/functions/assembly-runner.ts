@@ -270,7 +270,11 @@ export const assemblyRunner = inngest.createFunction(
         return { projectId, outcome: 'failed' as const }
       }
 
-      const words = TranscribeResultSchema.parse(completion.data.result).words.map((word) => ({
+      // Task 10 (batched transcription) replaces this loop.
+      const parsedResult = TranscribeResultSchema.parse(completion.data.result)
+      const resultWords =
+        'words' in parsedResult ? parsedResult.words : (parsedResult.results[0]?.words ?? [])
+      const words = resultWords.map((word) => ({
         text: word.text,
         startMs: word.startMs,
         endMs: word.endMs,

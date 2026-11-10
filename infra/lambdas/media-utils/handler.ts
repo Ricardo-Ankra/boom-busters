@@ -187,6 +187,8 @@ async function ensureWhisper(): Promise<{ binary: string; model: string }> {
 async function runTranscribe(job: Extract<MediaJob, { kind: 'transcribe' }>) {
   const input = '/tmp/transcribe-input'
   const wav = '/tmp/transcribe.wav'
+  // The batched form (audioS3Keys) arrives with a later task.
+  if (!job.audioS3Key) throw new Error('transcribe needs audioS3Key')
   await download(job.audioS3Key, input)
   await ffmpeg(['-y', ...toWhisperWavArgs(input, wav)])
   const { binary, model } = await ensureWhisper()
@@ -294,6 +296,9 @@ async function handleEvent(event: unknown): Promise<void> {
           result: await runUploadYoutube(job),
         }
         break
+      case 'join':
+        // The join job's behaviour arrives with a later task.
+        throw new Error('join is not implemented yet')
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

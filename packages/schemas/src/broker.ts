@@ -47,6 +47,11 @@ export const RenderRequestSchema = z.object({
   /** Composition id in the deployed site, e.g. 'DocumentaryMaster'. */
   composition: z.string().min(1),
   expectedDurationSec: z.number().positive(),
+  /** One part of a long render: inclusive first and last frame. */
+  frameRange: z
+    .tuple([z.number().int().min(0), z.number().int().min(0)])
+    .refine(([first, last]) => first <= last, { message: 'frameRange first must be <= last' })
+    .optional(),
 })
 export type RenderRequest = z.infer<typeof RenderRequestSchema>
 
@@ -141,9 +146,19 @@ export type RemotionWebhook = z.infer<typeof RemotionWebhookSchema>
 // Media-utils jobs
 // ---------------------------------------------------------------------------
 
-export const MEDIA_JOB_KINDS = ['qc', 'loudnorm', 'transcribe', 'upload-youtube'] as const
+export const MEDIA_JOB_KINDS = ['qc', 'loudnorm', 'transcribe', 'upload-youtube', 'join'] as const
 export const MediaJobKindSchema = z.enum(MEDIA_JOB_KINDS)
 export type MediaJobKind = z.infer<typeof MediaJobKindSchema>
+
+/** ffmpeg loudnorm first-pass measurement, as ffmpeg prints it (strings). */
+export const LoudnormMeasurementSchema = z.object({
+  input_i: z.string(),
+  input_tp: z.string(),
+  input_lra: z.string(),
+  input_thresh: z.string(),
+  target_offset: z.string(),
+})
+export type LoudnormMeasurement = z.infer<typeof LoudnormMeasurementSchema>
 
 const jobCommon = {
   /** The app's job row ULID — echoed in the completion callback. */
@@ -160,6 +175,10 @@ export const QcJobSchema = z.object({
   s3Key: z.string().min(1),
   /** Master delivery target (spec section 7.6): -14 LUFS integrated. */
   targetLufs: z.number().max(0).default(-14),
+  /** A part's start within the film, added to the issue times it reports. */
+  offsetMs: z.number().int().min(0).default(0),
+  /** Also run the loudnorm first pass and return its measurement. */
+  withLoudnorm: z.boolean().default(false),
 })
 
 /** Per-chunk voice normalisation to the -16 LUFS mono reference. */
@@ -172,11 +191,19 @@ export const LoudnormJobSchema = z.object({
 })
 
 /** Whisper.cpp transcription of one chapter's audio (spec section 6). */
-export const TranscribeJobSchema = z.object({
-  kind: z.literal('transcribe'),
-  ...jobCommon,
-  audioS3Key: z.string().min(1),
-})
+export const TranscribeJobSchema = z
+  .object({
+    kind: z.literal('transcribe'),
+    ...jobCommon,
+    audioS3Key: z.string().min(1).optional(),
+    audioS3Keys: z.array(z.string().min(1)).min(1).max(8).optional(),
+  })
+  .refine((job) => (job.audioS3Key === undefined) !== (job.audioS3Keys === undefined), {
+    message: 'Provide exactly one of audioS3Key or audioS3Keys',
+  })
+
+/** The budget of one upload invocation; the Lambda and the publish runner both import it. */
+export const UPLOAD_ROUND_BUDGET_MS = 720_000
 
 /** S3 → YouTube resumable upload (spec section 9); finalised in M7. */
 export const UploadYoutubeJobSchema = z.object({
@@ -206,6 +233,20 @@ export const UploadYoutubeJobSchema = z.object({
     .optional(),
   defaultLanguage: z.string().max(12).optional(),
   defaultAudioLanguage: z.string().max(12).optional(),
+  /** Continue a started resumable upload from this byte offset. */
+  resume: z.object({ uploadUrl: z.url(), offset: z.number().int().min(0) }).optional(),
+  /** Time this invocation may spend uploading before it hands back progress. */
+  budgetMs: z.number().int().positive().optional(),
+})
+
+/** Joins a long render's parts into one file with the combined loudness gain. */
+export const JoinJobSchema = z.object({
+  kind: z.literal('join'),
+  ...jobCommon,
+  partS3Keys: z.array(z.string().min(1)).min(2),
+  outputS3Key: z.string().regex(/^renders\//),
+  targetLufs: z.number().max(0).default(-14),
+  measured: LoudnormMeasurementSchema,
 })
 
 export const MediaJobSchema = z.discriminatedUnion('kind', [
@@ -213,8 +254,11 @@ export const MediaJobSchema = z.discriminatedUnion('kind', [
   LoudnormJobSchema,
   TranscribeJobSchema,
   UploadYoutubeJobSchema,
+  JoinJobSchema,
 ])
 export type MediaJob = z.infer<typeof MediaJobSchema>
+/** What a caller sends: defaulted fields may be left out. */
+export type MediaJobInput = z.input<typeof MediaJobSchema>
 
 /** 202 body for every /media/* dispatch. */
 export const MediaJobAcceptedSchema = z.object({
@@ -233,15 +277,6 @@ export const QcIssueSchema = z.object({
   durationMs: z.number().int().min(0).optional(),
   detail: z.string().min(1),
 })
-/** ffmpeg loudnorm first-pass measurement, as ffmpeg prints it (strings). */
-export const LoudnormMeasurementSchema = z.object({
-  input_i: z.string(),
-  input_tp: z.string(),
-  input_lra: z.string(),
-  input_thresh: z.string(),
-  target_offset: z.string(),
-})
-export type LoudnormMeasurement = z.infer<typeof LoudnormMeasurementSchema>
 export const QcReportSchema = z.object({
   passed: z.boolean(),
   integratedLufs: z.number(),
@@ -261,15 +296,36 @@ export const LoudnormResultSchema = z.object({
 export type LoudnormResult = z.infer<typeof LoudnormResultSchema>
 
 /** Whisper WORDS — text here is the transcript; the snap step swaps in script text. */
-export const TranscribeResultSchema = z.object({
-  words: z.array(CaptionSchema),
-})
+export const TranscribeResultSchema = z.union([
+  z.object({ words: z.array(CaptionSchema) }),
+  z.object({
+    results: z.array(z.object({ audioS3Key: z.string().min(1), words: z.array(CaptionSchema) })),
+  }),
+])
 export type TranscribeResult = z.infer<typeof TranscribeResultSchema>
 
-export const UploadYoutubeResultSchema = z.object({
-  videoId: z.string().min(1),
-  status: z.string().min(1),
+export const UploadYoutubeResultSchema = z.union([
+  z.object({ videoId: z.string().min(1), status: z.string().min(1) }),
+  z.object({
+    status: z.literal('in-progress'),
+    uploadUrl: z.url(),
+    offset: z.number().int().min(0),
+    total: z.number().int().positive(),
+  }),
+])
+export type UploadYoutubeResult = z.infer<typeof UploadYoutubeResultSchema>
+
+export const JoinResultSchema = z.object({
+  outputS3Key: z.string().regex(/^renders\//),
+  integratedLufs: z.number().nullable(),
+  bytes: z.number().int().min(0),
+  elapsedMs: z.number().int().min(0),
 })
+export type JoinResult = z.infer<typeof JoinResultSchema>
+
+/** POST /presign: a download URL for a render-bucket key. */
+export const PresignRequestSchema = z.object({ key: z.string().regex(/^renders\/.+/) })
+export const PresignResponseSchema = z.object({ url: z.url() })
 
 // ---------------------------------------------------------------------------
 // Completion callbacks (HMAC-signed, into the web app)
@@ -330,6 +386,15 @@ export const MediaJobCallbackSchema = z.discriminatedUnion('kind', [
     projectId: UlidSchema,
     ok: z.boolean(),
     result: UploadYoutubeResultSchema.optional(),
+    error: z.string().optional(),
+  }),
+  z.object({
+    source: z.literal('media-utils'),
+    kind: z.literal('join'),
+    jobId: UlidSchema,
+    projectId: UlidSchema,
+    ok: z.boolean(),
+    result: JoinResultSchema.optional(),
     error: z.string().optional(),
   }),
 ])

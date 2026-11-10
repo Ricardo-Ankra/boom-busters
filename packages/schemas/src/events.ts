@@ -208,7 +208,7 @@ export const VisualsRedirectRequestedSchema = z.object({
 export const MediaJobCompletedSchema = z.object({
   ...projectRef,
   jobId: UlidSchema,
-  kind: z.enum(['qc', 'loudnorm', 'transcribe', 'upload-youtube']),
+  kind: z.enum(['qc', 'loudnorm', 'transcribe', 'upload-youtube', 'join']),
   ok: z.boolean(),
   result: z.unknown().optional(),
   error: z.string().optional(),

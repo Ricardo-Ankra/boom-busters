@@ -11,6 +11,7 @@ import { NonRetriableError } from 'inngest'
 import type {
   CancelAccepted,
   MediaJob,
+  MediaJobInput,
   RenderAccepted,
   RenderProgress,
   RenderRequest,
@@ -28,6 +29,7 @@ const MEDIA_PATHS: Record<MediaJob['kind'], string> = {
   loudnorm: '/media/loudnorm',
   transcribe: '/media/transcribe',
   'upload-youtube': '/media/upload-youtube',
+  join: '/media/join',
 }
 
 /** Where the Lambdas call back to — the single broker hook route. */
@@ -131,7 +133,7 @@ export async function cancelRender(renderId: string): Promise<CancelAccepted> {
 }
 
 /** Dispatch a media-utils job; resolves once the broker has accepted it. */
-export async function submitMediaJob(job: MediaJob): Promise<void> {
+export async function submitMediaJob(job: MediaJobInput): Promise<void> {
   const { AWS_BROKER_URL, AWS_BROKER_TOKEN } = requireEnv('broker')
   const validated = MediaJobSchema.parse(job)
   const response = await fetch(
