@@ -1,6 +1,9 @@
 import type { GroundedResearch } from '@boom-busters/schemas'
 import { unstop } from './dossier-render'
 
+/** The marker a scene carries when the dossier could not find its quote. */
+const UNPLACED = ' (unplaced)'
+
 /**
  * The dossier's scenes as plain lines, the one reading both the script's
  * drafter and its reviewer share so a scene number means the same to each.
@@ -14,7 +17,10 @@ export function sceneLines(dossier: {
   const scenes = dossier.research?.scenes ?? []
   if (scenes.length > 0) {
     return scenes.map(
-      (scene) => `${scene.when} — ${unstop(scene.what)} (${scene.who}). ${scene.why.trim()}`,
+      (scene) =>
+        `${scene.when} — ${unstop(scene.what)} (${scene.who}). ${scene.why.trim()}` +
+        // A scene whose quote was not found stays in the list marked, as the dossier renders it.
+        (scene.ref.found ? '' : UNPLACED),
     )
   }
   const lines = dossier.contentMd.split(/\r?\n/)
@@ -24,6 +30,8 @@ export function sceneLines(dossier: {
   for (const line of lines.slice(start + 1)) {
     if (line.startsWith('## ')) break
     if (!line.startsWith('- ')) continue
+    // The marker is read first, so the source link that sits before it can be stripped.
+    const unplaced = /\s*\(unplaced\)\s*$/.test(line)
     const text = line
       .slice(2)
       .replace(/\s*\(unplaced\)\s*$/, '')
@@ -31,7 +39,7 @@ export function sceneLines(dossier: {
       .replace(/\*\*/g, '')
       .replace(/\*/g, '')
       .trim()
-    if (text) out.push(text)
+    if (text) out.push(unplaced ? `${text}${UNPLACED}` : text)
   }
   return out
 }

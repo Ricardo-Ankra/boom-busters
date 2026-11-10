@@ -717,6 +717,7 @@ describe('buildSelfCheckRequest', () => {
     expect(request.system).toContain('neither the claim list nor the scene list')
     expect(request.system).toContain('"It vanished."')
     expect(request.system).toContain('"She checked her watch')
+    expect(request.system).toContain('A scene marked (unplaced) supports no checkable specific.')
     expect(request.messages[0]?.content).toContain('Scenes:\nNo scenes.')
     const withScenes = buildSelfCheckRequest({
       bible: FIRST_CHANNEL_IN_USE,

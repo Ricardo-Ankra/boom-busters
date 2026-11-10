@@ -1,6 +1,7 @@
 import type { GroundedResearch } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { mockScenes } from './dossier-mocks'
+import { renderDossierMarkdown } from './dossier-render'
 import { sceneLines, sceneList } from './script-scenes'
 
 const researchWith = (scenes: ReturnType<typeof mockScenes>): GroundedResearch =>
@@ -47,14 +48,43 @@ describe('sceneLines', () => {
     ].join('\n')
     const lines = sceneLines({ research: null, contentMd })
     expect(lines).toHaveLength(3)
-    expect(lines[2]).toBe('2020 — Resigned (A Person). The end.')
+    expect(lines[1]).toBe('2019 — Promised growth (A Person). The high point. (unplaced)')
+    expect(lines[2]).toBe('2020 — Resigned (A Person). The end. (unplaced)')
     for (const line of lines) {
       expect(line).not.toContain('**')
       expect(line).not.toContain('wikipedia')
       expect(line).not.toContain('[source]')
-      expect(line).not.toContain('(unplaced)')
     }
     expect(lines[0]).toBe('June 2018 — Declined to sign (Two auditors). The first sign.')
+  })
+
+  it('marks a scene whose quote was not found, in the research branch', () => {
+    const scenes = mockScenes()
+    const research = researchWith(scenes)
+    research.scenes[1]!.ref.found = false
+    const lines = sceneLines({ research, contentMd: '# T' })
+    expect(lines[0]).not.toContain('(unplaced)')
+    expect(lines[1]!.endsWith(' (unplaced)')).toBe(true)
+  })
+
+  it('reads the dossier markdown the same as the stored research, markers included', () => {
+    const research = {
+      ...researchWith(mockScenes()),
+      brief: {
+        currentStatus: null,
+        summary: 'A summary.',
+        turningPoint: 'The turn.',
+        cast: [],
+        toldAlready: [],
+        openQuestions: [],
+      },
+      answers: [],
+    } as unknown as GroundedResearch
+    research.scenes[1]!.ref.found = false
+    const contentMd = renderDossierMarkdown({ caseTitle: 'T', research, claims: [] })
+    expect(sceneLines({ research: null, contentMd })).toEqual(
+      sceneLines({ research, contentMd: '# T' }),
+    )
   })
 
   it('is empty with neither, and the list says so', () => {

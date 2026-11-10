@@ -785,8 +785,9 @@ entirely; never flag one and never quote one in a sentence.
 Grounding, kind "unsourced-claim". A sentence is unsourced when it states a
 checkable specific (a figure, a date, a name, a quote, an event, an action
 by a named real person) that neither the claim list nor the scene list
-supports. A sentence may rest on a claim or on a scene. Never unsourced: a
-transition, a characterisation, an image, the channel's reading, or a
+supports. A sentence may rest on a claim or on a scene.
+A scene marked (unplaced) supports no checkable specific.
+Never unsourced: a transition, a characterisation, an image, the channel's reading, or a
 generalisation nobody could check.
 - Unsourced: "She checked her watch at 9.40." when no claim or scene has it;
   "Three hundred people were in the room."; "He said it would never work."
