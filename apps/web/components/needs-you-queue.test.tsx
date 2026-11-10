@@ -76,6 +76,25 @@ describe('a review card and the case category', () => {
     expect(card!.context).toContain('· Con ·')
   })
 
+  it('carries the gate line after the target', () => {
+    const line =
+      'Script ready · 2 chapters · ~3 min · 1 blocking · 0 advisory · hedges 0/100w · Shorts off for this format'
+    const [card] = buildNeedsYouCards({
+      ...base,
+      bible: FIRST_CHANNEL_BIBLE,
+      awaitingReview: [{ ...project, gateSummary: line }],
+    })
+    expect(card!.context).toMatch(
+      /· 15 min target · 2 chapters · ~3 min · 1 blocking · 0 advisory · hedges 0\/100w · Shorts off for this format$/,
+    )
+    const [plain] = buildNeedsYouCards({
+      ...base,
+      bible: FIRST_CHANNEL_BIBLE,
+      awaitingReview: [{ ...project, gateSummary: null }],
+    })
+    expect(plain!.context).toMatch(/15 min target$/)
+  })
+
   it('shows the key itself when the bible no longer lists it, without error', () => {
     const [card] = buildNeedsYouCards({
       ...base,

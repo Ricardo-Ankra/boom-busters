@@ -5,6 +5,7 @@ import {
   EXPRESSION_TAGS,
   joinFixedParagraphs,
   PAUSE_TAGS,
+  severityOf,
   splitFixedParagraphs,
 } from '@boom-busters/schemas'
 import type { FixedLines, Notice, ShortsCandidate } from '@boom-busters/schemas'
@@ -33,7 +34,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/toast'
 import {
   applyHunks,
+  craftInstruction,
   diffChapters,
+  hedgeInstruction,
   formatDuration,
   placeWarnings,
   replaceSentence,
@@ -76,16 +79,6 @@ const AUTOSAVE_MS = 500
 
 const NO_FIXED_LINES: FixedLines = { introLine: '', outroLine: '' }
 
-/**
- * What the one-click fix asks for. Written out rather than composed at the
- * call site so the note recorded in `script_edits` reads the same every time
- * and the trail can be scanned for it.
- */
-const HEDGE_INSTRUCTION =
-  'This states as established fact something no court or regulator adjudicated. ' +
-  'Rewrite it with appropriate hedging (alleged, reportedly, according to), ' +
-  'changing as little else as possible.'
-
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
 
 export function ScriptStudio({
@@ -99,7 +92,10 @@ export function ScriptStudio({
   notices = [],
   fixedLines = NO_FIXED_LINES,
   shortsOff = false,
+  hedgingRules,
 }: {
+  /** The project's frozen bible's hedging rules; the hedge fix quotes them to the model. */
+  hedgingRules: string
   channelId: string
   projectId: string
   scriptId: string
@@ -176,6 +172,7 @@ export function ScriptStudio({
               projectId={projectId}
               chapter={active}
               fixedLines={fixedLines}
+              hedgingRules={hedgingRules}
             />
             {shortsOff && shorts.length === 0 ? null : (
               <ShortsStrip
@@ -371,11 +368,13 @@ function ChapterEditor({
   projectId,
   chapter,
   fixedLines,
+  hedgingRules,
 }: {
   channelId: string
   projectId: string
   chapter: ChapterWithWarnings
   fixedLines: FixedLines
+  hedgingRules: string
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -486,7 +485,8 @@ function ChapterEditor({
             warnings={placed}
             busy={hedging !== null}
             hedgingSentence={hedging}
-            onFix={async (sentence) => {
+            hedgingRules={hedgingRules}
+            onFix={async (sentence, instruction) => {
               /**
                * The fix goes through the same regenerate path as everything
                * else, so the model's wording arrives as a proposal the human
@@ -497,12 +497,7 @@ function ChapterEditor({
                */
               setHedging(sentence)
               try {
-                const result = await regenerateSection(
-                  projectId,
-                  chapter.id,
-                  sentence,
-                  HEDGE_INSTRUCTION,
-                )
+                const result = await regenerateSection(projectId, chapter.id, sentence, instruction)
                 if (result.ok && result.proposal) {
                   setSelection(sentence)
                   setProposal({
@@ -510,7 +505,7 @@ function ChapterEditor({
                       text,
                       replaceSentence(text, sentence, result.proposal.trim()),
                     ),
-                    note: HEDGE_INSTRUCTION,
+                    note: instruction,
                   })
                 } else {
                   toast({
@@ -835,23 +830,36 @@ function GutterWarnings({
   warnings,
   busy,
   hedgingSentence,
+  hedgingRules,
   onFix,
 }: {
   warnings: ReturnType<typeof placeWarnings>
   busy: boolean
   hedgingSentence: string | null
-  onFix: (sentence: string) => void
+  hedgingRules: string
+  onFix: (sentence: string, instruction: string) => void
 }) {
+  const blocking = warnings.filter((w) => severityOf(w) === 'blocking').length
+  const advisory = warnings.length - blocking
   return (
     <div className="flex flex-col gap-2 rounded-[8px] border border-[var(--color-warning)]/40 p-2">
       <p className="text-[13px] font-medium text-[var(--color-warning)]">
         <AlertTriangle aria-hidden className="mr-1 inline size-4" />
-        {warnings.length} self-check warning(s)
+        {`${blocking} blocking · ${advisory} advisory`}
       </p>
       {warnings.map((warning, index) => (
         <div key={`${warning.sentence}-${index}`} className="flex flex-col gap-1 text-[13px]">
           <p className="text-[var(--color-text-secondary)]">
-            <span className="font-mono text-[12px]">{warning.kind}</span> — {warning.message}
+            <span
+              className={`font-mono text-[12px] ${
+                severityOf(warning) === 'blocking'
+                  ? 'text-[var(--color-warning)]'
+                  : 'text-[var(--color-text-muted)]'
+              }`}
+            >
+              {warning.kind}
+            </span>{' '}
+            · {warning.message}
           </p>
           <p
             className={
@@ -874,9 +882,20 @@ function GutterWarnings({
                 variant="outline"
                 busy={hedgingSentence === warning.sentence}
                 disabled={busy}
-                onClick={() => onFix(warning.sentence)}
+                onClick={() => onFix(warning.sentence, hedgeInstruction(hedgingRules))}
               >
-                Rewrite with hedging…
+                Rewrite with the channel's hedge…
+              </Button>
+            </div>
+          ) : warning.kind === 'craft' ? (
+            <div>
+              <Button
+                variant="outline"
+                busy={hedgingSentence === warning.sentence}
+                disabled={busy}
+                onClick={() => onFix(warning.sentence, craftInstruction(warning.message))}
+              >
+                Rewrite this passage…
               </Button>
             </div>
           ) : null}

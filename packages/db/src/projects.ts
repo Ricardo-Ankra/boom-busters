@@ -84,9 +84,18 @@ export interface ProjectSummary {
   visualsJob: Record<string, unknown> | null
   /** The case's search brief as frozen when the project started; null when none was frozen. */
   searchBrief: SearchBrief | null
+  /** The newest gate.opened run event's message for this project (the runner's gate line); null when none. */
+  gateSummary: string | null
 }
 
 const summaryColumns = {
+  gateSummary: sql<string | null>`(
+    select re.message from run_events re
+    join runs r on r.id = re.run_id
+    where r.project_id = projects.id and re.kind = 'gate.opened'
+    order by re.occurred_at desc, re.id desc
+    limit 1
+  )`,
   id: projects.id,
   title: projects.title,
   stage: projects.stage,

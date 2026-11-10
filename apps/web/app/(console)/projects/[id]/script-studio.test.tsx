@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveChapterText } from './actions'
+import { hedgeInstruction } from '@/lib/script-editing'
 import { ScriptStudio, ShortsStrip } from './script-studio'
 
 // The editor's options, captured so a test can fire its update hook.
@@ -127,6 +128,7 @@ describe('the format fixed lines in the chapter editor', () => {
 
   const studio = (fixedLines?: { introLine: string; outroLine: string }) => (
     <ScriptStudio
+      hedgingRules=""
       channelId="01J000000000000000000000H1"
       projectId="01J0000000000000000000000P"
       scriptId="01J000000000000000000000S1"
@@ -186,6 +188,7 @@ describe('the Shorts strip when the format has Shorts off', () => {
 
   const studio = (shorts: (typeof candidate)[], shortsOff: boolean) => (
     <ScriptStudio
+      hedgingRules=""
       channelId="01J000000000000000000000H1"
       projectId="01J0000000000000000000000P"
       scriptId="01J000000000000000000000S1"
@@ -209,5 +212,67 @@ describe('the Shorts strip when the format has Shorts off', () => {
     unmount()
     render(studio([], false))
     expect(screen.getByText(STOPPED)).toBeInTheDocument()
+  })
+})
+
+describe('the gutter shows blocking and advisory warnings apart (decision 453)', () => {
+  const contentMd = 'EY refused to sign. The shares fell. Nobody saw it coming.'
+  const warn = (kind: string, sentence: string, extra: object = {}) => ({
+    kind,
+    sentence,
+    message: `A note about ${kind}.`,
+    ...extra,
+  })
+  const studio = (warnings: object[]) => (
+    <ScriptStudio
+      channelId="01J000000000000000000000H1"
+      projectId="01J0000000000000000000000P"
+      scriptId="01J000000000000000000000S1"
+      chapters={
+        [
+          {
+            id: '01J000000000000000000000C1',
+            index: 0,
+            title: 'The audit',
+            contentMd,
+            warnings,
+            estRuntimeSec: 12,
+          },
+        ] as never
+      }
+      targetRuntimeMin={10}
+      shorts={[]}
+      usedFallbackModel={false}
+      hedgingRules="Kilroy."
+    />
+  )
+  const base = [
+    warn('unsourced-claim', 'EY refused to sign.'),
+    warn('style', 'The shares fell.'),
+    warn('overstated-standing', 'Nobody saw it coming.', { severity: 'advisory' }),
+  ]
+
+  it('counts the two apart in the gutter header', () => {
+    render(studio(base))
+    expect(screen.getByText(/1 blocking · 2 advisory/)).toBeInTheDocument()
+  })
+
+  it('offers the channel hedge only for a missing-alleged warning', () => {
+    const { unmount } = render(studio(base))
+    expect(screen.queryByRole('button', { name: /Rewrite with the channel's hedge/ })).toBeNull()
+    unmount()
+    render(studio([...base, warn('missing-alleged', 'The shares fell.')]))
+    expect(
+      screen.getByRole('button', { name: /Rewrite with the channel's hedge/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers a passage rewrite for a craft warning', () => {
+    render(studio([warn('craft', 'The shares fell.')]))
+    expect(screen.getByRole('button', { name: /Rewrite this passage/ })).toBeInTheDocument()
+  })
+
+  it('states the channel rules in the hedge instruction', () => {
+    expect(hedgeInstruction('Kilroy.').endsWith('Kilroy.')).toBe(true)
   })
 })

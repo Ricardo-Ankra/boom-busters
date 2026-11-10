@@ -28,7 +28,7 @@ import { emptyTalkingPointsModel, talkingPointsModel } from '@/lib/talking-point
 import { emptyPublishModel, publishModel } from '@/lib/publish-review'
 import { materialiseForPreview } from '@/lib/materialise'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { DirectorsBookSchema, noticesFor } from '@boom-busters/schemas'
+import { countBySeverity, DirectorsBookSchema, noticesFor } from '@boom-busters/schemas'
 import { presignGet, storageConfigured } from '@/lib/storage'
 import { notFound } from 'next/navigation'
 import { ActivityList } from '@/components/activity-list'
@@ -484,10 +484,7 @@ export default async function ProjectPage({
           stage={project.stage}
           context={
             project.stage === 'script' && script
-              ? `${script.chapters.length} chapters · ${script.chapters.reduce(
-                  (total, chapter) => total + chapter.warnings.length,
-                  0,
-                )} self-check warnings. Approving sends this to the voice stage.`
+              ? scriptGateContext(script.chapters)
               : project.stage === 'voice'
                 ? `${voice.coverage.paragraphs} of ${voice.expectedParagraphs} ` +
                   `paragraphs narrated · ` +
@@ -645,6 +642,10 @@ export default async function ProjectPage({
             outroLine: channel.format.outroLine,
           }}
           shortsOff={!shortsOn}
+          // `channel` is the bible version the project froze, so these are the
+          // rules the runner's reviewer hedged by; no completeness guard is
+          // needed to read one string.
+          hedgingRules={channel.bible.hedgingRules}
         />
       ) : showDossier ? (
         <DossierReview
@@ -716,6 +717,14 @@ export default async function ProjectPage({
         {liveRun ? null : <DeleteProjectButton projectId={project.id} summary={deletionSummary} />}
       </section>
     </div>
+  )
+}
+
+function scriptGateContext(chapters: Parameters<typeof countBySeverity>[0]): string {
+  const { blocking, advisory } = countBySeverity(chapters)
+  return (
+    `${chapters.length} chapters · ${blocking + advisory} self-check warnings ` +
+    `(${blocking} blocking, ${advisory} advisory). Approving sends this to the voice stage.`
   )
 }
 
