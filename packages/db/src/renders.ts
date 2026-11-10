@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { Database } from './client'
 import { renders } from './schema'
 import type { RenderRow } from './schema'
+import type { RenderPart } from '@boom-busters/schemas'
 
 /**
  * Render bookkeeping (build spec sections 5, 7.6, 8.1). One row per invoke:
@@ -135,6 +136,7 @@ export async function updateRender(
     remotionRenderId: string
     outputS3Key: string
     qcReport: Record<string, unknown>
+    parts: RenderPart[]
     costUsd: string
     startedAt: Date
     completedAt: Date
@@ -142,4 +144,13 @@ export async function updateRender(
   }>,
 ): Promise<void> {
   await db.update(renders).set(patch).where(eq(renders.id, id))
+}
+
+/** Replace the parts of a long master render in one write. */
+export async function updateRenderParts(
+  db: Database,
+  id: string,
+  parts: RenderPart[],
+): Promise<void> {
+  await db.update(renders).set({ parts }).where(eq(renders.id, id))
 }

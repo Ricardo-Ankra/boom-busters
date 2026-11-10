@@ -11,8 +11,10 @@ import {
   latestRender,
   renderInFlight,
   updateRender,
+  updateRenderParts,
 } from './renders'
 import { cases, projects } from './schema'
+import type { RenderPart } from '@boom-busters/schemas'
 import { requireTestDatabase } from './test-database'
 
 /**
@@ -130,5 +132,40 @@ suite('render bookkeeping', () => {
     // A finished draft and an in-flight master are none of its business.
     expect((await getRender(db, done.id))?.status).toBe('done')
     expect((await getRender(db, master.id))?.status).toBe('queued')
+  })
+
+  it('round-trips the parts of a long render', async () => {
+    const row = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'master',
+    })
+    expect(row.parts).toBeNull()
+
+    const parts: RenderPart[] = [
+      {
+        index: 0,
+        renderId: 'part-render-0',
+        frameRange: [0, 53999],
+        startMs: 0,
+        durationMs: 1800000,
+        status: 'rendering',
+        attempt: 1,
+        priorRenderIds: [],
+        remotionRenderId: 'rem-part-0',
+      },
+      {
+        index: 1,
+        renderId: 'part-render-1',
+        frameRange: [54000, 107999],
+        startMs: 1800000,
+        durationMs: 1800000,
+        status: 'queued',
+        attempt: 1,
+        priorRenderIds: [],
+      },
+    ]
+    await updateRenderParts(db, row.id, parts)
+    expect((await getRender(db, row.id))?.parts).toEqual(parts)
   })
 })
