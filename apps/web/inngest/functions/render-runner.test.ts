@@ -28,7 +28,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { renderRunner, retryPlan } from './render-runner'
+import { partOutcome, renderRunner, retryPlan } from './render-runner'
 
 /**
  * The render-runner against the real database (build spec section 13).
@@ -472,6 +472,24 @@ describeDb('render-runner', () => {
         }
       },
     )
+
+    it('reads a settled event as a part outcome, a completion without a key as failed', () => {
+      const event = (data: Record<string, unknown>) => ({ data })
+      expect(
+        partOutcome(
+          event({ result: 'completed', outputS3Key: 'renders/x/part.mp4', costUsd: 0.5 }),
+          '40m',
+        ),
+      ).toEqual({ ok: true, outputS3Key: 'renders/x/part.mp4', costUsd: 0.5 })
+      expect(partOutcome(event({ result: 'completed', costUsd: 0.5 }), '40m')).toEqual({
+        ok: false,
+        detail: 'completed without an output key',
+      })
+      expect(
+        partOutcome(event({ result: 'failed', reason: 'error', message: 'boom' }), '40m'),
+      ).toEqual({ ok: false, detail: 'error: boom' })
+      expect(partOutcome(null, '40m')).toEqual({ ok: false, detail: 'no webhook within 40m' })
+    })
 
     it('cancels a timed-out part on the broker before resubmitting it', () => {
       // The harness cannot return null from a wait, so the retry branch is

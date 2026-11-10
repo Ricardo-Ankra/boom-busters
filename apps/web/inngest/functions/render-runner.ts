@@ -1,6 +1,7 @@
 import {
   failInFlightRenders,
   getProject,
+  getRender,
   channelForProject,
   getWorkspace,
   insertRender,
@@ -553,14 +554,14 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
-function partOutcome(settled: SettledLike, webhookTimeout: string): PartOutcome {
+export function partOutcome(settled: SettledLike, webhookTimeout: string): PartOutcome {
   if (settled && settled.data['result'] === 'completed') {
     const cost = settled.data['costUsd']
-    return {
-      ok: true,
-      outputS3Key: text(settled.data['outputS3Key']) ?? '',
-      costUsd: typeof cost === 'number' ? cost : 0,
-    }
+    const outputS3Key = text(settled.data['outputS3Key'])
+    // A completion with no key has nothing to QC or join: a failed part, so
+    // the retry path runs and the ledger settles on the normal exits.
+    if (!outputS3Key) return { ok: false, detail: 'completed without an output key' }
+    return { ok: true, outputS3Key, costUsd: typeof cost === 'number' ? cost : 0 }
   }
   if (settled) {
     const message = text(settled.data['message'])
@@ -617,8 +618,24 @@ async function renderInParts(
   const spend = (from: RenderPart[]): number =>
     settleRenderParts(from, setup.estimate, setup.totalFrames)
 
-  const submitPart = async (stepId: string, index: number): Promise<RenderPart[]> => {
-    const from = parts
+  // Submits of one wave run side by side, each from the same snapshot, so
+  // a step merges its own part into the row's latest parts, not its snapshot.
+  const mergeIntoRow = async (
+    from: RenderPart[],
+    index: number,
+    next: RenderPart,
+  ): Promise<RenderPart[]> => {
+    const row = await getRender(db, setup.renderId)
+    const latest = row?.parts ? RenderPartsSchema.parse(row.parts) : from
+    return withPart(latest, index, next)
+  }
+
+  const submitPart = async (
+    stepId: string,
+    index: number,
+    snapshot?: RenderPart[],
+  ): Promise<RenderPart[]> => {
+    const from = snapshot ?? parts
     return RenderPartsSchema.parse(
       await step.run(stepId, async () => {
         const part = from[index]
@@ -632,7 +649,7 @@ async function renderInParts(
           expectedDurationSec: part.durationMs / 1000,
           frameRange: part.frameRange,
         })
-        const next = withPart(from, index, {
+        const next = await mergeIntoRow(from, index, {
           ...part,
           status: 'rendering',
           remotionRenderId: accepted.remotionRenderId,
@@ -651,6 +668,13 @@ async function renderInParts(
       }),
     )
   }
+
+  /** The parts after each index in `done` took its own part from the matching result. */
+  const takeParts = (base: RenderPart[], done: { index: number; parts: RenderPart[] }[]) =>
+    done.reduce((acc, one) => {
+      const own = one.parts[one.index]
+      return own ? withPart(acc, one.index, own) : acc
+    }, base)
 
   const recordPart = async (
     stepId: string,
@@ -696,14 +720,19 @@ async function renderInParts(
     parts.map((part) => part.index),
     setup.concurrency,
   )) {
-    for (const index of wave) parts = await submitPart(`submit-part-${index}`, index)
-
-    // All the waits are registered together: a part that settles while the
-    // run is waiting on its sibling must not slip past.
-    const firstIds = wave.map((index) => parts[index]?.renderId ?? '')
-    const settled = await Promise.all(
-      wave.map((index, k) => awaitPart(`await-part-${index}`, firstIds[k] ?? '')),
+    // Each part's wait is registered right after its own submit, and the
+    // parts of a wave go together: Inngest does not match an event that
+    // arrived before the wait existed, so a late wait loses a fast part.
+    const base = parts
+    const ran = await Promise.all(
+      wave.map(async (index) => {
+        const submitted = await submitPart(`submit-part-${index}`, index)
+        const event = await awaitPart(`await-part-${index}`, submitted[index]?.renderId ?? '')
+        return { index, parts: submitted, event }
+      }),
     )
+    parts = takeParts(base, ran)
+    const settled = ran.map((one) => one.event)
     for (const [k, index] of wave.entries()) {
       parts = await recordPart(
         `record-part-${index}`,
@@ -714,33 +743,37 @@ async function renderInParts(
 
     // One more go for each part that failed; a second failure ends the render.
     const failed = wave.filter((index) => parts[index]?.status === 'failed')
-    for (const index of failed) {
-      const from = parts
-      parts = RenderPartsSchema.parse(
-        await step.run(`retry-part-${index}`, async () => {
-          const part = from[index]
-          if (!part) throw new NonRetriableError(`There is no part ${index}.`)
-          const plan = retryPlan(part)
-          // A tombstone that does not land is logged, not fatal: the retry
-          // goes under a new id either way.
-          try {
-            await cancelRender(plan.cancelId)
-          } catch (error) {
-            console.error(
-              `render-runner: could not cancel part ${index} (${plan.cancelId}): ${serialiseError(error).message}`,
-            )
-          }
-          const next = withPart(from, index, plan.next)
-          await updateRenderParts(db, setup.renderId, next)
-          return next
-        }),
-      )
-      parts = await submitPart(`submit-part-${index}-retry`, index)
-    }
-    const retryIds = failed.map((index) => parts[index]?.renderId ?? '')
-    const retried = await Promise.all(
-      failed.map((index, k) => awaitPart(`await-part-${index}-retry`, retryIds[k] ?? '')),
+    const retryBase = parts
+    const retriedRuns = await Promise.all(
+      failed.map(async (index) => {
+        const from = retryBase
+        const cancelled = RenderPartsSchema.parse(
+          await step.run(`retry-part-${index}`, async () => {
+            const part = from[index]
+            if (!part) throw new NonRetriableError(`There is no part ${index}.`)
+            const plan = retryPlan(part)
+            // A tombstone that does not land is logged, not fatal: the retry
+            // goes under a new id either way.
+            try {
+              await cancelRender(plan.cancelId)
+            } catch (error) {
+              console.error(
+                `render-runner: could not cancel part ${index} (${plan.cancelId}): ${serialiseError(error).message}`,
+              )
+            }
+            const next = await mergeIntoRow(from, index, plan.next)
+            await updateRenderParts(db, setup.renderId, next)
+            return next
+          }),
+        )
+        // submitPart reads its snapshot from `parts`; hand it this part's.
+        const submitted = await submitPart(`submit-part-${index}-retry`, index, cancelled)
+        const event = await awaitPart(`await-part-${index}-retry`, submitted[index]?.renderId ?? '')
+        return { index, parts: submitted, event }
+      }),
     )
+    parts = takeParts(retryBase, retriedRuns)
+    const retried = retriedRuns.map((one) => one.event)
     for (const [k, index] of failed.entries()) {
       parts = await recordPart(
         `record-part-${index}-retry`,
@@ -770,32 +803,30 @@ async function renderInParts(
 
   // ---- QC every part, with its loudness measurement -------------------------
 
-  const qcJobIds: string[] = []
-  for (const part of parts) {
-    const jobId = await step.run(`submit-qc-part-${part.index}`, async () => {
-      const id = newId<'run'>()
-      await submitMediaJob({
-        kind: 'qc',
-        jobId: id,
-        projectId,
-        callbackUrl: brokerCallbackUrl(),
-        s3Key: part.outputS3Key ?? '',
-        targetLufs: -14,
-        offsetMs: part.startMs,
-        withLoudnorm: true,
-      })
-      return id
-    })
-    qcJobIds.push(jobId)
-  }
+  // Each part's wait is registered right after its own submit (see the
+  // render waves): an event that arrived before the wait existed is lost.
   const qcDone = await Promise.all(
-    parts.map((part, k) =>
-      step.waitForEvent(`await-qc-part-${part.index}`, {
+    parts.map(async (part) => {
+      const jobId = await step.run(`submit-qc-part-${part.index}`, async () => {
+        const id = newId<'run'>()
+        await submitMediaJob({
+          kind: 'qc',
+          jobId: id,
+          projectId,
+          callbackUrl: brokerCallbackUrl(),
+          s3Key: part.outputS3Key ?? '',
+          targetLufs: -14,
+          offsetMs: part.startMs,
+          withLoudnorm: true,
+        })
+        return id
+      })
+      return step.waitForEvent(`await-qc-part-${part.index}`, {
         event: 'media/job.completed',
         timeout: QC_TIMEOUT,
-        if: `async.data.jobId == "${qcJobIds[k]}"`,
-      }),
-    ),
+        if: `async.data.jobId == "${jobId}"`,
+      })
+    }),
   )
 
   // A part's report must exist and carry its loudness measurement; anything
