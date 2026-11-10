@@ -65,8 +65,13 @@ const FUNCTION_ID = 'publish-runner'
 const RECONNECT_MESSAGE =
   'The YouTube connection for this channel needs reconnecting. Open Settings, Connections.'
 
-/** Resumable uploads may crawl; the job hard-stops at 6 h (spec section 9). */
-const UPLOAD_TIMEOUT = '7h'
+/**
+ * How long one upload round may stay silent. A round is one Lambda invocation
+ * with a 12 minute budget inside a 15 minute Lambda; 20 minutes leaves margin,
+ * and a round killed without a callback then stalls the publish for 20
+ * minutes, not hours.
+ */
+const UPLOAD_ROUND_TIMEOUT = '20m'
 
 /**
  * A Lambda invocation lasts at most 15 minutes, so a big master uploads in
@@ -456,7 +461,7 @@ export const publishRunner = inngest.createFunction(
         round === 0 ? 'await-upload' : `await-upload-${round}`,
         {
           event: 'media/job.completed',
-          timeout: UPLOAD_TIMEOUT,
+          timeout: UPLOAD_ROUND_TIMEOUT,
           if: `async.data.jobId == "${jobId}"`,
         },
       )
@@ -464,7 +469,8 @@ export const publishRunner = inngest.createFunction(
       if (!completion || completion.data.ok !== true) {
         failed = {
           message:
-            completion?.data.error ?? `no completion within ${UPLOAD_TIMEOUT}, the job may be dead`,
+            completion?.data.error ??
+            `no completion within ${UPLOAD_ROUND_TIMEOUT}, the job may be dead`,
           capped: false,
         }
         break
