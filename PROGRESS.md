@@ -4992,18 +4992,31 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] Task 8: Chapter marking on the Brand Kit tab and per format in the
       editor (`d22eec38`).
 - [x] Task 9: the Brand Kit e2e check, the build spec's look field list, this
-      section and decision 454 (the commit after `d22eec38` on the branch).
+      section and decision 454 (`ef252357`).
 
 ### Owner actions at deploy
 
-1. `deploy:stacks boom-busters-broker` (the new `titleCard` union member; the
-   broker bundles `packages/schemas` at deploy).
-2. `deploy:remotion` (the `TitleCard` component and the number-free
+1. `deploy:remotion` (the `TitleCard` component and the number-free
    `ChapterCard`).
+2. `deploy:stacks boom-busters-broker` (the new `titleCard` union member; the
+   broker bundles `packages/schemas` at deploy). Do not set a channel to the
+   title marking until both have run: with the broker deployed first and the
+   old Remotion bundle, a title render would succeed with a watermark drawn in
+   the card's place.
 3. `PUT /api/inngest` after the Vercel deploy.
 4. Set Chapter marking to No cards on channels that want none, in Settings,
    Brand Kit. The default is `cards`, so every channel keeps its breaks, minus
    the opening card and the numbers.
+5. A format's chapter marking reaches a project through the bible version the
+   project pinned, so changing a format's marking does not change in-flight
+   projects until they move to the newer bible. The Brand Kit default is read
+   live, so it does.
+
+### Follow-ups
+
+- A labelled "Rename project" button. The film's title is the case title fixed
+  when the project is started and nothing in the app writes it afterwards, so
+  the `title` marking cannot show a different name until that button exists.
 
 ### Not verified
 
@@ -11106,7 +11119,9 @@ Part 2 checklist:
      `chapters` list the preview reads, with the card as the fallback for
      older timelines. One cue rule, `chapterCuePoints`, serves the compiler
      and the bed swaps, matching a card by its resume point. A replayed
-     pre-454 setup falls back to cards. YouTube chapter timestamps and glosses
+     pre-454 setup falls back to cards. The film's title is the case title
+     fixed when the project is started; the app cannot change it yet, and a
+     "Rename project" button is a follow-up. YouTube chapter timestamps and glosses
      (decision 303) are unchanged, so no separate public title was needed.
      Renumber at merge if the parallel `script-review-gate` branch took 454
      first.

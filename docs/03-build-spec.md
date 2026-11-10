@@ -227,7 +227,8 @@ TimelineSchema = {
   slots: [{ type, startMs, durationMs, transition,
             motion: {kind: 'kenburns'|'static'|'draw-on'|'camera-path', params},
             payload: ImagePayload|VideoPayload|ChartPayload|MapPayload }],
-  overlays: [{ kind: 'lowerThird'|'chapterCard'|'watermark', startMs, durationMs, props }]
+  overlays: [{ kind: 'lowerThird'|'chapterCard'|'titleCard'|'watermark', startMs, durationMs, props }],
+  chapters?: [{ id, title }]                    // optional: the chapter list the preview reads (decision 454)
 }
 ```
 `ChartPayload` embeds the resolved data series and the source claim IDs. Compositions consume this JSON and the brand snapshot only — a timeline uploaded to S3 plus the site bundle is a complete, reproducible render definition. *(Amended 2026-09-22, decision 268 (Plan B): the payload union gains `GraphicPayload`, embedded whole like a chart's series: the resolved scene, the logo image each `logo` element draws keyed by ELEMENT id, and the ids of every claim it cites, so a render never depends on the logo library or the claims table still holding what it read.)*

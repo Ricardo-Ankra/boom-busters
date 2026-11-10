@@ -89,8 +89,9 @@ chapterMarking: z.enum(['cards', 'title', 'none']).default('cards')
   (the working title the project was started with), the builder's call: the
   YouTube headline is chosen at publish, after the render, and is a different
   kind of line (a search promise, not a film's name), so it is never burned
-  into the picture. The owner renames the project before assembling when the
-  working title is not the one to show; a re-assembly picks the new name up.
+  into the picture. The film's title is the case title fixed when the project is
+  started, and the app has no way to change it yet; a labelled "Rename
+  project" button is a follow-up.
 - `none`: no cards. Every chapter start after the opening is an unmarked
   break (section 6.2).
 
