@@ -190,6 +190,30 @@ export async function retireExemplarVersion(db: Database, id: string): Promise<C
 }
 
 /**
+ * Every draft waiting on one channel's technique, retired (decision 456).
+ * Each derive and refine stores a draft of its own, so several can wait; a
+ * decision on the one shown settles the technique, and the rest stay in
+ * Versions to restore.
+ */
+export async function retireExemplarDrafts(
+  db: Database,
+  channelId: string,
+  technique: TechniqueKey,
+): Promise<ChannelExemplarRow[]> {
+  return db
+    .update(channelExemplars)
+    .set({ status: 'retired', updatedAt: new Date() })
+    .where(
+      and(
+        eq(channelExemplars.channelId, channelId),
+        eq(channelExemplars.technique, technique),
+        eq(channelExemplars.status, 'draft'),
+      ),
+    )
+    .returning()
+}
+
+/**
  * Copy from another channel (spec 9.4): the source's live references
  * duplicated in position order over the same `assets` rows, with their
  * frames, readings and sheets; the source's approved exemplars inserted as

@@ -11091,3 +11091,18 @@ Part 2 checklist:
      answer and the row already holds the report; the ask comes after the
      prior-defects ask so the existing verify tests hold unchanged; the
      card counts only done as landed, so partly reads as still open.
+456. **One decision settles the technique's drafts** (2026-11-10, branch
+     `one-draft-waits`). "Keep the approved one" left the side by side on
+     screen. Every derive and every refine stores a draft of its own, and
+     nothing set the older ones aside, so several waited at once; the card
+     shows the newest, and Keep retired only that one, so the next took its
+     place. A refine reused its parent's plan (until decision 454), so the
+     newcomer carried the same concept and looked like the draft just kept. Keep now retires
+     every draft waiting on the technique (`retireExemplarDrafts`), which
+     also clears the piles already in production, and Approve this retires
+     the rest after the approval. They stay in Versions to restore. Storing
+     a draft does not retire the older ones: a derive or refine still
+     writing to its own draft would then fail on "An approved version is
+     never edited". The e2e keep test now seeds a second refine and checks
+     the side by side goes; it failed before the fix, as in the owner's
+     screenshot. Shipping: a Vercel deploy; no migration.

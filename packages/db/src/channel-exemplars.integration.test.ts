@@ -15,6 +15,7 @@ import {
   exemplarVersionById,
   insertExemplarVersion,
   listChannelExemplars,
+  retireExemplarDrafts,
   retireExemplarVersion,
   syncChannelTechniqueInUse,
   updateExemplarDraft,
@@ -164,6 +165,25 @@ suite('channel exemplars', () => {
     expect(approved.id).toBe(v3.id)
     expect(retired?.id).toBe(v4.id)
     expect((await exemplarVersionById(db, v2.id))?.status).toBe('retired')
+  })
+
+  it("retires every draft of one channel's technique and nothing else (decision 456)", async () => {
+    const approved = await aVersion()
+    await approveExemplarVersion(db, approved.id)
+    const old = await aVersion()
+    await retireExemplarVersion(db, old.id)
+    const d1 = await aVersion({ parentId: approved.id })
+    const d2 = await aVersion({ parentId: approved.id })
+    const bar = await aVersion({ technique: 'bar-chart' })
+    const elsewhere = await aVersion({ channelId: otherId })
+    const retired = await retireExemplarDrafts(db, channelId, 'stat-counter')
+    expect(retired.map((row) => row.id).sort()).toEqual([d1.id, d2.id].sort())
+    const status = async (id: string) => (await exemplarVersionById(db, id))?.status
+    expect(await status(d1.id)).toBe('retired')
+    expect(await status(d2.id)).toBe('retired')
+    expect(await status(approved.id)).toBe('approved')
+    expect(await status(bar.id)).toBe('draft')
+    expect(await status(elsewhere.id)).toBe('draft')
   })
 
   it('restores a retired version by approving it again', async () => {
