@@ -1,6 +1,6 @@
 # Script review and craft, chosen per channel
 
-Date: 2026-11-10. Status: plan 1 shipped as decision 453; plans 2 to 8 open. Follows the dossier
+Date: 2026-11-10. Status: plan 1 shipped as decision 457; plans 2 to 8 open. Follows the dossier
 research profiles design (2026-11-09) and takes the same principle: **the code
 is the playbook, the bible is the channel.**
 

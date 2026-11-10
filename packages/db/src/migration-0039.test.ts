@@ -47,7 +47,7 @@ describe('migration 0039', () => {
     const stored = JSON.parse(literal!.replaceAll("''", "'")) as ChannelBible
     expect(stored).toHaveProperty('keywordContext', 'documentary')
     for (const id of RETIRED_SLOT_IDS) delete stored.examples[id]
-    // Decision 453 rewrote the hedging rules in code; the applied migration keeps the original text.
+    // Decision 457 rewrote the hedging rules in code; the applied migration keeps the original text.
     stored.hedgingRules = FIRST_CHANNEL_BIBLE.hedgingRules
     expect(ChannelBibleReadSchema.parse(stored)).toEqual(FIRST_CHANNEL_BIBLE)
   })

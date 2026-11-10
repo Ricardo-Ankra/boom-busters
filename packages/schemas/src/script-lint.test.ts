@@ -10,7 +10,7 @@ import {
 import { countWords, splitSentences } from './script'
 
 /**
- * The deterministic style and length checks (decision 453). Free, so they run
+ * The deterministic style and length checks (decision 457). Free, so they run
  * in the script's self-check beside the model's warnings; every warning is
  * advisory (the kind's default) and anchored to a sentence the gutter can find.
  */

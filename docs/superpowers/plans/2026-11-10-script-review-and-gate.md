@@ -20,7 +20,7 @@
 - Prompt text must carry none of `FINANCE_WORDS` (`packages/providers/src/prompts/bible-mocks.ts`): the psychology sweep in `lift/psychology.test.ts` fails on any.
 - The runner's step names stay as they are (`load-dossier`, `outline`, `save-outline`, `draft-chapter-N`, `self-check-N`, `mark-shorts`, `finish-draft`, `auto-approve`, `open-gate`, `close-gate`). Anything a step newly needs is read inside that step; a replayed step result may lack any field this plan adds (memory: parked runs replay old step results).
 - No migration. `claim_refs` stays as a table, unwritten.
-- Decision number 453 is provisional. At merge, compare with `origin/master` and renumber only this branch's lines, in a separate commit.
+- Decision number 457 is provisional. At merge, compare with `origin/master` and renumber only this branch's lines, in a separate commit.
 - Run `pnpm format:check` on tracked files before every commit (CI gates on Prettier).
 - Vitest path filter: run `pnpm exec vitest run <basename>` from the package directory. `pnpm --filter <pkg> test -- <path>` runs the whole package.
 - Integration suites need Docker Desktop running and the `boom-busters-test-db` container up. Never run two database suites at once.
@@ -62,9 +62,9 @@
 - [ ] **Step 2: Run** `pnpm exec vitest run script.test` from `packages/schemas`. Expected: FAIL on the missing exports.
 - [ ] **Step 3: Implement** the interfaces above in `script.ts`. Update the doc comment on `WARNING_KINDS` for each new kind in one line each (spec 5.2 table).
 - [ ] **Step 4: Run** the same test file. Expected: PASS. Then `pnpm typecheck` from the repo root and fix every consumer of `SelfCheck.refs` and `ClaimRefSchema` that fails to compile: `packages/providers/src/prompts/script.ts` (`mockSelfCheck` returns `{ warnings }`; `parseSelfCheck` unchanged), `packages/providers/src/prompts/script.test.ts` (`parseSelfCheck` tests lose `refs`; delete `it('reads refs back')`), `apps/web/inngest/functions/script-runner.ts` (remove the `saveClaimRefs` call and the `refs` in the step's return, which becomes `{ warnings: number }`), `apps/web/inngest/functions/script-runner.test.ts` (`throughSelfCheck` returns `{ warnings: 0 }`).
-- [ ] **Step 5: Delete `saveClaimRefs`** from `packages/db/src/scripts.ts` and its export, and its two tests in `packages/db/src/scripts.integration.test.ts` (the `claimRefsFor` helper goes with them). Amend `docs/03-build-spec.md:185`: "self-check pass (Haiku) writes claim_refs and gutter warnings" becomes "self-check pass (Haiku) writes gutter warnings (blocking and advisory, decision 453)". Leave line 114's table row, with "(unwritten since decision 453)" appended.
+- [ ] **Step 5: Delete `saveClaimRefs`** from `packages/db/src/scripts.ts` and its export, and its two tests in `packages/db/src/scripts.integration.test.ts` (the `claimRefsFor` helper goes with them). Amend `docs/03-build-spec.md:185`: "self-check pass (Haiku) writes claim_refs and gutter warnings" becomes "self-check pass (Haiku) writes gutter warnings (blocking and advisory, decision 457)". Leave line 114's table row, with "(unwritten since decision 457)" appended.
 - [ ] **Step 6: Verify** `pnpm typecheck` and `pnpm lint` from the root, `pnpm exec vitest run script.test` from `packages/schemas` and `packages/providers`, and with Docker up `pnpm exec vitest run scripts.integration` from `packages/db`. Expected: all PASS.
-- [ ] **Step 7: Commit** `feat(schemas): warning severity, and the self-check answer loses claim refs (decision 453)`.
+- [ ] **Step 7: Commit** `feat(schemas): warning severity, and the self-check answer loses claim refs (decision 457)`.
 
 ---
 
@@ -91,7 +91,7 @@
 - [ ] **Step 2: Run** `pnpm exec vitest run script.test metadata.test` from `packages/providers`. Expected: FAIL.
 - [ ] **Step 3: Implement.** `claimList` per the interface. `metadata.ts:239` becomes "A claim marked ALLEGED is an allegation: a title may frame it as an …" (keep the rest of the sentence); `metadata.ts:344` becomes "Where a claim is marked ALLEGED, write \"alleged\", \"reportedly\" or \"according to\". Never invent …" (keep the rest). Fixtures: `adjudicated: true` becomes `legal: 'ruled'`; `adjudicated: false` becomes `legal: 'alleged'` where the claim text accuses (script.test's "Former staff say the CEO knew", lift-cases ID_3 "A short seller alleged…") and `legal: 'none'` otherwise (lift-cases ID_1, ID_4).
 - [ ] **Step 4: Run** the providers tests again, then with Docker up `pnpm exec vitest run script-runner` from `apps/web`. Expected: PASS except the lift snapshot tests, which fail on the changed claim list and stay failing until Task 10. Confirm the only failing file is `lift.test.ts`.
-- [ ] **Step 5: Commit** `feat(prompts): the claim list marks ALLEGED and RULED, and nothing on a plain fact (decision 453)`.
+- [ ] **Step 5: Commit** `feat(prompts): the claim list marks ALLEGED and RULED, and nothing on a plain fact (decision 457)`.
 
 ---
 
@@ -113,7 +113,7 @@
 - [ ] **Step 2: Run** `pnpm exec vitest run script-scenes` from `packages/providers`. Expected: FAIL.
 - [ ] **Step 3: Implement** `script-scenes.ts` and export both functions from the package's prompts index (where `claimList` is exported).
 - [ ] **Step 4: Run** the test again. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(prompts): one scene list for the script's drafter and reviewer (decision 453)`.
+- [ ] **Step 5: Commit** `feat(prompts): one scene list for the script's drafter and reviewer (decision 457)`.
 
 ---
 
@@ -135,7 +135,7 @@
 - [ ] **Step 2: Run** `pnpm exec vitest run research-profiles` from `packages/schemas`. Expected: FAIL.
 - [ ] **Step 3: Implement.** Import `GutterWarning` and `WarningSeverity` types from `./script` (`research-profiles.ts` already imports from `./dossier`; a type-only import avoids a cycle).
 - [ ] **Step 4: Run** the test again. Expected: PASS. `pnpm typecheck` from the root: PASS (`RESEARCH_PROFILES` is typed, so the missing `review` on either profile fails to compile until added).
-- [ ] **Step 5: Commit** `feat(schemas): the research profile says which standing statuses block the script gate (decision 453)`.
+- [ ] **Step 5: Commit** `feat(schemas): the research profile says which standing statuses block the script gate (decision 457)`.
 
 ---
 
@@ -263,7 +263,7 @@
   Add `scenes: ['March 2001 — the board met in the glass room (the directors). To settle who signed.']` to the `script-self-check` lift case.
 
 - [ ] **Step 6: Run** `pnpm exec vitest run script.test script-craft channels` in their packages, then `pnpm exec vitest run psychology` from `packages/providers`. Expected: PASS (psychology must find no finance word in the new prompt; `lift.test.ts` still fails on snapshots until Task 10).
-- [ ] **Step 7: Commit** `feat(prompts): the reviewer grounds on claims and scenes and hedges only ALLEGED claims (decision 453)`.
+- [ ] **Step 7: Commit** `feat(prompts): the reviewer grounds on claims and scenes and hedges only ALLEGED claims (decision 457)`.
 
 ---
 
@@ -307,7 +307,7 @@ Rules (spec 9), each anchored to a sentence of the chapter, messages as given:
 - [ ] **Step 3: Implement** `script-lint.ts` and the `script.ts` exports. Sentences come from `splitSentences`, words from `countWords`, paragraphs from `splitParagraphs`. Keep each rule its own function returning warnings, composed by `scriptLint`.
 - [ ] **Step 4: Change the prompts.** The chapter prompt's `Target about ${n} words.` becomes `Write between ${n} and ${Math.round(n * 1.1)} words. Under ${n} is too short.` The house style's tag bullet gains, after "and a script that gasps at everything gasps at nothing.", the sentence `A handful of tags per chapter, at most one every 120 words, and [long pause] at most once.` The banned-word bullet prints `BANNED_WORDS` (quoting the multi-word entries as the current text does).
 - [ ] **Step 5: Run** the three test files. Expected: PASS (lift snapshots still pending Task 10).
-- [ ] **Step 6: Commit** `feat(schemas): deterministic style and length checks for a script (decision 453)`.
+- [ ] **Step 6: Commit** `feat(schemas): deterministic style and length checks for a script (decision 457)`.
 
 ---
 
@@ -335,9 +335,9 @@ Rules (spec 9), each anchored to a sentence of the chapter, messages as given:
   - `it('parks the gate on one blocking warning')`: the row holds one `unsourced-claim`; `ctx.step.run` was called with `'open-gate'` and the gate.opened message contains `1 blocking`.
   - `it('reads a summary replayed without blocking as its warnings count')` (Review Focus 2): `finish-draft` step handler returns `{ chapters: 1, warnings: 2, runtimeMin: 1, shorts: 0, shortsOff: true }`; the run opens the gate, not auto-approve.
 - [ ] **Step 2: Run** `pnpm exec vitest run script-measures` from `packages/schemas` and, with Docker up, `pnpm exec vitest run script-runner` from `apps/web`. Expected: FAIL.
-- [ ] **Step 3: Implement** the runner changes per the interface. Replace the gate comment at lines 495-504 with three lines: blocking warnings are the reviewer's yes-or-no findings (grounding, liability, standing per profile, repeats); advisory ones are craft, style and length; zero blocking goes to voice without a human (decision 453).
+- [ ] **Step 3: Implement** the runner changes per the interface. Replace the gate comment at lines 495-504 with three lines: blocking warnings are the reviewer's yes-or-no findings (grounding, liability, standing per profile, repeats); advisory ones are craft, style and length; zero blocking goes to voice without a human (decision 457).
 - [ ] **Step 4: Run** both test files again, then the whole `apps/web` Inngest directory `pnpm exec vitest run inngest/functions` from `apps/web`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(script-runner): the gate counts blocking warnings only, with scenes, standing and the code checks in the self-check step (decision 453)`.
+- [ ] **Step 5: Commit** `feat(script-runner): the gate counts blocking warnings only, with scenes, standing and the code checks in the self-check step (decision 457)`.
 
 ---
 
@@ -367,7 +367,7 @@ Rules (spec 9), each anchored to a sentence of the chapter, messages as given:
 - [ ] **Step 2: Run** `pnpm exec vitest run script-studio needs-you-queue` from `apps/web`. Expected: FAIL.
 - [ ] **Step 3: Implement** per the interface. Pass `hedgingRules` from the page. Update the fixture and its comment ("Twenty-two warnings across the reviewer's kinds and one advisory kind…").
 - [ ] **Step 4: Run** the two component tests, with Docker up `pnpm exec vitest run projects.integration` from `packages/db`, `pnpm typecheck`, then the two e2e files from the `e2e` package: `pnpm exec playwright test tests/project-lifecycle.spec.ts tests/writing-room.spec.ts` (free port 3100 first if a run was interrupted). Expected: PASS.
-- [ ] **Step 5: Commit** `feat(script-studio): the gutter shows blocking and advisory apart, and the fix button speaks the channel's hedge (decision 453)`.
+- [ ] **Step 5: Commit** `feat(script-studio): the gutter shows blocking and advisory apart, and the fix button speaks the channel's hedge (decision 457)`.
 
 ---
 
@@ -388,7 +388,7 @@ Rules (spec 9), each anchored to a sentence of the chapter, messages as given:
 - [ ] **Step 2: Run** `pnpm exec vitest run script-measures` from `packages/schemas`. Expected: FAIL.
 - [ ] **Step 3: Implement** the measures and the script. The script's SQL joins `scripts`, `chapters`, `projects`, `channels` and `script_edits`; keep the query in one function and the printing in another.
 - [ ] **Step 4: Run** the test (PASS), `pnpm typecheck` (PASS), and with Docker up and the e2e fixtures seeded (`pnpm db:migrate:test` then the e2e global setup, or any local script rows) `pnpm script:score`. Expected: a table with one row per script version and no error. Paste the local output into the PROGRESS entry's "Measured" line in Task 10.
-- [ ] **Step 5: Commit** `feat(db): pnpm script:score prints a script version's numbers (decision 453)`.
+- [ ] **Step 5: Commit** `feat(db): pnpm script:score prints a script version's numbers (decision 457)`.
 
 ---
 
@@ -398,11 +398,11 @@ Rules (spec 9), each anchored to a sentence of the chapter, messages as given:
 - Modify: `packages/providers/src/prompts/lift/__fixtures__/script-*.json`, `metadata-*.json` (regenerated)
 - Modify: `PROGRESS.md` (new section at the end)
 - Modify: `docs/03-build-spec.md:185` (already amended in Task 1; re-read it)
-- Modify: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md` (status line: "plan 1 shipped, decision 453")
+- Modify: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md` (status line: "plan 1 shipped, decision 457")
 
 - [ ] **Step 1: Regenerate the fixtures**: from `packages/providers`, `pnpm exec vitest run lift -u`, then `git diff --stat packages/providers/src/prompts/lift/__fixtures__`. Expected: only `script-*.json` and `metadata-*.json` changed. If any other family changed, stop and find the stray edit before continuing.
 - [ ] **Step 2: Read the diff** of `script-self-check.json`, `script-outline.json`, `script-chapter-first.json` and one `metadata-*.json` in full, and list every changed line of prompt text (not JSON punctuation) for the PROGRESS entry.
-- [ ] **Step 3: Write the PROGRESS section** `## Script review, chosen per channel (2026-11-10)` in the house shape (see the long-renders section at `PROGRESS.md:4877`): the blockquote summary (decision 453, branch, spec and plan paths, no migration); Deliverables, one line per task with its commit hash; "Owner actions at deploy" copied from spec section 13 (paste the hedging rules in the Bible tab; check the `scripting` route; `PUT /api/inngest`); "Prompt changes to the investigation prompts", the list from Step 2; "Measured", the `pnpm script:score` output from Task 9 on the local database; "Decisions made": the severity default for `overstated-standing` (blocking when the label is missing), the scene source (research row, else the Timeline section), `claim_refs` left as a table, the mock reviewer still blocking, the gate path for zero blocking proven in the runner harness rather than Playwright.
+- [ ] **Step 3: Write the PROGRESS section** `## Script review, chosen per channel (2026-11-10)` in the house shape (see the long-renders section at `PROGRESS.md:4877`): the blockquote summary (decision 457, branch, spec and plan paths, no migration); Deliverables, one line per task with its commit hash; "Owner actions at deploy" copied from spec section 13 (paste the hedging rules in the Bible tab; check the `scripting` route; `PUT /api/inngest`); "Prompt changes to the investigation prompts", the list from Step 2; "Measured", the `pnpm script:score` output from Task 9 on the local database; "Decisions made": the severity default for `overstated-standing` (blocking when the label is missing), the scene source (research row, else the Timeline section), `claim_refs` left as a table, the mock reviewer still blocking, the gate path for zero blocking proven in the runner harness rather than Playwright.
 - [ ] **Step 4: Run the full verification**, one package at a time: `pnpm typecheck`, `pnpm lint`, `pnpm format:check` on tracked files (memory: `--ignore-unknown`, `xargs -n 80`), `pnpm exec vitest run` from `packages/schemas`, from `packages/providers`, from `packages/db` (Docker up), from `apps/web` split by directory (`inngest/functions`, `lib`, `app`, `components`), then `pnpm e2e`. Expected: all green. Note the composition snapshot memory if a pixel diff appears in an unrelated package: re-run that package alone.
-- [ ] **Step 5: Commit** `chore(prompts): regenerate the script and metadata lift fixtures; PROGRESS for decision 453`.
+- [ ] **Step 5: Commit** `chore(prompts): regenerate the script and metadata lift fixtures; PROGRESS for decision 457`.
 - [ ] **Step 6: Merge preparation.** `git fetch origin master`; compare `PROGRESS.md` decision numbers and `packages/db/drizzle/meta/_journal.json` with `origin/master`; renumber this branch's decision lines in a separate commit if 453 is taken. Do not push: hand the merge and push line to the owner (memory: git push is the owner's action).

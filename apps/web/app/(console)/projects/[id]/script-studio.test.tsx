@@ -215,7 +215,7 @@ describe('the Shorts strip when the format has Shorts off', () => {
   })
 })
 
-describe('the gutter shows blocking and advisory warnings apart (decision 453)', () => {
+describe('the gutter shows blocking and advisory warnings apart (decision 457)', () => {
   const contentMd = 'EY refused to sign. The shares fell. Nobody saw it coming.'
   const warn = (kind: string, sentence: string, extra: object = {}) => ({
     kind,

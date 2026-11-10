@@ -854,7 +854,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([candidate])
   })
 
-  describe('the self-check step reads scenes, standing and the code checks (decision 453)', () => {
+  describe('the self-check step reads scenes, standing and the code checks (decision 457)', () => {
     const text = chapters[0]!.contentMd
     const savedChapter = async (contentMd = text): Promise<string> =>
       (

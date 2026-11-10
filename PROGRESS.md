@@ -10990,7 +10990,7 @@ Part 2 checklist:
 
 ## Script review, chosen per channel (2026-11-10)
 
-> Decision 453, branch `script-review-gate`. Plan 1 of the script review
+> Decision 457, branch `script-review-gate`. Plan 1 of the script review
 > design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
 > (sections 5 to 9, 11 and 13), plan `docs/superpowers/plans/2026-11-10-script-review-and-gate.md`. The
 > reviewer now grounds each chapter on the claim list and the scene list and
@@ -11067,7 +11067,7 @@ owner edits. `--prod` was not run against Neon.
 
 ### Decisions made
 
-453. **Script review, chosen per channel** (2026-11-10, branch
+457. **Script review, chosen per channel** (2026-11-10, branch
      `script-review-gate`, no migration).
      (a) `overstated-standing` defaults to blocking when the message carries
      no recognisable label, and the strictest matched label wins when it
@@ -11080,7 +11080,7 @@ owner edits. `--prod` was not run against Neon.
      runner's Inngest harness tests rather than Playwright.
      (e) The gate line prints `hedges 0/100w` on a summary replayed from
      before the deploy.
-     (f) The e2e dense fixture asserts the gutter header's `18 blocking · 4
-advisory`, because an approved project renders no gate bar.
+     (f) The e2e dense fixture asserts the gutter header's
+     `18 blocking · 4 advisory`, because an approved project renders no gate bar.
      (g) The project page passes the frozen bible's hedging rules straight
      from `channelForProject`.

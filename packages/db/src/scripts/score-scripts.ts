@@ -16,7 +16,7 @@ import { loadEnvFiles } from './load-env'
 
 /**
  * What each script version measures, as numbers rather than impressions
- * (decision 453).
+ * (decision 457).
  *
  *   pnpm script:score [--project <id>] [--prod]
  *
