@@ -75,7 +75,7 @@ interface RenderPoll {
   startedAt: string | null
   completedAt: string | null
   costUsd: string
-  /** "Part 5 of 12", while a long master renders in parts. */
+  /** "Part 5 of 12" while a long master renders in parts; "Joining 12 parts" in its quality check. */
   partNote?: string
   parts?: { index: number; startMs: number }[] | null
 }
@@ -735,7 +735,9 @@ function FileStage({
       <div className="flex flex-col gap-3 rounded-[8px] border border-[var(--color-border)] p-4">
         <p className="text-[14px] font-medium">
           {current.status === 'qc'
-            ? 'Quality check running'
+            ? current.partNote
+              ? `Quality check running · ${current.partNote}`
+              : 'Quality check running'
             : current.partNote
               ? `${renderingLabel} · ${current.partNote}`
               : renderingLabel}

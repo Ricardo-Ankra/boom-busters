@@ -93,6 +93,60 @@ describeDb('GET /api/renders/[id]/progress for a master in parts', () => {
     expect(body['partNote']).toBe('Part 5 of 12')
   })
 
+  const qcReport = { passed: true, integratedLufs: -14, issues: [] }
+
+  it('says the parts are being measured while any part lacks a QC report', async () => {
+    const row = await insertRender(db, { projectId, timelineVersion: 1, kind: 'master' })
+    await updateRender(db, row.id, { status: 'qc', progressPct: 100 })
+    const parts = twelveParts(12).map((part) => ({ ...part, status: 'completed' as const }))
+    parts.forEach((part, index) => {
+      if (index < 11) part.qc = qcReport
+    })
+    await updateRenderParts(db, row.id, parts)
+
+    const body = await poll(row.id)
+
+    expect(body['status']).toBe('qc')
+    expect(body['partNote']).toBe('Measuring 12 parts')
+  })
+
+  it('says the parts are being joined once every part carries a QC report', async () => {
+    const row = await insertRender(db, { projectId, timelineVersion: 1, kind: 'master' })
+    await updateRender(db, row.id, { status: 'qc', progressPct: 100 })
+    await updateRenderParts(
+      db,
+      row.id,
+      twelveParts(12).map((part) => ({
+        ...part,
+        status: 'completed' as const,
+        qc: qcReport,
+      })),
+    )
+
+    const body = await poll(row.id)
+
+    expect(body['partNote']).toBe('Joining 12 parts')
+  })
+
+  it('flags a part the broker reports failed, without touching the row', async () => {
+    const row = await insertRender(db, { projectId, timelineVersion: 1, kind: 'master' })
+    const parts = twelveParts(4).map((part) =>
+      part.index === 5 ? { ...part, status: 'rendering' as const } : part,
+    )
+    await updateRender(db, row.id, { status: 'rendering', startedAt: new Date() })
+    await updateRenderParts(db, row.id, parts)
+    broker.fetchRenderProgress.mockImplementation(async (renderId: string) => ({
+      status: renderId === parts[5]!.renderId ? 'failed' : 'rendering',
+      overallProgress: 0.2,
+    }))
+
+    const body = await poll(row.id)
+
+    expect(body['status']).toBe('rendering')
+    expect(body['partNote']).toBe('Part 6 of 12 failed on Lambda; it is retried once')
+    expect(body['error']).toBeNull()
+  })
+
   it('presigns the joined master for a done parts render', async () => {
     const row = await insertRender(db, { projectId, timelineVersion: 1, kind: 'master' })
     await updateRender(db, row.id, {

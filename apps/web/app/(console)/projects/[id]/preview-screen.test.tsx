@@ -336,6 +336,43 @@ describe('PreviewScreen', () => {
     ).toBeInTheDocument()
   })
 
+  it('names what the quality check is doing while the parts are measured and joined', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: 'qc',
+              progressPct: 100,
+              qcReport: null,
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              costUsd: '0.60',
+              partNote: 'Joining 3 parts',
+              parts: THREE_PARTS,
+            }),
+        } as unknown as Response),
+      ),
+    )
+    const render_: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'qc',
+      progressPct: 100,
+      costUsd: '0.60',
+      qcReport: null,
+      error: null,
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      completedAt: null,
+      parts: THREE_PARTS,
+    }
+    render(<PreviewScreen {...props({ render: render_ })} />)
+
+    expect(await screen.findByText('Quality check running · Joining 3 parts')).toBeInTheDocument()
+  })
+
   it('offers draft and master side by side, each behind its own confirm', async () => {
     const user = userEvent.setup()
     render(<PreviewScreen {...props()} />)

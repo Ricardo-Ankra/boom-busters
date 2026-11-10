@@ -858,6 +858,12 @@ async function renderInParts(
 
   // ---- QC every part, with its loudness measurement -------------------------
 
+  // The row says so before the first submit, so the screen stops calling
+  // this "Rendering master" for the half hour the measuring can take.
+  await step.run('parts-qc-start', async () => {
+    await updateRender(db, setup.renderId, { status: 'qc' })
+  })
+
   // Each part's wait is registered right after its own submit (see the
   // render waves): an event that arrived before the wait existed is lost.
   const qcDone = await Promise.all(
