@@ -47,7 +47,12 @@ export async function uploadStreamMultipart(input: {
     await input.complete(uploadId, parts)
     return { bytes, parts: parts.length }
   } catch (error) {
-    await input.abort(uploadId).catch(() => undefined)
+    // A failed abort leaves billed parts behind, so say so before rethrowing the real error.
+    await input.abort(uploadId).catch((abortError: unknown) => {
+      console.error(
+        JSON.stringify({ event: 'multipart-abort-failed', uploadId, message: String(abortError) }),
+      )
+    })
     throw error
   }
 }

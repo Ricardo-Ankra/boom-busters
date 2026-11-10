@@ -278,6 +278,14 @@ export function parseDurationMs(stderr: string): number | null {
 // Joining the parts of a long render
 // ---------------------------------------------------------------------------
 
+/**
+ * Strip query strings from urls: ffmpeg logs the presigned part urls it opens,
+ * and the signature in them is a 24 hour read credential.
+ */
+export function redactUrls(text: string): string {
+  return text.replace(/(https?:\/\/[^\s'"?]+)\?[^\s'"]*/g, '$1?redacted')
+}
+
 /** The concat demuxer's list: one quoted url per line, a quote escaped as '\''. */
 export function concatListText(urls: string[]): string {
   return urls.map((url) => `file '${url.replaceAll("'", "'\\''")}'\n`).join('')

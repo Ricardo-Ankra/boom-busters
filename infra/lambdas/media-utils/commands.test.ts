@@ -5,6 +5,7 @@ import {
   joinArgs,
   loudnormMeasureArgs,
   parseDurationMs,
+  redactUrls,
   loudnormApplyArgs,
   loudnormApplyVideoArgs,
   parseBlackFrames,
@@ -255,6 +256,15 @@ describe('long renders in parts', () => {
       900_030,
     )
     expect(parseDurationMs('nothing here')).toBeNull()
+  })
+
+  it('strips the signature from presigned urls in a log tail', () => {
+    const tail =
+      "Opening 'https://b.s3.amazonaws.com/renders/x/out.mkv?X-Amz-Signature=abc&X-Amz-Date=1' for reading"
+    expect(redactUrls(tail)).toBe(
+      "Opening 'https://b.s3.amazonaws.com/renders/x/out.mkv?redacted' for reading",
+    )
+    expect(redactUrls('no urls here')).toBe('no urls here')
   })
 
   it('measures audio only when asked', () => {

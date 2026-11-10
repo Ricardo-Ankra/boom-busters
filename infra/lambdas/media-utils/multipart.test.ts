@@ -52,6 +52,16 @@ describe('uploadStreamMultipart', () => {
     expect(f.complete).not.toHaveBeenCalled()
   })
 
+  it('aborts when complete rejects', async () => {
+    const f = fakes()
+    f.complete.mockRejectedValueOnce(new Error('ffmpeg exited 1'))
+    const stream = Readable.from([Buffer.alloc(6)])
+    await expect(uploadStreamMultipart({ stream, partBytes: 4, ...f })).rejects.toThrow(
+      'ffmpeg exited 1',
+    )
+    expect(f.abort).toHaveBeenCalledWith('up-1')
+  })
+
   it('aborts and rejects an empty stream', async () => {
     const f = fakes()
     await expect(

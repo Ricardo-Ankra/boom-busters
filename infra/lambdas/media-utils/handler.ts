@@ -25,6 +25,7 @@ import {
   loudnormMeasureArgs,
   parseBlackFrames,
   parseDurationMs,
+  redactUrls,
   parseFreezes,
   parseIntegratedLufs,
   parseLoudnormJson,
@@ -151,7 +152,8 @@ async function runQc(job: Extract<MediaJob, { kind: 'qc' }>) {
     if (!measured) throw new Error('loudnorm measurement produced no result')
     loudnorm = measured
   }
-  const durationMs = parseDurationMs(stderr) ?? undefined
+  // Only a part's report carries its length; a single render's stays as it was.
+  const durationMs = job.withLoudnorm ? (parseDurationMs(stderr) ?? undefined) : undefined
   return buildQcReport({
     silences: parseSilences(stderr),
     blackFrames: parseBlackFrames(stderr),
@@ -233,7 +235,7 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
     },
     complete: async (id, parts) => {
       const code = await exit
-      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${stderr.slice(-500)}`)
+      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${redactUrls(stderr.slice(-500))}`)
       await s3.send(
         new CompleteMultipartUploadCommand({
           Bucket: bucket,
@@ -260,7 +262,20 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
   } catch (error) {
     // A spawn error or a failure on either side: no completed object stays.
     child.kill()
-    if (uploadId !== undefined && !completed) await abortUpload(uploadId).catch(() => undefined)
+    // uploadStreamMultipart aborts its own failures; this second abort only matters
+    // when `exit` rejects (a spawn error) while the upload is still mid-stream.
+    if (uploadId !== undefined && !completed) {
+      await abortUpload(uploadId).catch((abortError: unknown) => {
+        console.error(
+          JSON.stringify({
+            event: 'multipart-abort-failed',
+            uploadId,
+            key: job.outputS3Key,
+            message: String(abortError),
+          }),
+        )
+      })
+    }
     throw error
   }
 }
