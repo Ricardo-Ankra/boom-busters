@@ -201,7 +201,7 @@ test.describe('Derivation', () => {
     await stat.getByRole('button', { name: 'Keep the approved one' }).click()
     await expect(page.getByText('Kept the approved one').first()).toBeVisible()
     // The page re-renders on the server after the toast; the dev server takes its time.
-    // With two refines waiting, the older one took the place of the one kept (decision 452).
+    // With two refines waiting, the older one took the place of the one kept (decision 455).
     await expect(stat.getByRole('heading', { name: 'New' })).toBeHidden({ timeout: 15_000 })
     await expect(stat.getByText('Approved v1, derived', { exact: false })).toBeVisible()
     await stat.getByRole('button', { name: 'Versions' }).click()

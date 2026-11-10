@@ -167,7 +167,7 @@ suite('channel exemplars', () => {
     expect((await exemplarVersionById(db, v2.id))?.status).toBe('retired')
   })
 
-  it("retires every draft of one channel's technique and nothing else (decision 452)", async () => {
+  it("retires every draft of one channel's technique and nothing else (decision 455)", async () => {
     const approved = await aVersion()
     await approveExemplarVersion(db, approved.id)
     const old = await aVersion()
