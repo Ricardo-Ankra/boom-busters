@@ -211,7 +211,7 @@ export const motionExemplarRefiner = inngest.createFunction(
       const plan = criticPlanOf(version.code, derivedContext(entry, parent.plan))
       const prior = parent.critique ?? emptyReport()
       if (mock) {
-        const verify = mockCriticVerify(plan, prior)
+        const verify = mockCriticVerify(plan, prior, steer)
         await updateExemplarDraft(db, versionId, { critique: mockCriticReport(plan), verify })
         return
       }
@@ -230,7 +230,8 @@ export const motionExemplarRefiner = inngest.createFunction(
           metrics: shot.metrics,
           references: [],
           ...(parent.frames ? { previous: parent.frames } : {}),
-          verify: { prior, brief: `The producer's steer: ${steer}` },
+          // The steer's parts checked one by one on the pictures (decision 455).
+          verify: { prior, brief: `The producer's steer: ${steer}`, steer },
           complete: completeForJob(channelId, jobId, parent.technique),
         })
         const verify = report as CriticVerify

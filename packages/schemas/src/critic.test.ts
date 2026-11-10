@@ -113,6 +113,18 @@ describe('the verify and pairwise shapes (spec 9.2, steps 4 and 7)', () => {
       CriticVerifySchema.safeParse({ ...verify, priorDefects: [{ index: 0, state: 'fixed' }] })
         .success,
     ).toBe(false)
+    // A refine's verify checks each part of the steer (decision 455); a derivation's has none.
+    const steer = [
+      { part: 'drop the line', state: 'done', line: 'no line on any frame' },
+      { part: 'keep the ring', state: 'missed', line: 'the ring is gone' },
+    ]
+    expect(CriticVerifySchema.safeParse({ ...verify, steer }).success).toBe(true)
+    expect(
+      CriticVerifySchema.safeParse({ ...verify, steer: [{ ...steer[0], state: 'maybe' }] }).success,
+    ).toBe(false)
+    expect(
+      CriticVerifySchema.safeParse({ ...verify, steer: Array(9).fill(steer[0]) }).success,
+    ).toBe(false)
     expect(PairwiseAnswerSchema.safeParse(mixed).success).toBe(true)
     expect(PairwiseAnswerSchema.safeParse({ ...mixed, craft: 'C' }).success).toBe(false)
   })

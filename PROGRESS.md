@@ -11073,3 +11073,21 @@ Part 2 checklist:
      steer can verify ready (version 6's verify did name the unapplied
      font-size part as a defect, but only behind Show review); a per-item
      steer check in the critic's verify would surface it on the card.
+455. **A refine's verify checks each part of the steer** (2026-11-10, branch
+     `steer-check`; owner: "Add the left open item" of decision 454). The
+     verify round is now shown the steer and asked to split it into the
+     things it asks for and answer one entry each: `steer: [{part, state,
+     line}]`, the state done, partly or missed as the pictures show it, the
+     line what the critic sees for it, at most eight; a part missed keeps
+     the verdict at one more pass. `CriticVerifySchema.steer` is optional,
+     so a derivation's verify (no steer) and every stored report read as
+     before; the parser caps the list and leaves it absent when the critic
+     wrote none; mock mode marks the whole steer done. The refiner passes
+     the steer to the verify beside the brief; the version view carries it
+     as `steerCheck`; the critic's lines on the side by side and on a lone
+     draft end with "The steer, checked: 1 of 2 parts done" and one line per
+     part ("Missed: keep the ring. the ring is gone"). Decisions: the check
+     lives on the verify report, not a column, since it is the critic's
+     answer and the row already holds the report; the ask comes after the
+     prior-defects ask so the existing verify tests hold unchanged; the
+     card counts only done as landed, so partly reads as still open.
