@@ -33,18 +33,21 @@ function timelineFrames(timeline: Timeline): number {
 }
 
 /**
- * Equal parts from the count, the last taking the remainder. The count is the
- * duration over the target, rounded up, so no part runs past the target.
+ * Parts of `ceil(frames / count)` frames, the last taking the remainder (so
+ * it is never longer than the others). The count is the duration over the
+ * target, rounded up, so no part runs past the target.
  */
 export function planRenderParts(timeline: Timeline): RenderPartPlan[] {
   const fps = timeline.fps
   const totalFrames = timelineFrames(timeline)
   const count = Math.max(1, Math.ceil(totalFrames / fps / RENDER_PART_TARGET_SEC))
-  const base = Math.floor(totalFrames / count)
+  const base = Math.ceil(totalFrames / count)
   const plans: RenderPartPlan[] = []
   for (let index = 0; index < count; index += 1) {
     const first = index * base
-    const last = index === count - 1 ? totalFrames - 1 : first + base - 1
+    // Rounding up can leave nothing for the last part; never emit an inverted range.
+    if (first > totalFrames - 1) break
+    const last = index === count - 1 ? totalFrames - 1 : Math.min(first + base - 1, totalFrames - 1)
     plans.push({
       index,
       frameRange: [first, last],
@@ -76,8 +79,19 @@ export const RenderPartSchema = z.object({
 export type RenderPart = z.infer<typeof RenderPartSchema>
 export const RenderPartsSchema = z.array(RenderPartSchema)
 
+/** ffmpeg's floor for silence; what a fully silent film reports. */
+const LOUDNESS_FLOOR_LUFS = -70
+
+/** ffmpeg prints `-inf` for a silent part; `Number` would make that NaN. */
+function parseMeasured(text: string): number {
+  const lowered = text.trim().toLowerCase()
+  if (lowered === '-inf') return -Infinity
+  if (lowered === 'inf') return Infinity
+  return Number(text)
+}
+
 function twoDecimals(value: number): string {
-  return value.toFixed(2)
+  return Math.max(LOUDNESS_FLOOR_LUFS, value).toFixed(2)
 }
 
 /**
@@ -89,13 +103,17 @@ export function combineLoudness(
   parts: { measurement: LoudnormMeasurement; durationMs: number }[],
 ): LoudnormMeasurement {
   const totalMs = parts.reduce((sum, part) => sum + part.durationMs, 0)
+  if (parts.length === 0 || !(totalMs > 0)) {
+    throw new Error('combineLoudness needs at least one part with a duration')
+  }
   const power = parts.reduce(
-    (sum, part) => sum + part.durationMs * 10 ** ((Number(part.measurement.input_i) + 0.691) / 10),
+    (sum, part) =>
+      sum + part.durationMs * 10 ** ((parseMeasured(part.measurement.input_i) + 0.691) / 10),
     0,
   )
   const integrated = -0.691 + 10 * Math.log10(power / totalMs)
-  const tp = Math.max(...parts.map((part) => Number(part.measurement.input_tp)))
-  const lra = Math.max(...parts.map((part) => Number(part.measurement.input_lra)))
+  const tp = Math.max(...parts.map((part) => parseMeasured(part.measurement.input_tp)))
+  const lra = Math.max(...parts.map((part) => parseMeasured(part.measurement.input_lra)))
   return {
     input_i: twoDecimals(integrated),
     input_tp: twoDecimals(tp),

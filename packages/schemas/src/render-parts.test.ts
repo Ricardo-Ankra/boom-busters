@@ -77,6 +77,15 @@ describe('planRenderParts', () => {
     expect(plan[11]?.frameRange[1]).toBe(323999)
   })
 
+  it('rounds the part length up and lets the last part be the shorter', () => {
+    const plan = planRenderParts(timelineOf(1_861_000))
+    expect(plan.map((p) => p.frameRange)).toEqual([
+      [0, 18609],
+      [18610, 37219],
+      [37220, 55829],
+    ])
+  })
+
   it('counts frames as the composition does', () => {
     const plan = planRenderParts(timelineOf(20_017))
     expect(plan).toHaveLength(1)
@@ -104,6 +113,29 @@ describe('combineLoudness', () => {
     ])
     expect(Number(combined.input_i)).toBeCloseTo(-17.01, 1)
     expect(Number(combined.input_thresh)).toBeCloseTo(Number(combined.input_i) - 10, 2)
+  })
+
+  it('treats an -inf part as silence', () => {
+    const mixed = combineLoudness([
+      { measurement: measurement('-14.00'), durationMs: 900000 },
+      { measurement: measurement('-inf', '-inf'), durationMs: 900000 },
+    ])
+    expect(Number(mixed.input_i)).toBeCloseTo(-17.01, 1)
+    expect(mixed.input_tp).toBe('-1.00')
+    const allSilent = combineLoudness([
+      { measurement: measurement('-inf', '-inf'), durationMs: 900000 },
+    ])
+    expect(allSilent.input_i).toBe('-70.00')
+    expect(allSilent.input_thresh).toBe('-70.00')
+  })
+
+  it('refuses to combine nothing', () => {
+    expect(() => combineLoudness([])).toThrow(
+      'combineLoudness needs at least one part with a duration',
+    )
+    expect(() => combineLoudness([{ measurement: measurement('-14.00'), durationMs: 0 }])).toThrow(
+      'at least one part with a duration',
+    )
   })
 
   it('returns a single part unchanged except the offset', () => {
