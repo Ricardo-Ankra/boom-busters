@@ -16,6 +16,13 @@ export const DEFAULT_SHOT_HOLD = 1
 export const FORMAT_KEYWORDS_MAX = 6
 export const FORMAT_KEYWORD_MAX_LENGTH = 60
 
+/**
+ * How a film marks its chapters: a full card at every chapter after the
+ * opening, the film's title once after the opening, or nothing.
+ */
+export const CHAPTER_MARKINGS = ['cards', 'title', 'none'] as const
+export type ChapterMarking = (typeof CHAPTER_MARKINGS)[number]
+
 const KeywordSchema = z.string().trim().min(1).max(FORMAT_KEYWORD_MAX_LENGTH)
 
 const RuntimeSchema = z
@@ -62,6 +69,15 @@ export const ChannelFormatSchema = z
     outroLine: z.string().max(400).default(''),
     /** False for a format that makes no Shorts, such as a sleep format. */
     shorts: z.boolean().default(true),
+    /**
+     * How this format marks its chapters (chapter marking design, decision
+     * 454). "inherit" takes the Brand Kit look's choice; absent, "" and null
+     * read as "inherit".
+     */
+    chapterMarking: z.preprocess(
+      (v) => (v === '' || v === null || v === undefined ? 'inherit' : v),
+      z.enum(['inherit', ...CHAPTER_MARKINGS]),
+    ),
   })
   .refine((f) => f.titleRequiredSlots.every((slot) => f.titleTemplate.includes(`{${slot}}`)), {
     message: 'Every required title slot must appear in the template as {slot}',
@@ -98,6 +114,7 @@ export function defaultFormat(name = 'Main'): ChannelFormat {
     introLine: '',
     outroLine: '',
     shorts: true,
+    chapterMarking: 'inherit',
   }
 }
 
@@ -131,6 +148,15 @@ export function formatIsDefault(format: ChannelFormat): boolean {
     format.introRule === d.introRule &&
     format.introLine === d.introLine &&
     format.outroLine === d.outroLine &&
-    format.shorts === d.shorts
+    format.shorts === d.shorts &&
+    format.chapterMarking === d.chapterMarking
   )
+}
+
+/** The format's own chapter marking, else the Brand Kit look's when the format inherits. */
+export function resolveChapterMarking(
+  look: { chapterMarking: ChapterMarking },
+  format: { chapterMarking: 'inherit' | ChapterMarking },
+): ChapterMarking {
+  return format.chapterMarking === 'inherit' ? look.chapterMarking : format.chapterMarking
 }

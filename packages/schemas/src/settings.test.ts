@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BrandKitStoredSchema,
   BrandKitTokensSchema,
+  BrandLookSchema,
   DEFAULT_BIBLE_ROUTE,
   DEFAULT_CRITIC_ROUTE,
   DEFAULT_SET_SHEET_ROUTE,
@@ -488,5 +489,14 @@ describe('WorkspaceSettingsSchema', () => {
         WorkspaceSettingsPatchSchema.safeParse({ vidiq: { monthlyCreditCap: bad } }).success,
       ).toBe(false)
     }
+  })
+})
+
+describe('BrandLookSchema chapterMarking', () => {
+  it('the Brand Kit look defaults chapterMarking to cards and refuses other words', () => {
+    const look = BrandLookSchema.parse({})
+    expect(look.chapterMarking).toBe('cards')
+    expect(BrandLookSchema.safeParse({ chapterMarking: 'off' }).success).toBe(false)
+    expect(DEFAULT_SETTINGS.brandKit.look.chapterMarking).toBe('cards')
   })
 })

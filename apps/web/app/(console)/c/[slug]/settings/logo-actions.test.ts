@@ -85,6 +85,7 @@ describeDb('logo actions', () => {
           grainPreset: 'subtle',
           lowerThirdVariant: 'bar',
           chapterCardVariant: 'full',
+          chapterMarking: 'cards',
         },
       },
     })

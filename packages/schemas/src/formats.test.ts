@@ -5,6 +5,7 @@ import {
   defaultFormat,
   formatIsDefault,
   leadKeyword,
+  resolveChapterMarking,
   resolveFormat,
   type ChannelFormat,
 } from './formats'
@@ -31,7 +32,27 @@ describe('ChannelFormatSchema', () => {
       introLine: '',
       outroLine: '',
       shorts: true,
+      chapterMarking: 'inherit',
     })
+  })
+
+  test('chapterMarking: absent, "" and null read as inherit; the three values are kept', () => {
+    const { chapterMarking: _m, ...stored } = defaultFormat()
+    expect(ChannelFormatSchema.parse(stored).chapterMarking).toBe('inherit')
+    expect(ChannelFormatSchema.parse({ ...stored, chapterMarking: '' }).chapterMarking).toBe(
+      'inherit',
+    )
+    expect(ChannelFormatSchema.parse({ ...stored, chapterMarking: null }).chapterMarking).toBe(
+      'inherit',
+    )
+    for (const value of ['cards', 'title', 'none'] as const) {
+      expect(ChannelFormatSchema.parse({ ...stored, chapterMarking: value }).chapterMarking).toBe(
+        value,
+      )
+    }
+    expect(ChannelFormatSchema.safeParse({ ...stored, chapterMarking: 'sometimes' }).success).toBe(
+      false,
+    )
   })
 
   test('a stored format without shorts parses to true, and false is kept', () => {
@@ -123,4 +144,20 @@ describe('helpers', () => {
     expect(formatIsDefault(base({ shorts: false }))).toBe(false)
     expect(formatIsDefault(base({ runtime: { default: 15, min: 3, max: 61 } }))).toBe(false)
   })
+})
+
+test('formatIsDefault is false once chapterMarking is set', () => {
+  expect(formatIsDefault(base({ chapterMarking: 'none' }))).toBe(false)
+})
+
+test('resolveChapterMarking: the format wins unless it inherits', () => {
+  expect(resolveChapterMarking({ chapterMarking: 'cards' }, { chapterMarking: 'inherit' })).toBe(
+    'cards',
+  )
+  expect(resolveChapterMarking({ chapterMarking: 'cards' }, { chapterMarking: 'none' })).toBe(
+    'none',
+  )
+  expect(resolveChapterMarking({ chapterMarking: 'none' }, { chapterMarking: 'title' })).toBe(
+    'title',
+  )
 })

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CHAPTER_MARKINGS } from './formats'
 import { DEFAULT_MOTION_IDENTITY, MotionIdentitySchema } from './motion-identity'
 
 /**
@@ -445,6 +446,8 @@ export const BrandLookSchema = z.object({
   gradePreset: z.enum(GRADE_PRESETS).optional(),
   lowerThirdVariant: z.enum(['bar', 'stack', 'minimal']).default('bar'),
   chapterCardVariant: z.enum(['full', 'corner', 'minimal']).default('full'),
+  /** How a film marks its chapters unless its format chooses otherwise. */
+  chapterMarking: z.enum(CHAPTER_MARKINGS).default('cards'),
 })
 
 export const BrandMusicSchema = z.object({
@@ -794,6 +797,7 @@ export const DEFAULT_SETTINGS: Settings = {
       gradePreset: 'muted',
       lowerThirdVariant: 'bar',
       chapterCardVariant: 'full',
+      chapterMarking: 'cards',
     },
     music: {
       longFormStyle: 'documentary-tension',
