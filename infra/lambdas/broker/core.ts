@@ -3,6 +3,7 @@ import {
   CancelAcceptedSchema,
   estimateRenderCostUsd,
   MediaJobSchema,
+  PresignRequestSchema,
   RemotionWebhookSchema,
   RENDER_SCALES,
   RenderRequestSchema,
@@ -40,6 +41,8 @@ export interface RenderRecord {
   /** Remotion's render bucket — progress and discard both need it. */
   bucketName: string
   status: RenderStatus
+  /** Set for one part of a long render; its output is MKV, not MP4. */
+  frameRange?: [number, number]
   outputS3Key?: string
   costUsd?: number
   message?: string
@@ -65,6 +68,8 @@ export interface RemotionClient {
     scale: number
     /** Chunk size chosen so the fan-out fits the account's concurrency. */
     framesPerLambda: number
+    /** One part of a long render: inclusive first and last frame. */
+    frameRange?: [number, number]
   }): Promise<{ remotionRenderId: string; bucketName: string }>
   progress(
     remotionRenderId: string,
@@ -93,6 +98,11 @@ export interface StorageClient {
    * because the broker is the only party holding AWS credentials.
    */
   presignRender(bucketName: string, key: string): Promise<string>
+  /**
+   * Presigned GET for any key in the render bucket: the joined master of a
+   * long render is written by media-utils, so no render record names it.
+   */
+  presignOutput(key: string): Promise<string>
 }
 
 export interface BrokerDeps {
@@ -206,6 +216,7 @@ const MEDIA_PATHS: Record<string, MediaJob['kind']> = {
   '/media/loudnorm': 'loudnorm',
   '/media/transcribe': 'transcribe',
   '/media/upload-youtube': 'upload-youtube',
+  '/media/join': 'join',
 }
 
 export async function handleBrokerRequest(
@@ -227,6 +238,10 @@ export async function handleBrokerRequest(
 
   if (request.method === 'POST' && path === '/renders') {
     return handleCreateRender(request, deps)
+  }
+
+  if (request.method === 'POST' && path === '/presign') {
+    return handlePresign(request, deps)
   }
 
   const cancelMatch = /^\/renders\/([^/]+)\/cancel$/.exec(path)
@@ -296,7 +311,12 @@ async function handleCreateRender(
   const totalFrames = Math.ceil(
     (timelineDurationMs(timelineParsed.data) / 1000) * timelineParsed.data.fps,
   )
-  const framesPerLambda = Math.max(4, Math.ceil(totalFrames / Math.max(1, deps.renderFanout)))
+  const { frameRange } = render
+  if (frameRange && frameRange[1] >= totalFrames) {
+    return { status: 400, body: { error: "frame range past the timeline's last frame" } }
+  }
+  const framesToRender = frameRange ? frameRange[1] - frameRange[0] + 1 : totalFrames
+  const framesPerLambda = Math.max(4, Math.ceil(framesToRender / Math.max(1, deps.renderFanout)))
 
   const { remotionRenderId, bucketName } = await deps.remotion.render({
     composition: render.composition,
@@ -304,6 +324,7 @@ async function handleCreateRender(
     renderId: render.renderId,
     scale: RENDER_SCALES[render.kind],
     framesPerLambda,
+    ...(frameRange ? { frameRange } : {}),
   })
 
   await deps.store.putRender({
@@ -314,6 +335,7 @@ async function handleCreateRender(
     remotionRenderId,
     bucketName,
     status: 'running',
+    ...(frameRange ? { frameRange } : {}),
   })
 
   deps.log({ event: 'render-started', renderId: render.renderId, remotionRenderId })
@@ -325,6 +347,17 @@ async function handleCreateRender(
       estimatedCostUsd: estimateRenderCostUsd(render.expectedDurationSec, render.kind),
     },
   }
+}
+
+async function handlePresign(request: BrokerRequest, deps: BrokerDeps): Promise<BrokerResponse> {
+  const parsed = PresignRequestSchema.safeParse(safeJson(request.body))
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { error: 'invalid presign request', issues: issueList(parsed.error) },
+    }
+  }
+  return { status: 200, body: { url: await deps.storage.presignOutput(parsed.data.key) } }
 }
 
 async function handleCancel(renderId: string, deps: BrokerDeps): Promise<BrokerResponse> {
@@ -395,9 +428,10 @@ async function handleProgress(renderId: string, deps: BrokerDeps): Promise<Broke
  */
 function outputKeyFrom(
   outputFile: string | null | undefined,
-  record: Pick<RenderRecord, 'remotionRenderId' | 'bucketName'>,
+  record: Pick<RenderRecord, 'remotionRenderId' | 'bucketName' | 'frameRange'>,
 ): string {
-  const fallback = `renders/${record.remotionRenderId}/out.mp4`
+  // Parts carry PCM audio, which makes Remotion write MKV: see handler.ts.
+  const fallback = `renders/${record.remotionRenderId}/out.${record.frameRange ? 'mkv' : 'mp4'}`
   if (!outputFile) return fallback
   if (!/^https?:\/\//i.test(outputFile)) return outputFile
   try {

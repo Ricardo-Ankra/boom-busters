@@ -2,6 +2,7 @@ import {
   CancelAcceptedSchema,
   hasEnvGroup,
   MediaJobSchema,
+  PresignResponseSchema,
   RenderAcceptedSchema,
   RenderProgressSchema,
   RenderRequestSchema,
@@ -118,6 +119,13 @@ export async function submitRender(request: RenderRequest): Promise<RenderAccept
   return RenderAcceptedSchema.parse(
     await brokerFetch('/renders', { method: 'POST', body: validated }),
   )
+}
+
+/** A playable URL for a key in the render bucket, such as a joined master. */
+export async function presignRenderOutput(key: string): Promise<string> {
+  return PresignResponseSchema.parse(
+    await brokerFetch('/presign', { method: 'POST', body: { key } }),
+  ).url
 }
 
 /** Proxied getRenderProgress — what the UI polls at 2 s (section 8). */
