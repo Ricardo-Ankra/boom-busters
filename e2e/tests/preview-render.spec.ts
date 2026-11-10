@@ -43,7 +43,7 @@ test.describe('the preview screen', () => {
     await expect(page.locator('.__remotion-player')).toBeVisible()
 
     await expect(page.getByText(/Timeline v1/)).toBeVisible()
-    // No opening card (decision 454): 7s + 8s of narration plus the chapter-two
+    // No opening card (decision 457): 7s + 8s of narration plus the chapter-two
     // lead and card (3.1s) make an 18.1s cut, which the clock floors to 0:18.
     await expect(page.getByText(/0:18 · 2 slots · 2 chapters/)).toBeVisible()
     // Chapter seek buttons, labelled with their timecodes.

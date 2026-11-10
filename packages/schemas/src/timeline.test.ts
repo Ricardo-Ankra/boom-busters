@@ -248,7 +248,7 @@ describe('TimelineSchema', () => {
     expect(parsed.overlays[0]?.kind).toBe('titleCard')
   })
 
-  it('a timeline without a chapters list still parses (compiled before decision 454)', () => {
+  it('a timeline without a chapters list still parses (compiled before decision 457)', () => {
     expect(TimelineSchema.parse(fixtureTimeline()).chapters).toBeUndefined()
   })
 

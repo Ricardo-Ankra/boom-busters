@@ -140,7 +140,7 @@ export const assemblyRunner = inngest.createFunction(
         assets,
         brand,
         // How a later chapter's start is marked, and the title `title` marking
-        // shows (decision 454): the format's choice, else the look's.
+        // shows (decision 457): the format's choice, else the look's.
         chapterMarking: resolveChapterMarking(brand.look, format),
         filmTitle: project.title,
         music: pickMusicBed(beds),
@@ -465,7 +465,7 @@ export const assemblyRunner = inngest.createFunction(
           slots: plan.slots,
           music: setup.music,
           captions: { words: captions.words, style },
-          // A run parked at load-assembly before decision 454 replays a setup
+          // A run parked at load-assembly before decision 457 replays a setup
           // without these; the channel default keeps its cards.
           chapterMarking: setup.chapterMarking ?? 'cards',
           filmTitle: setup.filmTitle ?? '',

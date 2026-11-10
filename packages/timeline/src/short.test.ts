@@ -51,7 +51,7 @@ describe('compileShortTimeline', () => {
     expect(short.width).toBe(SHORT_WIDTH)
     expect(short.height).toBe(SHORT_HEIGHT)
     // Chapter one is paragraphs at 0..8000 and 8700..14700 on the
-    // master (decision 215 breathing room; no opening card, decision 454), so the short keeps the beat
+    // master (decision 215 breathing room; no opening card, decision 457), so the short keeps the beat
     // between them: 8000ms of words, 700ms of breath, 6000ms of words.
     expect(short.narration.map((segment) => segment.startMs)).toEqual([0, 8700])
     expect(timelineDurationMs(short)).toBe(14_700)

@@ -179,7 +179,7 @@ describeDb('assembly-runner, batched transcription', () => {
             id: 'load-assembly',
             handler: () => {
               if (!options.omitMarking) return setup
-              // A setup memoised before decision 454 has neither field.
+              // A setup memoised before decision 457 has neither field.
               const { chapterMarking: _marking, filmTitle: _title, ...replayed } = setup
               return replayed
             },
@@ -200,7 +200,7 @@ describeDb('assembly-runner, batched transcription', () => {
   const cardKinds = ['chapterCard', 'titleCard']
 
   it(
-    'compiles with chapter marking none: no card overlays (decision 454)',
+    'compiles with chapter marking none: no card overlays (decision 457)',
     {
       timeout: 120_000,
     },
@@ -230,7 +230,7 @@ describeDb('assembly-runner, batched transcription', () => {
   )
 
   it(
-    'a setup replayed from before decision 454 keeps its chapter cards',
+    'a setup replayed from before decision 457 keeps its chapter cards',
     {
       timeout: 120_000,
     },

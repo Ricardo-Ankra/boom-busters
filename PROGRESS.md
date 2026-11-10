@@ -4967,7 +4967,7 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 > (`cards`), the film's title once at the start (`title`), or no card at all
 > (`none`), with a format able to override it. The opening chapter never gets a
 > card. The compiler writes a `chapters` list the preview reads. Branch
-> `chapter-marking`, decision 454. Spec
+> `chapter-marking`, decision 457. Spec
 > `docs/superpowers/specs/2026-11-10-chapter-marking-design.md`, plan
 > `docs/superpowers/plans/2026-11-10-chapter-marking.md`. No migration.
 
@@ -4987,12 +4987,12 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] Task 6: the preview's chapter list reads the timeline's chapters, cards
       as the fallback (`89af3610`).
 - [x] Task 7: the assembly runner compiles with the format's chapter marking
-      and the film title (`9cefae02`), and a replayed pre-454 setup keeps its
+      and the film title (`9cefae02`), and a replayed pre-457 setup keeps its
       cards with an exhaustive marking switch (`f24a1bf3`).
 - [x] Task 8: Chapter marking on the Brand Kit tab and per format in the
       editor (`d22eec38`).
 - [x] Task 9: the Brand Kit e2e check, the build spec's look field list, this
-      section and decision 454 (`ef252357`).
+      section and decision 457 (`ef252357`).
 
 ### Owner actions at deploy
 
@@ -11172,7 +11172,7 @@ Part 2 checklist:
      never edited". The e2e keep test now seeds a second refine and checks
      the side by side goes; it failed before the fix, as in the owner's
      screenshot. Shipping: a Vercel deploy; no migration.
-454. **Chapter marking** (2026-11-10, branch `chapter-marking`). Every film
+457. **Chapter marking** (2026-11-10, branch `chapter-marking`). Every film
      opened on a 2.3 s title card before the first word, against the roadmap's
      own hook rule. The opening chapter now never gets a card. Chapter marking
      is a Brand Kit choice (`cards`, `title`, `none`) that a format can
@@ -11182,9 +11182,7 @@ Part 2 checklist:
      `chapters` list the preview reads, with the card as the fallback for
      older timelines. One cue rule, `chapterCuePoints`, serves the compiler
      and the bed swaps, matching a card by its resume point. A replayed
-     pre-454 setup falls back to cards. The film's title is the case title
+     pre-457 setup falls back to cards. The film's title is the case title
      fixed when the project is started; the app cannot change it yet, and a
      "Rename project" button is a follow-up. YouTube chapter timestamps and glosses
      (decision 303) are unchanged, so no separate public title was needed.
-     Renumber at merge if the parallel `script-review-gate` branch took 454
-     first.

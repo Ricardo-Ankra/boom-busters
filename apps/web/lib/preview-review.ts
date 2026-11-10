@@ -36,7 +36,7 @@ export interface PreviewModel {
 
 /**
  * Chapter list from the timeline alone: runtimes from the narration
- * segments, titles from the timeline's `chapters` list first (decision 454:
+ * segments, titles from the timeline's `chapters` list first (decision 457:
  * a film with no cards, or no card on its opening chapter, still has its
  * names). A timeline compiled before that has no list, so the title falls
  * back to the chapter-card overlay. The compiler numbers each card

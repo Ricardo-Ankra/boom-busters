@@ -2,7 +2,7 @@
 
 Date: 2026-11-10. Status: approved in chat by the owner (the five points of
 the 2026-11-10 assessment); this document is their written form, with the
-builder's calls marked. Decision 454 (renumber at merge if another branch took
+builder's calls marked. Decision 457 (renumber at merge if another branch took
 it).
 
 ## 1. Why

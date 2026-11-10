@@ -162,7 +162,7 @@ export function goldenInput(): CompileInput {
   }
 }
 
-/** goldenInput() plus a fourth paragraph opening a third chapter (decision 454). */
+/** goldenInput() plus a fourth paragraph opening a third chapter (decision 457). */
 export function threeChapterInput(over: Partial<CompileInput> = {}): CompileInput {
   const input = goldenInput()
   input.paragraphs.push({
@@ -247,7 +247,7 @@ describe('compileTimeline', () => {
     expect(compiled).toBe(readFileSync(GOLDEN_PATH, 'utf8'))
   })
 
-  it('opens on the first word: narration starts at 0 and no card precedes it (decision 454)', () => {
+  it('opens on the first word: narration starts at 0 and no card precedes it (decision 457)', () => {
     const timeline = compileTimeline(goldenInput())
     expect(timeline.narration.map((s) => s.startMs)).toEqual([0, 8700, 17_800])
     expect(timelineDurationMs(timeline)).toBe(24_800)
@@ -374,7 +374,7 @@ describe('compileTimeline', () => {
     const brand = resolveBrandKit(DEFAULT_SETTINGS)
     expect(timeline.music?.gainDb).toBe(brand.music.bedGainDb)
     const curve = timeline.music!.duckingCurve
-    // Words start at 0 (decision 454), so the bed opens already ducked.
+    // Words start at 0 (decision 457), so the bed opens already ducked.
     expect(curve[0]?.gainDb).toBe(brand.music.bedGainDb + brand.music.duckDepthDb)
     expect(Math.min(...curve.map((point) => point.gainDb))).toBe(
       brand.music.bedGainDb + brand.music.duckDepthDb,

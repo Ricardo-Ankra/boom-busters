@@ -117,7 +117,7 @@ export interface CompileInput {
   slots: CompileSlot[]
   music: { r2Key: string; durationMs?: number | null } | null
   captions: { words: Caption[]; style: 'karaoke' | 'none' }
-  /** How a later chapter's start is marked (decision 454). */
+  /** How a later chapter's start is marked (decision 457). */
   chapterMarking: ChapterMarking
   /** The film's title; `title` marking shows it once, at the second chapter. */
   filmTitle: string
@@ -180,7 +180,7 @@ export const CHAPTER_CARD_MS = 3200
 export const CHAPTER_LEAD_MS = 800
 /**
  * The silence held after the lead when a chapter start carries no card
- * (decision 454). Lead plus hold must clear DEFAULT_RISE_THRESHOLD_MS (2000 ms,
+ * (decision 457). Lead plus hold must clear DEFAULT_RISE_THRESHOLD_MS (2000 ms,
  * ducking.ts), the shortest silence across which the music bed rises, so the
  * bed comes back up and the music turn marks the break. 1400 leaves a 200 ms
  * margin over that threshold; tune by ear.
@@ -221,7 +221,7 @@ export function compileTimeline(input: CompileInput): Timeline {
   // Narration: measured take durations in script order, with breathing room
   // (decision 215) — a paused beat between paragraphs and, from the second
   // chapter on, a break at every chapter start: a lead + card + overlap, or a
-  // lead + hold when unmarked (decision 454). The opening chapter gets none:
+  // lead + hold when unmarked (decision 457). The opening chapter gets none:
   // the film opens on its first word. The board planned its slots and the
   // captions were built on the gapless end-to-end clock, so each paragraph
   // records how far that old clock has shifted; every other track is moved

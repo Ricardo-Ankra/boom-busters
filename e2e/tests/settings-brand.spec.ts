@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { channelPath, signIn } from './fixtures'
 
 /**
- * Chapter marking (decision 454): the Brand Kit tab offers cards, title or
+ * Chapter marking (decision 457): the Brand Kit tab offers cards, title or
  * none as a labelled select, and the choice survives a reload. The test puts
  * the setting back to `cards` at the end.
  */

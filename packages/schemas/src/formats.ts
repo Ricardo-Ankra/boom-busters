@@ -71,7 +71,7 @@ export const ChannelFormatSchema = z
     shorts: z.boolean().default(true),
     /**
      * How this format marks its chapters (chapter marking design, decision
-     * 454). "inherit" takes the Brand Kit look's choice; absent, "" and null
+     * 457). "inherit" takes the Brand Kit look's choice; absent, "" and null
      * read as "inherit".
      */
     chapterMarking: z.preprocess(

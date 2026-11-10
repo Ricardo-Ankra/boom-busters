@@ -436,7 +436,7 @@ export type Overlay = z.infer<typeof OverlaySchema>
 
 /**
  * One chapter of the script, in script order. The preview screen reads chapter
- * titles here; a timeline compiled before decision 454 has no list.
+ * titles here; a timeline compiled before decision 457 has no list.
  */
 export const TimelineChapterSchema = z.object({ id: UlidSchema, title: z.string().min(1) })
 export type TimelineChapter = z.infer<typeof TimelineChapterSchema>

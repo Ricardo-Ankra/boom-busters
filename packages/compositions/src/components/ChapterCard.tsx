@@ -4,7 +4,7 @@ import { easeInOut } from '../lib/motion'
 import { frameScale, typeStyle, withAlpha } from './brand'
 
 /**
- * The chapter card (spec section 8.3, decision 454), in the Brand Kit's
+ * The chapter card (spec section 8.3, decision 457), in the Brand Kit's
  * variant: `full` (a title card over the whole frame), `corner` (a chip that
  * leaves the footage visible) or `minimal` (centred type over a dim wash). The
  * compiler overlays it across inserted silence at each chapter start (decision

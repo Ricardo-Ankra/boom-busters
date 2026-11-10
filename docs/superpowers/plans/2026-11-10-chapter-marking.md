@@ -99,7 +99,7 @@ Expected: all green. If `typecheck` names a fixture that spreads `ChannelFormat`
 
 ```bash
 git add packages/schemas/src/formats.ts packages/schemas/src/formats.test.ts packages/schemas/src/settings.ts packages/schemas/src/settings.test.ts packages/providers/src/prompts/bible-draft.ts packages/schemas/src/index.ts
-git commit -m "feat(schemas): chapter marking on the Brand Kit look and per format, with its resolver (decision 454)"
+git commit -m "feat(schemas): chapter marking on the Brand Kit look and per format, with its resolver (decision 457)"
 ```
 
 ---
@@ -128,7 +128,7 @@ it('accepts a titleCard overlay and an optional chapters list, and strips neithe
   expect(parsed.overlays[0]?.kind).toBe('titleCard')
 })
 
-it('a timeline without a chapters list still parses (compiled before decision 454)', () => {
+it('a timeline without a chapters list still parses (compiled before decision 457)', () => {
   expect(TimelineSchema.parse(valid()).chapters).toBeUndefined()
 })
 ```
@@ -173,7 +173,7 @@ Numbers for `goldenInput()` (paragraphs 8000, 6000, 7000 ms; chapters one, one, 
 `goldenInput()` gains `chapterMarking: 'cards'` and `filmTitle: 'The Wirecard Hole'`. Replace the four assertions that encoded the opening card:
 
 ```ts
-it('opens on the first word: narration starts at 0 and no card precedes it (decision 454)', () => {
+it('opens on the first word: narration starts at 0 and no card precedes it (decision 457)', () => {
   const timeline = compileTimeline(goldenInput())
   expect(timeline.narration.map((s) => s.startMs)).toEqual([0, 8700, 17_800])
   expect(timelineDurationMs(timeline)).toBe(24_800)
@@ -244,7 +244,7 @@ Expected: green, including `music.test` (its first test compares cues to the com
 
 ```bash
 git add packages/timeline/src/compile.ts packages/timeline/src/compile.test.ts packages/timeline/src/golden/master-timeline.json
-git commit -m "feat(timeline): no opening card; cards, title or none per chapter marking; the chapters list (decision 454)"
+git commit -m "feat(timeline): no opening card; cards, title or none per chapter marking; the chapters list (decision 457)"
 ```
 
 ---
@@ -330,7 +330,7 @@ Expected: FAIL, `TitleCard` missing and no `TitleCardFull` golden.
 
 - [ ] **Step 3: Implement**
 
-`ChapterCard.tsx`: remove the `number` element from all three variants; keep `index` in the props (the overlay still carries it) and note in the doc comment that it is the preview's match key, not drawn (decision 454). `TitleCard.tsx` per the interface, sharing `typeStyle`, `withAlpha`, `frameScale` and `easeInOut`. `DocumentaryMaster.tsx`: a `titleCard` branch rendering `TitleCard`. Export from `index.ts`.
+`ChapterCard.tsx`: remove the `number` element from all three variants; keep `index` in the props (the overlay still carries it) and note in the doc comment that it is the preview's match key, not drawn (decision 457). `TitleCard.tsx` per the interface, sharing `typeStyle`, `withAlpha`, `frameScale` and `easeInOut`. `DocumentaryMaster.tsx`: a `titleCard` branch rendering `TitleCard`. Export from `index.ts`.
 
 - [ ] **Step 4: Regenerate goldens from a package-alone run and verify**
 
@@ -341,7 +341,7 @@ Expected: green. The `DocumentaryMaster` golden is unchanged unless the fixture 
 
 ```bash
 git add packages/compositions/src/components/ChapterCard.tsx packages/compositions/src/components/TitleCard.tsx packages/compositions/src/components/DocumentaryMaster.tsx packages/compositions/src/Root.tsx packages/compositions/src/index.ts packages/compositions/src/snapshot/render.test.ts packages/compositions/src/snapshot/golden/ChapterCardFull.png packages/compositions/src/snapshot/golden/TitleCardFull.png
-git commit -m "feat(compositions): the chapter card drops its number; TitleCard for the film's title (decision 454)"
+git commit -m "feat(compositions): the chapter card drops its number; TitleCard for the film's title (decision 457)"
 ```
 
 ---
@@ -514,7 +514,7 @@ git commit -m "feat(web): Chapter marking on the Brand Kit tab and per format in
 
 **Files:**
 - Create: `e2e/tests/settings-brand.spec.ts`
-- Modify: `docs/03-build-spec.md:268` (the look field list), `PROGRESS.md` (new section before "Long renders in parts" per the file's newest-first order, and decision 454 in the decisions list)
+- Modify: `docs/03-build-spec.md:268` (the look field list), `PROGRESS.md` (new section before "Long renders in parts" per the file's newest-first order, and decision 457 in the decisions list)
 
 - [ ] **Step 1: Write the e2e spec**
 
@@ -541,7 +541,7 @@ Expected: 1 passed.
 
 - [ ] **Step 3: Docs and PROGRESS**
 
-`docs/03-build-spec.md:268`: add `chapterMarking` to the look's field list. `PROGRESS.md`: a section "Chapter marking (2026-11-10)" in the house style (a blockquote summary naming the branch, decision 454, the spec and plan paths; Deliverables with each task's commit hash; Owner actions at deploy: `deploy:stacks boom-busters-broker`, `deploy:remotion`, `PUT /api/inngest`, and "set Chapter marking to None on channels that want no cards"; Not verified: no live render in `title` or `none` mode, the runner's compile step if the harness could not drive it). Decision 454 in the decisions list: "The opening chapter never gets a card; chapter marking is a Brand Kit choice (cards, title, none) a format can override; cards carry the title only; an unmarked break is 2200 ms so the bed rises; the compiler writes a `chapters` list the preview reads".
+`docs/03-build-spec.md:268`: add `chapterMarking` to the look's field list. `PROGRESS.md`: a section "Chapter marking (2026-11-10)" in the house style (a blockquote summary naming the branch, decision 457, the spec and plan paths; Deliverables with each task's commit hash; Owner actions at deploy: `deploy:stacks boom-busters-broker`, `deploy:remotion`, `PUT /api/inngest`, and "set Chapter marking to None on channels that want no cards"; Not verified: no live render in `title` or `none` mode, the runner's compile step if the harness could not drive it). Decision 457 in the decisions list: "The opening chapter never gets a card; chapter marking is a Brand Kit choice (cards, title, none) a format can override; cards carry the title only; an unmarked break is 2200 ms so the bed rises; the compiler writes a `chapters` list the preview reads".
 
 - [ ] **Step 4: Full verification before the hand-back**
 
@@ -552,5 +552,5 @@ Expected: all green.
 
 ```bash
 git add e2e/tests/settings-brand.spec.ts docs/03-build-spec.md PROGRESS.md
-git commit -m "docs(progress): chapter marking, decision 454, and the Brand Kit e2e check"
+git commit -m "docs(progress): chapter marking, decision 457, and the Brand Kit e2e check"
 ```

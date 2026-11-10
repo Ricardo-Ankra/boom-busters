@@ -5,12 +5,12 @@ import { buildDuckingCurve } from './ducking'
 
 /**
  * Where the music is cued: the one rule for the compiler and for bed swaps
- * (decision 454). The opening chapter cues at 0; a later chapter cues at its
+ * (decision 457). The opening chapter cues at 0; a later chapter cues at its
  * card (the chapterCard for that index, or the titleCard that resumes right
  * into its first word), else at its unmarked break's lead point, the hold
  * before its first word.
  *
- * A timeline without a chapters list predates decision 454 and keeps the old
+ * A timeline without a chapters list predates decision 457 and keeps the old
  * rule: every chapterCard start, or, if there are none, each chapter's first
  * word.
  */
