@@ -60,6 +60,10 @@ export class MediaUtilsStack extends Stack {
       memorySize: config.mediaLambdaMemoryMb,
       ephemeralStorageSize: Size.gibibytes(10),
       timeout: Duration.minutes(15),
+      // The broker's callback contract has the app's runner retry a failed job,
+      // never AWS: a second async attempt would repeat a join that ran out of
+      // time, or a transcription already paid for.
+      retryAttempts: 0,
       layers: [ffmpegLayer],
       logGroup,
       environment: {

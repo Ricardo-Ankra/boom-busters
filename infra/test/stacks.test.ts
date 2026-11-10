@@ -54,6 +54,10 @@ describe('media-utils stack', () => {
     })
   })
 
+  it('never lets AWS retry an async media job: the app runner owns retries', () => {
+    media.hasResourceProperties('AWS::Lambda::EventInvokeConfig', { MaximumRetryAttempts: 0 })
+  })
+
   it('lets media-utils abort and list multipart uploads on the render bucket', () => {
     media.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: {

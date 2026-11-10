@@ -224,6 +224,17 @@ describe('settleRenderParts', () => {
     expect(partEstimateUsd(11, parts[3] as RenderPart, total)).toBeCloseTo(0.9167, 4)
     expect(settleRenderParts(parts, 11, total)).toBeCloseTo(4.6534, 4)
   })
+
+  it('counts a part still rendering at its share only when asked (a stopped film)', () => {
+    const parts = [
+      partOf(0, { status: 'completed', costUsd: 0.93 }),
+      partOf(1, { status: 'rendering' }),
+      partOf(2),
+    ]
+    const total = 3 * 27000
+    expect(settleRenderParts(parts, 3, total)).toBeCloseTo(0.93, 4)
+    expect(settleRenderParts(parts, 3, total, { countRendering: true })).toBeCloseTo(1.93, 4)
+  })
 })
 
 describe('partWaves', () => {

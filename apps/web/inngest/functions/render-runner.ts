@@ -5,6 +5,7 @@ import {
   channelForProject,
   getWorkspace,
   insertRender,
+  latestRender,
   latestTimeline,
   setProjectStage,
   setTimelineKey,
@@ -35,12 +36,14 @@ import {
 import type { LoudnormMeasurement, QcReport, RenderPart } from '@boom-busters/schemas'
 import type { GetStepTools } from 'inngest'
 import { mockProvidersEnabled } from '@boom-busters/providers'
-import { NonRetriableError } from 'inngest'
+import { NonRetriableError, RetryAfterError } from 'inngest'
 import { db } from '@/lib/db'
 import {
   brokerCallbackUrl,
   brokerConfigured,
+  brokerErrorStatus,
   cancelRender,
+  presignRenderOutput,
   submitMediaJob,
   submitRender,
 } from '@/lib/broker'
@@ -50,6 +53,7 @@ import { timelineKey } from '../lib/assembly'
 import { inngest } from '../client'
 import { events } from '../events'
 import { budgetGateData, markStageFailed, type GateContext } from '../lib/gates'
+import { settleRenderLedger } from '../lib/render-ledger'
 
 /**
  * render-runner (build spec section 7.6): `gate/preview.approved` — the
@@ -123,6 +127,12 @@ export const renderRunner = inngest.createFunction(
       const projectId = event.data.event.data['projectId']
       if (typeof projectId !== 'string') return
       const error = serialiseError(event.data.error)
+      // A film in parts that dies mid-way leaves its reservation at the full
+      // estimate; settle it on what ran, before the row goes terminal.
+      const latest = await latestRender(db, projectId, 'master')
+      if (latest?.parts && ['queued', 'invoking', 'rendering', 'qc'].includes(latest.status)) {
+        await settleRenderLedger(db, latest)
+      }
       // The row the run opened must reach a terminal state too, or the
       // render panel keeps polling an honest-looking 0% forever.
       await failInFlightRenders(db, projectId, 'master', error)
@@ -185,7 +195,7 @@ export const renderRunner = inngest.createFunction(
       return {
         parts,
         totalFrames,
-        concurrency: settings.render.concurrency,
+        concurrency: Math.min(settings.render.concurrency, BROKER_RENDER_CAP_DEFAULT),
         renderId: render.id,
         timelineId: timelineRow.id,
         timelineVersion: timelineRow.version,
@@ -301,6 +311,22 @@ export const renderRunner = inngest.createFunction(
         key = timelineKey(projectId, timelineRow.version)
         await putObject(key, Buffer.from(JSON.stringify(timelineRow.json)), 'application/json')
         await setTimelineKey(db, timelineRow.id, key)
+      }
+
+      // A film in parts needs the broker's part routes. An older broker
+      // answers the probe route with a 404; refuse before anything is
+      // reserved. Any other answer, even an error, means the route exists.
+      if (setup.parts) {
+        try {
+          await presignRenderOutput('renders/probe/master.mp4')
+        } catch (error) {
+          if (brokerErrorStatus(error) === 404) {
+            throw new NonRetriableError(
+              'The render broker predates long renders in parts. Run deploy:stacks ' +
+                'boom-busters-broker and boom-busters-media-utils first.',
+            )
+          }
+        }
       }
 
       // The spend is reserved BEFORE the invoke — a render that would cross
@@ -527,6 +553,15 @@ export const renderRunner = inngest.createFunction(
 
 type StepTools = GetStepTools<typeof inngest>
 
+/** How long a part waits for a free render slot after a 409 from the broker's cap. */
+const PART_CAP_RETRY_DELAY_MS = 3 * 60 * 1000
+
+/**
+ * The broker's render cap defaults to 2 across every running render, and the
+ * app cannot read it. Waves wider than that would only queue behind 409s.
+ */
+const BROKER_RENDER_CAP_DEFAULT = 2
+
 /** How long media-utils may spend joining the parts and measuring the result. */
 const JOIN_TIMEOUT = '20m'
 
@@ -640,15 +675,29 @@ async function renderInParts(
       await step.run(stepId, async () => {
         const part = from[index]
         if (!part) throw new NonRetriableError(`There is no part ${index}.`)
-        const accepted = await submitRender({
-          projectId,
-          renderId: part.renderId,
-          kind: 'master',
-          timelineS3Key,
-          composition: 'DocumentaryMaster',
-          expectedDurationSec: part.durationMs / 1000,
-          frameRange: part.frameRange,
-        })
+        let accepted
+        try {
+          accepted = await submitRender({
+            projectId,
+            renderId: part.renderId,
+            kind: 'master',
+            timelineS3Key,
+            composition: 'DocumentaryMaster',
+            expectedDurationSec: part.durationMs / 1000,
+            frameRange: part.frameRange,
+          })
+        } catch (error) {
+          // The broker's render cap counts every running render (drafts,
+          // Shorts, other projects). Money is already spent on earlier
+          // parts, so wait for a slot rather than burn the quick retries.
+          if (brokerErrorStatus(error) === 409) {
+            throw new RetryAfterError(
+              `The render cap is full; part ${index + 1} waits for a slot.`,
+              PART_CAP_RETRY_DELAY_MS,
+            )
+          }
+          throw error
+        }
         const next = await mergeIntoRow(from, index, {
           ...part,
           status: 'rendering',
@@ -698,9 +747,12 @@ async function renderInParts(
               }
             : { ...part, status: 'failed', message: outcome.detail },
         )
+        // Never lower the bar: the progress route may have written a live
+        // figure above the completed-parts share.
+        const row = await getRender(db, setup.renderId)
         await updateRender(db, setup.renderId, {
           parts: next,
-          progressPct: partsProgressPct(next, {}),
+          progressPct: Math.max(row?.progressPct ?? 0, partsProgressPct(next, {})),
         })
         return next
       }),

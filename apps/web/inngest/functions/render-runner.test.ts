@@ -66,6 +66,7 @@ const broker = vi.hoisted(() => ({
   submitRender: vi.fn(),
   submitMediaJob: vi.fn(),
   cancelRender: vi.fn(),
+  presignRenderOutput: vi.fn(),
 }))
 vi.mock('@/lib/broker', () => ({
   brokerConfigured: () => broker.configured,
@@ -74,6 +75,8 @@ vi.mock('@/lib/broker', () => ({
   submitMediaJob: broker.submitMediaJob,
   fetchRenderProgress: vi.fn(),
   cancelRender: broker.cancelRender,
+  presignRenderOutput: broker.presignRenderOutput,
+  brokerErrorStatus: (error: unknown) => (error as { status?: number } | null)?.status,
 }))
 
 const storage = vi.hoisted(() => ({
@@ -410,6 +413,8 @@ describeDb('render-runner', () => {
       broker.configured = true
       storage.configured = true
       providers.mock = false
+      broker.presignRenderOutput.mockReset()
+      broker.presignRenderOutput.mockResolvedValue('https://example.test/probe')
       await db.delete(timelines)
       await insertTimeline(db, {
         projectId: FIXTURE_PROJECT_ID,
@@ -470,6 +475,24 @@ describeDb('render-runner', () => {
             meta: expect.objectContaining({ parts: 3 }),
           })
         }
+      },
+    )
+
+    it(
+      'refuses before reserving when the broker predates long renders (the probe 404s)',
+      { timeout: 120_000 },
+      async () => {
+        broker.presignRenderOutput.mockRejectedValue(
+          Object.assign(new Error('broker answered 404 for POST /presign'), { status: 404 }),
+        )
+
+        const { error } = await engine.executeStep('invoke-broker', { events: approvedEvent() })
+
+        expect(String((error as Error | undefined)?.message ?? error)).toContain(
+          'predates long renders in parts',
+        )
+        expect(broker.submitRender).not.toHaveBeenCalled()
+        expect(await listLedger(db)).toEqual([])
       },
     )
 

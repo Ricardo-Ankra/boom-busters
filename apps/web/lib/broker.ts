@@ -49,6 +49,16 @@ function brokerBase(): { url: string; token: string } {
   return { url: AWS_BROKER_URL.replace(/\/$/, ''), token: AWS_BROKER_TOKEN }
 }
 
+/** The HTTP status a broker call failed with, when it reached the broker. */
+export function brokerErrorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === 'number' ? status : undefined
+}
+
+function withStatus<T extends Error>(error: T, status: number): T {
+  return Object.assign(error, { status })
+}
+
 async function brokerFetch(
   path: string,
   init: { method: 'GET' | 'POST'; body?: unknown },
@@ -72,9 +82,9 @@ async function brokerFetch(
     // attempts only hid the reason. A conflict (409, the concurrency cap), a
     // rate limit and a server error are worth another try.
     if (response.status >= 400 && response.status < 500 && ![409, 429].includes(response.status)) {
-      throw new NonRetriableError(message)
+      throw withStatus(new NonRetriableError(message), response.status)
     }
-    throw new Error(message)
+    throw withStatus(new Error(message), response.status)
   }
   return response.json() as Promise<unknown>
 }

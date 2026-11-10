@@ -352,6 +352,21 @@ describe('PreviewScreen', () => {
     expect(approveGate).not.toHaveBeenCalled()
   })
 
+  it('disables the draft button past thirty minutes and says why beside it', () => {
+    const base = materialisedTimeline()
+    const long: Timeline = {
+      ...base,
+      narration: base.narration.map((segment) => ({ ...segment, durationMs: 1_860_000 })),
+      slots: base.slots.map((slot) => ({ ...slot, durationMs: 1_860_000 })),
+    }
+    render(<PreviewScreen {...props({ timeline: long })} />)
+    expect(screen.getByRole('button', { name: /Render draft/ })).toBeDisabled()
+    expect(
+      screen.getByText('Drafts are limited to 30 minutes; render the master instead.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Render master/ })).toBeEnabled()
+  })
+
   it('offers no draft button in mock mode — no broker, no drafts', () => {
     render(<PreviewScreen {...props({ live: false })} />)
     expect(screen.queryByRole('button', { name: /Render draft/ })).not.toBeInTheDocument()

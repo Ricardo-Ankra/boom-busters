@@ -3,7 +3,7 @@
 import { Player } from '@remotion/player'
 import type { PlayerRef } from '@remotion/player'
 import { DocumentaryMaster } from '@boom-busters/compositions'
-import { gainAt } from '@boom-busters/schemas'
+import { gainAt, rendersInParts } from '@boom-busters/schemas'
 import type { QcReport, Timeline } from '@boom-busters/schemas'
 import { captionsBurnedIn } from '@boom-busters/timeline'
 import { Captions, Clapperboard, Film, Music, Square } from 'lucide-react'
@@ -849,6 +849,9 @@ function RenderActionsCard({
 
   // Drafts only exist live: in mock mode the master button already renders
   // on this machine for free, so a cheap copy has nothing to be cheaper than.
+  // A draft renders in one piece and times out past 30 minutes; the runner
+  // refuses it, so the button says so up front instead of spending a click.
+  const draftTooLong = rendersInParts(durationMs / 1000)
   const draftButton =
     live && !draftBusy ? (
       <ConfirmButton
@@ -866,7 +869,7 @@ function RenderActionsCard({
           'Cheap, but real money.'
         }
         busy={pressed === 'draft'}
-        disabled={busy}
+        disabled={busy || draftTooLong}
         onConfirm={async () => {
           const ok = await act(
             () => requestDraftRender(projectId),
@@ -941,6 +944,11 @@ function RenderActionsCard({
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {draftButton}
+              {draftButton && draftTooLong ? (
+                <span className="text-[12px] text-[var(--color-text-muted)]">
+                  Drafts are limited to 30 minutes; render the master instead.
+                </span>
+              ) : null}
               <ConfirmButton
                 variant="primary"
                 confirmVariant="primary"

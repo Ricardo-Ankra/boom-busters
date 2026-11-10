@@ -224,5 +224,36 @@ describeDb('draft-runner', () => {
         expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
       },
     )
+
+    it(
+      'refuses a film past thirty minutes before any reservation, and says why on the row',
+      { timeout: 120_000 },
+      async () => {
+        const base = canonicalTimeline()
+        await db.delete(timelines)
+        await insertTimeline(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          json: {
+            ...base,
+            narration: base.narration.map((segment) => ({ ...segment, durationMs: 1_860_000 })),
+            slots: base.slots.map((slot) => ({ ...slot, durationMs: 1_860_000 })),
+          },
+          s3Key: '',
+        })
+
+        const { result } = await engine.execute({ events: requestedEvent() })
+
+        expect(result).toMatchObject({ outcome: 'too-long' })
+        expect(broker.submitRender).not.toHaveBeenCalled()
+        expect(await listLedger(db)).toEqual([])
+        const rows = await db.select().from(renders)
+        const failed = rows.find((row) => row.status === 'failed')
+        expect(failed?.kind).toBe('draft')
+        expect(failed?.error).toMatchObject({
+          message: 'Drafts are limited to 30 minutes; render the master instead.',
+        })
+        expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('awaiting_review')
+      },
+    )
   })
 })

@@ -13,13 +13,9 @@ import {
   UploadPartCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import {
-  BROKER_SIGNATURE_HEADER,
-  brokerSignature,
-  MediaJobSchema,
-  UPLOAD_ROUND_BUDGET_MS,
-} from '@boom-busters/schemas'
+import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
 import type { LoudnormMeasurement, MediaJob, MediaJobCallback } from '@boom-busters/schemas'
+import type { Context as LambdaContext } from 'aws-lambda'
 import type { Readable } from 'node:stream'
 import {
   buildQcReport,
@@ -178,7 +174,10 @@ async function runQc(job: Extract<MediaJob, { kind: 'qc' }>) {
  * failed ffmpeg must leave no object: completion is held back until ffmpeg
  * has exited cleanly, and the upload is aborted on any failure.
  */
-async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
+/** How long before the invocation's own end the join gives up and cleans up. */
+const JOIN_WATCHDOG_MARGIN_MS = 90_000
+
+async function runJoin(job: Extract<MediaJob, { kind: 'join' }>, context?: LambdaContext) {
   const started = Date.now()
   const bucket = env('RENDER_BUCKET')
   const urls = await Promise.all(
@@ -200,6 +199,20 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
     child.on('error', reject)
     child.on('close', (code) => resolve(code ?? -1))
   })
+  // A join that outruns the invocation would be killed with its multipart
+  // upload open and no callback posted. Killing ffmpeg a little early lets the
+  // normal exit handling abort the upload and report the failure.
+  let timedOut = false
+  const watchdog =
+    context === undefined
+      ? undefined
+      : setTimeout(
+          () => {
+            timedOut = true
+            child.kill('SIGKILL')
+          },
+          Math.max(0, context.getRemainingTimeInMillis() - JOIN_WATCHDOG_MARGIN_MS),
+        )
   // Awaited by the upload's complete step and below; this only stops an early
   // spawn error being reported as unhandled before either gets there.
   exit.catch(() => undefined)
@@ -240,7 +253,8 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
     },
     complete: async (id, parts) => {
       const code = await exit
-      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${redactUrls(stderr.slice(-500))}`)
+      if (timedOut) throw new Error('the join ran out of time')
+      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${redactUrls(stderr).slice(-500)}`)
       await s3.send(
         new CompleteMultipartUploadCommand({
           Bucket: bucket,
@@ -282,6 +296,8 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
       })
     }
     throw error
+  } finally {
+    if (watchdog !== undefined) clearTimeout(watchdog)
   }
 }
 
@@ -368,7 +384,10 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
 
   // Both paths stop starting chunks at the deadline: the invocation ends at
   // 15 minutes, and a continuation picks the session up from its offset.
-  const deadlineAt = Date.now() + (job.budgetMs ?? UPLOAD_ROUND_BUDGET_MS)
+  // Only the parts-aware app sends `budgetMs`, and only it can read an
+  // in-progress result; a job without one (an old app in the deploy window)
+  // runs to the end as it always did.
+  const deadlineAt = job.budgetMs === undefined ? undefined : Date.now() + job.budgetMs
   const readRange = async (start: number, endInclusive: number) => {
     const part = await client.send(
       new GetObjectCommand({
@@ -435,7 +454,7 @@ if (process.env['SENTRY_DSN']) {
   })
 }
 
-async function handleEvent(event: unknown): Promise<void> {
+async function handleEvent(event: unknown, context?: LambdaContext): Promise<void> {
   const parsed = MediaJobSchema.safeParse(event)
   if (!parsed.success) {
     // No callbackUrl to report to — log and stop; the broker validated
@@ -468,7 +487,7 @@ async function handleEvent(event: unknown): Promise<void> {
         }
         break
       case 'join':
-        callback = { ...base, kind: 'join', ok: true, result: await runJoin(job) }
+        callback = { ...base, kind: 'join', ok: true, result: await runJoin(job, context) }
         break
     }
   } catch (error) {

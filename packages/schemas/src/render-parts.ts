@@ -186,12 +186,16 @@ export function settleRenderParts(
   parts: RenderPart[],
   estimateUsd: number,
   totalFrames: number,
+  options: { countRendering?: boolean } = {},
 ): number {
   let total = 0
   for (const part of parts) {
     const share = partEstimateUsd(estimateUsd, part, totalFrames)
     if (part.status === 'completed') total += part.costUsd ?? share
     else if (part.status === 'failed') total += share
+    // A stopped or crashed film leaves parts mid-render; they ran on the
+    // broker and are paid for, so they weigh like a failed attempt.
+    else if (part.status === 'rendering' && options.countRendering) total += share
     total += part.priorRenderIds.length * share
   }
   return Math.round(total * 10000) / 10000

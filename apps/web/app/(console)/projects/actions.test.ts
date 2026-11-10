@@ -22,7 +22,8 @@ import {
   updateRender,
   updateRenderParts,
 } from '@boom-busters/db'
-import { newId } from '@boom-busters/schemas'
+import { listLedger, reserve } from '@boom-busters/cost'
+import { DEFAULT_WORKSPACE_SETTINGS, newId } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as BrokerModule from '@/lib/broker'
 import { db } from '@/lib/db'
@@ -297,5 +298,50 @@ describeDb('stopping a master rendered in parts', () => {
     expect(called).toEqual([parts[0]!.renderId, parts[1]!.renderId].sort())
     expect(called).not.toContain(row.id)
     expect((await getRender(db, row.id))?.status).toBe('cancelled')
+  })
+
+  it('settles the reservation at the parts that ran, not the full estimate', async () => {
+    const row = await insertRender(db, {
+      projectId,
+      timelineVersion: 1,
+      kind: 'master',
+      costUsd: '1.20',
+    })
+    const ledgerId = await reserve(
+      db,
+      {
+        provider: 'remotion',
+        operation: 'render-master',
+        projectId,
+        estimateUsd: 1.2,
+        meta: { renderId: row.id },
+      },
+      { ...DEFAULT_WORKSPACE_SETTINGS.budgets, monthlyCeilingUsd: 1000 },
+    )
+    const parts = Array.from({ length: 12 }, (_, index) => ({
+      index,
+      renderId: newId(),
+      frameRange: [index * 100, index * 100 + 99] as [number, number],
+      startMs: index * 1000,
+      durationMs: 1000,
+      status:
+        index === 0
+          ? ('completed' as const)
+          : index === 1
+            ? ('rendering' as const)
+            : ('queued' as const),
+      attempt: 1,
+      priorRenderIds: [],
+      ...(index === 0 ? { costUsd: 0.1 } : {}),
+    }))
+    await updateRender(db, row.id, { status: 'rendering', startedAt: new Date() })
+    await updateRenderParts(db, row.id, parts)
+
+    await stopProject(projectId)
+
+    const entry = (await listLedger(db, { projectId })).find((one) => one.id === ledgerId)
+    expect(entry?.settled).toBe(true)
+    // One completed part at its cost, one rendering part at its 1/12 share.
+    expect(entry?.actualUsd).toBeCloseTo(0.2, 4)
   })
 })
