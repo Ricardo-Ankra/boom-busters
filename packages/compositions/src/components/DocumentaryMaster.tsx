@@ -22,6 +22,7 @@ import {
 } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
 import { ChapterCard } from './ChapterCard'
+import { TitleCard } from './TitleCard'
 import { ChartReveal } from './ChartReveal'
 import { EndCta } from './EndCta'
 import { GraphicCard } from './GraphicCard'
@@ -88,6 +89,12 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
           ) : overlay.kind === 'chapterCard' ? (
             <ChapterCard
               index={overlay.props.index}
+              title={overlay.props.title}
+              brand={brand}
+              durationInFrames={msToFrames(overlay.durationMs, fps)}
+            />
+          ) : overlay.kind === 'titleCard' ? (
+            <TitleCard
               title={overlay.props.title}
               brand={brand}
               durationInFrames={msToFrames(overlay.durationMs, fps)}

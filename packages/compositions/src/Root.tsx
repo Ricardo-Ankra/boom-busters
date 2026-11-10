@@ -9,6 +9,7 @@ import type {
 } from '@boom-busters/schemas'
 import { AnimatedMap } from './components/AnimatedMap'
 import { ChapterCard } from './components/ChapterCard'
+import { TitleCard } from './components/TitleCard'
 import { ChartReveal } from './components/ChartReveal'
 import type { ChartPayload } from './components/ChartReveal'
 import { DocumentaryMaster, SlotView } from './components/DocumentaryMaster'
@@ -576,6 +577,17 @@ export function Root() {
         defaultProps={{
           index: 3,
           title: 'The money that never was',
+          brand: FIXTURE_BRAND,
+          durationInFrames: 78,
+        }}
+      />
+      <Composition
+        id="TitleCardFull"
+        component={TitleCard}
+        durationInFrames={78}
+        {...WIDE}
+        defaultProps={{
+          title: 'The Four Billion Euros That Were Never There',
           brand: FIXTURE_BRAND,
           durationInFrames: 78,
         }}

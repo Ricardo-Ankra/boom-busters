@@ -27,6 +27,7 @@ export {
 export type { GraphicComponent, GraphicProps, GraphicScope } from './lib/graphic-code'
 export { GRAPHIC_CODE_SOURCE } from './fixtures/graphic-code'
 export { ChapterCard } from './components/ChapterCard'
+export { TitleCard } from './components/TitleCard'
 export { KaraokeCaptions } from './components/KaraokeCaptions'
 export { MusicBed } from './components/MusicBed'
 

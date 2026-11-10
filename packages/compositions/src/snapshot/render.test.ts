@@ -92,6 +92,7 @@ const CASES: SnapshotCase[] = [
   { id: 'SocialPostTall', frame: 45, maxDiffRatio: 0.06 },
   { id: 'LowerThirdBar', frame: 60, maxDiffRatio: 0.06 },
   { id: 'ChapterCardFull', frame: 40, maxDiffRatio: 0.06 },
+  { id: 'TitleCardFull', frame: 40, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsWide', frame: 20, maxDiffRatio: 0.06 },
   { id: 'KaraokeCaptionsTall', frame: 20, maxDiffRatio: 0.06 },
   { id: 'DocumentaryMaster', frame: 200, maxDiffRatio: 0.06 },
