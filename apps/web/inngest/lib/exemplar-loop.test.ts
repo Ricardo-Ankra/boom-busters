@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { MANIFEST, mockStoryboardPlan } from '@boom-busters/providers'
 import { describe, expect, it, vi } from 'vitest'
-import { completeForJob, loopSlot } from './exemplar-loop'
+import { CRITIC_CALL_MS, completeForJob, loopSlot } from './exemplar-loop'
 
 const callLlm = vi.fn(async (..._args: unknown[]) => ({ text: '{}' }))
 vi.mock('@/lib/llm', () => ({ callLlm: (...args: unknown[]) => callLlm(...args) }))
@@ -32,5 +32,13 @@ describe('the loop helpers (spec 2026-11-04, section 9.2)', () => {
       text: stat.slot.words[0]!.text,
       offsetMs: stat.slot.words[0]!.atMs,
     })
+  })
+})
+
+describe('the critic call (decision 450)', () => {
+  it('waits long enough to think over 16,000 tokens and still ends inside the 300 s step', () => {
+    // Sonnet 5 wrote 5,500 tokens inside the old 120 s; 16,000 needs more.
+    expect(CRITIC_CALL_MS).toBeGreaterThanOrEqual(200_000)
+    expect(CRITIC_CALL_MS).toBeLessThanOrEqual(300_000 - 45_000)
   })
 })

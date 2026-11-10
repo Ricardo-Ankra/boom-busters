@@ -592,6 +592,8 @@ describe('outputBudget', () => {
 
   it('caps at the ceiling', () => {
     expect(outputBudget(1_000_000)).toBe(32_000)
+    // A task that thinks over pictures asks for more room (decision 450).
+    expect(outputBudget(1500, 14_500)).toBe(16_000)
   })
 
   it('never returns zero for an empty answer', () => {

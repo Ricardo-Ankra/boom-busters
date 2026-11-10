@@ -308,6 +308,21 @@ describe('the previous version, verify and pairwise (spec 9.2, steps 4 and 7)', 
     expect(request.task).toBe('critic')
   })
 
+  it('leaves the critic room to think over its pictures and still answer (decision 450)', () => {
+    // Sonnet 5 thinks unless told not to, and spent all of 5,500 tokens
+    // thinking over the sheets in production; the designer's 16,000 fits the
+    // same 300 s step.
+    expect(buildCriticRequest(INPUT).maxTokens).toBe(16_000)
+    expect(buildCriticRequest({ ...INPUT, strong: true }).maxTokens).toBe(16_000)
+    const pairwise = buildPairwiseRequest({
+      motion: INPUT.motion,
+      plan: INPUT.plan,
+      a: { landscape: SHEET_L, portrait: SHEET_P },
+      b: PREVIOUS.sheets,
+    })
+    expect(pairwise.maxTokens).toBe(16_000)
+  })
+
   it('runs on the graphics route when strong', () => {
     expect(buildCriticRequest({ ...INPUT, strong: true }).task).toBe('graphics')
   })

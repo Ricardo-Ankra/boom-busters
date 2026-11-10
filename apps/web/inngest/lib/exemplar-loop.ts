@@ -57,8 +57,13 @@ import { requireCompleteBible } from './channel'
  * under the version's keys, and the critic's round read back from storage.
  */
 
-/** The critic's and the pairwise's abort: a call with images that answers nothing in two minutes is lost. */
-const CRITIC_CALL_MS = 120_000
+/**
+ * The critic's and the pairwise's abort: a call with images that answers
+ * nothing in four minutes is lost. Each runs in a step of its own, so this
+ * leaves a minute of the 300 s step for the reads around it. Four, not two,
+ * since the critic may think over 16,000 tokens (decision 450).
+ */
+export const CRITIC_CALL_MS = 240_000
 /** The rest shots a version keeps; the dense set lives on the sheets. */
 const SHOTS_KEPT = 16
 

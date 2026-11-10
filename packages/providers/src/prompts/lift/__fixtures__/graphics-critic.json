@@ -34,5 +34,5 @@
     }
   ],
   "cacheablePrefixMessages": 1,
-  "maxTokens": 5500
+  "maxTokens": 16000
 }
