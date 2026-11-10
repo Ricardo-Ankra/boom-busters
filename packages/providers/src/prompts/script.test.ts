@@ -667,20 +667,13 @@ describe('buildSelfCheckRequest', () => {
 
 describe('parseSelfCheck', () => {
   it('accepts a clean chapter', () => {
-    expect(parseSelfCheck('{"warnings":[],"refs":[]}').warnings).toEqual([])
+    expect(parseSelfCheck('{"warnings":[]}').warnings).toEqual([])
   })
 
   it('rejects a warning kind the gutter cannot render', () => {
     expect(() =>
-      parseSelfCheck('{"warnings":[{"kind":"iffy","sentence":"x","message":"hello"}],"refs":[]}'),
+      parseSelfCheck('{"warnings":[{"kind":"iffy","sentence":"x","message":"hello"}]}'),
     ).toThrow(ValidationError)
-  })
-
-  it('reads refs back', () => {
-    const check = parseSelfCheck(
-      '{"warnings":[],"refs":[{"claimId":"abc","sentence":"A sentence."}]}',
-    )
-    expect(check.refs).toHaveLength(1)
   })
 })
 

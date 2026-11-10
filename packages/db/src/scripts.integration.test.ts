@@ -3,9 +3,8 @@ import { ensureFirstChannel } from './channels'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { createCase, truncateCases } from './cases'
 import { createDb } from './client'
-import { saveDossier } from './dossiers'
 import { createProjectFromCase } from './projects'
-import { claimRefs, claims, scriptEdits } from './schema'
+import { scriptEdits } from './schema'
 import {
   countWarnings,
   createScriptVersion,
@@ -14,7 +13,6 @@ import {
   projectIdForChapter,
   reorderChapters,
   saveChapter,
-  saveClaimRefs,
   setChapterWarnings,
   setShortsCandidates,
 } from './scripts'
@@ -27,16 +25,6 @@ suite('scripts and the edit trail', () => {
   const { sql, db } = createDb(url ?? 'postgres://unused', { max: 2 })
   let projectId = ''
   let scriptId = ''
-
-  // Test-local reads: the production query helpers these tests once leaned on
-  // were removed as dead code, but the rows they exposed are still the evidence
-  // the assertions need.
-  const claimRefsFor = (chapterId: string) =>
-    db
-      .select({ claimId: claimRefs.claimId, text: claims.text })
-      .from(claimRefs)
-      .innerJoin(claims, eq(claims.id, claimRefs.claimId))
-      .where(eq(claimRefs.chapterId, chapterId))
 
   const editsFor = (chapterId: string) =>
     db
@@ -167,87 +155,6 @@ suite('scripts and the edit trail', () => {
     })
   })
 
-  describe('claim refs', () => {
-    let chapterId = ''
-    let claimId = ''
-
-    beforeEach(async () => {
-      const row = await saveChapter(db, {
-        scriptId,
-        index: 0,
-        title: 'One',
-        contentMd: 'Enron filed for bankruptcy.',
-        estRuntimeSec: 1,
-      })
-      chapterId = row.id
-
-      const dossier = await saveDossier(db, {
-        projectId,
-        contentMd: '#',
-        claims: [
-          {
-            text: 'Enron filed in December 2001.',
-            sourceUrl: 'https://example.com',
-            sourceType: 'court',
-            confidence: 'sourced',
-          },
-        ],
-      })
-      claimId = dossier.claims[0]!.id
-    })
-
-    it('pins a claim to a sentence', async () => {
-      await saveClaimRefs(db, {
-        chapterId,
-        projectId,
-        refs: [{ claimId, sentence: 'Enron filed for bankruptcy.' }],
-      })
-
-      const refs = await claimRefsFor(chapterId)
-      expect(refs).toHaveLength(1)
-      expect(refs[0]?.text).toBe('Enron filed in December 2001.')
-    })
-
-    it('drops a claim id the model invented rather than failing the step', async () => {
-      // The self-check pass reports ids a model typed. A mistyped one would
-      // otherwise blow up the whole chapter on a foreign key.
-      const saved = await saveClaimRefs(db, {
-        chapterId,
-        projectId,
-        refs: [
-          { claimId, sentence: 'Enron filed for bankruptcy.' },
-          { claimId: '01ZZZZZZZZZZZZZZZZZZZZZZZZ', sentence: 'Something else.' },
-        ],
-      })
-
-      expect(saved).toBe(1)
-    })
-
-    it('deduplicates the same pairing reported twice', async () => {
-      const saved = await saveClaimRefs(db, {
-        chapterId,
-        projectId,
-        refs: [
-          { claimId, sentence: 'Enron filed for bankruptcy.' },
-          { claimId, sentence: 'Enron filed for bankruptcy.' },
-        ],
-      })
-
-      expect(saved).toBe(1)
-    })
-
-    it('replaces refs on a re-check rather than accumulating them', async () => {
-      await saveClaimRefs(db, {
-        chapterId,
-        projectId,
-        refs: [{ claimId, sentence: 'Enron filed for bankruptcy.' }],
-      })
-      await saveClaimRefs(db, { chapterId, projectId, refs: [] })
-
-      expect(await claimRefsFor(chapterId)).toHaveLength(0)
-    })
-  })
-
   it('stores and counts gutter warnings', async () => {
     const row = await saveChapter(db, {
       scriptId,
@@ -356,30 +263,6 @@ suite('scripts and the edit trail', () => {
 
       const result = await reorderChapters(db, scriptId, [ids[0]!, ids[1]!, stranger.id])
       expect(result.ok).toBe(false)
-    })
-
-    it('does not disturb claim refs — they key on chapterId, not position', async () => {
-      const dossier = await saveDossier(db, {
-        projectId,
-        contentMd: '#',
-        claims: [
-          {
-            text: 'A claim to pin.',
-            sourceUrl: 'https://example.com',
-            sourceType: 'court',
-            confidence: 'sourced',
-          },
-        ],
-      })
-      await saveClaimRefs(db, {
-        chapterId: ids[0]!,
-        projectId,
-        refs: [{ claimId: dossier.claims[0]!.id, sentence: 'One' }],
-      })
-
-      await reorderChapters(db, scriptId, [ids[2]!, ids[1]!, ids[0]!])
-
-      expect(await claimRefsFor(ids[0]!)).toHaveLength(1)
     })
   })
 

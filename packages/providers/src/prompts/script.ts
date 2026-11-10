@@ -1138,7 +1138,6 @@ export function mockSelfCheck(contentMd: string): SelfCheck {
           },
         ]
       : [],
-    refs: [],
   }
 }
 

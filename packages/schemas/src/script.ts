@@ -156,12 +156,26 @@ export const WARNING_KINDS = [
   'unsupported-attribution',
   /** Repeats a six-word run an earlier chapter already narrated (decision 296). */
   'repeats-earlier',
+  /** Labels a case's standing (convicted, charged, settled) beyond what the sources show. */
+  'overstated-standing',
+  /** A craft note: pacing, a flat opening, a chapter that does not turn. */
+  'craft',
+  /** A house-style note: banned phrasing, tone, formatting. */
+  'style',
+  /** The script runs well over or under its target length. */
+  'off-target-length',
 ] as const
 export const WarningKindSchema = z.enum(WARNING_KINDS)
 export type WarningKind = z.infer<typeof WarningKindSchema>
 
+export const WARNING_SEVERITIES = ['blocking', 'advisory'] as const
+export const WarningSeveritySchema = z.enum(WARNING_SEVERITIES)
+export type WarningSeverity = z.infer<typeof WarningSeveritySchema>
+
 export const GutterWarningSchema = z.object({
   kind: WarningKindSchema,
+  /** Absent on warnings stored before severity existed; `severityOf` fills it from the kind. */
+  severity: WarningSeveritySchema.optional(),
   /** The exact sentence, as it appears in the chapter. */
   sentence: z.string().trim().min(1).max(2000),
   /** Shown in the gutter popover. */
@@ -169,14 +183,41 @@ export const GutterWarningSchema = z.object({
 })
 export type GutterWarning = z.infer<typeof GutterWarningSchema>
 
-export const ClaimRefSchema = z.object({
-  claimId: z.string().min(1),
-  sentence: z.string().trim().min(1).max(2000),
-})
+/**
+ * What each kind means for the gate when the warning carries no severity of its
+ * own. overstated-standing defaults to blocking so an unresolved label never
+ * relaxes the gate.
+ */
+export const WARNING_SEVERITY_DEFAULTS: Record<WarningKind, WarningSeverity> = {
+  'unsourced-claim': 'blocking',
+  'missing-alleged': 'blocking',
+  'unsupported-attribution': 'blocking',
+  'repeats-earlier': 'blocking',
+  'overstated-standing': 'blocking',
+  craft: 'advisory',
+  style: 'advisory',
+  'off-target-length': 'advisory',
+}
+
+/** The stored severity, else the kind's default. */
+export function severityOf(warning: Pick<GutterWarning, 'kind' | 'severity'>): WarningSeverity {
+  return warning.severity ?? WARNING_SEVERITY_DEFAULTS[warning.kind]
+}
+
+/** Blocking and advisory warning counts across a script's chapters. */
+export function countBySeverity(chapters: readonly { warnings: readonly GutterWarning[] }[]): {
+  blocking: number
+  advisory: number
+} {
+  const counts = { blocking: 0, advisory: 0 }
+  for (const chapter of chapters) {
+    for (const warning of chapter.warnings) counts[severityOf(warning)] += 1
+  }
+  return counts
+}
 
 export const SelfCheckSchema = z.object({
   warnings: z.array(GutterWarningSchema).max(200),
-  refs: z.array(ClaimRefSchema).max(500),
 })
 export type SelfCheck = z.infer<typeof SelfCheckSchema>
 

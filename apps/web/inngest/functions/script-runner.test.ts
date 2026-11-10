@@ -273,7 +273,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       id: 'draft-chapter-0',
       handler: () => ({ ok: true, chapterId: 'chapter-0', contentMd: chapters[0]!.contentMd }),
     },
-    { id: 'self-check-0', handler: () => ({ warnings: 0, refs: 0 }) },
+    { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
   ]
 
   beforeEach(async () => {
@@ -530,7 +530,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     it("sends the calm playbook in the self-check step when the format's intent is calm", async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       callLlm.mockReset()
-      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [] }) })
       const restore = await withFormat({ intent: 'calm' })
       try {
         await engine.executeStep('self-check-0', {
@@ -629,7 +629,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     it('leaves the fixed lines out of the self-check', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '')
       callLlm.mockReset()
-      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [], refs: [] }) })
+      callLlm.mockResolvedValue({ text: JSON.stringify({ warnings: [] }) })
       const restore = await withFormat({ introLine: 'Settle in.', outroLine: 'Sleep well.' })
       try {
         await engine.executeStep('self-check-0', {

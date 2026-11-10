@@ -6,7 +6,6 @@ import {
   getLatestScript,
   getProject,
   saveChapter,
-  saveClaimRefs,
   scriptableClaims,
   setScriptOutline,
   setShortsCandidates,
@@ -67,7 +66,7 @@ import {
  * script-runner (build spec section 7.2).
  *
  * `gate/dossier.approved` → outline → chapters drafted **sequentially** → a
- * self-check pass per chapter writing `claim_refs` and gutter warnings →
+ * self-check pass per chapter writing gutter warnings →
  * Shorts-candidate marking → gate.
  *
  * Chapters are sequential rather than fanned out because each one is fed the
@@ -431,13 +430,8 @@ export const scriptRunner = inngest.createFunction(
           .filter((repeat) => repeat.chapterIndex === chapter.index)
           .map((repeat) => repeat.warning)
         await setChapterWarnings(db, chapter.chapterId, [...check.warnings, ...own])
-        const refs = await saveClaimRefs(db, {
-          chapterId: chapter.chapterId,
-          projectId,
-          refs: check.refs,
-        })
 
-        return { warnings: check.warnings.length + own.length, refs }
+        return { warnings: check.warnings.length + own.length }
       })
     }
 
