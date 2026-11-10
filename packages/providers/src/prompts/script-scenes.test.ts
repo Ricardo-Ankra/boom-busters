@@ -39,15 +39,18 @@ describe('sceneLines', () => {
       '',
       '- **June 2018** — Declined to sign (Two auditors). *The first sign.* ([source](https://example.test/a?t=5))',
       '- **2019** — Promised growth (A Person). *The high point.* (unplaced)',
+      '- **2020** — Resigned (A Person). *The end.* ([source](https://en.wikipedia.org/wiki/Foo_(bar)?t=9)) (unplaced)',
       '',
       '## Open questions',
       '',
       '- Why?',
     ].join('\n')
     const lines = sceneLines({ research: null, contentMd })
-    expect(lines).toHaveLength(2)
+    expect(lines).toHaveLength(3)
+    expect(lines[2]).toBe('2020 — Resigned (A Person). The end.')
     for (const line of lines) {
       expect(line).not.toContain('**')
+      expect(line).not.toContain('wikipedia')
       expect(line).not.toContain('[source]')
       expect(line).not.toContain('(unplaced)')
     }

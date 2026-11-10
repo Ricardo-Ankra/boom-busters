@@ -26,8 +26,8 @@ export function sceneLines(dossier: {
     if (!line.startsWith('- ')) continue
     const text = line
       .slice(2)
-      .replace(/\s*\(\[source\]\([^)]*\)\)\s*$/, '')
       .replace(/\s*\(unplaced\)\s*$/, '')
+      .replace(/\s*\(\[source\]\(.*\)\)\s*$/, '')
       .replace(/\*\*/g, '')
       .replace(/\*/g, '')
       .trim()
