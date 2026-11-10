@@ -388,6 +388,13 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().positive(),
     props: z.object({ index: z.number().int().min(1), title: z.string().min(1) }),
   }),
+  /** The film's title, shown once after the opening (`chapterMarking: 'title'`). */
+  z.object({
+    kind: z.literal('titleCard'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({ title: z.string().min(1) }),
+  }),
   z.object({
     kind: z.literal('watermark'),
     startMs: z.number().int().min(0),
@@ -427,6 +434,13 @@ export type Overlay = z.infer<typeof OverlaySchema>
 // The timeline
 // ---------------------------------------------------------------------------
 
+/**
+ * One chapter of the script, in script order. The preview screen reads chapter
+ * titles here; a timeline compiled before decision 454 has no list.
+ */
+export const TimelineChapterSchema = z.object({ id: UlidSchema, title: z.string().min(1) })
+export type TimelineChapter = z.infer<typeof TimelineChapterSchema>
+
 export const TimelineSchema = z.object({
   version: z.literal(TIMELINE_VERSION),
   fps: z.number().int().positive(),
@@ -439,6 +453,8 @@ export const TimelineSchema = z.object({
   captions: CaptionsSchema,
   slots: z.array(TimelineSlotSchema).min(1),
   overlays: z.array(OverlaySchema),
+  /** Chapter titles in script order; absent on a timeline compiled earlier. */
+  chapters: z.array(TimelineChapterSchema).optional(),
 })
 export type Timeline = z.infer<typeof TimelineSchema>
 

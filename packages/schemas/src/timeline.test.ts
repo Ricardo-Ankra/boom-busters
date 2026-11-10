@@ -231,6 +231,27 @@ describe('TimelineSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts a titleCard overlay and an optional chapters list, and strips neither', () => {
+    const parsed = TimelineSchema.parse({
+      ...fixtureTimeline(),
+      chapters: [{ id: '01J00000000000000000000001', title: 'The audit' }],
+      overlays: [
+        {
+          kind: 'titleCard',
+          startMs: 15_500,
+          durationMs: 3200,
+          props: { title: 'The Wirecard Hole' },
+        },
+      ],
+    })
+    expect(parsed.chapters).toEqual([{ id: '01J00000000000000000000001', title: 'The audit' }])
+    expect(parsed.overlays[0]?.kind).toBe('titleCard')
+  })
+
+  it('a timeline without a chapters list still parses (compiled before decision 454)', () => {
+    expect(TimelineSchema.parse(fixtureTimeline()).chapters).toBeUndefined()
+  })
+
   it('accepts an endCta overlay (a Short CTA ending) and demands its text', () => {
     const timeline = JSON.parse(JSON.stringify(fixtureTimeline())) as Timeline
     timeline.overlays.push({
