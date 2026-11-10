@@ -68,7 +68,8 @@
       "grainPreset": "subtle",
       "gradePreset": "muted",
       "lowerThirdVariant": "bar",
-      "chapterCardVariant": "full"
+      "chapterCardVariant": "full",
+      "chapterMarking": "cards"
     },
     "music": {
       "longFormStyle": "documentary-tension",
@@ -86,21 +87,21 @@
   "narration": [
     {
       "r2Key": "boom-busters/voice/ch1-p0.wav",
-      "startMs": 2300,
+      "startMs": 0,
       "durationMs": 8000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 0
     },
     {
       "r2Key": "boom-busters/voice/ch1-p1.wav",
-      "startMs": 11000,
+      "startMs": 8700,
       "durationMs": 6000,
       "chapterId": "01HQ0000000000000000000CH1",
       "paragraphIndex": 1
     },
     {
       "r2Key": "boom-busters/voice/ch2-p0.wav",
-      "startMs": 20100,
+      "startMs": 17800,
       "durationMs": 7000,
       "chapterId": "01HQ0000000000000000000CH2",
       "paragraphIndex": 0
@@ -112,38 +113,30 @@
     "duckingCurve": [
       {
         "tMs": 0,
-        "gainDb": -25
-      },
-      {
-        "tMs": 2100,
-        "gainDb": -25
-      },
-      {
-        "tMs": 2300,
         "gainDb": -37
       },
       {
-        "tMs": 17000,
+        "tMs": 14700,
         "gainDb": -37
+      },
+      {
+        "tMs": 15300,
+        "gainDb": -25
       },
       {
         "tMs": 17600,
         "gainDb": -25
       },
       {
-        "tMs": 19900,
-        "gainDb": -25
-      },
-      {
-        "tMs": 20100,
+        "tMs": 17800,
         "gainDb": -37
       },
       {
-        "tMs": 27100,
+        "tMs": 24800,
         "gainDb": -37
       },
       {
-        "tMs": 27700,
+        "tMs": 25400,
         "gainDb": -25
       }
     ],
@@ -153,7 +146,7 @@
         "style": "chapter"
       },
       {
-        "tMs": 17800,
+        "tMs": 15500,
         "style": "chapter"
       }
     ]
@@ -162,149 +155,149 @@
     "words": [
       {
         "text": "By",
-        "startMs": 2300,
-        "endMs": 2650,
-        "timestampMs": 2475,
+        "startMs": 0,
+        "endMs": 350,
+        "timestampMs": 175,
         "confidence": null
       },
       {
         "text": "June,",
-        "startMs": 2700,
-        "endMs": 3050,
-        "timestampMs": 2875,
+        "startMs": 400,
+        "endMs": 750,
+        "timestampMs": 575,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 3100,
-        "endMs": 3450,
-        "timestampMs": 3275,
+        "startMs": 800,
+        "endMs": 1150,
+        "timestampMs": 975,
         "confidence": null
       },
       {
         "text": "auditors",
-        "startMs": 3500,
-        "endMs": 3850,
-        "timestampMs": 3675,
+        "startMs": 1200,
+        "endMs": 1550,
+        "timestampMs": 1375,
         "confidence": null
       },
       {
         "text": "could",
-        "startMs": 3900,
-        "endMs": 4250,
-        "timestampMs": 4075,
+        "startMs": 1600,
+        "endMs": 1950,
+        "timestampMs": 1775,
         "confidence": null
       },
       {
         "text": "not",
-        "startMs": 4300,
-        "endMs": 4650,
-        "timestampMs": 4475,
+        "startMs": 2000,
+        "endMs": 2350,
+        "timestampMs": 2175,
         "confidence": null
       },
       {
         "text": "find",
-        "startMs": 4700,
-        "endMs": 5050,
-        "timestampMs": 4875,
+        "startMs": 2400,
+        "endMs": 2750,
+        "timestampMs": 2575,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 5100,
-        "endMs": 5450,
-        "timestampMs": 5275,
+        "startMs": 2800,
+        "endMs": 3150,
+        "timestampMs": 2975,
         "confidence": null
       },
       {
         "text": "money.",
-        "startMs": 5500,
-        "endMs": 5850,
-        "timestampMs": 5675,
+        "startMs": 3200,
+        "endMs": 3550,
+        "timestampMs": 3375,
         "confidence": null
       },
       {
         "text": "EY",
-        "startMs": 11000,
-        "endMs": 11350,
-        "timestampMs": 11175,
+        "startMs": 8700,
+        "endMs": 9050,
+        "timestampMs": 8875,
         "confidence": null
       },
       {
         "text": "refused",
-        "startMs": 11400,
-        "endMs": 11750,
-        "timestampMs": 11575,
+        "startMs": 9100,
+        "endMs": 9450,
+        "timestampMs": 9275,
         "confidence": null
       },
       {
         "text": "to",
-        "startMs": 11800,
-        "endMs": 12150,
-        "timestampMs": 11975,
+        "startMs": 9500,
+        "endMs": 9850,
+        "timestampMs": 9675,
         "confidence": null
       },
       {
         "text": "sign",
-        "startMs": 12200,
-        "endMs": 12550,
-        "timestampMs": 12375,
+        "startMs": 9900,
+        "endMs": 10250,
+        "timestampMs": 10075,
         "confidence": null
       },
       {
         "text": "the",
-        "startMs": 12600,
-        "endMs": 12950,
-        "timestampMs": 12775,
+        "startMs": 10300,
+        "endMs": 10650,
+        "timestampMs": 10475,
         "confidence": null
       },
       {
         "text": "accounts.",
-        "startMs": 13000,
-        "endMs": 13350,
-        "timestampMs": 13175,
+        "startMs": 10700,
+        "endMs": 11050,
+        "timestampMs": 10875,
         "confidence": null
       },
       {
         "text": "The",
-        "startMs": 20100,
-        "endMs": 20450,
-        "timestampMs": 20275,
+        "startMs": 17800,
+        "endMs": 18150,
+        "timestampMs": 17975,
         "confidence": null
       },
       {
         "text": "shares",
-        "startMs": 20500,
-        "endMs": 20850,
-        "timestampMs": 20675,
+        "startMs": 18200,
+        "endMs": 18550,
+        "timestampMs": 18375,
         "confidence": null
       },
       {
         "text": "collapsed",
-        "startMs": 20900,
-        "endMs": 21250,
-        "timestampMs": 21075,
+        "startMs": 18600,
+        "endMs": 18950,
+        "timestampMs": 18775,
         "confidence": null
       },
       {
         "text": "in",
-        "startMs": 21300,
-        "endMs": 21650,
-        "timestampMs": 21475,
+        "startMs": 19000,
+        "endMs": 19350,
+        "timestampMs": 19175,
         "confidence": null
       },
       {
         "text": "nine",
-        "startMs": 21700,
-        "endMs": 22050,
-        "timestampMs": 21875,
+        "startMs": 19400,
+        "endMs": 19750,
+        "timestampMs": 19575,
         "confidence": null
       },
       {
         "text": "days.",
-        "startMs": 22100,
-        "endMs": 22450,
-        "timestampMs": 22275,
+        "startMs": 19800,
+        "endMs": 20150,
+        "timestampMs": 19975,
         "confidence": null
       }
     ],
@@ -313,7 +306,7 @@
   "slots": [
     {
       "type": "stock",
-      "startMs": 2300,
+      "startMs": 0,
       "durationMs": 8700,
       "transition": "cut",
       "motion": {
@@ -331,7 +324,7 @@
     },
     {
       "type": "still",
-      "startMs": 11000,
+      "startMs": 8700,
       "durationMs": 9100,
       "transition": "dissolve",
       "motion": {
@@ -350,7 +343,7 @@
     },
     {
       "type": "chart",
-      "startMs": 20100,
+      "startMs": 17800,
       "durationMs": 4000,
       "transition": "cut",
       "motion": {
@@ -384,7 +377,7 @@
     },
     {
       "type": "map",
-      "startMs": 24100,
+      "startMs": 21800,
       "durationMs": 3000,
       "transition": "dissolve",
       "motion": {
@@ -411,21 +404,22 @@
   "overlays": [
     {
       "kind": "chapterCard",
-      "startMs": 0,
-      "durationMs": 3200,
-      "props": {
-        "index": 1,
-        "title": "The audit"
-      }
-    },
-    {
-      "kind": "chapterCard",
-      "startMs": 17800,
+      "startMs": 15500,
       "durationMs": 3200,
       "props": {
         "index": 2,
         "title": "The collapse"
       }
+    }
+  ],
+  "chapters": [
+    {
+      "id": "01HQ0000000000000000000CH1",
+      "title": "The audit"
+    },
+    {
+      "id": "01HQ0000000000000000000CH2",
+      "title": "The collapse"
     }
   ]
 }

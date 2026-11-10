@@ -8,6 +8,7 @@ import {
 import type {
   BrandKitTokens,
   Caption,
+  ChapterMarking,
   ChartBrief,
   GraphicCodePayload,
   GraphicScene,
@@ -15,6 +16,7 @@ import type {
   MapBrief,
   MotionSpec,
   NarrationSegment,
+  Overlay,
   SocialPayload,
   Timeline,
   TimelineMotion,
@@ -114,6 +116,10 @@ export interface CompileInput {
   slots: CompileSlot[]
   music: { r2Key: string; durationMs?: number | null } | null
   captions: { words: Caption[]; style: 'karaoke' | 'none' }
+  /** How a later chapter's start is marked (decision 454). */
+  chapterMarking: ChapterMarking
+  /** The film's title; `title` marking shows it once, at the second chapter. */
+  filmTitle: string
   fps?: number
   width?: number
   height?: number
@@ -172,6 +178,12 @@ export const CHAPTER_CARD_MS = 3200
 /** Silence between a chapter's last word and the next card's first frame. */
 export const CHAPTER_LEAD_MS = 800
 /**
+ * The silence held after the lead when a chapter start carries no card
+ * (decision 454): lead plus hold is the unmarked break, the same length as the
+ * card's own span, so the film's rhythm does not change with the marking.
+ */
+export const CHAPTER_HOLD_MS = 1400
+/**
  * Narration resumes this long BEFORE the card ends: the card is still opaque
  * (its fade-out is shorter than this window's tail), so the swap to the new
  * chapter's first visual happens out of sight and the slow fade-out lands on
@@ -204,28 +216,50 @@ export function compileTimeline(input: CompileInput): Timeline {
   }
 
   // Narration: measured take durations in script order, with breathing room
-  // (decision 215) — a paused beat between paragraphs and a lead + card +
-  // overlap around every chapter start. The board planned its slots and the
+  // (decision 215) — a paused beat between paragraphs and, from the second
+  // chapter on, a break at every chapter start: a lead + card + overlap, or a
+  // lead + hold when unmarked (decision 454). The opening chapter gets none:
+  // the film opens on its first word. The board planned its slots and the
   // captions were built on the gapless end-to-end clock, so each paragraph
   // records how far that old clock has shifted; every other track is moved
   // by the same piecewise-constant function. One clock, stretched in one
   // place.
   const narration: NarrationSegment[] = []
   const breakpoints: { oldStartMs: number; shiftMs: number }[] = []
-  const cards: { startMs: number; index: number; title: string }[] = []
+  const overlays: Overlay[] = []
+  // Where the music is cued: the start, then each marked or unmarked break.
+  const cues: number[] = [0]
+  const chapters: { id: string; title: string }[] = []
   const seenChapters = new Set<string>()
   let oldClock = 0
   let shift = 0
   for (const paragraph of input.paragraphs) {
     if (!seenChapters.has(paragraph.chapterId)) {
       seenChapters.add(paragraph.chapterId)
-      const lead = narration.length === 0 ? 0 : CHAPTER_LEAD_MS
-      cards.push({
-        startMs: oldClock + shift + lead,
-        index: paragraph.chapterIndex + 1,
-        title: paragraph.chapterTitle,
-      })
-      shift += lead + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+      chapters.push({ id: paragraph.chapterId, title: paragraph.chapterTitle })
+      if (chapters.length > 1) {
+        const leadMs = oldClock + shift + CHAPTER_LEAD_MS
+        if (input.chapterMarking === 'cards') {
+          overlays.push({
+            kind: 'chapterCard',
+            startMs: leadMs,
+            durationMs: CHAPTER_CARD_MS,
+            props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
+          })
+          shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+        } else if (input.chapterMarking === 'title' && chapters.length === 2) {
+          overlays.push({
+            kind: 'titleCard',
+            startMs: leadMs,
+            durationMs: CHAPTER_CARD_MS,
+            props: { title: input.filmTitle },
+          })
+          shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+        } else {
+          shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
+        }
+        cues.push(leadMs)
+      }
     } else {
       shift += PARAGRAPH_GAP_MS
     }
@@ -361,15 +395,6 @@ export function compileTimeline(input: CompileInput): Timeline {
     }
   }
 
-  // Chapter cards over the silence the narration loop carved out; the lower
-  // third and watermark are M6.5 composition concerns fed by later passes.
-  const overlays = cards.map((chapter) => ({
-    kind: 'chapterCard' as const,
-    startMs: chapter.startMs,
-    durationMs: CHAPTER_CARD_MS,
-    props: { index: chapter.index, title: chapter.title },
-  }))
-
   const music = input.music
     ? {
         r2Key: input.music.r2Key,
@@ -379,10 +404,7 @@ export function compileTimeline(input: CompileInput): Timeline {
           bedGainDb: input.brand.music.bedGainDb,
           duckDepthDb: input.brand.music.duckDepthDb,
         }),
-        cuePoints: cards.map((chapter) => ({
-          tMs: chapter.startMs,
-          style: 'chapter',
-        })),
+        cuePoints: cues.map((tMs) => ({ tMs, style: 'chapter' })),
       }
     : null
 
@@ -412,6 +434,7 @@ export function compileTimeline(input: CompileInput): Timeline {
     captions,
     slots,
     overlays,
+    chapters,
   })
 
   const issues = canonicalTimelineIssues(timeline)

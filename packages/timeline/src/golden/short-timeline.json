@@ -68,7 +68,8 @@
       "grainPreset": "subtle",
       "gradePreset": "muted",
       "lowerThirdVariant": "bar",
-      "chapterCardVariant": "full"
+      "chapterCardVariant": "full",
+      "chapterMarking": "cards"
     },
     "music": {
       "longFormStyle": "documentary-tension",

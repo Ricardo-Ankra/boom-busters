@@ -50,8 +50,8 @@ describe('compileShortTimeline', () => {
     const short = chapterOneShort()
     expect(short.width).toBe(SHORT_WIDTH)
     expect(short.height).toBe(SHORT_HEIGHT)
-    // Chapter one is paragraphs at 2300..10300 and 11000..17000 on the
-    // master (decision 215 breathing room), so the short keeps the beat
+    // Chapter one is paragraphs at 0..8000 and 8700..14700 on the
+    // master (decision 215 breathing room; no opening card, decision 454), so the short keeps the beat
     // between them: 8000ms of words, 700ms of breath, 6000ms of words.
     expect(short.narration.map((segment) => segment.startMs)).toEqual([0, 8700])
     expect(timelineDurationMs(short)).toBe(14_700)
@@ -70,15 +70,15 @@ describe('compileShortTimeline', () => {
       ending: 'loop',
       music: null,
     })
-    // Paragraph 1 spans 11000..17000 on the master clock.
+    // Paragraph 1 spans 8700..14700 on the master clock.
     const masterWords = master.captions.words.filter(
-      (word) => word.startMs >= 11_000 && word.startMs < 17_000,
+      (word) => word.startMs >= 8700 && word.startMs < 14_700,
     )
     expect(short.captions.words.map((word) => word.text)).toEqual(
       masterWords.map((word) => word.text),
     )
     expect(short.captions.words.map((word) => word.startMs)).toEqual(
-      masterWords.map((word) => word.startMs - 11_000),
+      masterWords.map((word) => word.startMs - 8700),
     )
     expect(short.captions.words[0]!.startMs).toBeGreaterThanOrEqual(0)
   })

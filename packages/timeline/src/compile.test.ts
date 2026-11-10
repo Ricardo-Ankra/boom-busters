@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import {
   CHAPTER_CARD_MS,
+  CHAPTER_HOLD_MS,
   CHAPTER_LEAD_MS,
   CHAPTER_OVERLAP_MS,
   compileTimeline,
@@ -25,6 +26,7 @@ import { offsetCaptions, snapToScript } from './snap'
 
 const CHAPTER_ONE = '01HQ0000000000000000000CH1'
 const CHAPTER_TWO = '01HQ0000000000000000000CH2'
+export const CHAPTER_THREE = '01HQ0000000000000000000CH3'
 const CLAIM = '01HQ00000000000000000000AA'
 
 /**
@@ -154,7 +156,23 @@ export function goldenInput(): CompileInput {
     slots,
     music: { r2Key: 'boom-busters/music/documentary-tension-01.mp3' },
     captions: { words, style: 'karaoke' },
+    chapterMarking: 'cards',
+    filmTitle: 'The Wirecard Hole',
   }
+}
+
+/** goldenInput() plus a fourth paragraph opening a third chapter (decision 454). */
+export function threeChapterInput(over: Partial<CompileInput> = {}): CompileInput {
+  const input = goldenInput()
+  input.paragraphs.push({
+    chapterId: CHAPTER_THREE,
+    chapterIndex: 2,
+    chapterTitle: 'The trial',
+    paragraphIndex: 0,
+    r2Key: 'boom-busters/takes/p4.mp3',
+    durationMs: 5000,
+  })
+  return { ...input, ...over }
 }
 
 const GOLDEN_PATH = join(dirname(fileURLToPath(import.meta.url)), 'golden', 'master-timeline.json')
@@ -228,21 +246,80 @@ describe('compileTimeline', () => {
     expect(compiled).toBe(readFileSync(GOLDEN_PATH, 'utf8'))
   })
 
-  it('lays narration in script order with breathing room stretched in (decision 215)', () => {
+  it('opens on the first word: narration starts at 0 and no card precedes it (decision 454)', () => {
     const timeline = compileTimeline(goldenInput())
-    // Chapter 1's card leads; narration begins while the card is still up.
-    expect(timeline.narration.map((segment) => segment.startMs)).toEqual([2300, 11_000, 20_100])
-    expect(timelineDurationMs(timeline)).toBe(27_100)
+    expect(timeline.narration.map((s) => s.startMs)).toEqual([0, 8700, 17_800])
+    expect(timelineDurationMs(timeline)).toBe(24_800)
+    expect(timeline.overlays.map((o) => o.startMs)).toEqual([15_500])
+    expect(timeline.chapters).toEqual([
+      { id: CHAPTER_ONE, title: 'The audit' },
+      { id: CHAPTER_TWO, title: 'The collapse' },
+    ])
   })
 
-  it('breathes between paragraphs and pauses around every chapter card', () => {
+  it('cards mode: one card per later chapter, title only in the props index, and the cue at the card', () => {
+    const timeline = compileTimeline(goldenInput())
+    expect(timeline.overlays).toEqual([
+      {
+        kind: 'chapterCard',
+        startMs: 15_500,
+        durationMs: CHAPTER_CARD_MS,
+        props: { index: 2, title: 'The collapse' },
+      },
+    ])
+    expect(timeline.narration[2]!.startMs).toBe(15_500 + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS)
+    expect(timeline.music?.cuePoints.map((c) => c.tMs)).toEqual([0, 15_500])
+  })
+
+  it('none mode: no overlay, a held break of lead plus hold, the cue at the lead point', () => {
+    const timeline = compileTimeline({ ...goldenInput(), chapterMarking: 'none' })
+    expect(timeline.overlays).toEqual([])
+    expect(timeline.narration[2]!.startMs).toBe(14_700 + CHAPTER_LEAD_MS + CHAPTER_HOLD_MS)
+    expect(timeline.music?.cuePoints.map((c) => c.tMs)).toEqual([0, 15_500])
+    // The outgoing shot holds through the break to the resumed words.
+    const still = timeline.slots[1]!
+    expect(still.startMs + still.durationMs).toBe(timeline.narration[2]!.startMs)
+  })
+
+  it('title mode: the film title once at chapter two, later chapters unmarked', () => {
+    const input = threeChapterInput({ chapterMarking: 'title' })
+    const timeline = compileTimeline(input)
+    expect(timeline.overlays).toEqual([
+      {
+        kind: 'titleCard',
+        startMs: 15_500,
+        durationMs: CHAPTER_CARD_MS,
+        props: { title: 'The Wirecard Hole' },
+      },
+    ])
+    const third = timeline.narration[3]!
+    const second = timeline.narration[2]!
+    expect(third.startMs).toBe(
+      second.startMs + second.durationMs + CHAPTER_LEAD_MS + CHAPTER_HOLD_MS,
+    )
+    expect(timeline.music?.cuePoints.map((c) => c.tMs)).toEqual([
+      0,
+      15_500,
+      second.startMs + second.durationMs + CHAPTER_LEAD_MS,
+    ])
+  })
+
+  it('a single-chapter film gets no card in any mode', () => {
+    for (const chapterMarking of ['cards', 'title', 'none'] as const) {
+      const input = { ...goldenInput(), chapterMarking }
+      input.paragraphs = input.paragraphs.filter((p) => p.chapterId === CHAPTER_ONE)
+      expect(compileTimeline(input).overlays).toEqual([])
+    }
+  })
+
+  it('breathes between paragraphs and pauses before a chapter card', () => {
     const timeline = compileTimeline(goldenInput())
     const [first, second, third] = timeline.narration
     // A beat between paragraphs of the same chapter.
     expect(second!.startMs - (first!.startMs + first!.durationMs)).toBe(PARAGRAPH_GAP_MS)
     // The second chapter's card starts a lead after the last word, and its
     // narration resumes while the card is still opaque.
-    const card = timeline.overlays[1]!
+    const card = timeline.overlays[0]!
     expect(card.startMs).toBe(second!.startMs + second!.durationMs + CHAPTER_LEAD_MS)
     expect(third!.startMs).toBe(card.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS)
   })
@@ -279,24 +356,13 @@ describe('compileTimeline', () => {
     expect(timeline.slots[2]!.startMs).toBe(timeline.narration[2]!.startMs)
   })
 
-  it('opens a chapter card over each pause and cues the music there', () => {
-    const timeline = compileTimeline(goldenInput())
-    expect(timeline.overlays.map((overlay) => overlay.startMs)).toEqual([0, 17_800])
-    expect(timeline.overlays.map((overlay) => overlay.durationMs)).toEqual([
-      CHAPTER_CARD_MS,
-      CHAPTER_CARD_MS,
-    ])
-    expect(timeline.music?.cuePoints.map((cue) => cue.tMs)).toEqual([0, 17_800])
-  })
-
   it('ducks the music with the Brand Kit gains', () => {
     const timeline = compileTimeline(goldenInput())
     const brand = resolveBrandKit(DEFAULT_SETTINGS)
     expect(timeline.music?.gainDb).toBe(brand.music.bedGainDb)
     const curve = timeline.music!.duckingCurve
-    // The bed opens at full level — the first words are a card's length in
-    // (decision 215) — and ducks to the brand depth once narration starts.
-    expect(curve[0]?.gainDb).toBe(brand.music.bedGainDb)
+    // Words start at 0 (decision 454), so the bed opens already ducked.
+    expect(curve[0]?.gainDb).toBe(brand.music.bedGainDb + brand.music.duckDepthDb)
     expect(Math.min(...curve.map((point) => point.gainDb))).toBe(
       brand.music.bedGainDb + brand.music.duckDepthDb,
     )
