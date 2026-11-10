@@ -196,9 +196,14 @@ export function priceOf(model: KnownModel, usage: TokenUsage): number {
 export const THINKING_HEADROOM_TOKENS = 4000
 export const MAX_OUTPUT_TOKENS = 32_000
 
-export function outputBudget(answerTokens: number): number {
-  return Math.min(
-    MAX_OUTPUT_TOKENS,
-    Math.max(1, Math.round(answerTokens)) + THINKING_HEADROOM_TOKENS,
-  )
+/**
+ * `thinkingTokens` is for a task that thinks longer than most: the critic,
+ * judging a design over its pictures, spent 5,500 tokens thinking on Sonnet 5
+ * and wrote nothing (decision 450).
+ */
+export function outputBudget(
+  answerTokens: number,
+  thinkingTokens: number = THINKING_HEADROOM_TOKENS,
+): number {
+  return Math.min(MAX_OUTPUT_TOKENS, Math.max(1, Math.round(answerTokens)) + thinkingTokens)
 }

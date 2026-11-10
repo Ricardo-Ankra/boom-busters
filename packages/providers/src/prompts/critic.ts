@@ -47,6 +47,15 @@ import { capList, dropItems, ignoreRepairs, trimField, type Note } from './repai
  */
 
 export const CRITIC_OUTPUT_TOKENS = 1500
+/**
+ * The critic's room to think (decision 450). It judges five axes over the
+ * contact sheets and rest frames, and Sonnet 5 thinks by default: on the
+ * standard 4,000 tokens of headroom it spent all 5,500 thinking and wrote no
+ * report. With the answer this makes 16,000, the designer's own ceiling,
+ * which finishes inside the 300 s step. A ceiling, not a spend: the ledger
+ * settles on the tokens produced, and the estimate still counts the answer.
+ */
+export const CRITIC_THINKING_TOKENS = 14_500
 /** For the estimate shown before a call: the head, the material and five images. */
 export const CRITIC_INPUT_TOKENS = 7000
 
@@ -231,7 +240,7 @@ export function buildCriticRequest(input: CriticInput): LLMTaskRequest {
       { role: 'user', content: ask, images },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: outputBudget(CRITIC_OUTPUT_TOKENS),
+    maxTokens: outputBudget(CRITIC_OUTPUT_TOKENS, CRITIC_THINKING_TOKENS),
   }
 }
 
@@ -291,7 +300,8 @@ export function buildPairwiseRequest(input: {
       { role: 'user', content: ask, images },
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: outputBudget(300),
+    // Two designs' sheets to compare: the critic's room to think (decision 450).
+    maxTokens: outputBudget(CRITIC_OUTPUT_TOKENS, CRITIC_THINKING_TOKENS),
   }
 }
 
