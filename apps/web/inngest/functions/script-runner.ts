@@ -1,6 +1,5 @@
 import {
   channelForProject,
-  countWarnings,
   createScriptVersion,
   getDossier,
   getLatestScript,
@@ -20,12 +19,18 @@ import {
   mockSelfCheck,
   mockShortsCandidates,
   mockProvidersEnabled,
+  sceneLines,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import type { Repair, ScriptClaim } from '@boom-busters/providers'
 import {
+  countBySeverity,
   evidenceLabel,
+  hedgeDensity,
   researchProfileOf,
+  scriptLint,
+  scriptTargetWords,
+  withStandingSeverity,
   type NoticeTarget,
   type Outline,
   type ShortsCandidate,
@@ -183,6 +188,18 @@ function withoutTension(outline: Outline): Outline {
     })),
     ...(outline.close ? { close: { ...outline.close, openThread: '' } } : {}),
   }
+}
+
+/** The code's own style and length checks for one chapter, as the warnings the gutter stores. */
+function lintOf(
+  written: Parameters<typeof scriptLint>[0],
+  outline: Parameters<typeof scriptLint>[1],
+  targetWords: number,
+  chapterIndex: number,
+) {
+  return scriptLint(written, outline, targetWords)
+    .filter((found) => found.chapterIndex === chapterIndex)
+    .map((found) => found.warning)
 }
 
 export const scriptRunner = inngest.createFunction(
@@ -415,6 +432,11 @@ export const scriptRunner = inngest.createFunction(
         const frozen = requireCompleteBible(channel)
         // The fixed lines are the owner's words, not claims: the check never sees them.
         const checked = dropFixedParagraphs(chapter.contentMd, channel.format)
+        // Read inside the step, so a run parked before this deploy replays safely.
+        const dossier = await getDossier(db, projectId)
+        const scenes = dossier
+          ? sceneLines({ research: dossier.research, contentMd: dossier.contentMd })
+          : []
         const check = mocked
           ? mockSelfCheck(checked)
           : await selfCheckWith(completeForProject(projectId), {
@@ -423,14 +445,24 @@ export const scriptRunner = inngest.createFunction(
               contentMd: checked,
               claims: setup.claims,
               intent: channel.format.intent,
+              scenes,
             })
 
         const own = repeats
           .filter((repeat) => repeat.chapterIndex === chapter.index)
           .map((repeat) => repeat.warning)
-        await setChapterWarnings(db, chapter.chapterId, [...check.warnings, ...own])
+        // The channel's research profile decides how blocking an overstated standing is.
+        const modelWarnings = withStandingSeverity(researchProfileOf(frozen.bible), check.warnings)
+        const coded = lintOf(
+          written,
+          outline,
+          scriptTargetWords(setup.targetRuntimeMin, channel.format),
+          chapter.index,
+        )
+        const all = [...modelWarnings, ...own, ...coded]
+        await setChapterWarnings(db, chapter.chapterId, all)
 
-        return { warnings: check.warnings.length + own.length }
+        return { warnings: all.length }
       })
     }
 
@@ -466,11 +498,14 @@ export const scriptRunner = inngest.createFunction(
       await setShortsCandidates(db, setup.scriptId, shorts)
       await setScriptStatus(db, setup.scriptId, 'self_checked')
       const latest = await getLatestScript(db, projectId)
-      const warnings = latest ? countWarnings(latest.chapters) : 0
+      const { blocking, advisory } = countBySeverity(latest?.chapters ?? [])
 
       return {
         chapters: written.length,
-        warnings,
+        warnings: blocking + advisory,
+        blocking,
+        advisory,
+        hedges: hedgeDensity(latest?.chapters ?? []),
         runtimeMin: Math.round(
           (latest?.chapters.reduce((total, c) => total + c.estRuntimeSec, 0) ?? 0) / 60,
         ),
@@ -480,22 +515,19 @@ export const scriptRunner = inngest.createFunction(
       }
     })
 
+    // A summary stored before decision 453 has only `warnings`, all read as blocking.
+    const blocking = summary.blocking ?? summary.warnings
+    const advisory = summary.advisory ?? 0
+    const hedges = summary.hedges ?? 0
     const gateSummary =
       `Script ready · ${summary.chapters} chapters · ~${summary.runtimeMin} min · ` +
-      `${summary.warnings} warnings · ` +
+      `${blocking} blocking · ${advisory} advisory · hedges ${hedges}/100w · ` +
       (summary.shortsOff ? 'Shorts off for this format' : `${summary.shorts} Shorts candidates`)
 
-    /**
-     * Exception-based gating (decision, 2026-08-16): the self-check is the
-     * reviewer of record here. A warning means a sentence asserts something
-     * the claim list does not support — exactly what a human read of the
-     * draft is for — so any warning parks the gate. Zero warnings means every
-     * sentence traced back to a verified claim, and the one remaining
-     * question ("do I like these words?") is better answered at the voice
-     * screen, where the text sits beside its audio and an edit re-reads only
-     * the paragraph it touches.
-     */
-    if (summary.warnings === 0) {
+    // Blocking warnings are the reviewer's yes-or-no findings: grounding, liability,
+    // standing per research profile and repeats. Advisory ones are craft, style and length.
+    // Zero blocking goes on to voice without a human, whatever the advisory count (decision 453).
+    if (blocking === 0) {
       await step.run('auto-approve', async () => {
         await setScriptStatus(db, setup.scriptId, 'approved')
         await autoCloseReviewGate(ctx, {

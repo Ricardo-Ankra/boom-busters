@@ -1,18 +1,22 @@
 // @vitest-environment node
 
+import { eq } from 'drizzle-orm'
 import {
   createCase,
   createChannel,
   createProjectFromCase,
   createScriptVersion,
+  dossiers,
   FIXTURE_PROJECT_ID,
   getChapter,
   getProject,
   latestShortsCandidates,
   projects,
   requireTestDatabase,
+  saveChapter,
   scripts,
   seed,
+  setChapterWarnings,
   setProjectStage,
   truncateRunMirror,
 } from '@boom-busters/db'
@@ -20,6 +24,7 @@ import type * as Db from '@boom-busters/db'
 import type { ClaimRow } from '@boom-busters/db'
 import {
   BudgetExceededError,
+  countBySeverity,
   DEFAULT_SETTINGS,
   estimateRuntimeSec,
   EMPTY_BIBLE,
@@ -536,7 +541,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
           steps: throughSelfCheck().slice(0, 4),
         })
         const sent = callLlm.mock.calls[0]![0] as { system: string }
-        expect(sent.system).toContain('checking the narration of a calm telling')
+        expect(sent.system).toContain('chapter of a calm telling')
       } finally {
         restore()
       }
@@ -847,5 +852,172 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     expect(result).toMatchObject({ outcome: 'auto-approved', shorts: 1 })
     expect(ctx.step.run).not.toHaveBeenCalledWith('shorts-over-budget', expect.any(Function))
     expect(await latestShortsCandidates(db, FIXTURE_PROJECT_ID)).toEqual([candidate])
+  })
+
+  describe('the self-check step reads scenes, standing and the code checks (decision 453)', () => {
+    const text = chapters[0]!.contentMd
+    const savedChapter = async (contentMd = text): Promise<string> =>
+      (
+        await saveChapter(db, {
+          scriptId,
+          index: 0,
+          title: 'The audit',
+          contentMd,
+          estRuntimeSec: 60,
+        })
+      ).id
+    const upTo = (chapterId: string, contentMd = text) => [
+      ...throughSelfCheck().slice(0, 3),
+      { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd }) },
+    ]
+    const live = (answer: unknown) => {
+      vi.stubEnv('MOCK_PROVIDERS', '')
+      callLlm.mockReset()
+      callLlm.mockResolvedValue({ text: JSON.stringify(answer) })
+    }
+    const warning = (kind: 'style' | 'unsourced-claim') => ({
+      kind,
+      sentence: 'EY refused to sign the accounts.',
+      message: 'A stored warning.',
+    })
+
+    it('sends the scene list beside the claims, from the dossier row', async () => {
+      live({ warnings: [] })
+      const [original] = await db
+        .select({ contentMd: dossiers.contentMd })
+        .from(dossiers)
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+      try {
+        await db
+          .update(dossiers)
+          .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
+          .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: upTo(await savedChapter()),
+        })
+      } finally {
+        await db
+          .update(dossiers)
+          .set({ contentMd: original!.contentMd })
+          .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+      }
+      const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+      expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
+    })
+
+    it("stamps the profile's severity on an overstated-standing warning", async () => {
+      live({
+        warnings: [
+          {
+            kind: 'overstated-standing',
+            sentence: 'EY refused to sign the accounts.',
+            message: 'ONE STUDY narrated as settled',
+          },
+        ],
+      })
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      channelForProject.mockImplementation(async (...args: unknown[]) => {
+        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+        return { ...channel, bible: { ...channel.bible, researchProfile: 'science' } }
+      })
+      try {
+        const chapterId = await savedChapter()
+        await engine.executeStep('self-check-0', { events: approved(), steps: upTo(chapterId) })
+        const stored = (await getChapter(db, chapterId))!.warnings
+        expect(stored.find((w) => w.kind === 'overstated-standing')?.severity).toBe('advisory')
+      } finally {
+        channelForProject.mockImplementation(actual.channelForProject)
+      }
+    })
+
+    it("stores the style and length checks as advisory beside the model's warnings", async () => {
+      live({ warnings: [] })
+      const asking = `${text} Who knew?`
+      const chapterId = await savedChapter(asking)
+      await engine.executeStep('self-check-0', {
+        events: approved(),
+        steps: upTo(chapterId, asking),
+      })
+      const stored = (await getChapter(db, chapterId))!.warnings
+      expect(stored).toContainEqual(expect.objectContaining({ kind: 'style' }))
+      const counts = countBySeverity([{ warnings: stored }])
+      expect(counts.blocking).toBe(0)
+      expect(counts.advisory).toBeGreaterThanOrEqual(1)
+    })
+
+    it('auto-approves on zero blocking whatever the advisory count', async () => {
+      const chapterId = await savedChapter()
+      await setChapterWarnings(db, chapterId, [
+        warning('style'),
+        warning('style'),
+        warning('style'),
+      ])
+      const { result } = await engine.execute({
+        events: approved(),
+        steps: [
+          ...upTo(chapterId),
+          { id: 'self-check-0', handler: () => ({ warnings: 3 }) },
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [] }) },
+          { id: 'advance-to-voice', handler: () => undefined },
+        ],
+      })
+
+      expect(result).toMatchObject({ outcome: 'auto-approved', blocking: 0, advisory: 3 })
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('0 blocking · 3 advisory') }),
+      )
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('hedges ') }),
+      )
+    })
+
+    it('parks the gate on one blocking warning', async () => {
+      const chapterId = await savedChapter()
+      await setChapterWarnings(db, chapterId, [warning('unsourced-claim')])
+      const { ctx } = await engine.executeStep('open-gate', {
+        events: approved(),
+        steps: [
+          ...upTo(chapterId),
+          { id: 'self-check-0', handler: () => ({ warnings: 1 }) },
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [] }) },
+        ],
+      })
+
+      expect(ctx.step.run).toHaveBeenCalledWith('open-gate', expect.any(Function))
+      expect(ctx.step.run).not.toHaveBeenCalledWith('auto-approve', expect.any(Function))
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'gate-open',
+          body: expect.stringContaining('1 blocking'),
+        }),
+      )
+    })
+
+    it('reads a summary replayed without blocking as its warnings count', async () => {
+      const { ctx } = await engine.executeStep('open-gate', {
+        events: approved(),
+        steps: [
+          ...throughSelfCheck(),
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [] }) },
+          {
+            id: 'finish-draft',
+            handler: () => ({
+              chapters: 1,
+              warnings: 2,
+              runtimeMin: 1,
+              shorts: 0,
+              shortsOff: true,
+            }),
+          },
+        ],
+      })
+
+      expect(ctx.step.run).toHaveBeenCalledWith('open-gate', expect.any(Function))
+      expect(ctx.step.run).not.toHaveBeenCalledWith('auto-approve', expect.any(Function))
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ body: expect.stringContaining('2 blocking · 0 advisory') }),
+      )
+    })
   })
 })
