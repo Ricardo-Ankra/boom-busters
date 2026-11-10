@@ -265,7 +265,7 @@ BrandKitTokens = {
   colors: { primary, accent, background, surface, textPrimary, textSecondary,
             chartSeries: string[]  /* ordered, colour-blind safe */,
             captionHighlight, semantic: {collapse: red, recovery: green} },
-  look: { logoR2Key, watermarkPlacement, grainPreset, lowerThirdVariant, chapterCardVariant },
+  look: { logoR2Key, watermarkPlacement, grainPreset, lowerThirdVariant, chapterCardVariant, chapterMarking },
   voice: { provider, voiceId, stylePrompt, pacing, locked: true },  // unlock = typed confirmation "CHANGE VOICE"
   music: { longFormStyle, shortsStyle, bedGainDb, duckDepthDb }
 }

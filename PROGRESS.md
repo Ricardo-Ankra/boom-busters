@@ -4961,6 +4961,59 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - T10: the batched transcription branch has a test, as far as the harness
   reaches (`e2c30d13`).
 
+## Chapter marking (2026-11-10)
+
+> Chapter breaks are now a Brand Kit choice: a number-free title card
+> (`cards`), the film's title once at the start (`title`), or no card at all
+> (`none`), with a format able to override it. The opening chapter never gets a
+> card. The compiler writes a `chapters` list the preview reads. Branch
+> `chapter-marking`, decision 454. Spec
+> `docs/superpowers/specs/2026-11-10-chapter-marking-design.md`, plan
+> `docs/superpowers/plans/2026-11-10-chapter-marking.md`. No migration.
+
+### Deliverables
+
+- [x] Task 1: chapter marking on the Brand Kit look and per format, with its
+      resolver (`39657fd9`).
+- [x] Task 2: the `titleCard` overlay and the timeline's `chapters` list
+      (`1faf4b7b`).
+- [x] Task 3: the compiler: no opening card; cards, title or none per chapter
+      marking; the chapters list (`01224fc4`).
+- [x] Task 4: `chapterCuePoints`, one cue rule for the compiler and the bed
+      swaps, and its fix to find a card by its resume point (`e2d76065`,
+      `6eca5fbb`).
+- [x] Task 5: the chapter card drops its number; `TitleCard` for the film's
+      title (`fcfb9d1c`).
+- [x] Task 6: the preview's chapter list reads the timeline's chapters, cards
+      as the fallback (`89af3610`).
+- [x] Task 7: the assembly runner compiles with the format's chapter marking
+      and the film title (`9cefae02`), and a replayed pre-454 setup keeps its
+      cards with an exhaustive marking switch (`f24a1bf3`).
+- [x] Task 8: Chapter marking on the Brand Kit tab and per format in the
+      editor (`d22eec38`).
+- [x] Task 9: the Brand Kit e2e check, the build spec's look field list, this
+      section and decision 454 (the commit after `d22eec38` on the branch).
+
+### Owner actions at deploy
+
+1. `deploy:stacks boom-busters-broker` (the new `titleCard` union member; the
+   broker bundles `packages/schemas` at deploy).
+2. `deploy:remotion` (the `TitleCard` component and the number-free
+   `ChapterCard`).
+3. `PUT /api/inngest` after the Vercel deploy.
+4. Set Chapter marking to No cards on channels that want none, in Settings,
+   Brand Kit. The default is `cards`, so every channel keeps its breaks, minus
+   the opening card and the numbers.
+
+### Not verified
+
+- No live render in `title` or `none` mode. The first should be a short film
+  re-assembled in `none` mode and watched for the held break.
+- The unmarked break is 2200 ms (lead 800 plus hold 1400) because the ducking
+  curve only lets the bed rise over a 2000 ms silence. Tune by ear.
+- The `load-assembly` wiring is guarded only by typecheck: the runner tests
+  seed it by hand.
+
 ---
 
 # Decisions made
@@ -11043,3 +11096,17 @@ Part 2 checklist:
      first live parts render is still outstanding: it needs a film over 30
      minutes at the preview gate, and the read of production that would find
      one was refused by the permission classifier, so the owner picks it.
+454. **Chapter marking** (2026-11-10, branch `chapter-marking`). Every film
+     opened on a 2.3 s title card before the first word, against the roadmap's
+     own hook rule. The opening chapter now never gets a card. Chapter marking
+     is a Brand Kit choice (`cards`, `title`, `none`) that a format can
+     override (`inherit` is the default). Cards carry the title only, with no
+     number. An unmarked break is lead 800 plus hold 1400, 2200 ms, so the bed
+     rises (the ducking curve needs a 2000 ms silence). The compiler writes a
+     `chapters` list the preview reads, with the card as the fallback for
+     older timelines. One cue rule, `chapterCuePoints`, serves the compiler
+     and the bed swaps, matching a card by its resume point. A replayed
+     pre-454 setup falls back to cards. YouTube chapter timestamps and glosses
+     (decision 303) are unchanged, so no separate public title was needed.
+     Renumber at merge if the parallel `script-review-gate` branch took 454
+     first.
