@@ -4931,6 +4931,29 @@ Final review and fixes:
 - A browser playing a fragmented MP4 of 8 GB.
 - A 30-minute format whose timeline runs past 30:00 takes the parts path, so
   the first live parts render can happen without the owner choosing it.
+- Part MKVs (about 10 GB for 180 minutes, about $0.23 a film a month) stay in
+  the render bucket; intentional, for a later resume project.
+
+### Tidy-up (2026-11-10)
+
+The ten findings the final review parked, plus the flaky test:
+
+- Flaky probe test: ledger assertions look at this render's rows, and the probe
+  test ignores submits left by the previous test (`7b0d940f`, `cb8991de`).
+- M1: mock mode plans no parts, so the local fixture plays (`45f1c186`).
+- M2: the screen says `Quality check running` with `Measuring N parts` or
+  `Joining N parts`, from a new `parts-qc-start` step (`d4b1c9ad`).
+- M3: the progress route flags a part the broker reports failed, leaving the
+  row alone (`d4b1c9ad`).
+- M6: an upload round waits 20 minutes for its callback, not 7 hours
+  (`f23c4a2d`).
+- M7: the join's elapsed time and size are kept in the ledger entry's `meta`
+  through an optional `meta` on `settle` (`96fb5d84`).
+- M8: the join's multipart upload asks for CRC32 on every part (`2177b3ce`).
+- M10: a part's QC is retried once, through `partQcOutcome` (`a1d45b29`).
+- M13: clock times from one hour up read h:mm:ss (`5fd9b49e`).
+- T10: the batched transcription branch has a test, as far as the harness
+  reaches (`e2c30d13`).
 
 ---
 
