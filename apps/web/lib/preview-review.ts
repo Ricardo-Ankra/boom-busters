@@ -36,11 +36,14 @@ export interface PreviewModel {
 
 /**
  * Chapter list from the timeline alone: runtimes from the narration
- * segments, titles from the chapter-card overlays. The compiler numbers
- * each card (decision 215 moved cards ahead of their chapter's first words,
- * so start times no longer line up), and that number is the match key. A
- * chapter whose card was edited away still gets a positional name rather
- * than disappearing from the stats.
+ * segments, titles from the timeline's `chapters` list first (decision 454:
+ * a film with no cards, or no card on its opening chapter, still has its
+ * names). A timeline compiled before that has no list, so the title falls
+ * back to the chapter-card overlay. The compiler numbers each card
+ * (decision 215 moved cards ahead of their chapter's first words, so start
+ * times no longer line up), and that number is the match key. A chapter with
+ * neither still gets a positional name rather than disappearing from the
+ * stats.
  */
 export function timelineChapters(timeline: Timeline): PreviewChapter[] {
   const chapters: (PreviewChapter & { chapterId: string })[] = []
@@ -51,12 +54,14 @@ export function timelineChapters(timeline: Timeline): PreviewChapter[] {
       continue
     }
     const position = chapters.length + 1
+    const listed = timeline.chapters?.find((chapter) => chapter.id === segment.chapterId)
     const card = timeline.overlays.find(
       (overlay) => overlay.kind === 'chapterCard' && overlay.props.index === position,
     )
     chapters.push({
       chapterId: segment.chapterId,
-      title: card?.kind === 'chapterCard' ? card.props.title : `Chapter ${position}`,
+      title:
+        listed?.title ?? (card?.kind === 'chapterCard' ? card.props.title : `Chapter ${position}`),
       startMs: segment.startMs,
       durationMs: segment.durationMs,
     })
