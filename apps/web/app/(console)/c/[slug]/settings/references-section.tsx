@@ -403,7 +403,7 @@ function ReferenceCard({
   reference: ReferenceView
   disabled: boolean
   onRemark: () => void
-  /** Another window of this clip, saved as a reference of its own (decision 447). */
+  /** Another window of this clip, saved as a reference of its own (decision 448). */
   onNewWindow: () => void
   /** Storage, a playable stored clip and room in the pack. */
   newWindowReady: boolean

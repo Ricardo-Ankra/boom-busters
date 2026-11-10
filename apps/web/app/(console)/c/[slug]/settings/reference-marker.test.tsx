@@ -285,7 +285,7 @@ describe('ReferenceMarker', () => {
     expect(screen.getByRole('dialog', { name: 'Re-mark reference' })).toBeInTheDocument()
   })
 
-  it('marks a new window on a stored clip with no file and no clip upload, as a reference of its own (decision 447)', async () => {
+  it('marks a new window on a stored clip with no file and no clip upload, as a reference of its own (decision 448)', async () => {
     renderMarker({ mode: { kind: 'window', reference: STORED } })
     expect(screen.getByRole('dialog', { name: 'New window from this clip' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Choose file' })).toBeNull()
@@ -327,7 +327,7 @@ describe('ReferenceMarker', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('starts a new window at the beginning when the stored one leaves no room after it (decision 447)', () => {
+  it('starts a new window at the beginning when the stored one leaves no room after it (decision 448)', () => {
     renderMarker({
       mode: { kind: 'window', reference: { ...STORED, windowStartMs: 7000, windowEndMs: 9500 } },
     })

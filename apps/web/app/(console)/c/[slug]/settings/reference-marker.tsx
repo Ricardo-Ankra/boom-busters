@@ -63,7 +63,7 @@ const dangerClass = 'text-[13px] text-[var(--color-danger)]'
 export type MarkerMode =
   | { kind: 'add' }
   | { kind: 'remark'; reference: ReferenceView }
-  /** Another window of a stored clip, saved as a reference of its own (decision 447). */
+  /** Another window of a stored clip, saved as a reference of its own (decision 448). */
   | { kind: 'window'; reference: ReferenceView }
 
 /**
@@ -108,7 +108,7 @@ export function ReferenceMarker({
   const router = useRouter()
   const { toast } = useToast()
   const remark = mode.kind === 'remark' ? mode.reference : null
-  // A clip already stored: Re-mark moves its window, New window adds another (decision 447).
+  // A clip already stored: Re-mark moves its window, New window adds another (decision 448).
   const stored = mode.kind === 'add' ? null : mode.reference
   const windowFrom = mode.kind === 'window' ? mode.reference : null
   const firstWindow = remark
@@ -313,7 +313,7 @@ export function ReferenceMarker({
           return
         }
       } else if (windowFrom) {
-        // No file and no clip upload: the frames come from the stored clip (decision 447).
+        // No file and no clip upload: the frames come from the stored clip (decision 448).
         const taken = await takeFrames()
         const frames = await uploadFrames(windowFrom.contentHash, taken)
         setProgress('Saving')

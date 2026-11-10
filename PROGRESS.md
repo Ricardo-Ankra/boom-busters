@@ -10768,7 +10768,7 @@ Part 2 checklist:
      `graphicCodeIssue` returns only the reason and is shared with the
      board's designer. Shipping: a Vercel deploy; no migration, no Inngest
      change.
-447. **New window from a stored clip** (2026-11-09, owner: "Proceed with your
+448. **New window from a stored clip** (2026-11-09, owner: "Proceed with your
      offer", branch `reference-windows`). A clip marked once can give
      another window without being uploaded again: "New window" on a video
      reference's card opens the marker on the stored clip (as Re-mark does,

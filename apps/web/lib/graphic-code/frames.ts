@@ -660,7 +660,7 @@ async function inspectWith(
     }
     if (cutShort) break
     if (input.sheets && tiles.length > 0 && denseStop - Date.now() > SHEET_RESERVE_MS) {
-      // On the frame page itself (decision 446): a second page is a second
+      // On the frame page itself (decision 447): a second page is a second
       // browser context, and Vercel's single-process Chromium went down with
       // it at the next frame size. One pixel per CSS pixel keeps the sheet's
       // 1600 px (final review, issue 2) though the frames are shot at half

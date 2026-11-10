@@ -212,7 +212,7 @@ describe('ReferencesSection', () => {
     expect(screen.getAllByRole('button', { name: 'Read' })).toHaveLength(1)
   })
 
-  it('offers New window on a clip, not on a still, and opens the marker on the stored clip (decision 447)', async () => {
+  it('offers New window on a clip, not on a still, and opens the marker on the stored clip (decision 448)', async () => {
     renderSection([
       view({ id: 'clip', readState: 'read' }),
       view({ id: 'still', kind: 'image', clipUrl: null, readState: 'read' }),
@@ -223,7 +223,7 @@ describe('ReferencesSection', () => {
     expect(screen.getByRole('dialog', { name: 'New window from this clip' })).toBeInTheDocument()
   })
 
-  it('disables New window at twelve and without storage (decision 447)', () => {
+  it('disables New window at twelve and without storage (decision 448)', () => {
     const { unmount } = renderSection(
       Array.from({ length: 12 }, (_, n) => view({ id: `r${n}`, readState: 'read' })),
     )

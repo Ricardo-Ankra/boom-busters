@@ -449,7 +449,7 @@ const TITLE_TAKEN: ActionResult = {
 }
 
 /**
- * "New window" on a stored clip (decision 447): another window of the same
+ * "New window" on a stored clip (decision 448): another window of the same
  * clip, saved as a reference of its own with its own words, on the asset the
  * clip is already stored as. Nothing is uploaded but the window's frames,
  * which the browser took from the stored clip. Its title must be its own: the

@@ -325,7 +325,7 @@ describe.skipIf(!(await browserAvailable()))(
       }
     }, 60_000)
 
-    it("takes the dense set and both sheets under Vercel's single-process Chromium, on one page (decision 446)", async () => {
+    it("takes the dense set and both sheets under Vercel's single-process Chromium, on one page (decision 447)", async () => {
       // A second page is a second browser context, and closing it took the
       // single-process browser down at the next frame size (the owner's run, 2026-11-09).
       vi.stubEnv('GRAPHIC_CHROMIUM_ARGS', '--single-process --no-zygote --no-sandbox')

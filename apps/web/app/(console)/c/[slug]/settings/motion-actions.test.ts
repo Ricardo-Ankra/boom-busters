@@ -484,7 +484,7 @@ describeDb('motion reference actions', () => {
     expect(sent.send).toHaveBeenCalledTimes(1)
   })
 
-  describe('a new window on a stored clip (decision 447)', () => {
+  describe('a new window on a stored clip (decision 448)', () => {
     /** A clip stored with its first window, 1 to 3 s of 10 s. */
     const aClip = async () => {
       await finaliseReferenceAction(channelId, {
