@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { RESEARCH_PROFILES, evidenceLabel, researchProfileOf } from './research-profiles'
+import {
+  RESEARCH_PROFILES,
+  evidenceLabel,
+  researchProfileOf,
+  standingSeverity,
+  withStandingSeverity,
+} from './research-profiles'
 
 describe('research profiles', () => {
   it('reads a bible without a profile as investigation', () => {
@@ -96,5 +102,60 @@ describe('research profiles', () => {
       const sum = Object.values(p.tierShares).reduce((a, b) => a + b, 0)
       expect(Math.abs(sum - 1)).toBeLessThan(1e-9)
     }
+  })
+
+  it('the investigation reviews no standing and the science blocks contested, advises one study', () => {
+    expect(RESEARCH_PROFILES.investigation.review).toBeNull()
+    expect(RESEARCH_PROFILES.science.review).toEqual({
+      standing: { blocking: ['contested'], advisory: ['single_study'] },
+    })
+  })
+
+  it('reads the label out of the message', () => {
+    const { science, investigation } = RESEARCH_PROFILES
+    expect(standingSeverity(science, 'CONTESTED: narrated as settled')).toBe('blocking')
+    expect(standingSeverity(science, 'Narrated as settled, but the claim is ONE STUDY')).toBe(
+      'advisory',
+    )
+    expect(standingSeverity(science, 'ESTABLISHED FINDING')).toBeNull()
+    expect(standingSeverity(science, 'no label here')).toBeNull()
+    expect(standingSeverity(investigation, 'CONTESTED')).toBeNull()
+  })
+
+  it('stamps severity on overstated-standing warnings only', () => {
+    const standing = {
+      kind: 'overstated-standing' as const,
+      sentence: 's',
+      message: 'ONE STUDY here',
+    }
+    const other = { kind: 'unsourced-claim' as const, sentence: 's', message: 'no source given' }
+    const unresolved = {
+      kind: 'overstated-standing' as const,
+      sentence: 's',
+      message: 'no label here',
+    }
+    const result = withStandingSeverity(RESEARCH_PROFILES.science, [standing, other, unresolved])
+    expect(result).toEqual([{ ...standing, severity: 'advisory' }, other, unresolved])
+    expect('severity' in result[1]!).toBe(false)
+    expect('severity' in result[2]!).toBe(false)
+  })
+
+  it('the strictest label in a message wins', () => {
+    const { science } = RESEARCH_PROFILES
+    expect(standingSeverity(science, 'ONE STUDY narrated as settled; the claim is CONTESTED')).toBe(
+      'blocking',
+    )
+    expect(standingSeverity(science, 'ESTABLISHED FINDING and ONE STUDY')).toBe('advisory')
+  })
+
+  it('the investigation leaves every warning untouched', () => {
+    const warnings = [
+      { kind: 'overstated-standing' as const, sentence: 's', message: 'CONTESTED here' },
+      { kind: 'unsourced-claim' as const, sentence: 's', message: 'no source given' },
+    ]
+    const result = withStandingSeverity(RESEARCH_PROFILES.investigation, warnings)
+    expect(result[0]).toBe(warnings[0])
+    expect(result[1]).toBe(warnings[1])
+    expect('severity' in result[0]!).toBe(false)
   })
 })

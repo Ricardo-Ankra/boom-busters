@@ -4,7 +4,7 @@
   "messages": [
     {
       "role": "user",
-      "content": "Case: Wirecard\n\nClaims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NOT adjudicated — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — ADJUDICATED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — NOT adjudicated — UNVERIFIED (X POST)\n[4] (id: 01HQ00000000000000000000AD) The share price fell from 104.5 euros to 1.28 euros in nine days. — NOT adjudicated"
+      "content": "Case: Wirecard\n\nClaims:\n[1] (id: 01HQ00000000000000000000AA) Wirecard reported 1.9 billion euros held in trust accounts in the Philippines. — NEWS ARTICLE\n[2] (id: 01HQ00000000000000000000AB) Markus Braun was chief executive of Wirecard from 2002 to June 2020. — RULED\n[3] (id: 01HQ00000000000000000000AC) A short seller alleged in 2016 that the accounts were inflated. — ALLEGED, not ruled — UNVERIFIED (X POST)\n[4] (id: 01HQ00000000000000000000AD) The share price fell from 104.5 euros to 1.28 euros in nine days."
     },
     {
       "role": "user",

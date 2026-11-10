@@ -265,6 +265,9 @@ test.describe('shapes taken from production', () => {
     await openProject(page, DENSE_WARNINGS_TITLE)
 
     await expect(page.getByText(/22 warnings/).first()).toBeVisible()
+    // The fixture project is approved, so the gate bar's "(18 blocking, 4
+    // advisory)" line is not on the page; the gutter header carries the split.
+    await expect(page.getByText(/18 blocking · 4 advisory/)).toBeVisible()
     await expectHitTargets(page)
   })
 

@@ -150,18 +150,32 @@ export type Outline = z.infer<typeof OutlineSchema>
 export const WARNING_KINDS = [
   /** A factual sentence with no claim behind it. */
   'unsourced-claim',
-  /** States as fact something no court or regulator adjudicated. */
+  /** States as fact what a claim marked ALLEGED only accuses. */
   'missing-alleged',
   /** Names a living person in a way the sources do not support. */
   'unsupported-attribution',
   /** Repeats a six-word run an earlier chapter already narrated (decision 296). */
   'repeats-earlier',
+  /** Labels a claim's evidence (one study, contested) beyond what the sources show. */
+  'overstated-standing',
+  /** A craft note: pacing, a flat opening, a chapter that does not turn. */
+  'craft',
+  /** A house-style note: banned phrasing, tone, formatting. */
+  'style',
+  /** The script runs well over or under its target length. */
+  'off-target-length',
 ] as const
 export const WarningKindSchema = z.enum(WARNING_KINDS)
 export type WarningKind = z.infer<typeof WarningKindSchema>
 
+export const WARNING_SEVERITIES = ['blocking', 'advisory'] as const
+export const WarningSeveritySchema = z.enum(WARNING_SEVERITIES)
+export type WarningSeverity = z.infer<typeof WarningSeveritySchema>
+
 export const GutterWarningSchema = z.object({
   kind: WarningKindSchema,
+  /** Absent on warnings stored before severity existed; `severityOf` fills it from the kind. */
+  severity: WarningSeveritySchema.optional(),
   /** The exact sentence, as it appears in the chapter. */
   sentence: z.string().trim().min(1).max(2000),
   /** Shown in the gutter popover. */
@@ -169,14 +183,49 @@ export const GutterWarningSchema = z.object({
 })
 export type GutterWarning = z.infer<typeof GutterWarningSchema>
 
-export const ClaimRefSchema = z.object({
-  claimId: z.string().min(1),
-  sentence: z.string().trim().min(1).max(2000),
-})
+/**
+ * What each kind means for the gate when the warning carries no severity of its
+ * own. overstated-standing defaults to blocking so an unresolved label never
+ * relaxes the gate.
+ */
+export const WARNING_SEVERITY_DEFAULTS: Record<WarningKind, WarningSeverity> = {
+  'unsourced-claim': 'blocking',
+  'missing-alleged': 'blocking',
+  'unsupported-attribution': 'blocking',
+  'repeats-earlier': 'blocking',
+  'overstated-standing': 'blocking',
+  craft: 'advisory',
+  style: 'advisory',
+  'off-target-length': 'advisory',
+}
+
+/** The stored severity, else the kind's default, else blocking for a kind the defaults lack. */
+export function severityOf(warning: Pick<GutterWarning, 'kind' | 'severity'>): WarningSeverity {
+  // A stored kind this build no longer lists still counts: the gate never drops a warning.
+  return warning.severity ?? WARNING_SEVERITY_DEFAULTS[warning.kind] ?? 'blocking'
+}
+
+/** Blocking and advisory warning counts across a script's chapters. */
+export function countBySeverity(chapters: readonly { warnings: readonly GutterWarning[] }[]): {
+  blocking: number
+  advisory: number
+} {
+  const counts = { blocking: 0, advisory: 0 }
+  for (const chapter of chapters) {
+    for (const warning of chapter.warnings) counts[severityOf(warning)] += 1
+  }
+  return counts
+}
+
+/**
+ * A warning as the reviewer's answer carries it. The model never sets severity:
+ * the key is stripped on parse, and the runner stamps severity itself.
+ */
+export const ModelWarningSchema = GutterWarningSchema.omit({ severity: true })
+export type ModelWarning = z.infer<typeof ModelWarningSchema>
 
 export const SelfCheckSchema = z.object({
-  warnings: z.array(GutterWarningSchema).max(200),
-  refs: z.array(ClaimRefSchema).max(500),
+  warnings: z.array(ModelWarningSchema).max(200),
 })
 export type SelfCheck = z.infer<typeof SelfCheckSchema>
 
@@ -476,6 +525,11 @@ export type ExpressionTag = (typeof EXPRESSION_TAGS)[number]
  */
 const NARRATION_TAG_MARKUP = /\[[^\][\r\n]{1,60}\]/g
 
+/** Every narration tag in the text, as written, in order. */
+export function narrationTags(text: string): string[] {
+  return text.match(NARRATION_TAG_MARKUP) ?? []
+}
+
 /**
  * The words alone, for everything that is not the synthesiser.
  *
@@ -639,6 +693,23 @@ export function countWords(text: string): number {
   // app is built on this number.
   const words = stripNarrationMarkup(text)
   return words === '' ? 0 : words.split(/\s+/).length
+}
+
+/**
+ * The words the model is asked to write for a script: the voice's pace over the
+ * target runtime, less a little for pacing beats, less the fixed opening and
+ * closing lines the owner wrote (they are part of the runtime, not the model's
+ * to write). One calculation for the outline prompt and the length checks.
+ */
+export function scriptTargetWords(
+  targetRuntimeMin: number,
+  format: { wordsPerMinute?: number; introLine?: string; outroLine?: string },
+): number {
+  const fixedWords = countWords(format.introLine ?? '') + countWords(format.outroLine ?? '')
+  return Math.max(
+    0,
+    Math.round(targetRuntimeMin * (format.wordsPerMinute ?? 150) * 0.95) - fixedWords,
+  )
 }
 
 export function estimateRuntimeSec(text: string, wordsPerMinute = NARRATION_WPM): number {

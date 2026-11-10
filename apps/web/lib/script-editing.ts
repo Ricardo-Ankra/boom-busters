@@ -105,6 +105,28 @@ export function applyHunks(diff: ScriptDiff, accepted: ReadonlySet<number>): str
 }
 
 // ---------------------------------------------------------------------------
+// Fix instructions
+// ---------------------------------------------------------------------------
+
+/**
+ * What the one-click hedge fix asks for. It carries the channel's own hedging
+ * rules rather than fixed words, and is written out here so the note recorded
+ * in `script_edits` reads the same every time.
+ */
+export function hedgeInstruction(hedgingRules: string): string {
+  return (
+    'This states as fact what an ALLEGED claim only accuses. Rewrite it carrying the hedge ' +
+    "inline, as the channel's rules say, changing as little else as possible.\n\n" +
+    `The channel's rules:\n${hedgingRules}`
+  )
+}
+
+/** What the passage rewrite asks for: the reviewer's craft note, and nothing else changed. */
+export function craftInstruction(message: string): string {
+  return `Rewrite this passage. ${message} Change nothing else.`
+}
+
+// ---------------------------------------------------------------------------
 // Gutter warnings
 // ---------------------------------------------------------------------------
 

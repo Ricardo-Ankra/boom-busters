@@ -212,3 +212,13 @@ describe('bible formats, hashtag and footer', () => {
     ).toEqual([])
   })
 })
+
+describe('the seed bible hedging rules', () => {
+  test('speak of ALLEGED and RULED, never adjudicated', () => {
+    const rules = FIRST_CHANNEL_BIBLE.hedgingRules
+    expect(rules).toContain('marked ALLEGED')
+    expect(rules).toContain('marked RULED')
+    expect(rules).toContain('no marker')
+    expect(rules).not.toContain('adjudicated')
+  })
+})

@@ -251,6 +251,7 @@ async function metadataGrounding(projectId: string): Promise<{
         text: claim.text,
         sourceUrl: claim.sourceUrl,
         confidence: claim.confidence,
+        legal: claim.legalStatus,
       })),
     centralQuestion: outline.success ? outline.data.centralQuestion : undefined,
     scriptVersion: latest?.script.version ?? 0,

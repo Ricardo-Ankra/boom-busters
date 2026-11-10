@@ -236,7 +236,7 @@ Rules:
   touch.`
       : ''
   }
-- A claim marked NOT adjudicated is an allegation: a title may frame it as an
+- A claim marked ALLEGED is an allegation: a title may frame it as an
   allegation or a question, never state it as fact about a named person.
 - Each title is at most ${TITLE_MAX_CHARS} characters and at least 20.
 - Name the ${literalBibleText(noun(input.bible.bible, 'singular'))} or person; a title that could sit on any video is a bad title.
@@ -340,8 +340,8 @@ what the film is about, in the words people search for.
 Return JSON: {"body": string, "chapterGlosses": [string], "hashtags": [string], "tags": [string]}
 
 Rules:
-- Assert nothing the claim list does not support. Where a claim is NOT
-  adjudicated, write "alleged", "reportedly" or "according to". Never invent
+- Assert nothing the claim list does not support. Where a claim is marked
+  ALLEGED, write "alleged", "reportedly" or "according to". Never invent
   figures, dates, quotes or names.
 - ${
         input.target === 'master'

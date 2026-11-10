@@ -20,7 +20,8 @@
     "db:migrate": "pnpm --filter @boom-busters/db migrate",
     "db:seed": "pnpm --filter @boom-busters/db seed",
     "db:migrate:test": "pnpm --filter @boom-busters/db migrate:test",
-    "survey": "pnpm --filter @boom-busters/db survey"
+    "survey": "pnpm --filter @boom-busters/db survey",
+    "script:score": "pnpm --filter @boom-busters/db score"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

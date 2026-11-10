@@ -32,14 +32,14 @@ const CLAIMS: ScriptClaim[] = [
     text: 'Wirecard shares fell from €104.50 on 17 June 2020 to €1.28 on 26 June 2020.',
     sourceUrl: 'https://example.com/price',
     confidence: 'sourced',
-    adjudicated: true,
+    legal: 'ruled',
   },
   {
     id: '01HQ00000000000000000000AB',
     text: 'EY refused to sign off the 2019 accounts on 18 June 2020.',
     sourceUrl: 'https://example.com/ey',
     confidence: 'sourced',
-    adjudicated: true,
+    legal: 'ruled',
   },
 ]
 

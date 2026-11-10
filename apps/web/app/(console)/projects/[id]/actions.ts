@@ -32,6 +32,7 @@ import { requireCompleteBible } from '@/inngest/lib/channel'
 import { db } from '@/lib/db'
 import { callForText } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * Claim actions on the dossier review screen (build spec section 11.3).
@@ -240,12 +241,7 @@ export async function regenerateSection(
   const chapter = await getChapter(db, chapterId)
   if (!chapter) return { ok: false, error: 'That chapter no longer exists' }
 
-  const claims = (await scriptableClaims(db, projectId)).map((claim) => ({
-    id: claim.id,
-    text: claim.text,
-    sourceUrl: claim.sourceUrl,
-    confidence: claim.confidence,
-  }))
+  const claims = (await scriptableClaims(db, projectId)).map(toScriptClaim)
 
   try {
     // Read here, in the action that builds the request, before any mock branch.

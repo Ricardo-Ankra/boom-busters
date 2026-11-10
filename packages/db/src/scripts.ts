@@ -1,8 +1,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
-import { sentenceHash } from '@boom-busters/schemas'
 import type { GutterWarning, ShortsCandidate } from '@boom-busters/schemas'
 import type { Database } from './client'
-import { chapters, claimRefs, claims, dossiers, projects, scriptEdits, scripts } from './schema'
+import { chapters, dossiers, projects, scriptEdits, scripts } from './schema'
 import type { ChapterRow, EditType, ScriptRow, ScriptStatus } from './schema'
 
 /**
@@ -185,53 +184,6 @@ export async function setChapterWarnings(
     .update(chapters)
     .set({ warnings: [...warnings], updatedAt: new Date() })
     .where(eq(chapters.id, chapterId))
-}
-
-/**
- * Pin claims to the sentences that used them.
- *
- * A ref whose `claimId` is not a real claim on this project is dropped rather
- * than inserted: the self-check pass reports ids a model typed, and a
- * mistyped id would otherwise fail the whole step on a foreign key.
- */
-export async function saveClaimRefs(
-  db: Database,
-  input: {
-    chapterId: string
-    projectId: string
-    refs: readonly { claimId: string; sentence: string }[]
-  },
-): Promise<number> {
-  await db.delete(claimRefs).where(eq(claimRefs.chapterId, input.chapterId))
-  if (input.refs.length === 0) return 0
-
-  const valid = new Set(
-    (
-      await db
-        .select({ id: claims.id })
-        .from(claims)
-        .innerJoin(dossiers, eq(claims.dossierId, dossiers.id))
-        .where(eq(dossiers.projectId, input.projectId))
-    ).map((row) => row.id),
-  )
-
-  const rows = input.refs
-    .filter((ref) => valid.has(ref.claimId))
-    .map((ref) => ({
-      chapterId: input.chapterId,
-      claimId: ref.claimId,
-      sentenceHash: sentenceHash(ref.sentence),
-    }))
-
-  // The unique index is (chapter, claim, sentence): a model reporting the same
-  // pairing twice is normal, not an error.
-  const deduped = [
-    ...new Map(rows.map((row) => [`${row.claimId}:${row.sentenceHash}`, row])).values(),
-  ]
-  if (deduped.length === 0) return 0
-
-  await db.insert(claimRefs).values(deduped).onConflictDoNothing()
-  return deduped.length
 }
 
 export async function setScriptStatus(

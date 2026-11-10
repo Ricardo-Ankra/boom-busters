@@ -20,7 +20,6 @@ import {
   listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   ContentPolicyError,
@@ -48,6 +47,7 @@ import { withinFailureTolerance } from '../lib/narration'
 import { timedParagraphs } from '../lib/shot-list'
 import { perSlotStepsFit, rowAnswers, stepSlots, visualsOtherSteps } from '../lib/slot-steps'
 import { timingFindings } from '../lib/timing-findings'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * visuals-runner (build spec section 7.4; staged-visuals design 2026-08-26).
@@ -151,14 +151,7 @@ export const visualsRunner = inngest.createFunction(
             takes,
             wordsPerMinute: format.wordsPerMinute,
           }),
-          claims: claims.map((claim) => ({
-            id: claim.id,
-            text: claim.text,
-            sourceUrl: claim.sourceUrl,
-            confidence: claim.confidence,
-            // Which claims a headline card may cite (decision 257).
-            sourceType: claim.sourceType,
-          })) satisfies ScriptClaim[],
+          claims: claims.map(toScriptClaim),
           logos: logos.map((row) => ({
             id: row.id,
             title: row.title ?? '',

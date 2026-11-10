@@ -42,14 +42,20 @@ export const PSYCHOLOGY_TEST_BIBLE: ChannelBible = {
   voiceDos: [],
   voiceDonts: [],
   hedgingRules: `The hard rules:
-- Assert nothing the claim list does not support.
-- Where a finding is NOT replicated, write "reportedly", "according to" or
-  "suggests", and never state it as settled fact.
-- Never invent figures, dates, quotes or names.
-- Care with the evidence is inline: "suggests", "reportedly", "according to".
-  Never a sentence of its own saying that nothing was proven. The one
-  exception is the film's single such sentence, where a chapter's
-  constraints ask for it.`,
+- Assert nothing the claim list and the dossier's scenes do not support.
+  Never invent figures, dates, quotes, names or actions by a real person.
+- A claim marked ALLEGED is an accusation nobody with authority has ruled
+  on: a charge of misconduct, a retraction demanded and not granted. Where
+  the narration states what that accusation says, carry the hedge inline:
+  "alleged", "the complaint says", "according to the critics". A claim
+  marked RULED is stated as the ruling found. A claim with no marker is a
+  fact of the record: state it plainly, with no hedge and no attribution
+  unless the attribution is itself the point. A finding's standing (one
+  study, contested, established) is a different axis and is narrated as
+  its label says.
+- Never a sentence of its own saying that nothing was proven, that the
+  science is unsettled, or that this is one reading. The one exception is
+  the film's single such sentence, where a chapter's constraints ask for it.`,
   visualRegister:
     'the quiet science documentary. Warm, patient, photographic realism. The people, in the rooms where it happened: researchers at the bench, volunteers at the table, a lecturer at the lectern, re-created with restraint. Empty rooms, papers and apparatus are punctuation between them, not the film.',
   examples: {

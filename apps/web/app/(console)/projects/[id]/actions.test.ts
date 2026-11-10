@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  claims,
   createScriptVersion,
   FIXTURE_PROJECT_ID,
   requireTestDatabase,
@@ -69,6 +70,15 @@ describeDb('regenerateSection (decision 293)', () => {
       channelId: FIRST_CHANNEL_ID,
       purpose: 'retry: cut off',
     })
+  })
+
+  it('sends an alleged claim with its ALLEGED marker, so the rewrite cannot state it as fact', async () => {
+    await db.update(claims).set({ legalStatus: 'alleged' })
+    callLlm.mockResolvedValue({ text: 'By June, nobody could say where the money had gone.' })
+
+    await regenerateSection(FIXTURE_PROJECT_ID, chapterId, SELECTION, 'Make it plainer')
+
+    expect(JSON.stringify(callLlm.mock.calls[0]![0])).toContain('ALLEGED, not ruled')
   })
 
   it('returns the reason for the toast after a second cut-off', async () => {

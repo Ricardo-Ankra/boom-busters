@@ -14,7 +14,7 @@ import {
   scriptableClaims,
 } from '@boom-busters/db'
 import { findModel, geminiImageGen, google, imageGenPrice, priceOf } from '@boom-busters/providers'
-import type { ImageReference, LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
+import type { ImageReference, LLMTaskRequest } from '@boom-busters/providers'
 import { DirectorsBookSchema, setForBrief, StillBriefSchema } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
 import { timedParagraphs } from '@/inngest/lib/shot-list'
@@ -30,6 +30,7 @@ import {
   routeForBrief,
   setFrom,
 } from '@/lib/still-prompt'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * The live plan harness (decision 287, spec 10.1): the real planner on one
@@ -151,13 +152,7 @@ async function main(): Promise<void> {
       const chapter = sources.chapters[args.chapter]
       if (!chapter) throw new Error(`The script has no chapter at index ${args.chapter}.`)
       const takes = await listVoiceTakes(db, args.project)
-      const claims = (await scriptableClaims(db, args.project)).map((claim) => ({
-        id: claim.id,
-        text: claim.text,
-        sourceUrl: claim.sourceUrl,
-        confidence: claim.confidence,
-        sourceType: claim.sourceType,
-      })) satisfies ScriptClaim[]
+      const claims = (await scriptableClaims(db, args.project)).map(toScriptClaim)
 
       let call = 0
       const planned = await planChapterWith(

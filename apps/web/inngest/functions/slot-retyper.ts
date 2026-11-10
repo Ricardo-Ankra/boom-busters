@@ -39,6 +39,7 @@ import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { designableBrief, reviewStoredGraphic } from '../lib/graphic-steps'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * slot-retyper (staged-visuals design, 2026-08-26).
@@ -194,12 +195,7 @@ export const slotRetyper = inngest.createFunction(
                 caseTitle: project?.title ?? 'this case',
                 brief,
                 targetType,
-                claims: claims.map((claim) => ({
-                  id: claim.id,
-                  text: claim.text,
-                  sourceUrl: claim.sourceUrl,
-                  confidence: claim.confidence,
-                })),
+                claims: claims.map(toScriptClaim),
                 logos: logos.map((logo) => logo.title),
               }),
               parse: (text, note) => parseRetypedBrief(text, { targetType, claims, logos }, note),

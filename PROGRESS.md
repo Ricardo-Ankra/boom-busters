@@ -11186,3 +11186,100 @@ Part 2 checklist:
      fixed when the project is started; the app cannot change it yet, and a
      "Rename project" button is a follow-up. YouTube chapter timestamps and glosses
      (decision 303) are unchanged, so no separate public title was needed.
+
+## Script review, chosen per channel (2026-11-10)
+
+> Decision 458, branch `script-review-gate`. Plan 1 of the script review
+> design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
+> (sections 5 to 9, 11 and 13), plan `docs/superpowers/plans/2026-11-10-script-review-and-gate.md`. The
+> reviewer now grounds each chapter on the claim list and the scene list and
+> hedges only ALLEGED claims; deterministic style and length checks run beside
+> it; the gate counts blocking warnings only and shows blocking and advisory
+> apart; `pnpm script:score` prints a script version's numbers. No migration.
+
+### Deliverables
+
+- [x] Task 1: warning severity, the self-check answer loses claim refs, build spec amended (`54238999`)
+- [x] Task 2: claim-list markers (RULED, ALLEGED, none) (`1c512379`)
+- [x] Task 3: one scene list for the drafter and the reviewer (`21116065`, fix `4fa6bb4b`)
+- [x] Task 4: the research profile's review block and standing severity (`cdbdef79`, fix `8949634f`)
+- [x] Task 5: the reviewer prompt grounds on claims and scenes, hedges only ALLEGED claims (`4d47ac05`)
+- [x] Task 6: deterministic style and length checks for a script (`ce44187a`)
+- [x] Task 7: the gate counts blocking warnings only, with scenes, standing and the code checks in the self-check step (`51c58e1b`)
+- [x] Task 8: the gutter shows blocking and advisory apart; the fix button speaks the channel's hedge (`ff66678f`)
+- [x] Task 9: `pnpm script:score` (`6604c7fb`)
+- [x] Task 10: lift fixtures regenerated, this section, the spec status line (this section's commit)
+
+### Owner actions at deploy
+
+- Paste the scoped hedging rules from spec section 6.2 into Boom & Busters'
+  bible in the Bible tab.
+- A fresh database seeds the old hedging rules from migration 0039 (the applied
+  migration literal is unchanged by design), so the paste into the Bible tab is
+  needed on any new database too, not only on production.
+- Check the `scripting` model route in Settings.
+- Deploy with no script run mid-draft: a run parked between load-dossier and its
+  last self-check replays setup claims without the legal marker. Check the
+  Inngest Runs list first.
+- `PUT /api/inngest` after the deploy.
+- No migration.
+
+### Prompt changes to the investigation prompts
+
+- Reviewer (`script-self-check`): now "the script's reviewer", one chapter
+  against the claim list and the scene list; three rules (grounding with
+  worked examples of unsourced and never-unsourced sentences, liability with
+  `missing-alleged` and `unsupported-attribution`, the channel's own rules);
+  the claim list is followed by a `Scenes:` block of `[S1]` lines.
+- Writer (`script-outline`, `script-chapter-*`, `script-regenerate`): the
+  banned-word list is wrapped to one line; the tag rule gains "a handful of
+  tags per chapter, at most one every 120 words, and [long pause] at most
+  once"; the legal rules become the three hard rules (assert nothing
+  unsupported, hedge ALLEGED inline and state RULED as found, no standalone
+  nothing-was-proven sentence except the film's single one); the outline's
+  "constraints" field now lists ALLEGED claims with their hedge, UNVERIFIED
+  figures and the single caveat sentence only; the chapter length line reads
+  "Write between 600 and 660 words. Under 600 is too short."
+- Metadata (`metadata-*`, 14 files): "NOT adjudicated" becomes "ALLEGED" in
+  the title and description rules, and the description rule leads with "Assert
+  nothing the claim list does not support".
+- The claim-list marker change reaches every prompt that embeds the claim
+  list: RULED replaces ADJUDICATED, "ALLEGED, not ruled" replaces "NOT
+  adjudicated", and a claim with no legal marker carries no label. Files
+  changed beside the script and metadata families: graphics 25, shotlist 6,
+  retype 5, direction 2, shot-repair 2, stretch 2. Only marker lines changed
+  in those 42 files (checked mechanically).
+
+### Measured
+
+`pnpm script:score` on the local test database (the first row re-measured after
+an e2e reseed), key columns:
+
+| Project                                 | words | warnings by kind                                                         | blocking | advisory |
+| --------------------------------------- | ----- | ------------------------------------------------------------------------ | -------- | -------- |
+| A chapter with every warning kind (E2E) | 242   | missing-alleged 7, style 4, unsourced-claim 7, unsupported-attribution 4 | 18       | 4        |
+| Narration ready for review (E2E)        | 33    | none                                                                     | 0        | 0        |
+
+Hedges, tags and same-ending counts are zero in every fixture. The edit
+columns are only unit-tested through `classifyEdit`, as the fixtures carry no
+owner edits. `--prod` was not run against Neon.
+
+### Decisions made
+
+458. **Script review, chosen per channel** (2026-11-10, branch
+     `script-review-gate`, no migration).
+     (a) `overstated-standing` defaults to blocking when the message carries
+     no recognisable label, and the strictest matched label wins when it
+     carries two.
+     (b) The scene list comes from the dossier row's research when it has
+     scenes, else the markdown's Timeline section.
+     (c) `claim_refs` stays as a table, unwritten.
+     (d) The mock reviewer still returns one blocking warning, so mock runs
+     park at the gate; the zero-blocking auto-approve path is proven in the
+     runner's Inngest harness tests rather than Playwright.
+     (e) The gate line prints `hedges 0/100w` on a summary replayed from
+     before the deploy.
+     (f) The e2e dense fixture asserts the gutter header's
+     `18 blocking · 4 advisory`, because an approved project renders no gate bar.
+     (g) The project page passes the frozen bible's hedging rules straight
+     from `channelForProject`.

@@ -30,6 +30,13 @@ export interface NeedsYouCard {
   at: Date
 }
 
+/** The runner's gate line without its leading segment ("Script ready"), led by the card's own separator. */
+function gateLineTail(gateSummary: string | null | undefined): string {
+  if (!gateSummary) return ''
+  const cut = gateSummary.indexOf(' · ')
+  return cut < 0 ? '' : gateSummary.slice(cut)
+}
+
 export function buildNeedsYouCards(input: {
   /** The channel whose queue this is; list links point into it. */
   slug: string
@@ -66,7 +73,8 @@ export function buildNeedsYouCards(input: {
       title: project.title,
       context:
         `${SEGMENT_LABELS[project.stage]} ready for review · ` +
-        `${caseCategoryLabel(input.bible, project.caseCategory)} · ${project.targetRuntimeMin} min target`,
+        `${caseCategoryLabel(input.bible, project.caseCategory)} · ${project.targetRuntimeMin} min target` +
+        gateLineTail(project.gateSummary),
       href: `/projects/${project.id}` as Route,
       buttonLabel: 'Review',
       at: project.updatedAt,

@@ -100,14 +100,14 @@ export const PLAYBOOK_SHORTS_TITLE = 'Talking points waiting (E2E)'
 export const FRESH_PREVIEW_TITLE = 'Preview compiled, nothing rendered (E2E)'
 
 /**
- * Twenty-two warnings across all three kinds, which is what the self-check
- * really produces.
+ * Twenty-two warnings across the reviewer's kinds and one advisory kind
+ * (18 blocking, 4 advisory), which is what the self-check really produces.
  *
  * Production's densest chapter carries 22; the kinds run `missing-alleged` 31,
  * `unsourced-claim` 18, `unsupported-attribution` 4. Fixtures with two clean
  * chapters never exercise the gutter at the density where it has to work.
  */
-type WarningKind = 'unsourced-claim' | 'missing-alleged' | 'unsupported-attribution'
+type WarningKind = 'unsourced-claim' | 'missing-alleged' | 'unsupported-attribution' | 'style'
 
 function denseWarnings(): { kind: WarningKind; sentence: string; message: string }[] {
   const sentences = Array.from(
@@ -119,9 +119,11 @@ function denseWarnings(): { kind: WarningKind; sentence: string; message: string
     const kind: WarningKind =
       index % 5 === 4
         ? 'unsupported-attribution'
-        : index % 2 === 0
-          ? 'missing-alleged'
-          : 'unsourced-claim'
+        : index % 5 === 3
+          ? 'style'
+          : index % 2 === 0
+            ? 'missing-alleged'
+            : 'unsourced-claim'
     return {
       kind,
       sentence,
@@ -130,7 +132,9 @@ function denseWarnings(): { kind: WarningKind; sentence: string; message: string
           ? 'States as fact something no court has adjudicated.'
           : kind === 'unsourced-claim'
             ? 'No claim in the dossier supports this sentence.'
-            : 'Attributes a statement to someone without a source for it.',
+            : kind === 'style'
+              ? 'The phrasing drifts from the channel house style.'
+              : 'Attributes a statement to someone without a source for it.',
     }
   })
 }

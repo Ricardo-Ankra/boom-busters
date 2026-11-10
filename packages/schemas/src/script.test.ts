@@ -6,14 +6,20 @@ import {
   OutlineSchema,
   SelfCheckSchema,
   WARNING_KINDS,
+  countBySeverity,
   countWords,
   estimateRuntimeSec,
+  narrationTags,
+  scriptTargetWords,
   sentenceHash,
   replaceParagraph,
   resolveCandidateSegment,
+  severityOf,
   stripNarrationMarkup,
   splitParagraphs,
   splitSentences,
+  type WarningKind,
+  type WarningSeverity,
 } from './script'
 
 describe('splitSentences', () => {
@@ -292,7 +298,7 @@ describe('OutlineSchema', () => {
 
 describe('SelfCheckSchema', () => {
   it('accepts an empty check — a clean chapter is a valid result', () => {
-    expect(SelfCheckSchema.safeParse({ warnings: [], refs: [] }).success).toBe(true)
+    expect(SelfCheckSchema.safeParse({ warnings: [] }).success).toBe(true)
   })
 
   it('accepts the repeat warning the whole-script check writes (decision 296)', () => {
@@ -305,7 +311,6 @@ describe('SelfCheckSchema', () => {
           message: 'Repeats chapter 3: "Coatue had co-led the round."',
         },
       ],
-      refs: [],
     })
     expect(parsed.success).toBe(true)
   })
@@ -314,7 +319,66 @@ describe('SelfCheckSchema', () => {
     expect(
       SelfCheckSchema.safeParse({
         warnings: [{ kind: 'vibes', sentence: 'x', message: 'hello' }],
-        refs: [],
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('warning severity', () => {
+  it('counts a stored kind the defaults lack as blocking, never dropping it', () => {
+    const unknown = { kind: 'retired-kind' as never }
+    expect(severityOf(unknown)).toBe('blocking')
+    expect(
+      countBySeverity([{ warnings: [{ ...unknown, sentence: 'x', message: 'an old warning' }] }]),
+    ).toEqual({ blocking: 1, advisory: 0 })
+  })
+
+  it('defaults every kind that existed before severity to blocking', () => {
+    for (const kind of [
+      'unsourced-claim',
+      'missing-alleged',
+      'unsupported-attribution',
+      'repeats-earlier',
+    ] as const) {
+      expect(severityOf({ kind })).toBe('blocking')
+    }
+  })
+
+  it('defaults craft, style and off-target-length to advisory', () => {
+    for (const kind of ['craft', 'style', 'off-target-length'] as const) {
+      expect(severityOf({ kind })).toBe('advisory')
+    }
+  })
+
+  it('reads a stored severity over the default', () => {
+    expect(severityOf({ kind: 'overstated-standing', severity: 'advisory' })).toBe('advisory')
+    expect(severityOf({ kind: 'overstated-standing' })).toBe('blocking')
+  })
+
+  it('counts blocking and advisory across chapters', () => {
+    const w = (kind: WarningKind, severity?: WarningSeverity) => ({
+      kind,
+      severity,
+      sentence: 'A sentence.',
+      message: 'A message.',
+    })
+    expect(
+      countBySeverity([
+        {
+          warnings: [w('unsourced-claim'), w('style'), w('overstated-standing', 'advisory')],
+        },
+        { warnings: [w('repeats-earlier')] },
+      ]),
+    ).toEqual({ blocking: 2, advisory: 2 })
+  })
+
+  it('parses a self-check without refs and rejects one with an unknown kind', () => {
+    expect(SelfCheckSchema.parse({ warnings: [] })).toEqual({ warnings: [] })
+    const parsed = SelfCheckSchema.parse({ warnings: [], refs: [] })
+    expect('refs' in parsed).toBe(false)
+    expect(
+      SelfCheckSchema.safeParse({
+        warnings: [{ kind: 'vibes', sentence: 'x', message: 'hello' }],
       }).success,
     ).toBe(false)
   })
@@ -581,5 +645,24 @@ describe('TeaserFetchesRecordSchema (decision 231)', () => {
     expect(() =>
       TeaserFetchesRecordSchema.parse({ beats: [null, null, null, null, null, null] }),
     ).toThrow()
+  })
+})
+
+describe('scriptTargetWords', () => {
+  it('computes the target words from the pace and the fixed lines', () => {
+    expect(
+      scriptTargetWords(15, { wordsPerMinute: 150, introLine: 'one two', outroLine: 'three' }),
+    ).toBe(2135)
+    expect(scriptTargetWords(10, {})).toBe(1425)
+    expect(scriptTargetWords(1, { introLine: 'a '.repeat(500) })).toBe(0)
+  })
+})
+
+describe('narrationTags', () => {
+  it('lists every bracketed tag as written', () => {
+    expect(
+      narrationTags('It stopped [pause] and then [Long Pause] [grave, measured] ended.'),
+    ).toEqual(['[pause]', '[Long Pause]', '[grave, measured]'])
+    expect(narrationTags('No tags here.')).toEqual([])
   })
 })

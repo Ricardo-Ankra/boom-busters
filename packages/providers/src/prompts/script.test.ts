@@ -1,6 +1,9 @@
 import {
+  BANNED_WORDS,
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_IN_USE,
   OutlineSchema,
+  RESEARCH_PROFILES,
   SHORTS_HOOK_MAX,
   TEASER_PARAGRAPH_MAX,
   TEASER_TITLE_MAX,
@@ -16,6 +19,7 @@ import {
   buildSelfCheckRequest,
   buildShortsRequest,
   buildTeaserRequest,
+  houseStyle,
   mockChapter,
   mockOutline,
   mockSelfCheck,
@@ -25,6 +29,7 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
   parseTeaser,
+  standingRules,
   tensionContract,
   tensionFromOutline,
 } from './script'
@@ -38,14 +43,14 @@ const claims: ScriptClaim[] = [
     text: 'A court found the accounts were falsified.',
     sourceUrl: 'https://example.com/judgment',
     confidence: 'sourced',
-    adjudicated: true,
+    legal: 'ruled',
   },
   {
     id: '01ABCDEFGHJKMNPQRSTVWXYZ01',
     text: 'Former staff say the CEO knew.',
     sourceUrl: 'https://example.com/interview',
     confidence: 'single_source',
-    adjudicated: false,
+    legal: 'alleged',
   },
 ]
 
@@ -154,15 +159,9 @@ describe('buildOutlineRequest', () => {
     expect(ruled).toContain('tonight. [[example:x]]')
   })
 
-  it('marks which claims are not adjudicated', () => {
-    const content = JSON.stringify(request.messages)
-    expect(content).toContain('ADJUDICATED')
-    expect(content).toContain('NOT adjudicated')
-  })
-
   it('carries the house rules against inventing facts', () => {
     expect(request.system).toMatch(/Never invent figures/)
-    expect(request.system).toMatch(/Assert nothing the claim list does not support/)
+    expect(request.system).toMatch(/Assert nothing the claim list and the dossier's scenes do not/)
   })
 
   /**
@@ -192,7 +191,12 @@ describe('buildOutlineRequest', () => {
     expect(request.system).toContain('"reveals"')
     expect(request.system).toContain('"constraints"')
     expect(request.system).toMatch(/exactly one chapter/)
-    expect(request.system).toMatch(/never narrated/)
+    expect(request.system).toMatch(/never\s+narrated/)
+    expect(request.system).toMatch(/which ALLEGED claims\s+it narrates/)
+    expect(request.system).toMatch(
+      /a claim with no legal marker\s+needs no attribution and no caveat/,
+    )
+    expect(request.system).not.toContain('what must stay\nattributed')
     expect(request.system).toMatch(/one to three sentences/)
     expect(request.system).toMatch(/one line of callback/)
     // The old instruction that produced fact-list beats is gone.
@@ -403,6 +407,51 @@ describe('tensionContract', () => {
     })
     expect(tensionContract(bare, 0)).toBe('')
     expect(tensionContract(bare, 1)).toBe('')
+  })
+})
+
+describe('the script length and tag budget', () => {
+  it('sizes the outline with the shared target-words calculation', () => {
+    const { system } = buildOutlineRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+      wordsPerMinute: 150,
+      introLine: 'one two',
+      outroLine: 'three',
+    })
+    expect(system).toContain('Produce a chapter plan totalling about 2135 words')
+  })
+
+  it('tells the chapter its floor and its ceiling', () => {
+    const { system } = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      outline: {
+        ...outline,
+        chapters: outline.chapters.map((chapter) => ({ ...chapter, targetWords: 300 })),
+      },
+      chapterIndex: 1,
+      previousChapters: [],
+      claims,
+    })
+    expect(system).toContain('Write between 300 and 330 words. Under 300 is too short.')
+    expect(system).not.toContain('Target about')
+  })
+
+  it('tells the writer the tag budget', () => {
+    expect(houseStyle(FIRST_CHANNEL_IN_USE.bible).replace(/\s+/g, ' ')).toContain(
+      'at most one every 120 words, and [long pause] at most once',
+    )
+  })
+
+  it('prints the banned list from the shared source', () => {
+    const style = houseStyle(FIRST_CHANNEL_IN_USE.bible).replace(/\s+/g, ' ')
+    expect(style).toContain(
+      `Never write: ${BANNED_WORDS.map((w) => (w.includes(' ') ? `"${w}"` : w)).join(', ')}.`,
+    )
   })
 })
 
@@ -663,24 +712,127 @@ describe('buildSelfCheckRequest', () => {
     expect(request.system).toContain('missing-alleged')
     expect(request.system).toContain('unsupported-attribution')
   })
+
+  it('grounds a sentence on the claims or the scenes, and names what is never unsourced', () => {
+    expect(request.system).toContain('neither the claim list nor the scene list')
+    expect(request.system).toContain('"It vanished."')
+    expect(request.system).toContain('"She checked her watch')
+    expect(request.system).toContain('A scene marked (unplaced) supports no checkable specific.')
+    expect(request.messages[0]?.content).toContain('Scenes:\nNo scenes.')
+    const withScenes = buildSelfCheckRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      chapterTitle: 'The turn',
+      contentMd: 'Some narration.',
+      claims,
+      scenes: ['A scene'],
+    })
+    expect(withScenes.messages[0]?.content).toContain('Scenes:\n[S1]')
+    expect(withScenes.cacheablePrefixMessages).toBe(1)
+  })
+
+  it('scopes missing-alleged to ALLEGED claims', () => {
+    expect(request.system).toContain('marked ALLEGED')
+    expect(request.system).not.toContain('NOT adjudicated')
+    expect(request.system).not.toContain('adjudicated')
+  })
+
+  it("carries the channel's hedging rules", () => {
+    const { system } = buildSelfCheckRequest({
+      bible: {
+        ...FIRST_CHANNEL_IN_USE,
+        bible: { ...FIRST_CHANNEL_BIBLE, hedgingRules: 'The hard rules:\n- Kilroy was here.' },
+      },
+      chapterTitle: 'x',
+      contentMd: 'y',
+      claims: [],
+    })
+    expect(system).toContain('Kilroy was here.')
+  })
+
+  it('asks for warnings only, no refs', () => {
+    expect(request.system).toContain(
+      '{"warnings": [{"kind": string, "sentence": string, "message": string}]}',
+    )
+    expect(request.system).not.toContain('"refs"')
+  })
+
+  it('names the kinds the reviewer may return and no others', () => {
+    for (const kind of ['unsourced-claim', 'missing-alleged', 'unsupported-attribution']) {
+      expect(request.system).toContain(kind)
+    }
+    for (const kind of ['repeats-earlier', 'craft', 'style']) {
+      expect(request.system).not.toContain(`"${kind}"`)
+    }
+  })
+
+  it('collapses the blank lines a missing standing rule leaves', () => {
+    expect(request.system).not.toMatch(/\n{3,}/)
+  })
+})
+
+describe('the reviewer per profile', () => {
+  const science: BibleInUse = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: { ...FIRST_CHANNEL_BIBLE, researchProfile: 'science' },
+  }
+  const review = (bible: BibleInUse) =>
+    buildSelfCheckRequest({ bible, chapterTitle: 'x', contentMd: 'y', claims: [] }).system
+
+  it('adds no standing rule for the investigation', () => {
+    expect(review(FIRST_CHANNEL_IN_USE)).not.toContain('overstated-standing')
+    expect(standingRules(RESEARCH_PROFILES.investigation)).toBe('')
+  })
+
+  it('adds the science standing rule with its labels and which ones block', () => {
+    const system = review(science)
+    expect(system).toContain('overstated-standing')
+    expect(system).toContain('CONTESTED')
+    expect(system).toContain('ONE STUDY')
+    expect(system).toContain('ESTABLISHED FINDING')
+    expect(system).toContain('A claim with no such label is outside this rule.')
+    expect(system).not.toMatch(/\n{3,}/)
+  })
+
+  it('names overstated-standing under science, and never a craft kind', () => {
+    const system = review(science)
+    for (const kind of ['unsourced-claim', 'missing-alleged', 'unsupported-attribution']) {
+      expect(system).toContain(kind)
+    }
+    for (const kind of ['repeats-earlier', 'craft', 'style']) {
+      expect(system).not.toContain(`"${kind}"`)
+    }
+  })
+
+  it('keeps one blocking warning in mock mode', () => {
+    expect(mockSelfCheck('First. Second.')).toEqual({
+      warnings: [{ kind: 'unsourced-claim', sentence: 'First.', message: expect.any(String) }],
+    })
+  })
 })
 
 describe('parseSelfCheck', () => {
   it('accepts a clean chapter', () => {
-    expect(parseSelfCheck('{"warnings":[],"refs":[]}').warnings).toEqual([])
+    expect(parseSelfCheck('{"warnings":[]}').warnings).toEqual([])
+  })
+
+  it('strips a severity the model set, whether valid or not', () => {
+    for (const severity of ['advisory', 'high']) {
+      const parsed = parseSelfCheck(
+        JSON.stringify({
+          warnings: [
+            { kind: 'unsourced-claim', severity, sentence: 'x', message: 'no claim behind it' },
+          ],
+        }),
+      )
+      expect(parsed.warnings).toHaveLength(1)
+      expect(parsed.warnings[0]).not.toHaveProperty('severity')
+    }
   })
 
   it('rejects a warning kind the gutter cannot render', () => {
     expect(() =>
-      parseSelfCheck('{"warnings":[{"kind":"iffy","sentence":"x","message":"hello"}],"refs":[]}'),
+      parseSelfCheck('{"warnings":[{"kind":"iffy","sentence":"x","message":"hello"}]}'),
     ).toThrow(ValidationError)
-  })
-
-  it('reads refs back', () => {
-    const check = parseSelfCheck(
-      '{"warnings":[],"refs":[{"claimId":"abc","sentence":"A sentence."}]}',
-    )
-    expect(check.refs).toHaveLength(1)
   })
 })
 
@@ -997,16 +1149,29 @@ describe('claimList', () => {
     expect(list).not.toContain(String.fromCharCode(0x2014) + ' X POST')
   })
 
-  it("appends a claim's evidence standing after the other markers", () => {
+  it('marks an alleged claim and a ruled claim, and a plain fact not at all', () => {
     const list = claimList([
-      { ...base, id: 'c1', text: 'Text', sourceUrl: null, standing: 'ONE STUDY' },
+      { ...claims[0]!, id: 'c1', legal: 'ruled' },
+      { ...claims[1]!, id: 'c2', legal: 'alleged' },
+      { ...claims[1]!, id: 'c3', legal: 'none' },
     ])
-    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated ${DASH} ONE STUDY`)
+    expect(list.split(`${DASH} ALLEGED, not ruled`)).toHaveLength(2)
+    expect(list.split(`${DASH} RULED`)).toHaveLength(2)
+    expect(list).not.toMatch(/adjudicated/i)
+    const plain = list.split('\n')[2]!
+    expect(plain).not.toContain('ALLEGED')
+    expect(plain).not.toContain('RULED')
   })
 
-  it('lists a claim without a standing exactly as before', () => {
-    const list = claimList([{ ...base, id: 'c1', text: 'Text', sourceUrl: null }])
-    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated`)
+  it("appends a claim's evidence standing after the legal marker", () => {
+    const plain = claimList([
+      { ...base, id: 'c1', text: 'Text', sourceUrl: null, legal: 'none', standing: 'ONE STUDY' },
+    ])
+    expect(plain).toBe(`[1] (id: c1) Text ${DASH} ONE STUDY`)
+    const alleged = claimList([
+      { ...base, id: 'c1', text: 'Text', sourceUrl: null, legal: 'alleged', standing: 'ONE STUDY' },
+    ])
+    expect(alleged).toBe(`[1] (id: c1) Text ${DASH} ALLEGED, not ruled ${DASH} ONE STUDY`)
   })
 
   it('does not mark an article claim as an X post', () => {
