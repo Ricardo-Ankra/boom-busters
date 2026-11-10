@@ -220,11 +220,14 @@ export function SettingsForm({
   const [tab, setTab] = React.useState(initialTab)
   React.useEffect(() => setTab(initialTab), [initialTab])
   // The URL follows the tab, so a deep link and the in-page link agree with what is shown.
+  // A null state, so Next's router learns the URL too: handed its own state, it took the call
+  // for one of its own and kept the old URL, which every refresh then put back, and any full
+  // load of that (a deploy since the page opened, a failed refresh) opened on Models.
   const selectTab = React.useCallback((next: string) => {
     setTab(next)
     const url = new URL(window.location.href)
     url.searchParams.set('tab', next)
-    window.history.replaceState(window.history.state, '', url)
+    window.history.replaceState(null, '', url)
   }, [])
 
   /** The same optimistic-with-rollback save, for the channel's own row. */

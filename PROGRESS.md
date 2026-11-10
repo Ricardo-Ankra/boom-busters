@@ -4691,7 +4691,7 @@ Final review and fixes:
       parts of about 15 minutes, joined without the whole file on one disk,
       loudnorm and QC part by part, the transcription fallback batched, and a
       YouTube upload that resumes across invocations (decision 394). Built on
-      branch `long-renders`, decision 451; see "Long renders in parts
+      branch `long-renders`, decision 452; see "Long renders in parts
       (2026-11-10)" below.
 
 ## Case Library redesign (2026-11-05)
@@ -4874,7 +4874,7 @@ Final review and fixes:
 > measured on its own, joined by streaming into one fragmented MP4 with the
 > loudness applied once over the film; the YouTube upload continues in rounds
 > on one session and the transcription fallback runs in batches, so a format
-> can start at up to 180 minutes. Branch `long-renders`; decision 451. Spec
+> can start at up to 180 minutes. Branch `long-renders`; decision 452. Spec
 > `docs/superpowers/specs/2026-11-10-long-renders-design.md`, plan
 > `docs/superpowers/plans/2026-11-10-long-renders.md`. One migration,
 > `0054_broken_madripoor`: `renders.parts` jsonb, null for a single render.
@@ -4902,7 +4902,7 @@ Final review and fixes:
 - [x] Task 9: the publish runner's upload rounds (`5afc0eb9`).
 - [x] Task 10: the transcription fallback in batches of eight (`68651061`).
 - [x] Task 11: the start limit follows the format's own maximum
-      (`3d2db5f2`), this section, decision 451 and the doc amendments (the
+      (`3d2db5f2`), this section, decision 452 and the doc amendments (the
       commit after it on the branch).
 
 ### Owner actions at deploy
@@ -10909,7 +10909,22 @@ Part 2 checklist:
      of its own, so a minute of the 300 s step is left. The board's critic
      shares the request and keeps its own deadline. Shipping: a Vercel
      deploy and `PUT /api/inngest`; no migration.
-451. **Long renders in parts** (2026-11-10, branch `long-renders`, migration
+451. **The Settings tab you clicked stays** (2026-11-10, branch
+     `settings-tab-sticks`). Starting a derivation from the Motion tab
+     sent the owner to Models. Clicking a tab wrote `?tab=` with
+     `history.replaceState(window.history.state, ...)`; Next 16 patches
+     `replaceState` and treats a call carrying its own `__NA` state as one of
+     its own, so the router never learned the new URL. Every
+     `router.refresh()` (the Derive launch, its poll, Stop) then put back the
+     URL Settings opened on, plain `/settings`, and any full load of that URL
+     opened on Models: Next falls back to one when the deploy has changed
+     since the page opened or a refresh does not come back as a flight
+     response. The tab now writes a null state, the documented way, so the
+     router keeps the URL. Reproduced in the browser before the fix; the new
+     e2e reaches Motion by clicking it, starts a derivation (which fails on
+     the send, with no Inngest in e2e), waits for the refreshed card and
+     checks the URL and a reload. Shipping: a Vercel deploy; no migration.
+452. **Long renders in parts** (2026-11-10, branch `long-renders`, migration
      0054). The owner's words that started the project were in decision 394
      ("agree and proceed", 2026-11-03: the start limit stays 30 until a
      separate project renders the master in parts); for this one the owner
@@ -10966,7 +10981,7 @@ Part 2 checklist:
      above.
      Commits 7ad9780b and f96af6c1 say "decision 450" in their subjects; the
      number was 450 until master took it for another entry (the critic has
-     room to think), and this one is 451.
+     room to think), master then took 451 (the Settings tab stays), and this one is 452.
      Not verified: no live parts render has run. The first should be the
      shortest film over 30 minutes, about $2 to $3, approved separately. The
      Lambda layer's ffmpeg must support input-side `-vn` and https in the

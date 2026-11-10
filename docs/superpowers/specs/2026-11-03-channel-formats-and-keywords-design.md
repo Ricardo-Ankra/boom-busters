@@ -198,7 +198,7 @@ hashtag or footer. It behaves as today until the owner fills something.
 
 History channel, illustration only: format "Sleep", keywords
 `["history for sleep", "ancient history explained", "history to fall asleep to"]`,
-`calm`, 120 / 60 / 180 (startable since decision 451, when long renders came in parts), 120 words a minute, shot hold 2.5, template
+`calm`, 120 / 60 / 180 (startable since decision 452, when long renders came in parts), 120 words a minute, shot hold 2.5, template
 `"{topic} | {formatKeyword} ({runtime})"` requiring `{topic}` and
 `{formatKeyword}`, which gives "Cleopatra | History for Sleep (2 Hours)"; pillars such as Egypt, Mesopotamia, Greece, Rome, each with
 keywords like "ancient egypt history".
