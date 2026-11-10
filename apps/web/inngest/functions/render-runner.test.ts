@@ -249,6 +249,35 @@ describeDb('render-runner', () => {
     )
 
     it(
+      'plans no parts in mock mode, even for a timeline over thirty minutes',
+      { timeout: 120_000 },
+      async () => {
+        localRender.renderFixtureLocally.mockImplementation(
+          (input: { renderId: string }): Promise<{ outputKey: string }> =>
+            Promise.resolve({ outputKey: `local://${input.renderId}.mp4` }),
+        )
+        await db.delete(timelines)
+        await insertTimeline(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          json: longTimeline(),
+          s3Key: '',
+        })
+
+        const { result } = await engine.execute({
+          events: approvedEvent(),
+          steps: [{ id: 'emit-master-ready', handler: () => undefined }],
+        })
+
+        expect(result).toMatchObject({ outcome: 'master-ready' })
+        const render = await getRender(db, (result as { renderId: string }).renderId)
+        expect(render?.parts).toBeNull()
+        expect(render?.outputS3Key).toBe(`local://${render?.id}.mp4`)
+        expect(localRender.renderFixtureLocally).toHaveBeenCalled()
+        expect(broker.submitRender).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
       'goes straight to Publish and sends no master.ready when the format has Shorts off',
       { timeout: 120_000 },
       async () => {

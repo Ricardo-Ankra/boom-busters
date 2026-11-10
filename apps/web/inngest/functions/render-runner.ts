@@ -173,18 +173,21 @@ export const renderRunner = inngest.createFunction(
 
       // A master longer than the single-render limit renders in parts; the
       // plan goes on the row now so the progress route sees it from the start.
-      const parts: RenderPart[] | null = rendersInParts(durationSec)
-        ? planRenderParts(timeline).map((plan) => ({
-            index: plan.index,
-            renderId: newId<'render'>(),
-            frameRange: plan.frameRange,
-            startMs: plan.startMs,
-            durationMs: plan.durationMs,
-            status: 'queued' as const,
-            attempt: 1,
-            priorRenderIds: [],
-          }))
-        : null
+      // Mock mode renders the fixture locally and never plans parts, or the
+      // progress route would shadow the local fixture with a parts plan.
+      const parts: RenderPart[] | null =
+        rendersInParts(durationSec) && !mockProvidersEnabled()
+          ? planRenderParts(timeline).map((plan) => ({
+              index: plan.index,
+              renderId: newId<'render'>(),
+              frameRange: plan.frameRange,
+              startMs: plan.startMs,
+              durationMs: plan.durationMs,
+              status: 'queued' as const,
+              attempt: 1,
+              priorRenderIds: [],
+            }))
+          : null
       if (parts) await updateRender(db, render.id, { parts })
       const totalFrames = (parts ?? []).reduce(
         (sum, part) => sum + (part.frameRange[1] - part.frameRange[0] + 1),
