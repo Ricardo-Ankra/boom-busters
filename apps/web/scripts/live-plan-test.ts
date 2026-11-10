@@ -14,7 +14,7 @@ import {
   scriptableClaims,
 } from '@boom-busters/db'
 import { findModel, geminiImageGen, google, imageGenPrice, priceOf } from '@boom-busters/providers'
-import type { ImageReference, LLMTaskRequest, ScriptClaim } from '@boom-busters/providers'
+import type { ImageReference, LLMTaskRequest } from '@boom-busters/providers'
 import { DirectorsBookSchema, setForBrief, StillBriefSchema } from '@boom-busters/schemas'
 import type { StillBrief } from '@boom-busters/schemas'
 import { timedParagraphs } from '@/inngest/lib/shot-list'

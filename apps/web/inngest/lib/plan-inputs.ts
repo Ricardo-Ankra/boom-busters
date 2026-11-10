@@ -8,7 +8,6 @@ import {
   listVoiceTakes,
   scriptableClaims,
 } from '@boom-busters/db'
-import type { ScriptClaim } from '@boom-busters/providers'
 import { DirectorsBookSchema } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'

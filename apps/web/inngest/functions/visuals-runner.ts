@@ -20,7 +20,6 @@ import {
   listLogos,
 } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
-import type { ScriptClaim } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   ContentPolicyError,
