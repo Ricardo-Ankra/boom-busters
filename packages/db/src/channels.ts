@@ -11,9 +11,16 @@ import {
   FIRST_CHANNEL_NAME,
   FIRST_CHANNEL_SLUG,
   ProjectNotFoundError,
+  resolveChapterMarking,
   resolveFormat,
 } from '@boom-busters/schemas'
-import type { ChannelBible, ChannelFormat, Settings, SettingsPatch } from '@boom-busters/schemas'
+import type {
+  ChannelBible,
+  ChannelFormat,
+  ChapterMarking,
+  Settings,
+  SettingsPatch,
+} from '@boom-busters/schemas'
 import { asc, eq, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { appendBibleVersion, currentBible } from './bibles'
@@ -372,4 +379,27 @@ export async function shortsEnabledForProject(db: Database, projectId: string): 
   if (!project) throw new ProjectNotFoundError(projectId)
   const current = await currentBible(db, project.channelId)
   return resolveFormat(current.bible.formats, project.formatKey).shorts
+}
+
+/**
+ * How the project's chapters are marked (decision 459). Like the Shorts flag
+ * this reads the channel's CURRENT bible, not the version the project froze
+ * (ruling 18), and the Brand Kit live: a format change reaches projects already
+ * under way. An unknown format key falls back to the primary, as `resolveFormat`
+ * does; a format that inherits takes the Brand Kit look's marking.
+ */
+export async function chapterMarkingForProject(
+  db: Database,
+  projectId: string,
+): Promise<ChapterMarking> {
+  const [project] = await db
+    .select({ channelId: projects.channelId, formatKey: projects.formatKey })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project) throw new ProjectNotFoundError(projectId)
+  const current = await currentBible(db, project.channelId)
+  const format = resolveFormat(current.bible.formats, project.formatKey)
+  const settings = await getChannelSettings(db, project.channelId)
+  return resolveChapterMarking(settings.brandKit.look, format)
 }

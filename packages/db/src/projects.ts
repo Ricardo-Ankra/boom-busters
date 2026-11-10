@@ -357,6 +357,19 @@ export async function backdateProject(db: Database, id: string, date: Date): Pro
 }
 
 /**
+ * Rename a project: the one writer of `projects.title` after creation
+ * (decision 459). True when a row changed, false for an id that names none.
+ */
+export async function renameProject(db: Database, id: string, title: string): Promise<boolean> {
+  const rows = await db
+    .update(projects)
+    .set({ title, updatedAt: new Date() })
+    .where(eq(projects.id, id))
+    .returning({ id: projects.id })
+  return rows.length > 0
+}
+
+/**
  * Drop every project except the ones named — the projects counterpart of
  * `deleteCasesExcept`, and needed for the same reason.
  *

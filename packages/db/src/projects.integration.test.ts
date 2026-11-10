@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createDb, type Database } from './client'
 import { FIXTURE_PROJECT_ID } from './fixtures'
-import { getProject } from './projects'
+import { getProject, renameProject } from './projects'
 import { ensureRun, recordRunEvent } from './runs'
 import { runEvents, runs } from './schema'
 import { seed } from './seed'
@@ -60,5 +60,11 @@ describeDb('project summary gate line', () => {
     expect((await getProject(db, FIXTURE_PROJECT_ID))?.gateSummary).toBe(
       'Script ready · 2 chapters · newer',
     )
+  })
+
+  it('renameProject writes the new title and reports whether a row changed', async () => {
+    expect(await renameProject(db, FIXTURE_PROJECT_ID, 'The Four Billion Euros')).toBe(true)
+    expect((await getProject(db, FIXTURE_PROJECT_ID))?.title).toBe('The Four Billion Euros')
+    expect(await renameProject(db, '01J00000000000000000000000', 'Nobody')).toBe(false)
   })
 })

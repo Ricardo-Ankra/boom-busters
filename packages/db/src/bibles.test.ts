@@ -20,9 +20,12 @@ import { createCase } from './cases'
 import {
   channelForProject,
   createChannel,
+  chapterMarkingForProject,
   ensureFirstChannel,
   getChannel,
+  getChannelSettings,
   shortsEnabledForProject,
+  updateChannelSettings,
 } from './channels'
 import { createDb } from './client'
 import { createProjectFromCase } from './projects'
@@ -292,6 +295,48 @@ suite('bible versions', () => {
       'Primary off',
     )
     expect(await shortsEnabledForProject(db, unknown.id)).toBe(false)
+  })
+
+  it('chapterMarkingForProject reads the current bible format and the live Brand Kit (ruling 18)', async () => {
+    const channel = await createChannel(db, channelInput('marking'))
+    const kase = await createCase(db, {
+      title: 'Enron',
+      category: 'collapse',
+      channelId: channel.id,
+    })
+    const project = await createProjectFromCase(db, { caseId: kase.id, title: 'A' })
+    const gone = await createProjectFromCase(db, { caseId: kase.id, title: 'B', formatKey: 'gone' })
+    // Default channel: look cards, format inherits.
+    expect(await chapterMarkingForProject(db, project.id)).toBe('cards')
+
+    // The Brand Kit says none and the project's format still inherits: read live.
+    const settings = await getChannelSettings(db, channel.id)
+    await updateChannelSettings(db, channel.id, {
+      brandKit: {
+        ...settings.brandKit,
+        look: { ...settings.brandKit.look, chapterMarking: 'none' },
+      },
+    })
+    expect(await chapterMarkingForProject(db, project.id)).toBe('none')
+
+    // A NEW bible version sets the format to cards: the pinned version is older, the current wins.
+    const main = {
+      ...defaultFormat('Documentary'),
+      primary: true,
+      chapterMarking: 'cards' as const,
+    }
+    await saveBibleVersion(db, channel.id, { ...EMPTY_BIBLE, formats: [main] }, 'Cards')
+    expect(await chapterMarkingForProject(db, project.id)).toBe('cards')
+
+    // An unknown key falls back to the primary format.
+    expect(await chapterMarkingForProject(db, gone.id)).toBe('cards')
+    await saveBibleVersion(
+      db,
+      channel.id,
+      { ...EMPTY_BIBLE, formats: [{ ...main, chapterMarking: 'inherit' }] },
+      'Inherit',
+    )
+    expect(await chapterMarkingForProject(db, gone.id)).toBe('none')
   })
 
   it('a save for an unknown channel throws and writes nothing', async () => {
