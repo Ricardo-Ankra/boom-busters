@@ -10746,3 +10746,77 @@ Part 2 checklist:
      category `collapse` as a placeholder the case row needs. Shipping:
      migration 0053, a Vercel deploy and `PUT /api/inngest`. No profile has run
      live.
+447. **The contact sheet is taken on the frame page** (2026-11-09, branch
+     `frames-single-page`). The owner's second production derivation said
+     why it had no frames, as decision 445 meant it to: "the designer's
+     frames failed: page.setViewportSize: Target page, context or browser
+     has been closed", for the line chart and the text highlight. The
+     critic's photograph took each frame size's contact sheet on a second
+     page; in Playwright a page from `browser.newPage` is a browser context
+     of its own, and Vercel's single-process Chromium (`@sparticuz/chromium`,
+     `--single-process --no-zygote`) went down with it, so the next frame
+     size found the browser closed. Reproduced locally with those flags
+     (`browser.newPage: Target page, context or browser has been closed`);
+     the build's layout check never reached it, which is why builds passed
+     and every critic photograph failed. The sheet is now drawn on the frame
+     page itself, its viewport set to the sheet's width and the screenshot
+     taken at one pixel per CSS pixel (`scale: 'css'`), so it keeps its
+     1600 px though the frames are shot at half scale; the next frame size
+     sets its own viewport and document. The decision 389 test of the
+     single-process browser took rest shots only and never reached the
+     sheet; a new one takes the dense set and both sheets under those
+     flags and checks both are 1600 px wide. A probe under the full
+     `@sparticuz/chromium` flag set photographed the line chart, the text
+     highlight and the stat counter, both sheets each, in about 5 s. The
+     same run's stat counter was refused by the facts check (a "3" no cited
+     claim contains); a facts refusal keeps no near miss, since
+     `graphicCodeIssue` returns only the reason and is shared with the
+     board's designer. Shipping: a Vercel deploy; no migration, no Inngest
+     change.
+448. **New window from a stored clip** (2026-11-09, owner: "Proceed with your
+     offer", branch `reference-windows`). A clip marked once can give
+     another window without being uploaded again: "New window" on a video
+     reference's card opens the marker on the stored clip (as Re-mark does,
+     played from its presigned link with `crossOrigin` anonymous), with the
+     full words form, and saves a reference of its own on the same asset
+     through `addReferenceWindowAction`. Only the window's frames travel;
+     they are keyed by the clip's fingerprint as every frame is, and no
+     frame file is ever deleted, so two references sharing one clip's
+     frames is safe. The source link and rights carry over from the source
+     (the same video); the title, purpose, carry-over, avoid and negative
+     are the window's own. The window starts where the stored one ends,
+     two seconds long, or at the clip's start when that would run past its
+     end. The title must differ from every live reference's (case and
+     spaces ignored), since the storyboard and the critic name references
+     by title. Each window counts towards the twelve: the button is
+     disabled at twelve, without storage, and on an archived channel. No
+     migration, no Inngest change; a Vercel deploy ships it.
+449. **A figure in pieces, and a count on its way** (2026-11-10, owner: "do
+     what you need to to fix the stat counter issue", branch
+     `stat-counter-facts`). The owner's third production derivation refused
+     the stat counter with "the graphic shows 3, which no cited claim
+     contains". The design and its plan live only in the Inngest run, so the
+     cause was found by reproducing what the technique asks for. Its moves
+     include `drum`, "a count that strikes each figure in turn, beat by
+     beat", and the prompt suggests rotateX for a drum. Two honest ways to
+     build that were refused by the facts check, both with this message
+     when the figure is 3.4bn. First, a figure drawn a digit to a column:
+     the dry run's visible text turns every tag into a space, so "3", "."
+     and "4" in three spans read as the groups 3 and 4, neither in "The
+     figure is 3.4bn.". Second, a count that holds each whole figure for a
+     beat (1, 2, 3, then 3.4, or the whole part landing a beat before its
+     decimals): `shownDigitGroups` judged a count by where it lands only
+     when the values on the way flicker past, and a beat of a second or
+     more counted as shown. The dry run now also keeps each sample with
+     its tags as a marker (`figureSamples`, U+2063). `figureReading` joins
+     number pieces with only tags between them when a cited text holds the
+     figure they make, and leaves them apart otherwise, so two labels side
+     by side ("2023", "45") are still two. `passedOnTheWay` pairs the groups
+     of consecutive samples that show as many groups, place by place, and
+     lets a group pass when the figure keeps rising (or keeps falling) from
+     it to a cited one. A count that lands on an uncited figure, a held
+     label no count replaces, and pieces that make an uncited figure are
+     still refused. Known limit: an uncited figure that a later, larger
+     cited figure replaces in the same place passes; the critic's frames
+     see it. The board designer runs the same check and gains the same
+     reading. Shipping: a Vercel deploy; no migration, no Inngest change.

@@ -6,7 +6,7 @@ import type {
   GraphicProps,
   GraphicScope,
 } from '@boom-busters/compositions/graphic-code-pure'
-import { GRAPHIC_STILL_MAX_MS } from '@boom-busters/schemas'
+import { GRAPHIC_STILL_MAX_MS, PIECE_BREAK } from '@boom-busters/schemas'
 import type * as ReactModule from 'react'
 import type * as ReactDomServer from 'react-dom/server'
 import type * as RemotionModule from 'remotion'
@@ -145,6 +145,11 @@ export interface DryRunResult {
    * (an earlier one was refused) has none.
    */
   textSamples: { landscape: string[]; portrait: string[] }
+  /**
+   * The same samples with each tag kept as `PIECE_BREAK` (`figureText`), so
+   * the facts check can read a figure drawn in pieces as one (decision 449).
+   */
+  figureSamples: { landscape: string[]; portrait: string[] }
 }
 
 export const FRAME_SIZES = [
@@ -208,6 +213,17 @@ export function visibleText(markup: string): string {
     .replace(/&(?:amp|lt|gt|quot|#x27|nbsp);/g, (entity) => ENTITIES[entity] ?? entity)
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * The visible text with each tag kept as `PIECE_BREAK` rather than a space:
+ * "3", "." and "4" in three spans stay pieces of one figure (decision 449).
+ */
+export function figureText(markup: string): string {
+  return markup
+    .replace(/<[^>]*>/g, PIECE_BREAK)
+    .replace(/&(?:amp|lt|gt|quot|#x27|nbsp);/g, (entity) => ENTITIES[entity] ?? entity)
+    .replace(/\s+/g, ' ')
 }
 
 const TAG = /<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g
@@ -441,12 +457,14 @@ function renderSamples(
 export function dryRunGraphic(input: DryRunInput): DryRunResult {
   const loaded = loadRuntime()
   const textSamples: DryRunResult['textSamples'] = { landscape: [], portrait: [] }
+  const figureSamples: DryRunResult['figureSamples'] = { landscape: [], portrait: [] }
   for (const size of FRAME_SIZES) {
     const { issue, samples } = runFrameSize(input, size, loaded)
     textSamples[size.orientation] = samples.map((sample) => visibleText(sample.markup))
-    if (issue !== null) return { issue, textSamples }
+    figureSamples[size.orientation] = samples.map((sample) => figureText(sample.markup))
+    if (issue !== null) return { issue, textSamples, figureSamples }
   }
-  return { issue: null, textSamples }
+  return { issue: null, textSamples, figureSamples }
 }
 
 /**

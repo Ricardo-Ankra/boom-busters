@@ -135,6 +135,100 @@ export function shownDigitGroups(samples: readonly string[], minSamples: number)
   return shown
 }
 
+/**
+ * Where a tag stood between two pieces of visible text (`figureText` in the
+ * dry run). Text nodes in separate elements are separate pieces; a figure
+ * drawn a digit to a column (a drum) is several pieces that read as one.
+ */
+export const PIECE_BREAK = '\u2063'
+
+/** Number pieces with only tags between them: "3", ".", "4" in three spans. */
+const NUMBER_PIECES = /[\d.,]+(?:\u2063+[\d.,]+)+/g
+
+/**
+ * One sample as the facts check reads it (decision 449). Number pieces with
+ * only tags between them are read as the one figure they make when a cited
+ * text holds that figure, so a drum's "3", "." and "4" are the 3.4bn the
+ * claim gives; otherwise each piece is its own, as two labels side by side
+ * are. Every other tag is a space.
+ */
+export function figureReading(sample: string, cites: (figure: string) => boolean): string {
+  return sample
+    .replace(NUMBER_PIECES, (run) => {
+      const joined = run.split(PIECE_BREAK).join('')
+      return cites(joined) ? joined : run
+    })
+    .split(PIECE_BREAK)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Digit groups a count passes on its way to a cited figure (decision 449).
+ *
+ * A drum strikes each figure in turn, beat by beat, and a beat can last a
+ * second: "1", "2", "3", then "3.4" is a count to 3.4bn, not four figures.
+ * Where two samples in a row show as many groups, the groups at one place
+ * that differ are the same figure changing. A group counts as passed when,
+ * from it, the figure keeps rising (or keeps falling) to a group a cited
+ * text holds. A group nothing replaces, or one a count leaves for a figure
+ * no claim holds, is still checked.
+ */
+export function passedOnTheWay(
+  readings: readonly string[],
+  cites: (figure: string) => boolean,
+): Set<string> {
+  const next = new Map<string, Set<string>>()
+  for (let i = 1; i < readings.length; i++) {
+    const before = figureDigitGroups(readings[i - 1] ?? '')
+    const after = figureDigitGroups(readings[i] ?? '')
+    if (before.length !== after.length) continue
+    before.forEach((group, at) => {
+      const then = after[at]
+      if (then === undefined || then === group) return
+      const known = next.get(group) ?? new Set<string>()
+      known.add(then)
+      next.set(group, known)
+    })
+  }
+  // From `group`, moving one way only, is a cited group reached?
+  const reaches = (group: string, way: number, seen: Set<string>): boolean => {
+    for (const then of next.get(group) ?? []) {
+      const step = Math.sign(Number(then) - Number(group))
+      if (step === 0 || Number.isNaN(step) || (way !== 0 && step !== way)) continue
+      if (cites(then)) return true
+      if (seen.has(then)) continue
+      seen.add(then)
+      if (reaches(then, step, seen)) return true
+    }
+    return false
+  }
+  const passed = new Set<string>()
+  for (const group of next.keys()) {
+    if (reaches(group, 0, new Set([group]))) passed.add(group)
+  }
+  return passed
+}
+
+/**
+ * The digit groups the facts check holds a design to (decision 449): those
+ * that stay a second (`shownDigitGroups`) in the samples as `figureReading`
+ * reads them, less the ones a count passes on its way (`passedOnTheWay`).
+ * `cited` are the texts a shown figure may come from: the cited claims and,
+ * for a chart, its series.
+ */
+export function shownFigures(
+  samples: readonly string[],
+  minSamples: number,
+  cited: readonly string[],
+): string[] {
+  const cites = (figure: string) => cited.some((text) => figureCitesClaim(figure, text))
+  const readings = samples.map((sample) => figureReading(sample, cites))
+  const passed = passedOnTheWay(readings, cites)
+  return shownDigitGroups(readings, minSamples).filter((group) => !passed.has(group))
+}
+
 const OUTER_QUOTE_MARKS = /^["'‘’“”]+|["'‘’“”]+$/g
 
 /** A phrase as the comparison reads it: straight apostrophes, single spaces, lower case. */

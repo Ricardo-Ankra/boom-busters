@@ -396,11 +396,17 @@ function ReferenceCard({
   reference,
   disabled,
   onRemark,
+  onNewWindow,
+  newWindowReady,
 }: {
   channelId: string
   reference: ReferenceView
   disabled: boolean
   onRemark: () => void
+  /** Another window of this clip, saved as a reference of its own (decision 448). */
+  onNewWindow: () => void
+  /** Storage, a playable stored clip and room in the pack. */
+  newWindowReady: boolean
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -483,6 +489,15 @@ function ReferenceCard({
           {reference.kind === 'video' ? (
             <Button variant="outline" disabled={disabled || busy || held} onClick={onRemark}>
               Re-mark
+            </Button>
+          ) : null}
+          {reference.kind === 'video' ? (
+            <Button
+              variant="outline"
+              disabled={disabled || busy || !newWindowReady}
+              onClick={onNewWindow}
+            >
+              New window
             </Button>
           ) : null}
           {readable ? (
@@ -604,6 +619,8 @@ export function ReferencesSection({
                 reference={reference}
                 disabled={archived}
                 onRemark={() => setMarker({ kind: 'remark', reference })}
+                onNewWindow={() => setMarker({ kind: 'window', reference })}
+                newWindowReady={storageReady && !full && reference.clipUrl !== null}
               />
             ))}
           </ul>

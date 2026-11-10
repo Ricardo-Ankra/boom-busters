@@ -17,6 +17,7 @@ const actions = vi.hoisted(() => ({
   finaliseReferenceAction: vi.fn(),
   updateReferenceAction: vi.fn(),
   remarkReferenceAction: vi.fn(),
+  addReferenceWindowAction: vi.fn(),
   readReferenceAction: vi.fn(),
   saveReadingAction: vi.fn(),
   archiveReferenceAction: vi.fn(),
@@ -211,9 +212,32 @@ describe('ReferencesSection', () => {
     expect(screen.getAllByRole('button', { name: 'Read' })).toHaveLength(1)
   })
 
+  it('offers New window on a clip, not on a still, and opens the marker on the stored clip (decision 448)', async () => {
+    renderSection([
+      view({ id: 'clip', readState: 'read' }),
+      view({ id: 'still', kind: 'image', clipUrl: null, readState: 'read' }),
+    ])
+    const buttons = screen.getAllByRole('button', { name: 'New window' })
+    expect(buttons).toHaveLength(1)
+    await userEvent.click(buttons[0]!)
+    expect(screen.getByRole('dialog', { name: 'New window from this clip' })).toBeInTheDocument()
+  })
+
+  it('disables New window at twelve and without storage (decision 448)', () => {
+    const { unmount } = renderSection(
+      Array.from({ length: 12 }, (_, n) => view({ id: `r${n}`, readState: 'read' })),
+    )
+    for (const button of screen.getAllByRole('button', { name: 'New window' })) {
+      expect(button).toBeDisabled()
+    }
+    unmount()
+    renderSection([view({ readState: 'read' })], { storageReady: false })
+    expect(screen.getByRole('button', { name: 'New window' })).toBeDisabled()
+  })
+
   it('disables every button on an archived channel', () => {
     renderSection([view({ readState: 'unread' })], { archived: true })
-    for (const name of ['Add reference', 'Read', 'Archive', 'Edit', 'Re-mark']) {
+    for (const name of ['Add reference', 'Read', 'Archive', 'Edit', 'Re-mark', 'New window']) {
       expect(screen.getByRole('button', { name })).toBeDisabled()
     }
   })
