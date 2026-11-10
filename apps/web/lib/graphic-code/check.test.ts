@@ -373,3 +373,75 @@ describe('graphicCodeIssue (decision 295)', () => {
     expect(result).toHaveProperty('code')
   })
 })
+
+describe('a figure built from pieces, or struck on its way (decision 449)', () => {
+  // The derived stat counter's world: one claim per figure the plan speaks.
+  const LOSS: GraphicDesignContext = {
+    ...CONTEXT,
+    claims: [{ id: A, text: 'The figure is 3.4bn.', sourceUrl: null, confidence: 'high' }],
+  }
+  const lossAnswer = (source: string): PlannedGraphicCode => ({
+    title: 'The loss',
+    facts: [{ text: '3.4bn', claim: 1 }],
+    source,
+  })
+  /** Each sample's figure, from a beat number to the text it shows, with a sweep so it never sits still. */
+  const showing = (figure: string) => `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { fps } = Remotion.useVideoConfig()
+  const beat = Math.floor(frame / Math.round(1.2 * fps))
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      ${figure}
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+
+  it('reads a figure drawn a digit to a column as the one figure it shows', () => {
+    const drum = showing(
+      `<div style={{ display: 'flex' }}><span>$</span><span>3</span><span>.</span><span>4</span><span>bn</span></div>`,
+    )
+    expect(graphicCodeIssue(lossAnswer(drum), LOSS, slot(GRAPHIC))).toEqual({
+      code: expect.anything(),
+    })
+  })
+
+  it('still refuses a figure drawn in pieces when the pieces make an uncited figure', () => {
+    const drum = showing(
+      `<div style={{ display: 'flex' }}><span>7</span><span>.</span><span>1</span></div>`,
+    )
+    expect(graphicCodeIssue(lossAnswer(drum), LOSS, slot(GRAPHIC))).toEqual({
+      issue: 'the graphic shows 7, which no cited claim contains',
+    })
+  })
+
+  it('keeps a count that strikes each whole figure for a beat on its way to the cited one', () => {
+    const struck = showing(
+      `<div>{'$' + (beat === 0 ? '1' : beat === 1 ? '2' : beat === 2 ? '3' : '3.4') + 'bn'}</div>`,
+    )
+    expect(graphicCodeIssue(lossAnswer(struck), LOSS, slot(GRAPHIC))).toEqual({
+      code: expect.anything(),
+    })
+  })
+
+  it('keeps a drum whose whole part lands a beat before its decimals', () => {
+    const landing = showing(`<div>{'$' + (beat < 2 ? '3' : '3.4') + 'bn'}</div>`)
+    expect(graphicCodeIssue(lossAnswer(landing), LOSS, slot(GRAPHIC))).toEqual({
+      code: expect.anything(),
+    })
+  })
+
+  it('refuses a count that lands on a figure no cited claim holds, and a held figure no count passes', () => {
+    const wrong = showing(`<div>{'$' + (beat === 0 ? '1' : beat === 1 ? '2' : '7') + 'bn'}</div>`)
+    expect(graphicCodeIssue(lossAnswer(wrong), LOSS, slot(GRAPHIC))).toEqual({
+      issue: 'the graphic shows 1, which no cited claim contains',
+    })
+    const label = showing(`<div>{'3 years'}</div><div>{'$3.4bn'}</div>`)
+    expect(graphicCodeIssue(lossAnswer(label), LOSS, slot(GRAPHIC))).toEqual({
+      issue: 'the graphic shows 3, which no cited claim contains',
+    })
+  })
+})

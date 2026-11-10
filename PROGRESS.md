@@ -10786,3 +10786,32 @@ Part 2 checklist:
      by title. Each window counts towards the twelve: the button is
      disabled at twelve, without storage, and on an archived channel. No
      migration, no Inngest change; a Vercel deploy ships it.
+449. **A figure in pieces, and a count on its way** (2026-11-10, owner: "do
+     what you need to to fix the stat counter issue", branch
+     `stat-counter-facts`). The owner's third production derivation refused
+     the stat counter with "the graphic shows 3, which no cited claim
+     contains". The design and its plan live only in the Inngest run, so the
+     cause was found by reproducing what the technique asks for. Its moves
+     include `drum`, "a count that strikes each figure in turn, beat by
+     beat", and the prompt suggests rotateX for a drum. Two honest ways to
+     build that were refused by the facts check, both with this message
+     when the figure is 3.4bn. First, a figure drawn a digit to a column:
+     the dry run's visible text turns every tag into a space, so "3", "."
+     and "4" in three spans read as the groups 3 and 4, neither in "The
+     figure is 3.4bn.". Second, a count that holds each whole figure for a
+     beat (1, 2, 3, then 3.4, or the whole part landing a beat before its
+     decimals): `shownDigitGroups` judged a count by where it lands only
+     when the values on the way flicker past, and a beat of a second or
+     more counted as shown. The dry run now also keeps each sample with
+     its tags as a marker (`figureSamples`, U+2063). `figureReading` joins
+     number pieces with only tags between them when a cited text holds the
+     figure they make, and leaves them apart otherwise, so two labels side
+     by side ("2023", "45") are still two. `passedOnTheWay` pairs the groups
+     of consecutive samples that show as many groups, place by place, and
+     lets a group pass when the figure keeps rising (or keeps falling) from
+     it to a cited one. A count that lands on an uncited figure, a held
+     label no count replaces, and pieces that make an uncited figure are
+     still refused. Known limit: an uncited figure that a later, larger
+     cited figure replaces in the same place passes; the critic's frames
+     see it. The board designer runs the same check and gains the same
+     reading. Shipping: a Vercel deploy; no migration, no Inngest change.

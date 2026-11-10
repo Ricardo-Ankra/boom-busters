@@ -5,9 +5,13 @@ import {
   GRAPHIC_SOURCE_MAX,
   GRAPHIC_TITLE_MAX,
   GraphicCodeSchema,
+  PIECE_BREAK,
   PlannedGraphicCodeSchema,
+  figureReading,
   graphicFactsIssue,
+  passedOnTheWay,
   shownDigitGroups,
+  shownFigures,
 } from './graphic-code'
 import { GRAPHIC_STILL_MAX_MS } from './graphic-timing'
 
@@ -135,6 +139,58 @@ describe('shownDigitGroups', () => {
   it('reads every group in a sample, separators removed, each once, in the order they held', () => {
     const samples = Array.from({ length: 5 }, () => '1,200 staff at 3 sites')
     expect(shownDigitGroups(samples, 4)).toEqual(['1200', '3'])
+  })
+})
+
+describe('a figure in pieces and a count on its way (decision 449)', () => {
+  const B = PIECE_BREAK
+  const cites = (figure: string) => ['3.4', '1200'].includes(figure.replace(/,/g, ''))
+
+  it('reads number pieces with only tags between them as the cited figure they make', () => {
+    expect(figureReading(`${B}$${B}3${B}.${B}4${B}bn${B}`, cites)).toBe('$ 3.4 bn')
+    expect(figureReading(`${B}1${B},${B}200${B} staff`, cites)).toBe('1,200 staff')
+  })
+
+  it('keeps pieces apart when they make no cited figure, or when a space stands between them', () => {
+    expect(figureReading(`${B}2023${B}${B}45${B}`, cites)).toBe('2023 45')
+    expect(figureReading(`${B}3${B} ${B}.4${B}`, cites)).toBe('3 .4')
+  })
+
+  it('passes the groups a count strikes on its way up, or down, to a cited figure', () => {
+    expect(passedOnTheWay(['1bn', '2bn', '3bn', '3.4bn'], cites)).toEqual(new Set(['1', '2', '3']))
+    expect(passedOnTheWay(['9bn', '5bn', '3.4bn'], cites)).toEqual(new Set(['9', '5']))
+  })
+
+  it('passes nothing a count leaves for an uncited figure, turns back from, or only sits beside', () => {
+    expect(passedOnTheWay(['1bn', '2bn', '7bn'], cites)).toEqual(new Set())
+    // 5 falls to 2 and the count turns back up: only the 2 rises straight to 3.4.
+    expect(passedOnTheWay(['5bn', '2bn', '3.4bn'], cites)).toEqual(new Set(['2']))
+    // A label appearing beside the figure changes the count of groups: no pairing.
+    expect(passedOnTheWay(['3.4bn', '3 years 3.4bn'], cites)).toEqual(new Set())
+  })
+
+  it('holds a design to what stays a second, less what a count passes', () => {
+    const struck = [
+      '1',
+      '1',
+      '1',
+      '1',
+      '2',
+      '2',
+      '2',
+      '2',
+      '3',
+      '3',
+      '3',
+      '3',
+      '3.4',
+      '3.4',
+      '3.4',
+      '3.4',
+    ]
+    expect(shownFigures(struck, 4, ['The figure is 3.4bn.'])).toEqual(['3.4'])
+    const label = Array.from({ length: 4 }, () => `${B}3 years${B}${B}3${B}.${B}4${B}`)
+    expect(shownFigures(label, 4, ['The figure is 3.4bn.'])).toEqual(['3', '3.4'])
   })
 })
 
