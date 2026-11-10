@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { DocumentKind } from './dossier'
+import type { GutterWarning, WarningSeverity } from './script'
 
 /** How the dossier researches a case. The channel bible picks one. */
 export const RESEARCH_PROFILE_KEYS = ['investigation', 'science'] as const
@@ -49,6 +50,8 @@ export interface ResearchProfile {
   tiers: Record<DocumentKind, Tier>
   tierShares: Record<Tier, number>
   evidence: EvidenceAxis | null
+  /** What the script reviewer treats as blocking; null when the profile reviews nothing extra. Lists hold evidence status keys. */
+  review: { standing: { blocking: readonly string[]; advisory: readonly string[] } } | null
 }
 
 const INVESTIGATION_TIERS: Record<DocumentKind, Tier> = {
@@ -75,6 +78,7 @@ export const RESEARCH_PROFILES: Record<ResearchProfileKey, ResearchProfile> = {
     tiers: INVESTIGATION_TIERS,
     tierShares: { 1: 0.25, 2: 0.3, 3: 0.15, 4: 0.1, 5: 0.2 },
     evidence: null,
+    review: null,
   },
   science: {
     key: 'science',
@@ -124,6 +128,7 @@ export const RESEARCH_PROFILES: Record<ResearchProfileKey, ResearchProfile> = {
       },
       fallback: 'single_study',
     },
+    review: { standing: { blocking: ['contested'], advisory: ['single_study'] } },
   },
 }
 
@@ -144,4 +149,29 @@ export function evidenceLabel(
   const found = profile.evidence.statuses.find((s) => s.key === status)
   if (!found) return null
   return where === 'script' ? found.scriptLabel : found.reviewLabel
+}
+
+/** The severity a standing warning carries, read from the status label its message names; null when it cannot be resolved. */
+export function standingSeverity(
+  profile: ResearchProfile,
+  message: string,
+): WarningSeverity | null {
+  if (!profile.review || !profile.evidence) return null
+  const found = profile.evidence.statuses.find((s) => message.includes(s.scriptLabel))
+  if (!found) return null
+  if (profile.review.standing.blocking.includes(found.key)) return 'blocking'
+  if (profile.review.standing.advisory.includes(found.key)) return 'advisory'
+  return null
+}
+
+/** Stamps the profile's severity on each overstated-standing warning it can resolve; everything else passes through untouched. */
+export function withStandingSeverity(
+  profile: ResearchProfile,
+  warnings: readonly GutterWarning[],
+): GutterWarning[] {
+  return warnings.map((w) => {
+    if (w.kind !== 'overstated-standing') return w
+    const severity = standingSeverity(profile, w.message)
+    return severity ? { ...w, severity } : w
+  })
 }
