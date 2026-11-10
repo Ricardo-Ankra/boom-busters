@@ -10990,7 +10990,7 @@ Part 2 checklist:
 
 ## Script review, chosen per channel (2026-11-10)
 
-> Decision 457, branch `script-review-gate`. Plan 1 of the script review
+> Decision 458, branch `script-review-gate`. Plan 1 of the script review
 > design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
 > (sections 5 to 9, 11 and 13), plan `docs/superpowers/plans/2026-11-10-script-review-and-gate.md`. The
 > reviewer now grounds each chapter on the claim list and the scene list and
@@ -11067,7 +11067,7 @@ owner edits. `--prod` was not run against Neon.
 
 ### Decisions made
 
-457. **Script review, chosen per channel** (2026-11-10, branch
+458. **Script review, chosen per channel** (2026-11-10, branch
      `script-review-gate`, no migration).
      (a) `overstated-standing` defaults to blocking when the message carries
      no recognisable label, and the strictest matched label wins when it

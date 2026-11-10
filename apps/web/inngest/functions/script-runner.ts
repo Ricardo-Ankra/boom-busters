@@ -515,7 +515,7 @@ export const scriptRunner = inngest.createFunction(
       }
     })
 
-    // A summary stored before decision 457 has only `warnings`, all read as blocking.
+    // A summary stored before decision 458 has only `warnings`, all read as blocking.
     const blocking = summary.blocking ?? summary.warnings
     const advisory = summary.advisory ?? 0
     const hedges = summary.hedges ?? 0
@@ -526,7 +526,7 @@ export const scriptRunner = inngest.createFunction(
 
     // Blocking warnings are the reviewer's yes-or-no findings: grounding, liability,
     // standing per research profile and repeats. Advisory ones are craft, style and length.
-    // Zero blocking goes on to voice without a human, whatever the advisory count (decision 457).
+    // Zero blocking goes on to voice without a human, whatever the advisory count (decision 458).
     if (blocking === 0) {
       await step.run('auto-approve', async () => {
         await setScriptStatus(db, setup.scriptId, 'approved')

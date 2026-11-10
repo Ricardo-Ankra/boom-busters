@@ -2,7 +2,7 @@ import { countWords, narrationTags, splitSentences, stripNarrationMarkup } from 
 import type { GutterWarning } from './script'
 
 /**
- * The deterministic style and length checks (decision 457).
+ * The deterministic style and length checks (decision 458).
  *
  * The house style is a prompt, and a prompt is a request, not a guarantee. This
  * pass reads the finished chapters for the rules a program can check for free:
