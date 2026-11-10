@@ -28,7 +28,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { partOutcome, renderRunner, retryPlan } from './render-runner'
+import { partOutcome, partQcOutcome, renderRunner, retryPlan } from './render-runner'
 
 /**
  * The render-runner against the real database (build spec section 13).
@@ -561,6 +561,49 @@ describeDb('render-runner', () => {
         partOutcome(event({ result: 'failed', reason: 'error', message: 'boom' }), '40m'),
       ).toEqual({ ok: false, detail: 'error: boom' })
       expect(partOutcome(null, '40m')).toEqual({ ok: false, detail: 'no webhook within 40m' })
+    })
+
+    it('reads a part QC completion as usable, or says why it is not', () => {
+      const part = { durationMs: 900_000 }
+      const loudnorm = {
+        input_i: '-20.1',
+        input_tp: '-2.0',
+        input_lra: '5.0',
+        input_thresh: '-30.0',
+        target_offset: '0.1',
+      }
+      const done = (data: Record<string, unknown>) => ({ data })
+      const report = { passed: true, integratedLufs: -20.1, issues: [], loudnorm }
+
+      expect(partQcOutcome(done({ ok: true, result: report }), part, '30m')).toEqual({
+        ok: true,
+        report,
+        measurement: { measurement: loudnorm, durationMs: 900_000 },
+      })
+      expect(
+        partQcOutcome(done({ ok: true, result: { ...report, durationMs: 899_000 } }), part, '30m'),
+      ).toMatchObject({ ok: true, measurement: { durationMs: 899_000 } })
+
+      // The four causes that fail a part's QC attempt.
+      expect(partQcOutcome(null, part, '30m')).toEqual({
+        ok: false,
+        detail: 'no QC result within 30m',
+      })
+      expect(partQcOutcome(done({ ok: false, error: 'ffmpeg exited 1' }), part, '30m')).toEqual({
+        ok: false,
+        detail: 'ffmpeg exited 1',
+      })
+      expect(partQcOutcome(done({ ok: true, result: { nonsense: true } }), part, '30m')).toEqual({
+        ok: false,
+        detail: 'the QC report was not readable',
+      })
+      expect(
+        partQcOutcome(
+          done({ ok: true, result: { passed: true, integratedLufs: -14, issues: [] } }),
+          part,
+          '30m',
+        ),
+      ).toEqual({ ok: false, detail: 'the QC report has no loudness measurement' })
     })
 
     it('cancels a timed-out part on the broker before resubmitting it', () => {

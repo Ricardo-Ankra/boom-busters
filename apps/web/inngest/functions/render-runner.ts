@@ -592,6 +592,42 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+type PartQcOutcome =
+  | {
+      ok: true
+      report: QcReport
+      measurement: { measurement: LoudnormMeasurement; durationMs: number }
+    }
+  | { ok: false; detail: string }
+
+/**
+ * Whether a part's QC completion is usable: the job must have run, its report
+ * must be readable and it must carry the loudness measurement the film-wide
+ * combination needs. Anything else is QC that did not run, with the reason.
+ */
+export function partQcOutcome(
+  done: SettledLike,
+  part: { durationMs: number },
+  qcTimeout: string,
+): PartQcOutcome {
+  if (!done || done.data['ok'] !== true) {
+    return { ok: false, detail: text(done?.data['error']) ?? `no QC result within ${qcTimeout}` }
+  }
+  const report = QcReportSchema.safeParse(done.data['result'])
+  if (!report.success) return { ok: false, detail: 'the QC report was not readable' }
+  if (!report.data.loudnorm) {
+    return { ok: false, detail: 'the QC report has no loudness measurement' }
+  }
+  return {
+    ok: true,
+    report: report.data,
+    measurement: {
+      measurement: report.data.loudnorm,
+      durationMs: report.data.durationMs ?? part.durationMs,
+    },
+  }
+}
+
 export function partOutcome(settled: SettledLike, webhookTimeout: string): PartOutcome {
   if (settled && settled.data['result'] === 'completed') {
     const cost = settled.data['costUsd']
@@ -866,27 +902,41 @@ async function renderInParts(
 
   // Each part's wait is registered right after its own submit (see the
   // render waves): an event that arrived before the wait existed is lost.
-  const qcDone = await Promise.all(
+  const qcPart = async (part: RenderPart, submitId: string, awaitId: string) => {
+    const jobId = await step.run(submitId, async () => {
+      const id = newId<'run'>()
+      await submitMediaJob({
+        kind: 'qc',
+        jobId: id,
+        projectId,
+        callbackUrl: brokerCallbackUrl(),
+        s3Key: part.outputS3Key ?? '',
+        targetLufs: -14,
+        offsetMs: part.startMs,
+        withLoudnorm: true,
+      })
+      return id
+    })
+    const done = await step.waitForEvent(awaitId, {
+      event: 'media/job.completed',
+      timeout: QC_TIMEOUT,
+      if: `async.data.jobId == "${jobId}"`,
+    })
+    return partQcOutcome(done, part, QC_TIMEOUT)
+  }
+
+  // One retry per part, like the join: a part's QC that did not run, or ran
+  // without a usable report, is measured once more under its own step ids
+  // before the stage fails with about $11 of rendering already spent.
+  const qcResults = await Promise.all(
     parts.map(async (part) => {
-      const jobId = await step.run(`submit-qc-part-${part.index}`, async () => {
-        const id = newId<'run'>()
-        await submitMediaJob({
-          kind: 'qc',
-          jobId: id,
-          projectId,
-          callbackUrl: brokerCallbackUrl(),
-          s3Key: part.outputS3Key ?? '',
-          targetLufs: -14,
-          offsetMs: part.startMs,
-          withLoudnorm: true,
-        })
-        return id
-      })
-      return step.waitForEvent(`await-qc-part-${part.index}`, {
-        event: 'media/job.completed',
-        timeout: QC_TIMEOUT,
-        if: `async.data.jobId == "${jobId}"`,
-      })
+      const first = await qcPart(
+        part,
+        `submit-qc-part-${part.index}`,
+        `await-qc-part-${part.index}`,
+      )
+      if (first.ok) return first
+      return qcPart(part, `submit-qc-part-${part.index}-retry`, `await-qc-part-${part.index}-retry`)
     }),
   )
 
@@ -896,26 +946,13 @@ async function renderInParts(
   const reports: QcReport[] = []
   const measurements: { measurement: LoudnormMeasurement; durationMs: number }[] = []
   for (const [k, part] of parts.entries()) {
-    const done = qcDone[k]
-    const where = `part ${part.index + 1} of ${total}`
-    if (!done || done.data.ok !== true) {
-      qcFailure = `${where}: ${done?.data.error ?? `no QC result within ${QC_TIMEOUT}`}`
+    const outcome = qcResults[k]
+    if (!outcome || !outcome.ok) {
+      qcFailure = `part ${part.index + 1} of ${total}: ${outcome?.detail ?? 'no QC result'}`
       break
     }
-    const report = QcReportSchema.safeParse(done.data.result)
-    if (!report.success) {
-      qcFailure = `${where}: the QC report was not readable`
-      break
-    }
-    if (!report.data.loudnorm) {
-      qcFailure = `${where}: the QC report has no loudness measurement`
-      break
-    }
-    reports.push(report.data)
-    measurements.push({
-      measurement: report.data.loudnorm,
-      durationMs: report.data.durationMs ?? part.durationMs,
-    })
+    reports.push(outcome.report)
+    measurements.push(outcome.measurement)
   }
 
   if (qcFailure !== null) {
