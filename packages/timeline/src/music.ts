@@ -1,6 +1,51 @@
 import { TimelineSchema } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
+import { CHAPTER_CARD_MS, CHAPTER_HOLD_MS, CHAPTER_OVERLAP_MS } from './compile'
 import { buildDuckingCurve } from './ducking'
+
+/**
+ * Where the music is cued: the one rule for the compiler and for bed swaps
+ * (decision 454). The opening chapter cues at 0; a later chapter cues at its
+ * card (the chapterCard for that index, or the titleCard that resumes right
+ * into its first word), else at its unmarked break's lead point, the hold
+ * before its first word.
+ *
+ * A timeline without a chapters list predates decision 454 and keeps the old
+ * rule: every chapterCard start, or, if there are none, each chapter's first
+ * word.
+ */
+export function chapterCuePoints(
+  timeline: Pick<Timeline, 'narration' | 'overlays' | 'chapters'>,
+): { tMs: number; style: 'chapter' }[] {
+  const firstSegments: { chapterId: string; startMs: number }[] = []
+  const seen = new Set<string>()
+  for (const segment of timeline.narration) {
+    if (seen.has(segment.chapterId)) continue
+    seen.add(segment.chapterId)
+    firstSegments.push(segment)
+  }
+
+  if (timeline.chapters === undefined) {
+    const cards = timeline.overlays.filter((overlay) => overlay.kind === 'chapterCard')
+    const starts =
+      cards.length > 0 ? cards.map((o) => o.startMs) : firstSegments.map((s) => s.startMs)
+    return starts.map((tMs) => ({ tMs, style: 'chapter' as const }))
+  }
+
+  return firstSegments.map((first, i) => {
+    if (i === 0) return { tMs: 0, style: 'chapter' as const }
+    const card = timeline.overlays.find(
+      (overlay) =>
+        (overlay.kind === 'chapterCard' && overlay.props.index === i + 1) ||
+        (overlay.kind === 'titleCard' &&
+          overlay.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS === first.startMs),
+    )
+    return {
+      tMs: card ? card.startMs : Math.max(0, first.startMs - CHAPTER_HOLD_MS),
+      style: 'chapter' as const,
+    }
+  })
+}
 
 /**
  * Swap the music bed under a compiled timeline — the preview screen's music
@@ -24,22 +69,6 @@ export function swapMusicBed(
     return TimelineSchema.parse({ ...timeline, music: null })
   }
 
-  // Cue points sit where the chapter cards do (decision 215: the cards play
-  // over inserted silence, ahead of their chapter's first words) — and the
-  // compiled timeline carries the cards, so read them back. Narration-derived
-  // chapter starts remain as the fallback for a timeline without cards.
-  const cardCues = timeline.overlays
-    .filter((overlay) => overlay.kind === 'chapterCard')
-    .map((overlay) => ({ tMs: overlay.startMs, style: 'chapter' }))
-  const seen = new Set<string>()
-  const cuePoints: { tMs: number; style: string }[] = []
-  for (const segment of timeline.narration) {
-    if (seen.has(segment.chapterId)) continue
-    seen.add(segment.chapterId)
-    cuePoints.push({ tMs: segment.startMs, style: 'chapter' })
-  }
-  const cues = cardCues.length > 0 ? cardCues : cuePoints
-
   return TimelineSchema.parse({
     ...timeline,
     music: {
@@ -52,7 +81,7 @@ export function swapMusicBed(
         bedGainDb: timeline.brand.music.bedGainDb,
         duckDepthDb: timeline.brand.music.duckDepthDb,
       }),
-      cuePoints: cues,
+      cuePoints: chapterCuePoints(timeline),
     },
   })
 }

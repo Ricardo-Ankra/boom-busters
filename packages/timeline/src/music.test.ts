@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileTimeline } from './compile'
-import { goldenInput } from './compile.test'
-import { swapMusicBed } from './music'
+import { goldenInput, threeChapterInput } from './compile.test'
+import { chapterCuePoints, swapMusicBed } from './music'
 
 describe('swapMusicBed', () => {
   it('swaps the bed and keeps the curve — the curve is a function of the narration', () => {
@@ -54,5 +54,40 @@ describe('swapMusicBed', () => {
     swapMusicBed(original, { r2Key: 'boom-busters/music/other.mp3' })
     swapMusicBed(original, null)
     expect(JSON.stringify(original)).toBe(before)
+  })
+})
+
+describe('chapterCuePoints', () => {
+  it('equals what the compiler wrote, in every mode', () => {
+    for (const chapterMarking of ['cards', 'title', 'none'] as const) {
+      const timeline = compileTimeline(threeChapterInput({ chapterMarking }))
+      expect(chapterCuePoints(timeline)).toEqual(timeline.music?.cuePoints)
+    }
+  })
+
+  it('a timeline without a chapters list keeps the old rule: every card, else every first word', () => {
+    const compiled = compileTimeline(goldenInput())
+    const { chapters: _c, ...legacy } = compiled
+    const withCards = {
+      ...legacy,
+      overlays: [
+        {
+          kind: 'chapterCard' as const,
+          startMs: 0,
+          durationMs: 3200,
+          props: { index: 1, title: 'The audit' },
+        },
+        ...legacy.overlays,
+      ],
+    }
+    expect(chapterCuePoints(withCards).map((c) => c.tMs)).toEqual([0, 15_500])
+    const cardless = { ...legacy, overlays: [] }
+    expect(chapterCuePoints(cardless).map((c) => c.tMs)).toEqual([0, 17_800])
+  })
+
+  it('swapMusicBed on a none-mode timeline compiled without a bed lands the cue at the lead point', () => {
+    const silent = compileTimeline({ ...goldenInput(), chapterMarking: 'none', music: null })
+    const swapped = swapMusicBed(silent, { r2Key: 'boom-busters/music/other.mp3' })
+    expect(swapped.music?.cuePoints.map((c) => c.tMs)).toEqual([0, 15_500])
   })
 })

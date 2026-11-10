@@ -26,6 +26,7 @@ import type {
 import { anchorSlots } from './anchor'
 import type { ParagraphSpan } from './anchor'
 import { buildDuckingCurve } from './ducking'
+import { chapterCuePoints } from './music'
 
 /**
  * The timeline compiler (build spec section 14.6): a pure function from an
@@ -227,8 +228,6 @@ export function compileTimeline(input: CompileInput): Timeline {
   const narration: NarrationSegment[] = []
   const breakpoints: { oldStartMs: number; shiftMs: number }[] = []
   const overlays: Overlay[] = []
-  // Where the music is cued: the start, then each marked or unmarked break.
-  const cues: number[] = [0]
   const chapters: { id: string; title: string }[] = []
   const seenChapters = new Set<string>()
   let oldClock = 0
@@ -258,7 +257,6 @@ export function compileTimeline(input: CompileInput): Timeline {
         } else {
           shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
         }
-        cues.push(leadMs)
       }
     } else {
       shift += PARAGRAPH_GAP_MS
@@ -404,7 +402,7 @@ export function compileTimeline(input: CompileInput): Timeline {
           bedGainDb: input.brand.music.bedGainDb,
           duckDepthDb: input.brand.music.duckDepthDb,
         }),
-        cuePoints: cues.map((tMs) => ({ tMs, style: 'chapter' })),
+        cuePoints: chapterCuePoints({ narration, overlays, chapters }),
       }
     : null
 
