@@ -89,9 +89,10 @@ chapterMarking: z.enum(['cards', 'title', 'none']).default('cards')
   (the working title the project was started with), the builder's call: the
   YouTube headline is chosen at publish, after the render, and is a different
   kind of line (a search promise, not a film's name), so it is never burned
-  into the picture. The film's title is the case title fixed when the project is
-  started, and the app has no way to change it yet; a labelled "Rename
-  project" button is a follow-up.
+  into the picture. The owner renames the project on its page (the "Rename
+  project" control) before assembling, and a re-assembly picks the new name
+  up; a rename after the load step of a running assembly does not reach that
+  film.
 - `none`: no cards. Every chapter start after the opening is an unmarked
   break (section 6.2).
 
@@ -124,9 +125,10 @@ prompt's format description names the field with its four values so Draft
 with AI can set it; `""`/absent parses to `inherit`.
 
 `resolveChapterMarking(look, format)` in `packages/schemas/src/formats.ts`
-returns the format's value unless it is `inherit`. The assembly runner calls
-it with the project's format from `channelForProject` and the resolved brand
-look, and passes the result to the compiler.
+returns the format's value unless it is `inherit`. The format's marking is
+read from the channel's current bible at assembly time, like the Shorts flag
+(ruling 18), so changing a format's marking reaches in-flight projects on
+their next assembly. The assembly runner passes the result to the compiler.
 
 ## 6. The compiler
 

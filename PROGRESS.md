@@ -4994,6 +4994,18 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] Task 9: the Brand Kit e2e check, the build spec's look field list, this
       section and decision 457 (`ef252357`).
 
+### Gaps closed (2026-11-10)
+
+> A project can be renamed on its page, and a format's chapter marking is read
+> from the current bible at assembly. Branch `chapter-marking-gaps`, decision 459. No migration.
+
+- [x] Task 1: `renameProject` and `chapterMarkingForProject`, the marking read
+      live like the Shorts flag (`2c76a05a`).
+- [x] Task 2: the labelled Rename project control on the project page
+      (`80fe8328`).
+- [x] Task 3: the assembly runner reads the marking live, the load step gets
+      its test, the documents (the commit after `80fe8328`).
+
 ### Owner actions at deploy
 
 1. `deploy:remotion` (the `TitleCard` component and the number-free
@@ -5007,16 +5019,14 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 4. Set Chapter marking to No cards on channels that want none, in Settings,
    Brand Kit. The default is `cards`, so every channel keeps its breaks, minus
    the opening card and the numbers.
-5. A format's chapter marking reaches a project through the bible version the
-   project pinned, so changing a format's marking does not change in-flight
-   projects until they move to the newer bible. The Brand Kit default is read
-   live, so it does.
+5. A format's chapter marking is now read from the channel's current bible at
+   assembly (decision 459), so changing it reaches in-flight projects on their
+   next assembly, like the Brand Kit default. Done; no action.
 
 ### Follow-ups
 
-- A labelled "Rename project" button. The film's title is the case title fixed
-  when the project is started and nothing in the app writes it afterwards, so
-  the `title` marking cannot show a different name until that button exists.
+- The labelled "Rename project" button is done (decision 459): the `title`
+  marking shows the project's current name at the next assembly.
 
 ### Not verified
 
@@ -5024,8 +5034,8 @@ The nine findings the final review parked, plus the flaky test (decision 453):
   re-assembled in `none` mode and watched for the held break.
 - The unmarked break is 2200 ms (lead 800 plus hold 1400) because the ducking
   curve only lets the bed rise over a 2000 ms silence. Tune by ear.
-- The `load-assembly` wiring is guarded only by typecheck: the runner tests
-  seed it by hand.
+- The `load-assembly` wiring is now driven by a test (decision 459); the
+  compile tests still seed its result by hand.
 
 ---
 
@@ -11283,3 +11293,12 @@ owner edits. `--prod` was not run against Neon.
      `18 blocking · 4 advisory`, because an approved project renders no gate bar.
      (g) The project page passes the frozen bible's hedging rules straight
      from `channelForProject`.
+459. **Rename project and the marking read live** (2026-11-10, branch
+     `chapter-marking-gaps`, no migration, no stack deploy: a Vercel deploy and
+     `PUT /api/inngest`).
+     (a) Rename project sits on the project page, validated at 3 to 200
+     characters, and is refused on an archived channel.
+     (b) A format's chapter marking is read from the current bible at assembly
+     (ruling 18), so changing it reaches in-flight projects on re-assembly,
+     while a running assembly keeps what its load step read.
+     (c) The `load-assembly` step is now driven by a test.

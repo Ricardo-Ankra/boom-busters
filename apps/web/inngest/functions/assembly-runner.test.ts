@@ -1,6 +1,12 @@
 // @vitest-environment node
 
-import { FIXTURE_PROJECT_ID, requireTestDatabase, seed } from '@boom-busters/db'
+import {
+  chapterMarkingForProject,
+  FIXTURE_PROJECT_ID,
+  getProject,
+  requireTestDatabase,
+  seed,
+} from '@boom-busters/db'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -238,6 +244,27 @@ describeDb('assembly-runner, batched transcription', () => {
       const compiled = await compileWith('cards', { omitMarking: true })
       expect(compiled.ok).toBe(true)
       expect(compiled.timeline.overlays.filter((o) => o.kind === 'chapterCard')).toHaveLength(1)
+    },
+  )
+
+  it(
+    'load-assembly reads the chapter marking live and the project title (decision 459)',
+    { timeout: 120_000 },
+    async () => {
+      // The fixture has no voice takes, so the run would park on missing
+      // narration after this step; the step's own result is what is checked.
+      const { result } = await engine.executeStep('load-assembly', {
+        events: [
+          {
+            name: 'gate/visuals.approved',
+            data: { projectId: FIXTURE_PROJECT_ID, approvedBy: 'owner@example.com' },
+          },
+        ],
+      })
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      const loaded = result as { chapterMarking: string; filmTitle: string }
+      expect(loaded.chapterMarking).toBe(await chapterMarkingForProject(db, FIXTURE_PROJECT_ID))
+      expect(loaded.filmTitle).toBe(project!.title)
     },
   )
 

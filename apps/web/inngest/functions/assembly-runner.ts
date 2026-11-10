@@ -2,6 +2,7 @@ import {
   getAsset,
   getProject,
   channelForProject,
+  chapterMarkingForProject,
   getSocialPosts,
   insertTimeline,
   latestScriptParagraphSources,
@@ -22,7 +23,6 @@ import {
   newId,
   parseEventData,
   resolveBrandKit,
-  resolveChapterMarking,
   serialiseError,
   ShotBriefSchema,
   timelineDurationMs,
@@ -130,7 +130,7 @@ export const assemblyRunner = inngest.createFunction(
         if (asset) assets.push([id, asset])
       }
 
-      const { settings, name, handle, format } = await channelForProject(db, projectId)
+      const { settings, name, handle } = await channelForProject(db, projectId)
       const beds = await listMusicBeds(db)
       const brand = resolveBrandKit(settings, { name, handle })
 
@@ -139,9 +139,10 @@ export const assemblyRunner = inngest.createFunction(
         slots,
         assets,
         brand,
-        // How a later chapter's start is marked, and the title `title` marking
-        // shows (decision 457): the format's choice, else the look's.
-        chapterMarking: resolveChapterMarking(brand.look, format),
+        // How a later chapter's start is marked, read live like the Shorts flag
+        // (ruling 18, decision 459), and the title `title` marking shows
+        // (decision 457). A rename after this step does not reach the running film.
+        chapterMarking: await chapterMarkingForProject(db, projectId),
         filmTitle: project.title,
         music: pickMusicBed(beds),
       }
