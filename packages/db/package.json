@@ -16,7 +16,8 @@
     "seed": "tsx src/scripts/seed.ts",
     "studio": "drizzle-kit studio",
     "migrate:test": "tsx src/scripts/migrate-test.ts",
-    "survey": "tsx src/scripts/survey.ts"
+    "survey": "tsx src/scripts/survey.ts",
+    "score": "tsx src/scripts/score-scripts.ts"
   },
   "dependencies": {
     "@boom-busters/schemas": "workspace:*",
