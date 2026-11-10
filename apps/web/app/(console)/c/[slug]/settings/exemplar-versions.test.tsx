@@ -49,6 +49,7 @@ const version = (over: Partial<ChannelExemplarVersionView>): ChannelExemplarVers
   approvedAt: null,
   copiedFrom: null,
   refusal: null,
+  steerCheck: null,
   ...over,
 })
 
@@ -95,8 +96,32 @@ describe('SideBySide (spec 2026-11-04, section 9.3)', () => {
     expect(screen.getByText('the old concept')).toBeInTheDocument()
     expect(screen.getAllByText('Engagement 8: engagement fine')).toHaveLength(2)
     expect(screen.getByText('Steer: slower')).toBeInTheDocument()
+    expect(screen.queryByText(/parts done/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Refine again' }))
     expect(onRefineAgain).toHaveBeenCalled()
+  })
+
+  it("lists the critic's check of each part of the steer on the new draft (decision 455)", () => {
+    render(
+      <SideBySide
+        channelId="01J00000000000000000000CH1"
+        technique="stat-counter"
+        draft={version({
+          ...draft,
+          steerCheck: [
+            { part: 'drop the line', state: 'done', line: 'no line on any frame' },
+            { part: 'keep the ring', state: 'missed', line: 'the ring is gone' },
+          ],
+        })}
+        against={approved}
+        brand={DEFAULT_SETTINGS.brandKit}
+        disabled={false}
+        onRefineAgain={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('The steer, checked: 1 of 2 parts done')).toBeInTheDocument()
+    expect(screen.getByText('Done: drop the line. no line on any frame')).toBeInTheDocument()
+    expect(screen.getByText('Missed: keep the ring. the ring is gone')).toBeInTheDocument()
   })
 
   it('approves this version and retires the one approved now', async () => {

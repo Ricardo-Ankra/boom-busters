@@ -11109,6 +11109,69 @@ Part 2 checklist:
      first live parts render is still outstanding: it needs a film over 30
      minutes at the preview gate, and the read of production that would find
      one was refused by the permission classifier, so the owner picks it.
+454. **The refine's steer governs the build** (2026-11-10, branch
+     `refine-steer`; owner: the Refine on exemplars "seems to not follow the
+     instructions perfectly, or only doing some of it"). Found by reading the
+     refiner's last message and the Boom & Busters bar chart's six versions
+     read-only: the message opened on the owner's steer and closed on the
+     parent's plan as an order ("Keep to it"), with "The producer's steer:"
+     written twice, so a steer that contradicted the plan was applied in
+     part. Version 4's steer dropped the white tracing line and the plan
+     still said a hollow red ring fills at the line's end, so the line went
+     and the ring stayed (version 5's steer: remove the white dot); version
+     6's steer never named a ring and one came back, since every refined
+     version stored the derivation's first plan while the design's own
+     concept and storyboard went into `code`, and the card's concept line
+     read the stale plan on every version. Three changes. `refineSteer`
+     now leads with the owner's words, orders every part applied (the
+     layout refusal of decision 445 carried with it as "Fix that too"),
+     says the plan as what the design was built to, and closes on the rule
+     that the steer wins where they disagree and nothing else changes; the
+     request's own prefix is no longer repeated. `planOfDesign` stores the
+     refined version with the design's concept, storyboard and mechanisms
+     over the parent's slot and references, so the next refine keeps to the
+     version the owner sees. The card says under the steer, while a draft
+     with a parent is shown, that Refine builds from the approved version
+     and the draft must be approved first to build on it (decision 398's
+     ruling, which the cleared textarea hid). Left open, named for the
+     owner: the verify round judges prior defects and a ready verdict but is
+     never asked whether each part of the steer landed, so a half-applied
+     steer can verify ready (version 6's verify did name the unapplied
+     font-size part as a defect, but only behind Show review); a per-item
+     steer check in the critic's verify would surface it on the card.
+455. **A refine's verify checks each part of the steer** (2026-11-10, branch
+     `steer-check`; owner: "Add the left open item" of decision 454). The
+     verify round is now shown the steer and asked to split it into the
+     things it asks for and answer one entry each, a part, a state and a
+     line, the state done, partly or missed as the pictures show it, the
+     line what the critic sees for it, at most eight; a part missed keeps
+     the verdict at one more pass. `CriticVerifySchema.steer` is optional,
+     so a derivation's verify (no steer) and every stored report read as
+     before; the parser caps the list and leaves it absent when the critic
+     wrote none; mock mode marks the whole steer done. The refiner passes
+     the steer to the verify beside the brief; the version view carries it
+     as `steerCheck`; the critic's lines on the side by side and on a lone
+     draft end with "The steer, checked: 1 of 2 parts done" and one line per
+     part ("Missed: keep the ring. the ring is gone"). Decisions: the check
+     lives on the verify report, not a column, since it is the critic's
+     answer and the row already holds the report; the ask comes after the
+     prior-defects ask so the existing verify tests hold unchanged; the
+     card counts only done as landed, so partly reads as still open.
+456. **One decision settles the technique's drafts** (2026-11-10, branch
+     `one-draft-waits`). "Keep the approved one" left the side by side on
+     screen. Every derive and every refine stores a draft of its own, and
+     nothing set the older ones aside, so several waited at once; the card
+     shows the newest, and Keep retired only that one, so the next took its
+     place. A refine reused its parent's plan (until decision 454), so the
+     newcomer carried the same concept and looked like the draft just kept. Keep now retires
+     every draft waiting on the technique (`retireExemplarDrafts`), which
+     also clears the piles already in production, and Approve this retires
+     the rest after the approval. They stay in Versions to restore. Storing
+     a draft does not retire the older ones: a derive or refine still
+     writing to its own draft would then fail on "An approved version is
+     never edited". The e2e keep test now seeds a second refine and checks
+     the side by side goes; it failed before the fix, as in the owner's
+     screenshot. Shipping: a Vercel deploy; no migration.
 454. **Chapter marking** (2026-11-10, branch `chapter-marking`). Every film
      opened on a 2.3 s title card before the first word, against the roadmap's
      own hook rule. The opening chapter now never gets a card. Chapter marking

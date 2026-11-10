@@ -7,6 +7,7 @@ import {
   derivedContext,
   derivedSlot,
   planBounds,
+  planOfDesign,
   planSteer,
   refineSteer,
   storyboardMoments,
@@ -102,7 +103,7 @@ describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
     )
   })
 
-  it('the steers carry the plan and the refine keeps what is not named', () => {
+  it('the plan steer carries the plan and asks the build to keep to it', () => {
     const steer = planSteer(PLAN)
     expect(steer).toContain(
       'The plan to build, as agreed: concept the sentence parts for the figure',
@@ -110,21 +111,45 @@ describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
     expect(steer).toContain('1. 0.0 s the sentence lands')
     expect(steer).toContain('built on: word splits open, drum')
     expect(steer).toContain('Keep to it.')
-    const refined = refineSteer('slower', PLAN)
-    expect(refined.startsWith("The producer's steer: slower\n")).toBe(true)
-    expect(refined).toContain('What the steer does not name is kept exactly as it is.')
-    expect(refined.endsWith(steer)).toBe(true)
   })
 
-  it("puts the version's layout refusal in front of the refine's steer (decision 445)", () => {
+  it("the refine's steer leads, the plan is context, and the steer wins where they disagree", () => {
+    const refined = refineSteer('slower', PLAN)
+    // The request writes "The producer's steer: " itself, so the text opens on the owner's words.
+    expect(refined.startsWith('slower\nApply every part of the steer.\n')).toBe(true)
+    expect(refined).not.toContain("The producer's steer:")
+    expect(refined).toContain(
+      'The design was built to this plan: concept the sentence parts for the figure. Storyboard: 1. 0.0 s the sentence lands 2. 2.0 s the figure rises 3. 4.5 s the rule fills; built on: word splits open, drum.',
+    )
+    expect(refined).not.toContain('Keep to it.')
+    expect(
+      refined.endsWith(
+        'Where the steer and the plan disagree, the steer wins. Change nothing the steer does not name: everything else is kept exactly as it is.',
+      ),
+    ).toBe(true)
+  })
+
+  it("carries the version's layout refusal with the refine's steer (decision 445)", () => {
     const refused = 'at 5.4 s in landscape, "LOSS" is set at 25 px'
     const refined = refineSteer('slower', PLAN, refused)
     expect(
       refined.startsWith(
-        `The layout check refused the version this refines: ${refused}. Fix that first.\nThe producer's steer: slower\n`,
+        `slower\nApply every part of the steer. The layout check refused the version this refines: ${refused}. Fix that too.\n`,
       ),
     ).toBe(true)
     expect(refineSteer('slower', PLAN, null)).toBe(refineSteer('slower', PLAN))
+  })
+
+  it("a refined version's plan takes the design's concept, storyboard and mechanisms, keeping the slot and the references", () => {
+    const written = {
+      concept: 'the bars alone',
+      storyboard: ['0.0 s the first bar rises'],
+      mechanisms: ['drum' as const],
+    }
+    expect(planOfDesign(PLAN, written)).toEqual({ ...PLAN, ...written })
+    // A design that wrote no plan of its own leaves the plan as it was.
+    expect(planOfDesign(PLAN, {})).toEqual(PLAN)
+    expect(planOfDesign(PLAN, { storyboard: [] })).toEqual(PLAN)
   })
 
   it('writes no dash', () => {

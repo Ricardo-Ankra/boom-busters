@@ -11,7 +11,7 @@ import {
 } from '@boom-busters/schemas'
 import type { CriticReport, CriticVerify, PairwiseOutcome } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
-import { derivedContext, derivedSlot, refineSteer } from '@/lib/exemplar-derive'
+import { derivedContext, derivedSlot, planOfDesign, refineSteer } from '@/lib/exemplar-derive'
 import { pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
@@ -149,7 +149,8 @@ export const motionExemplarRefiner = inngest.createFunction(
         const row = await insertExemplarVersion(db, {
           channelId,
           technique: parent.technique,
-          plan: parent.plan,
+          // The plan follows the design, so the next refine keeps to this version and not the first.
+          plan: planOfDesign(parent.plan, result.code),
           code: result.code,
           parentId,
           steer,
@@ -210,7 +211,7 @@ export const motionExemplarRefiner = inngest.createFunction(
       const plan = criticPlanOf(version.code, derivedContext(entry, parent.plan))
       const prior = parent.critique ?? emptyReport()
       if (mock) {
-        const verify = mockCriticVerify(plan, prior)
+        const verify = mockCriticVerify(plan, prior, steer)
         await updateExemplarDraft(db, versionId, { critique: mockCriticReport(plan), verify })
         return
       }
@@ -229,7 +230,8 @@ export const motionExemplarRefiner = inngest.createFunction(
           metrics: shot.metrics,
           references: [],
           ...(parent.frames ? { previous: parent.frames } : {}),
-          verify: { prior, brief: `The producer's steer: ${steer}` },
+          // The steer's parts checked one by one on the pictures (decision 455).
+          verify: { prior, brief: `The producer's steer: ${steer}`, steer },
           complete: completeForJob(channelId, jobId, parent.technique),
         })
         const verify = report as CriticVerify

@@ -61,10 +61,21 @@ export function criticPasses(report: CriticReport): boolean {
  * prior report's defects marked by its number, and a verdict.
  */
 export const PRIOR_DEFECT_STATES = ['fixed', 'partly', 'present'] as const
+/** A refine's verify checks each thing the steer asked for (decision 455). */
+export const STEER_PART_STATES = ['done', 'partly', 'missed'] as const
+export const CRITIC_STEER_PARTS_MAX = 8
+export const CriticSteerCheckSchema = z.object({
+  part: z.string().trim().min(1).max(CRITIC_LINE_MAX),
+  state: z.enum(STEER_PART_STATES),
+  line: z.string().trim().min(1).max(CRITIC_LINE_MAX),
+})
+export type CriticSteerCheck = z.infer<typeof CriticSteerCheckSchema>
 export const CriticVerifySchema = CriticReportSchema.extend({
   priorDefects: z
     .array(z.object({ index: z.number().int().min(1), state: z.enum(PRIOR_DEFECT_STATES) }))
     .max(CRITIC_DEFECTS_MAX),
+  /** One entry per part of the steer, in its order; absent on a derivation's verify, which has no steer. */
+  steer: z.array(CriticSteerCheckSchema).max(CRITIC_STEER_PARTS_MAX).optional(),
   verdict: z.enum(['ready', 'one-more-pass']),
 })
 export type CriticVerify = z.infer<typeof CriticVerifySchema>

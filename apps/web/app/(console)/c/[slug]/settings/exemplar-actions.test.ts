@@ -349,6 +349,34 @@ describeDb('the exemplar actions', () => {
     })
   })
 
+  it('keep sets aside every draft waiting on the technique, so nothing is left to review (decision 456)', async () => {
+    const v1 = await aVersion()
+    await approveExemplarVersion(db, v1.id)
+    // Two refines before a decision: each stored a draft of its own.
+    const v2 = await aVersion({ parentId: v1.id, steer: 'slower' })
+    const v3 = await aVersion({ parentId: v1.id, steer: 'darker' })
+    const bar = await aVersion({ technique: 'bar-chart' })
+    expect((await keepApprovedAction(channelId, v3.id)).ok).toBe(true)
+    expect((await exemplarVersionById(db, v3.id))?.status).toBe('retired')
+    expect((await exemplarVersionById(db, v2.id))?.status).toBe('retired')
+    expect((await approvedExemplar(db, channelId, 'stat-counter'))?.id).toBe(v1.id)
+    // Another technique's draft is its own decision.
+    expect((await exemplarVersionById(db, bar.id))?.status).toBe('draft')
+  })
+
+  it('approving one draft sets aside the others waiting on the technique (decision 456)', async () => {
+    const v1 = await aVersion()
+    await approveExemplarVersion(db, v1.id)
+    const v2 = await aVersion({ parentId: v1.id, steer: 'slower' })
+    const v3 = await aVersion({ parentId: v1.id, steer: 'darker' })
+    const bar = await aVersion({ technique: 'bar-chart' })
+    expect((await approveExemplarVersionAction(channelId, v3.id)).ok).toBe(true)
+    expect((await approvedExemplar(db, channelId, 'stat-counter'))?.id).toBe(v3.id)
+    expect((await exemplarVersionById(db, v2.id))?.status).toBe('retired')
+    expect((await exemplarVersionById(db, v1.id))?.status).toBe('retired')
+    expect((await exemplarVersionById(db, bar.id))?.status).toBe('draft')
+  })
+
   it('restores a retired version', async () => {
     const v1 = await aVersion()
     const v2 = await aVersion()

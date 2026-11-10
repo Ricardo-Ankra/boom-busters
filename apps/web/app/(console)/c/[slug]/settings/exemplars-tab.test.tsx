@@ -110,6 +110,7 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
   approvedAt: '2026-11-04T10:00:00.000Z',
   copiedFrom: null,
   refusal: null,
+  steerCheck: null,
   ...over,
 })
 
@@ -183,6 +184,7 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
     ).toBeInTheDocument()
     fireEvent.click(within(card).getByRole('button', { name: 'Show review' }))
     expect(within(card).getByText('Engagement 9: engagement good')).toBeInTheDocument()
+    expect(within(card).queryByText(/Refine builds from the approved version/)).toBeNull()
     fireEvent.change(within(card).getByLabelText(/Refine with a steer/), {
       target: { value: 'slower' },
     })
@@ -222,6 +224,12 @@ describe('ExemplarsTab per channel (spec 2026-11-04, sections 9.3 and 11.4)', ()
     expect(within(card).getByText('the refined concept')).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Keep the approved one' })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Refine again' })).toBeInTheDocument()
+    // A refine builds from the approved version, never from the draft shown (decision 398's ruling).
+    expect(
+      within(card).getByText(
+        'Refine builds from the approved version. Approve this draft first to build on it.',
+      ),
+    ).toBeInTheDocument()
     fireEvent.click(within(card).getByRole('button', { name: 'Approve this' }))
     await waitFor(() =>
       expect(actions.approveExemplarVersionAction).toHaveBeenCalledWith(

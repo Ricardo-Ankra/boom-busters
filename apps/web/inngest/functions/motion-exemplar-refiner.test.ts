@@ -182,6 +182,9 @@ describeDb('motion-exemplar-refiner', () => {
     })
     expect(draft.code.title).toMatch(/^\[mock\] Refined:/)
     expect(draft.verify?.verdict).toBe('ready')
+    expect(draft.verify?.steer).toEqual([
+      { part: 'slower, darker', state: 'done', line: '[mock] on every frame' },
+    ])
     expect(draft.critique?.scores.craft.score).toBe(8)
     expect(callLlm).not.toHaveBeenCalled()
     expect(
@@ -245,7 +248,24 @@ describeDb('motion-exemplar-refiner', () => {
       expect(approved.verify).toBeNull()
     })
 
-    it("builds a refused draft's refine with the refusal in front of the steer (decision 445)", async () => {
+    it("stores the draft's plan as the design wrote it, so the next refine keeps to what the owner sees", async () => {
+      const parent = await aParent()
+      vi.stubEnv('GRAPHIC_FRAMES', 'off')
+      const written = {
+        concept: 'the bars alone, no line',
+        storyboard: ['0.0 s the first bar rises', '2.0 s the figure lands'],
+        mechanisms: ['drum'],
+      }
+      callLlm.mockResolvedValueOnce({ text: JSON.stringify({ ...planned(), ...written }) })
+      const result = await refine(parent.id, 'drop the line')
+      expect(result).toMatchObject({ outcome: 'refined' })
+      const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
+        (row) => row.id !== parent.id,
+      )!
+      expect(draft.plan).toEqual({ ...plan, ...written })
+    })
+
+    it("builds a refused draft's refine with the refusal carried with the steer (decision 445)", async () => {
       const parent = await insertExemplarVersion(db, {
         channelId: FIRST_CHANNEL_ID,
         technique: 'stat-counter',
@@ -257,7 +277,7 @@ describeDb('motion-exemplar-refiner', () => {
       await refine(parent.id, 'Fix what the layout check refused.')
       const [build] = callLlm.mock.calls[0]!
       expect(build.messages.at(-1).content).toContain(
-        'The layout check refused the version this refines: at 5.4 s in landscape, "LOSS" is set at 25 px. Fix that first.',
+        'The producer\'s steer: Fix what the layout check refused.\nApply every part of the steer. The layout check refused the version this refines: at 5.4 s in landscape, "LOSS" is set at 25 px. Fix that too.',
       )
     })
 
@@ -282,6 +302,7 @@ describeDb('motion-exemplar-refiner', () => {
           ...JSON.parse(report().text),
           prefers: Object.fromEntries(CRITIC_AXES.map((axis) => [axis, 'A'])),
           priorDefects: [{ index: 1, state: 'fixed' }],
+          steer: [{ part: 'slower', state: 'done', line: 'every move takes longer' }],
           verdict: 'ready',
         }),
       })
@@ -289,9 +310,15 @@ describeDb('motion-exemplar-refiner', () => {
       expect(result).toMatchObject({ outcome: 'refined' })
       expect(callLlm).toHaveBeenCalledTimes(2)
       const [build, buildOptions] = callLlm.mock.calls[0]!
-      expect(build.messages.at(-1).content).toContain("The producer's steer: slower")
+      // The owner's words open the message once, and the rule that they win closes it.
       expect(build.messages.at(-1).content).toContain(
-        'What the steer does not name is kept exactly as it is.',
+        "The producer's steer: slower\nApply every part of the steer.",
+      )
+      expect(build.messages.at(-1).content).not.toContain(
+        "The producer's steer: The producer's steer:",
+      )
+      expect(build.messages.at(-1).content).toContain(
+        'Where the steer and the plan disagree, the steer wins.',
       )
       expect(buildOptions).toMatchObject({ meta: { technique: 'stat-counter' } })
       const [verify, verifyOptions] = callLlm.mock.calls[1]!
@@ -299,6 +326,7 @@ describeDb('motion-exemplar-refiner', () => {
       const ask = verify.messages.at(-1).content
       expect(ask).toContain('Previous version (B)')
       expect(ask).toContain("This is a verify round. The producer's steer: slower")
+      expect(ask).toContain('This version was built to this steer: slower')
       expect(ask).toContain('1. at 0.9 s in landscape: the label clips')
       expect(verifyOptions).toMatchObject({ purpose: 'verify' })
       const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
@@ -306,6 +334,9 @@ describeDb('motion-exemplar-refiner', () => {
       )!
       expect(draft.parentId).toBe(parent.id)
       expect(draft.verify?.priorDefects).toEqual([{ index: 1, state: 'fixed' }])
+      expect(draft.verify?.steer).toEqual([
+        { part: 'slower', state: 'done', line: 'every move takes longer' },
+      ])
       expect(draft.pairwise?.craft).toBe('new')
       expect(draft.frames?.round).toBe(1)
       expect(draft.metrics?.simultaneity).toBe(0.2)

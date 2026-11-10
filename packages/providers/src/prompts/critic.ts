@@ -2,6 +2,7 @@ import {
   CRITIC_AXES,
   CRITIC_BAR,
   CRITIC_DEFECTS_MAX,
+  CRITIC_STEER_PARTS_MAX,
   CRITIC_FIX_MAX,
   CRITIC_FIXES_MAX,
   CRITIC_LINE_MAX,
@@ -95,8 +96,12 @@ export interface CriticInput {
    * swapped through `buildPairwiseRequest`.
    */
   previous?: { sheets: { landscape?: MsgImage; portrait?: MsgImage }; label: string }
-  /** The verify ask (step 7): the prior report's defects marked one by one, and a verdict. */
-  verify?: { prior: CriticReport; brief: string }
+  /**
+   * The verify ask (step 7): the prior report's defects marked one by one,
+   * and a verdict. With `steer`, a refine's: each part of the steer checked
+   * on the pictures (decision 455).
+   */
+  verify?: { prior: CriticReport; brief: string; steer?: string }
   /** The strong route (spec 12.2): the one verify call that ends a technique runs on `graphics`. */
   strong?: boolean
 }
@@ -108,6 +113,13 @@ const PAIRWISE_ASK =
 const VERIFY_ASK =
   'Add to the same JSON "priorDefects": [{"index": 1, "state": "fixed"}], one entry per prior defect by its number, ' +
   '"state" one of "fixed", "partly" or "present"; and "verdict": "ready" when nothing worth a call remains, else "one-more-pass".'
+/** The steer's parts checked one by one (decision 455): the owner reads on the card what landed and what did not. */
+const steerAsk = (steer: string) =>
+  `This version was built to this steer: ${steer}\n` +
+  'Split the steer into the things it asks for, in its order, and add to the same JSON ' +
+  '"steer": [{"part": "...", "state": "done", "line": "..."}], one entry per thing, "part" the thing in a few words, ' +
+  '"state" one of "done", "partly" or "missed" as the pictures show it, "line" what you see for it; ' +
+  'a part missed keeps the verdict at "one-more-pass".'
 
 const AXIS_LINES: Record<CriticAxis, string> = {
   engagement: 'does it hold the eye from the first half second and earn each next second',
@@ -255,6 +267,7 @@ function verifyLines(verify: NonNullable<CriticInput['verify']>): string {
       ? `The prior report's defects, by number:\n${defects.join('\n')}`
       : 'The prior report named no defect.',
     VERIFY_ASK,
+    ...(verify.steer ? [steerAsk(verify.steer)] : []),
   ].join('\n')
 }
 
@@ -312,6 +325,9 @@ export function parseCriticVerify(text: string, note: Note = ignoreRepairs): Cri
   const parsed = CriticVerifySchema.safeParse({
     ...report,
     priorDefects: capList(raw['priorDefects'] ?? [], CRITIC_DEFECTS_MAX, 'the prior defects', note),
+    ...(raw['steer'] === undefined
+      ? {}
+      : { steer: capList(raw['steer'], CRITIC_STEER_PARTS_MAX, "the steer's parts", note) }),
     verdict: raw['verdict'] ?? 'one-more-pass',
   })
   if (!parsed.success) {
@@ -327,11 +343,16 @@ export function parsePairwise(text: string): PairwiseAnswer {
     .prefers
 }
 
-/** Mock mode's verify: the mock report, every prior defect fixed, ready. */
-export function mockCriticVerify(plan: CriticPlan, prior?: CriticReport): CriticVerify {
+/** Mock mode's verify: the mock report, every prior defect fixed, the steer (when given) done whole, ready. */
+export function mockCriticVerify(
+  plan: CriticPlan,
+  prior?: CriticReport,
+  steer?: string,
+): CriticVerify {
   return {
     ...mockCriticReport(plan),
     priorDefects: (prior?.defects ?? []).map((_, index) => ({ index: index + 1, state: 'fixed' })),
+    ...(steer ? { steer: [{ part: steer, state: 'done', line: '[mock] on every frame' }] } : {}),
     verdict: 'ready',
   }
 }
