@@ -5004,7 +5004,10 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] Task 2: the labelled Rename project control on the project page
       (`80fe8328`).
 - [x] Task 3: the assembly runner reads the marking live, the load step gets
-      its test, the documents (the commit after `80fe8328`).
+      its test, the documents (`73b32e50`).
+- [x] Review fixes: the rename test owns its project, the fixture title resets on
+      seed, the runner test proves the wiring, the rename control reveals on a button
+      (the commit after 73b32e50).
 
 ### Owner actions at deploy
 
@@ -11302,3 +11305,5 @@ owner edits. `--prod` was not run against Neon.
      (ruling 18), so changing it reaches in-flight projects on re-assembly,
      while a running assembly keeps what its load step read.
      (c) The `load-assembly` step is now driven by a test.
+     (d) A rename sets `updatedAt`, so a stalled project reads as fresh for the
+     stuck window and moves to the top of the list, the same as a bible move.
