@@ -11076,8 +11076,8 @@ Part 2 checklist:
 455. **A refine's verify checks each part of the steer** (2026-11-10, branch
      `steer-check`; owner: "Add the left open item" of decision 454). The
      verify round is now shown the steer and asked to split it into the
-     things it asks for and answer one entry each: `steer: [{part, state,
-     line}]`, the state done, partly or missed as the pictures show it, the
+     things it asks for and answer one entry each, a part, a state and a
+     line, the state done, partly or missed as the pictures show it, the
      line what the critic sees for it, at most eight; a part missed keeps
      the verdict at one more pass. `CriticVerifySchema.steer` is optional,
      so a derivation's verify (no steer) and every stored report read as
