@@ -10838,3 +10838,18 @@ Part 2 checklist:
      of its own, so a minute of the 300 s step is left. The board's critic
      shares the request and keeps its own deadline. Shipping: a Vercel
      deploy and `PUT /api/inngest`; no migration.
+451. **The Settings tab you clicked stays** (2026-11-10, branch
+     `settings-tab-sticks`). Starting a derivation from the Motion tab
+     sent the owner to Models. Clicking a tab wrote `?tab=` with
+     `history.replaceState(window.history.state, ...)`; Next 16 patches
+     `replaceState` and treats a call carrying its own `__NA` state as one of
+     its own, so the router never learned the new URL. Every
+     `router.refresh()` (the Derive launch, its poll, Stop) then put back the
+     URL Settings opened on, plain `/settings`, and any full load of that URL
+     opened on Models: Next falls back to one when the deploy has changed
+     since the page opened or a refresh does not come back as a flight
+     response. The tab now writes a null state, the documented way, so the
+     router keeps the URL. Reproduced in the browser before the fix; the new
+     e2e reaches Motion by clicking it, starts a derivation (which fails on
+     the send, with no Inngest in e2e), waits for the refreshed card and
+     checks the URL and a reload. Shipping: a Vercel deploy; no migration.

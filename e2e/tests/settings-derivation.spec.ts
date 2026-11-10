@@ -247,4 +247,36 @@ test.describe('Derivation', () => {
     await page.goto(channelPath('/settings?tab=motion', SECOND_SLUG))
     await expect(page.getByLabel('ledger-wipe')).toBeChecked()
   })
+
+  test('keeps the tab you clicked when Start deriving refreshes the page', async ({ page }) => {
+    await signIn(page)
+    // Reached the way the owner does: Settings, then the Motion tab, not a deep link.
+    await page.goto(channelPath('/settings', FIRST_SLUG))
+    await page.getByRole('tab', { name: 'Motion' }).click()
+    await expect(page).toHaveURL(/[?&]tab=motion/)
+    await page.getByRole('button', { name: 'Derive exemplars' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Derive exemplars' })
+    await dialog.getByLabel('Cap in dollars').fill('1')
+    try {
+      // No Inngest runs here, so the launch fails on the send; the refresh after it is the point.
+      await dialog.getByRole('button', { name: 'Start deriving' }).click()
+      // The card's failed line comes from the server, so it shows once the refresh has landed.
+      await expect(page.getByText(/^Failed: Could not reach Inngest/)).toBeVisible()
+      // The router knew only the URL Settings opened on, and the refresh put that back.
+      await expect(page).toHaveURL(/[?&]tab=motion/)
+      // Any full load of that URL (a deploy since the page opened, a failed refresh) opened on Models.
+      await page.reload()
+      await expect(page.getByRole('tab', { name: 'Motion', selected: true })).toBeVisible()
+    } finally {
+      const { createDb } = await import('@boom-busters/db')
+      const { FIRST_CHANNEL_ID } = await import('@boom-busters/schemas')
+      const { e2eDatabaseUrl } = await import('../database')
+      const connection = createDb(e2eDatabaseUrl(), { max: 1 })
+      try {
+        await connection.sql`delete from motion_derivations where channel_id = ${FIRST_CHANNEL_ID}`
+      } finally {
+        await connection.sql.end({ timeout: 5 })
+      }
+    }
+  })
 })
