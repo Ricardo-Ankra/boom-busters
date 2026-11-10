@@ -10815,3 +10815,26 @@ Part 2 checklist:
      cited figure replaces in the same place passes; the critic's frames
      see it. The board designer runs the same check and gains the same
      reading. Shipping: a Vercel deploy; no migration, no Inngest change.
+450. **The critic has room to think** (2026-11-10, branch
+     `critic-thinking-room`). With decision 449 deployed, the stat counter
+     passed the facts check and was photographed, and the critic was the
+     next step to fail: "anthropic/claude-sonnet-5 used all 5500 output
+     tokens without producing any text (it returned only: thinking)". Sonnet
+     5 runs adaptive thinking when the request names no thinking setting,
+     at its default effort, and thinking shares `max_tokens` with the
+     answer. The critic asked for its 1,500-token report plus the standard
+     4,000 of headroom (`outputBudget`), and spent it all judging five axes
+     over the contact sheets and rest frames. `outputBudget` now takes the
+     thinking room as an optional second argument; the critic, the verify
+     round and the pairwise question ask for 14,500
+     (`CRITIC_THINKING_TOKENS`), 16,000 in all, the designer's own ceiling.
+     Lowering effort was the other lever and was not taken: it would trade
+     away the judgement the critic exists for. The ceiling is not a spend:
+     the ledger settles on the tokens produced, the derivation's estimate
+     still counts the answer, and only the budget reservation, settled
+     after the call, is priced from the ceiling. The critic's abort
+     (`CRITIC_CALL_MS`) goes from 120 s to 240 s, since the failed call wrote
+     5,500 tokens in about the old limit; each critic call runs in a step
+     of its own, so a minute of the 300 s step is left. The board's critic
+     shares the request and keeps its own deadline. Shipping: a Vercel
+     deploy and `PUT /api/inngest`; no migration.
