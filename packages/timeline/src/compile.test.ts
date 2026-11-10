@@ -22,6 +22,7 @@ import {
 import { SHORT_RULES } from '@boom-busters/schemas'
 import type { CompileInput, CompileSlot } from './compile'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
+import { DEFAULT_RISE_THRESHOLD_MS } from './ducking'
 import { offsetCaptions, snapToScript } from './snap'
 
 const CHAPTER_ONE = '01HQ0000000000000000000CH1'
@@ -279,6 +280,18 @@ describe('compileTimeline', () => {
     // The outgoing shot holds through the break to the resumed words.
     const still = timeline.slots[1]!
     expect(still.startMs + still.durationMs).toBe(timeline.narration[2]!.startMs)
+  })
+
+  it('none mode: the held break clears the ducking rise threshold, so the bed rises inside it', () => {
+    expect(CHAPTER_LEAD_MS + CHAPTER_HOLD_MS).toBeGreaterThanOrEqual(DEFAULT_RISE_THRESHOLD_MS)
+    const timeline = compileTimeline({ ...goldenInput(), chapterMarking: 'none' })
+    const secondEnd = timeline.narration[1]!.startMs + timeline.narration[1]!.durationMs
+    const thirdStart = timeline.narration[2]!.startMs
+    const bed = resolveBrandKit(DEFAULT_SETTINGS).music.bedGainDb
+    const risen = timeline.music!.duckingCurve.filter(
+      (point) => point.gainDb === bed && point.tMs > secondEnd && point.tMs < thirdStart,
+    )
+    expect(risen.length).toBeGreaterThan(0)
   })
 
   it('title mode: the film title once at chapter two, later chapters unmarked', () => {

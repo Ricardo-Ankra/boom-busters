@@ -669,7 +669,7 @@ describe('BibleTab', () => {
         />,
       )
       expect(screen.queryAllByText(/^Chapter marking:/)).toHaveLength(1)
-      expect(screen.getByText('none')).toBeInTheDocument()
+      expect(screen.getByText('No cards')).toBeInTheDocument()
     })
 
     it('refuses to remove the primary format and removes another', async () => {

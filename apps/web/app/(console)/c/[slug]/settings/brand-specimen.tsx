@@ -11,6 +11,7 @@ import {
   loadBrandFonts,
 } from '@boom-busters/compositions'
 import type { ChartPayload } from '@boom-busters/compositions'
+import { CHAPTER_MARKING_LABELS } from '@/lib/chapter-marking-labels'
 import { resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitTokens, Caption, Settings } from '@boom-busters/schemas'
 
@@ -127,9 +128,9 @@ export function BrandSpecimenPanel({ settings }: { settings: Settings }) {
         />
       </div>
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        Chapter card ({look.chapterCardVariant}, marking {look.chapterMarking}) · lower third (
-        {look.lowerThirdVariant}) · chart · karaoke captions — three seconds each, fixture words,
-        your exact tokens.
+        Chapter card ({look.chapterCardVariant}, marking:{' '}
+        {CHAPTER_MARKING_LABELS[look.chapterMarking]}) · lower third ({look.lowerThirdVariant}) ·
+        chart · karaoke captions — three seconds each, fixture words, your exact tokens.
       </p>
     </div>
   )

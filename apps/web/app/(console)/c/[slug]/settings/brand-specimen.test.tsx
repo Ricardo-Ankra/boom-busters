@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS, SettingsSchema } from '@boom-busters/schemas'
+import { CHAPTER_MARKING_LABELS } from '@/lib/chapter-marking-labels'
 import { BrandSpecimenPanel, SPECIMEN_DURATION_FRAMES } from './brand-specimen'
 
 /**
@@ -55,7 +56,7 @@ describe('BrandSpecimenPanel', () => {
     expect(
       screen.getByText(
         new RegExp(
-          `chapter card \\(${settings.brandKit.look.chapterCardVariant}, marking ${settings.brandKit.look.chapterMarking}\\)`,
+          `chapter card \\(${settings.brandKit.look.chapterCardVariant}, marking: ${CHAPTER_MARKING_LABELS[settings.brandKit.look.chapterMarking]}\\)`,
           'i',
         ),
       ),

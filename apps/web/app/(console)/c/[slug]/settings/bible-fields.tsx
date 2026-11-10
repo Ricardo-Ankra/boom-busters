@@ -21,6 +21,7 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Input, Label, NumberInput, Select } from '@/components/ui/input'
 import { BIBLE_TEXT_FIELDS } from '@/lib/bible-fields'
+import { CHAPTER_MARKING_LABELS } from '@/lib/chapter-marking-labels'
 import { ExamplesEditor, ExamplesView } from './bible-examples'
 import { KeywordWithReading } from './bible-measurements'
 import type { KeywordReadings } from './bible-measurements'
@@ -1070,9 +1071,9 @@ function FormatsEditor({
                 }
               >
                 <option value="inherit">Channel default</option>
-                <option value="cards">A card at every chapter after the opening</option>
-                <option value="title">The film&apos;s title once, after the opening</option>
-                <option value="none">No cards</option>
+                <option value="cards">{CHAPTER_MARKING_LABELS.cards}</option>
+                <option value="title">{CHAPTER_MARKING_LABELS.title}</option>
+                <option value="none">{CHAPTER_MARKING_LABELS.none}</option>
               </Select>
               <FieldIssues messages={issuesAt(issues, `${path}.chapterMarking`)} />
             </div>
@@ -1175,7 +1176,12 @@ function FormatsView({
           ['Fixed opening line', format.introLine],
           ['Fixed closing line', format.outroLine],
           ['Shorts', format.shorts ? '' : 'Shorts off'],
-          ['Chapter marking', format.chapterMarking === 'inherit' ? '' : format.chapterMarking],
+          [
+            'Chapter marking',
+            format.chapterMarking === 'inherit'
+              ? ''
+              : CHAPTER_MARKING_LABELS[format.chapterMarking],
+          ],
         ]
         return (
           <div

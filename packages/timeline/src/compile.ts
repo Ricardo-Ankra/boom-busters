@@ -180,8 +180,10 @@ export const CHAPTER_CARD_MS = 3200
 export const CHAPTER_LEAD_MS = 800
 /**
  * The silence held after the lead when a chapter start carries no card
- * (decision 454): lead plus hold is the unmarked break, the same length as the
- * card's own span, so the film's rhythm does not change with the marking.
+ * (decision 454). Lead plus hold must clear DEFAULT_RISE_THRESHOLD_MS (2000 ms,
+ * ducking.ts), the shortest silence across which the music bed rises, so the
+ * bed comes back up and the music turn marks the break. 1400 leaves a 200 ms
+ * margin over that threshold; tune by ear.
  */
 export const CHAPTER_HOLD_MS = 1400
 /**
