@@ -47,7 +47,12 @@ export async function seed(
   await ensureFirstChannel(db)
 
   await db.insert(cases).values(fixtureCase).onConflictDoNothing()
-  await db.insert(projects).values(fixtureProject).onConflictDoNothing()
+  // The title is reset on conflict: a rename test or e2e must never leave the
+  // fixture under another name, because the e2e suite finds it by title.
+  await db
+    .insert(projects)
+    .values(fixtureProject)
+    .onConflictDoUpdate({ target: projects.id, set: { title: fixtureProject.title } })
   await db
     .insert(dossiers)
     .values({

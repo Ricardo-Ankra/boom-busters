@@ -7,7 +7,6 @@ import {
   channelForProject,
   currentBible,
   deleteProject,
-  getChannel,
   getDossier,
   getLatestScript,
   getProject,
@@ -39,7 +38,7 @@ import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { brokerConfigured, cancelRender } from '@/lib/broker'
-import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
+import { channelWriteRefusal } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { settleRenderLedger } from '@/inngest/lib/render-ledger'
 import { hasLiveStretch, STRETCH_RUNNING } from '@/lib/stretch-jobs'
@@ -171,9 +170,8 @@ export async function renameProjectAction(projectId: string, title: string): Pro
   const project = await getProject(db, projectId)
   if (!project) return { ok: false, error: 'Unknown project' }
   const { channelId } = await channelForProject(db, projectId)
-  if ((await getChannel(db, channelId)).archivedAt !== null) {
-    return { ok: false, error: CHANNEL_ARCHIVED_MESSAGE }
-  }
+  const refused = await channelWriteRefusal(channelId)
+  if (refused) return refused
 
   if (!(await renameProject(db, projectId, trimmed))) {
     return { ok: false, error: 'Unknown project' }

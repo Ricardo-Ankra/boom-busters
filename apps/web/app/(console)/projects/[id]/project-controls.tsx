@@ -202,16 +202,33 @@ export function RenameProjectButton({
   projectId,
   title,
   disabled = false,
+  showTitleCardHint = false,
 }: {
   projectId: string
   title: string
   /** An archived channel is read-only. */
   disabled?: boolean
+  /** True when the channel's marking is `title`, the only mode that shows the title. */
+  showTitleCardHint?: boolean
 }) {
   const { act, busy } = useAction()
+  const [open, setOpen] = React.useState(false)
   const [value, setValue] = React.useState(title)
   const inputId = React.useId()
   const unchanged = value.trim() === title.trim() || value.trim() === ''
+
+  if (!open) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <Button variant="outline" disabled={disabled} onClick={() => setOpen(true)}>
+          Rename project
+        </Button>
+        {showTitleCardHint ? (
+          <p className="text-[12px] text-[var(--color-text-secondary)]">{TITLE_CARD_HINT}</p>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className="flex max-w-md flex-col items-start gap-1">
@@ -227,17 +244,33 @@ export function RenameProjectButton({
           variant="outline"
           busy={busy}
           disabled={disabled || unchanged}
-          onClick={() => void act(() => renameProjectAction(projectId, value), 'Project renamed')}
+          onClick={() =>
+            void act(() => renameProjectAction(projectId, value), 'Project renamed').then((ok) => {
+              if (ok) setOpen(false)
+            })
+          }
         >
-          Rename project
+          Save title
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setValue(title)
+            setOpen(false)
+          }}
+        >
+          Cancel
         </Button>
       </div>
-      <p className="text-[12px] text-[var(--color-text-secondary)]">
-        The title card in title mode shows this; rename before assembling.
-      </p>
+      {showTitleCardHint ? (
+        <p className="text-[12px] text-[var(--color-text-secondary)]">{TITLE_CARD_HINT}</p>
+      ) : null}
     </div>
   )
 }
+
+const TITLE_CARD_HINT = 'The title card in title mode shows this; rename before assembling.'
 
 export function StopButton({
   projectId,

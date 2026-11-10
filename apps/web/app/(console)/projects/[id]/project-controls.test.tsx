@@ -290,24 +290,46 @@ describe('UseLatestBibleButton', () => {
 
 describe('RenameProjectButton', () => {
   const ID = '01J0000000000000000000000A'
+  const HINT = 'The title card in title mode shows this; rename before assembling.'
 
-  it('is a labelled input and button that calls the action with the typed title', async () => {
+  it('reveals a labelled input, saves the typed title, and hides the input again', async () => {
     renameProjectAction.mockResolvedValue({ ok: true })
     render(<RenameProjectButton projectId={ID} title="Old title" />)
 
+    expect(screen.queryByLabelText('Project title')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Rename project' }))
+
     const input = screen.getByLabelText('Project title')
     expect((input as HTMLInputElement).value).toBe('Old title')
-    const button = screen.getByRole('button', { name: 'Rename project' })
-    expect(button).toBeDisabled()
-    expect(
-      screen.getByText('The title card in title mode shows this; rename before assembling.'),
-    ).toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Save title' })
+    expect(save).toBeDisabled()
     await userEvent.clear(input)
     await userEvent.type(input, 'New title')
-    await userEvent.click(button)
+    await userEvent.click(save)
 
     expect(renameProjectAction).toHaveBeenCalledWith(ID, 'New title')
     expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Project renamed' }))
+    expect(screen.queryByLabelText('Project title')).toBeNull()
+  })
+
+  it('Cancel hides the input without calling the action', async () => {
+    render(<RenameProjectButton projectId={ID} title="Old title" />)
+    await userEvent.click(screen.getByRole('button', { name: 'Rename project' }))
+    await userEvent.type(screen.getByLabelText('Project title'), ' more')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Project title')).toBeNull()
+    expect(renameProjectAction).not.toHaveBeenCalled()
+  })
+
+  it('shows the title card hint only when told the marking is title', async () => {
+    const { rerender } = render(<RenameProjectButton projectId={ID} title="Old title" />)
+    expect(screen.queryByText(HINT)).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Rename project' }))
+    expect(screen.queryByText(HINT)).toBeNull()
+
+    rerender(<RenameProjectButton projectId={ID} title="Old title" showTitleCardHint />)
+    expect(screen.getByText(HINT)).toBeInTheDocument()
   })
 
   it('is disabled for an archived channel', () => {

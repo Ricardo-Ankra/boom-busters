@@ -309,7 +309,8 @@ export async function updateChannelSettings(
 /**
  * The channel a project belongs to, with what a pipeline step reads from it.
  * The bible is the version the project froze when it started, not the
- * channel's current one.
+ * channel's current one. Its `format.chapterMarking` is therefore the pinned
+ * value; assembly resolves the live one through `chapterMarkingForProject`.
  */
 export async function channelForProject(
   db: Database,
@@ -365,9 +366,9 @@ export async function channelForCase(db: Database, caseId: string): Promise<Chan
 }
 
 /**
- * Whether the project's format makes Shorts. Unlike every other format field
- * this reads the channel's CURRENT bible, not the version the project froze
- * (ruling 18): switching Shorts off for a format should reach projects already
+ * Whether the project's format makes Shorts. Like `chapterMarkingForProject`,
+ * and unlike every other format field, this reads the channel's CURRENT bible,
+ * not the version the project froze (ruling 18): switching Shorts off for a format should reach projects already
  * under way. An unknown key falls back to the primary, as `resolveFormat` does.
  */
 export async function shortsEnabledForProject(db: Database, projectId: string): Promise<boolean> {

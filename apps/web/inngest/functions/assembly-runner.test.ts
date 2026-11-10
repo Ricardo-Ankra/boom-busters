@@ -1,11 +1,12 @@
 // @vitest-environment node
 
 import {
-  chapterMarkingForProject,
   FIXTURE_PROJECT_ID,
+  fixtureProject,
   getProject,
   requireTestDatabase,
   seed,
+  setProjectStage,
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
@@ -28,6 +29,13 @@ import { assemblyRunner } from './assembly-runner'
  */
 
 const broker = vi.hoisted(() => ({ submitMediaJob: vi.fn() }))
+// Passes through to the real helper unless a test queues a value.
+const marking = vi.hoisted(() => ({ fn: vi.fn() }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  marking.fn.mockImplementation(actual.chapterMarkingForProject as never)
+  return { ...actual, chapterMarkingForProject: marking.fn }
+})
 vi.mock('@/lib/broker', () => ({
   brokerCallbackUrl: () => 'http://localhost:3000/api/hooks/broker',
   submitMediaJob: broker.submitMediaJob,
@@ -248,23 +256,34 @@ describeDb('assembly-runner, batched transcription', () => {
   )
 
   it(
-    'load-assembly reads the chapter marking live and the project title (decision 459)',
+    'load-assembly reads the chapter marking through chapterMarkingForProject (decision 459)',
     { timeout: 120_000 },
     async () => {
-      // The fixture has no voice takes, so the run would park on missing
-      // narration after this step; the step's own result is what is checked.
-      const { result } = await engine.executeStep('load-assembly', {
-        events: [
-          {
-            name: 'gate/visuals.approved',
-            data: { projectId: FIXTURE_PROJECT_ID, approvedBy: 'owner@example.com' },
-          },
-        ],
-      })
-      const project = await getProject(db, FIXTURE_PROJECT_ID)
-      const loaded = result as { chapterMarking: string; filmTitle: string }
-      expect(loaded.chapterMarking).toBe(await chapterMarkingForProject(db, FIXTURE_PROJECT_ID))
-      expect(loaded.filmTitle).toBe(project!.title)
+      // The step moves the project to assembly/running; put it back afterwards
+      // so later test files do not see it there.
+      const before = await getProject(db, FIXTURE_PROJECT_ID)
+      marking.fn.mockResolvedValueOnce('title')
+      try {
+        // The fixture has no voice takes, so the run would park on missing
+        // narration after this step; the step's own result is what is checked.
+        const { result } = await engine.executeStep('load-assembly', {
+          events: [
+            {
+              name: 'gate/visuals.approved',
+              data: { projectId: FIXTURE_PROJECT_ID, approvedBy: 'owner@example.com' },
+            },
+          ],
+        })
+        const loaded = result as { chapterMarking: string; filmTitle: string }
+        expect(marking.fn).toHaveBeenCalledWith(expect.anything(), FIXTURE_PROJECT_ID)
+        expect(loaded.chapterMarking).toBe('title')
+        expect(loaded.filmTitle).toBe(fixtureProject.title)
+      } finally {
+        await setProjectStage(db, FIXTURE_PROJECT_ID, {
+          stage: before!.stage,
+          stageStatus: before!.stageStatus,
+        })
+      }
     },
   )
 
