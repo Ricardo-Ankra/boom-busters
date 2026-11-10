@@ -13,6 +13,7 @@ import { DirectorsBookSchema } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { timedParagraphs } from './shot-list'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * Everything a re-plan plans against, read once per run inside its own step:
@@ -45,15 +46,7 @@ export async function loadPlanInputs(projectId: string) {
       takes,
       wordsPerMinute: format.wordsPerMinute,
     }),
-    claims: claims.map((claim) => ({
-      id: claim.id,
-      text: claim.text,
-      sourceUrl: claim.sourceUrl,
-      confidence: claim.confidence,
-      // Which claims a headline card may cite (decision 257).
-      sourceType: claim.sourceType,
-      legal: claim.legalStatus,
-    })) satisfies ScriptClaim[],
+    claims: claims.map(toScriptClaim),
     // Who the producer has photographed (decision 253, amended). Their
     // prompts name them and carry no physical description, because the
     // photograph is the likeness.

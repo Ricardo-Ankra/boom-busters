@@ -41,6 +41,7 @@ import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
 import { reviewStoredGraphic } from '../lib/graphic-steps'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * slot-rebriefer (decision 258). "Draft a different brief": the owner has
@@ -230,12 +231,7 @@ export const slotRebriefer = inngest.createFunction(
                   caseTitle: project.title,
                   brief,
                   targetType: brief.type,
-                  claims: claims.map((claim) => ({
-                    id: claim.id,
-                    text: claim.text,
-                    sourceUrl: claim.sourceUrl,
-                    confidence: claim.confidence,
-                  })),
+                  claims: claims.map(toScriptClaim),
                   logos: logos.map((logo) => logo.title),
                   ...(guidance === undefined ? {} : { guidance }),
                 }),

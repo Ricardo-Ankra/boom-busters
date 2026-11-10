@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Notice, ShortsCandidate } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { saveChapterText } from './actions'
+import { regenerateSection, saveChapterText } from './actions'
 import { hedgeInstruction } from '@/lib/script-editing'
 import { ScriptStudio, ShortsStrip } from './script-studio'
 
@@ -265,6 +265,20 @@ describe('the gutter shows blocking and advisory warnings apart (decision 453)',
     expect(
       screen.getByRole('button', { name: /Rewrite with the channel's hedge/ }),
     ).toBeInTheDocument()
+  })
+
+  it('sends the channel hedge instruction to the regenerate action when the button is clicked', async () => {
+    vi.mocked(regenerateSection).mockResolvedValue({ ok: true, proposal: 'Reportedly, it fell.' })
+    render(studio([warn('missing-alleged', 'The shares fell.')]))
+    await userEvent.click(screen.getByRole('button', { name: /Rewrite with the channel's hedge/ }))
+    await waitFor(() =>
+      expect(regenerateSection).toHaveBeenCalledWith(
+        '01J0000000000000000000000P',
+        '01J000000000000000000000C1',
+        'The shares fell.',
+        hedgeInstruction('Kilroy.'),
+      ),
+    )
   })
 
   it('offers a passage rewrite for a craft warning', () => {

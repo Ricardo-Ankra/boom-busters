@@ -66,6 +66,7 @@ import {
   openReviewGate,
   type GateContext,
 } from '../lib/gates'
+import { toScriptClaim } from '@/lib/script-claim'
 
 /**
  * script-runner (build spec section 7.2).
@@ -261,13 +262,7 @@ export const scriptRunner = inngest.createFunction(
         targetRuntimeMin: project.targetRuntimeMin,
         dossierMd: dossier.contentMd,
         claims: usable.map((claim) => ({
-          id: claim.id,
-          text: claim.text,
-          sourceUrl: claim.sourceUrl,
-          confidence: claim.confidence,
-          sourceType: claim.sourceType,
-          // Only an accusation is marked in the claim list (spec 6.4).
-          legal: claim.legalStatus,
+          ...toScriptClaim(claim),
           standing: evidenceLabel(profile, claim.evidenceStatus, 'script') ?? undefined,
         })) satisfies ScriptClaim[],
       }

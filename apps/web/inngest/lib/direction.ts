@@ -57,6 +57,7 @@ import { callLlm } from '@/lib/llm'
 import { recordRepairs } from '@/lib/notices'
 import { planChapterWith } from '@/lib/plan-chapter'
 import { plannedToRows, promptParagraphs, type TimedParagraph } from './shot-list'
+import { toScriptClaim } from '@/lib/script-claim'
 
 export { chapterShotListRequest } from '@/lib/plan-chapter'
 
@@ -180,14 +181,7 @@ export async function loadDirectionInputs(projectId: string): Promise<{
     withhold: outlineChapters[index]?.withhold,
   }))
 
-  const claims = (await scriptableClaims(db, projectId)).map((claim) => ({
-    id: claim.id,
-    text: claim.text,
-    sourceUrl: claim.sourceUrl,
-    confidence: claim.confidence,
-    // Which claims a headline card may cite (decision 257).
-    sourceType: claim.sourceType,
-  }))
+  const claims = (await scriptableClaims(db, projectId)).map(toScriptClaim)
   const members = await listCastMembers(db, projectId)
   const cast = members.map((member) => ({
     name: member.name,
