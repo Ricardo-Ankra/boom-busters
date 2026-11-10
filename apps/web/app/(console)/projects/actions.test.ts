@@ -3,7 +3,11 @@
 import {
   FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
+  archiveChannel,
+  createCase,
+  createChannel,
   createProjectFromCase,
+  getProject,
   createScriptVersion,
   deleteProject,
   ensureRun,
@@ -23,11 +27,16 @@ import {
   updateRenderParts,
 } from '@boom-busters/db'
 import { listLedger, reserve } from '@boom-busters/cost'
-import { DEFAULT_WORKSPACE_SETTINGS, newId } from '@boom-busters/schemas'
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_WORKSPACE_SETTINGS,
+  FIRST_CHANNEL_BIBLE,
+  newId,
+} from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as BrokerModule from '@/lib/broker'
 import { db } from '@/lib/db'
-import { approveGate, requestChanges, stopProject } from './actions'
+import { approveGate, renameProjectAction, requestChanges, stopProject } from './actions'
 
 /**
  * The dossier's change request and approval against the test database, with
@@ -343,5 +352,64 @@ describeDb('stopping a master rendered in parts', () => {
     expect(entry?.settled).toBe(true)
     // One completed part at its cost, one rendering part at its 1/12 share.
     expect(entry?.actualUsd).toBeCloseTo(0.2, 4)
+  })
+})
+
+describeDb('renameProjectAction', () => {
+  let projectId = ''
+
+  beforeEach(async () => {
+    await seed(db)
+    projectId = (await createProjectFromCase(db, { caseId: FIXTURE_CASE_ID, title: 'Old title' }))
+      .id
+  })
+
+  afterEach(async () => {
+    await deleteProject(db, projectId)
+  })
+
+  it('renames, trimmed', async () => {
+    expect(await renameProjectAction(projectId, '  The Four Billion Euros  ')).toEqual({ ok: true })
+    expect((await getProject(db, projectId))?.title).toBe('The Four Billion Euros')
+  })
+
+  it('refuses a blank or short title and a long one', async () => {
+    expect(await renameProjectAction(projectId, '  ')).toEqual({
+      ok: false,
+      error: 'Give the project a title of at least 3 characters.',
+    })
+    expect(await renameProjectAction(projectId, 'x'.repeat(201))).toEqual({
+      ok: false,
+      error: 'Keep the title under 200 characters.',
+    })
+    expect((await getProject(db, projectId))?.title).toBe('Old title')
+  })
+
+  it('refuses an unknown project', async () => {
+    expect(await renameProjectAction(newId(), 'A fine title')).toEqual({
+      ok: false,
+      error: 'Unknown project',
+    })
+  })
+
+  it('refuses on an archived channel', async () => {
+    const channel = await createChannel(db, {
+      name: 'Rename archived channel',
+      handle: null,
+      slug: `rename-${Math.random().toString(36).slice(2, 8)}`,
+      settings: DEFAULT_SETTINGS,
+      bible: FIRST_CHANNEL_BIBLE,
+    })
+    const kase = await createCase(db, { channelId: channel.id, title: 'R', category: 'collapse' })
+    const archivedProject = (
+      await createProjectFromCase(db, { caseId: kase.id, title: 'Archived one' })
+    ).id
+    await archiveChannel(db, channel.id)
+
+    expect(await renameProjectAction(archivedProject, 'A fine title')).toEqual({
+      ok: false,
+      error: 'This channel is archived',
+    })
+    expect((await getProject(db, archivedProject))?.title).toBe('Archived one')
   })
 })

@@ -7,6 +7,7 @@ import {
   channelForProject,
   currentBible,
   deleteProject,
+  getChannel,
   getDossier,
   getLatestScript,
   getProject,
@@ -15,6 +16,7 @@ import {
   markProjectCancelled,
   moveProjectBible,
   projectDeletionSummary,
+  renameProject,
   renderInFlight,
   setProjectStage,
   setVisualsPhase,
@@ -37,6 +39,7 @@ import { auth } from '@/auth'
 import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { brokerConfigured, cancelRender } from '@/lib/broker'
+import { CHANNEL_ARCHIVED_MESSAGE } from '@/lib/channel-archived'
 import { db } from '@/lib/db'
 import { settleRenderLedger } from '@/inngest/lib/render-ledger'
 import { hasLiveStretch, STRETCH_RUNNING } from '@/lib/stretch-jobs'
@@ -141,6 +144,40 @@ export async function moveToLatestBibleAction(projectId: string): Promise<Action
   }
 
   await moveProjectBible(db, projectId, current.id)
+  refresh(projectId)
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Renaming
+// ---------------------------------------------------------------------------
+
+/**
+ * Give a project a new title. Decision 457's title mode burns the title into
+ * the film's title card at assembly, so the owner needs to be able to fix it.
+ * An archived channel is read-only, so its projects are not renamed either.
+ */
+export async function renameProjectAction(projectId: string, title: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badId(projectId)
+  if (invalid) return invalid
+
+  const trimmed = title.trim()
+  if (trimmed.length < 3) {
+    return { ok: false, error: 'Give the project a title of at least 3 characters.' }
+  }
+  if (trimmed.length > 200) return { ok: false, error: 'Keep the title under 200 characters.' }
+
+  const project = await getProject(db, projectId)
+  if (!project) return { ok: false, error: 'Unknown project' }
+  const { channelId } = await channelForProject(db, projectId)
+  if ((await getChannel(db, channelId)).archivedAt !== null) {
+    return { ok: false, error: CHANNEL_ARCHIVED_MESSAGE }
+  }
+
+  if (!(await renameProject(db, projectId, trimmed))) {
+    return { ok: false, error: 'Unknown project' }
+  }
   refresh(projectId)
   return { ok: true }
 }

@@ -7,11 +7,13 @@ import * as React from 'react'
 import { useChannelHref } from '@/components/channel-slug'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
+import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import {
   approveGate,
   deleteProjectAction,
   moveToLatestBibleAction,
+  renameProjectAction,
   requestChanges,
   restartStage,
   stopProject,
@@ -187,6 +189,51 @@ export function UseLatestBibleButton({
       </Button>
       <p className="text-[12px] text-[var(--color-text-secondary)]">
         Stages already done keep their text; stages run after this use the new bible.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Renames the project. Title mode burns the title into the film's title card
+ * at assembly, so it is worth being able to fix before then.
+ */
+export function RenameProjectButton({
+  projectId,
+  title,
+  disabled = false,
+}: {
+  projectId: string
+  title: string
+  /** An archived channel is read-only. */
+  disabled?: boolean
+}) {
+  const { act, busy } = useAction()
+  const [value, setValue] = React.useState(title)
+  const inputId = React.useId()
+  const unchanged = value.trim() === title.trim() || value.trim() === ''
+
+  return (
+    <div className="flex max-w-md flex-col items-start gap-1">
+      <Label htmlFor={inputId}>Project title</Label>
+      <div className="flex w-full items-center gap-2">
+        <Input
+          id={inputId}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <Button
+          variant="outline"
+          busy={busy}
+          disabled={disabled || unchanged}
+          onClick={() => void act(() => renameProjectAction(projectId, value), 'Project renamed')}
+        >
+          Rename project
+        </Button>
+      </div>
+      <p className="text-[12px] text-[var(--color-text-secondary)]">
+        The title card in title mode shows this; rename before assembling.
       </p>
     </div>
   )

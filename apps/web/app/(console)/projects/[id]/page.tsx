@@ -69,6 +69,7 @@ import {
   GateActionBar,
   RestartRunButton,
   StopButton,
+  RenameProjectButton,
   UseLatestBibleButton,
 } from './project-controls'
 
@@ -382,6 +383,13 @@ export default async function ProjectPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-[20px] font-semibold">{project.title}</h1>
+          <div className="my-2">
+            <RenameProjectButton
+              projectId={project.id}
+              title={project.title}
+              disabled={ownChannel.archivedAt !== null}
+            />
+          </div>
           <p className="text-[13px] text-[var(--color-text-secondary)]">
             {caseCategoryLabel(channel.bible, project.caseCategory)} · {project.caseTitle} ·{' '}
             {project.targetRuntimeMin} min target · Bible version {channel.bibleVersion}

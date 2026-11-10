@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GateActionBar, UseLatestBibleButton } from './project-controls'
+import { GateActionBar, RenameProjectButton, UseLatestBibleButton } from './project-controls'
 
 /**
  * The gate action bar's own state, which is where a production bug lived that
@@ -13,12 +13,14 @@ import { GateActionBar, UseLatestBibleButton } from './project-controls'
 const approveGate = vi.fn()
 const requestChanges = vi.fn()
 const moveToLatestBibleAction = vi.fn()
+const renameProjectAction = vi.fn()
 const refresh = vi.fn()
 
 vi.mock('../actions', () => ({
   approveGate: (...args: unknown[]) => approveGate(...args),
   requestChanges: (...args: unknown[]) => requestChanges(...args),
   moveToLatestBibleAction: (...args: unknown[]) => moveToLatestBibleAction(...args),
+  renameProjectAction: (...args: unknown[]) => renameProjectAction(...args),
   restartStage: vi.fn(),
   stopProject: vi.fn(),
 }))
@@ -283,5 +285,33 @@ describe('UseLatestBibleButton', () => {
   it('is disabled for an archived channel', () => {
     render(<UseLatestBibleButton projectId={ID} disabled />)
     expect(screen.getByRole('button', { name: 'Use the latest bible' })).toBeDisabled()
+  })
+})
+
+describe('RenameProjectButton', () => {
+  const ID = '01J0000000000000000000000A'
+
+  it('is a labelled input and button that calls the action with the typed title', async () => {
+    renameProjectAction.mockResolvedValue({ ok: true })
+    render(<RenameProjectButton projectId={ID} title="Old title" />)
+
+    const input = screen.getByLabelText('Project title')
+    expect((input as HTMLInputElement).value).toBe('Old title')
+    const button = screen.getByRole('button', { name: 'Rename project' })
+    expect(button).toBeDisabled()
+    expect(
+      screen.getByText('The title card in title mode shows this; rename before assembling.'),
+    ).toBeInTheDocument()
+    await userEvent.clear(input)
+    await userEvent.type(input, 'New title')
+    await userEvent.click(button)
+
+    expect(renameProjectAction).toHaveBeenCalledWith(ID, 'New title')
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Project renamed' }))
+  })
+
+  it('is disabled for an archived channel', () => {
+    render(<RenameProjectButton projectId={ID} title="Old title" disabled />)
+    expect(screen.getByRole('button', { name: 'Rename project' })).toBeDisabled()
   })
 })
