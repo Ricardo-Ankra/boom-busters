@@ -12,7 +12,7 @@ import {
   GRAPHIC_CODE_VERSION,
   graphicFactsIssue,
   resolveBrandKit,
-  shownDigitGroups,
+  shownFigures,
 } from '@boom-busters/schemas'
 import type {
   ChartBrief,
@@ -168,9 +168,16 @@ export function graphicCodeIssue(
   // Per frame size, never across the two: a digit group counts as shown when
   // it stays a second in one frame, and the Short's 9:16 frame may show a
   // figure the film's 16:9 frame never does.
+  // The texts a shown figure may come from: the claims the facts cite, and a
+  // chart's series. A figure in pieces, or a count on its way, is read
+  // against them (decision 449); a fact citing no claim is refused below.
+  const cited = [
+    ...answer.facts.flatMap((fact) => context.claims[fact.claim - 1]?.text ?? []),
+    ...(brief.type === 'chart' ? [seriesText(brief)] : []),
+  ]
   for (const orientation of ['landscape', 'portrait'] as const) {
     const factsIssue = graphicFactsIssue({
-      shown: shownDigitGroups(run.textSamples[orientation], SHOWN_MIN_SAMPLES),
+      shown: shownFigures(run.figureSamples[orientation], SHOWN_MIN_SAMPLES, cited),
       facts: answer.facts,
       claims: context.claims,
       // After the real claims, so the claim numbers still index them alone.
