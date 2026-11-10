@@ -150,13 +150,13 @@ export type Outline = z.infer<typeof OutlineSchema>
 export const WARNING_KINDS = [
   /** A factual sentence with no claim behind it. */
   'unsourced-claim',
-  /** States as fact something no court or regulator adjudicated. */
+  /** States as fact what a claim marked ALLEGED only accuses. */
   'missing-alleged',
   /** Names a living person in a way the sources do not support. */
   'unsupported-attribution',
   /** Repeats a six-word run an earlier chapter already narrated (decision 296). */
   'repeats-earlier',
-  /** Labels a case's standing (convicted, charged, settled) beyond what the sources show. */
+  /** Labels a claim's evidence (one study, contested) beyond what the sources show. */
   'overstated-standing',
   /** A craft note: pacing, a flat opening, a chapter that does not turn. */
   'craft',
@@ -199,9 +199,10 @@ export const WARNING_SEVERITY_DEFAULTS: Record<WarningKind, WarningSeverity> = {
   'off-target-length': 'advisory',
 }
 
-/** The stored severity, else the kind's default. */
+/** The stored severity, else the kind's default, else blocking for a kind the defaults lack. */
 export function severityOf(warning: Pick<GutterWarning, 'kind' | 'severity'>): WarningSeverity {
-  return warning.severity ?? WARNING_SEVERITY_DEFAULTS[warning.kind]
+  // A stored kind this build no longer lists still counts: the gate never drops a warning.
+  return warning.severity ?? WARNING_SEVERITY_DEFAULTS[warning.kind] ?? 'blocking'
 }
 
 /** Blocking and advisory warning counts across a script's chapters. */

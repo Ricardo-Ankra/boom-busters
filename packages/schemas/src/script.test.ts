@@ -325,6 +325,14 @@ describe('SelfCheckSchema', () => {
 })
 
 describe('warning severity', () => {
+  it('counts a stored kind the defaults lack as blocking, never dropping it', () => {
+    const unknown = { kind: 'retired-kind' as never }
+    expect(severityOf(unknown)).toBe('blocking')
+    expect(
+      countBySeverity([{ warnings: [{ ...unknown, sentence: 'x', message: 'an old warning' }] }]),
+    ).toEqual({ blocking: 1, advisory: 0 })
+  })
+
   it('defaults every kind that existed before severity to blocking', () => {
     for (const kind of [
       'unsourced-claim',
