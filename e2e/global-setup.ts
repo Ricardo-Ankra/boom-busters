@@ -1570,6 +1570,8 @@ export default async function globalSetup(): Promise<void> {
         ],
         music: null,
         captions: { words: captionWords, style: 'karaoke' },
+        chapterMarking: 'cards',
+        filmTitle: 'Fixture film',
       })
 
       const timelineRow = await insertTimeline(connection.db, {
@@ -1766,6 +1768,8 @@ export default async function globalSetup(): Promise<void> {
         slots,
         music: null,
         captions: { words: [], style: 'karaoke' },
+        chapterMarking: 'cards',
+        filmTitle: 'Fixture film',
       })
       const publishTimelineRow = await insertTimeline(connection.db, {
         projectId: publish.id,
@@ -1946,6 +1950,8 @@ export default async function globalSetup(): Promise<void> {
           slots: playbookSlots,
           music: null,
           captions: { words: [], style: 'karaoke' },
+          chapterMarking: 'cards',
+          filmTitle: 'Fixture film',
         }),
         s3Key: '',
       })

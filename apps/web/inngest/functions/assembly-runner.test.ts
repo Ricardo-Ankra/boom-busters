@@ -1,10 +1,11 @@
 // @vitest-environment node
 
-import { FIXTURE_PROJECT_ID, requireTestDatabase } from '@boom-busters/db'
+import { FIXTURE_PROJECT_ID, requireTestDatabase, seed } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { batchParagraphs, TRANSCRIBE_BATCH, transcribePerParagraphFits } from '../lib/slot-steps'
+import { db } from '@/lib/db'
 import { assemblyRunner } from './assembly-runner'
 
 /**
@@ -65,6 +66,11 @@ describe('transcription batching thresholds', () => {
 describeDb('assembly-runner, batched transcription', () => {
   let engine: InngestTestEngine
 
+  // The compile step reads the channel and the latest timeline for the fixture project.
+  beforeAll(async () => {
+    await seed(db)
+  }, 120_000)
+
   beforeEach(() => {
     engine = new InngestTestEngine({ function: assemblyRunner })
     vi.clearAllMocks()
@@ -102,6 +108,111 @@ describeDb('assembly-runner, batched transcription', () => {
       for (const job of jobs) {
         expect(job.audioS3Keys).toEqual(all.slice(0, TRANSCRIBE_BATCH).map((p) => p.r2Key))
       }
+    },
+  )
+
+  async function compileWith(chapterMarking: 'none' | 'cards' | 'title') {
+    {
+      const timed = (chapter: number, text: string) => ({
+        chapterId: `01HQ0000000000000000000CH${chapter}`,
+        chapterIndex: chapter - 1,
+        chapterTitle: `Chapter ${chapter}`,
+        paragraphIndex: 0,
+        r2Key: `boom-busters/voice/take-${chapter}.mp3`,
+        durationMs: 4000,
+        text,
+        // Stored timings: the run needs no whisper job and no wait.
+        timings: [{ text, startMs: 0, endMs: 4000 }],
+        takeId: `01HQ00000000000000000TK00${chapter}`,
+      })
+      const setup = {
+        plan: { paragraphs: [timed(1, 'Alpha'), timed(2, 'Beta')], missing: [] },
+        slots: [
+          {
+            id: 'slot-1',
+            type: 'stock' as const,
+            status: 'resolved' as const,
+            brief: {
+              type: 'stock',
+              coversText: 'Alpha',
+              description: 'desc',
+              motion: { kind: 'static' },
+              transition: 'cut',
+              query: 'trading floor',
+              rejectionCriteria: [],
+            },
+            candidates: [
+              {
+                id: 'c1',
+                provider: 'pexels',
+                kind: 'image',
+                sourceUrl: 'https://images.pexels.com/a.jpg',
+                licence: 'Pexels License',
+                chosen: true,
+                r2Key: 'boom-busters/stock/a.jpg',
+              },
+            ],
+            chosenAssetId: null,
+            startMs: 0,
+            durationMs: 4000,
+          },
+        ],
+        assets: [],
+        brand: resolveBrandKit(DEFAULT_SETTINGS),
+        chapterMarking,
+        filmTitle: 'The audit',
+        music: null,
+      }
+
+      const { result } = await engine.executeStep('compile-timeline', {
+        events: [
+          {
+            name: 'gate/visuals.approved',
+            data: { projectId: FIXTURE_PROJECT_ID, approvedBy: 'owner@example.com' },
+          },
+        ],
+        steps: [{ id: 'load-assembly', handler: () => setup }],
+      })
+
+      return result as {
+        ok: boolean
+        timeline: {
+          overlays: { kind: string; props?: Record<string, unknown> }[]
+          chapters?: { title: string }[]
+        }
+      }
+    }
+  }
+
+  const cardKinds = ['chapterCard', 'titleCard']
+
+  it(
+    'compiles with chapter marking none: no card overlays (decision 454)',
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const compiled = await compileWith('none')
+      expect(compiled.ok).toBe(true)
+      expect(compiled.timeline.overlays.filter((o) => cardKinds.includes(o.kind))).toEqual([])
+      expect(compiled.timeline.chapters?.map((chapter) => chapter.title)).toEqual([
+        'Chapter 1',
+        'Chapter 2',
+      ])
+    },
+  )
+
+  it(
+    'compiles with chapter marking title: the film title at the second chapter',
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const compiled = await compileWith('title')
+      expect(compiled.ok).toBe(true)
+      expect(compiled.timeline.overlays.filter((o) => cardKinds.includes(o.kind))).toMatchObject([
+        { kind: 'titleCard', props: { title: 'The audit' } },
+      ])
     },
   )
 

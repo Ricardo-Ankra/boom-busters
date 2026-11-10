@@ -22,6 +22,7 @@ import {
   newId,
   parseEventData,
   resolveBrandKit,
+  resolveChapterMarking,
   serialiseError,
   ShotBriefSchema,
   timelineDurationMs,
@@ -129,14 +130,19 @@ export const assemblyRunner = inngest.createFunction(
         if (asset) assets.push([id, asset])
       }
 
-      const { settings, name, handle } = await channelForProject(db, projectId)
+      const { settings, name, handle, format } = await channelForProject(db, projectId)
       const beds = await listMusicBeds(db)
+      const brand = resolveBrandKit(settings, { name, handle })
 
       return {
         plan,
         slots,
         assets,
-        brand: resolveBrandKit(settings, { name, handle }),
+        brand,
+        // How a later chapter's start is marked, and the title `title` marking
+        // shows (decision 454): the format's choice, else the look's.
+        chapterMarking: resolveChapterMarking(brand.look, format),
+        filmTitle: project.title,
         music: pickMusicBed(beds),
       }
     })
@@ -459,6 +465,8 @@ export const assemblyRunner = inngest.createFunction(
           slots: plan.slots,
           music: setup.music,
           captions: { words: captions.words, style },
+          chapterMarking: setup.chapterMarking,
+          filmTitle: setup.filmTitle,
         })
         return {
           ok: true as const,
