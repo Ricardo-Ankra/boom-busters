@@ -48,7 +48,15 @@ import {
   slotPlan,
   timelineKey,
 } from '../lib/assembly'
-import { assemblyOtherSteps, perSlotStepsFit, stepSlots } from '../lib/slot-steps'
+import {
+  assemblyOtherSteps,
+  batchParagraphs,
+  perSlotStepsFit,
+  stepSlots,
+  TRANSCRIBE_BATCH,
+  transcribePerParagraphFits,
+} from '../lib/slot-steps'
+import { RESOLUTION_STEP_SLOTS } from '../lib/shot-list'
 
 /**
  * assembly-runner (build spec section 7.5).
@@ -156,26 +164,29 @@ export const assemblyRunner = inngest.createFunction(
     // timeline may only ever reference bytes in R2 (spec section 8.2). One
     // step per slot: each download is retried and checkpointed on its own,
     // and a failure skips that slot instead of hotlinking a dying URL.
+    const untimedParagraphs = setup.plan.paragraphs.filter(
+      (paragraph) => !(paragraph.timings && paragraph.timings.length > 0),
+    )
+    const stockSlots = setup.slots.filter(needsStockIngest)
+    const stockPerSlot = perSlotStepsFit(
+      stockSlots.length,
+      assemblyOtherSteps({ untimedParagraphs: untimedParagraphs.length }),
+    )
+    const stockSteps = stockPerSlot
+      ? stockSlots.length
+      : Math.ceil(stockSlots.length / RESOLUTION_STEP_SLOTS)
     const ingested: Record<string, { r2Key: string; assetId?: string; previewR2Key?: string }> = {}
     const unusable: Record<string, string> = {}
     if (!mocked && storageConfigured()) {
       // A step a slot while that fits under the step limit with this run's other
       // steps, eight a step otherwise (`stepSlots`, `perSlotStepsFit`). Every
       // input is the memoised load's: the stock slots and the untimed paragraphs.
-      const stockSlots = setup.slots.filter(needsStockIngest)
       const settled = await stepSlots(
         (id, fn) => step.run(id, fn) as never,
         stockSlots,
         'ingest-stock',
         {
-          perSlot: perSlotStepsFit(
-            stockSlots.length,
-            assemblyOtherSteps({
-              untimedParagraphs: setup.plan.paragraphs.filter(
-                (paragraph) => !(paragraph.timings && paragraph.timings.length > 0),
-              ).length,
-            }),
-          ),
+          perSlot: stockPerSlot,
           run: (slot) => ingestSlotStock(slot),
         },
       )
@@ -215,6 +226,66 @@ export const assemblyRunner = inngest.createFunction(
     // Alignment: stored timings are free; whisper covers the rest
     // -----------------------------------------------------------------------
     const aligned: ((typeof setup.plan.paragraphs)[number] & { words: WordTiming[] })[] = []
+    const toWords = (words: { text: string; startMs: number; endMs: number }[]): WordTiming[] =>
+      words.map((word) => ({ text: word.text, startMs: word.startMs, endMs: word.endMs }))
+
+    // Past the step limit, whisper takes `TRANSCRIBE_BATCH` takes a job, two
+    // steps a batch, and the words are matched back by each take's key.
+    const batchedWords = new Map<string, WordTiming[]>()
+    if (
+      !mocked &&
+      untimedParagraphs.length > 0 &&
+      !transcribePerParagraphFits(untimedParagraphs.length, stockSteps)
+    ) {
+      for (const [n, batch] of batchParagraphs(untimedParagraphs, TRANSCRIBE_BATCH).entries()) {
+        const jobId = await step.run(`transcribe-batch-${n}`, async () => {
+          const id = newId<'run'>()
+          await submitMediaJob({
+            kind: 'transcribe',
+            jobId: id,
+            projectId,
+            callbackUrl: brokerCallbackUrl(),
+            audioS3Keys: batch.map((paragraph) => paragraph.r2Key),
+          })
+          return id
+        })
+
+        const completion = await step.waitForEvent(`transcribe-batch-wait-${n}`, {
+          event: 'media/job.completed',
+          timeout: TRANSCRIBE_TIMEOUT,
+          if: `async.data.jobId == "${jobId}"`,
+        })
+
+        let failure: string | null = null
+        if (!completion || completion.data.ok !== true) {
+          failure =
+            `Whisper transcription ${completion ? 'failed' : 'timed out'} for batch ${n + 1}` +
+            (completion?.data.error ? `: ${completion.data.error}` : '.')
+        } else {
+          const parsedResult = TranscribeResultSchema.parse(completion.data.result)
+          if ('words' in parsedResult) {
+            failure = `Whisper transcription for batch ${n + 1} answered one transcript for a batch of takes (contract error).`
+          } else {
+            for (const paragraph of batch) {
+              const hit = parsedResult.results.find((r) => r.audioS3Key === paragraph.r2Key)
+              if (!hit) {
+                failure =
+                  `Whisper transcription for batch ${n + 1} returned no result for ` +
+                  `"${paragraph.chapterTitle}" paragraph ${paragraph.paragraphIndex + 1}.`
+                break
+              }
+              batchedWords.set(paragraph.r2Key, toWords(hit.words))
+            }
+          }
+        }
+
+        if (failure !== null) {
+          const message = failure
+          await step.run(`transcribe-batch-failed-${n}`, () => markStageFailed(ctx, { message }))
+          return { projectId, outcome: 'failed' as const }
+        }
+      }
+    }
 
     for (const paragraph of setup.plan.paragraphs) {
       if (paragraph.timings && paragraph.timings.length > 0) {
@@ -230,6 +301,12 @@ export const assemblyRunner = inngest.createFunction(
           () => evenlySpacedWords(paragraph.text, paragraph.durationMs),
         )
         aligned.push({ ...paragraph, words })
+        continue
+      }
+
+      const batched = batchedWords.get(paragraph.r2Key)
+      if (batched) {
+        aligned.push({ ...paragraph, words: batched })
         continue
       }
 
@@ -270,15 +347,10 @@ export const assemblyRunner = inngest.createFunction(
         return { projectId, outcome: 'failed' as const }
       }
 
-      // Task 10 (batched transcription) replaces this loop.
       const parsedResult = TranscribeResultSchema.parse(completion.data.result)
-      const resultWords =
-        'words' in parsedResult ? parsedResult.words : (parsedResult.results[0]?.words ?? [])
-      const words = resultWords.map((word) => ({
-        text: word.text,
-        startMs: word.startMs,
-        endMs: word.endMs,
-      }))
+      const words = toWords(
+        'words' in parsedResult ? parsedResult.words : (parsedResult.results[0]?.words ?? []),
+      )
       aligned.push({ ...paragraph, words })
     }
 

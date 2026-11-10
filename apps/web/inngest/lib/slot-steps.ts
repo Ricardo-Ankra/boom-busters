@@ -59,11 +59,35 @@ export function visualsOtherSteps(input: { chapters: number; designedSlots: numb
  * Fixed, 9: load-assembly :104, missing-narration :138, compile-timeline
  * :285, compile-failed :403, store-timeline :411, open-gate :437,
  * await-preview-gate :450, gate-timed-out :457, close-gate :463.
- * Per paragraph whose take has no stored word timings, 2: transcribe-submit
- * :237 and transcribe-wait :252 (mock mode's one mock-align :228 is fewer;
- * transcribe-failed :262 ends the run).
+ * Per paragraph whose take has no stored word timings, 2, while that fits
+ * (`transcribePerParagraphFits`): transcribe-submit-<chapterId>-<n> and
+ * transcribe-wait-<chapterId>-<n> (mock mode's one mock-align is fewer;
+ * transcribe-failed-<chapterId>-<n> ends the run). When it would not fit, the
+ * untimed paragraphs go `TRANSCRIBE_BATCH` to a job instead: transcribe-batch-<n>
+ * and transcribe-batch-wait-<n>, 2 a batch, which is the
+ * `assemblyOtherSteps` count below at its per-paragraph worst case or fewer;
+ * transcribe-batch-failed-<n> ends the run. The rule is `2 * untimed +
+ * ASSEMBLY_FIXED_STEPS + stockSteps + STEP_MARGIN <= STEP_LIMIT`.
  */
 export const ASSEMBLY_FIXED_STEPS = 9
+
+/** Paragraphs a whisper job takes when transcription batches. */
+export const TRANSCRIBE_BATCH = 8
+
+/**
+ * Whether transcription may keep its two steps a paragraph: with the stock
+ * steps the run takes, the margin and the fixed steps, it stays at or under
+ * `STEP_LIMIT`. A run that fits keeps its old ids; only a longer one batches.
+ */
+export function transcribePerParagraphFits(untimed: number, stockSteps: number): boolean {
+  return 2 * untimed + ASSEMBLY_FIXED_STEPS + stockSteps + STEP_MARGIN <= STEP_LIMIT
+}
+
+export function batchParagraphs<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let at = 0; at < items.length; at += size) batches.push(items.slice(at, at + size))
+  return batches
+}
 
 export function assemblyOtherSteps(input: { untimedParagraphs: number }): number {
   return ASSEMBLY_FIXED_STEPS + 2 * input.untimedParagraphs
