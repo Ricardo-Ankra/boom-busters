@@ -33,6 +33,7 @@ export async function GET(
   let message: string | undefined
   let error = render.error ?? null
   let partNote: string | undefined
+  let failedNote: string | undefined
 
   const inFlight = render.status === 'invoking' || render.status === 'rendering'
   const parts = render.parts !== null && render.parts.length > 0 ? render.parts : null
@@ -43,12 +44,15 @@ export async function GET(
     // submit) is left out and counts as nothing until the next poll.
     if (inFlight && brokerConfigured()) {
       const live: Record<string, number> = {}
+      const failedOnBroker = new Set<number>()
       await Promise.all(
         parts
           .filter((part) => part.status === 'rendering')
           .map(async (part) => {
             try {
-              live[part.renderId] = (await fetchRenderProgress(part.renderId)).overallProgress
+              const progress = await fetchRenderProgress(part.renderId)
+              live[part.renderId] = progress.overallProgress
+              if (progress.status === 'failed') failedOnBroker.add(part.index)
             } catch {
               // Not there yet, or the broker is briefly unreachable.
             }
@@ -58,12 +62,25 @@ export async function GET(
       if (progressPct > render.progressPct) {
         await updateRender(db, render.id, { progressPct })
       }
+      // Unlike a single render, the row is left alone: the runner retries a
+      // failed part once, so the note only warns that it is happening.
+      const failedIndex = [...failedOnBroker].sort((a, b) => a - b)[0]
+      if (failedIndex !== undefined) {
+        failedNote = `Part ${failedIndex + 1} of ${parts.length} failed on Lambda; it is retried once`
+      }
     }
     if (inFlight) {
       const current = parts
         .filter((part) => part.status === 'rendering')
         .sort((a, b) => a.index - b.index)[0]
       if (current) partNote = `Part ${current.index + 1} of ${parts.length}`
+      if (failedNote) partNote = failedNote
+    } else if (render.status === 'qc') {
+      // Every part is rendered; the row stays at 100% while the parts are
+      // measured one by one and then joined.
+      partNote = parts.every((part) => part.qc !== undefined)
+        ? `Joining ${parts.length} parts`
+        : `Measuring ${parts.length} parts`
     } else if (
       render.status === 'done' &&
       brokerConfigured() &&

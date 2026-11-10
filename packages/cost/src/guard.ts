@@ -160,11 +160,26 @@ export async function reserve(
   })
 }
 
-/** Record what the call really cost, closing the reservation. */
-export async function settle(db: DbLike, ledgerId: string, actualUsd: number): Promise<void> {
+/**
+ * Record what the call really cost, closing the reservation. `meta`, when
+ * given, is merged shallowly into the entry's own: existing keys stay, new
+ * keys are added, a shared key takes the new value.
+ */
+export async function settle(
+  db: DbLike,
+  ledgerId: string,
+  actualUsd: number,
+  meta?: Record<string, unknown>,
+): Promise<void> {
   await db
     .update(costLedger)
-    .set({ actualUsd: round4(actualUsd).toFixed(4), updatedAt: new Date() })
+    .set({
+      actualUsd: round4(actualUsd).toFixed(4),
+      updatedAt: new Date(),
+      ...(meta
+        ? { meta: sql`coalesce(${costLedger.meta}, '{}'::jsonb) || ${JSON.stringify(meta)}::jsonb` }
+        : {}),
+    })
     .where(eq(costLedger.id, ledgerId))
 }
 

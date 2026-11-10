@@ -3,6 +3,13 @@ import type { Readable } from 'node:stream'
 /** S3 needs 5 MiB for every part but the last; 64 MiB keeps a film under 10 000 parts. */
 export const MULTIPART_PART_BYTES = 64 * 1024 * 1024
 
+export interface UploadedPart {
+  partNumber: number
+  etag: string
+  /** The part's CRC32 as S3 returned it; completing the upload hands it back. */
+  checksumCrc32?: string
+}
+
 /**
  * Stream a readable into an S3 multipart upload without holding more than one
  * part in memory. The four S3 operations are injected so this is tested with
@@ -13,20 +20,29 @@ export async function uploadStreamMultipart(input: {
   stream: Readable
   partBytes?: number
   create: () => Promise<string>
-  uploadPart: (uploadId: string, partNumber: number, body: Buffer) => Promise<string>
-  complete: (uploadId: string, parts: { partNumber: number; etag: string }[]) => Promise<void>
+  uploadPart: (
+    uploadId: string,
+    partNumber: number,
+    body: Buffer,
+  ) => Promise<{ etag: string; checksumCrc32?: string }>
+  complete: (uploadId: string, parts: UploadedPart[]) => Promise<void>
   abort: (uploadId: string) => Promise<void>
 }): Promise<{ bytes: number; parts: number }> {
   const partBytes = input.partBytes ?? MULTIPART_PART_BYTES
   const uploadId = await input.create()
-  const parts: { partNumber: number; etag: string }[] = []
+  const parts: UploadedPart[] = []
   let bytes = 0
   try {
     let pending: Buffer[] = []
     let pendingBytes = 0
     const send = async (body: Buffer): Promise<void> => {
       const partNumber = parts.length + 1
-      parts.push({ partNumber, etag: await input.uploadPart(uploadId, partNumber, body) })
+      const uploaded = await input.uploadPart(uploadId, partNumber, body)
+      parts.push({
+        partNumber,
+        etag: uploaded.etag,
+        ...(uploaded.checksumCrc32 ? { checksumCrc32: uploaded.checksumCrc32 } : {}),
+      })
       bytes += body.length
     }
     // Async iteration rejects on a stream 'error' event, and awaiting each

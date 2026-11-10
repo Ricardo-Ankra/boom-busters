@@ -468,6 +468,24 @@ describeDb('publish-runner', () => {
       },
     )
 
+    it('waits twenty minutes for a round, not hours', { timeout: 120_000 }, async () => {
+      await doneMasterRender()
+      await draftRecord('master', FIXTURE_PROJECT_ID, {
+        uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+      })
+
+      const { ctx } = await engine.executeStep('await-upload', {
+        events: requestedEvent('master', FIXTURE_PROJECT_ID),
+      })
+
+      // A round is one Lambda of at most 15 minutes; a round killed without a
+      // callback must not stall the publish for hours.
+      expect(ctx.step.waitForEvent).toHaveBeenCalledWith(
+        'await-upload',
+        expect.objectContaining({ timeout: '20m' }),
+      )
+    })
+
     it('sends the budget and no resume on the first round', { timeout: 120_000 }, async () => {
       await doneMasterRender()
       await draftRecord('master', FIXTURE_PROJECT_ID, {

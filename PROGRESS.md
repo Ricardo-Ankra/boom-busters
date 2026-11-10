@@ -4931,6 +4931,35 @@ Final review and fixes:
 - A browser playing a fragmented MP4 of 8 GB.
 - A 30-minute format whose timeline runs past 30:00 takes the parts path, so
   the first live parts render can happen without the owner choosing it.
+- Part MKVs (about 10 GB for 180 minutes, about $0.23 a film a month) stay in
+  the render bucket; intentional, for a later resume project.
+- The QC retry's wiring (one resubmit per part, then the stage fails) is not
+  driven by a test: the harness cannot resolve a wait, so only the pure
+  `partQcOutcome` decision is tested. The same goes for the row reading `qc`
+  after `parts-qc-start`, the ledger's `meta.join` after `master-ready`, and
+  `ChecksumAlgorithm: 'CRC32'` on the join's S3 calls.
+
+### Tidy-up (2026-11-10)
+
+The nine findings the final review parked, plus the flaky test (decision 453):
+
+- Flaky probe test: ledger assertions look at this render's rows, and the probe
+  test ignores submits left by the previous test (`7b0d940f`, `cb8991de`).
+- M1: mock mode plans no parts, so the local fixture plays (`45f1c186`).
+- M2: the screen says `Quality check running` with `Measuring N parts` or
+  `Joining N parts`, from a new `parts-qc-start` step (`d4b1c9ad`).
+- M3: the progress route flags a part the broker reports failed, leaving the
+  row alone (`d4b1c9ad`).
+- M6: an upload round waits 20 minutes for its callback, not 7 hours
+  (`f23c4a2d`).
+- M7: the join's elapsed time and size are kept in the ledger entry's `meta`
+  through an optional `meta` on `settle` (`96fb5d84`).
+- M8: the join's multipart upload asks for CRC32 on every part (`2177b3ce`,
+  `250d7036`).
+- M10: a part's QC is retried once, through `partQcOutcome` (`a1d45b29`).
+- M13: clock times from one hour up read h:mm:ss (`5fd9b49e`).
+- T10: the batched transcription branch has a test, as far as the harness
+  reaches (`e2c30d13`).
 
 ---
 
@@ -10987,3 +11016,30 @@ Part 2 checklist:
      Lambda layer's ffmpeg must support input-side `-vn` and https in the
      concat demuxer. Real S3 multipart against client-s3 3.980 is
      unexercised, and so is a browser playing a fragmented MP4 of 8 GB.
+453. **Long renders tidy-up** (2026-11-10, branch `long-renders-tidy`). The
+     owner asked for decision 452's parked review findings and its flaky test
+     to be fixed ("fix the loose ends"). Nine findings and the test, listed
+     with their commits under "Tidy-up" in the long renders section. The
+     calls that mattered: mock mode plans no parts, so the fixture plays; the
+     row reads `qc` from a new `parts-qc-start` step and the screen says
+     `Measuring N parts` or `Joining N parts`; a part the broker reports
+     failed is named in the note and the row is left alone, because the runner
+     retries it once; an upload round waits 20 minutes for its callback (a
+     12-minute budget inside a 15-minute Lambda), not 7 hours; the join's
+     elapsed time and size go on the ledger entry's `meta` through an optional
+     `meta` on `settle`, a shallow jsonb merge; the join's multipart upload
+     asks for CRC32 on every part and hands the checksums back at complete,
+     with no `ChecksumType` so the composite default holds on every SDK
+     version; a part's QC is retried once (`submit-qc-part-<i>-retry`,
+     `await-qc-part-<i>-retry`), decided per part by the pure
+     `partQcOutcome`; clock times from an hour up read h:mm:ss. The flaky
+     probe test failed because the previous test's run kept going in the
+     background and wrote to the shared ledger; the assertions now look at
+     this render's rows and part ids. One replay window accepted: a parts run
+     that had passed `master-ready` but not `emit-master-ready` when this
+     deploys would write `qc` over its `done` row; no parts render had run, so
+     it cannot have happened. Both stacks were deployed at cc756fa7 before
+     this branch and media-utils again after it (the multipart change). The
+     first live parts render is still outstanding: it needs a film over 30
+     minutes at the preview gate, and the read of production that would find
+     one was refused by the permission classifier, so the owner picks it.

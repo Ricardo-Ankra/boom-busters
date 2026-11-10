@@ -232,6 +232,9 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>, context?: Lambd
           Bucket: bucket,
           Key: job.outputS3Key,
           ContentType: 'video/mp4',
+          // Explicit, because the runtime's bundled SDK version decides the
+          // default. CRC32 with no ChecksumType is composite on every version.
+          ChecksumAlgorithm: 'CRC32',
         }),
       )
       if (!created.UploadId) throw new Error('multipart upload returned no id')
@@ -246,10 +249,14 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>, context?: Lambd
           UploadId: id,
           PartNumber: partNumber,
           Body: body,
+          ChecksumAlgorithm: 'CRC32',
         }),
       )
       if (!part.ETag) throw new Error(`part ${partNumber} returned no etag`)
-      return part.ETag
+      return {
+        etag: part.ETag,
+        ...(part.ChecksumCRC32 ? { checksumCrc32: part.ChecksumCRC32 } : {}),
+      }
     },
     complete: async (id, parts) => {
       const code = await exit
@@ -261,7 +268,11 @@ async function runJoin(job: Extract<MediaJob, { kind: 'join' }>, context?: Lambd
           Key: job.outputS3Key,
           UploadId: id,
           MultipartUpload: {
-            Parts: parts.map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })),
+            Parts: parts.map((part) => ({
+              PartNumber: part.partNumber,
+              ETag: part.etag,
+              ...(part.checksumCrc32 ? { ChecksumCRC32: part.checksumCrc32 } : {}),
+            })),
           },
         }),
       )

@@ -28,7 +28,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { partOutcome, renderRunner, retryPlan } from './render-runner'
+import { partOutcome, partQcOutcome, renderRunner, retryPlan } from './render-runner'
 
 /**
  * The render-runner against the real database (build spec section 13).
@@ -99,6 +99,17 @@ vi.mock('@boom-busters/providers', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return { ...actual, mockProvidersEnabled: () => providers.mock }
 })
+
+/**
+ * "Nothing was reserved for this run": no ledger entry names any render row
+ * that exists now. Asserting on the whole table instead failed once when
+ * another file's rows were left behind.
+ */
+async function expectNothingReserved(): Promise<void> {
+  const ids = new Set((await db.select().from(renders)).map((row) => row.id))
+  const mine = (await listLedger(db)).filter((entry) => ids.has(String(entry.meta['renderId'])))
+  expect(mine).toEqual([])
+}
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
@@ -238,6 +249,35 @@ describeDb('render-runner', () => {
     )
 
     it(
+      'plans no parts in mock mode, even for a timeline over thirty minutes',
+      { timeout: 120_000 },
+      async () => {
+        localRender.renderFixtureLocally.mockImplementation(
+          (input: { renderId: string }): Promise<{ outputKey: string }> =>
+            Promise.resolve({ outputKey: `local://${input.renderId}.mp4` }),
+        )
+        await db.delete(timelines)
+        await insertTimeline(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          json: longTimeline(),
+          s3Key: '',
+        })
+
+        const { result } = await engine.execute({
+          events: approvedEvent(),
+          steps: [{ id: 'emit-master-ready', handler: () => undefined }],
+        })
+
+        expect(result).toMatchObject({ outcome: 'master-ready' })
+        const render = await getRender(db, (result as { renderId: string }).renderId)
+        expect(render?.parts).toBeNull()
+        expect(render?.outputS3Key).toBe(`local://${render?.id}.mp4`)
+        expect(localRender.renderFixtureLocally).toHaveBeenCalled()
+        expect(broker.submitRender).not.toHaveBeenCalled()
+      },
+    )
+
+    it(
       'goes straight to Publish and sends no master.ready when the format has Shorts off',
       { timeout: 120_000 },
       async () => {
@@ -345,7 +385,7 @@ describeDb('render-runner', () => {
         message: expect.stringContaining('AWS_BROKER_URL'),
       })
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
-      expect(await listLedger(db)).toEqual([])
+      await expectNothingReserved()
     })
   })
 
@@ -404,7 +444,7 @@ describeDb('render-runner', () => {
       const rows = await db.select().from(renders)
       expect(rows.some((row) => row.status === 'failed')).toBe(true)
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
-      expect(await listLedger(db)).toEqual([])
+      await expectNothingReserved()
     })
   })
 
@@ -491,8 +531,17 @@ describeDb('render-runner', () => {
         expect(String((error as Error | undefined)?.message ?? error)).toContain(
           'predates long renders in parts',
         )
-        expect(broker.submitRender).not.toHaveBeenCalled()
-        expect(await listLedger(db)).toEqual([])
+        // The previous test's run keeps going in the background and can still
+        // submit a retry after this test began, so the claim is about this
+        // run's own parts (the rows that exist now), never the shared mock.
+        const rows = await db.select().from(renders)
+        const ownParts = new Set(rows.flatMap((row) => (row.parts ?? []).map((p) => p.renderId)))
+        expect(ownParts.size).toBeGreaterThan(0)
+        const submitted = broker.submitRender.mock.calls.map(
+          (call) => (call[0] as { renderId: string }).renderId,
+        )
+        expect(submitted.filter((id) => ownParts.has(id))).toEqual([])
+        await expectNothingReserved()
       },
     )
 
@@ -512,6 +561,49 @@ describeDb('render-runner', () => {
         partOutcome(event({ result: 'failed', reason: 'error', message: 'boom' }), '40m'),
       ).toEqual({ ok: false, detail: 'error: boom' })
       expect(partOutcome(null, '40m')).toEqual({ ok: false, detail: 'no webhook within 40m' })
+    })
+
+    it('reads a part QC completion as usable, or says why it is not', () => {
+      const part = { durationMs: 900_000 }
+      const loudnorm = {
+        input_i: '-20.1',
+        input_tp: '-2.0',
+        input_lra: '5.0',
+        input_thresh: '-30.0',
+        target_offset: '0.1',
+      }
+      const done = (data: Record<string, unknown>) => ({ data })
+      const report = { passed: true, integratedLufs: -20.1, issues: [], loudnorm }
+
+      expect(partQcOutcome(done({ ok: true, result: report }), part, '30m')).toEqual({
+        ok: true,
+        report,
+        measurement: { measurement: loudnorm, durationMs: 900_000 },
+      })
+      expect(
+        partQcOutcome(done({ ok: true, result: { ...report, durationMs: 899_000 } }), part, '30m'),
+      ).toMatchObject({ ok: true, measurement: { durationMs: 899_000 } })
+
+      // The four causes that fail a part's QC attempt.
+      expect(partQcOutcome(null, part, '30m')).toEqual({
+        ok: false,
+        detail: 'no QC result within 30m',
+      })
+      expect(partQcOutcome(done({ ok: false, error: 'ffmpeg exited 1' }), part, '30m')).toEqual({
+        ok: false,
+        detail: 'ffmpeg exited 1',
+      })
+      expect(partQcOutcome(done({ ok: true, result: { nonsense: true } }), part, '30m')).toEqual({
+        ok: false,
+        detail: 'the QC report was not readable',
+      })
+      expect(
+        partQcOutcome(
+          done({ ok: true, result: { passed: true, integratedLufs: -14, issues: [] } }),
+          part,
+          '30m',
+        ),
+      ).toEqual({ ok: false, detail: 'the QC report has no loudness measurement' })
     })
 
     it('cancels a timed-out part on the broker before resubmitting it', () => {

@@ -313,6 +313,48 @@ describe('PreviewScreen', () => {
     expect((video as HTMLVideoElement).currentTime).toBe(900)
   })
 
+  it('reads a part that starts past the first hour as h:mm:ss', async () => {
+    const parts = [
+      { index: 0, startMs: 0 },
+      { index: 11, startMs: 9_900_000 },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: 'done',
+              progressPct: 100,
+              outputUrl: 'https://signed.example.com/master.mp4',
+              qcReport: null,
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              costUsd: '0.60',
+              parts,
+            }),
+        } as unknown as Response),
+      ),
+    )
+    const master: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.60',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      parts,
+    }
+    render(<PreviewScreen {...props({ render: master, atGate: false })} />)
+
+    expect(await screen.findByRole('button', { name: 'Part 12 · 2:45:00' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Part 1 · 0:00' })).toBeInTheDocument()
+  })
+
   it('names the parts in the Stop confirm', async () => {
     const user = userEvent.setup()
     const render_: PreviewRenderProp = {
@@ -334,6 +376,43 @@ describe('PreviewScreen', () => {
         "The parts in flight can't be aborted; they finish in the background and are discarded, about $0.15 each.",
       ),
     ).toBeInTheDocument()
+  })
+
+  it('names what the quality check is doing while the parts are measured and joined', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: 'qc',
+              progressPct: 100,
+              qcReport: null,
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              costUsd: '0.60',
+              partNote: 'Joining 3 parts',
+              parts: THREE_PARTS,
+            }),
+        } as unknown as Response),
+      ),
+    )
+    const render_: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'qc',
+      progressPct: 100,
+      costUsd: '0.60',
+      qcReport: null,
+      error: null,
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      completedAt: null,
+      parts: THREE_PARTS,
+    }
+    render(<PreviewScreen {...props({ render: render_ })} />)
+
+    expect(await screen.findByText('Quality check running · Joining 3 parts')).toBeInTheDocument()
   })
 
   it('offers draft and master side by side, each behind its own confirm', async () => {
