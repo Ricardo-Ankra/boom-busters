@@ -11,7 +11,7 @@ import {
 } from '@boom-busters/schemas'
 import type { CriticReport, CriticVerify, PairwiseOutcome } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
-import { derivedContext, derivedSlot, refineSteer } from '@/lib/exemplar-derive'
+import { derivedContext, derivedSlot, planOfDesign, refineSteer } from '@/lib/exemplar-derive'
 import { pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
@@ -149,7 +149,8 @@ export const motionExemplarRefiner = inngest.createFunction(
         const row = await insertExemplarVersion(db, {
           channelId,
           technique: parent.technique,
-          plan: parent.plan,
+          // The plan follows the design, so the next refine keeps to this version and not the first.
+          plan: planOfDesign(parent.plan, result.code),
           code: result.code,
           parentId,
           steer,

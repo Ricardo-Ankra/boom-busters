@@ -1,6 +1,6 @@
 import type { ScriptClaim, TechniqueEntry } from '@boom-busters/providers'
 import { mechanismName, type ExemplarPlan } from '@boom-busters/schemas'
-import type { ChartBrief, DesignableBrief, GraphicBrief } from '@boom-busters/schemas'
+import type { ChartBrief, DesignableBrief, GraphicBrief, GraphicCode } from '@boom-busters/schemas'
 import type { planIssue } from '@boom-busters/schemas'
 import { EXEMPLAR_LOGO, EXEMPLAR_PROJECT_ID } from '@/lib/exemplar-translate'
 import { DENSE_SHOTS_MAX, denseMoments } from '@/lib/graphic-code/frames'
@@ -129,23 +129,54 @@ export function storyboardMoments(storyboard: readonly string[], durationMs: num
   return [...moments].sort((a, b) => a - b).slice(0, DENSE_SHOTS_MAX)
 }
 
-/** The plan as the producer's steer: the build keeps to it. */
-export function planSteer(plan: ExemplarPlan): string {
+/** The plan in one line: its concept, its storyboard numbered, the mechanisms it is built on. */
+function planLine(plan: ExemplarPlan): string {
   const storyboard = plan.storyboard.map((line, index) => `${index + 1}. ${line}`).join(' ')
   const mechanisms =
     plan.mechanisms.length > 0 ? `; built on: ${plan.mechanisms.map(mechanismName).join(', ')}` : ''
-  return `The plan to build, as agreed: concept ${plan.concept}. Storyboard: ${storyboard}${mechanisms}. Keep to it.`
+  return `concept ${plan.concept}. Storyboard: ${storyboard}${mechanisms}`
 }
 
-/** The refine's steer: the owner's words first, then what is kept, then the plan. */
-export function refineSteer(
-  steer: string,
-  plan: ExemplarPlan,
-  /** The layout check's refusal of the version refined, first (decision 445). */
-  refusal?: string | null,
-): string {
+/** The plan as the producer's steer: the build keeps to it. */
+export function planSteer(plan: ExemplarPlan): string {
+  return `The plan to build, as agreed: ${planLine(plan)}. Keep to it.`
+}
+
+/**
+ * The refine's steer, under the request's own "The producer's steer: "
+ * prefix: the owner's words first, the order to apply all of them (with the
+ * layout refusal to fix, decision 445), then the plan the design was built
+ * to as context the steer overrides, and the rule that nothing else moves.
+ * The plan used to close the message as an order to keep to, so a steer
+ * that contradicted it was applied in part and the rest crept back.
+ */
+export function refineSteer(steer: string, plan: ExemplarPlan, refusal?: string | null): string {
   const refused = refusal
-    ? `The layout check refused the version this refines: ${refusal}. Fix that first.\n`
+    ? ` The layout check refused the version this refines: ${refusal}. Fix that too.`
     : ''
-  return `${refused}The producer's steer: ${steer}\nWhat the steer does not name is kept exactly as it is.\n${planSteer(plan)}`
+  return (
+    `${steer}\nApply every part of the steer.${refused}\n` +
+    `The design was built to this plan: ${planLine(plan)}. ` +
+    'Where the steer and the plan disagree, the steer wins. ' +
+    'Change nothing the steer does not name: everything else is kept exactly as it is.'
+  )
+}
+
+/**
+ * A refined version's plan: the slot and the references as they were, the
+ * concept, the storyboard and the mechanisms as the design wrote them, so
+ * the next refine is told to keep to the design the owner sees and not to
+ * the derivation's first storyboard. A design that wrote none leaves the
+ * plan as it was.
+ */
+export function planOfDesign(
+  plan: ExemplarPlan,
+  code: Partial<Pick<GraphicCode, 'concept' | 'storyboard' | 'mechanisms'>>,
+): ExemplarPlan {
+  return {
+    ...plan,
+    ...(code.concept ? { concept: code.concept } : {}),
+    ...(code.storyboard && code.storyboard.length > 0 ? { storyboard: code.storyboard } : {}),
+    ...(code.mechanisms ? { mechanisms: code.mechanisms } : {}),
+  }
 }

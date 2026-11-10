@@ -11043,3 +11043,33 @@ Part 2 checklist:
      first live parts render is still outstanding: it needs a film over 30
      minutes at the preview gate, and the read of production that would find
      one was refused by the permission classifier, so the owner picks it.
+454. **The refine's steer governs the build** (2026-11-10, branch
+     `refine-steer`; owner: the Refine on exemplars "seems to not follow the
+     instructions perfectly, or only doing some of it"). Found by reading the
+     refiner's last message and the Boom & Busters bar chart's six versions
+     read-only: the message opened on the owner's steer and closed on the
+     parent's plan as an order ("Keep to it"), with "The producer's steer:"
+     written twice, so a steer that contradicted the plan was applied in
+     part. Version 4's steer dropped the white tracing line and the plan
+     still said a hollow red ring fills at the line's end, so the line went
+     and the ring stayed (version 5's steer: remove the white dot); version
+     6's steer never named a ring and one came back, since every refined
+     version stored the derivation's first plan while the design's own
+     concept and storyboard went into `code`, and the card's concept line
+     read the stale plan on every version. Three changes. `refineSteer`
+     now leads with the owner's words, orders every part applied (the
+     layout refusal of decision 445 carried with it as "Fix that too"),
+     says the plan as what the design was built to, and closes on the rule
+     that the steer wins where they disagree and nothing else changes; the
+     request's own prefix is no longer repeated. `planOfDesign` stores the
+     refined version with the design's concept, storyboard and mechanisms
+     over the parent's slot and references, so the next refine keeps to the
+     version the owner sees. The card says under the steer, while a draft
+     with a parent is shown, that Refine builds from the approved version
+     and the draft must be approved first to build on it (decision 398's
+     ruling, which the cleared textarea hid). Left open, named for the
+     owner: the verify round judges prior defects and a ready verdict but is
+     never asked whether each part of the steer landed, so a half-applied
+     steer can verify ready (version 6's verify did name the unapplied
+     font-size part as a defect, but only behind Show review); a per-item
+     steer check in the critic's verify would surface it on the card.
