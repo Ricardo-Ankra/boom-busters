@@ -31,6 +31,7 @@ import {
   type GrabbedFrame,
 } from '@/lib/client-video'
 import {
+  addReferenceWindowAction,
   createReferenceFrameUploadsAction,
   createReferenceUploadAction,
   finaliseReferenceAction,
@@ -59,7 +60,22 @@ const textareaClass =
 const mutedClass = 'text-[12px] text-[var(--color-text-muted)]'
 const dangerClass = 'text-[13px] text-[var(--color-danger)]'
 
-export type MarkerMode = { kind: 'add' } | { kind: 'remark'; reference: ReferenceView }
+export type MarkerMode =
+  | { kind: 'add' }
+  | { kind: 'remark'; reference: ReferenceView }
+  /** Another window of a stored clip, saved as a reference of its own (decision 448). */
+  | { kind: 'window'; reference: ReferenceView }
+
+/**
+ * Where a new window on a stored clip starts: where the stored one ends, two
+ * seconds long; at the start of the clip when that would run past its end.
+ */
+function nextWindow(reference: ReferenceView): { startMs: number; endMs: number } {
+  const durationMs = reference.durationMs ?? 0
+  const startMs = reference.windowEndMs ?? 0
+  if (startMs + 2000 <= durationMs) return { startMs, endMs: startMs + 2000 }
+  return { startMs: 0, endMs: Math.min(2000, durationMs) }
+}
 
 type FileKind = 'image' | 'video'
 
@@ -92,42 +108,51 @@ export function ReferenceMarker({
   const router = useRouter()
   const { toast } = useToast()
   const remark = mode.kind === 'remark' ? mode.reference : null
+  // A clip already stored: Re-mark moves its window, New window adds another (decision 448).
+  const stored = mode.kind === 'add' ? null : mode.reference
+  const windowFrom = mode.kind === 'window' ? mode.reference : null
+  const firstWindow = remark
+    ? { startMs: remark.windowStartMs ?? 0, endMs: remark.windowEndMs ?? 2000 }
+    : windowFrom
+      ? nextWindow(windowFrom)
+      : { startMs: 0, endMs: 2000 }
   const fileRef = React.useRef<HTMLInputElement>(null)
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
 
   const [file, setFile] = React.useState<File | null>(null)
-  const [fileKind, setFileKind] = React.useState<FileKind | null>(remark ? 'video' : null)
+  const [fileKind, setFileKind] = React.useState<FileKind | null>(stored ? 'video' : null)
   const [fileError, setFileError] = React.useState<string | null>(null)
-  const [clipUrl, setClipUrl] = React.useState<string | null>(remark?.clipUrl ?? null)
+  const [clipUrl, setClipUrl] = React.useState<string | null>(stored?.clipUrl ?? null)
   const [meta, setMeta] = React.useState<{
     durationMs: number
     width: number
     height: number
   } | null>(
-    remark
-      ? { durationMs: remark.durationMs ?? 0, width: remark.width, height: remark.height }
+    stored
+      ? { durationMs: stored.durationMs ?? 0, width: stored.width, height: stored.height }
       : null,
   )
   const [title, setTitle] = React.useState(remark?.title ?? '')
-  const [sourceUrl, setSourceUrl] = React.useState(remark?.sourceUrl ?? '')
-  const [rights, setRights] = React.useState(remark?.rights ?? 'Reference only')
+  // The same video: a new window keeps its source and rights; its words are its own.
+  const [sourceUrl, setSourceUrl] = React.useState(stored?.sourceUrl ?? '')
+  const [rights, setRights] = React.useState(stored?.rights ?? 'Reference only')
   const [purpose, setPurpose] = React.useState<ReferencePurpose>(remark?.purpose ?? 'mechanism')
   const [negative, setNegative] = React.useState(remark?.negative ?? false)
   const [carryOver, setCarryOver] = React.useState(remark?.carryOver ?? '')
   const [avoid, setAvoid] = React.useState(remark?.avoid ?? '')
-  const [startText, setStartText] = React.useState(seconds(remark?.windowStartMs ?? 0))
-  const [endText, setEndText] = React.useState(seconds(remark?.windowEndMs ?? 2000))
+  const [startText, setStartText] = React.useState(seconds(firstWindow.startMs))
+  const [endText, setEndText] = React.useState(seconds(firstWindow.endMs))
   const [busy, setBusy] = React.useState(false)
   const [progress, setProgress] = React.useState<string | null>(null)
   const [grabError, setGrabError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (!file || remark) return
+    if (!file || stored) return
     const url = URL.createObjectURL(file)
     setClipUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [file, remark])
+  }, [file, stored])
 
   const choose = async (chosen: File | null) => {
     setFile(chosen)
@@ -186,7 +211,7 @@ export function ReferenceMarker({
     !busy &&
     wordsValid &&
     fileError === null &&
-    (remark ? windowValid && meta !== null : file !== null && fileKind !== null) &&
+    (stored ? windowValid && meta !== null : file !== null && fileKind !== null) &&
     (!isClip || (windowValid && meta !== null))
 
   const words = (kind: FileKind) => ({
@@ -287,6 +312,21 @@ export function ReferenceMarker({
           toast({ title: 'Could not save the window', description: result.error, variant: 'error' })
           return
         }
+      } else if (windowFrom) {
+        // No file and no clip upload: the frames come from the stored clip (decision 448).
+        const taken = await takeFrames()
+        const frames = await uploadFrames(windowFrom.contentHash, taken)
+        setProgress('Saving')
+        const result = await addReferenceWindowAction(channelId, {
+          fromId: windowFrom.id,
+          frames,
+          input: words('video'),
+          read,
+        })
+        if (!result.ok) {
+          toast({ title: 'Could not save the window', description: result.error, variant: 'error' })
+          return
+        }
       } else {
         if (!file || !fileKind) return
         const ready =
@@ -361,7 +401,12 @@ export function ReferenceMarker({
   const showClip = isClip && clipUrl !== null
 
   return (
-    <Dialog label={remark ? 'Re-mark reference' : 'Add reference'} onClose={onClose}>
+    <Dialog
+      label={
+        remark ? 'Re-mark reference' : windowFrom ? 'New window from this clip' : 'Add reference'
+      }
+      onClose={onClose}
+    >
       <div className="flex flex-col gap-3">
         {!storageReady ? (
           <p role="alert" className={dangerClass}>
@@ -369,7 +414,7 @@ export function ReferenceMarker({
           </p>
         ) : null}
 
-        {remark ? null : (
+        {stored ? null : (
           <div className="flex flex-col gap-1.5">
             <input
               ref={fileRef}
@@ -406,7 +451,7 @@ export function ReferenceMarker({
               src={clipUrl ?? undefined}
               // A stored clip plays from another origin; without this the
               // canvas it is drawn to is tainted and no frame can be encoded.
-              crossOrigin={remark ? 'anonymous' : undefined}
+              crossOrigin={stored ? 'anonymous' : undefined}
               controls
               muted
               playsInline

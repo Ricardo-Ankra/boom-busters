@@ -443,6 +443,66 @@ export async function remarkReferenceAction(
   return { ok: true }
 }
 
+const TITLE_TAKEN: ActionResult = {
+  ok: false,
+  error: 'Another reference is already called that. Give this window its own title.',
+}
+
+/**
+ * "New window" on a stored clip (decision 448): another window of the same
+ * clip, saved as a reference of its own with its own words, on the asset the
+ * clip is already stored as. Nothing is uploaded but the window's frames,
+ * which the browser took from the stored clip. Its title must be its own: the
+ * storyboard and the critic name references by title.
+ */
+export async function addReferenceWindowAction(
+  channelId: string,
+  input: { fromId: string; frames: FrameUpload[]; input: unknown; read: boolean },
+): Promise<ActionResult & { id?: string }> {
+  const refusal = await channelGate(channelId)
+  if (refusal) return refusal
+  const source = await ownReference(channelId, input.fromId)
+  if (!source) return UNKNOWN_REFERENCE
+  if (source.kind !== 'video') return { ok: false, error: 'A still has no window to mark.' }
+  const form = MotionReferenceInputSchema.safeParse(input.input)
+  if (!form.success) return { ok: false, error: settingsErrorMessage(form.error) }
+  if (form.data.kind !== 'video') return BAD_TYPE
+  const live = await listMotionReferences(db, channelId)
+  const title = form.data.title.trim().toLowerCase()
+  if (live.some((row) => row.title.trim().toLowerCase() === title)) return TITLE_TAKEN
+  const asset = await getAsset(db, source.assetId)
+  if (!asset) return UNKNOWN_REFERENCE
+  const window = { startMs: form.data.windowStartMs!, endMs: form.data.windowEndMs! }
+  if (!framesMatch(input.frames, window, asset.durationMs ?? 0)) return FRAMES_MISMATCH
+  if (!storageConfigured()) return NO_STORAGE
+  if (await packFull(channelId)) return PACK_FULL
+  const frames = storedFrames(channelId, asset.contentHash, input.frames)
+  const lost = await missingFrame([...frames.dense, ...frames.overview].map((f) => f.r2Key))
+  if (lost) return { ok: false, error: 'A frame never arrived in storage. Try again.' }
+  const { kind: _kind, windowStartMs, windowEndMs, ...words } = form.data
+  let row
+  try {
+    row = await insertMotionReference(db, channelId, {
+      assetId: asset.id,
+      kind: 'video',
+      ...words,
+      windowStartMs,
+      windowEndMs,
+      frames,
+    })
+  } catch (error) {
+    // The pack filled between the check and the insert: the clip stays, its other reference holds it.
+    if (!(error instanceof ValidationError)) throw error
+    return { ok: false, error: error.message }
+  }
+  if (input.read) {
+    const queued = await startReading(channelId, row.id, row.readState)
+    if (!queued.ok) return { ...queued, id: row.id }
+  }
+  refresh()
+  return { ok: true, id: row.id }
+}
+
 /** Read an unread or failed reference, on the owner's word. */
 export async function readReferenceAction(channelId: string, id: string): Promise<ActionResult> {
   const refusal = await channelGate(channelId)

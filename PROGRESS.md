@@ -10741,3 +10741,48 @@ Part 2 checklist:
      category `collapse` as a placeholder the case row needs. Shipping:
      migration 0053, a Vercel deploy and `PUT /api/inngest`. No profile has run
      live.
+447. **The contact sheet is taken on the frame page** (2026-11-09, branch
+     `frames-single-page`). The owner's second production derivation said
+     why it had no frames, as decision 445 meant it to: "the designer's
+     frames failed: page.setViewportSize: Target page, context or browser
+     has been closed", for the line chart and the text highlight. The
+     critic's photograph took each frame size's contact sheet on a second
+     page; in Playwright a page from `browser.newPage` is a browser context
+     of its own, and Vercel's single-process Chromium (`@sparticuz/chromium`,
+     `--single-process --no-zygote`) went down with it, so the next frame
+     size found the browser closed. Reproduced locally with those flags
+     (`browser.newPage: Target page, context or browser has been closed`);
+     the build's layout check never reached it, which is why builds passed
+     and every critic photograph failed. The sheet is now drawn on the frame
+     page itself, its viewport set to the sheet's width and the screenshot
+     taken at one pixel per CSS pixel (`scale: 'css'`), so it keeps its
+     1600 px though the frames are shot at half scale; the next frame size
+     sets its own viewport and document. The decision 389 test of the
+     single-process browser took rest shots only and never reached the
+     sheet; a new one takes the dense set and both sheets under those
+     flags and checks both are 1600 px wide. A probe under the full
+     `@sparticuz/chromium` flag set photographed the line chart, the text
+     highlight and the stat counter, both sheets each, in about 5 s. The
+     same run's stat counter was refused by the facts check (a "3" no cited
+     claim contains); a facts refusal keeps no near miss, since
+     `graphicCodeIssue` returns only the reason and is shared with the
+     board's designer. Shipping: a Vercel deploy; no migration, no Inngest
+     change.
+448. **New window from a stored clip** (2026-11-09, owner: "Proceed with your
+     offer", branch `reference-windows`). A clip marked once can give
+     another window without being uploaded again: "New window" on a video
+     reference's card opens the marker on the stored clip (as Re-mark does,
+     played from its presigned link with `crossOrigin` anonymous), with the
+     full words form, and saves a reference of its own on the same asset
+     through `addReferenceWindowAction`. Only the window's frames travel;
+     they are keyed by the clip's fingerprint as every frame is, and no
+     frame file is ever deleted, so two references sharing one clip's
+     frames is safe. The source link and rights carry over from the source
+     (the same video); the title, purpose, carry-over, avoid and negative
+     are the window's own. The window starts where the stored one ends,
+     two seconds long, or at the clip's start when that would run past its
+     end. The title must differ from every live reference's (case and
+     spaces ignored), since the storyboard and the critic name references
+     by title. Each window counts towards the twelve: the button is
+     disabled at twelve, without storage, and on an archived channel. No
+     migration, no Inngest change; a Vercel deploy ships it.
