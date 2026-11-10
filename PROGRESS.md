@@ -4691,7 +4691,7 @@ Final review and fixes:
       parts of about 15 minutes, joined without the whole file on one disk,
       loudnorm and QC part by part, the transcription fallback batched, and a
       YouTube upload that resumes across invocations (decision 394). Built on
-      branch `long-renders`, decision 450; see "Long renders in parts
+      branch `long-renders`, decision 451; see "Long renders in parts
       (2026-11-10)" below.
 
 ## Case Library redesign (2026-11-05)
@@ -4874,7 +4874,7 @@ Final review and fixes:
 > measured on its own, joined by streaming into one fragmented MP4 with the
 > loudness applied once over the film; the YouTube upload continues in rounds
 > on one session and the transcription fallback runs in batches, so a format
-> can start at up to 180 minutes. Branch `long-renders`; decision 450. Spec
+> can start at up to 180 minutes. Branch `long-renders`; decision 451. Spec
 > `docs/superpowers/specs/2026-11-10-long-renders-design.md`, plan
 > `docs/superpowers/plans/2026-11-10-long-renders.md`. One migration,
 > `0054_broken_madripoor`: `renders.parts` jsonb, null for a single render.
@@ -4902,7 +4902,7 @@ Final review and fixes:
 - [x] Task 9: the publish runner's upload rounds (`5afc0eb9`).
 - [x] Task 10: the transcription fallback in batches of eight (`68651061`).
 - [x] Task 11: the start limit follows the format's own maximum
-      (`3d2db5f2`), this section, decision 450 and the doc amendments (the
+      (`3d2db5f2`), this section, decision 451 and the doc amendments (the
       commit after it on the branch).
 
 ### Owner actions at deploy
@@ -4929,6 +4929,8 @@ Final review and fixes:
 - Real S3 multipart against `@aws-sdk/client-s3` 3.980 is unexercised: the
   helper is tested with the S3 calls injected.
 - A browser playing a fragmented MP4 of 8 GB.
+- A 30-minute format whose timeline runs past 30:00 takes the parts path, so
+  the first live parts render can happen without the owner choosing it.
 
 ---
 
@@ -10939,6 +10941,9 @@ Part 2 checklist:
      cent. Shipping: both stacks, the merge (migration 0054 runs with the
      Vercel build), `PUT /api/inngest`; the owner actions are in the section
      above.
+     Commits 7ad9780b and f96af6c1 say "decision 450" in their subjects; the
+     number was 450 until master took it for another entry (the critic has
+     room to think), and this one is 451.
      Not verified: no live parts render has run. The first should be the
      shortest film over 30 minutes, about $2 to $3, approved separately. The
      Lambda layer's ffmpeg must support input-side `-vn` and https in the

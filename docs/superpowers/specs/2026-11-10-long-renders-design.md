@@ -196,6 +196,8 @@ Pure, in `packages/schemas` (`render-parts.ts`), tested without I/O:
   `renders/<remotionRenderId>/out.mkv`; `outputKeyFrom`'s fallback follows
   the container. A request without a range behaves exactly as today. The
   `RenderRecord` stores the range for audit.
+
+> Built as `codec: 'h264'` with `audioCodec: 'pcm-16'`, which Remotion Lambda names `out.mkv`; `h264-mkv` is the deprecated alias Lambda refuses (decision 451).
 - `expectedDurationSec` on a part request is the part's duration, so the
   accept response's `estimatedCostUsd` is the part's share.
 - New route `POST /presign` with body `{ key }`: a 24-hour presigned GET for a
@@ -348,6 +350,8 @@ its ffprobe. Three findings shaped the design:
    started at 67 ms (the B-frame delay with no edit list, because the header
    is written before the first packet is seen); with
    `empty_moov+default_base_moof+delay_moov` both streams start at 0.000.
+
+> Built as `codec: 'h264'` with `audioCodec: 'pcm-16'`, which Remotion Lambda names `out.mkv`; `h264-mkv` is the deprecated alias Lambda refuses (decision 451).
 
 Therefore a part is rendered as `h264-mkv` with `pcm-16` audio (section 6),
 about a quarter larger than an MP4 part at 6 Mbps (1.5 Mbps of PCM), still
@@ -584,7 +588,9 @@ Tests, per package:
 1. Parts above 30 minutes only, equal lengths from the part count, 15-minute
    target. Films at or under 30 minutes keep the single render.
 1a. Parts are rendered as MKV with PCM audio so they join exactly; the local
-   proof in 7.3 showed MP4 parts cannot.
+   proof in 7.3 showed MP4 parts cannot. (Built as `codec: 'h264'` with
+   `audioCodec: 'pcm-16'`, which Remotion Lambda names `out.mkv`; `h264-mkv`
+   is the deprecated alias Lambda refuses, decision 451.)
 2. Loudness measured per part and applied as one film-wide gain in the join,
    with the combination formula in 7.2, instead of normalising each part.
 3. The join streams through ffmpeg into a multipart upload of a fragmented
