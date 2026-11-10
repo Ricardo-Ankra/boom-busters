@@ -25,6 +25,7 @@ import {
 import type {
   BibleInUse,
   ChannelBible,
+  LegalStatus,
   Outline,
   OutlineChapter,
   SearchBrief,
@@ -56,8 +57,12 @@ export interface ScriptClaim {
   text: string
   sourceUrl: string | null
   confidence: string
-  /** Whether a court or regulator actually ruled. Drives "alleged". */
-  adjudicated?: boolean
+  /**
+   * The claim's legal status. Only an accusation carries a marker: `alleged`
+   * prints ALLEGED and `ruled` prints RULED. `none`, a plain fact, and an
+   * absent value print nothing, so the writer does not hedge a plain fact.
+   */
+  legal?: LegalStatus
   /**
    * The kind of source behind the claim. Only a `major_outlet` claim with a
    * surviving URL can back a headline shot (decision 257), so the claim list
@@ -70,6 +75,12 @@ export interface ScriptClaim {
    * evidence axis, and for a claim stored without one.
    */
   standing?: string
+}
+
+function legalMarker(legal: LegalStatus | undefined): string {
+  if (legal === 'alleged') return ' — ALLEGED, not ruled'
+  if (legal === 'ruled') return ' — RULED'
+  return ''
 }
 
 /**
@@ -86,7 +97,7 @@ export function claimList(claims: readonly ScriptClaim[]): string {
     .map(
       (claim, index) =>
         `[${index + 1}] (id: ${claim.id}) ${claim.text}` +
-        `${claim.adjudicated ? ' — ADJUDICATED' : ' — NOT adjudicated'}` +
+        `${legalMarker(claim.legal)}` +
         `${claim.confidence === 'unverified' ? ' — UNVERIFIED' : ''}` +
         `${claim.standing ? ` — ${claim.standing}` : ''}` +
         `${claimCarriesArticle(claim) ? ' — NEWS ARTICLE' : ''}` +
@@ -753,8 +764,8 @@ entirely; never flag one and never quote one in a sentence.
 For every sentence that asserts a fact, decide:
 - Which claim supports it? Report it in "refs" with the claim's id.
 - If nothing supports it, warn with kind "unsourced-claim".
-- If it states as established fact something the claim list marks NOT
-  adjudicated, warn with kind "missing-alleged".
+- If it states as established fact something the claim list marks
+  ALLEGED, warn with kind "missing-alleged".
 - If it attributes an action or intent to a named person beyond what the
   claims support, warn with kind "unsupported-attribution".
 

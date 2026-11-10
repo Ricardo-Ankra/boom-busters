@@ -52,6 +52,7 @@ export async function loadPlanInputs(projectId: string) {
       confidence: claim.confidence,
       // Which claims a headline card may cite (decision 257).
       sourceType: claim.sourceType,
+      legal: claim.legalStatus,
     })) satisfies ScriptClaim[],
     // Who the producer has photographed (decision 253, amended). Their
     // prompts name them and carry no physical description, because the

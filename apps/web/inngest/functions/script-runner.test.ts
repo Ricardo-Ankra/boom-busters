@@ -291,7 +291,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
     await setProjectStage(db, FIXTURE_PROJECT_ID, { stage: 'dossier', stageStatus: 'queued' })
   })
 
-  it('marks a ruled claim adjudicated and every other claim not', async () => {
+  it("carries each claim's legal status to the claim list", async () => {
     const row = (id: string, patch: Partial<ClaimRow>): ClaimRow => ({
       id,
       dossierId: 'dossier-1',
@@ -325,10 +325,10 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
         sourceUrl: 'https://www.bafin.de/ruling',
         confidence: 'sourced',
         sourceType: 'regulator',
-        adjudicated: true,
+        legal: 'ruled',
       },
-      expect.objectContaining({ id: 'alleged', sourceType: 'major_outlet', adjudicated: false }),
-      expect.objectContaining({ id: 'none', adjudicated: false }),
+      expect.objectContaining({ id: 'alleged', sourceType: 'major_outlet', legal: 'alleged' }),
+      expect.objectContaining({ id: 'none', legal: 'none' }),
     ])
   })
 
@@ -374,9 +374,7 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
           })
           .catch(() => undefined)
         const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
-        expect(sent.messages.map((message) => message.content).join(' ')).toContain(
-          '— NOT adjudicated — CONTESTED',
-        )
+        expect(sent.messages.map((message) => message.content).join(' ')).toContain('— CONTESTED')
       } finally {
         channelForProject.mockImplementation(actual.channelForProject)
       }

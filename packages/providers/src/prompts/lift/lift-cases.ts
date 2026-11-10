@@ -99,14 +99,14 @@ const ID_2 = '01HQ00000000000000000000AB'
 const ID_3 = '01HQ00000000000000000000AC'
 const ID_4 = '01HQ00000000000000000000AD'
 
-/** One of each mark the claim list can carry: adjudicated, unverified, a news article, an X post. */
+/** One of each mark the claim list can carry: ruled, unverified, a news article, an X post. */
 const CLAIMS: ScriptClaim[] = [
   {
     id: ID_1,
     text: 'Wirecard reported 1.9 billion euros held in trust accounts in the Philippines.',
     sourceUrl: 'https://www.ft.com/content/wirecard-missing-cash',
     confidence: 'sourced',
-    adjudicated: false,
+    legal: 'none',
     sourceType: 'major_outlet',
   },
   {
@@ -114,7 +114,7 @@ const CLAIMS: ScriptClaim[] = [
     text: 'Markus Braun was chief executive of Wirecard from 2002 to June 2020.',
     sourceUrl: 'https://example.com/braun',
     confidence: 'sourced',
-    adjudicated: true,
+    legal: 'ruled',
     sourceType: 'court',
   },
   {
@@ -122,7 +122,7 @@ const CLAIMS: ScriptClaim[] = [
     text: 'A short seller alleged in 2016 that the accounts were inflated.',
     sourceUrl: 'https://x.com/zatarra/status/1234567890123456789',
     confidence: 'unverified',
-    adjudicated: false,
+    legal: 'alleged',
     sourceType: 'social',
   },
 ]

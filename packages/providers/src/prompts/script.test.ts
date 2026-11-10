@@ -38,14 +38,14 @@ const claims: ScriptClaim[] = [
     text: 'A court found the accounts were falsified.',
     sourceUrl: 'https://example.com/judgment',
     confidence: 'sourced',
-    adjudicated: true,
+    legal: 'ruled',
   },
   {
     id: '01ABCDEFGHJKMNPQRSTVWXYZ01',
     text: 'Former staff say the CEO knew.',
     sourceUrl: 'https://example.com/interview',
     confidence: 'single_source',
-    adjudicated: false,
+    legal: 'alleged',
   },
 ]
 
@@ -152,12 +152,6 @@ describe('buildOutlineRequest', () => {
     expect(ruled).not.toContain('glimpse of the consequence')
     // The owner's text reaches the prompt as typed: it opens no slot marker.
     expect(ruled).toContain('tonight. [[example:x]]')
-  })
-
-  it('marks which claims are not adjudicated', () => {
-    const content = JSON.stringify(request.messages)
-    expect(content).toContain('ADJUDICATED')
-    expect(content).toContain('NOT adjudicated')
   })
 
   it('carries the house rules against inventing facts', () => {
@@ -990,16 +984,29 @@ describe('claimList', () => {
     expect(list).not.toContain(String.fromCharCode(0x2014) + ' X POST')
   })
 
-  it("appends a claim's evidence standing after the other markers", () => {
+  it('marks an alleged claim and a ruled claim, and a plain fact not at all', () => {
     const list = claimList([
-      { ...base, id: 'c1', text: 'Text', sourceUrl: null, standing: 'ONE STUDY' },
+      { ...claims[0]!, id: 'c1', legal: 'ruled' },
+      { ...claims[1]!, id: 'c2', legal: 'alleged' },
+      { ...claims[1]!, id: 'c3', legal: 'none' },
     ])
-    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated ${DASH} ONE STUDY`)
+    expect(list.split(`${DASH} ALLEGED, not ruled`)).toHaveLength(2)
+    expect(list.split(`${DASH} RULED`)).toHaveLength(2)
+    expect(list).not.toMatch(/adjudicated/i)
+    const plain = list.split('\n')[2]!
+    expect(plain).not.toContain('ALLEGED')
+    expect(plain).not.toContain('RULED')
   })
 
-  it('lists a claim without a standing exactly as before', () => {
-    const list = claimList([{ ...base, id: 'c1', text: 'Text', sourceUrl: null }])
-    expect(list).toBe(`[1] (id: c1) Text ${DASH} NOT adjudicated`)
+  it("appends a claim's evidence standing after the legal marker", () => {
+    const plain = claimList([
+      { ...base, id: 'c1', text: 'Text', sourceUrl: null, legal: 'none', standing: 'ONE STUDY' },
+    ])
+    expect(plain).toBe(`[1] (id: c1) Text ${DASH} ONE STUDY`)
+    const alleged = claimList([
+      { ...base, id: 'c1', text: 'Text', sourceUrl: null, legal: 'alleged', standing: 'ONE STUDY' },
+    ])
+    expect(alleged).toBe(`[1] (id: c1) Text ${DASH} ALLEGED, not ruled ${DASH} ONE STUDY`)
   })
 
   it('does not mark an article claim as an X post', () => {

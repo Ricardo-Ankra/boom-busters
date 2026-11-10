@@ -121,7 +121,7 @@ describe('buildTitlesRequest grounding (decision 303)', () => {
   })
 
   it('frames a claim no court has ruled on as an allegation, never a fact (decision 303, review)', () => {
-    expect(grounded.system).toMatch(/NOT adjudicated/)
+    expect(grounded.system).toMatch(/marked ALLEGED/)
     expect(grounded.system).toMatch(/allegation or a question/)
   })
 

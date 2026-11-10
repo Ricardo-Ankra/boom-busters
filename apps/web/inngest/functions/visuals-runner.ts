@@ -158,6 +158,7 @@ export const visualsRunner = inngest.createFunction(
             confidence: claim.confidence,
             // Which claims a headline card may cite (decision 257).
             sourceType: claim.sourceType,
+            legal: claim.legalStatus,
           })) satisfies ScriptClaim[],
           logos: logos.map((row) => ({
             id: row.id,

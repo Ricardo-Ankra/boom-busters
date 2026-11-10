@@ -249,9 +249,8 @@ export const scriptRunner = inngest.createFunction(
           sourceUrl: claim.sourceUrl,
           confidence: claim.confidence,
           sourceType: claim.sourceType,
-          // Only a court or regulator ruling lets the script drop "alleged"
-          // (spec 6.4); before the legal status existed this was never set.
-          adjudicated: claim.legalStatus === 'ruled',
+          // Only an accusation is marked in the claim list (spec 6.4).
+          legal: claim.legalStatus,
           standing: evidenceLabel(profile, claim.evidenceStatus, 'script') ?? undefined,
         })) satisfies ScriptClaim[],
       }
