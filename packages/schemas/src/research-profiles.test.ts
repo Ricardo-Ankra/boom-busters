@@ -134,10 +134,28 @@ describe('research profiles', () => {
       sentence: 's',
       message: 'no label here',
     }
-    expect(withStandingSeverity(RESEARCH_PROFILES.science, [standing, other, unresolved])).toEqual([
-      { ...standing, severity: 'advisory' },
-      other,
-      unresolved,
-    ])
+    const result = withStandingSeverity(RESEARCH_PROFILES.science, [standing, other, unresolved])
+    expect(result).toEqual([{ ...standing, severity: 'advisory' }, other, unresolved])
+    expect('severity' in result[1]!).toBe(false)
+    expect('severity' in result[2]!).toBe(false)
+  })
+
+  it('the strictest label in a message wins', () => {
+    const { science } = RESEARCH_PROFILES
+    expect(standingSeverity(science, 'ONE STUDY narrated as settled; the claim is CONTESTED')).toBe(
+      'blocking',
+    )
+    expect(standingSeverity(science, 'ESTABLISHED FINDING and ONE STUDY')).toBe('advisory')
+  })
+
+  it('the investigation leaves every warning untouched', () => {
+    const warnings = [
+      { kind: 'overstated-standing' as const, sentence: 's', message: 'CONTESTED here' },
+      { kind: 'unsourced-claim' as const, sentence: 's', message: 'no source given' },
+    ]
+    const result = withStandingSeverity(RESEARCH_PROFILES.investigation, warnings)
+    expect(result[0]).toBe(warnings[0])
+    expect(result[1]).toBe(warnings[1])
+    expect('severity' in result[0]!).toBe(false)
   })
 })

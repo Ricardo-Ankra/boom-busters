@@ -151,16 +151,18 @@ export function evidenceLabel(
   return where === 'script' ? found.scriptLabel : found.reviewLabel
 }
 
-/** The severity a standing warning carries, read from the status label its message names; null when it cannot be resolved. */
+/** The severity a standing warning carries, read from the status labels its message names; the strictest wins (blocking over advisory); null when no label resolves. */
 export function standingSeverity(
   profile: ResearchProfile,
   message: string,
 ): WarningSeverity | null {
   if (!profile.review || !profile.evidence) return null
-  const found = profile.evidence.statuses.find((s) => message.includes(s.scriptLabel))
-  if (!found) return null
-  if (profile.review.standing.blocking.includes(found.key)) return 'blocking'
-  if (profile.review.standing.advisory.includes(found.key)) return 'advisory'
+  const { standing } = profile.review
+  const keys = profile.evidence.statuses
+    .filter((s) => message.includes(s.scriptLabel))
+    .map((s) => s.key)
+  if (keys.some((k) => standing.blocking.includes(k))) return 'blocking'
+  if (keys.some((k) => standing.advisory.includes(k))) return 'advisory'
   return null
 }
 
