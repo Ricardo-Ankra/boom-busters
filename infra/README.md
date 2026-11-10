@@ -4,14 +4,19 @@ Two stacks into the existing Reelscript AWS account, everything tagged
 `project=boom-busters`:
 
 - **boom-busters-media-utils** — FFmpeg layer + Whisper.cpp Lambda
-  (10,240 MB / 10 GB disk / 15 min): `qc`, `loudnorm`, `transcribe`,
+  (10,240 MB / 10 GB disk / 15 min): `qc`, `loudnorm`, `join`, `transcribe`,
   `upload-youtube`, invoked asynchronously by the broker, completing via
-  HMAC-signed webhooks into the web app.
+  HMAC-signed webhooks into the web app. `join` concatenates a long master's
+  parts by streaming through ffmpeg into an S3 multipart upload, so the
+  render bucket's policy also allows `s3:AbortMultipartUpload` and
+  `s3:ListMultipartUploadParts`.
 - **boom-busters-broker** — bearer-token Lambda Function URL: `POST
 /renders` (validates + materialises the timeline, starts Remotion
   Lambda), `POST /renders/:id/cancel` (tombstone, §8.1), `GET /renders/:id`
   (progress proxy), `POST /webhooks/remotion` (signature-verified,
-  normalised into one callback), `POST /media/*` (async dispatch). Alarms:
+  normalised into one callback), `POST /presign` (a 24-hour link to a key
+  under `renders/`, for a joined master the broker never rendered), `POST
+/media/*` (async dispatch, `join` included). Alarms:
   errors, 5xx, signature failures, render concurrency > cap, daily budget.
 
 Everything decision-shaped lives in `lambdas/*/core.ts` / `commands.ts` and
@@ -54,3 +59,9 @@ Cancelling a render is honest, not magical (§8.1): Remotion Lambda cannot
 abort mid-flight, so cancel tombstones the ID; when the webhook eventually
 arrives the artefacts are deleted and no completion event is emitted. The
 wasted spend is bounded (≤ one master ≈ $0.25) and the UI says so.
+
+A master over 30 minutes renders as parts: each request carries a `frameRange`,
+sized into Lambda chunks from the range alone, and is rendered as `h264` with
+`pcm-16` audio, which Remotion writes as `out.mkv` so the parts abut exactly
+when joined. Part files are not browser-playable and are not the deliverable;
+the join's fragmented MP4 is.

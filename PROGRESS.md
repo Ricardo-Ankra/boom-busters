@@ -4687,10 +4687,12 @@ Final review and fixes:
 
 ### Next project
 
-- [ ] **Long renders in parts**, to reach 180 minutes: the master rendered as
+- [x] **Long renders in parts**, to reach 180 minutes: the master rendered as
       parts of about 15 minutes, joined without the whole file on one disk,
       loudnorm and QC part by part, the transcription fallback batched, and a
-      YouTube upload that resumes across invocations (decision 394).
+      YouTube upload that resumes across invocations (decision 394). Built on
+      branch `long-renders`, decision 450; see "Long renders in parts
+      (2026-11-10)" below.
 
 ## Case Library redesign (2026-11-05)
 
@@ -4865,6 +4867,68 @@ Final review and fixes:
 - The topic resolver on ambiguous subjects.
 - The science prompts' effect on a real model: the lift fixtures prove what is
   sent, not what comes back.
+
+## Long renders in parts (2026-11-10)
+
+> A master over 30 minutes now renders as parts of about 15 minutes, each
+> measured on its own, joined by streaming into one fragmented MP4 with the
+> loudness applied once over the film; the YouTube upload continues in rounds
+> on one session and the transcription fallback runs in batches, so a format
+> can start at up to 180 minutes. Branch `long-renders`; decision 450. Spec
+> `docs/superpowers/specs/2026-11-10-long-renders-design.md`, plan
+> `docs/superpowers/plans/2026-11-10-long-renders.md`. One migration,
+> `0054_broken_madripoor`: `renders.parts` jsonb, null for a single render.
+
+### Deliverables
+
+- [x] Task 1: the part plan, the loudness combination and the QC merge in
+      `packages/schemas/src/render-parts.ts` (`5ac952ec`, with its fixes in
+      `1a0ffc83`).
+- [x] Task 2: frame ranges, the join job, resumable uploads and batched
+      transcription in the broker contract (`28202637`).
+- [x] Task 3: `renders.parts` and `updateRenderParts` (`96d4473b`).
+- [x] Task 4: the broker's frame ranges, `POST /presign` and the join
+      dispatch (`9126cdb7`, with the range check moved before the audit copy in
+      `c3e452fc`).
+- [x] Task 5: media-utils measures a part in its QC job and joins the parts by
+      streaming into a multipart upload (`59957378`, with its fixes in
+      `3c36ced4`).
+- [x] Task 6: a YouTube upload that resumes across invocations, and
+      transcription in batches (`3d06fe2b`).
+- [x] Task 7: the render runner's parts path, with each part's wait registered
+      right after its own submit (`7ad9780b`, `66e942bd`).
+- [x] Task 8: parts progress, the per-part stop and part seeking on the preview
+      screen (`bb51b67a`).
+- [x] Task 9: the publish runner's upload rounds (`5afc0eb9`).
+- [x] Task 10: the transcription fallback in batches of eight (`68651061`).
+- [x] Task 11: the start limit follows the format's own maximum
+      (`3d2db5f2`), this section, decision 450 and the doc amendments (the
+      commit after it on the branch).
+
+### Owner actions at deploy
+
+1. `deploy:stacks boom-busters-media-utils` (the join, the batched
+   transcribe, the resumable upload, the measure fields, the multipart
+   policy), then `deploy:stacks boom-busters-broker` (frame ranges, the
+   presign and join routes; the broker bundles `packages/schemas` at deploy).
+   No Remotion function or site redeploy: the frame range is a client option.
+2. Merge; the Vercel production build applies migration 0054
+   (`scripts/deploy-migrate.mjs`).
+3. `PUT /api/inngest` after the Vercel deploy.
+4. YouTube Studio: "Intermediate features" verified for uploads over 15
+   minutes (carried from decision 393's list).
+
+### Not verified
+
+- No live parts render has run. The first should be the shortest film over 30
+  minutes the owner has, about $2 to $3, approved separately. It also reads
+  the join's elapsed time: over half its 15-minute budget means a staged join
+  is the follow-up.
+- The Lambda layer's ffmpeg must support input-side `-vn` and https in the
+  concat demuxer; the local proof used Remotion's bundled ffmpeg.
+- Real S3 multipart against `@aws-sdk/client-s3` 3.980 is unexercised: the
+  helper is tested with the S3 calls injected.
+- A browser playing a fragmented MP4 of 8 GB.
 
 ---
 
@@ -10820,3 +10884,63 @@ Part 2 checklist:
      cited figure replaces in the same place passes; the critic's frames
      see it. The board designer runs the same check and gains the same
      reading. Shipping: a Vercel deploy; no migration, no Inngest change.
+450. **Long renders in parts** (2026-11-10, branch `long-renders`, migration
+     0054). The owner's words that started the project were in decision 394
+     ("agree and proceed", 2026-11-03: the start limit stays 30 until a
+     separate project renders the master in parts); for this one the owner
+     said only "Build the Long renders in parts project ... skip the
+     brainstorm questions". The design, the long-renders design spec dated
+     2026-11-10, is therefore the author's, with its calls listed in its
+     section 13; the owner's review of it is pending.
+     What shipped. A master over 30 minutes renders as parts: the count is
+     ceil(duration / 15 minutes) and each part is ceil(frames / N) frames, so
+     the parts are equal and the last is shorter (a 31-minute film is three
+     parts of about 10 minutes). A film at or under 30 minutes keeps the
+     single render untouched. Each part is a frame range on the broker,
+     rendered as `h264` with `pcm-16` audio, which Remotion names `out.mkv`.
+     Each part gets its own QC job, with the film's offset and the loudnorm
+     measurement; the combined loudness is one formula over the parts
+     (`combineLoudness`), applied once over the film in the join. The join is
+     a media-utils job: ffmpeg's concat demuxer over presigned part urls,
+     video copied, audio through the loudnorm apply filter and `ebur128` to
+     AAC 192 kbps, written as a fragmented MP4 (`empty_moov`,
+     `default_base_moof`, `delay_moov`, 10-second fragments) straight into an
+     S3 multipart upload, so no copy of the film touches a disk. The merged
+     report concatenates the parts' issues (without their loudness issues),
+     sorts them and judges the loudness from the join's own `ebur128`; its
+     `passed` follows every issue, as the single report's does. A part is
+     retried once, tombstoned first so a late webhook is discarded, and so is
+     the join; a second failure fails the stage. The ledger settles per
+     attempt: a completed attempt at its reported cost, a failed or timed-out
+     one at the part's share of the estimate. The YouTube upload continues in
+     rounds of 12 minutes on one resumable session, at most 30; transcription
+     fallback jobs run in batches of 8 under the step-fit rule; and the start
+     limit is now the format's own maximum, up to 180 minutes
+     (`RUNTIME_START_MAX` is renamed `RUNTIME_DEFAULT_MAX`, kept only as a
+     bible's default maximum; the "not supported yet" note and its refusals
+     are gone). The preview screen plays only the joined master, with a
+     button per part that seeks it, and `POST /presign` gives the app a
+     playable link for a key the broker never rendered.
+     Rulings made during the build. Remotion Lambda refuses the deprecated
+     `h264-mkv` codec, so the design's codec is replaced: parts use `h264`
+     plus `pcm-16` and the container follows the audio codec. A part retry
+     and a join retry are one retry each, not a loop. Each part's wait is
+     registered right after its own submit, because Inngest's `waitForEvent`
+     misses an event that arrived before the wait existed; a completion
+     without an output key is a failed part, not a done one.
+     The local proof (spec section 7.3, "Evidence") joined the 20-second
+     fixture, rendered whole and as two frame-range parts, and found three
+     things. MP4 parts do not abut: AAC padding makes the audio 48 ms longer
+     than the video, and the second part started two frames late. MKV parts
+     with PCM audio abut exactly: 600 of 600 frames, video 20.000 s, audio
+     20.022 s after AAC's own end padding, in under a second. And `delay_moov`
+     is required: without it the fragmented output's video started at 67 ms.
+     Cost: about $11 to render 180 minutes in 12 parts, and the join under a
+     cent. Shipping: both stacks, the merge (migration 0054 runs with the
+     Vercel build), `PUT /api/inngest`; the owner actions are in the section
+     above.
+     Not verified: no live parts render has run. The first should be the
+     shortest film over 30 minutes, about $2 to $3, approved separately. The
+     Lambda layer's ffmpeg must support input-side `-vn` and https in the
+     concat demuxer. Real S3 multipart against client-s3 3.980 is
+     unexercised, and so is a browser playing a fragmented MP4 of 8 GB.
