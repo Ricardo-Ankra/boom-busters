@@ -538,6 +538,7 @@ describe('POST /renders with a frame range (long renders in parts)', () => {
     expect(response.status).toBe(400)
     expect(response.body).toMatchObject({ error: "frame range past the timeline's last frame" })
     expect(w.renderCalls).toBe(0)
+    expect(w.stored.has(`renders/${RENDER}/timeline.json`)).toBe(false)
   })
 
   it("falls back to out.mkv for a part's webhook with no outputFile", async () => {

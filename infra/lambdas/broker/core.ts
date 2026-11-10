@@ -301,11 +301,6 @@ async function handleCreateRender(
     return { status: 422, body: { error: 'timeline is not canonical', issues: canonicalIssues } }
   }
 
-  const materialised = await materialiseTimeline(timelineParsed.data, (key) =>
-    deps.storage.presign(key),
-  )
-  await deps.storage.putJson(`renders/${render.renderId}/timeline.json`, materialised)
-
   // Chunk size from the timeline's own clock: the whole render must fit
   // in `renderFanout` chunks. Remotion refuses framesPerLambda below 4.
   const totalFrames = Math.ceil(
@@ -315,6 +310,12 @@ async function handleCreateRender(
   if (frameRange && frameRange[1] >= totalFrames) {
     return { status: 400, body: { error: "frame range past the timeline's last frame" } }
   }
+
+  const materialised = await materialiseTimeline(timelineParsed.data, (key) =>
+    deps.storage.presign(key),
+  )
+  await deps.storage.putJson(`renders/${render.renderId}/timeline.json`, materialised)
+
   const framesToRender = frameRange ? frameRange[1] - frameRange[0] + 1 : totalFrames
   const framesPerLambda = Math.max(4, Math.ceil(framesToRender / Math.max(1, deps.renderFanout)))
 
