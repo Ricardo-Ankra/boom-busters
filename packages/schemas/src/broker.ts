@@ -233,10 +233,23 @@ export const QcIssueSchema = z.object({
   durationMs: z.number().int().min(0).optional(),
   detail: z.string().min(1),
 })
+/** ffmpeg loudnorm first-pass measurement, as ffmpeg prints it (strings). */
+export const LoudnormMeasurementSchema = z.object({
+  input_i: z.string(),
+  input_tp: z.string(),
+  input_lra: z.string(),
+  input_thresh: z.string(),
+  target_offset: z.string(),
+})
+export type LoudnormMeasurement = z.infer<typeof LoudnormMeasurementSchema>
 export const QcReportSchema = z.object({
   passed: z.boolean(),
   integratedLufs: z.number(),
   issues: z.array(QcIssueSchema),
+  /** On a part's report: its measurement, for the film-wide combination. */
+  loudnorm: LoudnormMeasurementSchema.optional(),
+  /** On a part's report: the part's measured duration. */
+  durationMs: z.number().int().min(0).optional(),
 })
 export type QcReport = z.infer<typeof QcReportSchema>
 

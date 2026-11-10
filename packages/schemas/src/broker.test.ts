@@ -240,3 +240,29 @@ describe('webhook signing', () => {
     expect(verifyBrokerSignature(body, token, '')).toBe(false)
   })
 })
+
+describe('QcReportSchema loudness fields', () => {
+  it('a QC report without loudnorm parses as before', () => {
+    const parsed = QcReportSchema.parse({ passed: true, integratedLufs: -14, issues: [] })
+    expect(parsed.loudnorm).toBeUndefined()
+    expect(parsed.durationMs).toBeUndefined()
+  })
+
+  it('carries the loudnorm measurement and duration on a part report', () => {
+    const parsed = QcReportSchema.parse({
+      passed: true,
+      integratedLufs: -14.2,
+      issues: [],
+      loudnorm: {
+        input_i: '-14.20',
+        input_tp: '-1.10',
+        input_lra: '6.30',
+        input_thresh: '-24.20',
+        target_offset: '0.20',
+      },
+      durationMs: 900030,
+    })
+    expect(parsed.loudnorm?.input_i).toBe('-14.20')
+    expect(parsed.durationMs).toBe(900030)
+  })
+})
