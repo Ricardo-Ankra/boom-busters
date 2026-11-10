@@ -1,4 +1,5 @@
 import {
+  BANNED_WORDS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_IN_USE,
   OutlineSchema,
@@ -18,6 +19,7 @@ import {
   buildSelfCheckRequest,
   buildShortsRequest,
   buildTeaserRequest,
+  houseStyle,
   mockChapter,
   mockOutline,
   mockSelfCheck,
@@ -405,6 +407,51 @@ describe('tensionContract', () => {
     })
     expect(tensionContract(bare, 0)).toBe('')
     expect(tensionContract(bare, 1)).toBe('')
+  })
+})
+
+describe('the script length and tag budget', () => {
+  it('sizes the outline with the shared target-words calculation', () => {
+    const { system } = buildOutlineRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      dossierMd: '# Enron',
+      claims,
+      targetRuntimeMin: 15,
+      wordsPerMinute: 150,
+      introLine: 'one two',
+      outroLine: 'three',
+    })
+    expect(system).toContain('Produce a chapter plan totalling about 2135 words')
+  })
+
+  it('tells the chapter its floor and its ceiling', () => {
+    const { system } = buildChapterRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'Enron',
+      outline: {
+        ...outline,
+        chapters: outline.chapters.map((chapter) => ({ ...chapter, targetWords: 300 })),
+      },
+      chapterIndex: 1,
+      previousChapters: [],
+      claims,
+    })
+    expect(system).toContain('Write between 300 and 330 words. Under 300 is too short.')
+    expect(system).not.toContain('Target about')
+  })
+
+  it('tells the writer the tag budget', () => {
+    expect(houseStyle(FIRST_CHANNEL_IN_USE.bible).replace(/\s+/g, ' ')).toContain(
+      'at most one every 120 words, and [long pause] at most once',
+    )
+  })
+
+  it('prints the banned list from the shared source', () => {
+    const style = houseStyle(FIRST_CHANNEL_IN_USE.bible).replace(/\s+/g, ' ')
+    expect(style).toContain(
+      `Never write: ${BANNED_WORDS.map((w) => (w.includes(' ') ? `"${w}"` : w)).join(', ')}.`,
+    )
   })
 })
 

@@ -517,6 +517,11 @@ export type ExpressionTag = (typeof EXPRESSION_TAGS)[number]
  */
 const NARRATION_TAG_MARKUP = /\[[^\][\r\n]{1,60}\]/g
 
+/** Every narration tag in the text, as written, in order. */
+export function narrationTags(text: string): string[] {
+  return text.match(NARRATION_TAG_MARKUP) ?? []
+}
+
 /**
  * The words alone, for everything that is not the synthesiser.
  *
@@ -680,6 +685,23 @@ export function countWords(text: string): number {
   // app is built on this number.
   const words = stripNarrationMarkup(text)
   return words === '' ? 0 : words.split(/\s+/).length
+}
+
+/**
+ * The words the model is asked to write for a script: the voice's pace over the
+ * target runtime, less a little for pacing beats, less the fixed opening and
+ * closing lines the owner wrote (they are part of the runtime, not the model's
+ * to write). One calculation for the outline prompt and the length checks.
+ */
+export function scriptTargetWords(
+  targetRuntimeMin: number,
+  format: { wordsPerMinute?: number; introLine?: string; outroLine?: string },
+): number {
+  const fixedWords = countWords(format.introLine ?? '') + countWords(format.outroLine ?? '')
+  return Math.max(
+    0,
+    Math.round(targetRuntimeMin * (format.wordsPerMinute ?? 150) * 0.95) - fixedWords,
+  )
 }
 
 export function estimateRuntimeSec(text: string, wordsPerMinute = NARRATION_WPM): number {

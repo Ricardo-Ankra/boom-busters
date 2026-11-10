@@ -9,6 +9,8 @@ import {
   countBySeverity,
   countWords,
   estimateRuntimeSec,
+  narrationTags,
+  scriptTargetWords,
   sentenceHash,
   replaceParagraph,
   resolveCandidateSegment,
@@ -635,5 +637,24 @@ describe('TeaserFetchesRecordSchema (decision 231)', () => {
     expect(() =>
       TeaserFetchesRecordSchema.parse({ beats: [null, null, null, null, null, null] }),
     ).toThrow()
+  })
+})
+
+describe('scriptTargetWords', () => {
+  it('computes the target words from the pace and the fixed lines', () => {
+    expect(
+      scriptTargetWords(15, { wordsPerMinute: 150, introLine: 'one two', outroLine: 'three' }),
+    ).toBe(2135)
+    expect(scriptTargetWords(10, {})).toBe(1425)
+    expect(scriptTargetWords(1, { introLine: 'a '.repeat(500) })).toBe(0)
+  })
+})
+
+describe('narrationTags', () => {
+  it('lists every bracketed tag as written', () => {
+    expect(
+      narrationTags('It stopped [pause] and then [Long Pause] [grave, measured] ended.'),
+    ).toEqual(['[pause]', '[Long Pause]', '[grave, measured]'])
+    expect(narrationTags('No tags here.')).toEqual([])
   })
 })

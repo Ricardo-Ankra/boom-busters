@@ -1,4 +1,5 @@
 import {
+  BANNED_WORDS,
   LONG_CHAPTER_WORDS,
   LONG_SCRIPT_WORDS,
   OUTLINE_BEAT_MAX,
@@ -20,6 +21,7 @@ import {
   claimCarriesPost,
   countWords,
   researchProfileOf,
+  scriptTargetWords,
   searchBriefLine,
   splitSentences,
 } from '@boom-busters/schemas'
@@ -135,11 +137,7 @@ Voice: ${literalBibleText(bible.narrationRegister)}. No rhetorical questions, no
 addressing the audience as "guys". Let the facts carry it.
 
 Sound like a person, not a language model:
-- Never write: delve, leverage, robust, comprehensive, streamline, foster,
-  facilitate, pivotal, nuanced, multifaceted, tapestry, testament, intricate,
-  landscape, showcase, underscore, crucial, vibrant, furthermore, moreover,
-  notably, "it is important to note", "in conclusion", "at the end of the
-  day", "little did they know".
+- Never write: ${BANNED_WORDS.map((word) => (word.includes(' ') ? `"${word}"` : word)).join(', ')}.
 - Vary sentence length hard. Put a fragment — five words or fewer — near
   every long sentence. Never three same-length sentences in a row: metronomic
   pacing is the loudest tell there is once it is read aloud.
@@ -176,7 +174,8 @@ text-to-speech narrator, and punctuation is its pacing:
   nobody said out loud, [exhales], or free-form direction like
   [grave, measured] or [emphasis on "never"]. A handful per chapter, placed
   where they earn their keep — the default register is even and unforced,
-  and a script that gasps at everything gasps at nothing.
+  and a script that gasps at everything gasps at nothing. A handful of tags
+  per chapter, at most one every 120 words, and [long pause] at most once.
 - Numbers, dates and abbreviations are read exactly as written: write
   [[example:script-read-aloud-numbers]].
 
@@ -309,11 +308,7 @@ export function buildOutlineRequest(input: {
   const calm = input.intent === 'calm'
   // The voice's words per minute, minus a little for pacing beats, minus the
   // fixed lines the owner wrote, which are part of the runtime and not the model's to write.
-  const fixedWords = countWords(input.introLine ?? '') + countWords(input.outroLine ?? '')
-  const targetWords = Math.max(
-    0,
-    Math.round(input.targetRuntimeMin * (input.wordsPerMinute ?? 150) * 0.95) - fixedWords,
-  )
+  const targetWords = scriptTargetWords(input.targetRuntimeMin, input)
 
   return {
     task: 'scripting',
@@ -719,7 +714,7 @@ bullet points, no lists — the words are read aloud exactly as written, and
 the bracketed narration tags the house style describes are the one thing in
 the text that is direction rather than words. Place them inline as you draft.
 
-Target about ${chapter.targetWords} words.${input.chapterIndex === 0 ? openingExamples(input.bible) : ''}`,
+Write between ${chapter.targetWords} and ${Math.round(chapter.targetWords * 1.1)} words. Under ${chapter.targetWords} is too short.${input.chapterIndex === 0 ? openingExamples(input.bible) : ''}`,
       input.bible,
     ),
     messages: [
