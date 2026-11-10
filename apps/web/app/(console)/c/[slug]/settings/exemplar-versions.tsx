@@ -1,7 +1,7 @@
 'use client'
 
 import { CRITIC_AXES } from '@boom-busters/schemas'
-import type { BrandKitStored, CriticAxis, TechniqueKey } from '@boom-busters/schemas'
+import type { BrandKitStored, CriticSteerCheck, TechniqueKey } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -21,9 +21,29 @@ import {
  * three buttons; and every version with Restore on a retired one.
  */
 
-const capitalised = (axis: CriticAxis) => axis.charAt(0).toUpperCase() + axis.slice(1)
+const capitalised = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
-/** "Engagement 8: the line", one per axis; nothing before a critic ran. */
+/**
+ * The critic's check of each part of the steer (decision 455): how many
+ * parts landed, then "Done: the part. what the pictures showed" per part.
+ */
+function SteerCheck({ check }: { check: readonly CriticSteerCheck[] }) {
+  const done = check.filter((part) => part.state === 'done').length
+  return (
+    <>
+      <li>
+        The steer, checked: {done} of {check.length} parts done
+      </li>
+      {check.map((part, index) => (
+        <li key={index}>
+          {capitalised(part.state)}: {part.part}. {part.line}
+        </li>
+      ))}
+    </>
+  )
+}
+
+/** "Engagement 8: the line", one per axis, then the steer's parts checked; nothing before a critic ran. */
 export function CriticLines({ version }: { version: ChannelExemplarVersionView }) {
   if (!version.scores) {
     return <p className="text-[12px] text-[var(--color-text-muted)]">No critic report yet.</p>
@@ -36,6 +56,9 @@ export function CriticLines({ version }: { version: ChannelExemplarVersionView }
           {capitalised(axis)} {scores[axis].score}: {scores[axis].line}
         </li>
       ))}
+      {version.steerCheck && version.steerCheck.length > 0 ? (
+        <SteerCheck check={version.steerCheck} />
+      ) : null}
     </ul>
   )
 }

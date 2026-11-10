@@ -305,7 +305,24 @@ describe('the previous version, verify and pairwise (spec 9.2, steps 4 and 7)', 
     expect(ask).toContain('2. at 2.0 s in portrait: the figure is small')
     expect(ask).toContain('"priorDefects"')
     expect(ask).toContain('"verdict"')
+    expect(ask).not.toContain('"steer"')
     expect(request.task).toBe('critic')
+  })
+
+  it("asks a refine's verify to check each part of the steer (decision 455)", () => {
+    const request = buildCriticRequest({
+      ...INPUT,
+      verify: {
+        prior: REPORT,
+        brief: "The producer's steer: drop the line, and keep the ring.",
+        steer: 'drop the line, and keep the ring.',
+      },
+    })
+    const ask = request.messages[2]!.content
+    expect(ask).toContain('This version was built to this steer: drop the line, and keep the ring.')
+    expect(ask).toContain('"steer": [{"part": "...", "state": "done", "line": "..."}]')
+    expect(ask).toContain('"done", "partly" or "missed"')
+    expect(ask).toContain('a part missed keeps the verdict at "one-more-pass"')
   })
 
   it('leaves the critic room to think over its pictures and still answer (decision 450)', () => {
@@ -350,9 +367,18 @@ describe('the previous version, verify and pairwise (spec 9.2, steps 4 and 7)', 
     )
     expect(verify.verdict).toBe('ready')
     expect(verify.priorDefects).toEqual([{ index: 1, state: 'fixed' }])
+    expect(verify.steer).toBeUndefined()
     const bare = parseCriticVerify(JSON.stringify(REPORT))
     expect(bare.verdict).toBe('one-more-pass')
     expect(bare.priorDefects).toEqual([])
+    const steer = [
+      { part: 'drop the line', state: 'done', line: 'no line on any frame' },
+      { part: 'keep the ring', state: 'missed', line: 'the ring is gone' },
+    ]
+    expect(parseCriticVerify(JSON.stringify({ ...REPORT, steer })).steer).toEqual(steer)
+    expect(mockCriticVerify(INPUT.plan, REPORT, 'slower').steer).toEqual([
+      { part: 'slower', state: 'done', line: '[mock] on every frame' },
+    ])
     const prefers = Object.fromEntries(CRITIC_AXES.map((axis) => [axis, 'A']))
     expect(parsePairwise(JSON.stringify({ prefers })).craft).toBe('A')
     expect(() => parsePairwise(JSON.stringify({ prefers: { ...prefers, craft: 'C' } }))).toThrow()

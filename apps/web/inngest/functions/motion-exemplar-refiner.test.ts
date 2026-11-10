@@ -182,6 +182,9 @@ describeDb('motion-exemplar-refiner', () => {
     })
     expect(draft.code.title).toMatch(/^\[mock\] Refined:/)
     expect(draft.verify?.verdict).toBe('ready')
+    expect(draft.verify?.steer).toEqual([
+      { part: 'slower, darker', state: 'done', line: '[mock] on every frame' },
+    ])
     expect(draft.critique?.scores.craft.score).toBe(8)
     expect(callLlm).not.toHaveBeenCalled()
     expect(
@@ -299,6 +302,7 @@ describeDb('motion-exemplar-refiner', () => {
           ...JSON.parse(report().text),
           prefers: Object.fromEntries(CRITIC_AXES.map((axis) => [axis, 'A'])),
           priorDefects: [{ index: 1, state: 'fixed' }],
+          steer: [{ part: 'slower', state: 'done', line: 'every move takes longer' }],
           verdict: 'ready',
         }),
       })
@@ -322,6 +326,7 @@ describeDb('motion-exemplar-refiner', () => {
       const ask = verify.messages.at(-1).content
       expect(ask).toContain('Previous version (B)')
       expect(ask).toContain("This is a verify round. The producer's steer: slower")
+      expect(ask).toContain('This version was built to this steer: slower')
       expect(ask).toContain('1. at 0.9 s in landscape: the label clips')
       expect(verifyOptions).toMatchObject({ purpose: 'verify' })
       const draft = (await listChannelExemplars(db, FIRST_CHANNEL_ID)).find(
@@ -329,6 +334,9 @@ describeDb('motion-exemplar-refiner', () => {
       )!
       expect(draft.parentId).toBe(parent.id)
       expect(draft.verify?.priorDefects).toEqual([{ index: 1, state: 'fixed' }])
+      expect(draft.verify?.steer).toEqual([
+        { part: 'slower', state: 'done', line: 'every move takes longer' },
+      ])
       expect(draft.pairwise?.craft).toBe('new')
       expect(draft.frames?.round).toBe(1)
       expect(draft.metrics?.simultaneity).toBe(0.2)

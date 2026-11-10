@@ -4,6 +4,7 @@ import { MANIFEST } from '@boom-busters/providers'
 import { isHouseTechnique } from '@boom-busters/schemas'
 import type {
   CriticAxis,
+  CriticSteerCheck,
   ExemplarStatus,
   GraphicCode,
   GraphicCodePayload,
@@ -43,6 +44,8 @@ export interface ChannelExemplarVersionView {
   copiedFrom: string | null
   /** The layout check's refusal of a kept build (decision 445): refine it, never approve it. */
   refusal: string | null
+  /** The critic's check of each part of a refine's steer (decision 455); null when the verify has none. */
+  steerCheck: CriticSteerCheck[] | null
 }
 
 export interface ChannelExemplarView {
@@ -80,6 +83,7 @@ function versionView(row: ChannelExemplarRow): ChannelExemplarVersionView {
     approvedAt: row.approvedAt?.toISOString() ?? null,
     copiedFrom: row.copiedFrom,
     refusal: row.refusal,
+    steerCheck: row.verify?.steer ?? null,
   }
 }
 

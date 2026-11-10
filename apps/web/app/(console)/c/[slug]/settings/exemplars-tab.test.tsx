@@ -110,6 +110,7 @@ const channelVersion = (over: Partial<ChannelExemplarVersionView>): ChannelExemp
   approvedAt: '2026-11-04T10:00:00.000Z',
   copiedFrom: null,
   refusal: null,
+  steerCheck: null,
   ...over,
 })
 

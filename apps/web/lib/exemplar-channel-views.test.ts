@@ -75,6 +75,12 @@ describe('channelExemplarViewsFrom (spec 2026-11-04, section 11.4)', () => {
         parentId: 'v2',
         steer: 'slower',
         createdAt: at('2026-11-04T12:00:00.000Z'),
+        verify: {
+          ...critique,
+          priorDefects: [],
+          steer: [{ part: 'slower', state: 'partly', line: 'the figure still snaps in' }],
+          verdict: 'one-more-pass',
+        } as unknown as ChannelExemplarRow['verify'],
       }),
       row({ id: 'b1', technique: 'bar-chart', version: 1 }),
     ])
@@ -86,6 +92,11 @@ describe('channelExemplarViewsFrom (spec 2026-11-04, section 11.4)', () => {
     expect(stat.approved?.approvedAt).toBe('2026-11-04T11:00:00.000Z')
     expect(stat.pendingDraft?.id).toBe('v3')
     expect(stat.pendingDraft?.steer).toBe('slower')
+    // The critic's check of each part of the steer (decision 455); null on a verify that has none.
+    expect(stat.pendingDraft?.steerCheck).toEqual([
+      { part: 'slower', state: 'partly', line: 'the figure still snaps in' },
+    ])
+    expect(stat.approved?.steerCheck).toBeNull()
     expect(stat.versions.map((version) => version.id)).toEqual(['v3', 'v2', 'v1'])
     expect(stat.versions[0]?.concept).toBe('the concept')
     expect(stat.versions[0]?.mechanisms).toEqual(['drum'])
