@@ -90,4 +90,21 @@ describe('chapterCuePoints', () => {
     const swapped = swapMusicBed(silent, { r2Key: 'boom-busters/music/other.mp3' })
     expect(swapped.music?.cuePoints.map((c) => c.tMs)).toEqual([0, 15_500])
   })
+
+  it('finds a card by when it resumes, not by the source chapter index', () => {
+    const input = goldenInput()
+    const timeline = compileTimeline({
+      ...input,
+      chapterMarking: 'cards',
+      paragraphs: input.paragraphs.map((p) =>
+        p.chapterIndex === 1 ? { ...p, chapterIndex: 5 } : p,
+      ),
+    })
+    const card = timeline.overlays.find((o) => o.kind === 'chapterCard')
+    expect(card?.kind === 'chapterCard' && card.props.index).toBe(6)
+    expect(chapterCuePoints(timeline).map((c) => c.tMs)).toEqual([0, 15_500])
+    expect(chapterCuePoints(timeline).map((c) => c.tMs)).toEqual(
+      timeline.music?.cuePoints.map((c) => c.tMs),
+    )
+  })
 })

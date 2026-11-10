@@ -36,9 +36,8 @@ export function chapterCuePoints(
     if (i === 0) return { tMs: 0, style: 'chapter' as const }
     const card = timeline.overlays.find(
       (overlay) =>
-        (overlay.kind === 'chapterCard' && overlay.props.index === i + 1) ||
-        (overlay.kind === 'titleCard' &&
-          overlay.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS === first.startMs),
+        (overlay.kind === 'chapterCard' || overlay.kind === 'titleCard') &&
+        overlay.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS === first.startMs,
     )
     return {
       tMs: card ? card.startMs : Math.max(0, first.startMs - CHAPTER_HOLD_MS),
