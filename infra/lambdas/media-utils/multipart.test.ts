@@ -2,12 +2,14 @@ import { Readable } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { uploadStreamMultipart } from './multipart'
 
+type UploadResult = { etag: string; checksumCrc32?: string }
+
 function fakes() {
   const bodies: number[] = []
   return {
     bodies,
     create: vi.fn(async () => 'up-1'),
-    uploadPart: vi.fn(async (_id: string, n: number, body: Buffer) => {
+    uploadPart: vi.fn(async (_id: string, n: number, body: Buffer): Promise<UploadResult> => {
       bodies.push(body.length)
       return { etag: `etag-${n}`, checksumCrc32: `crc-${n}` }
     }),
