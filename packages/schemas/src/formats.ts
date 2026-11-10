@@ -4,10 +4,10 @@ import { z } from 'zod'
 export const TITLE_SLOTS = ['topic', 'formatKeyword', 'pillar', 'runtime'] as const
 export type TitleSlot = (typeof TITLE_SLOTS)[number]
 
-/** Outer limits for a format's runtime, in minutes; the start limit is the default `max`. */
+/** Outer limits for a format's runtime, in minutes; the default maximum is only a bible's default choice. */
 export const RUNTIME_OUTER_MIN = 3
 export const RUNTIME_OUTER_MAX = 180
-export const RUNTIME_START_MAX = 30
+export const RUNTIME_DEFAULT_MAX = 30
 
 export const DEFAULT_WORDS_PER_MINUTE = 150
 export const DEFAULT_SHOT_HOLD = 1
@@ -22,7 +22,7 @@ const RuntimeSchema = z
   .strictObject({
     default: z.number().int().default(15),
     min: z.number().int().default(RUNTIME_OUTER_MIN),
-    max: z.number().int().default(RUNTIME_START_MAX),
+    max: z.number().int().default(RUNTIME_DEFAULT_MAX),
   })
   .refine(
     (r) =>
@@ -43,7 +43,11 @@ export const ChannelFormatSchema = z
     primary: z.boolean(),
     keywords: z.array(KeywordSchema).max(FORMAT_KEYWORDS_MAX).default([]),
     intent: z.enum(['tension', 'calm']).default('tension'),
-    runtime: RuntimeSchema.default({ default: 15, min: RUNTIME_OUTER_MIN, max: RUNTIME_START_MAX }),
+    runtime: RuntimeSchema.default({
+      default: 15,
+      min: RUNTIME_OUTER_MIN,
+      max: RUNTIME_DEFAULT_MAX,
+    }),
     wordsPerMinute: z.number().min(80).max(200).default(DEFAULT_WORDS_PER_MINUTE),
     shotHold: z
       .number()
@@ -85,7 +89,7 @@ export function defaultFormat(name = 'Main'): ChannelFormat {
     primary: true,
     keywords: [],
     intent: 'tension',
-    runtime: { default: 15, min: RUNTIME_OUTER_MIN, max: RUNTIME_START_MAX },
+    runtime: { default: 15, min: RUNTIME_OUTER_MIN, max: RUNTIME_DEFAULT_MAX },
     wordsPerMinute: DEFAULT_WORDS_PER_MINUTE,
     shotHold: DEFAULT_SHOT_HOLD,
     titleTemplate: '',

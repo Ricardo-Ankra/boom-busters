@@ -132,7 +132,7 @@ function buildDeps(webhookUrl: string): BrokerDeps {
     renderFanout: Number(process.env['RENDER_FANOUT'] ?? '150'),
     store: s3Store(stateBucket),
     remotion: {
-      async render({ composition, timeline, renderId, scale, framesPerLambda }) {
+      async render({ composition, timeline, renderId, scale, framesPerLambda, frameRange }) {
         const { renderId: remotionRenderId, bucketName } = await renderMediaOnLambda({
           region: region() as never,
           functionName: env('REMOTION_FUNCTION_NAME'),
@@ -140,6 +140,11 @@ function buildDeps(webhookUrl: string): BrokerDeps {
           composition,
           inputProps: { timeline },
           codec: 'h264',
+          // A part carries PCM audio: MP4 parts each carry 48 ms of AAC
+          // padding, so they do not abut when concatenated. Remotion picks
+          // the container from the audio codec, and h264 with pcm-16 is MKV
+          // (out.mkv), which abuts exactly.
+          ...(frameRange ? { frameRange, audioCodec: 'pcm-16' as const } : {}),
           scale,
           framesPerLambda,
           // Discovery calls s3:ListAllMyBuckets, which this role is not
@@ -192,6 +197,11 @@ function buildDeps(webhookUrl: string): BrokerDeps {
       },
       presign(key) {
         return getSignedUrl(r2, new GetObjectCommand({ Bucket: r2Bucket, Key: key }), {
+          expiresIn: PRESIGN_TTL_SECONDS,
+        })
+      },
+      presignOutput(key) {
+        return getSignedUrl(s3, new GetObjectCommand({ Bucket: env('RENDER_BUCKET'), Key: key }), {
           expiresIn: PRESIGN_TTL_SECONDS,
         })
       },

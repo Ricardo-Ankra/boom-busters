@@ -22,12 +22,13 @@ import {
   FIRST_CHANNEL_ID,
   resolveBrandKit,
 } from '@boom-busters/schemas'
-import type { Timeline } from '@boom-busters/schemas'
+import { newId } from '@boom-busters/schemas'
+import type { RenderPart, Timeline } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { renderRunner } from './render-runner'
+import { partOutcome, renderRunner, retryPlan } from './render-runner'
 
 /**
  * The render-runner against the real database (build spec section 13).
@@ -64,6 +65,8 @@ const broker = vi.hoisted(() => ({
   configured: false,
   submitRender: vi.fn(),
   submitMediaJob: vi.fn(),
+  cancelRender: vi.fn(),
+  presignRenderOutput: vi.fn(),
 }))
 vi.mock('@/lib/broker', () => ({
   brokerConfigured: () => broker.configured,
@@ -71,7 +74,9 @@ vi.mock('@/lib/broker', () => ({
   submitRender: broker.submitRender,
   submitMediaJob: broker.submitMediaJob,
   fetchRenderProgress: vi.fn(),
-  cancelRender: vi.fn(),
+  cancelRender: broker.cancelRender,
+  presignRenderOutput: broker.presignRenderOutput,
+  brokerErrorStatus: (error: unknown) => (error as { status?: number } | null)?.status,
 }))
 
 const storage = vi.hoisted(() => ({
@@ -144,6 +149,16 @@ function canonicalTimeline(): Timeline {
       },
     ],
     overlays: [],
+  }
+}
+
+/** Thirty-one minutes: three parts of 18,600 frames each. */
+function longTimeline(): Timeline {
+  const base = canonicalTimeline()
+  return {
+    ...base,
+    narration: base.narration.map((segment) => ({ ...segment, durationMs: 1_860_000 })),
+    slots: base.slots.map((slot) => ({ ...slot, durationMs: 1_860_000 })),
   }
 }
 
@@ -390,6 +405,136 @@ describeDb('render-runner', () => {
       expect(rows.some((row) => row.status === 'failed')).toBe(true)
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
       expect(await listLedger(db)).toEqual([])
+    })
+  })
+
+  describe('live path, in parts', () => {
+    beforeEach(async () => {
+      broker.configured = true
+      storage.configured = true
+      providers.mock = false
+      broker.presignRenderOutput.mockReset()
+      broker.presignRenderOutput.mockResolvedValue('https://example.test/probe')
+      await db.delete(timelines)
+      await insertTimeline(db, {
+        projectId: FIXTURE_PROJECT_ID,
+        json: longTimeline(),
+        s3Key: '',
+      })
+    })
+
+    it(
+      'plans the parts on the row, reserves once and submits the first wave with frame ranges',
+      { timeout: 120_000 },
+      async () => {
+        broker.submitRender.mockResolvedValue({
+          brokerRenderId: '01HQ0000000000000000000BR1',
+          remotionRenderId: 'rem-part',
+          estimatedCostUsd: 0.01,
+        })
+
+        await engine.executeStep('submit-part-1', { events: approvedEvent() })
+
+        // The harness replays the function, so an earlier step's handler can
+        // run again under a fresh plan: the row is found by the id the target
+        // step (the last call) submitted, and its calls by that row's parts.
+        type Submitted = {
+          renderId: string
+          frameRange: [number, number]
+          expectedDurationSec: number
+        }
+        const calls = broker.submitRender.mock.calls.map((call) => call[0] as Submitted)
+        const last = calls[calls.length - 1]
+        const rows = await db.select().from(renders)
+        const row = rows.find((r) => r.parts?.some((p) => p.renderId === last?.renderId))
+        expect(row).toBeDefined()
+        expect(row?.parts).toHaveLength(3)
+
+        const first = calls.find((c) => c.renderId === row?.parts?.[0]?.renderId)
+        const second = calls.find((c) => c.renderId === row?.parts?.[1]?.renderId)
+        expect(first?.frameRange).toEqual([0, 18599])
+        expect(second?.frameRange).toEqual([18600, 37199])
+        expect(first?.expectedDurationSec).toBe(620)
+        expect(calls.some((c) => c.renderId === row?.parts?.[2]?.renderId)).toBe(false)
+        expect(row?.parts?.[0]).toMatchObject({ status: 'rendering', remotionRenderId: 'rem-part' })
+        expect(row?.parts?.[1]).toMatchObject({ status: 'rendering' })
+        expect(row?.parts?.[2]).toMatchObject({ status: 'queued', attempt: 1 })
+        expect(row?.brokerRenderId).toBeNull()
+        expect(row?.status).toBe('rendering')
+
+        // The reservation is for the whole film, never per part, and still
+        // open. (The harness may replay invoke-broker, so more than one
+        // identical entry can exist; none may be settled or smaller.)
+        const entries = (await listLedger(db)).filter((e) => e.meta['renderId'] === row?.id)
+        expect(entries.length).toBeGreaterThanOrEqual(1)
+        for (const entry of entries) {
+          expect(entry).toMatchObject({
+            operation: 'render-master',
+            settled: false,
+            estimatedUsd: Number(row?.costUsd),
+            meta: expect.objectContaining({ parts: 3 }),
+          })
+        }
+      },
+    )
+
+    it(
+      'refuses before reserving when the broker predates long renders (the probe 404s)',
+      { timeout: 120_000 },
+      async () => {
+        broker.presignRenderOutput.mockRejectedValue(
+          Object.assign(new Error('broker answered 404 for POST /presign'), { status: 404 }),
+        )
+
+        const { error } = await engine.executeStep('invoke-broker', { events: approvedEvent() })
+
+        expect(String((error as Error | undefined)?.message ?? error)).toContain(
+          'predates long renders in parts',
+        )
+        expect(broker.submitRender).not.toHaveBeenCalled()
+        expect(await listLedger(db)).toEqual([])
+      },
+    )
+
+    it('reads a settled event as a part outcome, a completion without a key as failed', () => {
+      const event = (data: Record<string, unknown>) => ({ data })
+      expect(
+        partOutcome(
+          event({ result: 'completed', outputS3Key: 'renders/x/part.mp4', costUsd: 0.5 }),
+          '40m',
+        ),
+      ).toEqual({ ok: true, outputS3Key: 'renders/x/part.mp4', costUsd: 0.5 })
+      expect(partOutcome(event({ result: 'completed', costUsd: 0.5 }), '40m')).toEqual({
+        ok: false,
+        detail: 'completed without an output key',
+      })
+      expect(
+        partOutcome(event({ result: 'failed', reason: 'error', message: 'boom' }), '40m'),
+      ).toEqual({ ok: false, detail: 'error: boom' })
+      expect(partOutcome(null, '40m')).toEqual({ ok: false, detail: 'no webhook within 40m' })
+    })
+
+    it('cancels a timed-out part on the broker before resubmitting it', () => {
+      // The harness cannot return null from a wait, so the retry branch is
+      // tested through the pure plan the retry step applies.
+      const part: RenderPart = {
+        index: 0,
+        renderId: newId<'render'>(),
+        frameRange: [0, 18599],
+        startMs: 0,
+        durationMs: 620_000,
+        status: 'rendering',
+        attempt: 1,
+        priorRenderIds: [],
+        remotionRenderId: 'rem-old',
+      }
+      const { cancelId, next } = retryPlan(part)
+      expect(cancelId).toBe(part.renderId)
+      expect(next.renderId).not.toBe(part.renderId)
+      expect(next.priorRenderIds).toEqual([part.renderId])
+      expect(next).toMatchObject({ attempt: 2, status: 'queued', index: 0 })
+      expect(next.frameRange).toEqual([0, 18599])
+      expect(next.remotionRenderId).toBeUndefined()
     })
   })
 })

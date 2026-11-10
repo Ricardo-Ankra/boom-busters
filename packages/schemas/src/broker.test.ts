@@ -5,6 +5,9 @@ import {
   estimateRenderCostUsd,
   MediaJobCallbackSchema,
   MediaJobSchema,
+  PresignRequestSchema,
+  TranscribeResultSchema,
+  UploadYoutubeResultSchema,
   QcReportSchema,
   RemotionWebhookSchema,
   RenderCallbackSchema,
@@ -238,5 +241,154 @@ describe('webhook signing', () => {
   it('rejects garbage signatures without throwing', () => {
     expect(verifyBrokerSignature(body, token, 'zz-not-hex')).toBe(false)
     expect(verifyBrokerSignature(body, token, '')).toBe(false)
+  })
+})
+
+describe('QcReportSchema loudness fields', () => {
+  it('a QC report without loudnorm parses as before', () => {
+    const parsed = QcReportSchema.parse({ passed: true, integratedLufs: -14, issues: [] })
+    expect(parsed.loudnorm).toBeUndefined()
+    expect(parsed.durationMs).toBeUndefined()
+  })
+
+  it('carries the loudnorm measurement and duration on a part report', () => {
+    const parsed = QcReportSchema.parse({
+      passed: true,
+      integratedLufs: -14.2,
+      issues: [],
+      loudnorm: {
+        input_i: '-14.20',
+        input_tp: '-1.10',
+        input_lra: '6.30',
+        input_thresh: '-24.20',
+        target_offset: '0.20',
+      },
+      durationMs: 900030,
+    })
+    expect(parsed.loudnorm?.input_i).toBe('-14.20')
+    expect(parsed.durationMs).toBe(900030)
+  })
+})
+
+describe('long-render contract additions', () => {
+  const common = {
+    jobId: JOB,
+    projectId: PROJECT,
+    callbackUrl: 'https://app.example.com/api/hooks/broker',
+  }
+  const measured = {
+    input_i: '-20.1',
+    input_tp: '-3.0',
+    input_lra: '5.2',
+    input_thresh: '-30.4',
+    target_offset: '0.3',
+  }
+
+  it('accepts a part request with an inclusive frame range and refuses a reversed one', () => {
+    const base = {
+      projectId: PROJECT,
+      renderId: RENDER,
+      kind: 'master',
+      timelineS3Key: 'boom-busters/timelines/x.json',
+      composition: 'DocumentaryMaster',
+      expectedDurationSec: 900,
+    }
+    expect(RenderRequestSchema.parse({ ...base, frameRange: [0, 100] }).frameRange).toEqual([
+      0, 100,
+    ])
+    expect(RenderRequestSchema.safeParse({ ...base, frameRange: [5, 5] }).success).toBe(true)
+    expect(RenderRequestSchema.safeParse({ ...base, frameRange: [101, 100] }).success).toBe(false)
+    expect(RenderRequestSchema.safeParse({ ...base, frameRange: [-1, 100] }).success).toBe(false)
+    expect(RenderRequestSchema.parse(base).frameRange).toBeUndefined()
+  })
+
+  it('defaults a QC job to no offset and no loudnorm measurement', () => {
+    const job = MediaJobSchema.parse({ kind: 'qc', ...common, s3Key: 'renders/x.mp4' })
+    if (job.kind !== 'qc') throw new Error('expected qc')
+    expect(job.offsetMs).toBe(0)
+    expect(job.withLoudnorm).toBe(false)
+  })
+
+  it('accepts a join job and refuses an output outside renders/', () => {
+    const join = {
+      kind: 'join',
+      ...common,
+      partS3Keys: ['renders/p1.mp4', 'renders/p2.mp4'],
+      outputS3Key: 'renders/final.mp4',
+      measured,
+    }
+    const job = MediaJobSchema.parse(join)
+    if (job.kind !== 'join') throw new Error('expected join')
+    expect(job.targetLufs).toBe(-14)
+    expect(
+      MediaJobSchema.safeParse({ ...join, outputS3Key: 'boom-busters/final.mp4' }).success,
+    ).toBe(false)
+    expect(MediaJobSchema.safeParse({ ...join, partS3Keys: ['renders/p1.mp4'] }).success).toBe(
+      false,
+    )
+  })
+
+  it('an upload job without resume parses as before', () => {
+    const upload = {
+      kind: 'upload-youtube',
+      ...common,
+      videoS3Key: 'renders/master.mp4',
+      accessToken: 'ya29.short-lived',
+      title: 'T',
+      description: '',
+      tags: [],
+      privacyStatus: 'private',
+    }
+    const job = MediaJobSchema.parse(upload)
+    if (job.kind !== 'upload-youtube') throw new Error('expected upload')
+    expect(job.resume).toBeUndefined()
+    expect(job.budgetMs).toBeUndefined()
+    const resumed = MediaJobSchema.parse({
+      ...upload,
+      resume: { uploadUrl: 'https://upload.example.com/s/1', offset: 1024 },
+      budgetMs: 720_000,
+    })
+    if (resumed.kind !== 'upload-youtube') throw new Error('expected upload')
+    expect(resumed.resume?.offset).toBe(1024)
+  })
+
+  it('reads an in-progress upload result and a finished one', () => {
+    expect(UploadYoutubeResultSchema.parse({ videoId: 'abc', status: 'uploaded' })).toEqual({
+      videoId: 'abc',
+      status: 'uploaded',
+    })
+    const progress = UploadYoutubeResultSchema.parse({
+      status: 'in-progress',
+      uploadUrl: 'https://upload.example.com/s/1',
+      offset: 2048,
+      total: 4096,
+    })
+    expect('offset' in progress && progress.offset).toBe(2048)
+    expect(
+      UploadYoutubeResultSchema.safeParse({ status: 'in-progress', offset: 1, total: 2 }).success,
+    ).toBe(false)
+  })
+
+  it('accepts a transcribe job with one key or a batch, never both or neither', () => {
+    const t = { kind: 'transcribe', ...common }
+    expect(MediaJobSchema.safeParse({ ...t, audioS3Key: 'a.wav' }).success).toBe(true)
+    expect(MediaJobSchema.safeParse({ ...t, audioS3Keys: ['a.wav', 'b.wav'] }).success).toBe(true)
+    expect(
+      MediaJobSchema.safeParse({ ...t, audioS3Key: 'a.wav', audioS3Keys: ['b.wav'] }).success,
+    ).toBe(false)
+    expect(MediaJobSchema.safeParse(t).success).toBe(false)
+    expect(
+      MediaJobSchema.safeParse({ ...t, audioS3Keys: Array.from({ length: 9 }, () => 'a.wav') })
+        .success,
+    ).toBe(false)
+    expect(TranscribeResultSchema.safeParse({ words: [] }).success).toBe(true)
+    expect(
+      TranscribeResultSchema.safeParse({ results: [{ audioS3Key: 'a.wav', words: [] }] }).success,
+    ).toBe(true)
+  })
+
+  it('presigns only render-bucket keys', () => {
+    expect(PresignRequestSchema.safeParse({ key: 'renders/x.mp4' }).success).toBe(true)
+    expect(PresignRequestSchema.safeParse({ key: 'boom-busters/x' }).success).toBe(false)
   })
 })

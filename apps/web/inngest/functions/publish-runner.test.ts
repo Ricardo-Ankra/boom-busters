@@ -32,7 +32,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { forgetRunRows } from '../middleware/run-mirror'
-import { publishRunner } from './publish-runner'
+import { nextUploadRound, publishRunner } from './publish-runner'
 
 /**
  * The publish-runner against the real database. The live path is asserted
@@ -467,5 +467,48 @@ describeDb('publish-runner', () => {
         expect(job).not.toHaveProperty('publishAt')
       },
     )
+
+    it('sends the budget and no resume on the first round', { timeout: 120_000 }, async () => {
+      await doneMasterRender()
+      await draftRecord('master', FIXTURE_PROJECT_ID, {
+        uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+      })
+
+      await engine.executeStep('submit-upload', {
+        events: requestedEvent('master', FIXTURE_PROJECT_ID),
+      })
+
+      const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+      expect(job['budgetMs']).toBe(720000)
+      expect(job).not.toHaveProperty('resume')
+    })
+  })
+})
+
+describe('nextUploadRound', () => {
+  it('reads a finished upload as done', () => {
+    expect(nextUploadRound({ videoId: 'abc', status: 'uploaded' })).toEqual({
+      kind: 'done',
+      videoId: 'abc',
+    })
+  })
+
+  it('reads an in-progress result as a resume from where it stopped', () => {
+    expect(
+      nextUploadRound({
+        status: 'in-progress',
+        uploadUrl: 'https://upload.example.com/session/1',
+        offset: 8388608,
+        total: 1000000000,
+      }),
+    ).toEqual({
+      kind: 'resume',
+      resume: { uploadUrl: 'https://upload.example.com/session/1', offset: 8388608 },
+    })
+  })
+
+  it('reads anything else as unreadable', () => {
+    expect(nextUploadRound({ nonsense: true })).toEqual({ kind: 'unreadable' })
+    expect(nextUploadRound(undefined)).toEqual({ kind: 'unreadable' })
   })
 })

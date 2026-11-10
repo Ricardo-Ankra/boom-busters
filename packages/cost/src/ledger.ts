@@ -81,6 +81,31 @@ export async function jobSpendUsd(db: DbLike, jobId: string): Promise<number> {
 }
 
 /**
+ * The id of the reservation for `operation` whose `meta.renderId` is the
+ * render's, while it is still unsettled (it counts at its estimate until it
+ * is). Undefined when there is none, or it has settled already.
+ */
+export async function unsettledRenderLedgerId(
+  db: DbLike,
+  operation: string,
+  renderId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ id: costLedger.id })
+    .from(costLedger)
+    .where(
+      and(
+        eq(costLedger.operation, operation),
+        isNull(costLedger.actualUsd),
+        sql`${costLedger.meta} ->> 'renderId' = ${renderId}`,
+      ),
+    )
+    .orderBy(desc(costLedger.occurredAt))
+    .limit(1)
+  return row?.id
+}
+
+/**
  * This month's spend for every provider that has any. Feeds the Costs bars.
  * Given a channel, only that channel's rows; without one, the workspace's.
  */

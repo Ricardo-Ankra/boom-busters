@@ -1,17 +1,32 @@
 import { spawn } from 'node:child_process'
-import { chmodSync, createWriteStream, existsSync, readFileSync } from 'node:fs'
+import { chmodSync, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import * as Sentry from '@sentry/aws-serverless'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+  UploadPartCommand,
+} from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
-import type { MediaJob, MediaJobCallback } from '@boom-busters/schemas'
+import type { LoudnormMeasurement, MediaJob, MediaJobCallback } from '@boom-busters/schemas'
+import type { Context as LambdaContext } from 'aws-lambda'
 import type { Readable } from 'node:stream'
 import {
   buildQcReport,
+  concatListText,
+  joinArgs,
   loudnormApplyArgs,
   loudnormApplyVideoArgs,
   loudnormMeasureArgs,
   parseBlackFrames,
+  parseDurationMs,
+  redactUrls,
   parseFreezes,
   parseIntegratedLufs,
   parseLoudnormJson,
@@ -22,7 +37,8 @@ import {
   whisperJsonToCaptions,
   youtubeInitBody,
 } from './commands'
-import { putInChunks } from './youtube-upload'
+import { uploadStreamMultipart } from './multipart'
+import { putInChunks, querySessionOffset } from './youtube-upload'
 
 /**
  * The media-utils Lambda (build spec section 8): invoked ASYNCHRONOUSLY by
@@ -128,13 +144,161 @@ async function runQc(job: Extract<MediaJob, { kind: 'qc' }>) {
   const input = '/tmp/qc-input'
   await download(job.s3Key, input)
   const stderr = await ffmpeg(qcArgs(input))
+  let loudnorm: LoudnormMeasurement | undefined
+  if (job.withLoudnorm) {
+    // A part's own measurement, taken on the download the QC pass just used.
+    const measured = parseLoudnormJson(
+      await ffmpeg(loudnormMeasureArgs(input, job.targetLufs, { audioOnly: true })),
+    )
+    if (!measured) throw new Error('loudnorm measurement produced no result')
+    loudnorm = measured
+  }
+  // Only a part's report carries its length; a single render's stays as it was.
+  const durationMs = job.withLoudnorm ? (parseDurationMs(stderr) ?? undefined) : undefined
   return buildQcReport({
     silences: parseSilences(stderr),
     blackFrames: parseBlackFrames(stderr),
     freezes: parseFreezes(stderr),
     integratedLufs: parseIntegratedLufs(stderr),
     targetLufs: job.targetLufs,
+    offsetMs: job.offsetMs,
+    loudnorm,
+    durationMs,
   })
+}
+
+/**
+ * Join a long render's parts into one fragmented MP4, streaming ffmpeg's
+ * stdout into an S3 multipart upload so no disk ever holds the whole film.
+ * The concat demuxer opens the parts over https, so each is presigned. A
+ * failed ffmpeg must leave no object: completion is held back until ffmpeg
+ * has exited cleanly, and the upload is aborted on any failure.
+ */
+/** How long before the invocation's own end the join gives up and cleans up. */
+const JOIN_WATCHDOG_MARGIN_MS = 90_000
+
+async function runJoin(job: Extract<MediaJob, { kind: 'join' }>, context?: LambdaContext) {
+  const started = Date.now()
+  const bucket = env('RENDER_BUCKET')
+  const urls = await Promise.all(
+    job.partS3Keys.map((key) =>
+      getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+        expiresIn: 24 * 3600,
+      }),
+    ),
+  )
+  const listPath = '/tmp/join-list.txt'
+  writeFileSync(listPath, concatListText(urls))
+
+  const child = spawn(FFMPEG, joinArgs(listPath, job.targetLufs, job.measured))
+  let stderr = ''
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  const exit = new Promise<number>((resolve, reject) => {
+    child.on('error', reject)
+    child.on('close', (code) => resolve(code ?? -1))
+  })
+  // A join that outruns the invocation would be killed with its multipart
+  // upload open and no callback posted. Killing ffmpeg a little early lets the
+  // normal exit handling abort the upload and report the failure.
+  let timedOut = false
+  const watchdog =
+    context === undefined
+      ? undefined
+      : setTimeout(
+          () => {
+            timedOut = true
+            child.kill('SIGKILL')
+          },
+          Math.max(0, context.getRemainingTimeInMillis() - JOIN_WATCHDOG_MARGIN_MS),
+        )
+  // Awaited by the upload's complete step and below; this only stops an early
+  // spawn error being reported as unhandled before either gets there.
+  exit.catch(() => undefined)
+
+  let uploadId: string | undefined
+  let completed = false
+  const abortUpload = async (id: string): Promise<void> => {
+    await s3.send(
+      new AbortMultipartUploadCommand({ Bucket: bucket, Key: job.outputS3Key, UploadId: id }),
+    )
+  }
+  const upload = uploadStreamMultipart({
+    stream: child.stdout,
+    create: async () => {
+      const created = await s3.send(
+        new CreateMultipartUploadCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          ContentType: 'video/mp4',
+        }),
+      )
+      if (!created.UploadId) throw new Error('multipart upload returned no id')
+      uploadId = created.UploadId
+      return created.UploadId
+    },
+    uploadPart: async (id, partNumber, body) => {
+      const part = await s3.send(
+        new UploadPartCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          UploadId: id,
+          PartNumber: partNumber,
+          Body: body,
+        }),
+      )
+      if (!part.ETag) throw new Error(`part ${partNumber} returned no etag`)
+      return part.ETag
+    },
+    complete: async (id, parts) => {
+      const code = await exit
+      if (timedOut) throw new Error('the join ran out of time')
+      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${redactUrls(stderr).slice(-500)}`)
+      await s3.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          UploadId: id,
+          MultipartUpload: {
+            Parts: parts.map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })),
+          },
+        }),
+      )
+      completed = true
+    },
+    abort: abortUpload,
+  })
+
+  try {
+    const [{ bytes }] = await Promise.all([upload, exit])
+    return {
+      outputS3Key: job.outputS3Key,
+      integratedLufs: parseIntegratedLufs(stderr),
+      bytes,
+      elapsedMs: Date.now() - started,
+    }
+  } catch (error) {
+    // A spawn error or a failure on either side: no completed object stays.
+    child.kill()
+    // uploadStreamMultipart aborts its own failures; this second abort only matters
+    // when `exit` rejects (a spawn error) while the upload is still mid-stream.
+    if (uploadId !== undefined && !completed) {
+      await abortUpload(uploadId).catch((abortError: unknown) => {
+        console.error(
+          JSON.stringify({
+            event: 'multipart-abort-failed',
+            uploadId,
+            key: job.outputS3Key,
+            message: String(abortError),
+          }),
+        )
+      })
+    }
+    throw error
+  } finally {
+    if (watchdog !== undefined) clearTimeout(watchdog)
+  }
 }
 
 async function runLoudnorm(job: Extract<MediaJob, { kind: 'loudnorm' }>) {
@@ -187,14 +351,22 @@ async function ensureWhisper(): Promise<{ binary: string; model: string }> {
 async function runTranscribe(job: Extract<MediaJob, { kind: 'transcribe' }>) {
   const input = '/tmp/transcribe-input'
   const wav = '/tmp/transcribe.wav'
-  await download(job.audioS3Key, input)
-  await ffmpeg(['-y', ...toWhisperWavArgs(input, wav)])
-  const { binary, model } = await ensureWhisper()
   const outBase = '/tmp/transcribe-out'
-  const { code, stderr } = await run(binary, whisperArgs(model, wav, outBase))
-  if (code !== 0) throw new Error(`whisper exited ${code}: ${stderr.slice(-500)}`)
-  const json = JSON.parse(readFileSync(`${outBase}.json`, 'utf8')) as unknown
-  return { words: whisperJsonToCaptions(json) }
+  // The schema guarantees exactly one of the two.
+  const keys = job.audioS3Keys ?? [job.audioS3Key!]
+  const { binary, model } = await ensureWhisper()
+  const results: { audioS3Key: string; words: ReturnType<typeof whisperJsonToCaptions> }[] = []
+  // One after another over the same temp paths: a batch is eight paragraphs
+  // and /tmp is small.
+  for (const audioS3Key of keys) {
+    await download(audioS3Key, input)
+    await ffmpeg(['-y', ...toWhisperWavArgs(input, wav)])
+    const { code, stderr } = await run(binary, whisperArgs(model, wav, outBase))
+    if (code !== 0) throw new Error(`whisper exited ${code}: ${stderr.slice(-500)}`)
+    const json = JSON.parse(readFileSync(`${outBase}.json`, 'utf8')) as unknown
+    results.push({ audioS3Key, words: whisperJsonToCaptions(json) })
+  }
+  return job.audioS3Keys ? { results } : { words: results[0]!.words }
 }
 
 /**
@@ -209,6 +381,42 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
   const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: job.videoS3Key }))
   const total = head.ContentLength
   if (total === undefined) throw new Error('video object has no length')
+
+  // Both paths stop starting chunks at the deadline: the invocation ends at
+  // 15 minutes, and a continuation picks the session up from its offset.
+  // Only the parts-aware app sends `budgetMs`, and only it can read an
+  // in-progress result; a job without one (an old app in the deploy window)
+  // runs to the end as it always did.
+  const deadlineAt = job.budgetMs === undefined ? undefined : Date.now() + job.budgetMs
+  const readRange = async (start: number, endInclusive: number) => {
+    const part = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: job.videoS3Key,
+        Range: `bytes=${start}-${endInclusive}`,
+      }),
+    )
+    const bytes = await part.Body?.transformToByteArray()
+    if (!bytes) throw new Error('video object has no body')
+    return bytes
+  }
+
+  if (job.resume) {
+    const session = await querySessionOffset({
+      uploadUrl: job.resume.uploadUrl,
+      total,
+      fetchImpl: fetch,
+    })
+    if (session.kind === 'done') return { videoId: session.videoId, status: session.status }
+    return putInChunks({
+      total,
+      uploadUrl: job.resume.uploadUrl,
+      fetchImpl: fetch,
+      readRange,
+      startOffset: session.offset,
+      deadlineAt,
+    })
+  }
 
   const startResponse = await fetch(
     'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
@@ -229,23 +437,7 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
   const uploadUrl = startResponse.headers.get('location')
   if (!uploadUrl) throw new Error('youtube resumable init returned no location')
 
-  return putInChunks({
-    total,
-    uploadUrl,
-    fetchImpl: fetch,
-    readRange: async (start, endInclusive) => {
-      const part = await client.send(
-        new GetObjectCommand({
-          Bucket: bucket,
-          Key: job.videoS3Key,
-          Range: `bytes=${start}-${endInclusive}`,
-        }),
-      )
-      const bytes = await part.Body?.transformToByteArray()
-      if (!bytes) throw new Error('video object has no body')
-      return bytes
-    },
-  })
+  return putInChunks({ total, uploadUrl, fetchImpl: fetch, readRange, deadlineAt })
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +454,7 @@ if (process.env['SENTRY_DSN']) {
   })
 }
 
-async function handleEvent(event: unknown): Promise<void> {
+async function handleEvent(event: unknown, context?: LambdaContext): Promise<void> {
   const parsed = MediaJobSchema.safeParse(event)
   if (!parsed.success) {
     // No callbackUrl to report to — log and stop; the broker validated
@@ -293,6 +485,9 @@ async function handleEvent(event: unknown): Promise<void> {
           ok: true,
           result: await runUploadYoutube(job),
         }
+        break
+      case 'join':
+        callback = { ...base, kind: 'join', ok: true, result: await runJoin(job, context) }
         break
     }
   } catch (error) {

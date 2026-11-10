@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { RESOLUTION_STEP_SLOTS } from './shot-list'
 import {
   assemblyOtherSteps,
+  batchParagraphs,
   perSlotStepsFit,
   rowAnswers,
   stepSlots,
+  transcribePerParagraphFits,
   visualsOtherSteps,
 } from './slot-steps'
 
@@ -204,5 +206,21 @@ describe('rowAnswers', () => {
     expect(rowAnswers(stamped({ type: 'still', prompt: 'another' }), slot)).toBe(false)
     expect(rowAnswers({ ...stamped(slot.brief), status: 'unresolved' }, slot)).toBe(false)
     expect(rowAnswers(undefined, slot)).toBe(false)
+  })
+})
+
+describe('transcription steps', () => {
+  it('fits one job a paragraph until the step limit, then batches', () => {
+    expect(transcribePerParagraphFits(200, 100)).toBe(true)
+    // 880 + 9 + 100 + 20 = 1009
+    expect(transcribePerParagraphFits(440, 100)).toBe(false)
+  })
+
+  it('batches eight at a time, the last short', () => {
+    const batches = batchParagraphs(
+      Array.from({ length: 17 }, (_, i) => i),
+      8,
+    )
+    expect(batches.map((batch) => batch.length)).toEqual([8, 8, 1])
   })
 })

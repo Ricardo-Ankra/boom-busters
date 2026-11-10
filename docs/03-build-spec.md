@@ -203,6 +203,8 @@ One durable function per stage, chained by events. Naming: events `project/<stag
 - `POST /webhooks/remotion` → verifies Remotion's signature; unknown `renderId` → log + 200 (never let a stale webhook 4xx-retry-storm); known → normalise `{success|error|timeout}` into one Inngest event `render/completed|failed`.
 - `POST /media/qc`, `POST /media/loudnorm`, `POST /media/transcribe` (Whisper.cpp per §6 alignment; per-chapter audio in parallel, results merged by the caller), `POST /media/upload-youtube` → media-utils jobs (FFmpeg layer + Whisper.cpp binary, model pulled from S3 to `/tmp` on cold start), async with their own completion webhooks into Inngest. Media-utils Lambda config: 10,240 MB memory, 10 GB ephemeral storage, 15-min timeout — per-chapter transcription chunks keep every invocation comfortably inside these limits.
 
+*(Amended 2026-11-10, decision 452: a master over 30 minutes renders as parts by frame range, each part measured by media-utils and the parts joined there into one master with the loudness applied once; `POST /media/join` and `POST /presign` join the endpoints, and the YouTube upload runs in rounds on one resumable session.)*
+
 **8.1 Stopping renders — the honest contract.** Remotion Lambda has **no API to abort an in-flight render** (confirmed by the maintainers; the spawned render function cannot receive messages). Design accordingly:
 
 - Cancel marks `renders.status='cancelled'` immediately; the broker records the ID in a tombstone set; when the render's webhook eventually arrives it is acknowledged, its artefacts are deleted via `deleteRender()`, and **no** Inngest completion event is emitted. The Inngest run has already been cancelled via `project/cancelled`.

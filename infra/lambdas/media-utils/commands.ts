@@ -1,4 +1,10 @@
-import type { Caption, MediaJob, QcReport } from '@boom-busters/schemas'
+import { QC_LOUDNESS_TOLERANCE_LU } from '@boom-busters/schemas'
+import type { Caption, LoudnormMeasurement, MediaJob, QcReport } from '@boom-busters/schemas'
+
+// One definition shared with the controller's part-combining code; re-exported
+// so existing imports of these from './commands' keep working.
+export { QC_LOUDNESS_TOLERANCE_LU }
+export type { LoudnormMeasurement }
 
 /**
  * The media-utils Lambda's brain: FFmpeg invocation plans, stderr parsers
@@ -18,7 +24,6 @@ export const QC_BLACK_MIN_S = 1.5
 export const QC_BLACK_PIXEL_THRESHOLD = 0.1
 export const QC_FREEZE_NOISE = 0.003
 export const QC_FREEZE_MIN_S = 0.5
-export const QC_LOUDNESS_TOLERANCE_LU = 1.5
 
 /** One FFmpeg pass measuring everything QC needs; output discarded. */
 export function qcArgs(inputPath: string): string[] {
@@ -100,6 +105,10 @@ export function buildQcReport(input: {
   freezes: TimeSpan[]
   integratedLufs: number | null
   targetLufs: number
+  /** A part's start in the film: its issues are reported in film time. */
+  offsetMs?: number
+  loudnorm?: LoudnormMeasurement
+  durationMs?: number
 }): QcReport {
   const issues: QcReport['issues'] = []
   for (const span of input.silences) {
@@ -140,18 +149,34 @@ export function buildQcReport(input: {
           : `${input.integratedLufs.toFixed(1)} LUFS integrated; target ${input.targetLufs} ±${QC_LOUDNESS_TOLERANCE_LU}`,
     })
   }
+  const offsetMs = input.offsetMs ?? 0
+  if (offsetMs !== 0) {
+    for (const issue of issues) issue.atMs += offsetMs
+  }
   issues.sort((a, b) => a.atMs - b.atMs)
-  return { passed: issues.length === 0, integratedLufs, issues }
+  return {
+    passed: issues.length === 0,
+    integratedLufs,
+    issues,
+    ...(input.loudnorm !== undefined ? { loudnorm: input.loudnorm } : {}),
+    ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Loudness normalisation (two-pass loudnorm)
 // ---------------------------------------------------------------------------
 
-export function loudnormMeasureArgs(inputPath: string, targetLufs: number): string[] {
+export function loudnormMeasureArgs(
+  inputPath: string,
+  targetLufs: number,
+  options?: { audioOnly: boolean },
+): string[] {
   return [
     '-hide_banner',
     '-nostats',
+    // Audio only: a part's video was already read by the QC pass.
+    ...(options?.audioOnly ? ['-vn'] : []),
     '-i',
     inputPath,
     '-af',
@@ -160,14 +185,6 @@ export function loudnormMeasureArgs(inputPath: string, targetLufs: number): stri
     'null',
     '-',
   ]
-}
-
-export interface LoudnormMeasurement {
-  input_i: string
-  input_tp: string
-  input_lra: string
-  input_thresh: string
-  target_offset: string
 }
 
 /** loudnorm prints its JSON blob at the end of stderr. */
@@ -246,6 +263,74 @@ export function loudnormApplyVideoArgs(
     '-movflags',
     '+faststart',
     outputPath,
+  ]
+}
+
+/** ffmpeg prints "  Duration: 00:15:00.03, start: ..." when it opens an input. */
+export function parseDurationMs(stderr: string): number | null {
+  const match = /Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d{2})/.exec(stderr)
+  if (!match) return null
+  const [, h, m, s, cs] = match
+  return ((Number(h) * 60 + Number(m)) * 60 + Number(s)) * 1000 + Number(cs) * 10
+}
+
+// ---------------------------------------------------------------------------
+// Joining the parts of a long render
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip query strings from urls: ffmpeg logs the presigned part urls it opens,
+ * and the signature in them is a 24 hour read credential.
+ */
+export function redactUrls(text: string): string {
+  return text.replace(/(https?:\/\/[^\s'"?]+)\?[^\s'"]*/g, '$1?redacted')
+}
+
+/** The concat demuxer's list: one quoted url per line, a quote escaped as '\''. */
+export function concatListText(urls: string[]): string {
+  return urls.map((url) => `file '${url.replaceAll("'", "'\\''")}'\n`).join('')
+}
+
+/**
+ * Stream-copy the parts' video, normalise the audio with the measured
+ * loudnorm numbers and write a fragmented MP4 to stdout (it is piped into an
+ * S3 multipart upload, so the output cannot be seekable). delay_moov is
+ * load-bearing: without it the video started 67 ms late in the local proof.
+ * The trailing ebur128 prints the delivered film's integrated loudness.
+ */
+export function joinArgs(
+  listPath: string,
+  targetLufs: number,
+  measured: LoudnormMeasurement,
+): string[] {
+  return [
+    '-hide_banner',
+    '-nostats',
+    '-protocol_whitelist',
+    'file,https,tls,tcp',
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    listPath,
+    '-c:v',
+    'copy',
+    '-af',
+    `${loudnormApplyFilter(targetLufs, measured)},ebur128`,
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-movflags',
+    'empty_moov+default_base_moof+delay_moov',
+    '-frag_duration',
+    '10000000',
+    '-f',
+    'mp4',
+    'pipe:1',
   ]
 }
 

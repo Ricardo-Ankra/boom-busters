@@ -19,11 +19,14 @@ import {
   FIRST_CHANNEL_ID,
   FIRST_CHANNEL_SLUG,
   mapYoutubeError,
+  type YoutubeErrorAction,
   newId,
   parseEventData,
   PublishMetadataSchema,
   quotaDayStartUtc,
   serialiseError,
+  UPLOAD_ROUND_BUDGET_MS,
+  UploadYoutubeResultSchema,
 } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
@@ -65,11 +68,39 @@ const RECONNECT_MESSAGE =
 /** Resumable uploads may crawl; the job hard-stops at 6 h (spec section 9). */
 const UPLOAD_TIMEOUT = '7h'
 
+/**
+ * A Lambda invocation lasts at most 15 minutes, so a big master uploads in
+ * rounds of `UPLOAD_ROUND_BUDGET_MS` on one resumable session. 30 rounds is
+ * about six hours of upload, the same hard stop the job has always had.
+ */
+const UPLOAD_ROUNDS_MAX = 30
+
 /** Transient-failure re-emits stop here. */
 const MAX_ATTEMPTS = 3
 
 /** How long the processing poll waits before declaring victory anyway. */
 const PROCESSING_POLLS = 5
+
+export type UploadRound =
+  | { kind: 'done'; videoId: string }
+  | { kind: 'resume'; resume: { uploadUrl: string; offset: number } }
+  | { kind: 'unreadable' }
+
+/**
+ * What one finished upload round says to do next. The result union tries the
+ * finished shape first, so the in-progress discriminant is checked on the raw
+ * value before anything looks for a `videoId`.
+ */
+export function nextUploadRound(result: unknown): UploadRound {
+  const parsed = UploadYoutubeResultSchema.safeParse(result)
+  if (!parsed.success) return { kind: 'unreadable' }
+  const value = parsed.data
+  if (value.status === 'in-progress' && 'uploadUrl' in value) {
+    return { kind: 'resume', resume: { uploadUrl: value.uploadUrl, offset: value.offset } }
+  }
+  if ('videoId' in value) return { kind: 'done', videoId: value.videoId }
+  return { kind: 'unreadable' }
+}
 
 export const publishRunner = inngest.createFunction(
   {
@@ -318,7 +349,7 @@ export const publishRunner = inngest.createFunction(
     // Live: mint the short-lived token, hand the job to media-utils
     // -----------------------------------------------------------------------
 
-    const minted = await step.run('mint-token', async () => {
+    const mintAccessToken = async () => {
       const channel = await channelForProject(db, projectId)
       const refreshToken = await channelYoutubeToken(
         db,
@@ -361,55 +392,114 @@ export const publishRunner = inngest.createFunction(
         }
         throw error
       }
-    })
+    }
+
+    const minted = await step.run('mint-token', mintAccessToken)
     if (!minted.ok) return { targetType, targetId, outcome: 'reconnect' as const }
 
-    const jobId = await step.run('submit-upload', async () => {
-      const id = newId<'run'>()
-      // The project's frozen bible, read here and not carried from an earlier
-      // step. The first channel sends no language (its upload stays as it was); its
-      // opt-in is a one-line change to this condition when the owner asks.
-      const { channelId, bible } = await channelForProject(db, projectId)
-      const language = bible.language !== '' && channelId !== FIRST_CHANNEL_ID
-      await submitMediaJob({
-        kind: 'upload-youtube',
-        jobId: id,
-        projectId,
-        callbackUrl: brokerCallbackUrl(),
-        videoS3Key: preflight.videoS3Key,
-        accessToken: minted.accessToken,
-        title: preflight.metadata.title,
-        description: preflight.metadata.description,
-        tags: preflight.metadata.tags,
-        privacyStatus: preflight.privacyStatus,
-        ...(preflight.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
-        ...(bible.youtubeCategoryId !== null ? { categoryId: bible.youtubeCategoryId } : {}),
-        ...(language
-          ? { defaultLanguage: bible.language, defaultAudioLanguage: bible.language }
-          : {}),
-        // Only a private video with a moment still ahead carries `publishAt`
-        // — YouTube rejects a past one, and a public upload needs none.
-        ...(preflight.privacyStatus === 'private' && preflight.scheduledAhead
-          ? { publishAt: preflight.publishAtIso }
-          : {}),
-      })
-      return id
-    })
+    // -----------------------------------------------------------------------
+    // Rounds: each submit uploads for a budget, then reports where it got to.
+    // Round 0 keeps the original step ids so a parked run replays; later
+    // rounds mint a fresh token (one lasts an hour, a round at most 15 min).
+    // -----------------------------------------------------------------------
 
-    const completion = await step.waitForEvent('await-upload', {
-      event: 'media/job.completed',
-      timeout: UPLOAD_TIMEOUT,
-      if: `async.data.jobId == "${jobId}"`,
-    })
+    let accessToken = minted.accessToken
+    let resume: { uploadUrl: string; offset: number } | undefined
+    let videoId: string | undefined
+    let failed: { message: string; capped: boolean } | null = null
+
+    for (let round = 0; ; round += 1) {
+      if (round > 0) {
+        const fresh = await step.run(`mint-token-${round}`, mintAccessToken)
+        if (!fresh.ok) return { targetType, targetId, outcome: 'reconnect' as const }
+        accessToken = fresh.accessToken
+      }
+
+      const jobId = await step.run(
+        round === 0 ? 'submit-upload' : `submit-upload-${round}`,
+        async () => {
+          const id = newId<'run'>()
+          // The project's frozen bible, read here and not carried from an earlier
+          // step. The first channel sends no language (its upload stays as it was); its
+          // opt-in is a one-line change to this condition when the owner asks.
+          const { channelId, bible } = await channelForProject(db, projectId)
+          const language = bible.language !== '' && channelId !== FIRST_CHANNEL_ID
+          await submitMediaJob({
+            kind: 'upload-youtube',
+            jobId: id,
+            projectId,
+            callbackUrl: brokerCallbackUrl(),
+            videoS3Key: preflight.videoS3Key,
+            accessToken,
+            title: preflight.metadata.title,
+            description: preflight.metadata.description,
+            tags: preflight.metadata.tags,
+            privacyStatus: preflight.privacyStatus,
+            ...(preflight.containsSyntheticMedia ? { containsSyntheticMedia: true } : {}),
+            ...(bible.youtubeCategoryId !== null ? { categoryId: bible.youtubeCategoryId } : {}),
+            ...(language
+              ? { defaultLanguage: bible.language, defaultAudioLanguage: bible.language }
+              : {}),
+            // Only a private video with a moment still ahead carries `publishAt`
+            // — YouTube rejects a past one, and a public upload needs none.
+            budgetMs: UPLOAD_ROUND_BUDGET_MS,
+            ...(resume ? { resume } : {}),
+            ...(preflight.privacyStatus === 'private' && preflight.scheduledAhead
+              ? { publishAt: preflight.publishAtIso }
+              : {}),
+          })
+          return id
+        },
+      )
+
+      const completion = await step.waitForEvent(
+        round === 0 ? 'await-upload' : `await-upload-${round}`,
+        {
+          event: 'media/job.completed',
+          timeout: UPLOAD_TIMEOUT,
+          if: `async.data.jobId == "${jobId}"`,
+        },
+      )
+
+      if (!completion || completion.data.ok !== true) {
+        failed = {
+          message:
+            completion?.data.error ?? `no completion within ${UPLOAD_TIMEOUT}, the job may be dead`,
+          capped: false,
+        }
+        break
+      }
+
+      const next = nextUploadRound(completion.data.result)
+      if (next.kind === 'done') {
+        videoId = next.videoId
+        break
+      }
+      if (next.kind === 'unreadable') {
+        failed = { message: 'the upload completed without a readable result', capped: false }
+        break
+      }
+      if (round + 1 >= UPLOAD_ROUNDS_MAX) {
+        failed = {
+          message: `the upload did not finish in ${UPLOAD_ROUNDS_MAX} rounds`,
+          capped: true,
+        }
+        break
+      }
+      resume = next.resume
+    }
 
     // -----------------------------------------------------------------------
     // Failure: through the mapper, never raw
     // -----------------------------------------------------------------------
 
-    if (!completion || completion.data.ok !== true) {
-      const message =
-        completion?.data.error ?? `no completion within ${UPLOAD_TIMEOUT} — the job may be dead`
-      const action = mapYoutubeError({ message })
+    if (failed !== null) {
+      const { message } = failed
+      // The round cap has no YouTube reason in it for the mapper to find, and
+      // an upload that crawled is worth one more go: it is a retry.
+      const action: YoutubeErrorAction = failed.capped
+        ? { kind: 'retry' }
+        : mapYoutubeError({ message })
 
       if (action.kind === 'requeue-tomorrow' || action.kind === 'pause-queue') {
         const wakeAt =
@@ -476,8 +566,7 @@ export const publishRunner = inngest.createFunction(
       return { targetType, targetId, outcome: 'failed' as const }
     }
 
-    const videoId = (completion.data.result as { videoId?: string } | undefined)?.videoId
-    if (!videoId) throw new NonRetriableError('The upload completed without a videoId.')
+    if (videoId === undefined) throw new NonRetriableError('The upload ended without a videoId.')
 
     await step.run('record-video', () =>
       updatePublishRecord(db, preflight.recordId, {
@@ -498,7 +587,7 @@ export const publishRunner = inngest.createFunction(
         const url = await presignGet(preflight.thumbKey!)
         const bytes = Buffer.from(await (await fetch(url)).arrayBuffer())
         const contentType = preflight.thumbKey!.endsWith('.jpg') ? 'image/jpeg' : 'image/png'
-        const result = await setThumbnail(minted.accessToken, videoId, bytes, contentType)
+        const result = await setThumbnail(accessToken, videoId, bytes, contentType)
         if (!result.ok) {
           console.error('[publish] thumbnails.set failed:', result.error)
           await notify({
@@ -517,7 +606,7 @@ export const publishRunner = inngest.createFunction(
 
     for (let poll = 0; poll < PROCESSING_POLLS; poll += 1) {
       const processed = await step.run(`poll-processing-${poll}`, () =>
-        videoProcessed(minted.accessToken, videoId),
+        videoProcessed(accessToken, videoId),
       )
       if (processed) break
       if (poll < PROCESSING_POLLS - 1) await step.sleep(`processing-wait-${poll}`, '60s')

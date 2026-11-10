@@ -195,10 +195,13 @@ export function UseLatestBibleButton({
 export function StopButton({
   projectId,
   renderInFlight = false,
+  partEstimateUsd,
 }: {
   projectId: string
   /** Section 8.1: a Lambda render cannot be aborted, and the confirm says so. */
   renderInFlight?: boolean
+  /** A master rendered in parts: what each part in flight costs, about. */
+  partEstimateUsd?: number
 }) {
   const { act, busy } = useAction()
 
@@ -214,8 +217,11 @@ export function StopButton({
       confirmLabel="Stop this run"
       consequence={
         renderInFlight
-          ? "Render can't be aborted mid-flight; it will finish in the background, be " +
-            'discarded, and cost ≈ $0.25.'
+          ? partEstimateUsd !== undefined
+            ? "The parts in flight can't be aborted; they finish in the background and are " +
+              `discarded, about $${partEstimateUsd.toFixed(2)} each.`
+            : "Render can't be aborted mid-flight; it will finish in the background, be " +
+              'discarded, and cost ≈ $0.25.'
           : 'The run stops where it is. Work already done is kept; nothing is refunded.'
       }
       onConfirm={() => act(() => stopProject(projectId), 'Run stopped')}

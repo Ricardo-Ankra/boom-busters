@@ -70,6 +70,7 @@ interface TestWorld {
   renderCalls: number
   renderScales: number[]
   renderChunks: number[]
+  renderInputs: { frameRange?: [number, number] }[]
   discards: string[]
   signatureOk: boolean
 }
@@ -91,6 +92,7 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
     renderCalls: 0,
     renderScales: [],
     renderChunks: [],
+    renderInputs: [],
     discards: [],
     signatureOk: true,
     deps: {
@@ -116,8 +118,9 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
         },
       },
       remotion: {
-        render: ({ scale, framesPerLambda }) => {
+        render: ({ scale, framesPerLambda, frameRange }) => {
           state.renderCalls += 1
+          state.renderInputs.push(frameRange ? { frameRange } : {})
           state.renderScales.push(scale)
           state.renderChunks.push(framesPerLambda)
           return Promise.resolve({
@@ -147,6 +150,8 @@ function world(overrides: Partial<BrokerDeps> = {}): TestWorld {
         presign: (key) => Promise.resolve(`https://r2.example.com/${key}?sig=fresh`),
         presignRender: (bucketName, key) =>
           Promise.resolve(`https://s3.example.com/${bucketName}/${key}?sig=render`),
+        presignOutput: (key) =>
+          Promise.resolve(`https://s3.example.com/render-bucket/${key}?sig=out`),
       },
       dispatchMediaJob: (job) => {
         dispatched.push(job)
@@ -495,6 +500,107 @@ describe('media job dispatch', () => {
     const response = await handleBrokerRequest(post('/media/qc', job), w.deps)
     expect(response.status).toBe(400)
     expect(w.dispatched).toHaveLength(0)
+  })
+})
+
+/** The canonical timeline stretched to 31 minutes: 55,800 frames at 30 fps. */
+function longTimeline(): Timeline {
+  const timeline = canonicalTimeline()
+  const lengthMs = 1_860_000
+  timeline.narration[0]!.durationMs = lengthMs
+  timeline.slots[0]!.durationMs = lengthMs / 2
+  timeline.slots[1]!.startMs = lengthMs / 2
+  timeline.slots[1]!.durationMs = lengthMs / 2
+  return timeline
+}
+
+describe('POST /renders with a frame range (long renders in parts)', () => {
+  const partRequest = { ...renderRequest, frameRange: [0, 18599] }
+
+  it("sizes a part's chunks from its frame range and renders it as MKV with PCM audio", async () => {
+    const w = world({ renderFanout: 150 })
+    w.stored.set('boom-busters/timelines/t1.json', longTimeline())
+    const response = await handleBrokerRequest(post('/renders', partRequest), w.deps)
+    expect(response.status).toBe(201)
+    // 18,600 frames over 150 chunks is 124 frames each.
+    expect(w.renderChunks).toEqual([124])
+    expect(w.renderInputs).toEqual([{ frameRange: [0, 18599] }])
+    expect(w.records.get(RENDER)?.frameRange).toEqual([0, 18599])
+  })
+
+  it("refuses a frame range past the timeline's last frame", async () => {
+    const w = world({ renderFanout: 150 })
+    w.stored.set('boom-busters/timelines/t1.json', longTimeline())
+    const response = await handleBrokerRequest(
+      post('/renders', { ...renderRequest, frameRange: [55000, 55800] }),
+      w.deps,
+    )
+    expect(response.status).toBe(400)
+    expect(response.body).toMatchObject({ error: "frame range past the timeline's last frame" })
+    expect(w.renderCalls).toBe(0)
+    expect(w.stored.has(`renders/${RENDER}/timeline.json`)).toBe(false)
+  })
+
+  it("falls back to out.mkv for a part's webhook with no outputFile", async () => {
+    const w = world()
+    w.records.set(RENDER, { ...running(RENDER), frameRange: [0, 18599] })
+    await handleBrokerRequest(
+      {
+        method: 'POST',
+        path: '/webhooks/remotion',
+        headers: {},
+        body: JSON.stringify({ type: 'success', renderId: `rem-${RENDER}` }),
+      },
+      w.deps,
+    )
+    expect(w.callbacks[0]).toMatchObject({
+      result: 'completed',
+      outputS3Key: `renders/rem-${RENDER}/out.mkv`,
+    })
+  })
+})
+
+describe('POST /presign', () => {
+  it('presigns a render-bucket key and refuses any other', async () => {
+    const w = world()
+    const ok = await handleBrokerRequest(post('/presign', { key: 'renders/x/master.mp4' }), w.deps)
+    expect(ok.status).toBe(200)
+    expect(ok.body).toEqual({
+      url: 'https://s3.example.com/render-bucket/renders/x/master.mp4?sig=out',
+    })
+    const refused = await handleBrokerRequest(post('/presign', { key: 'boom-busters/x' }), w.deps)
+    expect(refused.status).toBe(400)
+    const noAuth = await handleBrokerRequest(
+      post('/presign', { key: 'renders/x/master.mp4' }, 'wrong'),
+      w.deps,
+    )
+    expect(noAuth.status).toBe(401)
+  })
+})
+
+describe('join job dispatch', () => {
+  it('dispatches a join job on its route', async () => {
+    const w = world()
+    const job = {
+      kind: 'join',
+      jobId: JOB,
+      projectId: PROJECT,
+      callbackUrl: 'https://app.example.com/api/hooks/broker',
+      partS3Keys: ['renders/a/out.mkv', 'renders/b/out.mkv'],
+      outputS3Key: 'renders/m/master.mp4',
+      targetLufs: -14,
+      measured: {
+        input_i: '-20.0',
+        input_tp: '-2.0',
+        input_lra: '5.0',
+        input_thresh: '-30.0',
+        target_offset: '0.0',
+      },
+    }
+    const response = await handleBrokerRequest(post('/media/join', job), w.deps)
+    expect(response.status).toBe(202)
+    expect(w.dispatched).toHaveLength(1)
+    expect(w.dispatched[0]!.kind).toBe('join')
   })
 })
 

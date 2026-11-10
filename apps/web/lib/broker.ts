@@ -2,6 +2,7 @@ import {
   CancelAcceptedSchema,
   hasEnvGroup,
   MediaJobSchema,
+  PresignResponseSchema,
   RenderAcceptedSchema,
   RenderProgressSchema,
   RenderRequestSchema,
@@ -11,6 +12,7 @@ import { NonRetriableError } from 'inngest'
 import type {
   CancelAccepted,
   MediaJob,
+  MediaJobInput,
   RenderAccepted,
   RenderProgress,
   RenderRequest,
@@ -28,6 +30,7 @@ const MEDIA_PATHS: Record<MediaJob['kind'], string> = {
   loudnorm: '/media/loudnorm',
   transcribe: '/media/transcribe',
   'upload-youtube': '/media/upload-youtube',
+  join: '/media/join',
 }
 
 /** Where the Lambdas call back to — the single broker hook route. */
@@ -44,6 +47,16 @@ export function brokerConfigured(): boolean {
 function brokerBase(): { url: string; token: string } {
   const { AWS_BROKER_URL, AWS_BROKER_TOKEN } = requireEnv('broker')
   return { url: AWS_BROKER_URL.replace(/\/$/, ''), token: AWS_BROKER_TOKEN }
+}
+
+/** The HTTP status a broker call failed with, when it reached the broker. */
+export function brokerErrorStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === 'number' ? status : undefined
+}
+
+function withStatus<T extends Error>(error: T, status: number): T {
+  return Object.assign(error, { status })
 }
 
 async function brokerFetch(
@@ -69,9 +82,9 @@ async function brokerFetch(
     // attempts only hid the reason. A conflict (409, the concurrency cap), a
     // rate limit and a server error are worth another try.
     if (response.status >= 400 && response.status < 500 && ![409, 429].includes(response.status)) {
-      throw new NonRetriableError(message)
+      throw withStatus(new NonRetriableError(message), response.status)
     }
-    throw new Error(message)
+    throw withStatus(new Error(message), response.status)
   }
   return response.json() as Promise<unknown>
 }
@@ -118,6 +131,13 @@ export async function submitRender(request: RenderRequest): Promise<RenderAccept
   )
 }
 
+/** A playable URL for a key in the render bucket, such as a joined master. */
+export async function presignRenderOutput(key: string): Promise<string> {
+  return PresignResponseSchema.parse(
+    await brokerFetch('/presign', { method: 'POST', body: { key } }),
+  ).url
+}
+
 /** Proxied getRenderProgress — what the UI polls at 2 s (section 8). */
 export async function fetchRenderProgress(renderId: string): Promise<RenderProgress> {
   return RenderProgressSchema.parse(await brokerFetch(`/renders/${renderId}`, { method: 'GET' }))
@@ -131,7 +151,7 @@ export async function cancelRender(renderId: string): Promise<CancelAccepted> {
 }
 
 /** Dispatch a media-utils job; resolves once the broker has accepted it. */
-export async function submitMediaJob(job: MediaJob): Promise<void> {
+export async function submitMediaJob(job: MediaJobInput): Promise<void> {
   const { AWS_BROKER_URL, AWS_BROKER_TOKEN } = requireEnv('broker')
   const validated = MediaJobSchema.parse(job)
   const response = await fetch(

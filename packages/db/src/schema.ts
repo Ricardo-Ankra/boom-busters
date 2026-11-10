@@ -33,6 +33,7 @@ import type {
   SearchBrief,
   SearchReport,
   CaseResearchJob,
+  RenderPart,
   Series,
   Settings,
   TalkingPoint,
@@ -1513,6 +1514,8 @@ export const renders = pgTable(
     progressPct: integer('progress_pct').notNull().default(0),
     outputS3Key: text('output_s3_key'),
     qcReport: jsonb('qc_report').$type<Record<string, unknown>>(),
+    /** The parts of a long master render (null for a render in one piece). */
+    parts: jsonb('parts').$type<RenderPart[]>(),
     costUsd: usd('cost_usd').notNull().default('0'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),

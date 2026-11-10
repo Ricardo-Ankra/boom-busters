@@ -7,8 +7,8 @@ import {
   caseResearchJobIsRunning,
   leadKeyword,
   resolveFormat,
+  RUNTIME_OUTER_MAX,
   RUNTIME_OUTER_MIN,
-  RUNTIME_START_MAX,
 } from '@boom-busters/schemas'
 import type { ChannelFormat, SearchBrief } from '@boom-busters/schemas'
 import { useRouter } from 'next/navigation'
@@ -68,14 +68,11 @@ function useFormatSeed(item: CaseSummary): boolean {
   return formats.length > 0 && leadKeyword(resolveFormat(formats, item.formatKey)) !== null
 }
 
-/** The length a format starts at: its default, kept inside its range and the start limit. */
+/** The length a format starts at: its default, kept inside its own range. */
 function startRuntime(format: ChannelFormat | null): number {
   if (format === null) return 15
-  const max = Math.min(format.runtime.max, RUNTIME_START_MAX)
-  return Math.min(Math.max(format.runtime.default, format.runtime.min), max)
+  return Math.min(Math.max(format.runtime.default, format.runtime.min), format.runtime.max)
 }
-
-const NOT_SUPPORTED_NOTE = `Videos longer than ${RUNTIME_START_MAX} minutes are not supported yet`
 
 const researchLabel = (again: boolean, credits: number): string =>
   `${again ? 'Research again' : 'Research'} with VidIQ (about ${credits} credits)`
@@ -215,19 +212,13 @@ export function NewProjectButton({
   }
   const [estimate, setEstimate] = React.useState<string | null>(null)
   const minRuntime = format?.runtime.min ?? RUNTIME_OUTER_MIN
-  const maxRuntime = Math.min(format?.runtime.max ?? RUNTIME_START_MAX, RUNTIME_START_MAX)
+  const maxRuntime = format?.runtime.max ?? RUNTIME_OUTER_MAX
   const runtime = Number(runtimeText)
-  // Every length the format allows is past the start limit: nothing can be started yet.
-  const tooLong = format !== null && format.runtime.min > RUNTIME_START_MAX
   const runtimeValid =
-    !tooLong &&
     runtimeText.trim() !== '' &&
     Number.isInteger(runtime) &&
     runtime >= minRuntime &&
     runtime <= maxRuntime
-  const outOfRange =
-    format !== null &&
-    (format.runtime.default > RUNTIME_START_MAX || format.runtime.max > RUNTIME_START_MAX)
   const [asking, setAsking] = React.useState(false)
   const brief = item.searchBrief
   // A brief for another subject freezes onto nothing, so its age does not matter.
@@ -330,10 +321,10 @@ export function NewProjectButton({
       <NumberInput
         id={`start-runtime-${item.id}`}
         value={runtimeText}
-        min={tooLong ? undefined : minRuntime}
-        max={tooLong ? undefined : maxRuntime}
+        min={minRuntime}
+        max={maxRuntime}
         step={1}
-        disabled={busy || tooLong}
+        disabled={busy}
         onChange={(event) => setRuntimeText(event.target.value)}
         className="w-24"
       />
@@ -350,16 +341,11 @@ export function NewProjectButton({
         estimate === null ? null : (
           <p className="w-full text-[13px] text-[var(--color-text-secondary)]">{estimate}</p>
         )
-      ) : tooLong ? null : (
+      ) : (
         <p className="w-full text-[13px] text-[var(--color-warning)]">
-          This format runs {minRuntime} to {format?.runtime.max ?? RUNTIME_START_MAX} minutes
+          This format runs {minRuntime} to {maxRuntime} minutes
         </p>
       )}
-      {outOfRange ? (
-        <p className="w-full text-[13px] text-[var(--color-text-secondary)]">
-          {NOT_SUPPORTED_NOTE}
-        </p>
-      ) : null}
       {/* A warning only: the brief's keywords were measured for another format's lead keyword. */}
       {brief?.formatKey && format !== null && brief.formatKey !== format.key ? (
         <p className="w-full text-[13px] text-[var(--color-text-secondary)]">

@@ -38,6 +38,7 @@ import { events } from '@/inngest/events'
 import { inngest } from '@/inngest/client'
 import { brokerConfigured, cancelRender } from '@/lib/broker'
 import { db } from '@/lib/db'
+import { settleRenderLedger } from '@/inngest/lib/render-ledger'
 import { hasLiveStretch, STRETCH_RUNNING } from '@/lib/stretch-jobs'
 import { dossierChangesRefusal } from '@/lib/run-state'
 
@@ -509,7 +510,22 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   const inFlight = await renderInFlight(db, projectId)
   if (inFlight) {
     await updateRender(db, inFlight.id, { status: 'cancelled', completedAt: new Date() })
-    if (brokerConfigured() && inFlight.brokerRenderId) {
+    if (inFlight.parts) {
+      // A master in parts: the broker knows the parts' own ids, never the
+      // row's. Each rendering part is tombstoned on its own.
+      if (brokerConfigured()) {
+        for (const part of inFlight.parts) {
+          if (part.status !== 'rendering') continue
+          try {
+            await cancelRender(part.renderId)
+          } catch {
+            // As below: the row already says cancelled, the honest state.
+          }
+        }
+      }
+      // The reservation would otherwise sit at the full estimate for good.
+      await settleRenderLedger(db, inFlight)
+    } else if (brokerConfigured() && inFlight.brokerRenderId) {
       try {
         await cancelRender(inFlight.id)
       } catch {

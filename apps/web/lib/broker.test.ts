@@ -1,6 +1,6 @@
 import { NonRetriableError } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchRenderProgress } from './broker'
+import { brokerErrorStatus, fetchRenderProgress } from './broker'
 
 /**
  * The broker client's refusals (decision 282): a master render failed four
@@ -61,5 +61,19 @@ describe('brokerFetch refusals', () => {
     )
     expect(down).not.toBeInstanceOf(NonRetriableError)
     expect(String(down)).toContain('502 for GET')
+  })
+
+  it('carries the status on the error, so a caller can tell a 404 from a 409', async () => {
+    fetchMock.mockResolvedValueOnce(answer(404, 'not found'))
+    const missing = await fetchRenderProgress('01J0000000000000000000000A').catch(
+      (error: unknown) => error,
+    )
+    expect(brokerErrorStatus(missing)).toBe(404)
+    fetchMock.mockResolvedValueOnce(answer(409, '{}'))
+    const capped = await fetchRenderProgress('01J0000000000000000000000A').catch(
+      (error: unknown) => error,
+    )
+    expect(brokerErrorStatus(capped)).toBe(409)
+    expect(brokerErrorStatus(new Error('plain'))).toBeUndefined()
   })
 })

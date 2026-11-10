@@ -12,6 +12,7 @@ import {
   BudgetExceededError,
   estimateRenderCostUsd,
   parseEventData,
+  rendersInParts,
   serialiseError,
   timelineDurationMs,
   TimelineSchema,
@@ -50,6 +51,9 @@ const FUNCTION_ID = 'draft-runner'
 
 /** How much longer than the configured render timeout we wait for the webhook. */
 const WEBHOOK_GRACE_MINUTES = 10
+
+/** The row's reason when a draft is refused for the film's length. */
+export const DRAFT_TOO_LONG = 'Drafts are limited to 30 minutes; render the master instead.'
 
 export const draftRunner = inngest.createFunction(
   {
@@ -112,8 +116,21 @@ export const draftRunner = inngest.createFunction(
         costUsd: String(estimate),
       })
 
+      // A draft renders in one piece, and a film past the single-render limit
+      // times out in Lambda and bills for it. Refused before any reservation;
+      // the master render is the path for a long film.
+      if (rendersInParts(durationSec)) {
+        await updateRender(db, render.id, {
+          status: 'failed',
+          error: { message: DRAFT_TOO_LONG },
+          completedAt: new Date(),
+        })
+        return { refused: true as const }
+      }
+
       const { settings } = await channelForProject(db, projectId)
       return {
+        refused: false as const,
         renderId: render.id,
         timelineVersion: timelineRow.version,
         timelineS3Key: timelineRow.s3Key ?? '',
@@ -122,6 +139,8 @@ export const draftRunner = inngest.createFunction(
         timeoutMinutes: settings.render.timeoutMinutes,
       }
     })
+
+    if (setup.refused) return { projectId, outcome: 'too-long' as const }
 
     const invoked = await step.run('invoke-broker', async () => {
       // A timeline compiled while R2 was absent has no key yet; the invoke

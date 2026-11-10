@@ -60,6 +60,10 @@ export class MediaUtilsStack extends Stack {
       memorySize: config.mediaLambdaMemoryMb,
       ephemeralStorageSize: Size.gibibytes(10),
       timeout: Duration.minutes(15),
+      // The broker's callback contract has the app's runner retry a failed job,
+      // never AWS: a second async attempt would repeat a join that ran out of
+      // time, or a transcription already paid for.
+      retryAttempts: 0,
       layers: [ffmpegLayer],
       logGroup,
       environment: {
@@ -92,7 +96,14 @@ export class MediaUtilsStack extends Stack {
     // versioned name; grant by the documented prefix.
     this.handler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
+        // The multipart actions serve the streamed join of a long render's parts.
+        actions: [
+          's3:GetObject',
+          's3:PutObject',
+          's3:ListBucket',
+          's3:AbortMultipartUpload',
+          's3:ListMultipartUploadParts',
+        ],
         resources: ['arn:aws:s3:::remotionlambda-*', 'arn:aws:s3:::remotionlambda-*/*'],
       }),
     )

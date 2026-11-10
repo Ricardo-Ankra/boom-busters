@@ -4,6 +4,7 @@ import {
   EVENT_NAMES,
   EVENT_SCHEMAS,
   GATE_STAGES,
+  MediaJobCompletedSchema,
   parseEventData,
   VisualsRedirectRequestedSchema,
   VisualsRefetchRequestedSchema,
@@ -318,5 +319,17 @@ describe('motion/exemplars.derive and motion/exemplar.refine (spec 2026-11-04, s
     expect(() =>
       parseEventData('motion/exemplar.refine', { ...data, steer: 'a'.repeat(501) }),
     ).toThrow()
+  })
+})
+
+describe('media/job.completed', () => {
+  it('media/job.completed accepts the join kind', () => {
+    const parsed = MediaJobCompletedSchema.parse({
+      projectId,
+      jobId: newId(),
+      kind: 'join',
+      ok: true,
+    })
+    expect(parsed.kind).toBe('join')
   })
 })

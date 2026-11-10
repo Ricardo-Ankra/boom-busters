@@ -876,14 +876,14 @@ describe('the start control: format, length and cost', () => {
     return panelOf(item.title)
   }
 
-  it('defaults the length to the format default clamped to 30, with the not-supported note', async () => {
+  it("defaults the length to the format's own default, with no note", async () => {
     actions.startProjectFromCase.mockResolvedValue({ ok: true, projectId: 'P1' })
     const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
-    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(30)
-    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
+    expect(within(row).getByLabelText('Length in minutes')).toHaveValue(90)
+    expect(row).not.toHaveTextContent('not supported yet')
     await userEvent.click(within(row).getByRole('button', { name: 'New project' }))
     await waitFor(() =>
-      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 30, undefined),
+      expect(actions.startProjectFromCase).toHaveBeenCalledWith(WIRECARD, 90, undefined),
     )
   })
 
@@ -893,11 +893,12 @@ describe('the start control: format, length and cost', () => {
     expect(row).not.toHaveTextContent('not supported yet')
   })
 
-  it('sets the field range from the format, capped at 30', () => {
+  it("sets the field range from the format's own minimum and maximum", () => {
     const row = renderStart(kase({ status: 'shortlisted', formatKey: 'long' }))
     const field = within(row).getByLabelText('Length in minutes')
     expect(field).toHaveAttribute('min', '3')
-    expect(field).toHaveAttribute('max', '30')
+    expect(field).toHaveAttribute('max', '180')
+    expect(row).not.toHaveTextContent('not supported yet')
   })
 
   it('offers a start format only for more than one format, and starting with another sends its key and default', async () => {
@@ -942,7 +943,7 @@ describe('the start control: format, length and cost', () => {
     expect(row).toHaveTextContent('This format runs 5 to 10 minutes')
   })
 
-  it('for a format longer than the start limit disables the field and the button, showing only the note', () => {
+  it('for a format whose minimum is 90 keeps the field and the button live, with no note', () => {
     const huge = {
       ...defaultFormat('Huge'),
       key: 'huge',
@@ -951,10 +952,11 @@ describe('the start control: format, length and cost', () => {
     }
     const row = renderStart(kase({ status: 'shortlisted', formatKey: 'huge' }), [...formats, huge])
     const field = within(row).getByLabelText('Length in minutes')
-    expect(field).toBeDisabled()
-    expect(field).not.toHaveAttribute('min')
-    expect(within(row).getByRole('button', { name: 'New project' })).toBeDisabled()
-    expect(row).toHaveTextContent('Videos longer than 30 minutes are not supported yet')
+    expect(field).toBeEnabled()
+    expect(field).toHaveAttribute('min', '90')
+    expect(field).toHaveAttribute('max', '180')
+    expect(within(row).getByRole('button', { name: 'New project' })).toBeEnabled()
+    expect(row).not.toHaveTextContent('not supported yet')
     expect(row).not.toHaveTextContent('This format runs')
   })
 

@@ -2,8 +2,8 @@ import { costLedger, createDb, requireTestDatabase, seed, type Database } from '
 import { FIRST_CHANNEL_ID, newId } from '@boom-busters/schemas'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { jobSpendUsd, recordCost } from './ledger'
-import { reserve } from './guard'
+import { jobSpendUsd, recordCost, unsettledRenderLedgerId } from './ledger'
+import { reserve, settle } from './guard'
 import { DEFAULT_WORKSPACE_SETTINGS } from '@boom-busters/schemas'
 
 /**
@@ -62,5 +62,43 @@ describeDb('jobSpendUsd', () => {
     )
     expect(await jobSpendUsd(db, jobId)).toBe(1.55)
     expect(await jobSpendUsd(db, newId())).toBe(0)
+  })
+})
+
+describeDb('unsettledRenderLedgerId', () => {
+  let connection: ReturnType<typeof createDb>
+  let db: Database
+
+  beforeAll(async () => {
+    connection = createDb(DATABASE_URL as string, { max: 4 })
+    db = connection.db
+    await seed(db)
+  })
+
+  afterAll(async () => {
+    await connection.sql.end({ timeout: 5 })
+  })
+
+  beforeEach(async () => {
+    await db.execute(sql`TRUNCATE TABLE ${costLedger}`)
+  })
+
+  it('finds the open render-master row by meta.renderId, and none once it settles', async () => {
+    const renderId = newId<'render'>()
+    const budgets = { ...DEFAULT_WORKSPACE_SETTINGS.budgets, monthlyCeilingUsd: 100 }
+    const spec = {
+      provider: 'remotion' as const,
+      operation: 'render-master',
+      channelId: FIRST_CHANNEL_ID,
+      estimateUsd: 2,
+    }
+    await reserve(db, { ...spec, meta: { renderId: newId<'render'>() } }, budgets)
+    const ledgerId = await reserve(db, { ...spec, meta: { renderId } }, budgets)
+
+    expect(await unsettledRenderLedgerId(db, 'render-master', renderId)).toBe(ledgerId)
+    expect(await unsettledRenderLedgerId(db, 'render-draft', renderId)).toBeUndefined()
+
+    await settle(db, ledgerId, 1.5)
+    expect(await unsettledRenderLedgerId(db, 'render-master', renderId)).toBeUndefined()
   })
 })
