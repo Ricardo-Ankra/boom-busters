@@ -258,7 +258,7 @@ Flow, after `load-render` (which now also returns `parts: RenderPart[] | null`, 
 - [ ] **Step 2: Run to see them fail.** From `apps/web`: `pnpm exec vitest run render-runner` (timeout 600000; the database suite).
 - [ ] **Step 3: Implement.** Keep the single-render code where it is; add the parts branch as a separate async function `renderInParts(ctx, step, setup, invoked)` in the same file so the single path's diff is a few lines.
 - [ ] **Step 4: Run the tests, typecheck and lint.**
-- [ ] **Step 5: Commit** `feat(web): render a long master in parts, QC each, and join them (decision 450)`.
+- [ ] **Step 5: Commit** `feat(web): render a long master in parts, QC each, and join them (decision 451)`.
 
 ---
 
@@ -331,12 +331,12 @@ Flow, after `load-render` (which now also returns `parts: RenderPart[] | null`, 
 - Modify: `packages/schemas/src/formats.ts:7-10, 25, 46` (rename `RUNTIME_START_MAX` to `RUNTIME_DEFAULT_MAX = 30`, used only as the schema default)
 - Modify: `apps/web/app/(console)/c/[slug]/cases/actions.ts:282-300`, `actions.test.ts:740-800`
 - Modify: `apps/web/app/(console)/c/[slug]/cases/search-brief-panel.tsx:70-80, 214-232`, `case-library.test.tsx:880-960`
-- Modify: `PROGRESS.md` (the Channel formats section's "Next project" checkbox ticked with a pointer; a new section `## Long renders in parts (2026-11-10)` with deliverables per task and "Owner actions at deploy" from spec section 12; decision 450 appended after 449)
-- Modify: `infra/README.md` (the join job, the presign route, part renders), `docs/03-build-spec.md` section 8 (an italic amendment: masters over 30 minutes render in parts, decision 450), `docs/superpowers/specs/2026-11-03-channel-formats-and-keywords-design.md:201` (the "startable once long renders come in parts" note now true, one line)
+- Modify: `PROGRESS.md` (the Channel formats section's "Next project" checkbox ticked with a pointer; a new section `## Long renders in parts (2026-11-10)` with deliverables per task and "Owner actions at deploy" from spec section 12; decision 451 appended after 449 (master took 450))
+- Modify: `infra/README.md` (the join job, the presign route, part renders), `docs/03-build-spec.md` section 8 (an italic amendment: masters over 30 minutes render in parts, decision 451), `docs/superpowers/specs/2026-11-03-channel-formats-and-keywords-design.md:201` (the "startable once long renders come in parts" note now true, one line)
 
 - [ ] **Step 1: Update the tests first**: in `actions.test.ts` the two refusals at 743 and 751 become acceptance of a 60-minute start for a format whose max is 180, and the test at 796 goes; in `case-library.test.tsx` the "not supported yet" assertions at 883 and 957 become assertions that the runtime field's maximum is the format's own `runtime.max` and no note shows. Run them to see them fail (`pnpm exec vitest run cases/actions case-library` from `apps/web`).
 - [ ] **Step 2: Implement**: the actions and the panel read `format.runtime.max` alone; delete `NOT_SUPPORTED_NOTE`, `tooLong`, `outOfRange` and the refusal branches; keep the min/max validation. `formats.test.ts` references updated if any.
 - [ ] **Step 3: Run the tests, typecheck and lint.**
-- [ ] **Step 4: Write the docs**: PROGRESS.md section and decision 450 (date 2026-11-10; what shipped, the calls from spec section 13 in one paragraph each where they settle something the spec left open, the fixture proof's three findings, the owner actions, "Not verified: a live parts render"); the infra README; the build spec amendment; the formats spec note.
+- [ ] **Step 4: Write the docs**: PROGRESS.md section and decision 451 (date 2026-11-10; what shipped, the calls from spec section 13 in one paragraph each where they settle something the spec left open, the fixture proof's three findings, the owner actions, "Not verified: a live parts render"); the infra README; the build spec amendment; the formats spec note.
 - [ ] **Step 5: Whole-tree verification**: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`; per package `pnpm --filter @boom-busters/schemas test`, `@boom-busters/infra test`, `@boom-busters/db test` (database), then `apps/web` in two halves (`pnpm exec vitest run inngest` then `pnpm exec vitest run app lib components`), each in its own Bash call with timeout 600000; `pnpm e2e -- tests/preview-render.spec.ts` from the e2e package only if the dev server port 3100 is free. Record any failure verbatim in the hand-back.
-- [ ] **Step 6: Commit** `docs: long renders in parts shipped, start limit 180 (decision 450)` and `feat(web): the start limit follows the format's own maximum`.
+- [ ] **Step 6: Commit** `docs: long renders in parts shipped, start limit 180 (decision 451)` and `feat(web): the start limit follows the format's own maximum`.
