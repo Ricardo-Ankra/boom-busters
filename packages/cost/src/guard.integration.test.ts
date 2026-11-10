@@ -339,6 +339,26 @@ describeDb('cost guard', () => {
     expect(await monthSpendUsd(db, 'openai', NOW)).toBeCloseTo(1.25)
   })
 
+  it('settle merges meta into the entry and leaves it alone when none is given', async () => {
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
+    const ledgerId = await reserve(
+      db,
+      { provider: 'openai', operation: 'meta', estimateUsd: 1, meta: { renderId: 'r1', parts: 3 } },
+      budgets,
+      NOW,
+    )
+
+    await settle(db, ledgerId, 0.5)
+    const [plain] = await listLedger(db)
+    expect(plain?.meta).toEqual({ renderId: 'r1', parts: 3 })
+
+    await settle(db, ledgerId, 0.75, { join: { elapsedMs: 1200 }, parts: 4 })
+    const [merged] = await listLedger(db)
+    expect(merged?.actualUsd).toBeCloseTo(0.75)
+    // Shallow merge: existing keys kept, new keys added, a shared key replaced.
+    expect(merged?.meta).toEqual({ renderId: 'r1', parts: 4, join: { elapsedMs: 1200 } })
+  })
+
   // -------------------------------------------------------------------------
   // Settlement
   // -------------------------------------------------------------------------

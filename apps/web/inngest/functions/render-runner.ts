@@ -1015,7 +1015,8 @@ async function renderInParts(
       qcReport,
       completedAt: new Date(),
     })
-    await settle(db, ledgerId, sum)
+    // The join's own timing survives only here: the first live render reads it.
+    await settle(db, ledgerId, sum, { join: { elapsedMs: join.elapsedMs, bytes: join.bytes } })
     return leaveMaster(projectId)
   })
 
