@@ -453,8 +453,13 @@ export const scriptRunner = inngest.createFunction(
           .map((repeat) => repeat.warning)
         // The channel's research profile decides how blocking an overstated standing is.
         const modelWarnings = withStandingSeverity(researchProfileOf(frozen.bible), check.warnings)
+        // The fixed lines are the owner's words too: the code checks never see them,
+        // so a question or a number in the intro never warns and the word counts hold only drafted text.
         const coded = lintOf(
-          written,
+          written.map((c) => ({
+            ...c,
+            contentMd: dropFixedParagraphs(c.contentMd, channel.format),
+          })),
           outline,
           scriptTargetWords(setup.targetRuntimeMin, channel.format),
           chapter.index,

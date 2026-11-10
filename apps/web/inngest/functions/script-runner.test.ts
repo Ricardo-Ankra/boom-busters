@@ -946,6 +946,60 @@ describeDb('script-runner around the Shorts marking (decision 293)', () => {
       expect(counts.advisory).toBeGreaterThanOrEqual(1)
     })
 
+    it('ignores a severity the model sets: an advisory-marked grounding warning still blocks', async () => {
+      live({ warnings: [{ ...warning('unsourced-claim'), severity: 'advisory' }] })
+      const chapterId = await savedChapter()
+      await engine.executeStep('self-check-0', { events: approved(), steps: upTo(chapterId) })
+      const stored = (await getChapter(db, chapterId))!.warnings
+      expect(countBySeverity([{ warnings: stored }]).blocking).toBe(1)
+      expect(stored.find((w) => w.kind === 'unsourced-claim')).not.toHaveProperty('severity')
+
+      const { ctx } = await engine.executeStep('open-gate', {
+        events: approved(),
+        steps: [
+          ...upTo(chapterId),
+          { id: 'self-check-0', handler: () => ({ warnings: 1 }) },
+          { id: 'mark-shorts', handler: () => ({ ok: true, candidates: [] }) },
+        ],
+      })
+      expect(ctx.step.run).toHaveBeenCalledWith('open-gate', expect.any(Function))
+      expect(ctx.step.run).not.toHaveBeenCalledWith('auto-approve', expect.any(Function))
+    })
+
+    it("never lints the format's fixed lines", async () => {
+      live({ warnings: [] })
+      const introLine = 'Ready for 101 stories?'
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      channelForProject.mockImplementation(async (...args: unknown[]) => {
+        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+        return { ...channel, format: { ...channel.format, introLine, outroLine: '' } }
+      })
+      try {
+        const withIntro = `${introLine}
+
+${text}`
+        const chapterId = await savedChapter(withIntro)
+        await engine.executeStep('self-check-0', {
+          events: approved(),
+          steps: upTo(chapterId, withIntro),
+        })
+        const stored = (await getChapter(db, chapterId))!.warnings
+        expect(stored.filter((w) => w.sentence.includes('101'))).toEqual([])
+        expect(stored.filter((w) => w.kind === 'off-target-length')).toEqual(
+          (
+            await (async () => {
+              // The same chapter without the intro line: the length verdict must not change.
+              const bareId = await savedChapter()
+              await engine.executeStep('self-check-0', { events: approved(), steps: upTo(bareId) })
+              return (await getChapter(db, bareId))!.warnings
+            })()
+          ).filter((w) => w.kind === 'off-target-length'),
+        )
+      } finally {
+        channelForProject.mockImplementation(actual.channelForProject)
+      }
+    })
+
     it('auto-approves on zero blocking whatever the advisory count', async () => {
       const chapterId = await savedChapter()
       await setChapterWarnings(db, chapterId, [
