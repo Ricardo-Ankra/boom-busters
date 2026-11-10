@@ -465,8 +465,10 @@ export const assemblyRunner = inngest.createFunction(
           slots: plan.slots,
           music: setup.music,
           captions: { words: captions.words, style },
-          chapterMarking: setup.chapterMarking,
-          filmTitle: setup.filmTitle,
+          // A run parked at load-assembly before decision 454 replays a setup
+          // without these; the channel default keeps its cards.
+          chapterMarking: setup.chapterMarking ?? 'cards',
+          filmTitle: setup.filmTitle ?? '',
         })
         return {
           ok: true as const,

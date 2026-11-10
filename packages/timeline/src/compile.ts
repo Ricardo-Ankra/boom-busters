@@ -238,24 +238,39 @@ export function compileTimeline(input: CompileInput): Timeline {
       chapters.push({ id: paragraph.chapterId, title: paragraph.chapterTitle })
       if (chapters.length > 1) {
         const leadMs = oldClock + shift + CHAPTER_LEAD_MS
-        if (input.chapterMarking === 'cards') {
-          overlays.push({
-            kind: 'chapterCard',
-            startMs: leadMs,
-            durationMs: CHAPTER_CARD_MS,
-            props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
-          })
-          shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
-        } else if (input.chapterMarking === 'title' && chapters.length === 2) {
-          overlays.push({
-            kind: 'titleCard',
-            startMs: leadMs,
-            durationMs: CHAPTER_CARD_MS,
-            props: { title: input.filmTitle },
-          })
-          shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
-        } else {
-          shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
+        const marking = input.chapterMarking
+        switch (marking) {
+          case 'cards':
+            overlays.push({
+              kind: 'chapterCard',
+              startMs: leadMs,
+              durationMs: CHAPTER_CARD_MS,
+              props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
+            })
+            shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+            break
+          case 'title':
+            if (chapters.length === 2) {
+              overlays.push({
+                kind: 'titleCard',
+                startMs: leadMs,
+                durationMs: CHAPTER_CARD_MS,
+                props: { title: input.filmTitle },
+              })
+              shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+            } else {
+              shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
+            }
+            break
+          case 'none':
+            shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
+            break
+          default: {
+            const unknown: never = marking
+            throw new ValidationError(`chapterMarking is not a known marking: ${String(unknown)}`, {
+              field: 'chapterMarking',
+            })
+          }
         }
       }
     } else {

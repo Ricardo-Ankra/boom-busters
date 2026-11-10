@@ -111,7 +111,10 @@ describeDb('assembly-runner, batched transcription', () => {
     },
   )
 
-  async function compileWith(chapterMarking: 'none' | 'cards' | 'title') {
+  async function compileWith(
+    chapterMarking: 'none' | 'cards' | 'title',
+    options: { omitMarking?: boolean } = {},
+  ) {
     {
       const timed = (chapter: number, text: string) => ({
         chapterId: `01HQ0000000000000000000CH${chapter}`,
@@ -171,7 +174,17 @@ describeDb('assembly-runner, batched transcription', () => {
             data: { projectId: FIXTURE_PROJECT_ID, approvedBy: 'owner@example.com' },
           },
         ],
-        steps: [{ id: 'load-assembly', handler: () => setup }],
+        steps: [
+          {
+            id: 'load-assembly',
+            handler: () => {
+              if (!options.omitMarking) return setup
+              // A setup memoised before decision 454 has neither field.
+              const { chapterMarking: _marking, filmTitle: _title, ...replayed } = setup
+              return replayed
+            },
+          },
+        ],
       })
 
       return result as {
@@ -213,6 +226,18 @@ describeDb('assembly-runner, batched transcription', () => {
       expect(compiled.timeline.overlays.filter((o) => cardKinds.includes(o.kind))).toMatchObject([
         { kind: 'titleCard', props: { title: 'The audit' } },
       ])
+    },
+  )
+
+  it(
+    'a setup replayed from before decision 454 keeps its chapter cards',
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const compiled = await compileWith('cards', { omitMarking: true })
+      expect(compiled.ok).toBe(true)
+      expect(compiled.timeline.overlays.filter((o) => o.kind === 'chapterCard')).toHaveLength(1)
     },
   )
 
