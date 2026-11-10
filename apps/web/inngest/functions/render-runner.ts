@@ -9,23 +9,40 @@ import {
   setTimelineKey,
   shortsEnabledForProject,
   updateRender,
+  updateRenderParts,
 } from '@boom-busters/db'
 import { release, reserve, round4, settle } from '@boom-busters/cost'
 import {
   BudgetExceededError,
+  combineLoudness,
   estimateRenderCostUsd,
+  JoinResultSchema,
+  mergeQcReports,
   newId,
   parseEventData,
+  partsProgressPct,
+  partWaves,
+  planRenderParts,
   QcReportSchema,
+  RenderPartsSchema,
+  rendersInParts,
   serialiseError,
+  settleRenderParts,
   timelineDurationMs,
   TimelineSchema,
 } from '@boom-busters/schemas'
-import type { QcReport } from '@boom-busters/schemas'
+import type { LoudnormMeasurement, QcReport, RenderPart } from '@boom-busters/schemas'
+import type { GetStepTools } from 'inngest'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
-import { brokerCallbackUrl, brokerConfigured, submitMediaJob, submitRender } from '@/lib/broker'
+import {
+  brokerCallbackUrl,
+  brokerConfigured,
+  cancelRender,
+  submitMediaJob,
+  submitRender,
+} from '@/lib/broker'
 import { renderFixtureLocally } from '@/lib/local-render'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { timelineKey } from '../lib/assembly'
@@ -143,8 +160,31 @@ export const renderRunner = inngest.createFunction(
         costUsd: String(estimate),
       })
 
+      // A master longer than the single-render limit renders in parts; the
+      // plan goes on the row now so the progress route sees it from the start.
+      const parts: RenderPart[] | null = rendersInParts(durationSec)
+        ? planRenderParts(timeline).map((plan) => ({
+            index: plan.index,
+            renderId: newId<'render'>(),
+            frameRange: plan.frameRange,
+            startMs: plan.startMs,
+            durationMs: plan.durationMs,
+            status: 'queued' as const,
+            attempt: 1,
+            priorRenderIds: [],
+          }))
+        : null
+      if (parts) await updateRender(db, render.id, { parts })
+      const totalFrames = (parts ?? []).reduce(
+        (sum, part) => sum + (part.frameRange[1] - part.frameRange[0] + 1),
+        0,
+      )
+
       const { settings } = await channelForProject(db, projectId)
       return {
+        parts,
+        totalFrames,
+        concurrency: settings.render.concurrency,
         renderId: render.id,
         timelineId: timelineRow.id,
         timelineVersion: timelineRow.version,
@@ -274,7 +314,11 @@ export const renderRunner = inngest.createFunction(
             operation: 'render-master',
             projectId,
             estimateUsd: setup.estimate,
-            meta: { renderId: setup.renderId, timelineVersion: setup.timelineVersion },
+            meta: {
+              renderId: setup.renderId,
+              timelineVersion: setup.timelineVersion,
+              ...(setup.parts ? { parts: setup.parts.length } : {}),
+            },
           },
           (await getWorkspace(db)).settings.budgets,
           new Date(),
@@ -285,6 +329,10 @@ export const renderRunner = inngest.createFunction(
         }
         throw error
       }
+
+      // A long master submits its parts one wave at a time, later; the
+      // reservation is all this step does for it.
+      if (setup.parts) return { ok: true as const, ledgerId, timelineS3Key: key }
 
       // A refused invoke releases its reservation before the retry: this
       // step re-runs whole, so a kept reservation per attempt would stack
@@ -325,6 +373,10 @@ export const renderRunner = inngest.createFunction(
         await markStageFailed(ctx, invoked.gate)
       })
       return { projectId, outcome: 'over-budget' as const }
+    }
+
+    if (setup.parts) {
+      return renderInParts(ctx, step, { ...setup, parts: setup.parts }, invoked)
     }
 
     // ONE wait on ONE event (see draft-runner: the completed/failed pair
@@ -467,3 +519,424 @@ export const renderRunner = inngest.createFunction(
     }
   },
 )
+
+// ---------------------------------------------------------------------------
+// The parts path: a master longer than 30 minutes renders in parts
+// ---------------------------------------------------------------------------
+
+type StepTools = GetStepTools<typeof inngest>
+
+/** How long media-utils may spend joining the parts and measuring the result. */
+const JOIN_TIMEOUT = '20m'
+
+interface PartsSetup {
+  renderId: string
+  timelineS3Key: string
+  estimate: number
+  timeoutMinutes: number
+  parts: unknown
+  totalFrames: number
+  concurrency: number
+}
+
+type PartsOutcome =
+  | { projectId: string; outcome: 'failed' }
+  | { projectId: string; outcome: 'master-ready'; renderId: string; qcPassed: boolean }
+
+/** A `render/settled` event, or null when the wait timed out. */
+type SettledLike = { data: Record<string, unknown> } | null
+
+type PartOutcome =
+  { ok: true; outputS3Key: string; costUsd: number } | { ok: false; detail: string }
+
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function partOutcome(settled: SettledLike, webhookTimeout: string): PartOutcome {
+  if (settled && settled.data['result'] === 'completed') {
+    const cost = settled.data['costUsd']
+    return {
+      ok: true,
+      outputS3Key: text(settled.data['outputS3Key']) ?? '',
+      costUsd: typeof cost === 'number' ? cost : 0,
+    }
+  }
+  if (settled) {
+    const message = text(settled.data['message'])
+    return {
+      ok: false,
+      detail: `${text(settled.data['reason']) ?? 'error'}${message ? `: ${message}` : ''}`,
+    }
+  }
+  return { ok: false, detail: `no webhook within ${webhookTimeout}` }
+}
+
+/**
+ * What the retry step does to a part that failed or timed out: the old
+ * render is tombstoned on the broker (`cancelId`), kept in `priorRenderIds`
+ * because it was paid for, and the part goes again under a fresh id.
+ */
+export function retryPlan(part: RenderPart): { cancelId: string; next: RenderPart } {
+  return {
+    cancelId: part.renderId,
+    next: {
+      index: part.index,
+      renderId: newId<'render'>(),
+      frameRange: part.frameRange,
+      startMs: part.startMs,
+      durationMs: part.durationMs,
+      status: 'queued',
+      attempt: 2,
+      priorRenderIds: [...part.priorRenderIds, part.renderId],
+    },
+  }
+}
+
+function withPart(parts: RenderPart[], index: number, next: RenderPart): RenderPart[] {
+  return parts.map((part) => (part.index === index ? next : part))
+}
+
+/**
+ * Parts live on the row. Every step that changes them writes the row before
+ * it returns, and returns the new array (Inngest memoises step results, so
+ * a replay rebuilds the in-memory copy from them).
+ */
+async function renderInParts(
+  ctx: GateContext,
+  step: StepTools,
+  setup: PartsSetup,
+  invoked: { ledgerId: string; timelineS3Key?: string },
+): Promise<PartsOutcome> {
+  const { projectId } = ctx
+  const { ledgerId } = invoked
+  const timelineS3Key = invoked.timelineS3Key ?? setup.timelineS3Key
+  const webhookTimeout = `${setup.timeoutMinutes + WEBHOOK_GRACE_MINUTES}m`
+  let parts = RenderPartsSchema.parse(setup.parts)
+  const total = parts.length
+  const spend = (from: RenderPart[]): number =>
+    settleRenderParts(from, setup.estimate, setup.totalFrames)
+
+  const submitPart = async (stepId: string, index: number): Promise<RenderPart[]> => {
+    const from = parts
+    return RenderPartsSchema.parse(
+      await step.run(stepId, async () => {
+        const part = from[index]
+        if (!part) throw new NonRetriableError(`There is no part ${index}.`)
+        const accepted = await submitRender({
+          projectId,
+          renderId: part.renderId,
+          kind: 'master',
+          timelineS3Key,
+          composition: 'DocumentaryMaster',
+          expectedDurationSec: part.durationMs / 1000,
+          frameRange: part.frameRange,
+        })
+        const next = withPart(from, index, {
+          ...part,
+          status: 'rendering',
+          remotionRenderId: accepted.remotionRenderId,
+        })
+        // The master row goes to rendering with the first part, once.
+        if (index === 0 && part.attempt === 1) {
+          await updateRender(db, setup.renderId, {
+            status: 'rendering',
+            startedAt: new Date(),
+            parts: next,
+          })
+        } else {
+          await updateRenderParts(db, setup.renderId, next)
+        }
+        return next
+      }),
+    )
+  }
+
+  const recordPart = async (
+    stepId: string,
+    index: number,
+    outcome: PartOutcome,
+  ): Promise<RenderPart[]> => {
+    const from = parts
+    return RenderPartsSchema.parse(
+      await step.run(stepId, async () => {
+        const part = from[index]
+        if (!part) throw new NonRetriableError(`There is no part ${index}.`)
+        const next = withPart(
+          from,
+          index,
+          outcome.ok
+            ? {
+                ...part,
+                status: 'completed',
+                outputS3Key: outcome.outputS3Key,
+                costUsd: outcome.costUsd,
+              }
+            : { ...part, status: 'failed', message: outcome.detail },
+        )
+        await updateRender(db, setup.renderId, {
+          parts: next,
+          progressPct: partsProgressPct(next, {}),
+        })
+        return next
+      }),
+    )
+  }
+
+  const awaitPart = (stepId: string, renderId: string) =>
+    step.waitForEvent(stepId, {
+      event: 'render/settled',
+      timeout: webhookTimeout,
+      if: `async.data.renderId == "${renderId}"`,
+    })
+
+  // ---- Render, wave by wave ------------------------------------------------
+
+  for (const wave of partWaves(
+    parts.map((part) => part.index),
+    setup.concurrency,
+  )) {
+    for (const index of wave) parts = await submitPart(`submit-part-${index}`, index)
+
+    // All the waits are registered together: a part that settles while the
+    // run is waiting on its sibling must not slip past.
+    const firstIds = wave.map((index) => parts[index]?.renderId ?? '')
+    const settled = await Promise.all(
+      wave.map((index, k) => awaitPart(`await-part-${index}`, firstIds[k] ?? '')),
+    )
+    for (const [k, index] of wave.entries()) {
+      parts = await recordPart(
+        `record-part-${index}`,
+        index,
+        partOutcome(settled[k] ?? null, webhookTimeout),
+      )
+    }
+
+    // One more go for each part that failed; a second failure ends the render.
+    const failed = wave.filter((index) => parts[index]?.status === 'failed')
+    for (const index of failed) {
+      const from = parts
+      parts = RenderPartsSchema.parse(
+        await step.run(`retry-part-${index}`, async () => {
+          const part = from[index]
+          if (!part) throw new NonRetriableError(`There is no part ${index}.`)
+          const plan = retryPlan(part)
+          // A tombstone that does not land is logged, not fatal: the retry
+          // goes under a new id either way.
+          try {
+            await cancelRender(plan.cancelId)
+          } catch (error) {
+            console.error(
+              `render-runner: could not cancel part ${index} (${plan.cancelId}): ${serialiseError(error).message}`,
+            )
+          }
+          const next = withPart(from, index, plan.next)
+          await updateRenderParts(db, setup.renderId, next)
+          return next
+        }),
+      )
+      parts = await submitPart(`submit-part-${index}-retry`, index)
+    }
+    const retryIds = failed.map((index) => parts[index]?.renderId ?? '')
+    const retried = await Promise.all(
+      failed.map((index, k) => awaitPart(`await-part-${index}-retry`, retryIds[k] ?? '')),
+    )
+    for (const [k, index] of failed.entries()) {
+      parts = await recordPart(
+        `record-part-${index}-retry`,
+        index,
+        partOutcome(retried[k] ?? null, webhookTimeout),
+      )
+    }
+
+    const dead = parts.find((part) => part.status === 'failed')
+    if (dead) {
+      const from = parts
+      await step.run(`part-failed-${dead.index}`, async () => {
+        const detail = dead.message ?? 'unknown error'
+        const message = `part ${dead.index + 1} of ${total} failed twice: ${detail}`
+        await updateRender(db, setup.renderId, {
+          status: 'failed',
+          error: { message },
+          completedAt: new Date(),
+        })
+        // Every part that ran was paid for, the failed ones included.
+        await settle(db, ledgerId, spend(from))
+        await markStageFailed(ctx, { message: `The render failed: ${message}` })
+      })
+      return { projectId, outcome: 'failed' }
+    }
+  }
+
+  // ---- QC every part, with its loudness measurement -------------------------
+
+  const qcJobIds: string[] = []
+  for (const part of parts) {
+    const jobId = await step.run(`submit-qc-part-${part.index}`, async () => {
+      const id = newId<'run'>()
+      await submitMediaJob({
+        kind: 'qc',
+        jobId: id,
+        projectId,
+        callbackUrl: brokerCallbackUrl(),
+        s3Key: part.outputS3Key ?? '',
+        targetLufs: -14,
+        offsetMs: part.startMs,
+        withLoudnorm: true,
+      })
+      return id
+    })
+    qcJobIds.push(jobId)
+  }
+  const qcDone = await Promise.all(
+    parts.map((part, k) =>
+      step.waitForEvent(`await-qc-part-${part.index}`, {
+        event: 'media/job.completed',
+        timeout: QC_TIMEOUT,
+        if: `async.data.jobId == "${qcJobIds[k]}"`,
+      }),
+    ),
+  )
+
+  // A part's report must exist and carry its loudness measurement; anything
+  // else is QC that did not run, named by part.
+  let qcFailure: string | null = null
+  const reports: QcReport[] = []
+  const measurements: { measurement: LoudnormMeasurement; durationMs: number }[] = []
+  for (const [k, part] of parts.entries()) {
+    const done = qcDone[k]
+    const where = `part ${part.index + 1} of ${total}`
+    if (!done || done.data.ok !== true) {
+      qcFailure = `${where}: ${done?.data.error ?? `no QC result within ${QC_TIMEOUT}`}`
+      break
+    }
+    const report = QcReportSchema.safeParse(done.data.result)
+    if (!report.success) {
+      qcFailure = `${where}: the QC report was not readable`
+      break
+    }
+    if (!report.data.loudnorm) {
+      qcFailure = `${where}: the QC report has no loudness measurement`
+      break
+    }
+    reports.push(report.data)
+    measurements.push({
+      measurement: report.data.loudnorm,
+      durationMs: report.data.durationMs ?? part.durationMs,
+    })
+  }
+
+  if (qcFailure !== null) {
+    const detail = qcFailure
+    const from = parts
+    await step.run('qc-errored', async () => {
+      await updateRender(db, setup.renderId, {
+        status: 'failed',
+        error: { message: `QC did not run: ${detail}` },
+        completedAt: new Date(),
+      })
+      await settle(db, ledgerId, spend(from))
+      await markStageFailed(ctx, { message: `The master rendered but QC did not run: ${detail}` })
+    })
+    return { projectId, outcome: 'failed' }
+  }
+
+  const rendered = parts
+  parts = RenderPartsSchema.parse(
+    await step.run('record-qc-parts', async () => {
+      const next = rendered.map((part, k) => ({ ...part, qc: reports[k] }))
+      await updateRender(db, setup.renderId, { status: 'qc', progressPct: 100, parts: next })
+      return next
+    }),
+  )
+
+  // ---- Join ---------------------------------------------------------------
+
+  const joinKey = `renders/${setup.renderId}/master.mp4`
+  const measured = combineLoudness(measurements)
+  const partS3Keys = parts.map((part) => part.outputS3Key ?? '')
+
+  const runJoin = async (submitId: string, awaitId: string) => {
+    const jobId = await step.run(submitId, async () => {
+      const id = newId<'run'>()
+      await submitMediaJob({
+        kind: 'join',
+        jobId: id,
+        projectId,
+        callbackUrl: brokerCallbackUrl(),
+        partS3Keys,
+        outputS3Key: joinKey,
+        targetLufs: -14,
+        measured,
+      })
+      return id
+    })
+    const done = await step.waitForEvent(awaitId, {
+      event: 'media/job.completed',
+      timeout: JOIN_TIMEOUT,
+      if: `async.data.jobId == "${jobId}"`,
+    })
+    if (!done || done.data.ok !== true) {
+      return {
+        ok: false as const,
+        detail: done?.data.error ?? `no join result within ${JOIN_TIMEOUT}`,
+      }
+    }
+    const result = JoinResultSchema.safeParse(done.data.result)
+    if (!result.success) return { ok: false as const, detail: 'the join result was not readable' }
+    return { ok: true as const, result: result.data }
+  }
+
+  let joined = await runJoin('submit-join', 'await-join')
+  if (!joined.ok) joined = await runJoin('submit-join-retry', 'await-join-retry')
+  if (!joined.ok) {
+    const detail = joined.detail
+    const from = parts
+    await step.run('join-failed', async () => {
+      await updateRender(db, setup.renderId, {
+        status: 'failed',
+        error: { message: `the parts rendered; the join failed: ${detail}` },
+        completedAt: new Date(),
+      })
+      await settle(db, ledgerId, spend(from))
+      await markStageFailed(ctx, { message: `The parts rendered but the join failed: ${detail}` })
+    })
+    return { projectId, outcome: 'failed' }
+  }
+
+  // ---- Ready --------------------------------------------------------------
+
+  const join = joined.result
+  const qcReport = mergeQcReports(
+    reports.map((qc) => ({ qc })),
+    { integratedLufs: join.integratedLufs },
+    -14,
+  )
+  const sum = spend(parts)
+
+  const ready = await step.run('master-ready', async () => {
+    await updateRender(db, setup.renderId, {
+      status: 'done',
+      progressPct: 100,
+      outputS3Key: join.outputS3Key,
+      costUsd: String(round4(sum)),
+      qcReport,
+      completedAt: new Date(),
+    })
+    await settle(db, ledgerId, sum)
+    return leaveMaster(projectId)
+  })
+
+  if (ready?.shorts !== false) {
+    await step.sendEvent('emit-master-ready', [
+      events.projectMasterReady.create({ projectId, renderId: setup.renderId }),
+    ])
+  }
+
+  return {
+    projectId,
+    outcome: 'master-ready',
+    renderId: setup.renderId,
+    qcPassed: qcReport.passed,
+  }
+}
