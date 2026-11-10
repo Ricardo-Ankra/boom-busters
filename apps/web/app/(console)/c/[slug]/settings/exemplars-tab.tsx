@@ -407,6 +407,12 @@ function ExemplarCard({
                   onChange={(event) => setSteer(event.target.value)}
                   disabled={disabled || refiningSince !== null}
                 />
+                {approved && draft?.parentId ? (
+                  <p className="text-[13px] text-[var(--color-text-secondary)]">
+                    Refine builds from the approved version. Approve this draft first to build on
+                    it.
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
