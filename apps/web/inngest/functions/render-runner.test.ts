@@ -531,7 +531,16 @@ describeDb('render-runner', () => {
         expect(String((error as Error | undefined)?.message ?? error)).toContain(
           'predates long renders in parts',
         )
-        expect(broker.submitRender).not.toHaveBeenCalled()
+        // The previous test's run keeps going in the background and can still
+        // submit a retry after this test began, so the claim is about this
+        // run's own parts (the rows that exist now), never the shared mock.
+        const rows = await db.select().from(renders)
+        const ownParts = new Set(rows.flatMap((row) => (row.parts ?? []).map((p) => p.renderId)))
+        expect(ownParts.size).toBeGreaterThan(0)
+        const submitted = broker.submitRender.mock.calls.map(
+          (call) => (call[0] as { renderId: string }).renderId,
+        )
+        expect(submitted.filter((id) => ownParts.has(id))).toEqual([])
         await expectNothingReserved()
       },
     )
