@@ -4164,8 +4164,13 @@ thinking, the guardrail-in-prompt and the likeness defaults (decision 252
       gate, create and archive (decision 330).
 - [x] e2e `channels.spec.ts`, a second fixture channel and the 390 px
       switcher and Channel tab passes; every package suite green.
-- [ ] Migration rehearsal on a Neon branch (runbook in the hand-over), then
-      production; `PUT /api/inngest` after the deploy.
+- [x] Migration rehearsal on a Neon branch (runbook in the hand-over), then
+      production; `PUT /api/inngest` after the deploy. Superseded: production
+      ran 0038 directly. Confirmed read-only on 2026-11-10: two channels, one
+      workspace row, no null `channel_id` on any non-nullable table (the 37
+      null `runs` rows are analytics cron runs, as decision 327 allows),
+      `channels.bible` dropped, every project has a `bible_id`, and the second
+      channel's bible is version 1, incomplete.
 
 ## Channel bible, the lift (2026-10-29)
 
