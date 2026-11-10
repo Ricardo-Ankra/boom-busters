@@ -460,7 +460,7 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
     void commit({ brandKit: { ...next.brandKit } }, next)
   }
 
-  const setLook = <K extends 'gradePreset' | 'grainPreset'>(
+  const setLook = <K extends 'gradePreset' | 'grainPreset' | 'chapterMarking'>(
     key: K,
     value: Settings['brandKit']['look'][K],
   ) => {
@@ -506,7 +506,9 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
           <CardTitle>Photographic look</CardTitle>
           <CardDescription>
             Applied to every photograph in the film at render: stills, stock and archival. Image
-            prompts carry no grade or grain, so this is the one place the film&apos;s look is set.
+            prompts carry no grade or grain, so this is the one place the film&apos;s look is set.{' '}
+            The opening chapter never gets a card; this chooses what marks the chapters after it. A
+            format can override it.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -542,6 +544,25 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
               <option value="subtle">Subtle</option>
               <option value="film">Film</option>
               <option value="heavy">Heavy</option>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="look-chapter-marking">Chapter marking</Label>
+            <Select
+              id="look-chapter-marking"
+              aria-label="Chapter marking"
+              value={settings.brandKit.look.chapterMarking}
+              disabled={saving}
+              onChange={(event) =>
+                setLook(
+                  'chapterMarking',
+                  event.target.value as Settings['brandKit']['look']['chapterMarking'],
+                )
+              }
+            >
+              <option value="cards">A card at every chapter after the opening</option>
+              <option value="title">The film&apos;s title once, after the opening</option>
+              <option value="none">No cards</option>
             </Select>
           </div>
         </CardContent>

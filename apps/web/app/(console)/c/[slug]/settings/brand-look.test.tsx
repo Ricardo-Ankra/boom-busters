@@ -136,4 +136,20 @@ describe('the Photographic look card (decision 287)', () => {
     )
     expect(screen.getByLabelText('Grain')).toBeInTheDocument()
   })
+
+  it('offers chapter marking on the Brand Kit tab, defaulting to cards, and saves a choice', async () => {
+    const user = userEvent.setup()
+    await openBrandKitTab()
+    const marking = screen.getByLabelText('Chapter marking')
+    expect((marking as HTMLSelectElement).value).toBe('cards')
+    await user.selectOptions(marking, 'none')
+    expect(saveSettings).toHaveBeenCalledWith(
+      '01J00000000000000000000001',
+      expect.objectContaining({
+        brandKit: expect.objectContaining({
+          look: expect.objectContaining({ chapterMarking: 'none' }),
+        }),
+      }),
+    )
+  })
 })

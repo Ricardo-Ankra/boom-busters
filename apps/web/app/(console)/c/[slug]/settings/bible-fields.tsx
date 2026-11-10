@@ -1057,6 +1057,26 @@ function FormatsEditor({
               <FieldIssues messages={issuesAt(issues, `${path}.introRule`)} />
             </div>
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${at}-chapter-marking`}>Chapter marking</Label>
+              <Select
+                id={`${at}-chapter-marking`}
+                value={format.chapterMarking}
+                disabled={disabled}
+                className="w-80"
+                onChange={(event) =>
+                  setFormat(index, {
+                    chapterMarking: event.target.value as ChannelFormat['chapterMarking'],
+                  })
+                }
+              >
+                <option value="inherit">Channel default</option>
+                <option value="cards">A card at every chapter after the opening</option>
+                <option value="title">The film&apos;s title once, after the opening</option>
+                <option value="none">No cards</option>
+              </Select>
+              <FieldIssues messages={issuesAt(issues, `${path}.chapterMarking`)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${at}-intro-line`}>Fixed opening line</Label>
               <textarea
                 id={`${at}-intro-line`}
@@ -1155,6 +1175,7 @@ function FormatsView({
           ['Fixed opening line', format.introLine],
           ['Fixed closing line', format.outroLine],
           ['Shorts', format.shorts ? '' : 'Shorts off'],
+          ['Chapter marking', format.chapterMarking === 'inherit' ? '' : format.chapterMarking],
         ]
         return (
           <div

@@ -127,8 +127,9 @@ export function BrandSpecimenPanel({ settings }: { settings: Settings }) {
         />
       </div>
       <p className="text-[12px] text-[var(--color-text-muted)]">
-        Chapter card ({look.chapterCardVariant}) · lower third ({look.lowerThirdVariant}) · chart ·
-        karaoke captions — three seconds each, fixture words, your exact tokens.
+        Chapter card ({look.chapterCardVariant}, marking {look.chapterMarking}) · lower third (
+        {look.lowerThirdVariant}) · chart · karaoke captions — three seconds each, fixture words,
+        your exact tokens.
       </p>
     </div>
   )

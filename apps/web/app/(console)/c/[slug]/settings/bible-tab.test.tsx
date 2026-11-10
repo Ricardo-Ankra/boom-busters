@@ -626,6 +626,52 @@ describe('BibleTab', () => {
       expect(screen.getByText('Shorts off')).toBeInTheDocument()
     })
 
+    it("edits a format's chapter marking from Channel default, and saves it", async () => {
+      editBibleSectionAction.mockResolvedValue({ ok: true, draft: draftOf() })
+      renderTab(null)
+      await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))
+      const format = screen.getByRole('group', { name: 'Documentary' })
+      const marking = within(format).getByLabelText('Chapter marking')
+      expect((marking as HTMLSelectElement).value).toBe('inherit')
+      await userEvent.selectOptions(marking, 'title')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done editing Formats' }))
+      const patch = editBibleSectionAction.mock.calls[0]![2] as {
+        formats: { chapterMarking: string }[]
+      }
+      expect(patch.formats[0]!.chapterMarking).toBe('title')
+    })
+
+    it('lists Chapter marking in the read view only when a format overrides the channel', () => {
+      const base = FIRST_CHANNEL_BIBLE.formats[0]!
+      const bible = {
+        ...FIRST_CHANNEL_BIBLE,
+        formats: [
+          { ...base, chapterMarking: 'inherit' as const },
+          {
+            ...base,
+            key: 'second-format',
+            name: 'Second',
+            primary: false,
+            chapterMarking: 'none' as const,
+          },
+        ],
+      }
+      render(
+        <BibleTab
+          channel={CHANNEL}
+          draft={null}
+          versions={[]}
+          currentVersion={{ id: '01J00000000000000000000009', version: 3, bible }}
+          vidiqReady={false}
+          archived={false}
+          copySources={SOURCES}
+        />,
+      )
+      expect(screen.queryAllByText(/^Chapter marking:/)).toHaveLength(1)
+      expect(screen.getByText('none')).toBeInTheDocument()
+    })
+
     it('refuses to remove the primary format and removes another', async () => {
       renderTab(null)
       await userEvent.click(screen.getByRole('button', { name: 'Edit Formats' }))

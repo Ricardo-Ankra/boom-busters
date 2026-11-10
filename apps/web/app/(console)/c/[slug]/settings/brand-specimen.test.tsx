@@ -54,7 +54,10 @@ describe('BrandSpecimenPanel', () => {
     expect(screen.getByTestId('player')).toHaveTextContent('accent:#ff0055')
     expect(
       screen.getByText(
-        new RegExp(`chapter card \\(${settings.brandKit.look.chapterCardVariant}\\)`, 'i'),
+        new RegExp(
+          `chapter card \\(${settings.brandKit.look.chapterCardVariant}, marking ${settings.brandKit.look.chapterMarking}\\)`,
+          'i',
+        ),
       ),
     ).toBeInTheDocument()
   })
