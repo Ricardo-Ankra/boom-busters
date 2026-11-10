@@ -216,8 +216,15 @@ export function countBySeverity(chapters: readonly { warnings: readonly GutterWa
   return counts
 }
 
+/**
+ * A warning as the reviewer's answer carries it. The model never sets severity:
+ * the key is stripped on parse, and the runner stamps severity itself.
+ */
+export const ModelWarningSchema = GutterWarningSchema.omit({ severity: true })
+export type ModelWarning = z.infer<typeof ModelWarningSchema>
+
 export const SelfCheckSchema = z.object({
-  warnings: z.array(GutterWarningSchema).max(200),
+  warnings: z.array(ModelWarningSchema).max(200),
 })
 export type SelfCheck = z.infer<typeof SelfCheckSchema>
 

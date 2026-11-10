@@ -814,6 +814,20 @@ describe('parseSelfCheck', () => {
     expect(parseSelfCheck('{"warnings":[]}').warnings).toEqual([])
   })
 
+  it('strips a severity the model set, whether valid or not', () => {
+    for (const severity of ['advisory', 'high']) {
+      const parsed = parseSelfCheck(
+        JSON.stringify({
+          warnings: [
+            { kind: 'unsourced-claim', severity, sentence: 'x', message: 'no claim behind it' },
+          ],
+        }),
+      )
+      expect(parsed.warnings).toHaveLength(1)
+      expect(parsed.warnings[0]).not.toHaveProperty('severity')
+    }
+  })
+
   it('rejects a warning kind the gutter cannot render', () => {
     expect(() =>
       parseSelfCheck('{"warnings":[{"kind":"iffy","sentence":"x","message":"hello"}]}'),
