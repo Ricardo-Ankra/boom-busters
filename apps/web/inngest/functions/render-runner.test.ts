@@ -100,6 +100,17 @@ vi.mock('@boom-busters/providers', async (importOriginal) => {
   return { ...actual, mockProvidersEnabled: () => providers.mock }
 })
 
+/**
+ * "Nothing was reserved for this run": no ledger entry names any render row
+ * that exists now. Asserting on the whole table instead failed once when
+ * another file's rows were left behind.
+ */
+async function expectNothingReserved(): Promise<void> {
+  const ids = new Set((await db.select().from(renders)).map((row) => row.id))
+  const mine = (await listLedger(db)).filter((entry) => ids.has(String(entry.meta['renderId'])))
+  expect(mine).toEqual([])
+}
+
 const describeDb = requireTestDatabase() ? describe : describe.skip
 
 const CHAPTER = '01HQ0000000000000000000CH1'
@@ -345,7 +356,7 @@ describeDb('render-runner', () => {
         message: expect.stringContaining('AWS_BROKER_URL'),
       })
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
-      expect(await listLedger(db)).toEqual([])
+      await expectNothingReserved()
     })
   })
 
@@ -404,7 +415,7 @@ describeDb('render-runner', () => {
       const rows = await db.select().from(renders)
       expect(rows.some((row) => row.status === 'failed')).toBe(true)
       expect((await getProject(db, FIXTURE_PROJECT_ID))?.stageStatus).toBe('failed')
-      expect(await listLedger(db)).toEqual([])
+      await expectNothingReserved()
     })
   })
 
@@ -492,7 +503,7 @@ describeDb('render-runner', () => {
           'predates long renders in parts',
         )
         expect(broker.submitRender).not.toHaveBeenCalled()
-        expect(await listLedger(db)).toEqual([])
+        await expectNothingReserved()
       },
     )
 
