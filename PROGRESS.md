@@ -11000,10 +11000,10 @@ Part 2 checklist:
 
 ### Deliverables
 
-- [x] Task 1: build spec section amended for the per-channel review (`54238999`)
-- [x] Task 2: claim-list markers (RULED, ALLEGED, none) and the scene list (`1c512379`)
-- [x] Task 3: hedging rules in the bible and the writer's prompt (`21116065`, fix `4fa6bb4b`)
-- [x] Task 4: length contract and tag budget in the chapter prompts (`cdbdef79`, fix `8949634f`)
+- [x] Task 1: warning severity, the self-check answer loses claim refs, build spec amended (`54238999`)
+- [x] Task 2: claim-list markers (RULED, ALLEGED, none) (`1c512379`)
+- [x] Task 3: one scene list for the drafter and the reviewer (`21116065`, fix `4fa6bb4b`)
+- [x] Task 4: the research profile's review block and standing severity (`cdbdef79`, fix `8949634f`)
 - [x] Task 5: the reviewer prompt grounds on claims and scenes, hedges only ALLEGED claims (`4d47ac05`)
 - [x] Task 6: deterministic style and length checks for a script (`ce44187a`)
 - [x] Task 7: the gate counts blocking warnings only, with scenes, standing and the code checks in the self-check step (`51c58e1b`)
@@ -11019,6 +11019,9 @@ Part 2 checklist:
   migration literal is unchanged by design), so the paste into the Bible tab is
   needed on any new database too, not only on production.
 - Check the `scripting` model route in Settings.
+- Deploy with no script run mid-draft: a run parked between load-dossier and its
+  last self-check replays setup claims without the legal marker. Check the
+  Inngest Runs list first.
 - `PUT /api/inngest` after the deploy.
 - No migration.
 
@@ -11043,7 +11046,7 @@ Part 2 checklist:
   nothing the claim list does not support".
 - The claim-list marker change reaches every prompt that embeds the claim
   list: RULED replaces ADJUDICATED, "ALLEGED, not ruled" replaces "NOT
-  adjudicated", and a claim with no standing marker carries no label. Files
+  adjudicated", and a claim with no legal marker carries no label. Files
   changed beside the script and metadata families: graphics 25, shotlist 6,
   retype 5, direction 2, shot-repair 2, stretch 2. Only marker lines changed
   in those 42 files (checked mechanically).
