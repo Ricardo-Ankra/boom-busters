@@ -13,7 +13,12 @@ import {
   UploadPartCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
+import {
+  BROKER_SIGNATURE_HEADER,
+  brokerSignature,
+  MediaJobSchema,
+  UPLOAD_ROUND_BUDGET_MS,
+} from '@boom-busters/schemas'
 import type { LoudnormMeasurement, MediaJob, MediaJobCallback } from '@boom-busters/schemas'
 import type { Readable } from 'node:stream'
 import {
@@ -37,7 +42,7 @@ import {
   youtubeInitBody,
 } from './commands'
 import { uploadStreamMultipart } from './multipart'
-import { putInChunks } from './youtube-upload'
+import { putInChunks, querySessionOffset } from './youtube-upload'
 
 /**
  * The media-utils Lambda (build spec section 8): invoked ASYNCHRONOUSLY by
@@ -330,16 +335,22 @@ async function ensureWhisper(): Promise<{ binary: string; model: string }> {
 async function runTranscribe(job: Extract<MediaJob, { kind: 'transcribe' }>) {
   const input = '/tmp/transcribe-input'
   const wav = '/tmp/transcribe.wav'
-  // The batched form (audioS3Keys) arrives with a later task.
-  if (!job.audioS3Key) throw new Error('transcribe needs audioS3Key')
-  await download(job.audioS3Key, input)
-  await ffmpeg(['-y', ...toWhisperWavArgs(input, wav)])
-  const { binary, model } = await ensureWhisper()
   const outBase = '/tmp/transcribe-out'
-  const { code, stderr } = await run(binary, whisperArgs(model, wav, outBase))
-  if (code !== 0) throw new Error(`whisper exited ${code}: ${stderr.slice(-500)}`)
-  const json = JSON.parse(readFileSync(`${outBase}.json`, 'utf8')) as unknown
-  return { words: whisperJsonToCaptions(json) }
+  // The schema guarantees exactly one of the two.
+  const keys = job.audioS3Keys ?? [job.audioS3Key!]
+  const { binary, model } = await ensureWhisper()
+  const results: { audioS3Key: string; words: ReturnType<typeof whisperJsonToCaptions> }[] = []
+  // One after another over the same temp paths: a batch is eight paragraphs
+  // and /tmp is small.
+  for (const audioS3Key of keys) {
+    await download(audioS3Key, input)
+    await ffmpeg(['-y', ...toWhisperWavArgs(input, wav)])
+    const { code, stderr } = await run(binary, whisperArgs(model, wav, outBase))
+    if (code !== 0) throw new Error(`whisper exited ${code}: ${stderr.slice(-500)}`)
+    const json = JSON.parse(readFileSync(`${outBase}.json`, 'utf8')) as unknown
+    results.push({ audioS3Key, words: whisperJsonToCaptions(json) })
+  }
+  return job.audioS3Keys ? { results } : { words: results[0]!.words }
 }
 
 /**
@@ -354,6 +365,39 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
   const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: job.videoS3Key }))
   const total = head.ContentLength
   if (total === undefined) throw new Error('video object has no length')
+
+  // Both paths stop starting chunks at the deadline: the invocation ends at
+  // 15 minutes, and a continuation picks the session up from its offset.
+  const deadlineAt = Date.now() + (job.budgetMs ?? UPLOAD_ROUND_BUDGET_MS)
+  const readRange = async (start: number, endInclusive: number) => {
+    const part = await client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: job.videoS3Key,
+        Range: `bytes=${start}-${endInclusive}`,
+      }),
+    )
+    const bytes = await part.Body?.transformToByteArray()
+    if (!bytes) throw new Error('video object has no body')
+    return bytes
+  }
+
+  if (job.resume) {
+    const session = await querySessionOffset({
+      uploadUrl: job.resume.uploadUrl,
+      total,
+      fetchImpl: fetch,
+    })
+    if (session.kind === 'done') return { videoId: session.videoId, status: session.status }
+    return putInChunks({
+      total,
+      uploadUrl: job.resume.uploadUrl,
+      fetchImpl: fetch,
+      readRange,
+      startOffset: session.offset,
+      deadlineAt,
+    })
+  }
 
   const startResponse = await fetch(
     'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
@@ -374,23 +418,7 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
   const uploadUrl = startResponse.headers.get('location')
   if (!uploadUrl) throw new Error('youtube resumable init returned no location')
 
-  return putInChunks({
-    total,
-    uploadUrl,
-    fetchImpl: fetch,
-    readRange: async (start, endInclusive) => {
-      const part = await client.send(
-        new GetObjectCommand({
-          Bucket: bucket,
-          Key: job.videoS3Key,
-          Range: `bytes=${start}-${endInclusive}`,
-        }),
-      )
-      const bytes = await part.Body?.transformToByteArray()
-      if (!bytes) throw new Error('video object has no body')
-      return bytes
-    },
-  })
+  return putInChunks({ total, uploadUrl, fetchImpl: fetch, readRange, deadlineAt })
 }
 
 // ---------------------------------------------------------------------------

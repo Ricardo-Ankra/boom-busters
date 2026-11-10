@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { YOUTUBE_CHUNK_BYTES, putInChunks } from './youtube-upload'
+import { YOUTUBE_CHUNK_BYTES, putInChunks, querySessionOffset } from './youtube-upload'
 
 /**
  * A 240-minute master is several gigabytes (at 4 Mbps, 7.2 GB; the media-utils
@@ -94,5 +94,73 @@ describe('putInChunks', () => {
         readRange: async () => new Uint8Array(10),
       }),
     ).rejects.toThrow('video read returned 10 bytes for bytes 0-99 (expected 100)')
+  })
+
+  it('stops at the deadline and reports where it got to', async () => {
+    const chunk = 256 * 1024
+    const total = 3 * chunk
+    const { fetchImpl, puts } = fakeYoutube(total)
+    let clock = 0
+    const result = await putInChunks({
+      total,
+      uploadUrl: 'https://upload.example/session',
+      fetchImpl,
+      chunkBytes: chunk,
+      deadlineAt: 1000,
+      // The clock passes the deadline once the first chunk is in.
+      now: () => clock,
+      readRange: async (start, endInclusive) => {
+        clock = 2000
+        return new Uint8Array(endInclusive - start + 1)
+      },
+    })
+    expect(result).toEqual({
+      status: 'in-progress',
+      uploadUrl: 'https://upload.example/session',
+      offset: chunk,
+      total,
+    })
+    expect(puts).toHaveLength(1)
+  })
+
+  it('resumes from the given offset', async () => {
+    const chunk = 256 * 1024
+    const total = 3 * chunk
+    const { fetchImpl, puts } = fakeYoutube(total)
+    const result = await putInChunks({
+      total,
+      uploadUrl: 'https://upload.example/session',
+      fetchImpl,
+      chunkBytes: chunk,
+      startOffset: chunk,
+      readRange: async (start, endInclusive) => new Uint8Array(endInclusive - start + 1),
+    })
+    expect(puts[0]!.range).toBe(`bytes ${chunk}-${2 * chunk - 1}/${total}`)
+    expect(result).toMatchObject({ status: 'uploaded' })
+  })
+})
+
+describe('querySessionOffset', () => {
+  it('reads the session offset from a 308 range and a finished session from a 200', async () => {
+    const answer = (response: Response) =>
+      querySessionOffset({
+        uploadUrl: 'https://upload.example/session',
+        total: 1000,
+        fetchImpl: (async () => response) as unknown as typeof fetch,
+      })
+    expect(
+      await answer(new Response(null, { status: 308, headers: { range: 'bytes=0-524287' } })),
+    ).toEqual({ kind: 'offset', offset: 524288 })
+    expect(await answer(new Response(null, { status: 308 }))).toEqual({ kind: 'offset', offset: 0 })
+    expect(
+      await answer(
+        new Response(JSON.stringify({ id: 'vid9', status: { uploadStatus: 'processed' } }), {
+          status: 200,
+        }),
+      ),
+    ).toEqual({ kind: 'done', videoId: 'vid9', status: 'processed' })
+    await expect(answer(new Response('no', { status: 404 }))).rejects.toThrow(
+      'youtube session status 404',
+    )
   })
 })
