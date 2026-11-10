@@ -3,12 +3,6 @@ import type { Readable } from 'node:stream'
 /** S3 needs 5 MiB for every part but the last; 64 MiB keeps a film under 10 000 parts. */
 export const MULTIPART_PART_BYTES = 64 * 1024 * 1024
 
-/**
- * Stream a readable into an S3 multipart upload without holding more than one
- * part in memory. The four S3 operations are injected so this is tested with
- * fakes. Any failure aborts the upload (leaving no object and no billed parts)
- * and rethrows; an empty stream has nothing to upload and is a failure too.
- */
 export interface UploadedPart {
   partNumber: number
   etag: string
@@ -16,6 +10,12 @@ export interface UploadedPart {
   checksumCrc32?: string
 }
 
+/**
+ * Stream a readable into an S3 multipart upload without holding more than one
+ * part in memory. The four S3 operations are injected so this is tested with
+ * fakes. Any failure aborts the upload (leaving no object and no billed parts)
+ * and rethrows; an empty stream has nothing to upload and is a failure too.
+ */
 export async function uploadStreamMultipart(input: {
   stream: Readable
   partBytes?: number
