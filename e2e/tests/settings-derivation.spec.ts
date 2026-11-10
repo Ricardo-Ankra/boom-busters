@@ -108,6 +108,29 @@ async function seedVersions(): Promise<void> {
   }
 }
 
+/** A second refine of the approved stat counter, before any decision on the first. */
+async function secondDraft(): Promise<void> {
+  const { createDb, insertExemplarVersion, listChannelExemplars } = await import('@boom-busters/db')
+  const { FIRST_CHANNEL_ID } = await import('@boom-busters/schemas')
+  const { e2eDatabaseUrl } = await import('../database')
+  const connection = createDb(e2eDatabaseUrl(), { max: 1 })
+  try {
+    const rows = await listChannelExemplars(connection.db, FIRST_CHANNEL_ID)
+    const v1 = rows.find((row) => row.technique === 'stat-counter' && row.version === 1)
+    if (!v1) throw new Error('the seed has no stat counter v1')
+    await insertExemplarVersion(connection.db, {
+      channelId: FIRST_CHANNEL_ID,
+      technique: 'stat-counter',
+      plan: v1.plan,
+      code: { ...v1.code, title: 'The forty minutes, darker' },
+      parentId: v1.id,
+      steer: 'darker',
+    })
+  } finally {
+    await connection.sql.end({ timeout: 5 })
+  }
+}
+
 test.describe('Derivation', () => {
   test.beforeEach(async () => {
     await seedVersions()
@@ -170,17 +193,20 @@ test.describe('Derivation', () => {
     await expect(stat.getByRole('button', { name: 'Refine' })).toBeDisabled()
   })
 
-  test('keeps the approved one and sets the draft aside', async ({ page }) => {
+  test('keeps the approved one and sets every waiting draft aside', async ({ page }) => {
+    await secondDraft()
     await signIn(page)
     await page.goto(channelPath('/settings?tab=exemplars', FIRST_SLUG))
     const stat = page.getByRole('region', { name: 'Stat counter' })
     await stat.getByRole('button', { name: 'Keep the approved one' }).click()
     await expect(page.getByText('Kept the approved one').first()).toBeVisible()
     // The page re-renders on the server after the toast; the dev server takes its time.
+    // With two refines waiting, the older one took the place of the one kept (decision 452).
     await expect(stat.getByRole('heading', { name: 'New' })).toBeHidden({ timeout: 15_000 })
     await expect(stat.getByText('Approved v1, derived', { exact: false })).toBeVisible()
     await stat.getByRole('button', { name: 'Versions' }).click()
-    await expect(stat.getByRole('listitem').first()).toContainText('v2, retired')
+    await expect(stat.getByRole('listitem').nth(0)).toContainText('v3, retired')
+    await expect(stat.getByRole('listitem').nth(1)).toContainText('v2, retired')
   })
 
   test('the channel-only technique shows its card, its phrase and its place in use', async ({

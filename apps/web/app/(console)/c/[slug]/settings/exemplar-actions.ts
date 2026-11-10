@@ -22,7 +22,7 @@ import {
   latestDerivation,
   listChannelExemplars,
   recordVerdict,
-  retireExemplarVersion,
+  retireExemplarDrafts,
   runningDerivation,
   syncChannelTechniqueInUse,
   updateChannelSettings,
@@ -206,6 +206,8 @@ export async function approveExemplarVersionAction(
   const shownAgainst =
     (await approvedExemplar(db, channelId, version.technique))?.id ?? version.parentId
   await approveExemplarVersion(db, version.id)
+  // The other drafts waiting on it are settled too, or the next would take this one's place (decision 452).
+  await retireExemplarDrafts(db, channelId, version.technique)
   // A channel's own technique is in use once approved (spec 8.5).
   await syncChannelTechniqueInUse(db, channelId, version.technique)
   await recordVerdict(db, {
@@ -229,7 +231,9 @@ export async function keepApprovedAction(
   if (!draft) return UNKNOWN_VERSION
   if (draft.status !== 'draft') return { ok: false, error: 'Only a draft can be set aside.' }
   const approved = await approvedExemplar(db, channelId, draft.technique)
-  await retireExemplarVersion(db, draft.id)
+  // Every draft waiting on the technique, not only the one shown: refines pile up, and the
+  // next one up looked like the same draft still waiting (decision 452).
+  await retireExemplarDrafts(db, channelId, draft.technique)
   // A channel's own key leaves the techniques in use when no approved version remains (spec 8.5);
   // keep never puts back a key the owner unticked (final review, issue 1).
   await syncChannelTechniqueInUse(db, channelId, draft.technique, { mode: 'remove-only' })
