@@ -19,7 +19,7 @@ const sourceLink = (ref: GroundedRef | null): string => {
 }
 
 /** The line's own full stop, dropped where the line adds more after it. */
-const unstop = (text: string): string => text.trim().replace(/\.$/, '')
+export const unstop = (text: string): string => text.trim().replace(/\.$/, '')
 
 /** Link text cannot hold square brackets without ending the link early. */
 const linkText = (text: string): string => text.replace(/\[/g, '(').replace(/\]/g, ')')
