@@ -82,9 +82,14 @@ interface RenderPoll {
 
 function fmtClock(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
-  const min = Math.floor(totalSec / 60)
-  const sec = totalSec % 60
-  return `${min}:${String(sec).padStart(2, '0')}`
+  const sec = String(totalSec % 60).padStart(2, '0')
+  // From one hour up, minutes alone read "165:00" for a long master's part.
+  if (totalSec >= 3600) {
+    const hours = Math.floor(totalSec / 3600)
+    const min = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0')
+    return `${hours}:${min}:${sec}`
+  }
+  return `${Math.floor(totalSec / 60)}:${sec}`
 }
 
 function msToFrames(ms: number, fps: number): number {
