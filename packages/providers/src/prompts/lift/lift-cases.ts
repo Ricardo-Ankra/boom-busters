@@ -744,6 +744,9 @@ const scriptCases: LiftCase[] = [
       chapterTitle: 'The glass box',
       contentMd: CHAPTER_ONE.contentMd,
       claims: CLAIMS,
+      scenes: [
+        'March 2001 — the board met in the glass room (the directors). To settle who signed.',
+      ],
     }),
   ),
   liftAware('script-shorts', (bible) =>

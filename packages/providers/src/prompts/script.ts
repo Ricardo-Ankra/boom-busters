@@ -19,6 +19,7 @@ import {
   claimCarriesArticle,
   claimCarriesPost,
   countWords,
+  researchProfileOf,
   searchBriefLine,
   splitSentences,
 } from '@boom-busters/schemas'
@@ -28,6 +29,7 @@ import type {
   LegalStatus,
   Outline,
   OutlineChapter,
+  ResearchProfile,
   SearchBrief,
   SelfCheck,
   ShortsCandidate,
@@ -39,6 +41,7 @@ import { formatIssues, parseJsonCompletion } from './json'
 import { capList, dropItems, ignoreRepairs, overLimit, trimField } from './repair'
 import type { Note } from './repair'
 import { SCRIPT_CRAFT, SCRIPT_CRAFT_CALM } from './script-craft'
+import { sceneList } from './script-scenes'
 import { outputBudget } from '../llm/types'
 import type { LLMTaskRequest } from '../llm/types'
 
@@ -346,10 +349,12 @@ ${
     : `- "reveals": the fact an earlier chapter withheld that this chapter reveals,
   if any. A withheld fact is revealed once.`
 }
-- "constraints": the wording limits for this chapter: what must stay
-  attributed and to whom, what is never stated as fact, which figures are
-  unsourced and must not appear. They shape the words and are never narrated.
-  Put the dossier's corrections here, not in the beat.
+- "constraints": the wording limits for this chapter: which ALLEGED claims
+  it narrates and the hedge each must carry; which figures are UNVERIFIED
+  and must not appear; the film's single plain caveat sentence, if this is
+  the chapter that carries it. Nothing else: a claim with no legal marker
+  needs no attribution and no caveat. They shape the words and are never
+  narrated. Put the dossier's corrections here, not in the beat.
 
 ${
   calm
@@ -738,46 +743,85 @@ Target about ${chapter.targetWords} words.${input.chapterIndex === 0 ? openingEx
 // Self-check
 // ---------------------------------------------------------------------------
 
+/**
+ * The science reviewer's standing rule, built from the profile's own labels
+ * and its review lists; empty for a profile that reviews no standing.
+ */
+export function standingRules(profile: ResearchProfile): string {
+  const { evidence, review } = profile
+  if (!review || !evidence) return ''
+  const labelOf = (key: string): string =>
+    evidence.statuses.find((status) => status.key === key)?.scriptLabel ?? key
+  const orList = (labels: readonly string[]): string =>
+    labels.length < 2
+      ? (labels[0] ?? '')
+      : `${labels.slice(0, -1).join(', ')} or ${labels[labels.length - 1]}`
+  const flagged = orList([...review.standing.blocking, ...review.standing.advisory].map(labelOf))
+  return `Standing, kind "overstated-standing". A claim marked ${orList(
+    evidence.statuses.map((status) => status.scriptLabel),
+  )} is narrated as that label says. A sentence that narrates a ${flagged} claim as settled, proven or beyond dispute gets this kind, with the claim's label as the first word of the message. A claim with no such label is outside this rule.`
+}
+
 export function buildSelfCheckRequest(input: {
   bible: BibleInUse
   chapterTitle: string
   contentMd: string
   claims: readonly ScriptClaim[]
+  /** The dossier's scenes, printed as [S1], [S2]; absent prints "No scenes.". */
+  scenes?: readonly string[]
   /** The format's intent; absent or 'tension' is the documentary playbook. */
   intent?: ScriptIntent
 }): LLMTaskRequest {
+  const standing = standingRules(researchProfileOf(input.bible.bible))
   return {
     task: 'editing',
     system: fillSlots(
-      `${
-        input.intent === 'calm'
-          ? `You are checking the narration of a calm telling against the claim list it
-was written from. You are not rewriting it.`
-          : `You are checking documentary narration against the claim list it
-was written from. You are not rewriting it.`
-      }
+      `You are the script's reviewer. You read ONE chapter ${
+        input.intent === 'calm' ? 'of a calm telling ' : ''
+      }against the claim list
+and the scene list it was written from, and report only what breaks the
+three rules below. You are not rewriting it, and you are not judging its
+craft.
 
 The text may contain bracketed narration tags — [pause], [long pause],
 [sighs] and the like: direction for the narrator, not words. Ignore them
 entirely; never flag one and never quote one in a sentence.
 
-For every sentence that asserts a fact, decide:
-- Which claim supports it? Report it in "refs" with the claim's id.
-- If nothing supports it, warn with kind "unsourced-claim".
-- If it states as established fact something the claim list marks
-  ALLEGED, warn with kind "missing-alleged".
-- If it attributes an action or intent to a named person beyond what the
-  claims support, warn with kind "unsupported-attribution".
+Grounding, kind "unsourced-claim". A sentence is unsourced when it states a
+checkable specific (a figure, a date, a name, a quote, an event, an action
+by a named real person) that neither the claim list nor the scene list
+supports. A sentence may rest on a claim or on a scene. Never unsourced: a
+transition, a characterisation, an image, the channel's reading, or a
+generalisation nobody could check.
+- Unsourced: "She checked her watch at 9.40." when no claim or scene has it;
+  "Three hundred people were in the room."; "He said it would never work."
+- Never unsourced: "It vanished."; "Nobody was ready for what came next.";
+  "Every late order felt like a small betrayal."
 
-Quote the sentence EXACTLY as it appears, including its punctuation — it is
-matched back to the text character for character.
+Liability, two kinds. "missing-alleged": the sentence states as fact what a
+claim marked ALLEGED accuses a named person or organisation of. A sentence
+resting on a claim with no marker, or marked RULED, never gets this kind.
+"unsupported-attribution": the sentence attributes an intent or an action
+to a named person beyond what the claims and scenes support.
 
-{"warnings": [{"kind": string, "sentence": string, "message": string}],
- "refs": [{"claimId": string, "sentence": string}]}${scriptRules(input.bible)}`,
+${standing}
+
+The channel's own rules, which the writer followed:
+${literalBibleText(input.bible.bible.hedgingRules)}
+
+Quote the sentence EXACTLY as it appears, including its punctuation: it is
+matched back to the text character for character. Report nothing twice;
+a sentence gets its one worst kind.
+
+{"warnings": [{"kind": string, "sentence": string, "message": string}]}
+${scriptRules(input.bible)}`.replace(/\n{3,}/g, '\n\n'),
       input.bible,
     ),
     messages: [
-      { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
+      {
+        role: 'user',
+        content: `Claims:\n${claimList(input.claims)}\n\nScenes:\n${sceneList(input.scenes ?? [])}`,
+      },
       { role: 'user', content: `Chapter "${input.chapterTitle}":\n\n${input.contentMd}` },
     ],
     cacheablePrefixMessages: 1,

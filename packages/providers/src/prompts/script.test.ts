@@ -1,6 +1,8 @@
 import {
+  FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_IN_USE,
   OutlineSchema,
+  RESEARCH_PROFILES,
   SHORTS_HOOK_MAX,
   TEASER_PARAGRAPH_MAX,
   TEASER_TITLE_MAX,
@@ -25,6 +27,7 @@ import {
   parseSelfCheck,
   parseShortsCandidates,
   parseTeaser,
+  standingRules,
   tensionContract,
   tensionFromOutline,
 } from './script'
@@ -156,7 +159,7 @@ describe('buildOutlineRequest', () => {
 
   it('carries the house rules against inventing facts', () => {
     expect(request.system).toMatch(/Never invent figures/)
-    expect(request.system).toMatch(/Assert nothing the claim list does not support/)
+    expect(request.system).toMatch(/Assert nothing the claim list and the dossier's scenes do not/)
   })
 
   /**
@@ -186,7 +189,12 @@ describe('buildOutlineRequest', () => {
     expect(request.system).toContain('"reveals"')
     expect(request.system).toContain('"constraints"')
     expect(request.system).toMatch(/exactly one chapter/)
-    expect(request.system).toMatch(/never narrated/)
+    expect(request.system).toMatch(/never\s+narrated/)
+    expect(request.system).toMatch(/which ALLEGED claims\s+it narrates/)
+    expect(request.system).toMatch(
+      /a claim with no legal marker\s+needs no attribution and no caveat/,
+    )
+    expect(request.system).not.toContain('what must stay\nattributed')
     expect(request.system).toMatch(/one to three sentences/)
     expect(request.system).toMatch(/one line of callback/)
     // The old instruction that produced fact-list beats is gone.
@@ -656,6 +664,101 @@ describe('buildSelfCheckRequest', () => {
     expect(request.system).toContain('unsourced-claim')
     expect(request.system).toContain('missing-alleged')
     expect(request.system).toContain('unsupported-attribution')
+  })
+
+  it('grounds a sentence on the claims or the scenes, and names what is never unsourced', () => {
+    expect(request.system).toContain('neither the claim list nor the scene list')
+    expect(request.system).toContain('"It vanished."')
+    expect(request.system).toContain('"She checked her watch')
+    expect(request.messages[0]?.content).toContain('Scenes:\nNo scenes.')
+    const withScenes = buildSelfCheckRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      chapterTitle: 'The turn',
+      contentMd: 'Some narration.',
+      claims,
+      scenes: ['A scene'],
+    })
+    expect(withScenes.messages[0]?.content).toContain('Scenes:\n[S1]')
+    expect(withScenes.cacheablePrefixMessages).toBe(1)
+  })
+
+  it('scopes missing-alleged to ALLEGED claims', () => {
+    expect(request.system).toContain('marked ALLEGED')
+    expect(request.system).not.toContain('NOT adjudicated')
+    expect(request.system).not.toContain('adjudicated')
+  })
+
+  it("carries the channel's hedging rules", () => {
+    const { system } = buildSelfCheckRequest({
+      bible: {
+        ...FIRST_CHANNEL_IN_USE,
+        bible: { ...FIRST_CHANNEL_BIBLE, hedgingRules: 'The hard rules:\n- Kilroy was here.' },
+      },
+      chapterTitle: 'x',
+      contentMd: 'y',
+      claims: [],
+    })
+    expect(system).toContain('Kilroy was here.')
+  })
+
+  it('asks for warnings only, no refs', () => {
+    expect(request.system).toContain(
+      '{"warnings": [{"kind": string, "sentence": string, "message": string}]}',
+    )
+    expect(request.system).not.toContain('"refs"')
+  })
+
+  it('names the kinds the reviewer may return and no others', () => {
+    for (const kind of ['unsourced-claim', 'missing-alleged', 'unsupported-attribution']) {
+      expect(request.system).toContain(kind)
+    }
+    for (const kind of ['repeats-earlier', 'craft', 'style']) {
+      expect(request.system).not.toContain(`"${kind}"`)
+    }
+  })
+
+  it('collapses the blank lines a missing standing rule leaves', () => {
+    expect(request.system).not.toMatch(/\n{3,}/)
+  })
+})
+
+describe('the reviewer per profile', () => {
+  const science: BibleInUse = {
+    ...FIRST_CHANNEL_IN_USE,
+    bible: { ...FIRST_CHANNEL_BIBLE, researchProfile: 'science' },
+  }
+  const review = (bible: BibleInUse) =>
+    buildSelfCheckRequest({ bible, chapterTitle: 'x', contentMd: 'y', claims: [] }).system
+
+  it('adds no standing rule for the investigation', () => {
+    expect(review(FIRST_CHANNEL_IN_USE)).not.toContain('overstated-standing')
+    expect(standingRules(RESEARCH_PROFILES.investigation)).toBe('')
+  })
+
+  it('adds the science standing rule with its labels and which ones block', () => {
+    const system = review(science)
+    expect(system).toContain('overstated-standing')
+    expect(system).toContain('CONTESTED')
+    expect(system).toContain('ONE STUDY')
+    expect(system).toContain('ESTABLISHED FINDING')
+    expect(system).toContain('A claim with no such label is outside this rule.')
+    expect(system).not.toMatch(/\n{3,}/)
+  })
+
+  it('names overstated-standing under science, and never a craft kind', () => {
+    const system = review(science)
+    for (const kind of ['unsourced-claim', 'missing-alleged', 'unsupported-attribution']) {
+      expect(system).toContain(kind)
+    }
+    for (const kind of ['repeats-earlier', 'craft', 'style']) {
+      expect(system).not.toContain(`"${kind}"`)
+    }
+  })
+
+  it('keeps one blocking warning in mock mode', () => {
+    expect(mockSelfCheck('First. Second.')).toEqual({
+      warnings: [{ kind: 'unsourced-claim', sentence: 'First.', message: expect.any(String) }],
+    })
   })
 })
 

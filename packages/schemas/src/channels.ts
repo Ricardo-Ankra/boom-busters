@@ -266,14 +266,18 @@ export const FIRST_CHANNEL_BIBLE: ChannelBible = {
   voiceDos: [],
   voiceDonts: [],
   hedgingRules: `The hard rules:
-- Assert nothing the claim list does not support.
-- Where a claim is NOT adjudicated, write "alleged", "reportedly", "according
-  to" — never state it as established fact.
-- Never invent figures, dates, quotes or names.
-- Legal care is inline: "alleged", "reportedly", "according to". Never a
-  sentence of its own saying that nothing was proven, that no court has
-  found, or that this is an interpretation. The one exception is the film's
-  single such sentence, where a chapter's constraints ask for it.`,
+- Assert nothing the claim list and the dossier's scenes do not support.
+  Never invent figures, dates, quotes, names or actions by a real person.
+- A claim marked ALLEGED is an accusation no court or regulator has ruled on.
+  Where the narration states what that accusation says, carry the hedge
+  inline: "alleged", "prosecutors say", "according to the complaint". A
+  claim marked RULED is stated as the court or regulator found it. A claim
+  with no marker is a fact of the record: state it plainly, with no hedge
+  and no attribution unless the attribution is itself the point.
+- Never a sentence of its own saying that nothing was proven, that no court
+  has found, that the figures are unaudited, or that this is one reading.
+  The one exception is the film's single such sentence, where a chapter's
+  constraints ask for it.`,
   examples: FIRST_CHANNEL_EXAMPLES,
   hooks: [],
   openings: [],
