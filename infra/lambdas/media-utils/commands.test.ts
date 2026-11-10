@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildQcReport,
+  concatListText,
+  joinArgs,
+  loudnormMeasureArgs,
+  parseDurationMs,
   loudnormApplyArgs,
   loudnormApplyVideoArgs,
   parseBlackFrames,
@@ -207,5 +211,75 @@ describe('youtubeInitBody', () => {
       defaultLanguage: 'en',
       defaultAudioLanguage: 'en',
     })
+  })
+})
+
+describe('long renders in parts', () => {
+  const measured = {
+    input_i: '-20.10',
+    input_tp: '-3.00',
+    input_lra: '6.00',
+    input_thresh: '-30.50',
+    target_offset: '0.20',
+  }
+
+  it('shifts every issue by the part offset and carries the measurement', () => {
+    const report = buildQcReport({
+      silences: [{ startMs: 1000, endMs: 4000 }],
+      blackFrames: [{ startMs: 2000, endMs: 4000 }],
+      freezes: [],
+      integratedLufs: -20,
+      targetLufs: -14,
+      offsetMs: 600_000,
+      loudnorm: measured,
+      durationMs: 900_030,
+    })
+    expect(report.issues.map((issue) => issue.atMs)).toEqual([0 + 600_000, 601_000, 602_000])
+    expect(report.loudnorm).toEqual(measured)
+    expect(report.durationMs).toBe(900_030)
+  })
+
+  it('omits the new fields when none are given', () => {
+    const report = buildQcReport({
+      silences: [],
+      blackFrames: [],
+      freezes: [],
+      integratedLufs: -14,
+      targetLufs: -14,
+    })
+    expect(Object.keys(report)).toEqual(['passed', 'integratedLufs', 'issues'])
+  })
+
+  it('reads the duration line', () => {
+    expect(parseDurationMs('Input #0\n  Duration: 00:15:00.03, start: 0.0, bitrate: 1')).toBe(
+      900_030,
+    )
+    expect(parseDurationMs('nothing here')).toBeNull()
+  })
+
+  it('measures audio only when asked', () => {
+    const args = loudnormMeasureArgs('/tmp/in', -14, { audioOnly: true })
+    expect(args.indexOf('-vn')).toBeGreaterThan(-1)
+    expect(args.indexOf('-vn')).toBeLessThan(args.indexOf('-i'))
+    expect(loudnormMeasureArgs('/tmp/in', -14)).not.toContain('-vn')
+  })
+
+  it('writes one file line per url and escapes a quote', () => {
+    expect(concatListText(['https://a/1', "https://a/it's"])).toBe(
+      "file 'https://a/1'\nfile 'https://a/it'\\''s'\n",
+    )
+  })
+
+  it('joins by stream copy with the loudness filter, fragmented, to stdout', () => {
+    const args = joinArgs('/tmp/list.txt', -14, measured)
+    const joined = args.join(' ')
+    expect(joined).toContain('-protocol_whitelist file,https,tls,tcp')
+    expect(joined).toContain('-f concat -safe 0 -i /tmp/list.txt')
+    expect(joined).toContain('-c:v copy')
+    expect(joined).toContain('linear=true,ebur128')
+    expect(joined).toContain('loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=-20.10')
+    expect(joined).toContain('-movflags empty_moov+default_base_moof+delay_moov')
+    expect(joined).toContain('-frag_duration 10000000')
+    expect(args.slice(-3)).toEqual(['-f', 'mp4', 'pipe:1'])
   })
 })

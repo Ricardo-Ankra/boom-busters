@@ -1,17 +1,30 @@
 import { spawn } from 'node:child_process'
-import { chmodSync, createWriteStream, existsSync, readFileSync } from 'node:fs'
+import { chmodSync, createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
 import * as Sentry from '@sentry/aws-serverless'
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+  UploadPartCommand,
+} from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { BROKER_SIGNATURE_HEADER, brokerSignature, MediaJobSchema } from '@boom-busters/schemas'
-import type { MediaJob, MediaJobCallback } from '@boom-busters/schemas'
+import type { LoudnormMeasurement, MediaJob, MediaJobCallback } from '@boom-busters/schemas'
 import type { Readable } from 'node:stream'
 import {
   buildQcReport,
+  concatListText,
+  joinArgs,
   loudnormApplyArgs,
   loudnormApplyVideoArgs,
   loudnormMeasureArgs,
   parseBlackFrames,
+  parseDurationMs,
   parseFreezes,
   parseIntegratedLufs,
   parseLoudnormJson,
@@ -22,6 +35,7 @@ import {
   whisperJsonToCaptions,
   youtubeInitBody,
 } from './commands'
+import { uploadStreamMultipart } from './multipart'
 import { putInChunks } from './youtube-upload'
 
 /**
@@ -128,13 +142,127 @@ async function runQc(job: Extract<MediaJob, { kind: 'qc' }>) {
   const input = '/tmp/qc-input'
   await download(job.s3Key, input)
   const stderr = await ffmpeg(qcArgs(input))
+  let loudnorm: LoudnormMeasurement | undefined
+  if (job.withLoudnorm) {
+    // A part's own measurement, taken on the download the QC pass just used.
+    const measured = parseLoudnormJson(
+      await ffmpeg(loudnormMeasureArgs(input, job.targetLufs, { audioOnly: true })),
+    )
+    if (!measured) throw new Error('loudnorm measurement produced no result')
+    loudnorm = measured
+  }
+  const durationMs = parseDurationMs(stderr) ?? undefined
   return buildQcReport({
     silences: parseSilences(stderr),
     blackFrames: parseBlackFrames(stderr),
     freezes: parseFreezes(stderr),
     integratedLufs: parseIntegratedLufs(stderr),
     targetLufs: job.targetLufs,
+    offsetMs: job.offsetMs,
+    loudnorm,
+    durationMs,
   })
+}
+
+/**
+ * Join a long render's parts into one fragmented MP4, streaming ffmpeg's
+ * stdout into an S3 multipart upload so no disk ever holds the whole film.
+ * The concat demuxer opens the parts over https, so each is presigned. A
+ * failed ffmpeg must leave no object: completion is held back until ffmpeg
+ * has exited cleanly, and the upload is aborted on any failure.
+ */
+async function runJoin(job: Extract<MediaJob, { kind: 'join' }>) {
+  const started = Date.now()
+  const bucket = env('RENDER_BUCKET')
+  const urls = await Promise.all(
+    job.partS3Keys.map((key) =>
+      getSignedUrl(s3, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+        expiresIn: 24 * 3600,
+      }),
+    ),
+  )
+  const listPath = '/tmp/join-list.txt'
+  writeFileSync(listPath, concatListText(urls))
+
+  const child = spawn(FFMPEG, joinArgs(listPath, job.targetLufs, job.measured))
+  let stderr = ''
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString()
+  })
+  const exit = new Promise<number>((resolve, reject) => {
+    child.on('error', reject)
+    child.on('close', (code) => resolve(code ?? -1))
+  })
+  // Awaited by the upload's complete step and below; this only stops an early
+  // spawn error being reported as unhandled before either gets there.
+  exit.catch(() => undefined)
+
+  let uploadId: string | undefined
+  let completed = false
+  const abortUpload = async (id: string): Promise<void> => {
+    await s3.send(
+      new AbortMultipartUploadCommand({ Bucket: bucket, Key: job.outputS3Key, UploadId: id }),
+    )
+  }
+  const upload = uploadStreamMultipart({
+    stream: child.stdout,
+    create: async () => {
+      const created = await s3.send(
+        new CreateMultipartUploadCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          ContentType: 'video/mp4',
+        }),
+      )
+      if (!created.UploadId) throw new Error('multipart upload returned no id')
+      uploadId = created.UploadId
+      return created.UploadId
+    },
+    uploadPart: async (id, partNumber, body) => {
+      const part = await s3.send(
+        new UploadPartCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          UploadId: id,
+          PartNumber: partNumber,
+          Body: body,
+        }),
+      )
+      if (!part.ETag) throw new Error(`part ${partNumber} returned no etag`)
+      return part.ETag
+    },
+    complete: async (id, parts) => {
+      const code = await exit
+      if (code !== 0) throw new Error(`ffmpeg exited ${code}: ${stderr.slice(-500)}`)
+      await s3.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: job.outputS3Key,
+          UploadId: id,
+          MultipartUpload: {
+            Parts: parts.map((part) => ({ PartNumber: part.partNumber, ETag: part.etag })),
+          },
+        }),
+      )
+      completed = true
+    },
+    abort: abortUpload,
+  })
+
+  try {
+    const [{ bytes }] = await Promise.all([upload, exit])
+    return {
+      outputS3Key: job.outputS3Key,
+      integratedLufs: parseIntegratedLufs(stderr),
+      bytes,
+      elapsedMs: Date.now() - started,
+    }
+  } catch (error) {
+    // A spawn error or a failure on either side: no completed object stays.
+    child.kill()
+    if (uploadId !== undefined && !completed) await abortUpload(uploadId).catch(() => undefined)
+    throw error
+  }
 }
 
 async function runLoudnorm(job: Extract<MediaJob, { kind: 'loudnorm' }>) {
@@ -297,8 +425,8 @@ async function handleEvent(event: unknown): Promise<void> {
         }
         break
       case 'join':
-        // The join job's behaviour arrives with a later task.
-        throw new Error('join is not implemented yet')
+        callback = { ...base, kind: 'join', ok: true, result: await runJoin(job) }
+        break
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

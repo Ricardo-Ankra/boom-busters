@@ -54,6 +54,19 @@ describe('media-utils stack', () => {
     })
   })
 
+  it('lets media-utils abort and list multipart uploads on the render bucket', () => {
+    media.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['s3:AbortMultipartUpload', 's3:ListMultipartUploadParts']),
+            Resource: Match.arrayWith(['arn:aws:s3:::remotionlambda-*/*']),
+          }),
+        ]),
+      },
+    })
+  })
+
   it('tags every resource project=boom-busters (cost allocation)', () => {
     media.hasResourceProperties('AWS::Lambda::Function', {
       Tags: Match.arrayWith([{ Key: 'project', Value: 'boom-busters' }]),
