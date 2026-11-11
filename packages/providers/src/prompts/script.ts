@@ -129,10 +129,18 @@ export function claimList(claims: readonly ScriptClaim[]): string {
  * that deleted them would walk defamation into a script.
  */
 export function houseStyle(bible: ChannelBible): string {
-  return `You write narration for a documentary channel about
+  const audience = bible.audience.trim()
+  const language = languageName(bible.language)
+  return `You write narration for ${audience ? `${literalBibleText(audience)}, for ` : ''}a documentary channel about
 [[example:script-channel-subject]]. The subjects are real ${literalBibleText(noun(bible, 'plural'))} and
 living people.
-
+${
+  language
+    ? `
+Write every word of the narration in ${language}, whatever language the claims and these rules are in.
+`
+    : ''
+}
 Voice: ${literalBibleText(bible.narrationRegister)}. No rhetorical questions, no "buckle up", no
 addressing the audience as "guys". Let the facts carry it.
 
@@ -143,6 +151,8 @@ Sound like a person, not a language model:
   pacing is the loudest tell there is once it is read aloud.
 - One canonical name per person or ${literalBibleText(noun(bible, 'singular'))}, then pronouns. Never [[example:script-elegant-variation]] — elegant
   variation is a tell, and it makes a listener work out who you mean.
+- The scenes are the dossier's: use them for what people did, wanted and said.
+  The claims are the facts. A detail in neither is not yours to write.
 - Make contrasts asymmetric. Never "not just X, it's Y", never a neatly
   balanced pair, never a drumbeat of exactly three parallel items.
 - Cut empty hedges: "generally", "arguably", "in many cases", "some would
@@ -677,6 +687,17 @@ function scriptSoFar(
   )
 }
 
+/** The English name of a language code; null for English and for no code, the code itself when it has no name. */
+export function languageName(code: string): string | null {
+  const tag = code.trim()
+  if (!tag || tag.split(/[-_]/)[0]!.toLowerCase() === 'en') return null
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(tag) || tag
+  } catch {
+    return tag
+  }
+}
+
 export function buildChapterRequest(input: {
   bible: BibleInUse
   caseTitle: string
@@ -687,6 +708,8 @@ export function buildChapterRequest(input: {
   claims: readonly ScriptClaim[]
   /** The format's intent; absent or 'tension' is the documentary playbook. */
   intent?: ScriptIntent
+  /** The dossier's scenes as plain lines, shown beside the claims. */
+  scenes?: readonly string[]
 }): LLMTaskRequest {
   const chapter = input.outline.chapters[input.chapterIndex]!
   const outlineSummary = input.outline.chapters
@@ -721,7 +744,10 @@ Write between ${chapter.targetWords} and ${Math.round(chapter.targetWords * 1.1)
       // Stable across every chapter of the script, so it is the cacheable
       // prefix: the claim list is the largest part of this prompt and it does
       // not change between chapters.
-      { role: 'user', content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}` },
+      {
+        role: 'user',
+        content: `Case: ${input.caseTitle}\n\nClaims:\n${claimList(input.claims)}\n\nScenes:\n${sceneList(input.scenes ?? [])}`,
+      },
       { role: 'user', content: `${storylines}Full outline:\n${outlineSummary}` },
       { role: 'user', content: scriptSoFar(input.previousChapters, input.bible) },
       ...(ownership ? [{ role: 'user' as const, content: ownership }] : []),
@@ -733,6 +759,8 @@ Write between ${chapter.targetWords} and ${Math.round(chapter.targetWords * 1.1)
     maxTokens: outputBudget(Math.round(chapter.targetWords * 2.2)),
   }
 }
+
+export type ChapterRequestInput = Parameters<typeof buildChapterRequest>[0]
 
 // ---------------------------------------------------------------------------
 // Self-check
