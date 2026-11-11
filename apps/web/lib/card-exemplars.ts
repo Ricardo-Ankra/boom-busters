@@ -21,8 +21,7 @@ function houseCard(technique: CardTechnique): CardCodeSource | null {
   if (!result.ok) return null
   return {
     version: GRAPHIC_CODE_VERSION,
-    compiled: `${MOTION_PREAMBLE}
-${result.compiled}`,
+    compiled: `${MOTION_PREAMBLE}\n${result.compiled}`,
     title: design.title,
   }
 }

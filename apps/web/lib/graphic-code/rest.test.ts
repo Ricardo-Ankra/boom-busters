@@ -19,7 +19,7 @@ describe('restIssue', () => {
     expect(restIssue(samples(6000, 1500, 'four', '$4bn'), WORDS, 250)).toBeNull()
   })
 
-  it('refuses text that changes well after after the last word', () => {
+  it('refuses text that changes well after the last word', () => {
     expect(restIssue(samples(6000, 2700, '$4bn', '$4bn Acme'), WORDS, 250)).toBe(
       'the graphic is still changing 1550 ms after its last word; after the last word lands, only the camera may move',
     )
