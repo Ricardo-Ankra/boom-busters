@@ -28,6 +28,7 @@ import { loadModelOptions } from '@/lib/model-catalogue'
 import { MANIFEST, isReadMechanismReading } from '@boom-busters/providers'
 import { exemplarViews } from '@/lib/exemplar-views'
 import { channelExemplarViews } from '@/lib/exemplar-channel-views'
+import { specimenReel } from '@/lib/specimen-reel'
 import {
   derivationEstimateTable,
   identityDraftEstimateUsd,
@@ -266,6 +267,7 @@ export default async function SettingsPage({
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}
+        specimenReel={specimenReel(exemplarViews(), channelExemplars)}
         techniqueOptions={[
           ...MANIFEST.map((entry) => ({
             technique: entry.technique,

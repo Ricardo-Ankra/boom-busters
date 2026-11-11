@@ -32,6 +32,7 @@ import { MotionTab, type TechniqueOption } from './motion-tab'
 import type { ReferenceView } from './references-section'
 import type { ExemplarLogo } from './exemplar-logo'
 import type { ExemplarView } from '@/lib/exemplar-views'
+import type { ReelPiece } from '@/lib/specimen-reel'
 import { YoutubeCard, type YoutubeConnectionView } from './youtube-card'
 import { YOUTUBE_OUTCOMES } from './youtube-outcome'
 import { useToast } from '@/components/ui/toast'
@@ -71,6 +72,7 @@ export function SettingsForm({
   channelMarkKey = null,
   modelOptions,
   exemplars = [],
+  specimenReel = [],
   exemplarLogo = null,
   techniqueOptions = [],
   references = [],
@@ -116,6 +118,8 @@ export function SettingsForm({
   modelOptions: ModelOptions
   /** The exemplar corpus, compiled on the server (decision 305). */
   exemplars?: ExemplarView[]
+  /** The Brand Kit's package reel, chosen on the server from the exemplars. */
+  specimenReel?: ReelPiece[]
   /** The technique catalogue, for the Motion tab's techniques in use (spec 2026-11-04). */
   techniqueOptions?: readonly TechniqueOption[]
   /** The channel's reference pack, for the Motion tab (spec 2026-11-04, section 11.2). */
@@ -322,7 +326,7 @@ export function SettingsForm({
         <TabsContent value="brand-kit">
           <Lock archived={channel.archived}>
             {' '}
-            <BrandKitTab settings={settings} saving={saving} commit={commit} />
+            <BrandKitTab settings={settings} saving={saving} commit={commit} reel={specimenReel} />
           </Lock>
         </TabsContent>
 
@@ -451,7 +455,7 @@ interface TabProps {
   commit: (patch: SettingsPatch, optimistic: Settings) => Promise<void>
 }
 
-function BrandKitTab({ settings, saving, commit }: TabProps) {
+function BrandKitTab({ settings, saving, commit, reel }: TabProps & { reel: ReelPiece[] }) {
   const { colors } = settings.brandKit
 
   const setColor = (key: 'primary' | 'accent' | 'captionHighlight', value: string) => {
@@ -597,13 +601,13 @@ function BrandKitTab({ settings, saving, commit }: TabProps) {
         <CardHeader>
           <CardTitle>Live specimen</CardTitle>
           <CardDescription>
-            The chapter card, lower third, chart and karaoke captions rendered through
-            @remotion/player with these exact values — the same components every render uses, so
-            this is what the pipeline will draw. Colour edits above show up here as they save.
+            The film title, chapter card, lower third, a chart and a counter, drawn by this
+            channel&apos;s approved exemplars (or the house designs) with these exact values. Colour
+            edits above show up here as they save.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <BrandSpecimenPanel settings={settings} />
+          <BrandSpecimenPanel settings={settings} reel={reel} />
         </CardContent>
       </Card>
     </div>
