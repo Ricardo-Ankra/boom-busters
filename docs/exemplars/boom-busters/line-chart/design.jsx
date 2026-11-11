@@ -46,8 +46,8 @@ function Graphic(props) {
   const named = kicker.length > 0 ? kicker : [{ text: series.label, atMs: 0 }]
 
   const room = width - inset.left - inset.right
-  const plotW = portrait ? room - 48 * unit : room * 0.8
-  const plotH = (portrait ? 0.46 : 0.42) * height
+  const plotW = portrait ? room - 48 * unit : room * 0.86
+  const plotH = (portrait ? 0.46 : 0.47) * height
   // Headroom above the highest point for its value.
   const yOf = (v) => plotH - (Math.max(0, v) / peak) * plotH * 0.84
   const kickerSize = (portrait ? 36 : 32) * unit
@@ -97,7 +97,7 @@ function Graphic(props) {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: plotW }}>
-        <div style={{ fontFamily: fonts.body, fontSize: kickerSize, fontWeight: 600, lineHeight: 1.2, letterSpacing: '0.18em', textTransform: 'uppercase', whiteSpace: 'nowrap', color: colors.textSecondary, marginBottom: (portrait ? 90 : 60) * unit }}>
+        <div style={{ marginLeft: Math.max(0, padL - 32 * unit), fontFamily: fonts.body, fontSize: kickerSize, fontWeight: 600, lineHeight: 1.2, letterSpacing: '0.18em', textTransform: 'uppercase', whiteSpace: 'nowrap', color: colors.textSecondary, marginBottom: (portrait ? 90 : 60) * unit }}>
           {named.map((w, i) => {
             const inW = arrive(frame, fps, w.atMs, motion.ms.enter)
             const final = i === named.length - 1
@@ -108,7 +108,8 @@ function Graphic(props) {
             )
           })}
         </div>
-        <div style={{ position: 'relative', width: plotW, height: plotH }}>
+        {/* The plot paints over the axis, so a point near zero sits on the axis, not under it. */}
+        <div style={{ position: 'relative', zIndex: 1, width: plotW, height: plotH }}>
           <svg width={plotW} height={plotH} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible' }}>
             {started ? <path d={groundD} fill={Remotion.withAlpha(colors.textSecondary, 0.2)} /> : null}
             {started ? <path d={lineD} fill="none" stroke={colors.textPrimary} strokeWidth={lineW} strokeLinejoin="round" strokeLinecap="round" /> : null}
@@ -119,18 +120,28 @@ function Graphic(props) {
           {points.map((p, i) => {
             const inV = arrive(frame, fps, lands[i], motion.ms.enter)
             const key = i === last
-            // The endpoint's figure and note end at its ring, so they stay inside the frame's edge.
-            const place = key
+            // Each figure sits centred over its point, lifted clear of the line: by however far
+            // the steeper of its two neighbouring segments climbs across half the figure's width,
+            // so no slope in either frame can run into it.
+            const halfW = (String(p.y).length * 0.62 * valueSize) / 2 + 8 * unit
+            const climb = (j) => {
+              if (j < 0 || j > last) return 0
+              const dx = Math.abs(xOf(j) - xOf(i)) || 1
+              return Math.max(0, ((yOf(p.y) - yOf(points[j].y)) / dx) * Math.min(halfW, dx))
+            }
+            const lift = Math.max(climb(i - 1), climb(i + 1))
+            const place = xOf(i) + halfW > plotW
               ? { right: plotW - xOf(i) - ring, textAlign: 'right' }
               : { left: xOf(i) - 120 * unit, width: 240 * unit, textAlign: 'center' }
             return (
-              <div key={'v' + i} style={{ position: 'absolute', ...place, bottom: plotH - yOf(p.y) + ring + 14 * unit, whiteSpace: 'nowrap', fontFamily: fonts.numbers, fontWeight: 700, fontSize: valueSize, lineHeight: 1, color: key ? colors.accent : colors.textSecondary, opacity: inV, transform: 'translateY(' + (1 - inV) * motion.px.rise * unit + 'px)' }}>
+              <div key={'v' + i} style={{ position: 'absolute', ...place, bottom: plotH - yOf(p.y) + ring + 14 * unit + lift, whiteSpace: 'nowrap', fontFamily: fonts.numbers, fontWeight: 700, fontSize: valueSize, lineHeight: 1, color: key ? colors.accent : colors.textPrimary, opacity: inV, transform: 'translateY(' + (1 - inV) * motion.px.rise * unit + 'px)' }}>
                 {String(p.y)}
               </div>
             )
           })}
         </div>
-        <div style={{ width: plotW, height: Math.max(2, 3 * unit), backgroundColor: Remotion.withAlpha(colors.textSecondary, 0.6), clipPath: 'inset(0 ' + (1 - baseline) * 100 + '% 0 0)' }} />
+        {/* The axis runs a little past the first and last points, no further. */}
+        <div style={{ marginLeft: Math.max(0, padL - 32 * unit), width: plotW - Math.max(0, padL - 32 * unit) - Math.max(0, padR - 32 * unit), height: Math.max(2, 3 * unit), backgroundColor: Remotion.withAlpha(colors.textSecondary, 0.6), clipPath: 'inset(0 ' + (1 - baseline) * 100 + '% 0 0)' }} />
         <div style={{ position: 'relative', width: plotW, height: labelSize * 1.2 + (note ? noteSize * 1.5 : 0), marginTop: 16 * unit }}>
           {points.map((p, i) => {
             const inA = arrive(frame, fps, lands[i], motion.ms.enter)

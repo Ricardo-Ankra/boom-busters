@@ -22,24 +22,32 @@ function dim(frame, fps, atMs, lengthMs) {
   })
 }
 
-// The quotation runs to the word that closes it; what follows says who said it.
+const SMALL = new Set(['the', 'a', 'an', 'to', 'of', 'in', 'at', 'on'])
+
+// The quotation runs to the word that closes it; what follows says who said it. In the
+// attribution a small word arrives with the word it leads, so none stands alone.
 function partsOf(words) {
   const close = words.findIndex((w) => /["”]$/.test(String(w.text)))
   const end = close >= 0 ? close : words.length - 1
   const strip = (t) => String(t).replace(/^["“]/, '').replace(/["”]$/, '')
+  const by = words.slice(end + 1).map((w) => ({ atMs: w.atMs, text: String(w.text).replace(/[.,;:!?]+$/, '') }))
+  for (let j = by.length - 2; j >= 0; j--) {
+    if (SMALL.has(by[j].text.toLowerCase())) by[j].atMs = by[j + 1].atMs
+  }
   return {
     quote: words.slice(0, end + 1).map((w) => ({ atMs: w.atMs, text: strip(w.text) })),
-    by: words.slice(end + 1).map((w) => ({ atMs: w.atMs, text: String(w.text).replace(/[.,;:!?]+$/, '') })),
+    by,
   }
 }
 
 // The quotation's lines, filled greedily to a budget of characters, so each line's end is known.
-function linesOf(words, budget) {
+// `extra` counts against the last word, so whatever hangs after it (the closing mark) has room.
+function linesOf(words, budget, extra = 0) {
   const lines = []
   let line = []
   let chars = 0
-  for (const w of words) {
-    const add = (line.length > 0 ? 1 : 0) + w.text.length
+  for (const [index, w] of words.entries()) {
+    const add = (line.length > 0 ? 1 : 0) + w.text.length + (index === words.length - 1 ? extra : 0)
     if (line.length > 0 && chars + add > budget) {
       lines.push(line)
       line = []
@@ -66,28 +74,30 @@ function Graphic(props) {
   const n = quote.length
 
   const room = width - inset.left - inset.right - 2 * 48 * unit
-  const quoteSize = (portrait ? 92 : 112) * unit
+  const quoteSize = (portrait ? 100 : 112) * unit
   const lineH = quoteSize * 1.15
-  // The hanging mark stands well above the first line's capitals; its column is the margin.
+  // The hanging mark spans the first line's capitals; its column is the margin.
   const markSize = quoteSize * 3
   const markRight = markSize * 0.5
   const gutter = markRight + quoteSize * 0.45
   // The quotation sets as a card: in 16:9 two balanced lines, which leaves the margin room for
   // the mark to arrive large; in 9:16 as many lines as the width needs.
   const quoteChars = quote.map((w) => w.text).join(' ').length + 1
-  const fits = Math.max(8, Math.floor((room - gutter) / (0.56 * quoteSize)))
+  const fits = Math.max(8, (room - gutter) / (0.56 * quoteSize))
   const longest = Math.max(1, ...quote.map((w) => w.text.length + 1))
   const budget = portrait || n < 3 ? fits : Math.min(fits, Math.max(longest, Math.ceil(quoteChars / 2) + 1))
-  const lines = linesOf(quote, budget)
+  // The closing mark, as wide as the opening one, is budgeted on the last line.
+  const markChars = (markRight / quoteSize + 0.06) / 0.56
+  const lines = linesOf(quote, budget, markChars)
   const quoteW = Math.max(...lines.map((line) => line.map((w) => w.text).join(' ').length + 1)) * 0.56 * quoteSize
-  const bySize = 44 * unit
+  const bySize = (portrait ? 46 : 52) * unit
 
   // The mark arrives large and settles slowly to its hanging size as the first words build,
   // scaling from its corner so it never crosses the words.
   const firstAt = n > 0 ? quote[0].atMs : 0
   const markIn = arrive(frame, fps, firstAt, motion.ms.enter)
   const settle = shift(frame, fps, firstAt + motion.ms.micro, 3 * motion.ms.move)
-  const big = portrait ? 1.7 : 2
+  const big = portrait ? 1.45 : 2
   const markScale = big + (1 - big) * settle
 
   // The claim is the quotation's last two words; one sweep runs behind them as the last word
@@ -104,22 +114,25 @@ function Graphic(props) {
     return Math.max(0, Math.min(1, (sweep - from) / (shares[k] / total)))
   }
 
-  // The attribution: once the sweep has landed, a rule drawn down out of the mark's foot turns to
-  // where the speaker's name will be, in place as it is spoken; the unmarked words of the
-  // quotation step back a beat later, on the name's second word.
+  // The closing mark matches the opening one and arrives as the sweep lands.
+  const sweepEnd = lastAt + motion.ms.micro + motion.ms.reveal
+  const closeIn = arrive(frame, fps, sweepEnd - motion.ms.micro, motion.ms.enter)
+  // The attribution: a rule drawn down out of the mark's foot turns to the speaker's name and
+  // lands as the name appears, never before the sweep has landed; the unmarked words of the
+  // quotation step back with it.
   const byAt = by.length > 0 ? by[0].atMs : null
-  const ruleAt = lastAt + motion.ms.reveal
+  const ruleMs = motion.ms.move + motion.ms.enter
+  const ruleAt = byAt === null ? props.durationMs : Math.max(sweepEnd + motion.ms.micro, byAt - ruleMs)
   const drop = byAt === null ? 0 : shift(frame, fps, ruleAt, motion.ms.move)
   const turn = byAt === null ? 0 : shift(frame, fps, ruleAt + motion.ms.move, motion.ms.enter)
-  const stepAt = by.length > 1 ? by[1].atMs : byAt === null ? props.durationMs : byAt + motion.ms.reveal
-  const stepBack = byAt === null ? 0 : dim(frame, fps, stepAt, motion.ms.reveal)
-  // In 9:16 the attribution breaks into two even lines rather than leaving a word alone.
+  const stepBack = byAt === null ? 0 : arrive(frame, fps, byAt, motion.ms.reveal)
+  // The attribution breaks into two even lines whenever it would run wider than the quotation.
   const byText = by.map((w) => w.text).join(' ')
   const byWide = byText.length * 0.82 * bySize > quoteW
-  const byLines = portrait && byWide ? linesOf(by, Math.ceil(byText.length / 2) + 1) : [by]
+  const byLines = byWide ? linesOf(by, Math.ceil(byText.length / 2) + 1) : [by]
   const stroke = Math.max(3, 4 * unit)
   const ruleX = markRight - markSize * 0.2
-  const ruleTop = markSize * 0.42
+  const ruleTop = markSize * 0.36
   const byTop = lines.length * lineH + quoteSize * 0.55
   const byMiddle = byTop + bySize * 0.65
   let index = -1
@@ -150,8 +163,9 @@ function Graphic(props) {
                 const k = i - firstMarked
                 const endOfLine = j === line.length - 1
                 const appear = arrive(frame, fps, w.atMs, motion.ms.enter)
-                // The claim's words arrive settled, so the red never runs behind grey.
-                const white = k >= 0 ? appear : arrive(frame, fps, w.atMs + motion.ms.micro, motion.ms.reveal) * (1 - stepBack)
+                // The last word arrives settled, so the red never runs behind grey; the rest settle
+                // grey to off white as spoken, and the unmarked ones step back later.
+                const white = i === n - 1 ? appear : arrive(frame, fps, w.atMs + motion.ms.micro, motion.ms.reveal) * (k >= 0 ? 1 : 1 - stepBack)
                 return (
                   <React.Fragment key={'w' + i}>
                     <span style={{ position: 'relative', display: 'inline-block', marginRight: endOfLine ? 0 : '0.26em', opacity: appear, transform: 'translateY(' + (1 - appear) * motion.px.rise * unit + 'px)' }}>
@@ -162,7 +176,9 @@ function Graphic(props) {
                       <span style={{ position: 'absolute', left: 0, top: 0, color: colors.textPrimary, opacity: white }}>{w.text}</span>
                     </span>
                     {i === n - 1 ? (
-                      <span style={{ display: 'inline-block', marginLeft: '0.14em', color: colors.textSecondary, opacity: appear }}>”</span>
+                      <span style={{ position: 'relative', display: 'inline-block', flexShrink: 0, width: markRight / quoteSize + 'em', marginLeft: '0.06em' }}>
+                        <span style={{ position: 'absolute', left: 0, top: 0.12 * markSize, fontSize: markSize, lineHeight: 0.6, color: colors.textSecondary, opacity: closeIn }}>”</span>
+                      </span>
                     ) : null}
                   </React.Fragment>
                 )
@@ -171,7 +187,7 @@ function Graphic(props) {
           ))}
         </div>
         {by.length > 0 ? (
-          <div style={{ marginTop: quoteSize * 0.55, fontFamily: fonts.body, fontWeight: 600, fontSize: bySize, lineHeight: 1.3, letterSpacing: '0.18em', textTransform: 'uppercase', color: colors.textSecondary }}>
+          <div style={{ marginTop: quoteSize * 0.55, fontFamily: fonts.body, fontWeight: 600, fontSize: bySize, lineHeight: 1.3, letterSpacing: '0.18em', textTransform: 'uppercase', color: colors.textPrimary }}>
             {byLines.map((line, l) => (
               <div key={'by' + l} style={{ whiteSpace: 'nowrap' }}>
                 {line.map((w, j) => {

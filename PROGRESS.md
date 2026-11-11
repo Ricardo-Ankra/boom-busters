@@ -5069,22 +5069,17 @@ The nine findings the final review parked, plus the flaky test (decision 453):
         as v2 beside the derived v1, cost 0, 8 shots and 2 sheets in R2
   - [x] kpi-counter (two derived drafts): one review, ship; uploaded as v3
         beside the derived v1 and v2, cost 0, 8 shots and 2 sheets in R2
-  - [ ] line-chart (a derived draft): stopped at the four-round cap, not
-        uploaded; the fourth review's verdict was "fix, close to shipping":
-        lift the end ring clear of the axis, a larger 16:9 plot, values a
-        step brighter. The reviewed version is in `docs/exemplars`.
-  - [ ] quote-card (a derived draft): stopped at the four-round cap, not
-        uploaded; the fourth review's verdict was "fix, small and specific":
-        the attribution a step brighter and larger, the rule landing as THE
-        is spoken, a closing mark matched to the opening one, the step-back
-        on "chairman", a larger 9:16 quote. The reviewed version is in
-        `docs/exemplars`.
-  - [ ] split-screen (a derived draft): stopped at the four-round cap, not
-        uploaded; the fourth review's verdict was "fix": the pivot's
-        collapse too short and bunched with the slide and the seam (start
-        the fold earlier and lengthen it, the slide a beat after), the pivot
-        to rise like the other words. The reviewed version is in
-        `docs/exemplars`.
+  - [x] line-chart (a derived draft): six reviews; stopped at the four-round
+        cap, continued on the owner's word, ship at round six (values lifted
+        clear of steep segments); uploaded as v2 beside the derived v1
+  - [x] quote-card (a derived draft): six reviews; continued past the cap,
+        ship at round five and again after its fixes at round six (the
+        closing mark budgeted on the last line); uploaded as v2 beside the
+        derived v1
+  - [x] split-screen (a derived draft): five reviews; continued past the
+        cap, ship at round five once each beat had its own moment (mark,
+        slide aside, pivot, curtain into the seam); uploaded as v2 beside the
+        derived v1
 - [x] First batch uploaded to production as drafts on the owner's go-ahead
       (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
       0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
@@ -11464,4 +11459,8 @@ owner edits. `--prod` was not run against Neon.
      facts stay fixed; each technique is uploaded as soon as a fresh reviewer
      says ship (the owner's standing go-ahead for the batch); a technique
      that has not reached ship after four rounds is kept in `docs/exemplars`
-     with its last verdict and not uploaded. Four of the seven shipped.
+     with its last verdict and not uploaded. Four of the seven shipped
+     within the cap; the owner then said "Continue with the ones that
+     stopped", and the other three shipped at rounds five and six, those
+     rounds reviewed on Opus as stuck fix loops, each told to separate real
+     defects from taste.

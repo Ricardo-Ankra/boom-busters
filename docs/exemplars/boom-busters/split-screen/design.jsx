@@ -1,7 +1,8 @@
-// Concept: one claim builds at the centre. The pivot word lands under it and folds into a
-// hairline, the dashed seam draws out of it across the frame and the claim slides aside into its
-// half; the second claim builds opposite. The same red mark sits on the last word of each, so the
-// halves mirror each other and only the words differ.
+// Concept: one claim builds at the centre and takes its red mark as its last word lands. Once
+// marked it slides aside into its half; the pivot word lands in the space it leaves (just under
+// the line in 16:9, at the middle in 9:16), closes from both ends to a sliver, and the dashed seam
+// grows out of the sliver across the frame. The second claim builds opposite with the same red
+// mark on its last word, so the halves mirror each other and only the words differ.
 
 function arrive(frame, fps, atMs, lengthMs) {
   const a = motion.frames(Math.max(0, atMs), fps)
@@ -58,14 +59,18 @@ function Graphic(props) {
     : Math.min(100 * unit, (W / 2 - 96 * unit) / (0.56 * chars))
 
   const pivotAt = parts.pivot ? parts.pivot.atMs : parts.right.length > 0 ? parts.right[0].atMs - motion.ms.reveal : props.durationMs / 2
-  // The pivot has its own beat: it lands and holds. Then the claim slides aside while the pivot,
-  // whole and undistorted, closes from both ends toward its centre like a curtain; the seam grows
-  // out of the closing sliver before it is gone, so the word hands straight over to the divider.
-  const foldAt = pivotAt + motion.ms.enter + motion.ms.micro
-  const foldMs = 3 * motion.ms.micro
-  const slide = shift(frame, fps, foldAt, motion.ms.move + motion.ms.micro / 2)
+  // One beat at a time. The claim, once marked, slides aside into its half; the pivot lands in
+  // the space it leaves; then the pivot, whole and undistorted, closes from both ends toward its
+  // centre like a curtain, and the seam grows out of the closing sliver before it is gone, so the
+  // word hands straight over to the divider.
+  const leftLast = parts.left.length > 0 ? parts.left[parts.left.length - 1].atMs : 0
+  const slideMs = motion.ms.move + motion.ms.micro / 2
+  const slideAt = Math.min(leftLast + motion.ms.reveal, pivotAt - slideMs / 2)
+  const slide = shift(frame, fps, slideAt, slideMs)
+  const foldAt = pivotAt + motion.ms.enter + motion.ms.micro / 2
+  const foldMs = motion.ms.move
   const fold = shift(frame, fps, foldAt, foldMs)
-  const seam = arrive(frame, fps, foldAt + foldMs * 0.6, motion.ms.move + motion.ms.enter)
+  const seam = arrive(frame, fps, foldAt + foldMs * 0.6, motion.ms.move)
   const rightAt = parts.right.length > 0 ? parts.right[0].atMs : props.durationMs
   const stepBack = dim(frame, fps, rightAt, motion.ms.micro)
 
@@ -75,14 +80,15 @@ function Graphic(props) {
   const cy = H / 2
   // In 16:9 the claims hang off the seam by the same gap, so the halves mirror exactly; in 9:16
   // each is centred in its half.
-  const half = W / 4
   const halfH = H / 4
   // The gap from the seam allows for the highlighter's overhang on the left claim's last word.
   const gap = size * 0.5
-  const leftFrom = portrait ? [cx, cy - size * 1.05] : [cx, cy - size * 0.6]
+  // The claim builds at the middle; the pivot lands where it was in 9:16, and in 16:9 just under
+  // the line, clear of the claim that now hangs off the seam.
+  const leftFrom = [cx, cy]
   const leftTo = portrait ? [cx, cy - halfH] : [cx - gap - size * 0.1, cy]
   const rightPos = portrait ? [cx, cy + halfH] : [cx + gap, cy]
-  const pivotPos = portrait ? [cx, cy] : [cx, cy + size * 0.6]
+  const pivotPos = portrait ? [cx, cy] : [cx, cy + size * 1.2]
   const leftPos = [leftFrom[0] + (leftTo[0] - leftFrom[0]) * slide, leftFrom[1] + (leftTo[1] - leftFrom[1]) * slide]
   const leftAnchor = portrait ? -50 : -50 - 50 * slide
   const rightAnchor = portrait ? -50 : 0
@@ -92,9 +98,10 @@ function Graphic(props) {
       {side.map((w, j) => {
         const marked = j === side.length - 1
         const appear = arrive(frame, fps, w.atMs, motion.ms.enter)
-        // The marked word arrives settled, so its highlighter never runs behind grey.
+        // The marked word settles as it appears, so its highlighter runs behind grey for a moment at most.
         const white = marked ? appear : arrive(frame, fps, w.atMs + motion.ms.micro, motion.ms.reveal) * (1 - stepped)
-        const sweep = marked ? shift(frame, fps, w.atMs + motion.ms.micro, motion.ms.reveal) : 0
+        // The sweep starts with the word, so the word and its mark land as one gesture.
+        const sweep = marked ? shift(frame, fps, w.atMs, motion.ms.reveal) : 0
         const text = j === 0 ? w.text.charAt(0).toUpperCase() + w.text.slice(1) : w.text
         return (
           <span key={'w' + j} style={{ position: 'relative', display: 'inline-block', marginRight: marked ? 0 : '0.26em', opacity: appear, transform: 'translateY(' + (1 - appear) * motion.px.rise * unit + 'px)' }}>
@@ -130,7 +137,7 @@ function Graphic(props) {
         ) : null}
         {claim(parts.left, leftPos, 'left', stepBack, leftAnchor)}
         {parts.pivot && fold < 1 ? (
-          <div style={{ position: 'absolute', left: pivotPos[0], top: pivotPos[1], transform: 'translate(-50%, -50%)', clipPath: portrait ? 'inset(' + fold * 50 + '% 0 ' + fold * 50 + '% 0)' : 'inset(0 ' + fold * 50 + '% 0 ' + fold * 50 + '%)', opacity: pivotIn, whiteSpace: 'nowrap', fontFamily: fonts.heading, fontWeight: 800, fontSize: size, lineHeight: 1.15, letterSpacing: '-0.02em', color: colors.textPrimary }}>
+          <div style={{ position: 'absolute', left: pivotPos[0], top: pivotPos[1], transform: 'translate(-50%, -50%) translateY(' + (1 - pivotIn) * motion.px.rise * unit + 'px)', clipPath: portrait ? 'inset(' + fold * 50 + '% 0 ' + fold * 50 + '% 0)' : 'inset(0 ' + fold * 50 + '% 0 ' + fold * 50 + '%)', opacity: pivotIn, whiteSpace: 'nowrap', fontFamily: fonts.heading, fontWeight: 800, fontSize: size, lineHeight: 1.15, letterSpacing: '-0.02em', color: colors.textPrimary }}>
             {parts.pivot.text}
           </div>
         ) : null}
