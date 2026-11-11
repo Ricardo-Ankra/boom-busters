@@ -10,6 +10,7 @@ import type { PlayerRef } from '@remotion/player'
 import dynamic from 'next/dynamic'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
+import { holdMsFor } from '@/lib/reading-hold'
 
 /**
  * The light half of the board's playback (decision 289): which graphic is
@@ -201,6 +202,9 @@ export function GraphicPlayback({
         brand={brand}
         logoUrls={logoUrls}
         durationMs={durationMs}
+        {...(design.kind === 'code'
+          ? { holdMs: holdMsFor(noun === 'chart' ? 'chart' : 'graphic', design.code) }
+          : {})}
         portrait={portrait}
         onPlayer={setPlayer}
       />

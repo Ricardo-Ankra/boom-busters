@@ -1,7 +1,7 @@
 'use client'
 
 import { GraphicCard, GraphicCode, loadBrandFonts, msToFrames } from '@boom-busters/compositions'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, holdShortfallMs, resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitStored, GraphicScene } from '@boom-busters/schemas'
 import { MASTER_FPS } from '@boom-busters/timeline'
 import { Player, type PlayerRef } from '@remotion/player'
@@ -65,6 +65,7 @@ export function GraphicPlayerFrame({
   brand,
   logoUrls,
   durationMs,
+  holdMs,
   portrait,
   onPlayer,
 }: {
@@ -73,6 +74,12 @@ export function GraphicPlayerFrame({
   /** A scene's marks, by asset id; a design in code carries its own, by title. */
   logoUrls: Readonly<Record<string, string>>
   durationMs: number
+  /**
+   * How long the render holds the design's final state after its last word.
+   * A design in code plays on until that hold is met, as the render's slot
+   * is stretched to give it; a scene, or a design with no words, is unchanged.
+   */
+  holdMs?: number
   portrait: boolean
   /** Handed the Player once it is attached, and null when this frame goes away. */
   onPlayer: (player: PlayerRef | null) => void
@@ -89,7 +96,12 @@ export function GraphicPlayerFrame({
     onPlayer(playerRef.current)
     return () => onPlayer(null)
   }, [onPlayer])
-  const durationInFrames = Math.max(1, msToFrames(durationMs, MASTER_FPS))
+  const lastWord = design.kind === 'code' ? design.code.words.at(-1) : undefined
+  const playMs =
+    lastWord && holdMs !== undefined
+      ? durationMs + holdShortfallMs(lastWord.atMs, durationMs, holdMs)
+      : durationMs
+  const durationInFrames = Math.max(1, msToFrames(playMs, MASTER_FPS))
   const size =
     design.kind === 'code'
       ? portrait

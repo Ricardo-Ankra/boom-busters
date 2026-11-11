@@ -300,3 +300,42 @@ describe('GraphicPlayback with code (decision 295)', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('GraphicPlayback holds the ending as the render will', () => {
+  const LATE = { ...CODE, words: [{ text: 'four', atMs: 5400 }] }
+  const play = async (props: Record<string, unknown>) => {
+    render(
+      <GraphicPlayback
+        slotId="s1"
+        brand={DEFAULT_SETTINGS.brandKit}
+        logoUrls={{}}
+        durationMs={6000}
+        {...props}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Play / }))
+    return screen.findByTestId('player')
+  }
+
+  it('plays a code design long enough for its last word to hold 2000 ms', async () => {
+    // The last word sits 600 ms before the end: 1400 ms short of the hold.
+    expect(await play({ code: LATE })).toHaveTextContent('frames:222')
+    expect(played).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inputProps: expect.objectContaining({ durationInFrames: 222 }),
+      }),
+    )
+  })
+
+  it('holds a chart, or a graphic citing a figure, for 2500 ms', async () => {
+    expect(await play({ code: LATE, noun: 'chart' })).toHaveTextContent('frames:237')
+  })
+
+  it('leaves a scene at its own length', async () => {
+    expect(await play({ scene: SCENE })).toHaveTextContent('frames:180')
+  })
+
+  it('gives a code design with no words no extension', async () => {
+    expect(await play({ code: { ...CODE, words: [] } })).toHaveTextContent('frames:180')
+  })
+})
