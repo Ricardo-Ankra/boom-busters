@@ -80,4 +80,19 @@ describeDb('callLlm routes by channel', () => {
       technique: 'stat-counter',
     })
   })
+
+  it('records what the call was: who answered, the tokens, the cut-off and the time (decision 460)', async () => {
+    await callLlm(request, { channelId: FIRST_CHANNEL_ID })
+    const [row] = await listLedger(db, { channelId: FIRST_CHANNEL_ID, limit: 1 })
+    expect(row?.meta).toMatchObject({
+      answeredBy: expect.any(String),
+      inputTokens: expect.any(Number),
+      outputTokens: expect.any(Number),
+      maxTokens: 50,
+      truncated: false,
+      answerChars: expect.any(Number),
+      durationMs: expect.any(Number),
+    })
+    expect(row?.meta['answerChars']).toBeGreaterThan(0)
+  })
 })

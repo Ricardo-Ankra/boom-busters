@@ -287,7 +287,9 @@ afterEach(() => {
 })
 
 const CUT_OFF = "the designer's answer was cut off at its length limit"
-const TOO_LONG = 'the designer took too long; press Redesign to try again'
+/** "Took too long", saying which call the clock stopped and why (decision 460). */
+const tooLong = (detail: string) =>
+  `the designer took too long (${detail}); press Redesign to try again`
 
 describe("the channel's exemplar in the per-shot call (spec 2026-11-04, section 8.3)", () => {
   const slotMessage = (call: number) =>
@@ -446,19 +448,67 @@ describe('designGraphic (decisions 289, 295)', () => {
       vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
       throw new Error('This operation was aborted')
     })
-    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: TOO_LONG })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
+      ok: false,
+      issue: tooLong('no answer came back within 240 s'),
+    })
     expect(callLlm).toHaveBeenCalledTimes(1)
   })
 
-  it('does not start a second attempt with under 15 s left', async () => {
+  it('does not start a second attempt with under 15 s left, and quotes the refusal (decision 460)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(1_000_000)
     callLlm.mockImplementation(async () => {
       vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 14_000)
       return answer('$5bn')
     })
-    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: TOO_LONG })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
+      ok: false,
+      issue: tooLong(
+        `its first answer was refused: ${issueOf(planned('$5bn')).slice(0, 300)}, ` +
+          'and too little of the 240 s was left to ask again',
+      ),
+    })
     expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the first answer was cut off when the clock stops the doubled retry (decision 460)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    callLlm.mockImplementation(async () => {
+      vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 14_000)
+      return HALF
+    })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
+      ok: false,
+      issue: tooLong(
+        'its first answer was cut off at its length limit, ' +
+          'and too little of the 240 s was left to ask again',
+      ),
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the second answer ran out the clock when the retry is aborted (decision 460)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    callLlm
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(1_000_000 + 60_000)
+        return HALF
+      })
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
+        throw new Error('This operation was aborted')
+      })
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
+      ok: false,
+      issue: tooLong(
+        'its first answer was cut off at its length limit, ' +
+          'and the second did not come back within the 240 s',
+      ),
+    })
+    expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
   it('lets a budget stop through even past the deadline', async () => {
