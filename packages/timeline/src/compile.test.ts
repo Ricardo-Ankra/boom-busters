@@ -14,6 +14,7 @@ import {
   CHAPTER_LEAD_MS,
   CHAPTER_OVERLAP_MS,
   compileTimeline,
+  compileTimelineWithReport,
   KENBURNS_INTENSITY,
   MIN_SHOT_MS,
   PARAGRAPH_GAP_MS,
@@ -660,5 +661,132 @@ describe('resolveMotion', () => {
     const chart = timeline.slots.find((slot) => slot.type === 'chart')!
     expect(chart.payload.kind).toBe('chart')
     expect(chart.motion).toEqual({ kind: 'draw-on' })
+  })
+})
+
+describe('the reading pause', () => {
+  const GRAPHIC: Omit<GraphicCodePayload, 'kind'> = {
+    version: 1,
+    compiled: 'function Graphic(props) { return null; }',
+    title: 'A graphic',
+    words: [{ text: 'June', atMs: 400 }],
+    durationMs: 6000,
+    logos: {},
+    claimIds: [],
+  }
+
+  /**
+   * The first paragraph is "By June, the auditors could not find the money." at
+   * 400 ms a word. Two graphics end on a comma ("June," and "auditors,") with
+   * the next shot a word or two behind, so each is given a capped pause.
+   */
+  function pausedInput(withHolds: boolean): CompileInput {
+    const input = goldenInput()
+    const still = input.slots[1]!
+    const hold = withHolds ? { holdMs: 2000 } : {}
+    input.captions.words = input.captions.words.map((w) =>
+      w.text === 'auditors' ? { ...w, text: 'auditors,' } : w,
+    )
+    const code = (startMs: number, coversText: string): CompileSlot => ({
+      ...still,
+      type: 'graphic',
+      startMs,
+      durationMs: 1000,
+      coversText,
+      graphicCode: GRAPHIC,
+      ...hold,
+    })
+    input.slots = [
+      code(0, 'By June,'),
+      code(800, 'the auditors'),
+      { ...still, startMs: 1600, durationMs: 3000, coversText: 'could not find the money.' },
+    ]
+    return input
+  }
+
+  it('splits a paragraph at two pauses into three pieces', () => {
+    const timeline = compileTimeline(pausedInput(true))
+    const pieces = timeline.narration.filter(
+      (s) => s.paragraphIndex === 0 && s.chapterId === CHAPTER_ONE,
+    )
+    expect(pieces.map((p) => p.trimStartMs)).toEqual([undefined, 775, 1575])
+    expect(pieces.map((p) => p.durationMs)).toEqual([775, 800, 6425])
+    // Each piece starts where its first word does, less the word's offset into it.
+    const words = timeline.captions.words
+    const the = words.find((w) => w.text === 'the')!
+    const could = words.find((w) => w.text === 'could')!
+    expect(pieces[1]!.startMs).toBe(the.startMs - (800 - 775))
+    expect(pieces[2]!.startMs).toBe(could.startMs - (1600 - 1575))
+    expect(pieces.every((p) => p.r2Key === pieces[0]!.r2Key)).toBe(true)
+  })
+
+  it('stretches the graphic across its pause', () => {
+    const plain = compileTimeline(pausedInput(false))
+    const held = compileTimeline(pausedInput(true))
+    // The next shot's words were 800 ms in; the pause carries them 1500 later, and
+    // the graphic holds the screen until they arrive.
+    expect(held.slots[0]!.durationMs).toBe(800 + 1500)
+    expect(held.slots[0]!.durationMs).toBeGreaterThan(plain.slots[0]!.durationMs)
+    expect(held.slots[1]!.startMs).toBe(plain.slots[1]!.startMs + 1500)
+    expect(held.slots[2]!.startMs).toBe(plain.slots[2]!.startMs + 3000)
+  })
+
+  it('shifts captions after a pause and not before', () => {
+    const plain = compileTimeline(pausedInput(false)).captions.words
+    const held = compileTimeline(pausedInput(true)).captions.words
+    const start = (words: typeof held, text: string) => words.find((w) => w.text === text)!.startMs
+    expect(start(held, 'June,')).toBe(start(plain, 'June,'))
+    expect(start(held, 'the')).toBe(start(plain, 'the') + 1500)
+    expect(start(held, 'could')).toBe(start(plain, 'could') + 3000)
+    expect(start(held, 'EY')).toBe(start(plain, 'EY') + 3000)
+  })
+
+  it('moves a chapter card that follows a pause', () => {
+    const plain = compileTimeline(pausedInput(false))
+    const held = compileTimeline(pausedInput(true))
+    expect(held.overlays[0]!.startMs).toBe(plain.overlays[0]!.startMs + 3000)
+  })
+
+  it('reports pauses and added time', () => {
+    const { readingHold, timeline } = compileTimelineWithReport(pausedInput(true))
+    expect(readingHold).toEqual({ pauses: 2, addedMs: 3000, midClause: 0, overlapped: 0 })
+    expect(timeline).toEqual(compileTimeline(pausedInput(true)))
+  })
+
+  it('extends the film last graphic to its hold', () => {
+    const build = (withHold: boolean): CompileInput => {
+      const input = goldenInput()
+      // "in nine days." ends the film; its last word leaves 900 ms of planned screen time.
+      input.slots = [
+        input.slots[1]!,
+        {
+          ...input.slots[1]!,
+          type: 'graphic',
+          startMs: 15_200,
+          durationMs: 1700,
+          coversText: 'in nine days.',
+          graphicCode: GRAPHIC,
+          ...(withHold ? { holdMs: 2000 } : {}),
+        },
+      ]
+      input.slots[0] = { ...input.slots[0]!, startMs: 0 }
+      return input
+    }
+    const plain = compileTimeline(build(false)).slots[1]!
+    const held = compileTimeline(build(true)).slots[1]!
+    expect(held.durationMs).toBe(plain.durationMs + 1100)
+  })
+
+  it('leaves a timeline without holds unchanged', () => {
+    const input = goldenInput()
+    expect(compileTimelineWithReport(input).readingHold).toEqual({
+      pauses: 0,
+      addedMs: 0,
+      midClause: 0,
+      overlapped: 0,
+    })
+    const withRoom = goldenInput()
+    withRoom.slots = withRoom.slots.map((slot) => ({ ...slot, holdMs: 2000 }))
+    expect(compileTimeline(withRoom)).toEqual(compileTimeline(input))
   })
 })
