@@ -5057,9 +5057,19 @@ The nine findings the final review parked, plus the flaky test (decision 453):
       reviewer's verdict was ship: lower-third (eight reviews), progress-bars
       (seven), typewriter (nine); in `docs/exemplars/boom-busters/`.
       Upload-path dry run on a throwaway local database (`a7ed0970`).
-- [ ] Boom & Busters, no version yet: comparison-chart, animated-list.
-- [ ] Boom & Busters, drafts only: kinetic-word-stack, kpi-counter,
-      line-chart, quote-card, split-screen.
+- Second batch (owner, 2026-11-11: "Please now do all the remaining
+  techniques"; each uploaded as a draft as soon as a fresh reviewer says
+  ship; reviewed on the design-first brief, the written style guide as
+  background; stop at ship or after four rounds):
+  - [x] comparison-chart (no version yet): four reviews, ship; uploaded as
+        v1, cost 0, 8 shots and 2 sheets in R2
+  - [x] animated-list (no version yet): three reviews, ship; uploaded as v1,
+        cost 0, 8 shots and 2 sheets in R2
+  - [ ] kinetic-word-stack (a derived draft)
+  - [ ] kpi-counter (two derived drafts)
+  - [ ] line-chart (a derived draft)
+  - [ ] quote-card (a derived draft)
+  - [ ] split-screen (a derived draft)
 - [x] First batch uploaded to production as drafts on the owner's go-ahead
       (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
       0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
