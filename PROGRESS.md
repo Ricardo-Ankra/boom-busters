@@ -5064,7 +5064,13 @@ The nine findings the final review parked, plus the flaky test (decision 453):
       (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
       0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
       in the bucket, the metrics kept.
-- [ ] First batch approved by the owner on the Exemplars tab.
+- [x] Revisions on the owner's notes (2026-11-11): progress-bars with every
+      figure one size (one review, ship); typewriter rebuilt to type a letter
+      at a time (two reviews, ship). `--parent` and `--steer` file a revision
+      as Refine does, proven on a throwaway local database.
+- [ ] Revisions uploaded as v2 drafts beside v1 (owner's go-ahead).
+- [ ] First batch approved by the owner on the Exemplars tab (lower-third:
+      "Lower third is good").
 - [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
       owner on the Exemplars tab.
 
@@ -11409,3 +11415,16 @@ owner edits. `--prod` was not run against Neon.
      safe area's exact extent) and never with my conclusions; when reviewers
      contradict each other the style guide and the owner's steers decide, and
      a round whose verdict is ship ends the loop.
+     (d) Revisions on the owner's notes (2026-11-11). A revision is filed as
+     the app's Refine files one: `--parent <version id> --steer "<words>"`,
+     the parent the technique's approved version or, with none, its latest
+     draft (`revisionOf`, the Refine action's rule), the steer through
+     `ExemplarSteerSchema`; the draft carries `parentId` and `steer`, so the
+     Exemplars tab shows it beside its parent and approving it records a
+     preference, and a `steer` verdict is recorded on the parent. An owner's
+     ruling against the written style guide goes in the review brief's own
+     section and wins: the typewriter types a letter at a time (the owner on
+     a version that built whole words to obey "letter by letter animation":
+     "it doesn't typewrite at all?"), and figures in one set share one size
+     (on the progress bars' golden-ratio key figure: "It should be the same
+     size").
