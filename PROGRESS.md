@@ -5053,8 +5053,11 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 
 - [x] `exemplar:hand` (check) and `exemplar:hand-upload` (draft at no cost,
       frames in R2), with `lib/exemplar-hand.ts` and its tests (`25c3d6e4`).
-- [ ] Boom & Busters, no version yet: lower-third, progress-bars, typewriter,
-      comparison-chart, animated-list.
+- [x] Boom & Busters, first batch, designed and reviewed until a fresh
+      reviewer's verdict was ship: lower-third (eight reviews), progress-bars
+      (seven), typewriter (nine); in `docs/exemplars/boom-busters/`.
+      Upload-path dry run on a throwaway local database (`a7ed0970`).
+- [ ] Boom & Busters, no version yet: comparison-chart, animated-list.
 - [ ] Boom & Busters, drafts only: kinetic-word-stack, kpi-counter,
       line-chart, quote-card, split-screen.
 - [ ] Uploaded as drafts (owner's go-ahead per batch) and approved by the

@@ -20,6 +20,13 @@ function partsOf(words) {
   }
 }
 
+function shift(frame, fps, atMs, lengthMs) {
+  const a = motion.frames(Math.max(0, atMs), fps)
+  return Remotion.interpolate(frame, [a, a + motion.frames(lengthMs, fps)], [0, 1], {
+    easing: motion.ease.move, extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+}
+
 function toned(text, white, colors) {
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}>
@@ -50,7 +57,9 @@ function Graphic(props) {
   const room = width - inset.left - inset.right - 2 * 48 * unit
   const charsOf = (words) => Math.max(6, words.map((w) => w.text).join(' ').length + 2)
   const widest = portrait ? Math.max(...groups.map(charsOf)) : charsOf(line)
-  const lineSize = Math.min((portrait ? 104 : 112) * unit, room / (0.6 * widest))
+  // In 16:9 the quote takes at most four fifths of the room, so generous margins stay
+  // whatever the quote's length; in 9:16 the width is the limit.
+  const lineSize = Math.min((portrait ? 104 : 112) * unit, ((portrait ? 1 : 0.8) * room) / (0.6 * widest))
   const lineRows = portrait ? groups.length : 1
   const kickerSize = (portrait ? 36 : 32) * unit
   const kickerGap = 28 * unit
@@ -58,12 +67,12 @@ function Graphic(props) {
   // Until the quote is due, the kicker is the headline: larger, at the block's centre. Once it is
   // complete it shrinks upward into its header slot and steps back in tone, in one move that
   // settles before the first word of the quote is typed.
-  // The shrink moves at once and is all but done within a fifth of a second; its soft tail
-  // settles as the quote's first word is typed, so the header hands over to the quote.
-  const demoteMs = motion.ms.move
-  const demoteAt = lineAt - demoteMs
-  const demote = arrive(frame, fps, demoteAt, demoteMs)
-  const headline = portrait ? 2 : 2.25
+  // The shrink is the longest smooth glide the second between the kicker and the quote
+  // allows: it starts once the kicker has settled and lands just as the first word is typed.
+  const demoteMs = motion.ms.move + motion.ms.enter
+  const demoteAt = lineAt - demoteMs - motion.ms.micro / 2
+  const demote = shift(frame, fps, demoteAt, demoteMs)
+  const headline = portrait ? 2 : 2.6
   const drop = (kickerGap + lineRows * 1.25 * lineSize) / 2
   const kickerScale = headline + (1 - headline) * demote
 
@@ -121,7 +130,7 @@ function Graphic(props) {
                 return (
                   <span key={'w' + w.atMs} style={{ position: 'relative', display: 'inline-block', marginRight: groupLast ? 0 : '0.6em', marginLeft: first ? '-0.6em' : 0, opacity: shown }}>
                     {k >= 0 ? (
-                      <span style={{ position: 'absolute', left: first ? '0.5em' : lineStart ? 0 : '-0.12em', right: last ? '-0.12em' : groupLast ? 0 : '-0.72em', top: '0.08em', bottom: '0.04em', backgroundColor: colors.accent, clipPath: 'inset(0 ' + (1 - hi) * 100 + '% 0 0)' }} />
+                      <span style={{ position: 'absolute', left: first ? '0.5em' : lineStart ? 0 : '-0.12em', right: last ? '-0.12em' : groupLast ? 0 : '-0.72em', top: '0.08em', bottom: '-0.04em', backgroundColor: colors.accent, clipPath: 'inset(0 ' + (1 - hi) * 100 + '% 0 0)' }} />
                     ) : null}
                     <span style={{ position: 'relative' }}>{toned(text, white, colors)}</span>
                     {caretOn && i === typed - 1 ? (

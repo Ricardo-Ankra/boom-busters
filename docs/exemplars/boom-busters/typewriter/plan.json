@@ -32,9 +32,9 @@
   "storyboard": [
     "0.0 s, on \"The\": the kicker starts as the headline, large tracked capitals at the block's left edge, grey settling to off white",
     "1.0 s, on \"memo\": the second kicker word settles beside it",
-    "2.0 s, on \"said:\": the kicker completes as THE MEMO SAID, settled by 2.25 s, and holds as the headline",
-    "2.6 s: the kicker shrinks upward into a small header above the quote and steps back to mid grey, all but done by 2.8 s, settling softly into 3.0 s",
-    "3.0 s, on \"shred\": as the header settles, the quote starts in large JetBrains Mono behind a hanging opening quote, the word typed whole",
+    "2.0 s, on \"said:\": the kicker completes as THE MEMO SAID, settled by 2.25 s",
+    "2.3 s: the kicker glides upward into a small header above the quote and steps back to mid grey, one smooth move landing at 2.95 s",
+    "3.0 s, on \"shred\": as the header lands, the quote starts in large JetBrains Mono behind a hanging opening quote, the word typed whole",
     "3.0 s: the word settles from grey to off white and a steady off-white caret appears after it",
     "4.0 s, on \"everything\": the next word is typed in and the caret moves on after it",
     "5.0 s, on \"tonight.\": the last word is typed with the closing quote and, in the caret's place, a flat red selection starts across the phrase",
