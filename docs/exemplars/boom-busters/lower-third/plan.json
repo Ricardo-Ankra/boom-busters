@@ -1,0 +1,54 @@
+{
+  "slot": {
+    "intent": "Marcus Hale is the fund's chief auditor, the man whose signature sat on every clean report.",
+    "words": [
+      {
+        "text": "Marcus",
+        "atMs": 0
+      },
+      {
+        "text": "Hale,",
+        "atMs": 833
+      },
+      {
+        "text": "the",
+        "atMs": 1667
+      },
+      {
+        "text": "fund's",
+        "atMs": 2500
+      },
+      {
+        "text": "chief",
+        "atMs": 3333
+      },
+      {
+        "text": "auditor.",
+        "atMs": 4167
+      }
+    ]
+  },
+  "concept": "One thin red rule is the seam and comes first: it draws out in one stroke to the block's width, the name rises from behind it and the role drops out below it.",
+  "storyboard": [
+    "0.0 s: before anything else, a thin red rule draws out from the lower left in one brisk stroke",
+    "0.25 s, on \"Marcus\": the first name rises out from behind the rule once its edge has passed the word, grey settling to off white",
+    "0.4 s: the rule's stroke eases to a stop at the block's full width, the width of the longer of the two lines",
+    "0.8 s, on \"Hale,\": the surname rises out from behind the rule the same way",
+    "1.7 s, on \"the\": the role starts below the rule in small widely tracked capitals, dropping out from under it, grey settling to off white",
+    "2.5 s, on \"fund's\": the next role word drops out the same way",
+    "3.3 s, on \"chief\": the third role word drops out the same way",
+    "4.2 s, on \"auditor.\": the last role word lands under the rule's end",
+    "4.6 s: full hold on name, rule and role to the end; the camera never moves"
+  ],
+  "mechanisms": [
+    "draw-on",
+    "door",
+    "cause-to-effect"
+  ],
+  "leansOn": [
+    {
+      "title": "Chapter title (this channel's approved version)",
+      "why": "Words drop out from under a rule whose edge paces them, the vocabulary the owner approved for this channel."
+    }
+  ]
+}

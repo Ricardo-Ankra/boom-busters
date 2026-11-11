@@ -1,0 +1,13 @@
+{
+  "title": "Share price 2019 to 2022: delisted",
+  "facts": [
+    { "text": "2019", "claim": 1 },
+    { "text": "2020", "claim": 2 },
+    { "text": "2021", "claim": 3 },
+    { "text": "2022", "claim": 4 },
+    { "text": "98", "claim": 5 },
+    { "text": "71", "claim": 6 },
+    { "text": "34", "claim": 7 },
+    { "text": "6", "claim": 8 }
+  ]
+}

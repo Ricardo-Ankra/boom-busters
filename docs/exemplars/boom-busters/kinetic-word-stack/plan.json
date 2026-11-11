@@ -1,0 +1,23 @@
+{
+  "slot": {
+    "intent": "Nobody asked, nobody checked, and nobody knew.",
+    "words": [
+      { "text": "Nobody", "atMs": 0 },
+      { "text": "asked.", "atMs": 1000 },
+      { "text": "Nobody", "atMs": 2000 },
+      { "text": "checked.", "atMs": 3000 },
+      { "text": "Nobody", "atMs": 4000 },
+      { "text": "knew.", "atMs": 5000 }
+    ]
+  },
+  "concept": "Nobody is built once and kept; each verb rolls up on a flat drum that turns as Nobody is said again, lifting the verb before a line, smaller and quieter, until knew. lands in red.",
+  "storyboard": [
+    "0.0 s, on \"Nobody\": Nobody builds in heavy sentence case left of centre, grey settling to off white; it never moves again",
+    "0.7 s: the drum's first turn, a flat roll inside a window with no perspective, brings asked. up from under the line, home as it is spoken at 1.0 s",
+    "2.5 s: the repeated \"Nobody\" at 2.0 s turns the drum over a second: asked. steps back to mid grey and rises a line, a touch smaller, as checked. rolls up, home on \"checked.\" at 3.0 s",
+    "4.5 s: the repeat at 4.0 s turns it once more: asked. rises to the top, smaller and pale, checked. steps back to mid grey, and knew. rolls up into place at 5.0 s",
+    "5.3 s: knew. settles to red; full hold to the end, Nobody and knew. bright, the verbs above quiet in grey; the camera never moves"
+  ],
+  "mechanisms": ["persistent-actor", "drum", "density-from-hierarchy"],
+  "leansOn": []
+}

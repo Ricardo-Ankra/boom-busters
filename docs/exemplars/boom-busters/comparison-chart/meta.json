@@ -1,0 +1,15 @@
+{
+  "title": "Reported against real profit: a 3.3 gap",
+  "facts": [
+    { "text": "2020", "claim": 1 },
+    { "text": "2021", "claim": 2 },
+    { "text": "2022", "claim": 3 },
+    { "text": "3.3", "claim": 4 },
+    { "text": "2.1", "claim": 5 },
+    { "text": "2.8", "claim": 6 },
+    { "text": "3.5", "claim": 7 },
+    { "text": "0.9", "claim": 8 },
+    { "text": "0.7", "claim": 9 },
+    { "text": "0.2", "claim": 10 }
+  ]
+}

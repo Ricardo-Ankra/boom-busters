@@ -1,0 +1,31 @@
+{
+  "slot": {
+    "intent": "Three banks, two funds and one regulator were involved, and nobody asked a single question.",
+    "words": [
+      { "text": "Three", "atMs": 0 },
+      { "text": "banks,", "atMs": 875 },
+      { "text": "two", "atMs": 1750 },
+      { "text": "funds,", "atMs": 2625 },
+      { "text": "one", "atMs": 3500 },
+      { "text": "regulator,", "atMs": 4375 },
+      { "text": "no", "atMs": 5250 },
+      { "text": "questions.", "atMs": 6125 }
+    ]
+  },
+  "concept": "A list that counts down to nothing: each item builds as it is named, one square marker glides down a hairline spine to meet it, the named items step back, and the last lands red.",
+  "storyboard": [
+    "0.0 s, on \"Three\": the first item builds word by word in heavy sentence case, grey settling to off white, and a small solid off-white square fades in at its left",
+    "1.4 s: the square glides down to the second place, drawing a hairline spine behind it, and arrives as \"two\" is spoken at 1.75 s; Three banks steps back to mid grey",
+    "3.1 s: the square glides on to the third place for \"one regulator\" at 3.5 s, the spine following; Three banks steps back again to pale grey, two funds to mid grey",
+    "4.85 s: the square glides to the last place, arriving as \"no\" is spoken at 5.25 s, and turns red as it lands",
+    "6.1 s, on \"questions.\": the word lands as a flat red highlighter sweeps behind No questions in the same stroke, landing at 6.5 s",
+    "Then a full hold to the end: the walked spine and the earlier items quiet in grey, only No questions bright and marked; the camera never moves"
+  ],
+  "mechanisms": ["persistent-actor", "density-from-hierarchy", "marker-stroke", "cause-to-effect"],
+  "leansOn": [
+    {
+      "title": "Progress steps (this channel's approved version)",
+      "why": "One trail walks the steps as each is named, walked steps fade back to grey in stages, and the landing step turns red with a highlighter behind it."
+    }
+  ]
+}

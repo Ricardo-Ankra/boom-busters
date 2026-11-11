@@ -5040,6 +5040,63 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - The `load-assembly` wiring is now driven by a test (decision 459); the
   compile tests still seed its result by hand.
 
+## Hand-made channel exemplars (2026-11-11)
+
+> A channel's exemplars written by hand in a session instead of by the paid
+> Derive loop, checked and photographed exactly as a derived version is, each
+> design and each revision reviewed by a fresh reviewer agent, and stored as a
+> draft the owner approves on the Exemplars tab. Branch `hand-exemplars`,
+> decision 463. No migration. Boom & Busters first: the ten techniques without
+> an approved version.
+
+### Deliverables
+
+- [x] `exemplar:hand` (check) and `exemplar:hand-upload` (draft at no cost,
+      frames in R2), with `lib/exemplar-hand.ts` and its tests (`25c3d6e4`).
+- [x] Boom & Busters, first batch, designed and reviewed until a fresh
+      reviewer's verdict was ship: lower-third (eight reviews), progress-bars
+      (seven), typewriter (nine); in `docs/exemplars/boom-busters/`.
+      Upload-path dry run on a throwaway local database (`a7ed0970`).
+- Second batch (owner, 2026-11-11: "Please now do all the remaining
+  techniques"; each uploaded as a draft as soon as a fresh reviewer says
+  ship; reviewed on the design-first brief, the written style guide as
+  background; stop at ship or after four rounds):
+  - [x] comparison-chart (no version yet): four reviews, ship; uploaded as
+        v1, cost 0, 8 shots and 2 sheets in R2
+  - [x] animated-list (no version yet): three reviews, ship; uploaded as v1,
+        cost 0, 8 shots and 2 sheets in R2
+  - [x] kinetic-word-stack (a derived draft): three reviews, ship; uploaded
+        as v2 beside the derived v1, cost 0, 8 shots and 2 sheets in R2
+  - [x] kpi-counter (two derived drafts): one review, ship; uploaded as v3
+        beside the derived v1 and v2, cost 0, 8 shots and 2 sheets in R2
+  - [x] line-chart (a derived draft): six reviews; stopped at the four-round
+        cap, continued on the owner's word, ship at round six (values lifted
+        clear of steep segments); uploaded as v2 beside the derived v1
+  - [x] quote-card (a derived draft): six reviews; continued past the cap,
+        ship at round five and again after its fixes at round six (the
+        closing mark budgeted on the last line); uploaded as v2 beside the
+        derived v1
+  - [x] split-screen (a derived draft): five reviews; continued past the
+        cap, ship at round five once each beat had its own moment (mark,
+        slide aside, pivot, curtain into the seam); uploaded as v2 beside the
+        derived v1
+- [x] First batch uploaded to production as drafts on the owner's go-ahead
+      (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
+      0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
+      in the bucket, the metrics kept.
+- [x] Revisions on the owner's notes (2026-11-11): progress-bars with every
+      figure one size (one review, ship); typewriter rebuilt to type a letter
+      at a time (two reviews, ship). `--parent` and `--steer` file a revision
+      as Refine does, proven on a throwaway local database.
+- [x] Revisions uploaded as v2 drafts beside v1 on the owner's go-ahead
+      (2026-11-11): progress-bars v2 and typewriter v2 at cost 0, each with
+      its parent, the owner's steer and a steer verdict on v1, 8 shots and 2
+      sheets each in R2; read back read-only.
+- [ ] First batch approved by the owner on the Exemplars tab (lower-third:
+      "Lower third is good").
+- [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
+      owner on the Exemplars tab.
+
 ---
 
 # Decisions made
@@ -11375,3 +11432,60 @@ owner edits. `--prod` was not run against Neon.
      they are expected to keep the category of the voice they came from (most
      are professional clones) and sit with those, not in a group of their own.
      The first look at the live panel settles it.
+
+463. **Hand-made channel exemplars** (2026-11-11, owner: "why don't we create
+     them locally here, and upload them to the DB", then "Deploy a fresh
+     reviewer agent after every exemplar design", starting with Boom &
+     Busters; branch `hand-exemplars`, no migration).
+     (a) An exemplar is made once and kept, so the paid Derive loop's
+     storyboard, build, critic and fix calls buy little that a session cannot
+     do with more time. Boom & Busters had spent about $11 on derivations, the
+     bar chart nine versions of it.
+     (b) `pnpm --filter @boom-busters/web exemplar:hand` checks a design folder
+     (`plan.json`, `design.jsx`, `meta.json`) for one house technique under a
+     channel's settings: `planIssue` against the catalogue slot's bounds,
+     `graphicCodeIssue` under the channel's motion identity, the designer's
+     layout check in the browser with the channel's brand, then the deriver's
+     photographs (rest shots, the storyboard moments' sheet) and an even sheet
+     every 250 ms for review, written to `<folder>/out`. No database, no spend.
+     (c) `exemplar:hand-upload` runs the same checks under the live settings,
+     stores the version with `insertExemplarVersion` as a draft, photographs
+     it into R2 under the version's keys with `photographVersion`, and sets
+     its cost to 0. The owner approves it on the Exemplars tab, so the verdict
+     reaches the preference ledger and the one-approved rule holds as for a
+     derived draft. A hand-made version has no critic report, as a version
+     derived without storage has none.
+     Decisions made where the request left room: house techniques only (a
+     channel's own technique needs its proposal, which only the deriver
+     writes); a design with no browser is refused rather than kept unseen;
+     every design and every revision goes to a new reviewer agent with a
+     shared brief (the channel's style guide, the owner's past steers, the
+     safe area's exact extent) and never with my conclusions; when reviewers
+     contradict each other the style guide and the owner's steers decide, and
+     a round whose verdict is ship ends the loop.
+     (d) Revisions on the owner's notes (2026-11-11). A revision is filed as
+     the app's Refine files one: `--parent <version id> --steer "<words>"`,
+     the parent the technique's approved version or, with none, its latest
+     draft (`revisionOf`, the Refine action's rule), the steer through
+     `ExemplarSteerSchema`; the draft carries `parentId` and `steer`, so the
+     Exemplars tab shows it beside its parent and approving it records a
+     preference, and a `steer` verdict is recorded on the parent. An owner's
+     ruling against the written style guide goes in the review brief's own
+     section and wins: the typewriter types a letter at a time (the owner on
+     a version that built whole words to obey "letter by letter animation":
+     "it doesn't typewrite at all?"), and figures in one set share one size
+     (on the progress bars' golden-ratio key figure: "It should be the same
+     size").
+     (e) The second batch (2026-11-11, owner: "Please now do all the
+     remaining techniques"): the brief goes design-first at the owner's own
+     suggestion (design to taste, infer the written rules from the approved
+     set afterwards), so the style guide and never list are background while
+     the brand, the timings, the owner's steers and rulings and the placement
+     facts stay fixed; each technique is uploaded as soon as a fresh reviewer
+     says ship (the owner's standing go-ahead for the batch); a technique
+     that has not reached ship after four rounds is kept in `docs/exemplars`
+     with its last verdict and not uploaded. Four of the seven shipped
+     within the cap; the owner then said "Continue with the ones that
+     stopped", and the other three shipped at rounds five and six, those
+     rounds reviewed on Opus as stuck fix loops, each told to separate real
+     defects from taste.
