@@ -36,6 +36,21 @@ describe('recording notices (decision 293)', () => {
     ])
   })
 
+  it('writes the repairs line, then the extra notices, replacing what was there', async () => {
+    const extra = [{ kind: 'trimmed' as const, message: 'Chapter 2 revised for craft: x.' }]
+    await recordRepairs(target, [{ action: 'trimmed', field: 'era rule 1' }], extra)
+    expect(replaceNotices).toHaveBeenCalledWith({ marker: 'db' }, target, [
+      { kind: 'trimmed', message: 'Trimmed to fit: era rule 1.' },
+      ...extra,
+    ])
+  })
+
+  it('writes the extra notices alone when nothing was repaired', async () => {
+    const extra = [{ kind: 'stopped' as const, message: 'Chapter 1: the craft check stopped: x.' }]
+    await recordRepairs(target, [], extra)
+    expect(replaceNotices).toHaveBeenCalledWith({ marker: 'db' }, target, extra)
+  })
+
   it('retires the old notes when a clean answer lands', async () => {
     await recordRepairs(target)
     expect(replaceNotices).toHaveBeenCalledWith({ marker: 'db' }, target, [])

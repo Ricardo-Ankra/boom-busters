@@ -2,7 +2,7 @@ import { addNotice, replaceNotices } from '@boom-busters/db'
 import { describeRepairs } from '@boom-busters/providers'
 import type { Repair } from '@boom-busters/providers'
 import { serialiseError } from '@boom-busters/schemas'
-import type { NoticeTarget } from '@boom-busters/schemas'
+import type { NewNotice, NoticeTarget } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 
 /**
@@ -18,11 +18,14 @@ import { db } from '@/lib/db'
 export async function recordRepairs(
   target: NoticeTarget,
   repairs: readonly Repair[] = [],
+  extra: readonly NewNotice[] = [],
 ): Promise<void> {
   const message = describeRepairs(repairs)
-  const kind = repairs.some((repair) => repair.action === 'dropped') ? 'dropped' : 'trimmed'
+  const kind: NewNotice['kind'] = repairs.some((repair) => repair.action === 'dropped')
+    ? 'dropped'
+    : 'trimmed'
   try {
-    await replaceNotices(db, target, message === null ? [] : [{ kind, message }])
+    await replaceNotices(db, target, [...(message === null ? [] : [{ kind, message }]), ...extra])
   } catch (error) {
     console.error('[notices] could not record a notice', target, serialiseError(error))
   }

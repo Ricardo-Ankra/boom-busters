@@ -8,7 +8,14 @@ import {
 } from '@boom-busters/providers'
 import { BudgetExceededError, FIRST_CHANNEL_IN_USE } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
-import { draftChapterWith, draftOutlineWith, markShortsWith, selfCheckWith } from './script-answers'
+import {
+  craftCheckWith,
+  draftChapterWith,
+  draftOutlineWith,
+  markShortsWith,
+  reviseChapterWith,
+  selfCheckWith,
+} from './script-answers'
 
 const outlineInput = {
   bible: FIRST_CHANNEL_IN_USE,
@@ -170,5 +177,76 @@ describe('the chapter draft (decision 293)', () => {
       estimateUsd: 0.4,
     })
     await expect(draftChapterWith(vi.fn().mockRejectedValue(over), chapterInput)).rejects.toBe(over)
+  })
+})
+
+describe('the craft loop answers (decision 463)', () => {
+  const craftInput = {
+    bible: FIRST_CHANNEL_IN_USE,
+    outline: mockOutline(10),
+    chapterIndex: 1,
+    claimCount: 0,
+    previousChapters: [{ title: 'The audit', contentMd: 'The money was gone.' }],
+    contentMd: 'The accounts were empty. And that was the lesson.',
+  }
+  const reviseInput = {
+    bible: FIRST_CHANNEL_IN_USE,
+    caseTitle: 'Case',
+    outline: mockOutline(10),
+    chapterIndex: 1,
+    previousChapters: [{ title: 'The audit', contentMd: 'The money was gone.' }],
+    claims: [],
+    draft: 'The accounts were empty. And that was the lesson.',
+    findings: [
+      {
+        sentence: 'And that was the lesson.',
+        problem: 'It ends on a moral.',
+        fix: 'Stop earlier.',
+      },
+    ],
+  }
+  const over = new BudgetExceededError({
+    provider: 'anthropic',
+    operation: 'llm.scripting',
+    budgetUsd: 30,
+    monthSpendUsd: 29.9,
+    estimateUsd: 0.4,
+  })
+
+  it('reads a craft check in one call', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: JSON.stringify({ findings: [] }) })
+    expect(await craftCheckWith(complete, craftInput)).toEqual({
+      ok: true,
+      value: { findings: [] },
+      calls: 1,
+    })
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a stop after two unreadable answers instead of throwing', async () => {
+    const complete = vi.fn().mockResolvedValue({ text: 'not json at all' })
+    const answer = await craftCheckWith(complete, craftInput)
+    expect(answer.ok).toBe(false)
+    expect(complete).toHaveBeenCalledTimes(2)
+  })
+
+  it('revises on callForText and returns a stop after two cut-offs', async () => {
+    const good = vi.fn().mockResolvedValue({ text: 'The accounts were empty.' })
+    expect(await reviseChapterWith(good, reviseInput)).toEqual({
+      ok: true,
+      value: 'The accounts were empty.',
+      calls: 1,
+    })
+    const cut = vi.fn().mockResolvedValue({ text: 'The accounts', truncated: true })
+    const answer = await reviseChapterWith(cut, reviseInput)
+    expect(answer.ok).toBe(false)
+    expect(cut).toHaveBeenCalledTimes(2)
+    expect(cut.mock.calls[1]![1]).toBe('retry: cut off')
+  })
+
+  it('lets a budget stop through', async () => {
+    const complete = vi.fn().mockRejectedValue(over)
+    await expect(craftCheckWith(complete, craftInput)).rejects.toBe(over)
+    await expect(reviseChapterWith(complete, reviseInput)).rejects.toBe(over)
   })
 })

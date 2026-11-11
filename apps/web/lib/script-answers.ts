@@ -1,15 +1,24 @@
 import {
   buildChapterRequest,
+  buildChapterRevisionRequest,
+  buildCraftCheckRequest,
   buildOutlineRequest,
   buildSelfCheckRequest,
   buildShortsRequest,
+  parseCraftCheck,
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
 } from '@boom-busters/providers'
 import type { Repair } from '@boom-busters/providers'
-import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
-import { answerOrStop, callForAnswer, callForText, type AnswerComplete } from '@/lib/answer'
+import type { CraftCheck, Outline, ShortsCandidate } from '@boom-busters/schemas'
+import {
+  answerOrStop,
+  callForAnswer,
+  callForText,
+  type Answer,
+  type AnswerComplete,
+} from '@/lib/answer'
 
 /**
  * The script stage's structured answers (decision 292): the outline, each
@@ -83,4 +92,28 @@ export async function draftChapterWith(
     await callForText({ request: buildChapterRequest(input), complete }),
     `Chapter ${input.chapterIndex + 1} could not be drafted`,
   )
+}
+
+/**
+ * The craft check (decision 463): the `Answer` is returned, never thrown, so
+ * a check that cannot be read stops only its own chapter's loop. A budget
+ * stop from `complete` is not caught by `callForAnswer` and propagates.
+ */
+export function craftCheckWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildCraftCheckRequest>[0],
+): Promise<Answer<CraftCheck>> {
+  return callForAnswer({
+    request: buildCraftCheckRequest(input),
+    parse: parseCraftCheck,
+    complete,
+  })
+}
+
+/** The chapter's revision against its craft notes: plain text, returned like the check. */
+export function reviseChapterWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildChapterRevisionRequest>[0],
+): Promise<Answer<string>> {
+  return callForText({ request: buildChapterRevisionRequest(input), complete })
 }
