@@ -5040,6 +5040,26 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - The `load-assembly` wiring is now driven by a test (decision 459); the
   compile tests still seed its result by hand.
 
+## Hand-made channel exemplars (2026-11-11)
+
+> A channel's exemplars written by hand in a session instead of by the paid
+> Derive loop, checked and photographed exactly as a derived version is, each
+> design and each revision reviewed by a fresh reviewer agent, and stored as a
+> draft the owner approves on the Exemplars tab. Branch `hand-exemplars`,
+> decision 462. No migration. Boom & Busters first: the ten techniques without
+> an approved version.
+
+### Deliverables
+
+- [x] `exemplar:hand` (check) and `exemplar:hand-upload` (draft at no cost,
+      frames in R2), with `lib/exemplar-hand.ts` and its tests (`25c3d6e4`).
+- [ ] Boom & Busters, no version yet: lower-third, progress-bars, typewriter,
+      comparison-chart, animated-list.
+- [ ] Boom & Busters, drafts only: kinetic-word-stack, kpi-counter,
+      line-chart, quote-card, split-screen.
+- [ ] Uploaded as drafts (owner's go-ahead per batch) and approved by the
+      owner on the Exemplars tab.
+
 ---
 
 # Decisions made
@@ -11350,3 +11370,34 @@ owner edits. `--prod` was not run against Neon.
      designer is untouched. An aborted call's reservation is still released
      (no ledger row), so a cancelled request Anthropic may bill is not
      counted.
+
+462. **Hand-made channel exemplars** (2026-11-11, owner: "why don't we create
+     them locally here, and upload them to the DB", then "Deploy a fresh
+     reviewer agent after every exemplar design", starting with Boom &
+     Busters; branch `hand-exemplars`, no migration).
+     (a) An exemplar is made once and kept, so the paid Derive loop's
+     storyboard, build, critic and fix calls buy little that a session cannot
+     do with more time. Boom & Busters had spent about $11 on derivations, the
+     bar chart nine versions of it.
+     (b) `pnpm --filter @boom-busters/web exemplar:hand` checks a design folder
+     (`plan.json`, `design.jsx`, `meta.json`) for one house technique under a
+     channel's settings: `planIssue` against the catalogue slot's bounds,
+     `graphicCodeIssue` under the channel's motion identity, the designer's
+     layout check in the browser with the channel's brand, then the deriver's
+     photographs (rest shots, the storyboard moments' sheet) and an even sheet
+     every 250 ms for review, written to `<folder>/out`. No database, no spend.
+     (c) `exemplar:hand-upload` runs the same checks under the live settings,
+     stores the version with `insertExemplarVersion` as a draft, photographs
+     it into R2 under the version's keys with `photographVersion`, and sets
+     its cost to 0. The owner approves it on the Exemplars tab, so the verdict
+     reaches the preference ledger and the one-approved rule holds as for a
+     derived draft. A hand-made version has no critic report, as a version
+     derived without storage has none.
+     Decisions made where the request left room: house techniques only (a
+     channel's own technique needs its proposal, which only the deriver
+     writes); a design with no browser is refused rather than kept unseen;
+     every design and every revision goes to a new reviewer agent with a
+     shared brief (the channel's style guide, the owner's past steers, the
+     safe area's exact extent) and never with my conclusions; when reviewers
+     contradict each other the style guide and the owner's steers decide, and
+     a round whose verdict is ship ends the loop.
