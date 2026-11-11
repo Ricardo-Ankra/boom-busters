@@ -5060,7 +5060,12 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [ ] Boom & Busters, no version yet: comparison-chart, animated-list.
 - [ ] Boom & Busters, drafts only: kinetic-word-stack, kpi-counter,
       line-chart, quote-card, split-screen.
-- [ ] Uploaded as drafts (owner's go-ahead per batch) and approved by the
+- [x] First batch uploaded to production as drafts on the owner's go-ahead
+      (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
+      0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
+      in the bucket, the metrics kept.
+- [ ] First batch approved by the owner on the Exemplars tab.
+- [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
       owner on the Exemplars tab.
 
 ---
