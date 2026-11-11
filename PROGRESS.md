@@ -5066,7 +5066,8 @@ The nine findings the final review parked, plus the flaky test (decision 453):
   - [x] animated-list (no version yet): three reviews, ship; uploaded as v1,
         cost 0, 8 shots and 2 sheets in R2
   - [ ] kinetic-word-stack (a derived draft)
-  - [ ] kpi-counter (two derived drafts)
+  - [x] kpi-counter (two derived drafts): one review, ship; uploaded as v3
+        beside the derived v1 and v2, cost 0, 8 shots and 2 sheets in R2
   - [ ] line-chart (a derived draft)
   - [ ] quote-card (a derived draft)
   - [ ] split-screen (a derived draft)
