@@ -13,6 +13,7 @@ import {
   latestShortsCandidates,
   projects,
   requireTestDatabase,
+  runs,
   saveChapter,
   scripts,
   seed,
@@ -1094,243 +1095,299 @@ ${text}`
       )
     })
   })
+})
 
-  describe('the craft loop (decision 463)', () => {
-    const text = chapters[0]!.contentMd
-    const finding = {
-      sentence: 'EY refused to sign the accounts.',
-      problem: 'A flat statement',
-      direction: 'Show the refusal',
-    }
-    const withCraft = () =>
-      throughSelfCheck().map((step) =>
-        step.id === 'load-dossier'
-          ? { ...step, handler: () => ({ ...(step.handler() as object), craftLoop: true }) }
-          : step,
-      )
-    const savedChapter = async (contentMd = text): Promise<string> =>
-      (
-        await saveChapter(db, {
-          scriptId,
-          index: 0,
-          title: 'The audit',
-          contentMd,
-          estRuntimeSec: 60,
-        })
-      ).id
-    const live = (answer: unknown) => {
-      vi.stubEnv('MOCK_PROVIDERS', '')
-      callLlm.mockReset()
-      callLlm.mockResolvedValue({
-        text: typeof answer === 'string' ? answer : JSON.stringify(answer),
-      })
-    }
-    const withFormat = async (patch: Record<string, string>) => {
-      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
-      channelForProject.mockImplementation(async (...args: unknown[]) => {
-        const channel = await actual.channelForProject(args[0] as never, args[1] as string)
-        return { ...channel, format: { ...channel.format, ...patch } }
-      })
-      return () => channelForProject.mockImplementation(actual.channelForProject)
-    }
-    /** Steps up to the draft, with a saved chapter row behind it. */
-    const upTo = (chapterId: string, contentMd = text) => [
-      ...withCraft().slice(0, 3),
-      { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd }) },
-    ]
+/**
+ * The craft loop's steps (decision 463). A suite of its own: it never seeds,
+ * never truncates and never deletes other suites' scripts, so the files that
+ * share the test database in parallel are not disturbed. It owns one script
+ * row and removes it after each test.
+ */
+describeDb('the craft loop (decision 463)', () => {
+  let engine: InngestTestEngine
+  let scriptId = ''
 
-    it('sends the scene list in the chapter request', async () => {
-      live('A whole chapter.')
-      const [original] = await db
-        .select({ contentMd: dossiers.contentMd })
-        .from(dossiers)
+  const approved = (): [{ name: string; data: Record<string, unknown> }] => [
+    { name: 'gate/dossier.approved', data: { projectId: FIXTURE_PROJECT_ID } },
+  ]
+
+  /** Every step before the marking, as a run that reached it would replay them. */
+  const throughSelfCheck = () => [
+    {
+      id: 'load-dossier',
+      handler: () => ({
+        scriptId,
+        caseTitle: 'Wirecard',
+        targetRuntimeMin: 10,
+        dossierMd: 'The dossier.',
+        claims: [],
+      }),
+    },
+    {
+      id: 'outline',
+      handler: () => ({
+        ok: true,
+        outline: { chapters: [{ title: 'The audit', beat: 'x'.repeat(30), targetWords: 300 }] },
+      }),
+    },
+    { id: 'save-outline', handler: () => undefined },
+    {
+      id: 'draft-chapter-0',
+      handler: () => ({ ok: true, chapterId: 'chapter-0', contentMd: chapters[0]!.contentMd }),
+    },
+    { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
+  ]
+
+  beforeEach(async () => {
+    engine = new InngestTestEngine({ function: scriptRunner })
+    forgetRunRows()
+    callLlm.mockReset()
+    recordRepairs.mockReset()
+    scriptId = (await createScriptVersion(db, FIXTURE_PROJECT_ID)).id
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await db.delete(scripts).where(eq(scripts.id, scriptId))
+    // Only this function's mirror rows, never the whole mirror: the suites that
+    // share the database count runs, and a truncate would cut theirs short.
+    await db.delete(runs).where(eq(runs.functionName, 'script-runner'))
+  })
+
+  const text = chapters[0]!.contentMd
+  const finding = {
+    sentence: 'EY refused to sign the accounts.',
+    problem: 'A flat statement',
+    direction: 'Show the refusal',
+  }
+  const withCraft = () =>
+    throughSelfCheck().map((step) =>
+      step.id === 'load-dossier'
+        ? { ...step, handler: () => ({ ...(step.handler() as object), craftLoop: true }) }
+        : step,
+    )
+  const savedChapter = async (contentMd = text): Promise<string> =>
+    (
+      await saveChapter(db, {
+        scriptId,
+        index: 0,
+        title: 'The audit',
+        contentMd,
+        estRuntimeSec: 60,
+      })
+    ).id
+  const live = (answer: unknown) => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({
+      text: typeof answer === 'string' ? answer : JSON.stringify(answer),
+    })
+  }
+  const withFormat = async (patch: Record<string, string>) => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return { ...channel, format: { ...channel.format, ...patch } }
+    })
+    return () => channelForProject.mockImplementation(actual.channelForProject)
+  }
+  /** Steps up to the draft, with a saved chapter row behind it. */
+  const upTo = (chapterId: string, contentMd = text) => [
+    ...withCraft().slice(0, 3),
+    { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd }) },
+  ]
+
+  it('sends the scene list in the chapter request', async () => {
+    live('A whole chapter.')
+    const [original] = await db
+      .select({ contentMd: dossiers.contentMd })
+      .from(dossiers)
+      .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    try {
+      await db
+        .update(dossiers)
+        .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
         .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-      try {
-        await db
-          .update(dossiers)
-          .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
-          .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-        await engine.executeStep('draft-chapter-0', {
-          events: approved(),
-          steps: withCraft().slice(0, 3),
-        })
-      } finally {
-        await db
-          .update(dossiers)
-          .set({ contentMd: original!.contentMd })
-          .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-      }
-      const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
-      expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
-    })
-
-    it('checks the chapter without its fixed lines', async () => {
-      live({ findings: [] })
-      const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
-      try {
-        await engine.executeStep('craft-check-0', {
-          events: approved(),
-          steps: upTo('c0', fixedChapter),
-        })
-        const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
-        const last = sent.messages.at(-1)!.content
-        expect(last).toContain(text)
-        expect(last).not.toContain(FIXED_LINES[0])
-        expect(last).not.toContain(FIXED_LINES[1])
-      } finally {
-        restore()
-      }
-    })
-
-    it('returns a stop for an unreadable craft check, never failing the step', async () => {
-      live('not json')
-      const { result } = await engine.executeStep('craft-check-0', {
+      await engine.executeStep('draft-chapter-0', {
         events: approved(),
-        steps: upTo('c0'),
+        steps: withCraft().slice(0, 3),
       })
-      expect(result).toEqual({ ok: true, findings: [], stopped: expect.any(String) })
-    })
+    } finally {
+      await db
+        .update(dossiers)
+        .set({ contentMd: original!.contentMd })
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    }
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
+  })
 
-    it('saves the revision with each fixed line once', async () => {
-      const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
-      try {
-        const chapterId = await savedChapter(fixedChapter)
-        live(`${FIXED_LINES[0]}\n\nEY did not sign. The shares fell.`)
-        const { result } = await engine.executeStep('craft-revise-0', {
-          events: approved(),
-          steps: [
-            ...upTo(chapterId, fixedChapter),
-            { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
-          ],
-        })
-        const stored = (await getChapter(db, chapterId))!.contentMd
-        for (const line of FIXED_LINES) expect(stored.split(line)).toHaveLength(2)
-        expect(stored).toContain('EY did not sign.')
-        expect(result).toEqual({ ok: true, contentMd: stored })
-      } finally {
-        restore()
-      }
-    })
+  it('checks the chapter without its fixed lines', async () => {
+    live({ findings: [] })
+    const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
+    try {
+      await engine.executeStep('craft-check-0', {
+        events: approved(),
+        steps: upTo('c0', fixedChapter),
+      })
+      const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+      const last = sent.messages.at(-1)!.content
+      expect(last).toContain(text)
+      expect(last).not.toContain(FIXED_LINES[0])
+      expect(last).not.toContain(FIXED_LINES[1])
+    } finally {
+      restore()
+    }
+  })
 
-    it("hands the revision to the self-check and stores the recheck's findings as advisory craft warnings", async () => {
-      live({ warnings: [] })
-      const chapterId = await savedChapter()
-      await engine.executeStep('self-check-0', {
+  it('returns a stop for an unreadable craft check, never failing the step', async () => {
+    live('not json')
+    const { result } = await engine.executeStep('craft-check-0', {
+      events: approved(),
+      steps: upTo('c0'),
+    })
+    expect(result).toEqual({ ok: true, findings: [], stopped: expect.any(String) })
+  })
+
+  it('saves the revision with each fixed line once', async () => {
+    const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
+    try {
+      const chapterId = await savedChapter(fixedChapter)
+      live(`${FIXED_LINES[0]}\n\nEY did not sign. The shares fell.`)
+      const { result } = await engine.executeStep('craft-revise-0', {
         events: approved(),
         steps: [
-          ...upTo(chapterId),
+          ...upTo(chapterId, fixedChapter),
           { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
-          { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'REVISED. Text.' }) },
-          {
-            id: 'craft-recheck-0',
-            handler: () => ({ ok: true, findings: [{ ...finding, sentence: 'REVISED.' }] }),
-          },
         ],
       })
-      expect(callLlm).toHaveBeenCalledTimes(1)
-      const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
-      expect(sent.messages.map((m) => m.content).join(' ')).toContain('REVISED.')
-      const stored = (await getChapter(db, chapterId))!.warnings
-      const craft = stored.find((w) => w.kind === 'craft')
-      expect(craft).toMatchObject({ kind: 'craft', sentence: 'REVISED.' })
-      expect(craft).not.toHaveProperty('severity')
-    })
+      const stored = (await getChapter(db, chapterId))!.contentMd
+      for (const line of FIXED_LINES) expect(stored.split(line)).toHaveLength(2)
+      expect(stored).toContain('EY did not sign.')
+      expect(result).toEqual({ ok: true, contentMd: stored })
+    } finally {
+      restore()
+    }
+  })
 
-    it('skips the revision and the recheck when the first check finds nothing', async () => {
-      live({ warnings: [] })
-      const chapterId = await savedChapter()
-      await engine.executeStep('self-check-0', {
+  it("hands the revision to the self-check and stores the recheck's findings as advisory craft warnings", async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+        { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'REVISED. Text.' }) },
+        {
+          id: 'craft-recheck-0',
+          handler: () => ({ ok: true, findings: [{ ...finding, sentence: 'REVISED.' }] }),
+        },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages.map((m) => m.content).join(' ')).toContain('REVISED.')
+    const stored = (await getChapter(db, chapterId))!.warnings
+    const craft = stored.find((w) => w.kind === 'craft')
+    expect(craft).toMatchObject({ kind: 'craft', sentence: 'REVISED.' })
+    expect(craft).not.toHaveProperty('severity')
+  })
+
+  it('skips the revision and the recheck when the first check finds nothing', async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [] }) },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs no craft step for a run that loaded before the deploy', async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...throughSelfCheck().slice(0, 3),
+        { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd: text }) },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    for (const call of callLlm.mock.calls) {
+      expect((call[0] as { task?: string }).task).not.toBe('scripting')
+    }
+  })
+
+  it('parks the stage when a craft call is over budget', async () => {
+    const { result, ctx } = await engine.execute({
+      events: approved(),
+      steps: [
+        ...withCraft().slice(0, 4),
+        { id: 'craft-check-0', handler: () => ({ ok: false, gate: { message: 'Over budget' } }) },
+        { id: 'craft-0-over-budget', handler: () => undefined },
+      ],
+    })
+    expect(result).toMatchObject({ outcome: 'over-budget' })
+    expect(ctx.step.run).toHaveBeenCalledWith('craft-0-over-budget', expect.any(Function))
+  })
+
+  const trimmedLoop = () => [
+    ...withCraft().slice(0, 4),
+    { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+    { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'EY did not sign.' }) },
+    { id: 'craft-recheck-0', handler: () => ({ ok: true, findings: [] }) },
+    { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
+  ]
+
+  it('puts the craft notices on the strip in mock mode', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    recordRepairs.mockReset()
+    await engine.executeStep('mark-shorts', { events: approved(), steps: trimmedLoop() })
+    expect(recordRepairs).toHaveBeenCalledWith(
+      SCRIPT_NOTICES,
+      [],
+      [expect.objectContaining({ kind: 'trimmed' })],
+    )
+  })
+
+  it('puts the craft notices and the outline repairs on the strip with Shorts off', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    recordRepairs.mockReset()
+    shortsEnabledForProject.mockResolvedValue(false)
+    const repair = { action: 'trimmed' as const, field: "chapter 1's beat" }
+    try {
+      await engine.executeStep('mark-shorts', {
         events: approved(),
-        steps: [
-          ...upTo(chapterId),
-          { id: 'craft-check-0', handler: () => ({ ok: true, findings: [] }) },
-        ],
+        steps: trimmedLoop().map((step) =>
+          step.id === 'outline'
+            ? {
+                ...step,
+                handler: () => ({
+                  ok: true,
+                  outline: {
+                    chapters: [{ title: 'The audit', beat: 'x'.repeat(30), targetWords: 300 }],
+                  },
+                  repairs: [repair],
+                }),
+              }
+            : step,
+        ),
       })
-      expect(callLlm).toHaveBeenCalledTimes(1)
-    })
-
-    it('runs no craft step for a run that loaded before the deploy', async () => {
-      live({ warnings: [] })
-      const chapterId = await savedChapter()
-      await engine.executeStep('self-check-0', {
-        events: approved(),
-        steps: [
-          ...throughSelfCheck().slice(0, 3),
-          { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd: text }) },
-        ],
-      })
-      expect(callLlm).toHaveBeenCalledTimes(1)
-      for (const call of callLlm.mock.calls) {
-        expect((call[0] as { task?: string }).task).not.toBe('scripting')
-      }
-    })
-
-    it('parks the stage when a craft call is over budget', async () => {
-      const { result, ctx } = await engine.execute({
-        events: approved(),
-        steps: [
-          ...withCraft().slice(0, 4),
-          { id: 'craft-check-0', handler: () => ({ ok: false, gate: { message: 'Over budget' } }) },
-          { id: 'craft-0-over-budget', handler: () => undefined },
-        ],
-      })
-      expect(result).toMatchObject({ outcome: 'over-budget' })
-      expect(ctx.step.run).toHaveBeenCalledWith('craft-0-over-budget', expect.any(Function))
-    })
-
-    const trimmedLoop = () => [
-      ...withCraft().slice(0, 4),
-      { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
-      { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'EY did not sign.' }) },
-      { id: 'craft-recheck-0', handler: () => ({ ok: true, findings: [] }) },
-      { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
-    ]
-
-    it('puts the craft notices on the strip in mock mode', async () => {
-      vi.stubEnv('MOCK_PROVIDERS', '1')
-      recordRepairs.mockReset()
-      await engine.executeStep('mark-shorts', { events: approved(), steps: trimmedLoop() })
       expect(recordRepairs).toHaveBeenCalledWith(
         SCRIPT_NOTICES,
-        [],
+        [repair],
         [expect.objectContaining({ kind: 'trimmed' })],
       )
-    })
-
-    it('puts the craft notices and the outline repairs on the strip with Shorts off', async () => {
-      vi.stubEnv('MOCK_PROVIDERS', '1')
-      recordRepairs.mockReset()
-      shortsEnabledForProject.mockResolvedValue(false)
-      const repair = { action: 'trimmed' as const, field: "chapter 1's beat" }
-      try {
-        await engine.executeStep('mark-shorts', {
-          events: approved(),
-          steps: trimmedLoop().map((step) =>
-            step.id === 'outline'
-              ? {
-                  ...step,
-                  handler: () => ({
-                    ok: true,
-                    outline: {
-                      chapters: [{ title: 'The audit', beat: 'x'.repeat(30), targetWords: 300 }],
-                    },
-                    repairs: [repair],
-                  }),
-                }
-              : step,
-          ),
-        })
-        expect(recordRepairs).toHaveBeenCalledWith(
-          SCRIPT_NOTICES,
-          [repair],
-          [expect.objectContaining({ kind: 'trimmed' })],
-        )
-      } finally {
-        const actual = await vi.importActual<typeof Db>('@boom-busters/db')
-        shortsEnabledForProject.mockImplementation(async (...args: unknown[]) =>
-          actual.shortsEnabledForProject(args[0] as never, args[1] as string),
-        )
-      }
-    })
+    } finally {
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      shortsEnabledForProject.mockImplementation(async (...args: unknown[]) =>
+        actual.shortsEnabledForProject(args[0] as never, args[1] as string),
+      )
+    }
   })
 })

@@ -15,8 +15,11 @@ const stop = (message: string): NewNotice => ({ kind: 'stopped', message })
 
 /**
  * Turns the craft loop's results for one chapter into gutter warnings and
- * notice lines. `chapterNumber` is 1-based; `draftMd` and `revisedMd` carry no
- * fixed lines. A finding is fixed when its sentence is in the draft and no
+ * notice lines. `chapterNumber` is 1-based. `draftMd` and `revisedMd` may carry
+ * the format's fixed lines: the runner passes the stored texts, because the
+ * format is read only inside steps. That is safe, since a finding's sentence
+ * is quoted from text that never held the fixed lines, so the substring tests
+ * below give the same answer with or without them. A finding is fixed when its sentence is in the draft and no
  * longer in the revision: a finding whose sentence the model paraphrased is
  * not in the draft, so it is never counted as fixed.
  */
