@@ -11307,3 +11307,22 @@ owner edits. `--prod` was not run against Neon.
      (c) The `load-assembly` step is now driven by a test.
      (d) A rename sets `updatedAt`, so a stalled project reads as fresh for the
      stuck window and moves to the top of the list, the same as a bible move.
+460. **What an LLM call was, on its ledger row; which call ran out the clock**
+     (2026-11-11, branch `worktree-llm-ledger-diagnostics`, no migration: a
+     Vercel deploy and `PUT /api/inngest`).
+     (a) Two derivations (bar chart on 2026-11-10, KPI counter on 2026-11-11)
+     stored no version: each technique ended "refused: the designer took too
+     long". The ledger held one designer answer of about $0.38 that started
+     about four minutes before the run closed, and nothing said whether it was
+     cut off at `maxTokens` or refused, so the retry the 240 s deadline
+     blocked could not be named.
+     (b) `withCost` takes an optional `meta` from the call and merges it at
+     settle. `callLlm` fills it: `answeredBy`, `inputTokens`, `outputTokens`,
+     `maxTokens`, `truncated`, `answerChars` (output tokens far above a quarter
+     of it went on thinking) and `durationMs`.
+     (c) The designer's "took too long" says which call the clock stopped: no
+     answer within 240 s; the first cut off, or refused with the reason (300
+     characters), and too little time left to ask again; or the second not
+     back in time. Project cards and the Derive card read the same issue.
+     (d) Diagnosis only: the deadline and the ladder are unchanged. The next
+     derive's ledger rows decide the fix (decision to follow).
