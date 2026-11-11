@@ -115,6 +115,7 @@ export async function callLlm(
       },
     },
     async () => {
+      const startedAt = Date.now()
       const result = await route(
         {
           routing: settings.modelRouting,
@@ -129,8 +130,25 @@ export async function callLlm(
       )
 
       // Settle on what the answering model actually charged, which may be a
-      // cheaper fallback than the one the estimate was built from.
-      return { result, actualUsd: result.costUsd }
+      // cheaper fallback than the one the estimate was built from. The row
+      // also keeps what the call was (decision 460): who answered, the tokens
+      // either way, whether the answer hit maxTokens, how long the text was
+      // (output tokens far above a quarter of it went on thinking) and how
+      // long the call took, so a slow or cut-off answer can be read off the
+      // ledger instead of guessed from the cost.
+      return {
+        result,
+        actualUsd: result.costUsd,
+        meta: {
+          answeredBy: result.model,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          maxTokens: request.maxTokens,
+          truncated: result.truncated,
+          answerChars: result.text.length,
+          durationMs: Date.now() - startedAt,
+        },
+      }
     },
     { budgets: workspace.budgets },
   )

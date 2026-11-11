@@ -45,6 +45,8 @@ export interface Costed<T> {
   result: T
   /** Omit when the provider reports no usage; the estimate is then recorded. */
   actualUsd?: number
+  /** What the call learnt about itself (tokens, duration), merged into the row's `meta` at settle. */
+  meta?: Record<string, unknown>
 }
 
 export interface CostSpec {
@@ -89,8 +91,8 @@ export async function withCost<T>(
   const ledgerId = await reserve(db, spec, budgets, now)
 
   try {
-    const { result, actualUsd } = await fn()
-    await settle(db, ledgerId, actualUsd ?? spec.estimateUsd)
+    const { result, actualUsd, meta } = await fn()
+    await settle(db, ledgerId, actualUsd ?? spec.estimateUsd, meta)
     return result
   } catch (error) {
     const spent = spentUsd(error)

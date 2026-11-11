@@ -359,6 +359,24 @@ describeDb('cost guard', () => {
     expect(merged?.meta).toEqual({ renderId: 'r1', parts: 4, join: { elapsedMs: 1200 } })
   })
 
+  it("withCost merges the call's own meta into the row as it settles", async () => {
+    const budgets = budgetsWith({ monthlyCeilingUsd: 10 })
+
+    await withCost(
+      db,
+      { provider: 'anthropic', operation: 'llm.graphics', estimateUsd: 1, meta: { jobId: 'j1' } },
+      async () => ({
+        result: null,
+        actualUsd: 0.4,
+        meta: { outputTokens: 16000, truncated: true },
+      }),
+      { budgets, now: NOW },
+    )
+
+    const [entry] = await listLedger(db)
+    expect(entry?.meta).toEqual({ jobId: 'j1', outputTokens: 16000, truncated: true })
+  })
+
   // -------------------------------------------------------------------------
   // Settlement
   // -------------------------------------------------------------------------
