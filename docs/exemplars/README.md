@@ -42,3 +42,19 @@ With the owner's go-ahead for the batch, from `apps/web`:
 
 It runs the checks again under the live settings, stores the version as a draft at
 no cost and keeps its frames in R2. The owner approves it on the Exemplars tab.
+
+A revision made on the owner's note adds the version it revises and the owner's words:
+
+    ... upload --channel boom-busters --technique typewriter --dir <folder> \
+      --parent <version id> --steer "<the owner's words>"
+
+It is filed as the app's Refine files one: the parent must be the technique's approved
+version or, with none approved, its latest draft; the new draft sits beside its parent
+on the Exemplars tab, and the steer is recorded as the owner's verdict on the parent.
+Approving the revision retires the other drafts.
+
+## The owner's rulings
+
+When the owner rules on a design against the written style guide, the ruling goes in
+the brief's own section and wins for every later review. The first: the typewriter
+types a letter at a time, an exception to "letter by letter animation".

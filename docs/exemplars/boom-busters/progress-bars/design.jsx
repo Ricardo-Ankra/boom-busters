@@ -1,7 +1,7 @@
 // Concept: one row per holder, named as it is spoken; each new row arrives below and the block
 // slides up to stay centred. As each figure is said, its track draws across and the bar chases
 // it in one stroke, slowing into its share, and the figure lands at the bar's tip. The largest
-// share alone is red; the bars carry the weight.
+// share alone is red, and every figure is one size; the bars carry the weight.
 
 function arrive(frame, fps, atMs, lengthMs) {
   const a = motion.frames(Math.max(0, atMs), fps)
@@ -70,8 +70,6 @@ function Graphic(props) {
   const leadMs = motion.ms.move + motion.ms.micro
   const strokeMs = leadMs + motion.ms.move
   const trackMs = 3 * motion.ms.move
-  // The key figure is one golden-ratio step above the others, which share one size.
-  const keySize = valueSize * 1.618
 
   // Rows stack from the centre: each new row arrives below and the block slides up by half
   // its pitch, so what has been said stays centred in the frame.
@@ -98,9 +96,8 @@ function Graphic(props) {
           const strokeAt = Math.max(row.startMs + motion.ms.reveal, row.landMs - leadMs)
           const p = Math.min(arrive(frame, fps, strokeAt, strokeMs), (100 * track) / row.value)
           const landed = arrive(frame, fps, row.landMs, motion.ms.micro)
-          const size = key ? keySize : valueSize
           const tip = (trackW * row.value) / 100
-          const inside = tip + tipGap + (valueW * size) / valueSize > trackW
+          const inside = tip + tipGap + valueW > trackW
           return (
             <div key={'row' + i} style={{ display: 'flex', flexDirection: 'column', gap: labelGap }}>
               <div style={{ fontFamily: fonts.body, fontWeight: 600, fontSize: labelSize, lineHeight: 1.2, letterSpacing: '0.16em', textTransform: 'uppercase', color: colors.textSecondary, whiteSpace: 'nowrap', opacity: named }}>
@@ -109,7 +106,7 @@ function Graphic(props) {
               <div style={{ position: 'relative', height: trackH, width: blockW }}>
                 <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: trackW * track, backgroundColor: Remotion.withAlpha(colors.textSecondary, 0.2) }} />
                 <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: (trackW * row.value * p) / 100, backgroundColor: key ? colors.accent : Remotion.withAlpha(colors.textSecondary, 0.85) }} />
-                <div style={{ position: 'absolute', ...(inside ? { right: trackW - tip + tipGap } : { left: tip + tipGap }), top: 0, bottom: 0, display: 'flex', alignItems: 'center', fontFamily: fonts.numbers, fontWeight: 700, fontSize: size, lineHeight: 1, color: inside ? colors.background : key ? colors.accent : colors.textPrimary, opacity: landed, whiteSpace: 'nowrap' }}>
+                <div style={{ position: 'absolute', ...(inside ? { right: trackW - tip + tipGap } : { left: tip + tipGap }), top: 0, bottom: 0, display: 'flex', alignItems: 'center', fontFamily: fonts.numbers, fontWeight: 700, fontSize: valueSize, lineHeight: 1, color: inside ? colors.background : key ? colors.accent : colors.textPrimary, opacity: landed, whiteSpace: 'nowrap' }}>
                   {row.shown}
                 </div>
               </div>

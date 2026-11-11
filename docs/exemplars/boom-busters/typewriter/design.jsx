@@ -1,12 +1,20 @@
-// Concept: the memo's words type out one at a time in mono behind a steady caret, as on the
-// screen they were written on. The kicker that introduces them is the headline until the quote
-// starts, then shrinks upward to a small header. As the last word is typed, the red selection
-// sweeps the order in one stroke, as if about to be acted on.
+// Concept: the memo is typed out a letter at a time behind a steady caret, each word as it is
+// spoken, as on the screen it was written on. The kicker that introduces it types in as the
+// headline, then shrinks upward to a small header as the quote is due, and the quote types in
+// mono beneath it. As its last letter lands, the red selection sweeps the order in one stroke,
+// as if about to be acted on.
 
 function arrive(frame, fps, atMs, lengthMs) {
   const a = motion.frames(Math.max(0, atMs), fps)
   return Remotion.interpolate(frame, [a, a + motion.frames(lengthMs, fps)], [0, 1], {
     easing: motion.ease.enter, extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  })
+}
+
+function shift(frame, fps, atMs, lengthMs) {
+  const a = motion.frames(Math.max(0, atMs), fps)
+  return Remotion.interpolate(frame, [a, a + motion.frames(lengthMs, fps)], [0, 1], {
+    easing: motion.ease.move, extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
   })
 }
 
@@ -20,18 +28,37 @@ function partsOf(words) {
   }
 }
 
-function shift(frame, fps, atMs, lengthMs) {
-  const a = motion.frames(Math.max(0, atMs), fps)
-  return Remotion.interpolate(frame, [a, a + motion.frames(lengthMs, fps)], [0, 1], {
-    easing: motion.ease.move, extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+// Each word types at an even hand from the moment it is spoken, about a letter a frame, and is
+// always typed before the next word is due (a run's last word, before untilMs).
+function paced(words, untilMs) {
+  return words.map((w, i) => {
+    const nextMs = i + 1 < words.length ? words[i + 1].atMs : untilMs
+    const room = (nextMs - w.atMs - motion.ms.micro) / Math.max(1, w.text.length)
+    const pace = Math.max(1, Math.min(motion.ms.reveal / 10, room))
+    return { atMs: w.atMs, text: w.text, pace, doneMs: w.atMs + (w.text.length - 1) * pace }
   })
 }
 
-function toned(text, white, colors) {
+// How many of a word's letters are typed at a frame: the first as it is spoken, then one a pace.
+function typedOf(frame, fps, word) {
+  const ms = (frame * 1000) / fps
+  if (ms < word.atMs) return 0
+  return Math.min(word.text.length, 1 + Math.floor((ms - word.atMs) / word.pace))
+}
+
+// A word laid out whole from the start, so nothing moves as it types: the letters not yet typed
+// hold their place unseen. Typed letters arrive grey and the word settles to off white as it
+// completes; the caret, when it is here, rides the last letter typed.
+function typed(text, count, white, colors, caret) {
+  const shown = text.slice(0, count)
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}>
-      <span style={{ color: colors.textSecondary }}>{text}</span>
-      <span style={{ position: 'absolute', left: 0, top: 0, color: colors.textPrimary, opacity: white }}>{text}</span>
+      <span style={{ visibility: 'hidden' }}>{text}</span>
+      <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', color: colors.textSecondary }}>
+        {shown}
+        {caret}
+      </span>
+      <span style={{ position: 'absolute', left: 0, top: 0, whiteSpace: 'nowrap', color: colors.textPrimary, opacity: white }}>{shown}</span>
     </span>
   )
 }
@@ -48,7 +75,6 @@ function Graphic(props) {
   const line = parts.line
   const n = line.length
   const lineAt = n > 0 ? line[0].atMs : props.durationMs
-  const lastAt = n > 0 ? line[n - 1].atMs : props.durationMs
 
   // The selected phrase is the order's last two words; in portrait it takes a line of its own,
   // so it is never split across lines.
@@ -65,10 +91,8 @@ function Graphic(props) {
   const kickerGap = 28 * unit
 
   // Until the quote is due, the kicker is the headline: larger, at the block's centre. Once it is
-  // complete it shrinks upward into its header slot and steps back in tone, in one move that
-  // settles before the first word of the quote is typed.
-  // The shrink is the longest smooth glide the second between the kicker and the quote
-  // allows: it starts once the kicker has settled and lands just as the first word is typed.
+  // typed it shrinks upward into its header slot and steps back in tone, in one smooth move that
+  // lands just before the first letter of the quote is typed.
   const demoteMs = motion.ms.move + motion.ms.enter
   const demoteAt = lineAt - demoteMs - motion.ms.micro / 2
   const demote = shift(frame, fps, demoteAt, demoteMs)
@@ -76,10 +100,20 @@ function Graphic(props) {
   const drop = (kickerGap + lineRows * 1.25 * lineSize) / 2
   const kickerScale = headline + (1 - headline) * demote
 
-  // The selection starts as the last word is typed, in the caret's place: one stroke across the
-  // phrase, off the mark at once and slowing into the last word.
-  const selectAt = lastAt
-  const s = arrive(frame, fps, selectAt, motion.ms.move + motion.ms.micro / 2)
+  // What is typed: the kicker, finished before it moves; then the quote in its marks, its last
+  // letter typed early enough for the selection to land before the end.
+  const kickerKeys = paced(parts.kicker, demoteAt)
+  const lineKeys = paced(
+    line.map((w, i) => ({ atMs: w.atMs, text: (i === 0 ? '“' : '') + w.text + (i === n - 1 ? '”' : '') })),
+    props.durationMs - motion.ms.reveal - motion.ms.micro,
+  )
+  const counts = kickerKeys.concat(lineKeys).map((key) => typedOf(frame, fps, key))
+  const current = counts.reduce((at, count, i) => (count > 0 ? i : at), -1)
+
+  // The selection takes over from the caret as the last letter lands: one smooth stroke from the
+  // phrase's first letter that gathers and slows into the last word, the channel's highlighter sweep.
+  const selectAt = n > 0 ? lineKeys[n - 1].doneMs : props.durationMs
+  const s = shift(frame, fps, selectAt, motion.ms.reveal)
   const shares = line.slice(n - marked).map((w) => w.text.length + 1)
   const total = shares.reduce((a, b) => a + b, 0) || 1
   const partOf = (k) => {
@@ -88,10 +122,13 @@ function Graphic(props) {
     const to = from + shares[k] / total
     return Math.max(0, Math.min(1, (s - from) / (to - from)))
   }
-  // The caret waits after the last word typed and gives way to the selection.
-  const typed = line.filter((w) => frame >= motion.frames(w.atMs, fps)).length
-  const caretOn = typed > 0 && frame < motion.frames(selectAt, fps)
-  const caretIn = arrive(frame, fps, lineAt, motion.ms.micro)
+
+  // The caret is steady: it rides the last letter typed, waits there between words, moves to the
+  // quote with its first letter and gives way to the selection.
+  const caretOn = current >= 0 && (frame * 1000) / fps < selectAt
+  const caret = (gap) => (
+    <span style={{ position: 'absolute', left: '100%', marginLeft: gap, top: '0.2em', width: '0.09em', height: '0.92em', backgroundColor: colors.textPrimary }} />
+  )
 
   return (
     <Remotion.AbsoluteFill
@@ -101,13 +138,12 @@ function Graphic(props) {
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: room }}>
-        <div style={{ fontFamily: fonts.body, fontWeight: 600, fontSize: kickerSize, letterSpacing: '0.24em', textTransform: 'uppercase', marginBottom: kickerGap, whiteSpace: 'nowrap', transformOrigin: 'left center', transform: 'translateY(' + (1 - demote) * drop + 'px) scale(' + kickerScale + ')' }}>
-          {parts.kicker.map((w, i) => {
-            const enter = arrive(frame, fps, w.atMs, motion.ms.enter)
-            const white = arrive(frame, fps, w.atMs, motion.ms.enter) * (1 - demote)
+        <div style={{ fontFamily: fonts.body, fontWeight: 600, fontSize: kickerSize, lineHeight: 1.25, letterSpacing: '0.24em', textTransform: 'uppercase', marginBottom: kickerGap, whiteSpace: 'nowrap', transformOrigin: 'left center', transform: 'translateY(' + (1 - demote) * drop + 'px) scale(' + kickerScale + ')' }}>
+          {kickerKeys.map((key, i) => {
+            const white = arrive(frame, fps, key.atMs, key.doneMs - key.atMs + motion.ms.micro) * (1 - demote)
             return (
-              <span key={'k' + w.atMs} style={{ display: 'inline-block', marginRight: i === parts.kicker.length - 1 ? 0 : '0.5em', opacity: enter }}>
-                {toned(w.text, white, colors)}
+              <span key={'k' + key.atMs} style={{ display: 'inline-block', marginRight: i === kickerKeys.length - 1 ? 0 : '0.5em' }}>
+                {typed(key.text, counts[i], white, colors, caretOn && current === i ? caret('-0.18em') : null)}
               </span>
             )
           })}
@@ -117,25 +153,20 @@ function Graphic(props) {
             <div key={'g' + g} style={{ display: 'flex', marginRight: !portrait && g === 0 && groups.length > 1 ? '0.6em' : 0 }}>
               {group.map((w, gi) => {
                 const i = line.indexOf(w)
-                const shown = frame >= motion.frames(w.atMs, fps) ? 1 : 0
+                const key = lineKeys[i]
+                const at = kickerKeys.length + i
                 const last = i === n - 1
-                // The last word settles quicker: the selection runs behind it at once.
-                const white = arrive(frame, fps, w.atMs + motion.ms.micro, last ? motion.ms.enter : motion.ms.reveal)
+                const white = arrive(frame, fps, key.atMs, key.doneMs - key.atMs + motion.ms.micro)
                 const k = i - (n - marked)
                 const hi = k >= 0 ? partOf(k) : 0
                 const first = i === 0
                 const groupLast = gi === group.length - 1
-                const text = (first ? '“' : '') + w.text + (last ? '”' : '')
-                const lineStart = gi === 0 && (portrait || g === 0)
                 return (
-                  <span key={'w' + w.atMs} style={{ position: 'relative', display: 'inline-block', marginRight: groupLast ? 0 : '0.6em', marginLeft: first ? '-0.6em' : 0, opacity: shown }}>
+                  <span key={'w' + w.atMs} style={{ position: 'relative', display: 'inline-block', marginRight: groupLast ? 0 : '0.6em', marginLeft: first ? '-0.6em' : 0 }}>
                     {k >= 0 ? (
-                      <span style={{ position: 'absolute', left: first ? '0.5em' : lineStart ? 0 : '-0.12em', right: last ? '-0.12em' : groupLast ? 0 : '-0.72em', top: '0.08em', bottom: '-0.04em', backgroundColor: colors.accent, clipPath: 'inset(0 ' + (1 - hi) * 100 + '% 0 0)' }} />
+                      <span style={{ position: 'absolute', left: first ? '0.5em' : '-0.12em', right: last ? '-0.12em' : groupLast ? 0 : '-0.72em', top: '0.08em', bottom: '-0.04em', backgroundColor: colors.accent, clipPath: 'inset(0 ' + (1 - hi) * 100 + '% 0 0)' }} />
                     ) : null}
-                    <span style={{ position: 'relative' }}>{toned(text, white, colors)}</span>
-                    {caretOn && i === typed - 1 ? (
-                      <span style={{ position: 'absolute', left: '100%', marginLeft: '0.14em', top: '0.2em', width: '0.09em', height: '0.92em', backgroundColor: colors.textPrimary, opacity: caretIn }} />
-                    ) : null}
+                    {typed(key.text, counts[at], white, colors, caretOn && current === at ? caret('0.07em') : null)}
                   </span>
                 )
               })}

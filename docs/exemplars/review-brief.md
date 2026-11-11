@@ -66,8 +66,9 @@ move 400, exit 250, draw 1800.
 
 - Decorative marks that carry no data: a dot riding on top of a bar, a line tracing the
   tops of bars, month notches or minor ticks on a rule. Every one was asked to be removed.
-- A key figure out of proportion to its siblings: the emphasis bar's number "disproportionally
-  big". Sizes in one set should match, or step by the golden ratio at most.
+- A key figure larger than its siblings: the emphasis bar's number "disproportionally big", and
+  on the progress bars a golden-ratio step ("it should be the same size"). Figures in one set
+  share one size; the key one is marked by colour alone.
 - A figure that looks thin or outlined instead of solid bold.
 - A payoff landing in two motions (word drops, then a separate highlight sweep) when one
   continuous gesture was wanted.
@@ -77,6 +78,15 @@ move 400, exit 250, draw 1800.
   highlighted).
 - Charts: bars rise from the baseline as their years are spoken; a single bar travelling and
   morphing between values was disliked.
+
+## The owner's rulings over the style guide
+
+Where the owner has ruled on a design, the ruling wins over the written style guide above.
+
+- The typewriter types its line a letter at a time behind a caret, each word from the moment
+  it is spoken (of a version that built whole words: "it doesn't typewrite at all?"). It is the
+  one exception to "Never animate single letters" and "letter by letter animation", so do not
+  report the typing as a breach. The rest of the identity still applies to it.
 
 ## Placement facts you cannot see in the frames
 
