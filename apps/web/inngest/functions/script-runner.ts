@@ -15,6 +15,7 @@ import {
 } from '@boom-busters/db'
 import {
   mockChapter,
+  mockCraftCheck,
   mockOutline,
   mockSelfCheck,
   mockShortsCandidates,
@@ -31,8 +32,11 @@ import {
   scriptLint,
   scriptTargetWords,
   withStandingSeverity,
+  type GutterWarning,
+  type NewNotice,
   type NoticeTarget,
   type Outline,
+  type ScriptCraftFinding,
   type ShortsCandidate,
 } from '@boom-busters/schemas'
 import {
@@ -48,10 +52,13 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { completeForProject } from '@/lib/answer-call'
 import { recordRepairs, recordStop } from '@/lib/notices'
+import { settleCraft, type CraftPass } from '@/lib/script-craft-loop'
 import {
+  craftCheckWith,
   draftChapterWith,
   draftOutlineWith,
   markShortsWith,
+  reviseChapterWith,
   selfCheckWith,
   SHORTS_UNMARKED,
 } from '@/lib/script-answers'
@@ -82,6 +89,10 @@ import { toScriptClaim } from '@/lib/script-claim'
  *
  * Every chapter is its own step, so a failure in chapter six does not re-draft
  * and re-charge chapters one to five.
+ *
+ * Each drafted chapter then passes a craft check, one revision round against
+ * its findings and a recheck before the next chapter is drafted (decision 463).
+ * The loop runs only for a run whose `load-dossier` memo carries `craftLoop`.
  *
  * Like the dossier-runner, this waits on approval only; `gate/script.
  * changes_requested` is a Script Studio concern, where a human edits the text
@@ -124,6 +135,8 @@ export async function markShortsStep(
   input: Omit<Parameters<typeof markShortsWith>[1], 'bible'>,
   /** The outline's repairs (decision 296), kept on the strip beside the marking's. */
   priorRepairs: readonly Repair[] = [],
+  /** The craft loop's notices (decision 463), written after the repairs. */
+  priorNotices: readonly NewNotice[] = [],
 ): Promise<MarkedShorts> {
   const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
   let marked: Awaited<ReturnType<typeof markShortsWith>>
@@ -149,7 +162,9 @@ export async function markShortsStep(
           ? error.message.replace(/\.$/, '')
           : String(error)
     // The outline's repairs still reach the strip; the stop is added beside them.
-    if (priorRepairs.length > 0) await recordRepairs(target, priorRepairs)
+    if (priorRepairs.length > 0 || priorNotices.length > 0) {
+      await writeStrip(target, priorRepairs, priorNotices)
+    }
     await recordStop(
       target,
       'stopped',
@@ -159,8 +174,64 @@ export async function markShortsStep(
   }
   // Outside the try: a failed notice write must not discard candidates
   // already paid for, nor be reported as the marking stopping.
-  await recordRepairs(target, [...priorRepairs, ...marked.repairs])
+  await writeStrip(target, [...priorRepairs, ...marked.repairs], priorNotices)
   return { ok: true, candidates: marked.candidates }
+}
+
+/** The strip's write: the craft notices ride as `extra` only when there are any. */
+function writeStrip(
+  target: NoticeTarget,
+  repairs: readonly Repair[],
+  notices: readonly NewNotice[],
+): Promise<void> {
+  return notices.length > 0
+    ? recordRepairs(target, repairs, notices)
+    : recordRepairs(target, repairs)
+}
+
+/** The dossier's scenes, read inside the step that builds the request. */
+async function scenesFor(projectId: string): Promise<string[]> {
+  const dossier = await getDossier(db, projectId)
+  return dossier ? sceneLines({ research: dossier.research, contentMd: dossier.contentMd }) : []
+}
+
+type CraftStepResult =
+  | { ok: true; findings: ScriptCraftFinding[]; stopped?: string }
+  | { ok: false; gate: Record<string, unknown> }
+
+/** One craft check, on the chapter without the format's fixed lines. */
+async function craftCheckStep(
+  projectId: string,
+  mocked: boolean,
+  input: {
+    outline: Outline
+    chapterIndex: number
+    claimCount: number
+    previousChapters: { title: string; contentMd: string }[]
+    contentMd: string
+  },
+): Promise<CraftStepResult> {
+  const channel = await channelForProject(db, projectId)
+  const frozen = requireCompleteBible(channel)
+  const contentMd = dropFixedParagraphs(input.contentMd, channel.format)
+  if (mocked) return { ok: true, findings: mockCraftCheck(contentMd).findings }
+  try {
+    const answer = await craftCheckWith(completeForProject(projectId), {
+      bible: frozen,
+      outline: input.outline,
+      chapterIndex: input.chapterIndex,
+      claimCount: input.claimCount,
+      previousChapters: input.previousChapters,
+      contentMd,
+      intent: channel.format.intent,
+    })
+    return answer.ok
+      ? { ok: true, findings: answer.value.findings }
+      : { ok: true, findings: [], stopped: answer.issue }
+  } catch (error) {
+    if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
+    throw error
+  }
 }
 
 /**
@@ -261,6 +332,8 @@ export const scriptRunner = inngest.createFunction(
         caseTitle: project.title,
         targetRuntimeMin: project.targetRuntimeMin,
         dossierMd: dossier.contentMd,
+        // The craft loop runs only for a run that loaded after this deploy (decision 463).
+        craftLoop: true,
         claims: usable.map((claim) => ({
           ...toScriptClaim(claim),
           standing: evidenceLabel(profile, claim.evidenceStatus, 'script') ?? undefined,
@@ -338,7 +411,15 @@ export const scriptRunner = inngest.createFunction(
     // Chapters, in order, each seamed onto the last
     // -----------------------------------------------------------------------
 
-    const written: { index: number; title: string; contentMd: string; chapterId: string }[] = []
+    const written: {
+      index: number
+      title: string
+      contentMd: string
+      chapterId: string
+      craft: GutterWarning[]
+    }[] = []
+    /** The craft loop's notice lines, written to the strip by mark-shorts. */
+    const craftNotices: NewNotice[] = []
 
     for (const [index, chapter] of outline.chapters.entries()) {
       const drafted = await step.run(
@@ -370,6 +451,7 @@ export const scriptRunner = inngest.createFunction(
                   previousChapters: written.map(({ title, contentMd }) => ({ title, contentMd })),
                   claims: setup.claims,
                   intent: channel.format.intent,
+                  scenes: await scenesFor(projectId),
                 },
               )
             } catch (error) {
@@ -403,11 +485,138 @@ export const scriptRunner = inngest.createFunction(
         return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
       }
 
+      let contentMd = drafted.contentMd
+      let craft: GutterWarning[] = []
+
+      // Only a run whose `load-dossier` memo says so: a memo from before this
+      // deploy has no field, and an unmemoised step id would be executed, so
+      // such a run must make no craft step call at all (decision 463).
+      if (setup.craftLoop === true) {
+        const previousChapters = written.map(({ title, contentMd }) => ({ title, contentMd }))
+        const check = await step.run(`craft-check-${index}`, () =>
+          craftCheckStep(projectId, mocked, {
+            outline,
+            chapterIndex: index,
+            claimCount: setup.claims.length,
+            previousChapters,
+            contentMd: drafted.contentMd,
+          }),
+        )
+        if (!check.ok) {
+          await step.run(`craft-${index}-over-budget`, () => markStageFailed(ctx, check.gate))
+          return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
+        }
+        const first: CraftPass = {
+          findings: check.findings,
+          ...(check.stopped !== undefined ? { stopped: check.stopped } : {}),
+        }
+
+        let revisedMd: string | null = null
+        let reviseStopped: string | undefined
+        let recheck: CraftPass | null = null
+        if (first.stopped === undefined && first.findings.length > 0) {
+          const revision = await step.run(
+            `craft-revise-${index}`,
+            async (): Promise<
+              | { ok: true; contentMd?: string; stopped?: string }
+              | { ok: false; gate: Record<string, unknown> }
+            > => {
+              const channel = await channelForProject(db, projectId)
+              const frozen = requireCompleteBible(channel)
+              try {
+                const answer = await reviseChapterWith(
+                  completeForProject(projectId, {
+                    estimateOutputTokens: Math.round(chapter.targetWords * 1.6),
+                  }),
+                  {
+                    bible: frozen,
+                    caseTitle: setup.caseTitle,
+                    outline,
+                    chapterIndex: index,
+                    previousChapters,
+                    claims: setup.claims,
+                    intent: channel.format.intent,
+                    scenes: await scenesFor(projectId),
+                    draft: dropFixedParagraphs(drafted.contentMd, channel.format),
+                    findings: first.findings,
+                  },
+                )
+                if (!answer.ok) return { ok: true, stopped: answer.issue }
+                // Each fixed line appears once: a revision that echoes one is
+                // stripped of it first, then the lines are placed as the draft's were.
+                const stored = placeFixedLines(
+                  dropFixedParagraphs(answer.value, channel.format),
+                  index,
+                  outline.chapters.length,
+                  channel.format,
+                )
+                await saveChapter(db, {
+                  scriptId: setup.scriptId,
+                  index,
+                  title: chapter.title,
+                  contentMd: stored,
+                  estRuntimeSec: estimateRuntimeSec(stored, channel.format.wordsPerMinute),
+                })
+                return { ok: true, contentMd: stored }
+              } catch (error) {
+                if (error instanceof BudgetExceededError) {
+                  return { ok: false, gate: budgetGateData(error) }
+                }
+                throw error
+              }
+            },
+          )
+          if (!revision.ok) {
+            await step.run(`craft-${index}-over-budget`, () => markStageFailed(ctx, revision.gate))
+            return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
+          }
+          if (revision.contentMd !== undefined) {
+            revisedMd = revision.contentMd
+            const landed = revisedMd
+            const again = await step.run(`craft-recheck-${index}`, () =>
+              craftCheckStep(projectId, mocked, {
+                outline,
+                chapterIndex: index,
+                claimCount: setup.claims.length,
+                previousChapters,
+                contentMd: landed,
+              }),
+            )
+            if (!again.ok) {
+              await step.run(`craft-${index}-over-budget`, () => markStageFailed(ctx, again.gate))
+              return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
+            }
+            recheck = {
+              findings: again.findings,
+              ...(again.stopped !== undefined ? { stopped: again.stopped } : {}),
+            }
+          } else {
+            reviseStopped = revision.stopped ?? 'no revision came back'
+          }
+        }
+
+        // Deterministic over the memoised results, so outside any step. The
+        // fixed lines stay in both texts: a finding's sentence is the model's
+        // own wording from text that never carried them.
+        const settled = settleCraft({
+          chapterNumber: index + 1,
+          draftMd: drafted.contentMd,
+          first,
+          revisedMd,
+          ...(reviseStopped !== undefined ? { reviseStopped } : {}),
+          recheck,
+        })
+        craft = settled.warnings
+        craftNotices.push(...settled.notices)
+        if (revisedMd !== null) contentMd = revisedMd
+      }
+
       written.push({
         index,
         title: chapter.title,
-        contentMd: drafted.contentMd,
+        contentMd,
         chapterId: drafted.chapterId,
+        craft,
       })
     }
 
@@ -428,10 +637,7 @@ export const scriptRunner = inngest.createFunction(
         // The fixed lines are the owner's words, not claims: the check never sees them.
         const checked = dropFixedParagraphs(chapter.contentMd, channel.format)
         // Read inside the step, so a run parked before this deploy replays safely.
-        const dossier = await getDossier(db, projectId)
-        const scenes = dossier
-          ? sceneLines({ research: dossier.research, contentMd: dossier.contentMd })
-          : []
+        const scenes = await scenesFor(projectId)
         const check = mocked
           ? mockSelfCheck(checked)
           : await selfCheckWith(completeForProject(projectId), {
@@ -459,7 +665,7 @@ export const scriptRunner = inngest.createFunction(
           scriptTargetWords(setup.targetRuntimeMin, channel.format),
           chapter.index,
         )
-        const all = [...modelWarnings, ...own, ...coded]
+        const all = [...modelWarnings, ...own, ...(chapter.craft ?? []), ...coded]
         await setChapterWarnings(db, chapter.chapterId, all)
 
         return { warnings: all.length }
@@ -472,16 +678,22 @@ export const scriptRunner = inngest.createFunction(
 
     const marking = await step.run('mark-shorts', async (): Promise<MarkedShorts> => {
       // A format with Shorts off pays for no marking, mock or live (ruling 18).
-      if (!(await shortsEnabledForProject(db, projectId))) return { ok: true, candidates: [] }
+      // The outline's repairs and the craft notices still reach the strip (decision 463).
+      const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
+      if (!(await shortsEnabledForProject(db, projectId))) {
+        await writeStrip(target, outlineRepairs, craftNotices)
+        return { ok: true, candidates: [] }
+      }
       if (mocked) {
         // A landed answer retires the strip's old notes, in mock mode too.
-        await recordRepairs({ projectId, subject: 'script', subjectId: null })
+        await writeStrip(target, [], craftNotices)
         return { ok: true, candidates: mockShortsCandidates(written) }
       }
       return markShortsStep(
         projectId,
         { chapters: written, tension: tensionFromOutline(outline) },
         outlineRepairs,
+        craftNotices,
       )
     })
 
