@@ -1,0 +1,47 @@
+{
+  "slot": {
+    "intent": "The share price fell in every year from 2019 to 2022, when the company was delisted.",
+    "words": [
+      { "text": "Share", "atMs": 0 },
+      { "text": "price,", "atMs": 1000 },
+      { "text": "2019,", "atMs": 2000 },
+      { "text": "2020,", "atMs": 3000 },
+      { "text": "2021,", "atMs": 4000 },
+      { "text": "and", "atMs": 5000 },
+      { "text": "2022:", "atMs": 6000 },
+      { "text": "delisted.", "atMs": 7000 }
+    ],
+    "data": {
+      "series": [
+        {
+          "label": "Share price",
+          "unit": "USD",
+          "points": [
+            { "x": "2019", "y": 98 },
+            { "x": "2020", "y": 71 },
+            { "x": "2021", "y": 34 },
+            { "x": "2022", "y": 6 }
+          ]
+        }
+      ],
+      "takeaway": "The share price fell every year",
+      "annotations": [{ "atX": "2022", "text": "Delisted" }]
+    }
+  },
+  "concept": "The line is drawn a year at a time as each is spoken, the ground filling behind the pen; it slows into a hollow red ring waiting at 2022, which fills as the last value lands.",
+  "storyboard": [
+    "0.0 s, on \"Share\": the kicker SHARE PRICE, USD builds word by word in small tracked caps, and the hairline baseline draws across",
+    "2.0 s, on \"2019,\": 2019 lands under the first point and 98 above it; the pen sets off, the ground under the line filling with a flat pale tone behind it",
+    "3.0 s, on \"2020,\": the pen reaches 2020 as it is spoken, 71 settling above the point, and draws on at the same steady pace",
+    "4.0 s, on \"2021,\": the pen reaches 2021 and 34; a hollow red ring appears low at the 2022 point and waits as the pen draws on toward it, slowing all the way into it",
+    "6.0 s, on \"2022:\": the pen reaches the ring as the year is spoken; the ring fills red and 6 lands in red above it, the size of every other value",
+    "7.0 s, on \"delisted.\": DELISTED settles in red tracked caps, centred under the 2022 label, one red endpoint with the ring and the 6; a full hold to the end"
+  ],
+  "mechanisms": ["draw-on", "cause-to-effect"],
+  "leansOn": [
+    {
+      "title": "Bar chart (this channel's approved version)",
+      "why": "Values in small bold mono beside their marks, a tracked caps kicker and labels, the endpoint in red, no marks that carry no data."
+    }
+  ]
+}

@@ -5069,7 +5069,10 @@ The nine findings the final review parked, plus the flaky test (decision 453):
         as v2 beside the derived v1, cost 0, 8 shots and 2 sheets in R2
   - [x] kpi-counter (two derived drafts): one review, ship; uploaded as v3
         beside the derived v1 and v2, cost 0, 8 shots and 2 sheets in R2
-  - [ ] line-chart (a derived draft)
+  - [ ] line-chart (a derived draft): stopped at the four-round cap, not
+        uploaded; the fourth review's verdict was "fix, close to shipping":
+        lift the end ring clear of the axis, a larger 16:9 plot, values a
+        step brighter. The reviewed version is in `docs/exemplars`.
   - [ ] quote-card (a derived draft)
   - [ ] split-screen (a derived draft)
 - [x] First batch uploaded to production as drafts on the owner's go-ahead
