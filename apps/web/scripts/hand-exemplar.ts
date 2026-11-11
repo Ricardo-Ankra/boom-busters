@@ -120,31 +120,43 @@ async function main(): Promise<void> {
       process.exitCode = 1
       return
     }
+    // Everything that can refuse runs before the first write: the loop's channel read
+    // requires a complete bible, as a derivation does.
+    const loop = await loopChannel(channel.id)
     const row = await insertExemplarVersion(db, {
       channelId: channel.id,
       technique: raw.technique,
       plan,
       code: result.code,
     })
-    const photographed = await photographVersion({
-      channel: await loopChannel(channel.id),
-      entry,
-      plan,
-      versionId: row.id,
-      round: 1,
-      code: result.code,
-      frames: browserFrames(),
-    })
-    await updateExemplarDraft(db, row.id, {
-      costUsd: 0,
-      ...('none' in photographed
-        ? {}
-        : { frames: photographed.frames, metrics: photographed.metrics }),
-    })
-    const stored =
-      'none' in photographed ? `no frames stored: ${photographed.none}` : 'frames stored'
-    console.log(`STORED ${raw.technique} v${row.version} (${row.id}) as a draft; ${stored}`)
-    process.exit(0)
+    console.log(`STORED ${raw.technique} v${row.version} (${row.id}) as a draft`)
+    try {
+      const photographed = await photographVersion({
+        channel: loop,
+        entry,
+        plan,
+        versionId: row.id,
+        round: 1,
+        code: result.code,
+        frames: browserFrames(),
+      })
+      await updateExemplarDraft(db, row.id, {
+        costUsd: 0,
+        ...('none' in photographed
+          ? {}
+          : { frames: photographed.frames, metrics: photographed.metrics }),
+      })
+      console.log(
+        'none' in photographed ? `no frames stored: ${photographed.none}` : 'frames stored',
+      )
+    } catch (error) {
+      // The draft plays without frames, as one derived without storage does.
+      console.error(
+        `the draft is kept without frames: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      process.exitCode = 1
+    }
+    process.exit(process.exitCode ?? 0)
   }
 
   throw new Error('the mode is check or upload')
