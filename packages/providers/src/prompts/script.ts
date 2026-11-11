@@ -212,7 +212,7 @@ const openingExamples = (inUse: BibleInUse): string =>
 export type ScriptIntent = 'tension' | 'calm'
 
 /** The craft file an intent selects; absent is tension. */
-const craftFor = (intent: ScriptIntent | undefined): string =>
+export const craftFor = (intent: ScriptIntent | undefined): string =>
   intent === 'calm' ? SCRIPT_CRAFT_CALM : SCRIPT_CRAFT
 
 /** The opening chapter's rule: the format's own when it has one, else the intent's default. */
