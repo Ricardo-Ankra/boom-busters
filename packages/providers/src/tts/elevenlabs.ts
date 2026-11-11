@@ -187,8 +187,61 @@ export function foldSpokenNumbers(
   return folded
 }
 
-interface ElevenLabsVoicesResponse {
-  voices?: { voice_id?: string; name?: string; labels?: Record<string, string> }[]
+/**
+ * The voice list is `GET /v2/voices`, not `/v1/voices`.
+ *
+ * ElevenLabs files the v1 list under "Legacy": it has no paging, and it "stops
+ * working once the user's workspace exceeds 500 voices" (read 2026-11-11). v2
+ * pages at up to 100 with a token. No `voice_type` filter is sent, so a page
+ * holds everything the account can use: the default voices, its own clones and
+ * designs, and voices saved to My Voices from the Voice Library (v2's
+ * `community` type, which the unfiltered list includes).
+ */
+const VOICES_URL = 'https://api.elevenlabs.io/v2/voices'
+
+/** v2's ceiling for one page. */
+const VOICE_PAGE_SIZE = 100
+
+/**
+ * A stop for a next-page token that never runs out: 2,000 voices, four times
+ * the most v1 could ever return.
+ */
+const MAX_VOICE_PAGES = 20
+
+interface ElevenLabsVoicesPage {
+  voices?: {
+    voice_id?: string
+    name?: string
+    category?: string
+    labels?: Record<string, string>
+  }[]
+  has_more?: boolean
+  next_page_token?: string | null
+}
+
+async function fetchVoicePage(
+  options: VoiceListOptions,
+  pageSize: number,
+  pageToken?: string,
+): Promise<ElevenLabsVoicesPage> {
+  const doFetch = options.fetchImpl ?? fetch
+  // The total count costs the vendor a query; `has_more` is what paging needs.
+  const query = new URLSearchParams({ page_size: String(pageSize), include_total_count: 'false' })
+  if (pageToken) query.set('next_page_token', pageToken)
+
+  let response: Response
+  try {
+    response = await doFetch(`${VOICES_URL}?${query.toString()}`, {
+      headers: { 'xi-api-key': options.apiKey },
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+  } catch (cause) {
+    throw mapNetworkError('elevenlabs', cause)
+  }
+
+  if (!response.ok) await throwForResponse('elevenlabs', response)
+
+  return (await response.json()) as ElevenLabsVoicesPage
 }
 
 /** The account's own voices, described from whatever labels each carries. */
@@ -270,38 +323,44 @@ export const elevenlabsTts: TTSProvider = {
     }
   },
 
-  /** Queried, not shipped: these are whatever the account holds (spec §10.1). */
+  /**
+   * Queried, not shipped: these are whatever the account holds (spec §10.1),
+   * every page of them, each with the vendor's category so the panel can
+   * group them.
+   */
   async voices(options: VoiceListOptions): Promise<KnownVoice[]> {
-    const doFetch = options.fetchImpl ?? fetch
+    const voices: KnownVoice[] = []
+    // Page 0 may add the default voices on top of its page size, so each id
+    // is kept once in case one of them turns up on a later page too.
+    const seen = new Set<string>()
+    let pageToken: string | undefined
 
-    let response: Response
-    try {
-      response = await doFetch(`${BASE}/voices`, {
-        headers: { 'xi-api-key': options.apiKey },
-        ...(options.signal ? { signal: options.signal } : {}),
-      })
-    } catch (cause) {
-      throw mapNetworkError('elevenlabs', cause)
+    for (let page = 0; page < MAX_VOICE_PAGES; page += 1) {
+      const body = await fetchVoicePage(options, VOICE_PAGE_SIZE, pageToken)
+
+      for (const voice of body.voices ?? []) {
+        const id = voice.voice_id
+        if (typeof id !== 'string' || id.length === 0 || seen.has(id)) continue
+        seen.add(id)
+        const description = describeVoice(voice.labels)
+        voices.push({
+          id,
+          label: voice.name ?? id,
+          ...(description ? { description } : {}),
+          ...(voice.category ? { category: voice.category } : {}),
+        })
+      }
+
+      if (!body.has_more || !body.next_page_token) break
+      pageToken = body.next_page_token
     }
 
-    if (!response.ok) await throwForResponse('elevenlabs', response)
-
-    const body = (await response.json()) as ElevenLabsVoicesResponse
-
-    return (body.voices ?? [])
-      .filter((voice) => typeof voice.voice_id === 'string' && voice.voice_id.length > 0)
-      .map((voice) => {
-        const description = describeVoice(voice.labels)
-        return {
-          id: voice.voice_id as string,
-          label: voice.name ?? (voice.voice_id as string),
-          ...(description ? { description } : {}),
-        }
-      })
+    return voices
   },
 
   async verifyKey(apiKey: string, options: Omit<VoiceListOptions, 'apiKey'> = {}): Promise<void> {
-    // Listing voices is free and is the same call the audition panel makes.
-    await elevenlabsTts.voices({ apiKey, ...options })
+    // Listing voices is free. One voice is enough to prove the key; paging
+    // the whole account would only make Connections slower.
+    await fetchVoicePage({ apiKey, ...options }, 1)
   },
 }

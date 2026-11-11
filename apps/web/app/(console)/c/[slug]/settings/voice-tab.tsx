@@ -18,6 +18,7 @@ import { Input, Label } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/cn'
 import { MAX_SAMPLE_CHARS } from '@/lib/audition'
+import { groupVoicesByCategory } from '@/lib/voice-groups'
 import {
   cachedAuditions,
   checkPronunciation,
@@ -197,6 +198,17 @@ function AuditionPanel({
   }, [])
 
   /**
+   * Each provider's voices split by the vendor's category: your own clones and
+   * designs first, the defaults every account has last (decision 462).
+   */
+  const grouped = React.useMemo(
+    () =>
+      catalogue?.map((group) => ({ ...group, categories: groupVoicesByCategory(group.voices) })) ??
+      null,
+    [catalogue],
+  )
+
+  /**
    * Everything already paid for at this sample, so a voice you have heard says
    * "play again" rather than offering to charge you for it a second time.
    */
@@ -314,10 +326,10 @@ function AuditionPanel({
           </p>
         </div>
 
-        {catalogue === null ? (
+        {grouped === null ? (
           <p className="text-[13px] text-[var(--color-text-muted)]">Loading voices…</p>
         ) : (
-          catalogue.map((group) => (
+          grouped.map((group) => (
             <div key={group.provider} className="flex flex-col gap-2">
               <h3 className="text-[13px] font-semibold">{PROVIDER_LABELS[group.provider]}</h3>
               {group.error ? (
@@ -325,33 +337,52 @@ function AuditionPanel({
               ) : group.voices.length === 0 ? (
                 <p className="text-[12px] text-[var(--color-text-muted)]">No voices on offer.</p>
               ) : (
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.voices.map((voice) => {
-                    const id = keyOf(group.provider, voice.id)
-                    const entry = heard[id]
-                    const state: VoiceState =
-                      loading === id
-                        ? 'loading'
-                        : entry?.error
-                          ? 'failed'
-                          : entry?.audio
-                            ? 'ready'
-                            : 'idle'
+                group.categories.map((category) => {
+                  const headingId = `voices-${group.provider}-${category.category || 'other'}`
+                  return (
+                    <div key={category.category} className="flex flex-col gap-1.5">
+                      <h4
+                        id={headingId}
+                        className="text-[12px] font-medium text-[var(--color-text-secondary)]"
+                      >
+                        {category.label}{' '}
+                        <span className="font-mono text-[var(--color-text-muted)]">
+                          · {category.voices.length}
+                        </span>
+                      </h4>
+                      <ul
+                        aria-labelledby={headingId}
+                        className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                      >
+                        {category.voices.map((voice) => {
+                          const id = keyOf(group.provider, voice.id)
+                          const entry = heard[id]
+                          const state: VoiceState =
+                            loading === id
+                              ? 'loading'
+                              : entry?.error
+                                ? 'failed'
+                                : entry?.audio
+                                  ? 'ready'
+                                  : 'idle'
 
-                    return (
-                      <VoiceCard
-                        key={voice.id}
-                        voice={voice}
-                        provider={group.provider}
-                        selected={id === selectedKey}
-                        costUsd={cost}
-                        state={state}
-                        onPlay={() => void play(group.provider, voice)}
-                        onAdd={() => void add(group.provider, voice)}
-                      />
-                    )
-                  })}
-                </ul>
+                          return (
+                            <VoiceCard
+                              key={voice.id}
+                              voice={voice}
+                              provider={group.provider}
+                              selected={id === selectedKey}
+                              costUsd={cost}
+                              state={state}
+                              onPlay={() => void play(group.provider, voice)}
+                              onAdd={() => void add(group.provider, voice)}
+                            />
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })
               )}
             </div>
           ))

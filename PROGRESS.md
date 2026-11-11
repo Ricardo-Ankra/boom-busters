@@ -11350,3 +11350,28 @@ owner edits. `--prod` was not run against Neon.
      designer is untouched. An aborted call's reservation is still released
      (no ledger row), so a cancelled request Anthropic may bill is not
      counted.
+462. **The voice list from `/v2/voices`, split by category** (2026-11-11,
+     branch `voice-library-v2`, no migration, no stack deploy: a Vercel deploy).
+     (a) The owner asked whether the audition panel shows the voices saved
+     under My Voices on ElevenLabs. It already listed the account's voices,
+     but from `GET /v1/voices`, which ElevenLabs files under Legacy: no paging,
+     and it "stops working once the user's workspace exceeds 500 voices"
+     (read 2026-11-11).
+     (b) `elevenlabsTts.voices` reads `GET /v2/voices` at 100 a page, following
+     `next_page_token` while `has_more`, at most 20 pages, each voice id kept
+     once. No `voice_type` filter is sent, so the defaults, the account's own
+     clones and designs, and Voice Library voices saved to My Voices all come
+     back. `verifyKey` asks for one page of one voice.
+     (c) `KnownVoice` carries the vendor's `category` as a plain string. The
+     panel groups each provider's voices under a labelled list per category,
+     sorted by name: Instant voice clones, Professional voice clones, Designed
+     voices, Studio-quality voices, Iconic voices, Default voices; an unknown
+     category gets its own group after those, and a voice with none goes last
+     under Other voices (`apps/web/lib/voice-groups.ts`).
+     (d) Not verified against the live API: no ElevenLabs key is held locally,
+     so the paging and the category values follow the documented v2 response.
+     The docs do not say which category a voice saved from the Voice Library
+     reports. v2 marks those copies with `voice_type` `community` instead, so
+     they are expected to keep the category of the voice they came from (most
+     are professional clones) and sit with those, not in a group of their own.
+     The first look at the live panel settles it.
