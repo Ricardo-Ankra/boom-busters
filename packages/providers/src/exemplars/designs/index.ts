@@ -3,6 +3,7 @@ import { DESIGN as barChart } from './bar-chart'
 import { DESIGN as chapterTitle } from './chapter-title'
 import { DESIGN as comparisonChart } from './comparison-chart'
 import { DESIGN as donutChart } from './donut-chart'
+import { DESIGN as filmTitle } from './film-title'
 import { DESIGN as kineticWordStack } from './kinetic-word-stack'
 import { DESIGN as kpiCounter } from './kpi-counter'
 import { DESIGN as lineChart } from './line-chart'
@@ -35,6 +36,7 @@ export const DESIGNS: Partial<Record<Technique, ExemplarDesign>> = {
   'chapter-title': chapterTitle,
   'comparison-chart': comparisonChart,
   'donut-chart': donutChart,
+  'film-title': filmTitle,
   'kinetic-word-stack': kineticWordStack,
   'kpi-counter': kpiCounter,
   'line-chart': lineChart,

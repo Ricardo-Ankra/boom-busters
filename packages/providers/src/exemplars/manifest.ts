@@ -61,6 +61,8 @@ const yearly = (label: string, unit: string, values: readonly [string, number][]
 
 /** A chapter card carries its title only, so its sample has no label (Task 7). */
 const CHAPTER_TITLE = 'The missing billion.'
+/** The film title card carries the film's title alone, so its sample is a title (Task 10). */
+const FILM_TITLE = 'The Wirecard Collapse'
 
 export const MANIFEST: readonly ExemplarEntry[] = [
   {
@@ -391,6 +393,19 @@ export const MANIFEST: readonly ExemplarEntry[] = [
       durationMs: cardDurationMs(CHAPTER_TITLE),
       words: cardWords(CHAPTER_TITLE),
       intent: 'The chapter is called the missing billion.',
+    },
+  },
+  {
+    id: 'film-title',
+    technique: 'film-title',
+    description:
+      "the film's name at the package's largest size, two hairlines opening from the centre to frame it, each word pulled out of defocus as it is said",
+    mechanisms: ['draw-on', 'camera-push'],
+    source: rendercomp('src/components/chapter-title/ChapterTitle.tsx'),
+    slot: {
+      durationMs: cardDurationMs(FILM_TITLE),
+      words: cardWords(FILM_TITLE),
+      intent: 'The film is called The Wirecard Collapse.',
     },
   },
   {

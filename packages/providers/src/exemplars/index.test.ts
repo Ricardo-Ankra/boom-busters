@@ -51,6 +51,11 @@ describe('the exemplar manifest (decision 305)', () => {
         expect(entry.slot.durationMs).toBe(cardDurationMs('The missing billion.'))
         continue
       }
+      if (entry.id === 'film-title') {
+        expect(entry.slot.words).toEqual(cardWords('The Wirecard Collapse'))
+        expect(entry.slot.durationMs).toBe(cardDurationMs('The Wirecard Collapse'))
+        continue
+      }
       const lastAt = entry.slot.words.at(-1)!.atMs
       expect(entry.slot.durationMs - lastAt, entry.id).toBe(
         figures.includes(entry.id) ? FIGURE_HOLD_MS : READING_HOLD_MS,

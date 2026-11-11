@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { LAST_RESORT_TECHNIQUES, TECHNIQUES, TechniqueKeySchema } from './techniques'
+import { CHOOSABLE_TECHNIQUES, LAST_RESORT_TECHNIQUES, TechniqueKeySchema } from './techniques'
 
 /**
  * A channel's motion identity (spec 2026-11-04, section 8.1): every taste
@@ -70,7 +70,7 @@ export const MotionIdentitySchema = z
     /** Plain prose for the designer and the critic. */
     styleGuideMd: z.string().max(4000).default(''),
     /** The techniques this channel uses, house or its own (spec 8.5); the two last resorts are always among them. */
-    techniques: z.array(TechniqueKeySchema).default([...TECHNIQUES]),
+    techniques: z.array(TechniqueKeySchema).default([...CHOOSABLE_TECHNIQUES]),
     /** Bars rise from the baseline, lines draw on, no gridlines or ticks, no travelling bars. */
     chartsConventional: z.boolean().default(true),
   })

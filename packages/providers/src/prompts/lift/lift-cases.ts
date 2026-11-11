@@ -11,7 +11,11 @@ import type {
   StockBrief,
   StillBrief,
 } from '@boom-busters/schemas'
-import { DEFAULT_MOTION_IDENTITY, FIRST_CHANNEL_BIBLE } from '@boom-busters/schemas'
+import {
+  DEFAULT_MOTION_IDENTITY,
+  FIRST_CHANNEL_BIBLE,
+  isReservedTechnique,
+} from '@boom-busters/schemas'
 import { MANIFEST, exemplarFor, exemplars } from '../../exemplars/index'
 import type { LLMTaskRequest } from '../../llm/types'
 import { buildCastIdentityRequest } from '../cast-identity'
@@ -1225,7 +1229,8 @@ const graphicsCases: LiftCase[] = [
           },
         },
       ],
-      catalogue: MANIFEST.map((entry) => ({
+      // The film title is reserved for its card, so no catalogue or designer prompt shows it.
+      catalogue: MANIFEST.filter((entry) => !isReservedTechnique(entry.technique)).map((entry) => ({
         technique: entry.technique,
         description: entry.description,
         mechanisms: entry.mechanisms,
@@ -1338,21 +1343,23 @@ const graphicsCases: LiftCase[] = [
   ),
   // One case per stored exemplar: the slot message carries the technique's
   // own design, chart techniques with their data.
-  ...exemplars().map((entry) =>
-    liftAware(`graphics-exemplar-${entry.technique}`, (bible) => {
-      const exemplar = exemplarFor(entry.technique)
-      if (!exemplar) throw new Error(`No stored design for ${entry.technique}`)
-      return buildGraphicRequest(
-        graphicInput(bible, {
-          durationMs: entry.slot.durationMs,
-          words: entry.slot.words.map((word) => ({ text: word.text, offsetMs: word.atMs })),
-          intent: entry.slot.intent,
-          ...(entry.slot.data ? { data: entry.slot.data } : {}),
-          exemplar,
-        }),
-      )
-    }),
-  ),
+  ...exemplars()
+    .filter((entry) => !isReservedTechnique(entry.technique))
+    .map((entry) =>
+      liftAware(`graphics-exemplar-${entry.technique}`, (bible) => {
+        const exemplar = exemplarFor(entry.technique)
+        if (!exemplar) throw new Error(`No stored design for ${entry.technique}`)
+        return buildGraphicRequest(
+          graphicInput(bible, {
+            durationMs: entry.slot.durationMs,
+            words: entry.slot.words.map((word) => ({ text: word.text, offsetMs: word.atMs })),
+            intent: entry.slot.intent,
+            ...(entry.slot.data ? { data: entry.slot.data } : {}),
+            exemplar,
+          }),
+        )
+      }),
+    ),
 ]
 
 // ---------------------------------------------------------------------------

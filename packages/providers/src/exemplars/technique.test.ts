@@ -60,6 +60,22 @@ describe('techniqueFor (decision 305)', () => {
     expect(techniqueFor(input)).toBe(technique)
   })
 
+  it('never returns the reserved film title, for any graphic or chart, steered or not', () => {
+    const inputs: TechniqueInput[] = [
+      graphic(),
+      graphic({ intent: 'Wirecard.' }),
+      graphic({ guidance: 'make it a film title' }),
+      graphic({ guidance: 'use the film-title exemplar' }),
+      graphic({ guidance: 'a title card for the film' }),
+      chart(),
+      chart({ chartKind: 'line' }),
+      chart({ seriesCount: 3, xLabels: ['2017', '2018', '2019', '2020', '2021'] }),
+      graphic({ techniques: ['film-title', 'kinetic-word-stack', 'bar-chart'] }),
+    ]
+    for (const input of inputs) expect(techniqueFor(input)).not.toBe('film-title')
+    expect(claimedBySteer('film title')).toBeUndefined()
+  })
+
   it('maps an empty chart to bar-chart', () => {
     expect(techniqueFor(chart({ seriesCount: 0, xLabels: [] }))).toBe('bar-chart')
     expect(

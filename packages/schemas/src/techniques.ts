@@ -23,10 +23,27 @@ export const TECHNIQUES = [
   'animated-list',
   'lower-third',
   'chapter-title',
+  'film-title',
   'logo-reveal',
   'split-screen',
 ] as const
 export type Technique = (typeof TECHNIQUES)[number]
+
+/**
+ * Techniques reserved for one card of the film: the designer never picks them
+ * for an ordinary slot and a channel never ticks them in or out. The film
+ * title is drawn only for the title card (spec 2026-11-11).
+ */
+export const RESERVED_TECHNIQUES = ['film-title'] as const
+
+export function isReservedTechnique(key: string): boolean {
+  return (RESERVED_TECHNIQUES as readonly string[]).includes(key)
+}
+
+/** The house techniques a channel chooses among: the catalogue less the reserved ones. */
+export const CHOOSABLE_TECHNIQUES: readonly Technique[] = TECHNIQUES.filter(
+  (key) => !isReservedTechnique(key),
+)
 
 /**
  * The two techniques every channel keeps: the rules' last resort for a

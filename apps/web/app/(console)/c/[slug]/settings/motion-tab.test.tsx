@@ -93,10 +93,12 @@ function modelOptions() {
   })
 }
 
-const TECHNIQUE_OPTIONS = MANIFEST.map((entry) => ({
-  technique: entry.technique,
-  description: entry.description,
-}))
+const TECHNIQUE_OPTIONS = MANIFEST.filter((entry) => entry.technique !== 'film-title').map(
+  (entry) => ({
+    technique: entry.technique,
+    description: entry.description,
+  }),
+)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -155,6 +157,17 @@ describe('the Motion tab (spec 2026-11-04)', () => {
     expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
       motion: { stillMaxMs: 9000 },
     })
+  })
+
+  it('does not offer the reserved film title as a tick, though the catalogue lists it', async () => {
+    const withReserved = MANIFEST.map((entry) => ({
+      technique: entry.technique,
+      description: entry.description,
+    }))
+    expect(withReserved.some((option) => option.technique === 'film-title')).toBe(true)
+    await openMotionTab(withReserved)
+    expect(screen.queryByLabelText('film-title')).toBeNull()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(TECHNIQUE_OPTIONS.length)
   })
 
   it('saves an unticked technique as the list without it', async () => {

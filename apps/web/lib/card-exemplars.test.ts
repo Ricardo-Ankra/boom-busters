@@ -4,9 +4,11 @@ import type { Database } from '@boom-busters/db'
 import { DESIGNS } from '@boom-busters/providers'
 import { GRAPHIC_CODE_VERSION, cardWords } from '@boom-busters/schemas'
 
-const approved = vi.hoisted(() => ({ row: null as unknown }))
+// The approved row belongs to one technique (the chapter title unless a test says otherwise).
+const approved = vi.hoisted(() => ({ row: null as unknown, technique: 'chapter-title' }))
 vi.mock('@boom-busters/db', () => ({
-  approvedExemplar: async () => approved.row,
+  approvedExemplar: async (_db: unknown, _channel: string, technique: string) =>
+    technique === approved.technique ? approved.row : null,
 }))
 
 import { cardCodesFor, isTitleOnlySample } from './card-exemplars'
@@ -39,6 +41,7 @@ describe('isTitleOnlySample', () => {
 describe('cardCodesFor', () => {
   beforeEach(() => {
     approved.row = null
+    approved.technique = 'chapter-title'
   })
 
   it("uses the channel's approved chapter title when its sample is title only", async () => {
@@ -69,7 +72,30 @@ describe('cardCodesFor', () => {
     expect(cards.notes).toEqual([])
   })
 
-  it('has no title card while no film-title design exists', async () => {
-    expect((await cardCodesFor(db, 'ch1')).title).toBeNull()
+  it('uses the house film title when the channel has none approved', async () => {
+    const cards = await cardCodesFor(db, 'ch1')
+    expect(cards.title?.title).toBe(DESIGNS['film-title']!.title)
+    expect(cards.title?.compiled).toContain('function Graphic')
+    expect(cards.title?.version).toBe(GRAPHIC_CODE_VERSION)
+    expect(cards.title?.compiled).not.toBe(cards.chapter?.compiled)
+  })
+
+  it("uses the channel's approved film title when its sample is title only", async () => {
+    approved.technique = 'film-title'
+    approved.row = row(4, cardWords('The Wirecard Collapse'))
+    const cards = await cardCodesFor(db, 'ch1')
+    expect(cards.title).toEqual({
+      version: GRAPHIC_CODE_VERSION,
+      compiled: 'channel-v4',
+      title: 'Mine',
+    })
+  })
+
+  it('falls back to the house film title for a labelled channel version, with a note', async () => {
+    approved.technique = 'film-title'
+    approved.row = row(5, words('Part', 'one.', 'The', 'Wirecard', 'Collapse'))
+    const cards = await cardCodesFor(db, 'ch1')
+    expect(cards.title?.title).toBe(DESIGNS['film-title']!.title)
+    expect(cards.notes.some((note) => note.includes('Film title v5'))).toBe(true)
   })
 })

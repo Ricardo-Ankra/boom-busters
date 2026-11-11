@@ -1,4 +1,4 @@
-import { DEFAULT_MOTION_IDENTITY, TECHNIQUES } from '@boom-busters/schemas'
+import { CHOOSABLE_TECHNIQUES, DEFAULT_MOTION_IDENTITY, TECHNIQUES } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
   buildMotionIdentityDraftRequest,
@@ -54,7 +54,10 @@ function draftInput(over: Partial<IdentityDraftInput> = {}): IdentityDraftInput 
       },
     ],
     brand: { colors: { background: '#0b0b0b', text: '#f2f2f2' }, fonts: { heading: 'Inter' } },
-    techniques: TECHNIQUES.map((technique) => ({ technique, description: `${technique} does x` })),
+    techniques: CHOOSABLE_TECHNIQUES.map((technique) => ({
+      technique,
+      description: `${technique} does x`,
+    })),
     ...over,
   }
 }
