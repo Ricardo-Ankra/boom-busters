@@ -260,6 +260,56 @@ describe('delivery stability', () => {
   })
 })
 
+describe('the voice list', () => {
+  it('splits the account’s voices by category, its own before the defaults', async () => {
+    listAuditionVoices.mockResolvedValue([
+      {
+        provider: 'elevenlabs',
+        voices: [
+          { id: 'v-rachel', label: 'Rachel', category: 'premade' },
+          { id: ACHIRD, label: 'Achird', description: 'en-GB · warm', category: 'cloned' },
+          { id: 'v-library', label: 'Library Narrator', category: 'professional' },
+          { id: 'v-adam', label: 'Adam', category: 'premade' },
+        ],
+      },
+    ])
+    await openVoiceTab()
+
+    const lists = screen.getAllByRole('list', { name: /voice/i })
+    expect(lists.map((list) => list.getAttribute('aria-labelledby'))).toEqual([
+      'voices-elevenlabs-cloned',
+      'voices-elevenlabs-professional',
+      'voices-elevenlabs-premade',
+    ])
+
+    const defaults = screen.getByRole('list', { name: /default voices/i })
+    expect(
+      within(defaults)
+        .getAllByRole('listitem')
+        .map((item) => item.querySelector('p')?.textContent),
+    ).toEqual(['Adam', 'Rachel'])
+    expect(
+      within(screen.getByRole('list', { name: /instant voice clones/i })).getByText('Achird'),
+    ).toBeTruthy()
+  })
+
+  it('still lets a grouped voice be chosen as the narrator', async () => {
+    listAuditionVoices.mockResolvedValue([
+      {
+        provider: 'elevenlabs',
+        voices: [{ id: ACHIRD, label: 'Achird', category: 'professional' }],
+      },
+    ])
+    await openVoiceTab()
+
+    await userEvent.click(within(card('Achird')).getByRole('button', { name: /use as narrator/i }))
+
+    expect(saveSettings).toHaveBeenCalledWith(CHANNEL, {
+      tts: { provider: 'elevenlabs', voiceId: ACHIRD },
+    })
+  })
+})
+
 describe('hearing a voice', () => {
   it('synthesises on the first press and replays without paying again', async () => {
     generateAuditions.mockResolvedValue({
