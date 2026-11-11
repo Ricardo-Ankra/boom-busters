@@ -1,0 +1,59 @@
+{
+  "slot": {
+    "intent": "The memo the night before the raid told staff to shred everything that night.",
+    "words": [
+      {
+        "text": "The",
+        "atMs": 0
+      },
+      {
+        "text": "memo",
+        "atMs": 1000
+      },
+      {
+        "text": "said:",
+        "atMs": 2000
+      },
+      {
+        "text": "shred",
+        "atMs": 3000
+      },
+      {
+        "text": "everything",
+        "atMs": 4000
+      },
+      {
+        "text": "tonight.",
+        "atMs": 5000
+      }
+    ]
+  },
+  "concept": "The memo types out a letter at a time behind a steady caret as each word is spoken; the kicker shrinks to a header before the quote, and a red selection sweeps the order as its last letter lands.",
+  "storyboard": [
+    "0.0 s, on \"The\": the kicker types in as the headline, large tracked capitals at the block's left edge, about a letter a frame behind a steady off-white caret, grey settling to off white",
+    "Then \"memo\" at 1.0 s and \"said:\" at 2.0 s type in beside it at the same even hand, the caret waiting after the last letter between words; THE MEMO SAID is complete at 2.1 s",
+    "2.5 s: in flight, the kicker glides upward into a small header above the quote and steps back to mid grey, one smooth move from 2.3 s to 2.95 s, the caret riding its end",
+    "3.0 s, on \"shred\": the caret moves to the quote, which types in large bold JetBrains Mono, the hanging opening mark first, about a letter a frame",
+    "4.0 s, on \"everything\": the next word types in after a space at the same even hand, done by 4.3 s",
+    "5.0 s, on \"tonight.\": the last word types with the closing mark; as it lands at 5.28 s the caret gives way to a flat red selection",
+    "5.3 s: the selection sweeps across everything tonight in one smooth stroke, gathering and slowing into the last word as the chapter title's highlight does, landing at 5.63 s",
+    "Then a full hold on the header, the quote and its selection to the end; the camera never moves"
+  ],
+  "mechanisms": [
+    "draw-on",
+    "marker-stroke",
+    "density-from-hierarchy",
+    "cause-to-effect",
+    "foreground-becomes-transition"
+  ],
+  "leansOn": [
+    {
+      "title": "Chapter title (this channel's approved version)",
+      "why": "The highlight lands with the last word in one motion, which the owner asked for there."
+    },
+    {
+      "title": "Typewriter (the house design)",
+      "why": "Each word types out a letter at a time from the moment it is spoken, and the caret rides the end of the typing."
+    }
+  ]
+}

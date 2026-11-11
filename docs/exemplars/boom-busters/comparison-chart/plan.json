@@ -1,0 +1,59 @@
+{
+  "slot": {
+    "intent": "Reported profit outran real profit every year from 2020 to 2022, until the gap between them was 3.3 billion.",
+    "words": [
+      { "text": "Reported", "atMs": 0 },
+      { "text": "against", "atMs": 667 },
+      { "text": "real", "atMs": 1333 },
+      { "text": "profit:", "atMs": 2000 },
+      { "text": "2020,", "atMs": 2667 },
+      { "text": "then", "atMs": 3333 },
+      { "text": "2021,", "atMs": 4000 },
+      { "text": "then", "atMs": 4667 },
+      { "text": "2022,", "atMs": 5333 },
+      { "text": "a", "atMs": 6000 },
+      { "text": "3.3", "atMs": 6667 },
+      { "text": "gap.", "atMs": 7333 }
+    ],
+    "data": {
+      "series": [
+        {
+          "label": "Reported",
+          "unit": "bn",
+          "points": [
+            { "x": "2020", "y": 2.1 },
+            { "x": "2021", "y": 2.8 },
+            { "x": "2022", "y": 3.5 }
+          ]
+        },
+        {
+          "label": "Real",
+          "unit": "bn",
+          "points": [
+            { "x": "2020", "y": 0.9 },
+            { "x": "2021", "y": 0.7 },
+            { "x": "2022", "y": 0.2 }
+          ]
+        }
+      ],
+      "takeaway": "A 3.3 billion gap"
+    }
+  },
+  "concept": "Each spoken year raises its reported bar beside a hollow outline of the same height; the real bar rises into it and stops far short. As the gap is put at 3.3, the last outline turns red.",
+  "storyboard": [
+    "0.0 s, on \"Reported\": the kicker builds word by word in small tracked caps, REPORTED in the grey its bars wear and REAL in off white, the words between quieter; the baseline draws across",
+    "2.7 s, on \"2020,\": 2020 lands under the first pair; its reported bar climbs in grey beside a hollow dashed outline climbing with it, and 2.1 settles inside the bar's top",
+    "3.0 s: the real bar climbs in off white inside the outline and stops far short at 0.9, its figure settling inside its top; the empty part of the outline is the gap",
+    "4.0 s, on \"2021,\": the second pair does the same, 2.8 against 0.7, its gap taller",
+    "5.3 s, on \"2022,\": the third pair, 3.5 against 0.2, the tallest gap of the three",
+    "6.7 s, on \"3.3\": the last outline turns red, a plain tone change, and 3.3 lands in red inside it, the size of every other figure; the earlier gaps stay grey",
+    "Then a full hold on the finished chart to the end; the camera never moves"
+  ],
+  "mechanisms": ["rise-from-baseline", "draw-on", "cause-to-effect"],
+  "leansOn": [
+    {
+      "title": "Bar chart (this channel's approved version)",
+      "why": "Bars rise from a hairline baseline as their years are spoken, grey bars, small bold mono figures, a tracked caps kicker, no marks that carry no data."
+    }
+  ]
+}
