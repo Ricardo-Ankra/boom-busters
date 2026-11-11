@@ -1,5 +1,6 @@
 import { cardDurationMs, cardWords } from '@boom-busters/schemas'
 import type { GraphicCode, GraphicCodePayload, TechniqueKey } from '@boom-busters/schemas'
+import { isTitleOnlySample } from '@/lib/card-sample'
 import type { ChannelExemplarView } from '@/lib/exemplar-channel-views'
 import type { ExemplarView } from '@/lib/exemplar-views'
 
@@ -56,7 +57,8 @@ export function specimenReel(
 ): ReelPiece[] {
   return ORDER.flatMap(({ technique, label, card }): ReelPiece[] => {
     const approved = channel.find((view) => view.technique === technique)?.approved
-    if (approved) {
+    // A card's channel version counts only when its sample is title only, as assembly decides.
+    if (approved && (!card || isTitleOnlySample(approved.code.words))) {
       return [
         {
           technique,

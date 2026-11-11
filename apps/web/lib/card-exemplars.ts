@@ -3,19 +3,13 @@ import { approvedExemplar } from '@boom-busters/db'
 import type { Database } from '@boom-busters/db'
 import { DESIGNS } from '@boom-busters/providers'
 import { GRAPHIC_CODE_VERSION } from '@boom-busters/schemas'
-import type { CardCode, GraphicCodeWord } from '@boom-busters/schemas'
+import type { CardCode } from '@boom-busters/schemas'
+import { isTitleOnlySample } from '@/lib/card-sample'
 import { compileGraphicSource } from '@/lib/graphic-code/compile'
 
 export type CardCodeSource = Omit<CardCode, 'words' | 'durationMs'>
 
-/**
- * True when the sample has no label line: no word before the last ends a
- * sentence. A card drawn from a labelled sample would show the label where
- * the film has only a title to give it.
- */
-export function isTitleOnlySample(words: readonly GraphicCodeWord[]): boolean {
-  return !words.slice(0, -1).some((word) => word.text.endsWith('.'))
-}
+export { isTitleOnlySample }
 
 /** The house design for a technique, compiled under the motion preamble; null when there is none. */
 function houseCard(technique: 'chapter-title'): CardCodeSource | null {

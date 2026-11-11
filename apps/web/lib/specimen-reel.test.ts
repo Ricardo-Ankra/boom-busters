@@ -108,4 +108,16 @@ describe('specimenReel', () => {
       issue: 'did not compile',
     })
   })
+
+  it('uses the house design for a card whose channel sample carries a label', () => {
+    const labelled = channelView('chapter-title', true)
+    labelled.approved!.code.words = [
+      { text: 'Part', atMs: 300 },
+      { text: 'one.', atMs: 550 },
+      { text: 'Title', atMs: 800 },
+    ]
+    const piece = specimenReel(HOUSE, [labelled]).find((p) => p.technique === 'chapter-title')!
+    expect(piece.source).toBe('house')
+    expect(piece.payload?.compiled).toContain('house-chapter-title')
+  })
 })
