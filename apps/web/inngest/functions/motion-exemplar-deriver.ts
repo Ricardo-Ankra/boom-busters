@@ -48,6 +48,7 @@ import type {
   CriticVerify,
   ExemplarFrames,
   ExemplarPlan,
+  GraphicCode,
   MotionMetrics,
   PairwiseAnswer,
   PairwiseOutcome,
@@ -56,14 +57,14 @@ import type {
   TechniqueProposal,
 } from '@boom-busters/schemas'
 import type { GetStepTools } from 'inngest'
-import { callForAnswer } from '@/lib/answer'
+import { callForAnswer, type AnswerRetry } from '@/lib/answer'
 import { criticReferencesFor } from '@/lib/critic-references'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, planBounds, planSteer } from '@/lib/exemplar-derive'
 import { channelProposalFor, pinnedExemplarFor, techniqueEntryFor } from '@/lib/exemplar-entries'
 import { graphicCodeIssue } from '@/lib/graphic-code/check'
 import { browserFrames } from '@/lib/graphic-code/frames'
-import { criticPlanOf, criticSteer } from '@/lib/graphic-design-core'
+import { criticPlanOf, criticSteer, type GraphicDesignResult } from '@/lib/graphic-design-core'
 import { inngest } from '../client'
 import { events } from '../events'
 import {
@@ -154,6 +155,9 @@ async function readingsFor(channelId: string): Promise<ReadingForDraft[]> {
 
 type TechniqueOutcome = Pick<TechniqueProgress, 'state' | 'reason' | 'versionId'>
 
+/** A design only the browser refused, with that refusal (decision 445). */
+type NearMiss = { code: GraphicCode; issue: string }
+
 /** The whole loop for one technique; every paid step named `<technique>/<step>`. */
 /** What the loop reads of the derivation: a step's output is JSON, so no dates. */
 type DerivationAsked = Pick<
@@ -229,16 +233,59 @@ async function deriveTechnique(
   if ('failed' in planned) return { state: 'failed', reason: planned.failed, versionId: null }
   const { plan } = planned
 
-  // 2. The build, stored as a draft.
-  const built = await step.run(
+  // 2. The build, stored as a draft. The first answer in this step, the retry
+  // it earns in a step of its own with a fresh deadline (decision 461): one
+  // Opus answer took 133 s, so two never fit the designer's 240 s, and every
+  // derive stopped "took too long" with nothing kept.
+  type Built =
+    | { versionId: string }
+    | { cap: string; versionId?: string }
+    | { refused: string; versionId?: string }
+
+  /** A design only the browser refused, kept as a draft with the refusal to refine (decision 445). */
+  const keepNearMiss = async (miss: NearMiss): Promise<string> => {
+    const kept = await insertExemplarVersion(db, {
+      channelId,
+      technique,
+      plan,
+      code: miss.code,
+      derivationId: derivation.id,
+      proposal,
+      refusal: miss.issue,
+    })
+    return kept.id
+  }
+
+  /**
+   * What a build leaves: the passing design, or else the near miss, its own
+   * or the first answer's, so a paid near miss is never thrown away (decision
+   * 461); a static refusal alone leaves nothing that plays. The reason is why
+   * the build stopped; the draft's refusal is what to fix.
+   */
+  const keep = async (result: GraphicDesignResult, earlier?: NearMiss): Promise<Built> => {
+    if (result.ok) {
+      const row = await insertExemplarVersion(db, {
+        channelId,
+        technique,
+        plan,
+        code: result.code,
+        derivationId: derivation.id,
+        proposal,
+      })
+      return { versionId: row.id }
+    }
+    const miss = result.nearMiss ?? earlier
+    if (!miss) return { refused: result.issue }
+    return { refused: result.issue, versionId: await keepNearMiss(miss) }
+  }
+
+  const first = await step.run(
     name('build'),
-    async (): Promise<
-      { versionId: string } | { cap: string } | { refused: string; versionId?: string }
-    > => {
+    async (): Promise<Built | { retry: AnswerRetry; nearMiss?: NearMiss }> => {
       const cap = await overCap()
       if (cap) return { cap }
       const channel = await loopChannel(channelId)
-      let result: Awaited<ReturnType<typeof buildFromPlan>>
+      let result: GraphicDesignResult
       if (mock) {
         // A channel's own technique has no house design: the word stack stands in (spec 8.5).
         const design =
@@ -270,41 +317,58 @@ async function deriveTechnique(
             guidance: planSteer(plan),
             complete,
             exemplar: await pinnedExemplarFor(db, channelId, technique),
+            firstOnly: true,
             ...(framesOn() ? { frames: browserFrames() } : {}),
           })
         } catch (error) {
           if (error instanceof BudgetExceededError) return { cap: error.message }
           return { refused: failedWith(error) }
         }
+        if (!result.ok && result.retry) {
+          return {
+            retry: result.retry,
+            ...(result.nearMiss ? { nearMiss: result.nearMiss } : {}),
+          }
+        }
       }
-      if (!result.ok) {
-        // A design only the browser refused is kept as a draft with the refusal,
-        // to refine for one call (spec 9.2 step 2, decision 445); a static
-        // refusal leaves nothing that plays.
-        if (!result.nearMiss) return { refused: result.issue }
-        const kept = await insertExemplarVersion(db, {
-          channelId,
-          technique,
-          plan,
-          code: result.nearMiss.code,
-          derivationId: derivation.id,
-          proposal,
-          refusal: result.nearMiss.issue,
-        })
-        return { refused: result.nearMiss.issue, versionId: kept.id }
-      }
-      const row = await insertExemplarVersion(db, {
-        channelId,
-        technique,
-        plan,
-        code: result.code,
-        derivationId: derivation.id,
-        proposal,
-      })
-      return { versionId: row.id }
+      return keep(result)
     },
   )
-  if ('cap' in built) return stopped(built.cap, null)
+
+  let built: Built
+  if ('retry' in first) {
+    const due = first
+    built = await step.run(name('build-retry'), async (): Promise<Built> => {
+      const earlier = due.nearMiss
+      // Whatever stops the retry, the first answer's near miss is kept.
+      const keptEarlier = async () => (earlier ? { versionId: await keepNearMiss(earlier) } : {})
+      const cap = await overCap()
+      if (cap) return { cap, ...(await keptEarlier()) }
+      const channel = await loopChannel(channelId)
+      let result: GraphicDesignResult
+      try {
+        result = await buildFromPlan({
+          channel,
+          entry,
+          plan,
+          guidance: planSteer(plan),
+          complete,
+          exemplar: await pinnedExemplarFor(db, channelId, technique),
+          resume: due.retry,
+          ...(framesOn() ? { frames: browserFrames() } : {}),
+        })
+      } catch (error) {
+        if (error instanceof BudgetExceededError) {
+          return { cap: error.message, ...(await keptEarlier()) }
+        }
+        return { refused: failedWith(error), ...(await keptEarlier()) }
+      }
+      return keep(result, earlier)
+    })
+  } else {
+    built = first
+  }
+  if ('cap' in built) return stopped(built.cap, built.versionId ?? null)
   if ('refused' in built) {
     return { state: 'refused', reason: built.refused, versionId: built.versionId ?? null }
   }
