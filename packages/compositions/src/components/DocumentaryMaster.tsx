@@ -21,8 +21,7 @@ import {
   transitionOpacity,
 } from '../lib/motion'
 import { AnimatedMap } from './AnimatedMap'
-import { ChapterCard } from './ChapterCard'
-import { TitleCard } from './TitleCard'
+import { CardOverlay } from './CardOverlay'
 import { ChartReveal } from './ChartReveal'
 import { EndCta } from './EndCta'
 import { GraphicCard } from './GraphicCard'
@@ -86,16 +85,10 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
               brand={brand}
               durationInFrames={msToFrames(overlay.durationMs, fps)}
             />
-          ) : overlay.kind === 'chapterCard' ? (
-            <ChapterCard
-              index={overlay.props.index}
+          ) : overlay.kind === 'chapterCard' || overlay.kind === 'titleCard' ? (
+            <CardOverlay
               title={overlay.props.title}
-              brand={brand}
-              durationInFrames={msToFrames(overlay.durationMs, fps)}
-            />
-          ) : overlay.kind === 'titleCard' ? (
-            <TitleCard
-              title={overlay.props.title}
+              {...(overlay.code !== undefined ? { code: overlay.code } : {})}
               brand={brand}
               durationInFrames={msToFrames(overlay.durationMs, fps)}
             />
@@ -131,7 +124,12 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
           // (the offline render never noticed; found 2026-08-19).
           premountFor={fps * 4}
         >
-          <NarrationAudio src={materialisedUrl(segment.url, `narration segment ${index}`)} />
+          <NarrationAudio
+            src={materialisedUrl(segment.url, `narration segment ${index}`)}
+            {...(segment.trimStartMs !== undefined
+              ? { trimBefore: msToFrames(segment.trimStartMs, fps) }
+              : {})}
+          />
         </Sequence>
       ))}
 
@@ -146,11 +144,12 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
  * paragraph boundaries are sample-accurate instead of shared-audio-tag
  * swaps — the audible tick that survived premounting and full buffering.
  */
-function NarrationAudio({ src }: { src: string }) {
+function NarrationAudio({ src, trimBefore }: { src: string; trimBefore?: number }) {
+  const trim = trimBefore !== undefined ? { trimBefore } : {}
   if (mediaEngine() === 'core-tags') {
-    return <Audio src={src} crossOrigin={mediaCrossOrigin()} pauseWhenBuffering />
+    return <Audio src={src} crossOrigin={mediaCrossOrigin()} pauseWhenBuffering {...trim} />
   }
-  return <WebCodecsAudio src={src} />
+  return <WebCodecsAudio src={src} {...trim} />
 }
 
 /**

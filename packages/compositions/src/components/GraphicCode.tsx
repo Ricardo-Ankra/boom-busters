@@ -28,6 +28,7 @@ import { GraphicBackdrop } from './GraphicBackdrop'
 export function GraphicCode({
   payload,
   brand,
+  fallback,
 }: {
   payload: GraphicCodePayload
   brand: BrandKitTokens
@@ -38,12 +39,14 @@ export function GraphicCode({
    * 7), so a slot the compiler stretched holds the code's ending.
    */
   durationInFrames?: number
+  /** Shown instead of the plain title card when the code fails or its version is unknown. */
+  fallback?: ReactNode
 }) {
   const { width, height } = useVideoConfig()
   // Idempotent; @remotion/google-fonts handles delayRender internally.
   loadBrandFonts(brand.typography)
   const { colors } = brand
-  const titleCard = <GraphicTitleCard title={payload.title} brand={brand} />
+  const titleCard = fallback ?? <GraphicTitleCard title={payload.title} brand={brand} />
 
   let content: ReactNode = titleCard
   if (payload.version !== GRAPHIC_CODE_VERSION) {

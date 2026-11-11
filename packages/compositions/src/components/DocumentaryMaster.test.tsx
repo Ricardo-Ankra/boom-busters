@@ -1,8 +1,10 @@
+import type { ReactNode } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { TimelineSlot } from '@boom-busters/schemas'
-import { FIXTURE_BRAND } from '../fixtures/timeline'
-import { GRADE_FILTER, SlotView } from './DocumentaryMaster'
+import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
+import { FIXTURE_BRAND, FIXTURE_TIMELINE } from '../fixtures/timeline'
+import { msToFrames } from '../lib/motion'
+import { DocumentaryMaster, GRADE_FILTER, SlotView } from './DocumentaryMaster'
 
 describe('GRADE_FILTER (decision 287)', () => {
   it('leaves an ungraded film alone', () => {
@@ -30,6 +32,8 @@ vi.mock('remotion', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
+    // A Sequence needs a registered composition; here it only passes its children through.
+    Sequence: ({ children }: { children?: ReactNode }) => <>{children}</>,
     useCurrentFrame: () => frameState.frame,
     useVideoConfig: () => ({ fps: 30, width: 1920, height: 1080, durationInFrames: 120 }),
   }
@@ -168,5 +172,48 @@ describe('SlotView punch wrapper (playbook Shorts, spec 4.5)', () => {
     const markup = renderToStaticMarkup(<SlotView slot={IMAGE_SLOT} brand={FIXTURE_BRAND} />)
     expect(scaleOf(markup)).toBeUndefined()
     frameState.frame = 0
+  })
+})
+
+/**
+ * A trimmed narration piece (the reading hold) plays from its offset into the
+ * take. The master is rendered with only narration in it; the audio tags are
+ * stubbed to record the props they get.
+ */
+const audioProps = vi.hoisted(() => ({ calls: [] as Array<Record<string, unknown>> }))
+vi.mock('@remotion/media', () => ({
+  Audio: (props: Record<string, unknown>) => {
+    audioProps.calls.push(props)
+    return null
+  },
+}))
+vi.mock('./KaraokeCaptions', () => ({ KaraokeCaptions: () => null }))
+vi.mock('./MusicBed', () => ({ MusicBed: () => null }))
+vi.mock('../fonts/load', () => ({ loadBrandFonts: () => Promise.resolve() }))
+
+describe('DocumentaryMaster narration trim', () => {
+  const narrationTimeline = (trimStartMs?: number): Timeline => {
+    const first = FIXTURE_TIMELINE.narration[0]
+    if (!first) throw new Error('fixture has no narration')
+    return {
+      ...FIXTURE_TIMELINE,
+      slots: [],
+      overlays: [],
+      music: null,
+      narration: [{ ...first, ...(trimStartMs !== undefined ? { trimStartMs } : {}) }],
+    }
+  }
+
+  it('plays a trimmed narration piece from its offset', () => {
+    audioProps.calls.length = 0
+    renderToStaticMarkup(<DocumentaryMaster timeline={narrationTimeline(2310)} />)
+    expect(audioProps.calls[0]?.trimBefore).toBe(msToFrames(2310, 30))
+  })
+
+  it('mounts no trim for a piece without one', () => {
+    audioProps.calls.length = 0
+    renderToStaticMarkup(<DocumentaryMaster timeline={narrationTimeline()} />)
+    expect(audioProps.calls.length).toBeGreaterThan(0)
+    expect(audioProps.calls[0]).not.toHaveProperty('trimBefore')
   })
 })
