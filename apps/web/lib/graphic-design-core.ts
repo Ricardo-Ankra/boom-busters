@@ -46,7 +46,7 @@ import type {
 } from '@boom-busters/schemas'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { NonRetriableError } from 'inngest'
-import { callForAnswer, type AnswerComplete } from '@/lib/answer'
+import { callForAnswer, type AnswerCall, type AnswerComplete } from '@/lib/answer'
 import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
 import {
   denseMoments,
@@ -202,8 +202,35 @@ function plannedFacts(
 }
 
 const CUT_OFF_ISSUE = "the designer's answer was cut off at its length limit"
-// A graphic's card says Redesign graphic and a chart's Redesign chart.
-const TOO_LONG_ISSUE = 'the designer took too long; press Redesign to try again'
+
+/** The refusal a "took too long" quotes, kept short of the progress list's 500 characters. */
+const REFUSAL_QUOTED_CHARS = 300
+
+/**
+ * "The designer took too long", saying which call the clock stopped and why
+ * the second was needed (decision 460): a derivation that stored nothing
+ * read only "took too long", and whether the first answer was cut off or
+ * refused could not be told afterwards. A graphic's card says Redesign
+ * graphic and a chart's Redesign chart.
+ */
+function tooLongIssue(
+  stop: { call: AnswerCall; started: boolean },
+  refusal: string | undefined,
+): string {
+  const seconds = Math.round(GRAPHIC_DESIGN_DEADLINE_MS / 1000)
+  const quoted = (refusal ?? 'no reason was kept').slice(0, REFUSAL_QUOTED_CHARS)
+  const first =
+    stop.call === 'retry: cut off'
+      ? 'its first answer was cut off at its length limit'
+      : `its first answer was refused: ${quoted}`
+  const detail =
+    stop.call === 'answer'
+      ? `no answer came back within ${seconds} s`
+      : stop.started
+        ? `${first}, and the second did not come back within the ${seconds} s`
+        : `${first}, and too little of the ${seconds} s was left to ask again`
+  return `the designer took too long (${detail}); press Redesign to try again`
+}
 
 /** The design is over with this issue; no further call can help. */
 class DesignEnded extends Error {
@@ -424,9 +451,14 @@ export async function designGraphicWith(
   const { base, checkSlot } = designInput(context, slot, options)
 
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
+  /** The call the clock may stop, and the last refusal, for the "took too long" issue. */
+  let latest: { call: AnswerCall; started: boolean } = { call: 'answer', started: false }
+  let lastRefusal: string | undefined
   const call: AnswerComplete = async (request, label) => {
+    latest = { call: label, started: false }
     const remaining = deadline - Date.now()
-    if (remaining < MIN_CALL_MS) throw new DesignEnded(TOO_LONG_ISSUE)
+    if (remaining < MIN_CALL_MS) throw new DesignEnded(tooLongIssue(latest, lastRefusal))
+    latest = { call: label, started: true }
     return complete(request, {
       signal: AbortSignal.timeout(remaining),
       ...(label === 'answer' ? {} : { purpose: label }),
@@ -448,16 +480,21 @@ export async function designGraphicWith(
     const answer = await callForAnswer({
       request: buildGraphicRequest(base),
       parse: async (text, note) => {
-        const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot, {
-          motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
-        })
-        if ('issue' in checked) return refuse(checked.issue)
-        const inspected = await inspect(checked.code, { shots: false, measure: true })
-        if (inspected?.layoutIssue) {
-          nearMiss = { code: checked.code, issue: inspected.layoutIssue }
-          return refuse(inspected.layoutIssue)
+        try {
+          const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot, {
+            motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
+          })
+          if ('issue' in checked) return refuse(checked.issue)
+          const inspected = await inspect(checked.code, { shots: false, measure: true })
+          if (inspected?.layoutIssue) {
+            nearMiss = { code: checked.code, issue: inspected.layoutIssue }
+            return refuse(inspected.layoutIssue)
+          }
+          return checked.code
+        } catch (error) {
+          if (error instanceof ValidationError) lastRefusal = error.message
+          throw error
         }
-        return checked.code
       },
       complete: call,
       // The designer's request carries the reason before the producer's
@@ -473,7 +510,9 @@ export async function designGraphicWith(
     // deadline has passed (the abort itself, or a failure that raced it) is
     // the clock's doing: a retried step would only buy the same calls again.
     if (error instanceof BudgetExceededError) throw error
-    if (Date.now() >= deadline) return { ok: false, issue: TOO_LONG_ISSUE }
+    if (Date.now() >= deadline) {
+      return { ok: false, issue: tooLongIssue(latest, lastRefusal) }
+    }
     // Inside the deadline any other failure (provider, a rejected key) goes through.
     throw error
   }
