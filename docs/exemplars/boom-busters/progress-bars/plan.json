@@ -1,0 +1,63 @@
+{
+  "slot": {
+    "intent": "Who owned the fund: insiders held 62%, other funds 28%, and the small savers who lost everything only 10%.",
+    "words": [
+      {
+        "text": "Insiders",
+        "atMs": 0
+      },
+      {
+        "text": "held",
+        "atMs": 875
+      },
+      {
+        "text": "62%,",
+        "atMs": 1750
+      },
+      {
+        "text": "funds",
+        "atMs": 2625
+      },
+      {
+        "text": "28%,",
+        "atMs": 3500
+      },
+      {
+        "text": "small",
+        "atMs": 4375
+      },
+      {
+        "text": "savers",
+        "atMs": 5250
+      },
+      {
+        "text": "10%.",
+        "atMs": 6125
+      }
+    ]
+  },
+  "concept": "One row per holder, named as spoken, the block sliding up to keep what is said centred; each bar fills in one stroke as its figure is said, which lands at the tip. Red marks the largest.",
+  "storyboard": [
+    "0.0 s, on \"Insiders\": the first row arrives at the centre of the frame: its label fades in whole and its empty track draws steadily across",
+    "1.25 s: as \"62%\" comes, the red bar starts filling along the track in one stroke, slowing into its share",
+    "1.75 s, on \"62%,\": the bar is all but home as the figure is spoken; 62% lands just past the tip in bold red mono, a golden-ratio step above the rest",
+    "2.6 s, on \"funds\": the second row arrives below and the block slides up half a row to stay centred; its track draws at the same pace as the first",
+    "3.0 s: the second bar fills in grey the same way",
+    "3.5 s, on \"28%,\": the bar settles and 28% lands at its tip, the same size as the first, in off white",
+    "4.4 s, on \"small\": the third row arrives below with its whole label, small savers, and its track draws steadily across",
+    "5.6 s: the third bar fills in grey",
+    "6.1 s, on \"10%.\": the last bar settles and 10% lands at its tip",
+    "6.5 s: full hold on all three rows, centred, to the end; the camera never moves"
+  ],
+  "mechanisms": [
+    "draw-on",
+    "cause-to-effect",
+    "density-from-hierarchy"
+  ],
+  "leansOn": [
+    {
+      "title": "Bar chart (this channel's approved version)",
+      "why": "Accent on the key bar only, the others soft grey, every figure one size in bold mono, no marks that carry no data."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "slot": {
+    "intent": "The memo the night before the raid told staff to shred everything that night.",
+    "words": [
+      {
+        "text": "The",
+        "atMs": 0
+      },
+      {
+        "text": "memo",
+        "atMs": 1000
+      },
+      {
+        "text": "said:",
+        "atMs": 2000
+      },
+      {
+        "text": "shred",
+        "atMs": 3000
+      },
+      {
+        "text": "everything",
+        "atMs": 4000
+      },
+      {
+        "text": "tonight.",
+        "atMs": 5000
+      }
+    ]
+  },
+  "concept": "The memo's words type out one at a time in mono behind a steady caret; its kicker shrinks to a header as the quote is due, and the red selection sweeps the order as its last word is typed.",
+  "storyboard": [
+    "0.0 s, on \"The\": the kicker starts as the headline, large tracked capitals at the block's left edge, grey settling to off white",
+    "1.0 s, on \"memo\": the second kicker word settles beside it",
+    "2.0 s, on \"said:\": the kicker completes as THE MEMO SAID, settled by 2.25 s, and holds as the headline",
+    "2.6 s: the kicker shrinks upward into a small header above the quote and steps back to mid grey, all but done by 2.8 s, settling softly into 3.0 s",
+    "3.0 s, on \"shred\": as the header settles, the quote starts in large JetBrains Mono behind a hanging opening quote, the word typed whole",
+    "3.0 s: the word settles from grey to off white and a steady off-white caret appears after it",
+    "4.0 s, on \"everything\": the next word is typed in and the caret moves on after it",
+    "5.0 s, on \"tonight.\": the last word is typed with the closing quote and, in the caret's place, a flat red selection starts across the phrase",
+    "5.0 s to 5.46 s: the selection runs across everything tonight in one stroke, off the mark at once and slowing into the last word",
+    "5.46 s: full hold on the header, the quote and its selection to the end; the camera never moves"
+  ],
+  "mechanisms": [
+    "marker-stroke",
+    "density-from-hierarchy",
+    "cause-to-effect",
+    "foreground-becomes-transition"
+  ],
+  "leansOn": [
+    {
+      "title": "Chapter title (this channel's approved version)",
+      "why": "The highlight lands with the last word in one motion, which the owner asked for there."
+    }
+  ]
+}
