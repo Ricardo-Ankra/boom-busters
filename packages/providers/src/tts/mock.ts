@@ -49,9 +49,20 @@ export interface MockTTS extends TTSProvider {
   reset(): void
 }
 
+/** Two categories, so the panel's grouping shows in mock mode too. */
 export const MOCK_VOICES: readonly KnownVoice[] = [
-  { id: 'mock-narrator', label: 'Mock Narrator', description: 'A tone. Obviously not a person.' },
-  { id: 'mock-alt', label: 'Mock Alternate', description: 'A different tone, for A/B tests.' },
+  {
+    id: 'mock-narrator',
+    label: 'Mock Narrator',
+    description: 'A tone. Obviously not a person.',
+    category: 'premade',
+  },
+  {
+    id: 'mock-alt',
+    label: 'Mock Alternate',
+    description: 'A different tone, for A/B tests.',
+    category: 'cloned',
+  },
 ]
 
 /** Stable pseudo-randomness: same text in, same waveform out, forever. */

@@ -275,24 +275,100 @@ describe('elevenlabs TTS adapter', () => {
     )
   })
 
-  it('reads the account voices, which are not shipped with the adapter', async () => {
-    const voices = await elevenlabsTts.voices({
-      apiKey: 'k',
-      fetchImpl: respondWith({
+  /** Answers each request with the next body in turn, recording the URLs asked for. */
+  function pagesOf(bodies: unknown[]): { fetchImpl: typeof fetch; urls: string[] } {
+    const urls: string[] = []
+    const fetchImpl = (async (url: string) => {
+      urls.push(url)
+      return new Response(JSON.stringify(bodies[urls.length - 1] ?? { voices: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+    return { fetchImpl, urls }
+  }
+
+  it('reads every page of the account voices from v2, each with its category', async () => {
+    const { fetchImpl, urls } = pagesOf([
+      {
         voices: [
-          { voice_id: 'v1', name: 'Rachel', labels: { accent: 'american', age: 'young' } },
+          {
+            voice_id: 'v1',
+            name: 'Rachel',
+            category: 'premade',
+            labels: { accent: 'american', age: 'young' },
+          },
           { name: 'no id at all' },
         ],
-      }),
-    })
+        has_more: true,
+        next_page_token: 'page-2',
+      },
+      {
+        voices: [
+          { voice_id: 'v2', name: 'My Clone', category: 'cloned' },
+          // A default voice repeated on a later page is still one voice.
+          { voice_id: 'v1', name: 'Rachel', category: 'premade' },
+          { voice_id: 'v3', name: 'Uncategorised' },
+        ],
+        has_more: false,
+        next_page_token: null,
+      },
+    ])
 
-    expect(voices).toEqual([{ id: 'v1', label: 'Rachel', description: 'american · young' }])
+    const voices = await elevenlabsTts.voices({ apiKey: 'k', fetchImpl })
+
+    expect(voices).toEqual([
+      { id: 'v1', label: 'Rachel', description: 'american · young', category: 'premade' },
+      { id: 'v2', label: 'My Clone', category: 'cloned' },
+      { id: 'v3', label: 'Uncategorised' },
+    ])
+
+    expect(urls).toHaveLength(2)
+    const first = new URL(urls[0] ?? '')
+    expect(`${first.origin}${first.pathname}`).toBe('https://api.elevenlabs.io/v2/voices')
+    expect(first.searchParams.get('page_size')).toBe('100')
+    expect(first.searchParams.get('include_total_count')).toBe('false')
+    expect(first.searchParams.has('next_page_token')).toBe(false)
+    // Unfiltered, so Voice Library voices saved to My Voices come back too.
+    expect(first.searchParams.has('voice_type')).toBe(false)
+    expect(new URL(urls[1] ?? '').searchParams.get('next_page_token')).toBe('page-2')
   })
 
-  it('verifies a key with the same free call', async () => {
+  it('stops paging at 20 pages when the vendor never says it is done', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      return new Response(
+        JSON.stringify({
+          voices: [{ voice_id: `v${calls}`, name: `Voice ${calls}` }],
+          has_more: true,
+          next_page_token: `t${calls}`,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as unknown as typeof fetch
+
+    const voices = await elevenlabsTts.voices({ apiKey: 'k', fetchImpl })
+
+    expect(calls).toBe(20)
+    expect(voices).toHaveLength(20)
+  })
+
+  it('fails the listing when the key is refused, rather than offering no voices', async () => {
+    await expect(
+      elevenlabsTts.voices({
+        apiKey: 'bad',
+        fetchImpl: respondWith({ detail: { message: 'Invalid API key' } }, { status: 401 }),
+      }),
+    ).rejects.toThrow()
+  })
+
+  it('verifies a key with one free page of one voice', async () => {
     const { fetchImpl, seen } = capture({ voices: [] })
     await elevenlabsTts.verifyKey('k', { fetchImpl })
-    expect(seen.url).toContain('/voices')
+    const url = new URL(seen.url ?? '')
+    expect(url.pathname).toBe('/v2/voices')
+    expect(url.searchParams.get('page_size')).toBe('1')
   })
 })
 

@@ -83,6 +83,12 @@ export interface KnownVoice {
   label: string
   /** One line for the audition card — accent, register, what it suits. */
   description?: string
+  /**
+   * The vendor's own grouping, as it sends it: on ElevenLabs `premade`,
+   * `cloned`, `generated`, `professional`, `famous` or `high_quality`. Kept as
+   * a string so a category added later still reaches the panel.
+   */
+  category?: string
 }
 
 export interface TTSCallOptions {
