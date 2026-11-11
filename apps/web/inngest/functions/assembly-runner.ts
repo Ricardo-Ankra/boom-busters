@@ -31,7 +31,7 @@ import {
 } from '@boom-busters/schemas'
 import type { ArticleMetadata, SocialPostRecord, WordTiming } from '@boom-busters/schemas'
 import { SOCIAL_FRAMES } from '@boom-busters/compositions/social'
-import { assemblyCaptionStyle, compileTimeline } from '@boom-busters/timeline'
+import { assemblyCaptionStyle, compileTimelineWithReport } from '@boom-busters/timeline'
 import { NonRetriableError } from 'inngest'
 import { articleForClaim } from '@/lib/article-source'
 import { db } from '@/lib/db'
@@ -46,6 +46,7 @@ import {
   evenlySpacedWords,
   narrationPlan,
   pickMusicBed,
+  readingHoldSummary,
   slotPlan,
   timelineKey,
 } from '../lib/assembly'
@@ -58,6 +59,7 @@ import {
   transcribePerParagraphFits,
 } from '../lib/slot-steps'
 import { RESOLUTION_STEP_SLOTS } from '../lib/shot-list'
+import { cardCodesFor } from '@/lib/card-exemplars'
 
 /**
  * assembly-runner (build spec section 7.5).
@@ -460,7 +462,10 @@ export const assemblyRunner = inngest.createFunction(
       const style = assemblyCaptionStyle((await latestTimeline(db, projectId))?.json)
 
       try {
-        const timeline = compileTimeline({
+        // Read inside this step: a run parked before the deploy replays old
+        // step results, so nothing here may come from outside it.
+        const cards = await cardCodesFor(db, channelId)
+        const { timeline, readingHold } = compileTimelineWithReport({
           brand: setup.brand,
           paragraphs: setup.plan.paragraphs,
           slots: plan.slots,
@@ -470,12 +475,18 @@ export const assemblyRunner = inngest.createFunction(
           // without these; the channel default keeps its cards.
           chapterMarking: setup.chapterMarking ?? 'cards',
           filmTitle: setup.filmTitle ?? '',
+          cardCode: {
+            ...(cards.chapter ? { chapter: cards.chapter } : {}),
+            ...(cards.title ? { title: cards.title } : {}),
+          },
         })
         return {
           ok: true as const,
           timeline,
           gaps: captions.gaps.length,
           skipped: plan.skipped,
+          readingHold,
+          cardNotes: cards.notes,
           slots: plan.slots.length,
         }
       } catch (error) {
@@ -530,6 +541,7 @@ export const assemblyRunner = inngest.createFunction(
             runtimeSec % 60,
           ).padStart(2, '0')}s · ${compiled.slots} slots` +
           (compiled.skipped.length > 0 ? ` · ${compiled.skipped.length} skipped` : '') +
+          readingHoldSummary(compiled.readingHold, compiled.cardNotes) +
           (compiled.gaps > 0 ? ` · ${compiled.gaps} caption QC gap(s)` : ''),
       }),
     )

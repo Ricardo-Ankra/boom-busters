@@ -203,8 +203,11 @@ describeDb('assembly-runner, batched transcription', () => {
 
       return result as {
         ok: boolean
+        readingHold?: { pauses: number; addedMs: number; midClause: number; overlapped: number }
+        cardNotes?: string[]
+        skipped?: unknown[]
         timeline: {
-          overlays: { kind: string; props?: Record<string, unknown> }[]
+          overlays: { kind: string; props?: Record<string, unknown>; code?: { title: string } }[]
           chapters?: { title: string }[]
         }
       }
@@ -240,6 +243,25 @@ describeDb('assembly-runner, batched transcription', () => {
       expect(compiled.timeline.overlays.filter((o) => cardKinds.includes(o.kind))).toMatchObject([
         { kind: 'titleCard', props: { title: 'The audit' } },
       ])
+    },
+  )
+
+  it(
+    'passes the channel chapter-title code to the cards, and stores the reading hold and card notes beside skipped',
+    { timeout: 120_000 },
+    async () => {
+      const compiled = await compileWith('cards')
+      expect(compiled.ok).toBe(true)
+      const card = compiled.timeline.overlays.find((o) => o.kind === 'chapterCard')
+      expect(card?.code).toMatchObject({ title: expect.any(String) })
+      expect(compiled.skipped).toEqual([])
+      expect(compiled.readingHold).toEqual({
+        pauses: expect.any(Number),
+        addedMs: expect.any(Number),
+        midClause: expect.any(Number),
+        overlapped: expect.any(Number),
+      })
+      expect(Array.isArray(compiled.cardNotes)).toBe(true)
     },
   )
 
