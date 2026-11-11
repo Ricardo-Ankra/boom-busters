@@ -1,6 +1,6 @@
 # Hand-made channel exemplars
 
-Decision 462. A channel's exemplars written by hand in a session instead of by the
+Decision 463. A channel's exemplars written by hand in a session instead of by the
 paid Derive loop. Each folder is one technique for one channel:
 
 - `plan.json`: an `ExemplarPlan` (the catalogue slot rewritten in the channel's

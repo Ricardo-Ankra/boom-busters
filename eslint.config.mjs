@@ -26,7 +26,7 @@ export default tseslint.config(
       // another author's browser modules and reels, read, never run or linted.
       'docs/references/**',
       'docs/Claude_edit_skill/**',
-      // Hand-made channel exemplars (decision 462): sandbox sources whose globals (Remotion,
+      // Hand-made channel exemplars (decision 463): sandbox sources whose globals (Remotion,
       // motion, React) the designer's preamble supplies; `exemplar:hand` checks them instead.
       'docs/exemplars/**',
       // Another session's worktrees, when one is left behind.

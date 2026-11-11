@@ -28,7 +28,7 @@ import {
 
 /**
  * A channel exemplar written by hand in a session rather than by the paid
- * derivation (decision 462): the plan and the design go through the very
+ * derivation (decision 463): the plan and the design go through the very
  * checks a derived version does (the plan's bounds, `graphicCodeIssue` under
  * the channel's motion identity, the designer's layout check in the browser
  * with the channel's brand), and are photographed as the deriver

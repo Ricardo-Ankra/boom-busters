@@ -15,7 +15,7 @@ import { browserFrames } from '@/lib/graphic-code/frames'
 import { readRawFlags } from '@/lib/live-set-args'
 
 /**
- * A channel exemplar written by hand (decision 462). A design folder holds
+ * A channel exemplar written by hand (decision 463). A design folder holds
  * `plan.json` (an ExemplarPlan), `design.jsx` (the source) and `meta.json`
  * (`{ "title": "...", "facts": [{ "text": "...", "claim": 1 }] }`).
  *

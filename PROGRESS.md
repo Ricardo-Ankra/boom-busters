@@ -5046,7 +5046,7 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 > Derive loop, checked and photographed exactly as a derived version is, each
 > design and each revision reviewed by a fresh reviewer agent, and stored as a
 > draft the owner approves on the Exemplars tab. Branch `hand-exemplars`,
-> decision 462. No migration. Boom & Busters first: the ten techniques without
+> decision 463. No migration. Boom & Busters first: the ten techniques without
 > an approved version.
 
 ### Deliverables
@@ -11408,7 +11408,7 @@ owner edits. `--prod` was not run against Neon.
      (no ledger row), so a cancelled request Anthropic may bill is not
      counted.
 
-462. **Hand-made channel exemplars** (2026-11-11, owner: "why don't we create
+463. **Hand-made channel exemplars** (2026-11-11, owner: "why don't we create
      them locally here, and upload them to the DB", then "Deploy a fresh
      reviewer agent after every exemplar design", starting with Boom &
      Busters; branch `hand-exemplars`, no migration).
