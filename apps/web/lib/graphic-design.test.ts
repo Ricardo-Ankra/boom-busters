@@ -1106,6 +1106,104 @@ describe('the layout check in the design (decision 389)', () => {
     expect(staticOnly.nearMiss).toBeUndefined()
   })
 
+  describe('the retry in a step of its own (decision 461)', () => {
+    const frames = { inspect: (input: Frames.FramesInput) => inspect(input) }
+
+    it('keeps the near miss when the clock leaves no time for the retry', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(1_000_000)
+      // The answer lands with a minute left; the browser's check uses all but 14 s of it.
+      inspect.mockImplementationOnce(async () => {
+        vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 14_000)
+        return framed({ layoutIssue: LAYOUT, shots: [] })
+      })
+      const complete = vi.fn(async () => {
+        vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 60_000)
+        return answer('$4bn')
+      })
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        frames,
+      })
+      if (result.ok) throw new Error('the design should end on the clock')
+      expect(result.issue).toContain('the designer took too long (its first answer was refused')
+      expect(result.nearMiss?.issue).toBe(LAYOUT)
+      expect(result.nearMiss?.code.source).toBe(figureSource('$4bn'))
+      expect(complete).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the near miss when the second answer runs out the clock', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(1_000_000)
+      inspect.mockResolvedValueOnce(framed({ layoutIssue: LAYOUT, shots: [] }))
+      const complete = vi
+        .fn()
+        .mockResolvedValueOnce(answer('$4bn'))
+        .mockImplementationOnce(async () => {
+          vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
+          throw new Error('This operation was aborted')
+        })
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        frames,
+      })
+      if (result.ok) throw new Error('the design should end on the clock')
+      expect(result.issue).toContain('the second did not come back')
+      expect(result.nearMiss?.issue).toBe(LAYOUT)
+    })
+
+    it('firstOnly makes one call and hands back the retry with the near miss', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      inspect.mockResolvedValueOnce(framed({ layoutIssue: LAYOUT, shots: [] }))
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        frames,
+        firstOnly: true,
+      })
+      expect(complete).toHaveBeenCalledTimes(1)
+      if (result.ok) throw new Error('the design should be refused')
+      expect(result.retry).toEqual({ call: 'retry: refused', issue: LAYOUT })
+      expect(result.nearMiss?.issue).toBe(LAYOUT)
+    })
+
+    it('resume makes only the retry, with the reason, on a fresh deadline', async () => {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        frames,
+        resume: { call: 'retry: refused', issue: LAYOUT },
+      })
+      expect(result.ok).toBe(true)
+      expect(complete).toHaveBeenCalledTimes(1)
+      const [request, options] = complete.mock.calls[0]!
+      expect(request.messages.at(-1).content).toContain(LAYOUT)
+      expect(options).toMatchObject({ purpose: 'retry: refused', signal: expect.any(AbortSignal) })
+    })
+
+    it('a resumed retry the clock stops quotes the first refusal', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(1_000_000)
+      const complete = vi.fn(async () => {
+        vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
+        throw new Error('This operation was aborted')
+      })
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        frames,
+        resume: { call: 'retry: refused', issue: LAYOUT },
+      })
+      expect(result).toEqual({
+        ok: false,
+        issue: tooLong(
+          `its first answer was refused: ${LAYOUT}, and the second did not come back within the 240 s`,
+        ),
+      })
+    })
+  })
+
   it('asks no review inside the design: one call, unmarked', async () => {
     reviewSetting = true
     callLlm.mockResolvedValueOnce(answer('$4bn'))

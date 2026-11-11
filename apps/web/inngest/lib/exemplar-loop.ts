@@ -34,6 +34,7 @@ import type {
   PairwiseAnswer,
   TechniqueKey,
 } from '@boom-busters/schemas'
+import type { AnswerRetry } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { derivedContext, derivedSlot, storyboardMoments } from '@/lib/exemplar-derive'
 import { exemplarFrameKey, exemplarSheetKey } from '@/lib/exemplar-keys'
@@ -128,6 +129,10 @@ export async function buildFromPlan(input: {
    * absent, the house design for a house key, and none for a channel's own.
    */
   exemplar?: Exemplar | null
+  /** One answer only, the retry it earns handed back (decision 461). */
+  firstOnly?: boolean
+  /** Only the retry an earlier step's first answer earned (decision 461). */
+  resume?: AnswerRetry
 }): Promise<GraphicDesignResult> {
   const { channel, entry, plan } = input
   const exemplar =
@@ -149,6 +154,8 @@ export async function buildFromPlan(input: {
       guidance: input.guidance,
       exemplar,
       ...(input.current ? { redesign: true } : {}),
+      ...(input.firstOnly ? { firstOnly: true } : {}),
+      ...(input.resume ? { resume: input.resume } : {}),
       ...(input.frames ? { frames: input.frames } : {}),
       brand: channel.brand,
       log: channel.log,

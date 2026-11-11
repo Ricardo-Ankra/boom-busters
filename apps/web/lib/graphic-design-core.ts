@@ -46,7 +46,7 @@ import type {
 } from '@boom-busters/schemas'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { NonRetriableError } from 'inngest'
-import { callForAnswer, type AnswerCall, type AnswerComplete } from '@/lib/answer'
+import { callForAnswer, type AnswerCall, type AnswerComplete, type AnswerRetry } from '@/lib/answer'
 import { dryRunProps, graphicCodeIssue } from '@/lib/graphic-code/check'
 import {
   denseMoments,
@@ -99,9 +99,12 @@ export type GraphicDesignResult =
        * The last design that passed every static check and was refused only by
        * the browser's layout check, with that refusal (decision 445): a near
        * miss worth keeping as a draft to refine, where a static refusal leaves
-       * nothing that plays.
+       * nothing that plays. Kept when the clock ends the design too (decision
+       * 461): a paid near miss is not thrown away for want of a retry.
        */
       nearMiss?: { code: GraphicCode; issue: string }
+      /** With `firstOnly`: the retry the first answer earned, for the caller's next step (decision 461). */
+      retry?: AnswerRetry
     }
 
 /**
@@ -436,6 +439,15 @@ export async function designGraphicWith(
     redesign?: boolean
     /** The exemplar to show the designer; absent, the house one for the slot's technique. */
     exemplar?: Exemplar | null
+    /**
+     * One answer only; a failed one hands back the retry it earned as
+     * `retry` (decision 461). One Opus answer can take over two minutes, so
+     * a caller with steps to spare makes the retry in its own, with its own
+     * deadline, through `resume`.
+     */
+    firstOnly?: boolean
+    /** Make only this retry: the first answer was made and failed in an earlier step. */
+    resume?: AnswerRetry
   } & FramesOptions,
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
@@ -453,7 +465,8 @@ export async function designGraphicWith(
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
   /** The call the clock may stop, and the last refusal, for the "took too long" issue. */
   let latest: { call: AnswerCall; started: boolean } = { call: 'answer', started: false }
-  let lastRefusal: string | undefined
+  let lastRefusal: string | undefined =
+    options.resume?.call === 'retry: refused' ? options.resume.issue : undefined
   const call: AnswerComplete = async (request, label) => {
     latest = { call: label, started: false }
     const remaining = deadline - Date.now()
@@ -501,17 +514,26 @@ export async function designGraphicWith(
       // steer, which stays the last thing the model reads.
       retryWithReason: (reason) => buildGraphicRequest({ ...base, rejection: reason }),
       cutOffIssue: CUT_OFF_ISSUE,
+      ...(options.firstOnly ? { firstOnly: true } : {}),
+      ...(options.resume ? { resume: options.resume } : {}),
     })
     if (answer.ok) return { ok: true, code: answer.value }
-    return { ok: false, issue: answer.issue, ...(nearMiss ? { nearMiss } : {}) }
+    return {
+      ok: false,
+      issue: answer.issue,
+      ...(nearMiss ? { nearMiss } : {}),
+      ...(answer.retry ? { retry: answer.retry } : {}),
+    }
   } catch (error) {
-    if (error instanceof DesignEnded) return { ok: false, issue: error.issue }
+    // The clock's end keeps a near miss already paid for (decision 461).
+    const kept = nearMiss ? { nearMiss } : {}
+    if (error instanceof DesignEnded) return { ok: false, issue: error.issue, ...kept }
     // A budget stop parks the run whenever it comes. Anything else once the
     // deadline has passed (the abort itself, or a failure that raced it) is
     // the clock's doing: a retried step would only buy the same calls again.
     if (error instanceof BudgetExceededError) throw error
     if (Date.now() >= deadline) {
-      return { ok: false, issue: tooLongIssue(latest, lastRefusal) }
+      return { ok: false, issue: tooLongIssue(latest, lastRefusal), ...kept }
     }
     // Inside the deadline any other failure (provider, a rejected key) goes through.
     throw error
