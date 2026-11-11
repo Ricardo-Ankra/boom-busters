@@ -24,6 +24,7 @@ import type {
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { compileGraphicSource } from './compile'
 import { dryRunGraphic, GRAPHIC_SAMPLE_MS } from './dry-run'
+import { restIssue } from './rest'
 import { scanGraphicSource } from './scan'
 
 /**
@@ -164,6 +165,15 @@ export function graphicCodeIssue(
     stillMaxMs: motion.stillMaxMs,
   })
   if (run.issue !== null) return { issue: run.issue }
+
+  // The render holds a finished graphic so it can be read, so nothing may still
+  // be arriving once the last word has settled (the reading hold).
+  for (const orientation of ['landscape', 'portrait'] as const) {
+    const resting = restIssue(run.textSamples[orientation], slot.words, GRAPHIC_SAMPLE_MS)
+    if (resting !== null) {
+      return { issue: orientation === 'portrait' ? `${resting}, in portrait` : resting }
+    }
+  }
 
   // Per frame size, never across the two: a digit group counts as shown when
   // it stays a second in one frame, and the Short's 9:16 frame may show a
