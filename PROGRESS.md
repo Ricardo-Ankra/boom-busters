@@ -5068,7 +5068,10 @@ The nine findings the final review parked, plus the flaky test (decision 453):
       figure one size (one review, ship); typewriter rebuilt to type a letter
       at a time (two reviews, ship). `--parent` and `--steer` file a revision
       as Refine does, proven on a throwaway local database.
-- [ ] Revisions uploaded as v2 drafts beside v1 (owner's go-ahead).
+- [x] Revisions uploaded as v2 drafts beside v1 on the owner's go-ahead
+      (2026-11-11): progress-bars v2 and typewriter v2 at cost 0, each with
+      its parent, the owner's steer and a steer verdict on v1, 8 shots and 2
+      sheets each in R2; read back read-only.
 - [ ] First batch approved by the owner on the Exemplars tab (lower-third:
       "Lower third is good").
 - [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
