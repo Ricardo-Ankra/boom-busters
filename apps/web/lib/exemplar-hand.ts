@@ -1,8 +1,15 @@
 import { MANIFEST } from '@boom-busters/providers'
 import type { TechniqueEntry } from '@boom-busters/providers'
-import { ExemplarPlanSchema, PlannedGraphicCodeSchema, planIssue } from '@boom-busters/schemas'
+import {
+  EXEMPLAR_STEER_MAX,
+  ExemplarPlanSchema,
+  ExemplarSteerSchema,
+  PlannedGraphicCodeSchema,
+  planIssue,
+} from '@boom-busters/schemas'
 import type {
   ExemplarPlan,
+  ExemplarStatus,
   GraphicCode,
   MotionIdentity,
   MotionMetrics,
@@ -53,6 +60,52 @@ export function parseHandFiles(input: {
     ...(plan.mechanisms.length > 0 ? { mechanisms: plan.mechanisms } : {}),
   })
   return { plan, answer }
+}
+
+/** A stored version, as much of it as filing a revision reads. */
+export interface RevisionCandidate {
+  id: string
+  channelId: string
+  technique: string
+  version: number
+  status: ExemplarStatus
+}
+
+/**
+ * A hand-made revision is filed the way the app's Refine files one: beside
+ * its parent, which is the technique's approved version or, with none
+ * approved, its latest draft, and with the owner's steer in the words the
+ * app's own schema takes. The refusal as one sentence, else what to store.
+ */
+export function revisionOf(input: {
+  channelId: string
+  technique: string
+  parentId: string
+  steer: unknown
+  versions: readonly RevisionCandidate[]
+}): { issue: string } | { parentId: string; steer: string } {
+  const steer = ExemplarSteerSchema.safeParse(input.steer)
+  if (!steer.success) {
+    return { issue: `the steer is the owner's words, 1 to ${EXEMPLAR_STEER_MAX} characters` }
+  }
+  const own = input.versions.filter((version) => version.channelId === input.channelId)
+  const parent = own.find((version) => version.id === input.parentId)
+  if (!parent) return { issue: `this channel has no version ${input.parentId}` }
+  if (parent.technique !== input.technique) {
+    return { issue: `version ${parent.id} is a ${parent.technique}, not a ${input.technique}` }
+  }
+  const technique = own.filter((version) => version.technique === input.technique)
+  const approved = technique.find((version) => version.status === 'approved')
+  if (approved && approved.id !== parent.id) {
+    return { issue: `revise the approved version, v${approved.version}` }
+  }
+  const latestDraft = technique
+    .filter((version) => version.status === 'draft')
+    .sort((a, b) => b.version - a.version)[0]
+  if (!approved && latestDraft && latestDraft.id !== parent.id) {
+    return { issue: `revise the latest draft, v${latestDraft.version}` }
+  }
+  return { parentId: parent.id, steer: steer.data }
 }
 
 export interface HandChecked {

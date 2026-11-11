@@ -1,9 +1,20 @@
 // @vitest-environment node
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { exemplarFor, mockStoryboardPlan } from '@boom-busters/providers'
-import { DEFAULT_MOTION_IDENTITY, DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import {
+  DEFAULT_MOTION_IDENTITY,
+  DEFAULT_SETTINGS,
+  EXEMPLAR_STEER_MAX,
+  resolveBrandKit,
+} from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { checkHandDesign, handEntry, parseHandFiles } from './exemplar-hand'
+import {
+  checkHandDesign,
+  handEntry,
+  parseHandFiles,
+  revisionOf,
+  type RevisionCandidate,
+} from './exemplar-hand'
 import { FramesUnavailable } from './graphic-code/frames'
 import type * as Frames from './graphic-code/frames'
 import type * as MotionMetricsModule from './graphic-code/motion-metrics'
@@ -65,6 +76,60 @@ describe('parseHandFiles', () => {
     expect(answer.storyboard).toEqual(plan.storyboard)
     expect(answer.mechanisms).toEqual(plan.mechanisms)
     expect(answer.facts).toEqual([])
+  })
+})
+
+describe('revisionOf', () => {
+  const version = (over: Partial<RevisionCandidate>): RevisionCandidate => ({
+    id: 'v1',
+    channelId: 'bb',
+    technique: 'typewriter',
+    version: 1,
+    status: 'draft',
+    ...over,
+  })
+  const revise = (parentId: string, versions: RevisionCandidate[], steer: unknown = ' Type it. ') =>
+    revisionOf({ channelId: 'bb', technique: 'typewriter', parentId, steer, versions })
+
+  it("files the technique's latest draft as the parent, the steer trimmed", () => {
+    const versions = [version({}), version({ id: 'other', technique: 'progress-bars' })]
+    expect(revise('v1', versions)).toEqual({ parentId: 'v1', steer: 'Type it.' })
+  })
+
+  it('takes the approved version over any draft, as Refine does', () => {
+    const versions = [version({ status: 'approved' }), version({ id: 'v2', version: 2 })]
+    expect(revise('v1', versions)).toEqual({ parentId: 'v1', steer: 'Type it.' })
+    expect(revise('v2', versions)).toEqual({ issue: 'revise the approved version, v1' })
+  })
+
+  it('refuses an older draft while a newer one waits', () => {
+    const versions = [version({}), version({ id: 'v2', version: 2 })]
+    expect(revise('v1', versions)).toEqual({ issue: 'revise the latest draft, v2' })
+  })
+
+  it("refuses another channel's version, another technique's and an unknown one", () => {
+    expect(revise('v1', [version({ channelId: 'elsewhere' })])).toEqual({
+      issue: 'this channel has no version v1',
+    })
+    expect(revise('v1', [version({ technique: 'lower-third' })])).toEqual({
+      issue: 'version v1 is a lower-third, not a typewriter',
+    })
+    expect(revise('gone', [version({})])).toEqual({ issue: 'this channel has no version gone' })
+  })
+
+  it("refuses a steer the app's own schema would refuse", () => {
+    const issue = `the steer is the owner's words, 1 to ${EXEMPLAR_STEER_MAX} characters`
+    expect(revise('v1', [version({})], '   ')).toEqual({ issue })
+    expect(revise('v1', [version({})], 'a'.repeat(EXEMPLAR_STEER_MAX + 1))).toEqual({ issue })
+    // --parent without --steer: the flag is absent.
+    const absent = revisionOf({
+      channelId: 'bb',
+      technique: 'typewriter',
+      parentId: 'v1',
+      steer: undefined,
+      versions: [version({})],
+    })
+    expect(absent).toEqual({ issue })
   })
 })
 

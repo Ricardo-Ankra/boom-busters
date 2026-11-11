@@ -4,7 +4,13 @@ import path from 'node:path'
 import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { Settings } from '@boom-busters/schemas'
-import { checkHandDesign, handEntry, parseHandFiles, type HandChecked } from '@/lib/exemplar-hand'
+import {
+  checkHandDesign,
+  handEntry,
+  parseHandFiles,
+  revisionOf,
+  type HandChecked,
+} from '@/lib/exemplar-hand'
 import { browserFrames } from '@/lib/graphic-code/frames'
 import { readRawFlags } from '@/lib/live-set-args'
 
@@ -26,6 +32,10 @@ import { readRawFlags } from '@/lib/live-set-args'
  *
  *     tsx --import ./scripts/stub-server-only.mjs --env-file=<.env.local> \
  *       scripts/hand-exemplar.ts upload --channel boom-busters --technique lower-third --dir <folder>
+ *
+ *   A revision of a stored version, made on the owner's note, adds
+ *   `--parent <version id> --steer "<the owner's words>"`: it is filed as the
+ *   app's Refine files one, beside its parent, with the steer recorded.
  */
 
 const ORIENTATIONS = ['landscape', 'portrait'] as const
@@ -107,29 +117,61 @@ async function main(): Promise<void> {
 
   if (mode === 'upload') {
     if (!raw.channel) throw new Error('--channel <slug> is required')
+    if (raw.steer !== undefined && !raw.parent) throw new Error('--steer needs --parent')
     // The app's database and storage, loaded only here: `check` runs without either.
     const { db } = await import('@/lib/db')
-    const { getChannelBySlug, insertExemplarVersion, updateExemplarDraft } =
-      await import('@boom-busters/db')
+    const {
+      getChannelBySlug,
+      insertExemplarVersion,
+      listChannelExemplars,
+      recordVerdict,
+      updateExemplarDraft,
+    } = await import('@boom-busters/db')
     const { loopChannel, photographVersion } = await import('@/inngest/lib/exemplar-loop')
+    // The connection stays open, so every way out of an upload ends the process.
+    function refuse(issue: string): never {
+      console.log(`REFUSED ${raw.technique}: ${issue}`)
+      process.exit(1)
+    }
     const channel = await getChannelBySlug(db, raw.channel)
     if (!channel) throw new Error(`no channel "${raw.channel}"`)
+    // A revision is filed as the app's Refine files one (--parent, --steer).
+    const revision = raw.parent
+      ? revisionOf({
+          channelId: channel.id,
+          technique: raw.technique,
+          parentId: raw.parent,
+          steer: raw.steer,
+          versions: await listChannelExemplars(db, channel.id),
+        })
+      : null
+    if (revision && 'issue' in revision) refuse(revision.issue)
     const { entry, plan, result } = await check(raw.technique, dir, channel.settings)
-    if ('issue' in result) {
-      console.log(`REFUSED ${raw.technique}: ${result.issue}`)
-      process.exitCode = 1
-      return
-    }
+    if ('issue' in result) refuse(result.issue)
     // Everything that can refuse runs before the first write: the loop's channel read
     // requires a complete bible, as a derivation does.
     const loop = await loopChannel(channel.id)
+    const filed = revision
     const row = await insertExemplarVersion(db, {
       channelId: channel.id,
       technique: raw.technique,
       plan,
       code: result.code,
+      ...(filed ? { parentId: filed.parentId, steer: filed.steer } : {}),
     })
-    console.log(`STORED ${raw.technique} v${row.version} (${row.id}) as a draft`)
+    if (filed) {
+      // The owner's steer on the parent, as the app's Refine records it.
+      await recordVerdict(db, {
+        channelId: channel.id,
+        kind: 'steer',
+        exemplarId: filed.parentId,
+        steer: filed.steer,
+      })
+    }
+    console.log(
+      `STORED ${raw.technique} v${row.version} (${row.id}) as a draft` +
+        (filed ? `, revising ${filed.parentId} with the steer recorded` : ''),
+    )
     try {
       const photographed = await photographVersion({
         channel: loop,
