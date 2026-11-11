@@ -83,6 +83,58 @@ describe('compileShortTimeline', () => {
     expect(short.captions.words[0]!.startMs).toBeGreaterThanOrEqual(0)
   })
 
+  describe('a paragraph the reading pause split', () => {
+    /** Paragraph 1 (8700..14700) cut into 8700..11700 and 12700..15700, a 1000ms pause between. */
+    function splitMaster(): Timeline {
+      const master = JSON.parse(JSON.stringify(goldenMaster())) as Timeline
+      const index = master.narration.findIndex(
+        (segment) => segment.chapterId === CHAPTER_ONE && segment.paragraphIndex === 1,
+      )
+      const whole = master.narration[index]!
+      master.narration.splice(
+        index,
+        1,
+        { ...whole, startMs: 8700, durationMs: 3000 },
+        { ...whole, startMs: 12_700, durationMs: 3000, trimStartMs: 3000 },
+      )
+      return master
+    }
+
+    it('slices a window holding a split paragraph', () => {
+      const master = splitMaster()
+      const short = compileShortTimeline({
+        master,
+        segmentRef: { chapterId: CHAPTER_ONE, fromParagraph: 0, toParagraph: 1 },
+        ending: 'loop',
+        music: null,
+      })
+      expect(short.narration.map((s) => [s.paragraphIndex, s.startMs, s.durationMs])).toEqual([
+        [0, 0, 8000],
+        [1, 8700, 3000],
+        [1, 12_700, 3000],
+      ])
+      expect(short.narration[1]!.trimStartMs).toBeUndefined()
+      expect(short.narration[2]!.trimStartMs).toBe(3000)
+      expect(timelineDurationMs(short)).toBe(15_700)
+      // Every master word inside the window lands, re-clocked, on the Short.
+      const masterWords = master.captions.words.filter((word) => word.startMs < 15_700)
+      expect(short.captions.words.map((word) => word.startMs)).toEqual(
+        masterWords.map((word) => word.startMs),
+      )
+    })
+
+    it('still refuses a window missing a paragraph', () => {
+      expect(() =>
+        compileShortTimeline({
+          master: splitMaster(),
+          segmentRef: { chapterId: CHAPTER_ONE, fromParagraph: 0, toParagraph: 9 },
+          ending: 'loop',
+          music: null,
+        }),
+      ).toThrow(/narration segment/)
+    })
+  })
+
   it('takes its captions from the Short, never from the master (decision 326)', () => {
     const base = {
       master: withCaptions(goldenMaster(), false),
