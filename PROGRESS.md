@@ -5073,7 +5073,12 @@ The nine findings the final review parked, plus the flaky test (decision 453):
         uploaded; the fourth review's verdict was "fix, close to shipping":
         lift the end ring clear of the axis, a larger 16:9 plot, values a
         step brighter. The reviewed version is in `docs/exemplars`.
-  - [ ] quote-card (a derived draft)
+  - [ ] quote-card (a derived draft): stopped at the four-round cap, not
+        uploaded; the fourth review's verdict was "fix, small and specific":
+        the attribution a step brighter and larger, the rule landing as THE
+        is spoken, a closing mark matched to the opening one, the step-back
+        on "chairman", a larger 9:16 quote. The reviewed version is in
+        `docs/exemplars`.
   - [ ] split-screen (a derived draft)
 - [x] First batch uploaded to production as drafts on the owner's go-ahead
       (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
