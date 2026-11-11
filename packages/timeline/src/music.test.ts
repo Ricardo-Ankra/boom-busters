@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { compileTimeline } from './compile'
-import { goldenInput, threeChapterInput } from './compile.test'
+import { CHAPTER_OVERLAP_MS, compileTimeline } from './compile'
+import { CHAPTER_TWO, goldenInput, threeChapterInput } from './compile.test'
 import { chapterCuePoints, swapMusicBed } from './music'
 
 describe('swapMusicBed', () => {
@@ -82,7 +82,7 @@ describe('chapterCuePoints', () => {
     }
     expect(chapterCuePoints(withCards).map((c) => c.tMs)).toEqual([0, 15_500])
     const cardless = { ...legacy, overlays: [] }
-    expect(chapterCuePoints(cardless).map((c) => c.tMs)).toEqual([0, 17_800])
+    expect(chapterCuePoints(cardless).map((c) => c.tMs)).toEqual([0, 18_250])
   })
 
   it('swapMusicBed on a none-mode timeline compiled without a bed lands the cue at the lead point', () => {
@@ -106,5 +106,35 @@ describe('chapterCuePoints', () => {
     expect(chapterCuePoints(timeline).map((c) => c.tMs)).toEqual(
       timeline.music?.cuePoints.map((c) => c.tMs),
     )
+  })
+
+  it('cues music at an old 3200 ms card', () => {
+    const compiled = compileTimeline(goldenInput())
+    const old = {
+      ...compiled,
+      narration: compiled.narration.map((segment, i) =>
+        i === 2 ? { ...segment, startMs: 15_500 + 3200 - CHAPTER_OVERLAP_MS } : segment,
+      ),
+      overlays: [
+        {
+          kind: 'chapterCard' as const,
+          startMs: 15_500,
+          durationMs: 3200,
+          props: { index: 2, title: 'The collapse' },
+        },
+      ],
+    }
+    expect(chapterCuePoints(old).map((c) => c.tMs)).toEqual([0, 15_500])
+  })
+
+  it('cues music at a lengthened card', () => {
+    const input = goldenInput()
+    input.paragraphs = input.paragraphs.map((p) =>
+      p.chapterId === CHAPTER_TWO ? { ...p, chapterTitle: "The Money That Wasn't There" } : p,
+    )
+    const timeline = compileTimeline(input)
+    expect(timeline.overlays[0]!.durationMs).toBe(4400)
+    expect(chapterCuePoints(timeline).map((c) => c.tMs)).toEqual([0, 15_500])
+    expect(chapterCuePoints(timeline)).toEqual(timeline.music?.cuePoints)
   })
 })

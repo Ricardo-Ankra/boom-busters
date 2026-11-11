@@ -1,5 +1,9 @@
 import {
   canonicalTimelineIssues,
+  CARD_MIN_MS,
+  CARD_OVERLAP_MS,
+  cardDurationMs,
+  cardWords,
   SHORT_RULES,
   TIMELINE_VERSION,
   TimelineSchema,
@@ -8,6 +12,7 @@ import {
 import type {
   BrandKitTokens,
   Caption,
+  CardCode,
   ChapterMarking,
   ChartBrief,
   GraphicCodePayload,
@@ -128,6 +133,15 @@ export interface CompileInput {
   chapterMarking: ChapterMarking
   /** The film's title; `title` marking shows it once, at the second chapter. */
   filmTitle: string
+  /**
+   * Exemplar code for the chapter and title cards. The compiler adds the
+   * words and the length, which depend on the title. Absent means the
+   * composition's built-in card.
+   */
+  cardCode?: {
+    chapter?: Omit<CardCode, 'words' | 'durationMs'>
+    title?: Omit<CardCode, 'words' | 'durationMs'>
+  }
   fps?: number
   width?: number
   height?: number
@@ -182,7 +196,7 @@ export const MASTER_HEIGHT = 1080
 // ---------------------------------------------------------------------------
 
 /** How long a chapter card holds the screen. */
-export const CHAPTER_CARD_MS = 3200
+export const CHAPTER_CARD_MS = CARD_MIN_MS
 /** Silence between a chapter's last word and the next card's first frame. */
 export const CHAPTER_LEAD_MS = 800
 /**
@@ -199,7 +213,7 @@ export const CHAPTER_HOLD_MS = 1400
  * chapter's first visual happens out of sight and the slow fade-out lands on
  * the image the new words are about — never on leftover footage.
  */
-export const CHAPTER_OVERLAP_MS = 900
+export const CHAPTER_OVERLAP_MS = CARD_OVERLAP_MS
 /**
  * The cut's own breath between paragraphs; [pause] tags are the narrator's.
  *
@@ -258,30 +272,51 @@ export function compileTimelineWithReport(input: CompileInput): {
         const leadMs = oldClock + shift + CHAPTER_LEAD_MS
         const marking = input.chapterMarking
         switch (marking) {
-          case 'cards':
+          case 'cards': {
+            const durationMs = cardDurationMs(paragraph.chapterTitle)
             overlayParagraph.push({
               overlay: {
                 kind: 'chapterCard',
                 startMs: leadMs,
-                durationMs: CHAPTER_CARD_MS,
+                durationMs,
                 props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
+                ...(input.cardCode?.chapter
+                  ? {
+                      code: {
+                        ...input.cardCode.chapter,
+                        words: cardWords(paragraph.chapterTitle),
+                        durationMs,
+                      },
+                    }
+                  : {}),
               },
               paragraph: paragraphIndex,
             })
-            shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+            shift += CHAPTER_LEAD_MS + durationMs - CHAPTER_OVERLAP_MS
             break
+          }
           case 'title':
             if (chapters.length === 2) {
+              const durationMs = cardDurationMs(input.filmTitle)
               overlayParagraph.push({
                 overlay: {
                   kind: 'titleCard',
                   startMs: leadMs,
-                  durationMs: CHAPTER_CARD_MS,
+                  durationMs,
                   props: { title: input.filmTitle },
+                  ...(input.cardCode?.title
+                    ? {
+                        code: {
+                          ...input.cardCode.title,
+                          words: cardWords(input.filmTitle),
+                          durationMs,
+                        },
+                      }
+                    : {}),
                 },
                 paragraph: paragraphIndex,
               })
-              shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+              shift += CHAPTER_LEAD_MS + durationMs - CHAPTER_OVERLAP_MS
             } else {
               shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
             }

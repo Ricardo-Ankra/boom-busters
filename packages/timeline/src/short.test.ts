@@ -101,10 +101,10 @@ describe('compileShortTimeline', () => {
 
   it('clips a straddling slot and trims a clipped video into its source', () => {
     const master = goldenMaster()
-    // Chapter two starts at 20100; the chart slot (20100..24100) is inside,
+    // Chapter two starts at 20550; the chart slot (20550..) is inside,
     // and we stretch the opening video slot to straddle the boundary.
     const stretched = JSON.parse(JSON.stringify(master)) as Timeline
-    stretched.slots[0]!.durationMs = 19_400 // video now runs 2300..21700
+    stretched.slots[0]!.durationMs = 19_850 // video now runs 2300..22150
     const short = compileShortTimeline({
       master: stretched,
       segmentRef: { chapterId: CHAPTER_TWO, fromParagraph: 0, toParagraph: 0 },
@@ -113,10 +113,10 @@ describe('compileShortTimeline', () => {
     })
     const video = short.slots[0]!
     expect(video.startMs).toBe(0)
-    expect(video.durationMs).toBe(1600) // 20100..21700 clipped to the window
+    expect(video.durationMs).toBe(1600) // 20550..22150 clipped to the window
     expect(video.payload.kind).toBe('video')
     if (video.payload.kind === 'video') {
-      expect(video.payload.trimStartMs).toBe(17_800) // skips what already played
+      expect(video.payload.trimStartMs).toBe(18_250) // skips what already played
     }
   })
 

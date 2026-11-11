@@ -3,13 +3,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   canonicalTimelineIssues,
+  cardDurationMs,
+  cardWords,
   DEFAULT_SETTINGS,
   resolveBrandKit,
   timelineDurationMs,
 } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import {
-  CHAPTER_CARD_MS,
   CHAPTER_HOLD_MS,
   CHAPTER_LEAD_MS,
   CHAPTER_OVERLAP_MS,
@@ -27,7 +28,7 @@ import { DEFAULT_RISE_THRESHOLD_MS } from './ducking'
 import { offsetCaptions, snapToScript } from './snap'
 
 const CHAPTER_ONE = '01HQ0000000000000000000CH1'
-const CHAPTER_TWO = '01HQ0000000000000000000CH2'
+export const CHAPTER_TWO = '01HQ0000000000000000000CH2'
 export const CHAPTER_THREE = '01HQ0000000000000000000CH3'
 const CLAIM = '01HQ00000000000000000000AA'
 
@@ -250,8 +251,8 @@ describe('compileTimeline', () => {
 
   it('opens on the first word: narration starts at 0 and no card precedes it (decision 457)', () => {
     const timeline = compileTimeline(goldenInput())
-    expect(timeline.narration.map((s) => s.startMs)).toEqual([0, 8700, 17_800])
-    expect(timelineDurationMs(timeline)).toBe(24_800)
+    expect(timeline.narration.map((s) => s.startMs)).toEqual([0, 8700, 18_250])
+    expect(timelineDurationMs(timeline)).toBe(25_250)
     expect(timeline.overlays.map((o) => o.startMs)).toEqual([15_500])
     expect(timeline.chapters).toEqual([
       { id: CHAPTER_ONE, title: 'The audit' },
@@ -265,11 +266,13 @@ describe('compileTimeline', () => {
       {
         kind: 'chapterCard',
         startMs: 15_500,
-        durationMs: CHAPTER_CARD_MS,
+        durationMs: cardDurationMs('The collapse'),
         props: { index: 2, title: 'The collapse' },
       },
     ])
-    expect(timeline.narration[2]!.startMs).toBe(15_500 + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS)
+    expect(timeline.narration[2]!.startMs).toBe(
+      15_500 + cardDurationMs('The collapse') - CHAPTER_OVERLAP_MS,
+    )
     expect(timeline.music?.cuePoints.map((c) => c.tMs)).toEqual([0, 15_500])
   })
 
@@ -302,7 +305,7 @@ describe('compileTimeline', () => {
       {
         kind: 'titleCard',
         startMs: 15_500,
-        durationMs: CHAPTER_CARD_MS,
+        durationMs: cardDurationMs('The Wirecard Hole'),
         props: { title: 'The Wirecard Hole' },
       },
     ])
@@ -326,6 +329,65 @@ describe('compileTimeline', () => {
     }
   })
 
+  it('cardWords times each title word at the silent reading pace', () => {
+    expect(cardWords("The Money That Wasn't There")).toEqual([
+      { text: 'The', atMs: 300 },
+      { text: 'Money', atMs: 550 },
+      { text: 'That', atMs: 800 },
+      { text: "Wasn't", atMs: 1050 },
+      { text: 'There', atMs: 1300 },
+    ])
+  })
+
+  it('cardDurationMs: a one-word card passes the floor, a five-word title is longer', () => {
+    expect(cardDurationMs('Fraud')).toBe(3400)
+    expect(cardDurationMs("The Money That Wasn't There")).toBe(4400)
+  })
+
+  it('lengthens a chapter break for a long title', () => {
+    const title = "The Money That Wasn't There"
+    const input = goldenInput()
+    input.paragraphs = input.paragraphs.map((p) =>
+      p.chapterId === CHAPTER_TWO ? { ...p, chapterTitle: title } : p,
+    )
+    const timeline = compileTimeline(input)
+    const card = timeline.overlays[0]!
+    expect(card.durationMs).toBe(cardDurationMs(title))
+    expect(card.durationMs).toBe(4400)
+    expect(timeline.narration[2]!.startMs).toBe(card.startMs + card.durationMs - CHAPTER_OVERLAP_MS)
+  })
+
+  it('attaches card code with reading-paced words', () => {
+    const chapter = { version: 1, compiled: 'export default 1', title: 'The collapse' }
+    const timeline = compileTimeline({ ...goldenInput(), cardCode: { chapter } })
+    const card = timeline.overlays[0]!
+    expect(card.kind).toBe('chapterCard')
+    if (card.kind !== 'chapterCard') return
+    expect(card.code).toEqual({
+      ...chapter,
+      words: cardWords('The collapse'),
+      durationMs: card.durationMs,
+    })
+    expect(compileTimeline(goldenInput()).overlays[0]).not.toHaveProperty('code')
+  })
+
+  it('title card uses the title code, and carries none without it', () => {
+    const title = { version: 1, compiled: 'export default 2', title: 'The Wirecard Hole' }
+    const withCode = compileTimeline(
+      threeChapterInput({ chapterMarking: 'title', cardCode: { title } }),
+    )
+    const card = withCode.overlays[0]!
+    expect(card.kind).toBe('titleCard')
+    if (card.kind !== 'titleCard') return
+    expect(card.code).toEqual({
+      ...title,
+      words: cardWords('The Wirecard Hole'),
+      durationMs: card.durationMs,
+    })
+    const without = compileTimeline(threeChapterInput({ chapterMarking: 'title' }))
+    expect(without.overlays[0]).not.toHaveProperty('code')
+  })
+
   it('breathes between paragraphs and pauses before a chapter card', () => {
     const timeline = compileTimeline(goldenInput())
     const [first, second, third] = timeline.narration
@@ -335,7 +397,7 @@ describe('compileTimeline', () => {
     // narration resumes while the card is still opaque.
     const card = timeline.overlays[0]!
     expect(card.startMs).toBe(second!.startMs + second!.durationMs + CHAPTER_LEAD_MS)
-    expect(third!.startMs).toBe(card.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS)
+    expect(third!.startMs).toBe(card.startMs + card.durationMs - CHAPTER_OVERLAP_MS)
   })
 
   it('shifts and stretches the other tracks by the same clock', () => {

@@ -101,7 +101,7 @@
     },
     {
       "r2Key": "boom-busters/voice/ch2-p0.wav",
-      "startMs": 17800,
+      "startMs": 18250,
       "durationMs": 7000,
       "chapterId": "01HQ0000000000000000000CH2",
       "paragraphIndex": 0
@@ -124,19 +124,19 @@
         "gainDb": -25
       },
       {
-        "tMs": 17600,
+        "tMs": 18050,
         "gainDb": -25
       },
       {
-        "tMs": 17800,
+        "tMs": 18250,
         "gainDb": -37
       },
       {
-        "tMs": 24800,
+        "tMs": 25250,
         "gainDb": -37
       },
       {
-        "tMs": 25400,
+        "tMs": 25850,
         "gainDb": -25
       }
     ],
@@ -260,44 +260,44 @@
       },
       {
         "text": "The",
-        "startMs": 17800,
-        "endMs": 18150,
-        "timestampMs": 17975,
+        "startMs": 18250,
+        "endMs": 18600,
+        "timestampMs": 18425,
         "confidence": null
       },
       {
         "text": "shares",
-        "startMs": 18200,
-        "endMs": 18550,
-        "timestampMs": 18375,
+        "startMs": 18650,
+        "endMs": 19000,
+        "timestampMs": 18825,
         "confidence": null
       },
       {
         "text": "collapsed",
-        "startMs": 18600,
-        "endMs": 18950,
-        "timestampMs": 18775,
+        "startMs": 19050,
+        "endMs": 19400,
+        "timestampMs": 19225,
         "confidence": null
       },
       {
         "text": "in",
-        "startMs": 19000,
-        "endMs": 19350,
-        "timestampMs": 19175,
+        "startMs": 19450,
+        "endMs": 19800,
+        "timestampMs": 19625,
         "confidence": null
       },
       {
         "text": "nine",
-        "startMs": 19400,
-        "endMs": 19750,
-        "timestampMs": 19575,
+        "startMs": 19850,
+        "endMs": 20200,
+        "timestampMs": 20025,
         "confidence": null
       },
       {
         "text": "days.",
-        "startMs": 19800,
-        "endMs": 20150,
-        "timestampMs": 19975,
+        "startMs": 20250,
+        "endMs": 20600,
+        "timestampMs": 20425,
         "confidence": null
       }
     ],
@@ -325,7 +325,7 @@
     {
       "type": "still",
       "startMs": 8700,
-      "durationMs": 9100,
+      "durationMs": 9550,
       "transition": "dissolve",
       "motion": {
         "kind": "kenburns",
@@ -343,7 +343,7 @@
     },
     {
       "type": "chart",
-      "startMs": 17800,
+      "startMs": 18250,
       "durationMs": 4000,
       "transition": "cut",
       "motion": {
@@ -377,7 +377,7 @@
     },
     {
       "type": "map",
-      "startMs": 21800,
+      "startMs": 22250,
       "durationMs": 3000,
       "transition": "dissolve",
       "motion": {
@@ -405,7 +405,7 @@
     {
       "kind": "chapterCard",
       "startMs": 15500,
-      "durationMs": 3200,
+      "durationMs": 3650,
       "props": {
         "index": 2,
         "title": "The collapse"
