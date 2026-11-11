@@ -34,9 +34,23 @@ export type AnswerComplete = (
   call: AnswerCall,
 ) => Promise<{ text: string; truncated?: boolean }>
 
+/**
+ * The second call a failed first answer earns, and why (decision 461): what
+ * `firstOnly` hands back so a caller can make it in a step of its own, and
+ * what `resume` takes to make it there.
+ */
+export type AnswerRetry = { call: Exclude<AnswerCall, 'answer'>; issue: string }
+
 export type Answer<T> =
   | { ok: true; value: T; calls: 1 | 2; repairs?: Repair[] }
-  | { ok: false; issue: string; calls: 1 | 2; declined?: true }
+  | {
+      ok: false
+      issue: string
+      calls: 1 | 2
+      declined?: true
+      /** With `firstOnly`: the retry still due, for the caller to make. */
+      retry?: AnswerRetry
+    }
 
 export const ANSWER_CUT_OFF = 'the answer was cut off at its length limit'
 
@@ -78,6 +92,14 @@ type AnswerInput<T> = {
   cutOffIssue?: string
   /** Plain text: a reply flagged as truncated is a cut-off even when it parses. */
   truncatedIsCutOff?: boolean
+  /**
+   * Stop after a failed first answer and hand back the retry it earned, not
+   * make it (decision 461): a caller whose two answers cannot share one step's
+   * time makes the retry in a step of its own, through `resume`.
+   */
+  firstOnly?: boolean
+  /** Make only this retry, the first answer having been made and failed in an earlier step. */
+  resume?: AnswerRetry
 }
 
 const refused = (issue: string, cutOff = false): Attempt<never> => ({
@@ -139,28 +161,34 @@ function stopped(issue: string, calls: 1 | 2, declined: boolean): Answer<never> 
 
 export async function callForAnswer<T>(input: AnswerInput<T>): Promise<Answer<T>> {
   const cutOffIssue = input.cutOffIssue ?? ANSWER_CUT_OFF
-  const first = await attempt(input, input.request, 'answer')
-  if (first.ok) return landed(first, 1)
-  if (first.final) return stopped(first.issue, 1, first.declined)
 
-  let retry: LLMTaskRequest
-  let call: AnswerCall
-  if (first.cutOff) {
-    // The same budget is cut off at the same place; only a bigger one can help.
-    if (input.request.maxTokens >= MAX_OUTPUT_TOKENS) return stopped(cutOffIssue, 1, false)
-    retry = {
-      ...input.request,
-      maxTokens: Math.min(MAX_OUTPUT_TOKENS, input.request.maxTokens * 2),
-    }
-    call = 'retry: cut off'
+  let due: AnswerRetry
+  if (input.resume) {
+    due = input.resume
   } else {
-    retry = input.retryWithReason
-      ? input.retryWithReason(first.issue)
-      : withRefusal(input.request, first.issue)
-    call = 'retry: refused'
+    const first = await attempt(input, input.request, 'answer')
+    if (first.ok) return landed(first, 1)
+    if (first.final) return stopped(first.issue, 1, first.declined)
+    // The same budget is cut off at the same place; only a bigger one can help.
+    if (first.cutOff && input.request.maxTokens >= MAX_OUTPUT_TOKENS) {
+      return stopped(cutOffIssue, 1, false)
+    }
+    due = first.cutOff
+      ? { call: 'retry: cut off', issue: first.issue }
+      : { call: 'retry: refused', issue: first.issue }
+    if (input.firstOnly) {
+      return { ok: false, issue: first.cutOff ? cutOffIssue : first.issue, calls: 1, retry: due }
+    }
   }
 
-  const second = await attempt(input, retry, call)
+  const retry: LLMTaskRequest =
+    due.call === 'retry: cut off'
+      ? { ...input.request, maxTokens: Math.min(MAX_OUTPUT_TOKENS, input.request.maxTokens * 2) }
+      : input.retryWithReason
+        ? input.retryWithReason(due.issue)
+        : withRefusal(input.request, due.issue)
+
+  const second = await attempt(input, retry, due.call)
   if (second.ok) return landed(second, 2)
   return stopped(second.cutOff ? cutOffIssue : second.issue, 2, second.declined)
 }

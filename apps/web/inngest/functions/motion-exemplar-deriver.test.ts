@@ -147,7 +147,7 @@ describeDb('motion-exemplar-deriver', () => {
       capUsd,
       propose,
     })
-    const { result } = await engine.execute({
+    const { result, ctx } = await engine.execute({
       events: [
         {
           name: 'motion/exemplars.derive',
@@ -155,7 +155,10 @@ describeDb('motion-exemplar-deriver', () => {
         },
       ],
     })
-    return { row, result, after: (await getDerivation(db, row.id))! }
+    /** The ids of the steps the run made, in order. */
+    const steps = () =>
+      vi.mocked(ctx.step.run as unknown as (id: string) => unknown).mock.calls.map(([id]) => id)
+    return { row, result, steps, after: (await getDerivation(db, row.id))! }
   }
 
   beforeEach(async () => {
@@ -539,6 +542,76 @@ describeDb('motion-exemplar-deriver', () => {
       expect(version?.refusal).toBe(SMALL)
       expect(version?.code.compiled.length).toBeGreaterThan(0)
       expect(version?.critique).toBeNull()
+    })
+
+    describe('the retry in a step of its own (decision 461)', () => {
+      const SMALL =
+        'at 3.6 s in landscape, "Sales" is set at 24 px, too small to read on a phone; set it at least 32 px'
+
+      it('makes the retry after a refused build in its own step, and stores the design it passes', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        // The first answer's check refuses, the retry's passes, the photograph has no rest shot.
+        inspect
+          .mockResolvedValueOnce({ ...framed(), layoutIssue: SMALL })
+          .mockResolvedValueOnce(framed())
+          .mockResolvedValueOnce(framed())
+        callLlm
+          .mockResolvedValueOnce(storyboard())
+          .mockResolvedValueOnce(design())
+          .mockResolvedValueOnce(design())
+        const { after, steps } = await launch(['stat-counter'])
+        const ids = steps()
+        expect(ids).toContain('stat-counter/build')
+        expect(ids.indexOf('stat-counter/build-retry')).toBe(ids.indexOf('stat-counter/build') + 1)
+        expect(callLlm).toHaveBeenCalledTimes(3)
+        expect(callLlm.mock.calls[2]![1]).toMatchObject({ purpose: 'retry: refused' })
+        // The reason sits before the producer's steer, which stays the last thing read.
+        const sentRetry = (callLlm.mock.calls[2]![0].messages as { content: string }[])
+          .map((message) => message.content)
+          .join('\n')
+        expect(sentRetry).toContain(SMALL)
+        expect(after.progress[0]).toMatchObject({
+          state: 'no-frames',
+          reason: 'the browser returned no rest shot',
+        })
+        const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+        expect(version?.refusal).toBeNull()
+        expect(await listChannelExemplars(db, FIRST_CHANNEL_ID)).toHaveLength(1)
+      })
+
+      it("keeps the first answer's near miss when the retry is refused on a static check", async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        inspect.mockResolvedValueOnce({ ...framed(), layoutIssue: SMALL })
+        callLlm
+          .mockResolvedValueOnce(storyboard())
+          .mockResolvedValueOnce(design())
+          .mockResolvedValueOnce({ text: 'not a design' })
+        const { after } = await launch(['stat-counter'])
+        expect(callLlm).toHaveBeenCalledTimes(3)
+        expect(after.progress[0]!.state).toBe('refused')
+        // Why the build stopped is the retry's refusal; the draft's refusal is what to fix.
+        expect(after.progress[0]!.reason).not.toBe(SMALL)
+        const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+        expect(version?.status).toBe('draft')
+        expect(version?.refusal).toBe(SMALL)
+        expect(version?.code.compiled.length).toBeGreaterThan(0)
+      })
+
+      it("keeps the first answer's near miss when the retry's call fails", async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        inspect.mockResolvedValueOnce({ ...framed(), layoutIssue: SMALL })
+        callLlm
+          .mockResolvedValueOnce(storyboard())
+          .mockResolvedValueOnce(design())
+          .mockRejectedValueOnce(new Error('the provider is down'))
+        const { after } = await launch(['stat-counter'])
+        expect(after.progress[0]).toMatchObject({
+          state: 'refused',
+          reason: 'the provider is down',
+        })
+        const version = await exemplarVersionById(db, after.progress[0]!.versionId!)
+        expect(version?.refusal).toBe(SMALL)
+      })
     })
 
     it("says why there are no frames in the browser's own words, cut at 500 characters (decision 445)", async () => {

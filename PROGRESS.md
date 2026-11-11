@@ -11326,3 +11326,27 @@ owner edits. `--prod` was not run against Neon.
      back in time. Project cards and the Derive card read the same issue.
      (d) Diagnosis only: the deadline and the ladder are unchanged. The next
      derive's ledger rows decide the fix (decision to follow).
+461. **The derive's build retry in a step of its own; a near miss outlives the
+     clock** (2026-11-11, branch `worktree-llm-ledger-diagnostics`, no
+     migration: a Vercel deploy and `PUT /api/inngest`).
+     (a) Decision 460's ledger read the KPI counter derive: the storyboard took
+     25 s, the designer's first answer 133 s (14,285 output tokens for 10,944
+     characters of answer, so about 80% thinking), the browser refused "Sales"
+     at 24 px, and the retry started with about 100 s left and was aborted.
+     Two Opus answers never fit the designer's 240 s.
+     (b) `callForAnswer` gains `firstOnly` (stop after a failed first answer and
+     hand back the retry it earned as `retry`) and `resume` (make only that
+     retry). `designGraphicWith` and `buildFromPlan` pass both through.
+     (c) The deriver's `build` step makes the first answer only; a retry due
+     runs in `<technique>/build-retry` with a fresh 240 s. A run parked on the
+     old `build` step replays its old output, which carries no `retry`, so it
+     goes on as before.
+     (d) A near miss is kept on every failure path: the designer returns it when
+     the clock ends the design too, and the retry step keeps the first answer's
+     near miss when the retry is refused, fails, or hits the cap. The progress
+     reason is why the build stopped; the draft's `refusal` is what to fix.
+     (e) Unchanged: the critic's fix step and Refine still run the whole ladder
+     in one step, so their retry rarely fits either; the project pipeline's
+     designer is untouched. An aborted call's reservation is still released
+     (no ledger row), so a cancelled request Anthropic may bill is not
+     counted.

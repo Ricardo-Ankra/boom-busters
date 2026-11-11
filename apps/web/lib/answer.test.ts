@@ -212,6 +212,80 @@ describe('callForAnswer (decision 292)', () => {
   })
 })
 
+describe('the retry in a step of its own (decision 461)', () => {
+  it('firstOnly stops after a refused first answer and hands back the retry it earned', async () => {
+    const complete = answers('bad')
+    expect(await callForAnswer({ request, parse, complete, firstOnly: true })).toEqual({
+      ok: false,
+      issue: 'bad answer: bad',
+      calls: 1,
+      retry: { call: 'retry: refused', issue: 'bad answer: bad' },
+    })
+    expect(complete).toHaveBeenCalledTimes(1)
+  })
+
+  it('firstOnly hands back a cut-off as the doubled retry, with the cut-off issue', async () => {
+    const complete = answers('cut')
+    expect(
+      await callForAnswer({ request, parse, complete, firstOnly: true, cutOffIssue: 'CUT' }),
+    ).toEqual({
+      ok: false,
+      issue: 'CUT',
+      calls: 1,
+      retry: { call: 'retry: cut off', issue: 'cut off mid-answer' },
+    })
+  })
+
+  it('firstOnly takes a good first answer as usual, and earns no retry at the cap', async () => {
+    expect(
+      await callForAnswer({ request, parse, complete: answers('good'), firstOnly: true }),
+    ).toEqual({ ok: true, value: 'parsed', calls: 1 })
+    const atCap = await callForAnswer({
+      request: { ...request, maxTokens: MAX_OUTPUT_TOKENS },
+      parse,
+      complete: answers('cut'),
+      firstOnly: true,
+    })
+    expect(atCap).toEqual({ ok: false, issue: ANSWER_CUT_OFF, calls: 1 })
+  })
+
+  it('resume makes only the refused retry, with the reason, and its outcome is final', async () => {
+    const complete = answers('good')
+    const resumed = await callForAnswer({
+      request,
+      parse,
+      complete,
+      resume: { call: 'retry: refused', issue: 'bad answer: bad' },
+    })
+    expect(resumed).toEqual({ ok: true, value: 'parsed', calls: 2 })
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(complete.mock.calls[0]![1]).toBe('retry: refused')
+    expect(JSON.stringify(complete.mock.calls[0]![0])).toContain('bad answer: bad')
+
+    const again = answers('worse')
+    expect(
+      await callForAnswer({
+        request,
+        parse,
+        complete: again,
+        resume: { call: 'retry: refused', issue: 'bad answer: bad' },
+      }),
+    ).toEqual({ ok: false, issue: 'bad answer: worse', calls: 2 })
+    expect(again).toHaveBeenCalledTimes(1)
+  })
+
+  it('resume makes the cut-off retry at double the budget', async () => {
+    const complete = answers('good')
+    await callForAnswer({
+      request,
+      parse,
+      complete,
+      resume: { call: 'retry: cut off', issue: 'cut off mid-answer' },
+    })
+    expect(complete.mock.calls[0]).toEqual([{ ...request, maxTokens: 2000 }, 'retry: cut off'])
+  })
+})
+
 describe('answerOrStop (decision 292)', () => {
   it('returns the value of an answer', () => {
     expect(answerOrStop({ ok: true, value: 7, calls: 1 }, 'The outline')).toBe(7)
