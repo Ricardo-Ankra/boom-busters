@@ -1,0 +1,30 @@
+{
+  "slot": {
+    "intent": "What they said, set against what they did.",
+    "words": [
+      { "text": "What", "atMs": 0 },
+      { "text": "they", "atMs": 857 },
+      { "text": "said,", "atMs": 1714 },
+      { "text": "against", "atMs": 2571 },
+      { "text": "what", "atMs": 3429 },
+      { "text": "they", "atMs": 4286 },
+      { "text": "did.", "atMs": 5143 }
+    ]
+  },
+  "concept": "One claim builds at the centre; the pivot word lands, folds into a dashed seam that splits the frame, and the second claim builds opposite, the same red mark on both verbs.",
+  "storyboard": [
+    "0.0 s, on \"What\": the first claim builds word by word at the centre in heavy sentence case, grey settling to off white",
+    "1.7 s, on \"said,\": said lands and a flat red highlighter sweeps behind it in one stroke",
+    "2.6 s, on \"against\": the pivot lands under the claim at the claim's size in off white and holds its own beat",
+    "3.15 s: the claim slides aside into its half as against closes from both ends to a sliver at its centre, and the dashed seam grows out of the sliver across the frame",
+    "3.4 s, on \"what\": the second claim builds in the other half, the same gap from the seam as the first, which steps back to mid grey, its red mark kept",
+    "5.1 s, on \"did.\": did lands and the same red highlighter sweeps behind it, so the halves mirror each other; a full hold to the end"
+  ],
+  "mechanisms": ["foreground-becomes-transition", "word-splits-open", "cause-to-effect"],
+  "leansOn": [
+    {
+      "title": "Chapter title (this channel's approved version)",
+      "why": "Words build grey to off white as spoken, and one flat red highlighter sweep marks the key word as it lands."
+    }
+  ]
+}

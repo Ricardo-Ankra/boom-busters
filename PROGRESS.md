@@ -5079,7 +5079,12 @@ The nine findings the final review parked, plus the flaky test (decision 453):
         is spoken, a closing mark matched to the opening one, the step-back
         on "chairman", a larger 9:16 quote. The reviewed version is in
         `docs/exemplars`.
-  - [ ] split-screen (a derived draft)
+  - [ ] split-screen (a derived draft): stopped at the four-round cap, not
+        uploaded; the fourth review's verdict was "fix": the pivot's
+        collapse too short and bunched with the slide and the seam (start
+        the fold earlier and lengthen it, the slide a beat after), the pivot
+        to rise like the other words. The reviewed version is in
+        `docs/exemplars`.
 - [x] First batch uploaded to production as drafts on the owner's go-ahead
       (2026-11-11): lower-third, progress-bars and typewriter, each v1 at cost
       0, with 8 shots and 2 sheets each in R2. Read back read-only: every key
@@ -11451,3 +11456,12 @@ owner edits. `--prod` was not run against Neon.
      "it doesn't typewrite at all?"), and figures in one set share one size
      (on the progress bars' golden-ratio key figure: "It should be the same
      size").
+     (e) The second batch (2026-11-11, owner: "Please now do all the
+     remaining techniques"): the brief goes design-first at the owner's own
+     suggestion (design to taste, infer the written rules from the approved
+     set afterwards), so the style guide and never list are background while
+     the brand, the timings, the owner's steers and rulings and the placement
+     facts stay fixed; each technique is uploaded as soon as a fresh reviewer
+     says ship (the owner's standing go-ahead for the batch); a technique
+     that has not reached ship after four rounds is kept in `docs/exemplars`
+     with its last verdict and not uploaded. Four of the seven shipped.
