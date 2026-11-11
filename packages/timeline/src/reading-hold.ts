@@ -95,6 +95,12 @@ export function planReadingPauses(input: PlanReadingPausesInput): {
     } else {
       cutMs = Math.round((last.endMs + following.startMs) / 2)
     }
+    // The next shot starts before the cut (it was never anchored to a word), so
+    // the pause would play as dead air under it and the hold would not be given.
+    if (cutMs > next) {
+      report.overlapped += 1
+      return
+    }
     const pauseMs = Math.min(shortfall, READING_PAUSE_CAP_MS)
     pauses.push({ slotIndex: index, cutMs, pauseMs, paragraphEnd })
     report.pauses += 1

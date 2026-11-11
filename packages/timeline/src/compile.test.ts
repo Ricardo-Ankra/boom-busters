@@ -747,6 +747,17 @@ describe('the reading pause', () => {
     expect(held.overlays[0]!.startMs).toBe(plain.overlays[0]!.startMs + 3000)
   })
 
+  it('adds no pause when the next shot is unanchored and starts before the cut', () => {
+    const input = pausedInput(true)
+    // No quote, so it keeps its planned start: 500 ms, ahead of the 775 ms cut.
+    input.slots = [input.slots[0]!, { ...input.slots[2]!, startMs: 500, coversText: undefined }]
+    delete input.slots[1]!.coversText
+    const { timeline, readingHold } = compileTimelineWithReport(input)
+    expect(readingHold).toEqual({ pauses: 0, addedMs: 0, midClause: 0, overlapped: 1 })
+    expect(timeline.narration).toHaveLength(3)
+    expect(timeline.narration.every((s) => s.trimStartMs === undefined)).toBe(true)
+  })
+
   it('reports pauses and added time', () => {
     const { readingHold, timeline } = compileTimelineWithReport(pausedInput(true))
     expect(readingHold).toEqual({ pauses: 2, addedMs: 3000, midClause: 0, overlapped: 0 })

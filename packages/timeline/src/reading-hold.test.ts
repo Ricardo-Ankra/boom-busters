@@ -93,6 +93,18 @@ describe('planReadingPauses', () => {
     expect(report.overlapped).toBe(1)
   })
 
+  it('skips a slot whose next shot starts before the cut', () => {
+    const { pauses, report } = planReadingPauses({
+      slots: [{ startMs: 0, holdMs: READING_HOLD_MS }, { startMs: 4100 }],
+      ranges: [{ first: 0, last: 3 }, null],
+      words: oneParagraph,
+      spans: oneSpan,
+      shiftAt: noShift,
+    })
+    expect(pauses).toEqual([])
+    expect(report).toEqual({ pauses: 0, addedMs: 0, midClause: 0, overlapped: 1 })
+  })
+
   it('uses the figure hold', () => {
     const { pauses } = planReadingPauses({
       slots: [{ startMs: 0, holdMs: FIGURE_HOLD_MS }, { startMs: 5200 }],
