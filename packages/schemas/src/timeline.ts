@@ -74,6 +74,8 @@ export const NarrationSegmentSchema = z.object({
   durationMs: z.number().int().positive(),
   chapterId: UlidSchema,
   paragraphIndex: z.number().int().min(0),
+  /** Where in the take this piece starts; absent means the take's start. */
+  trimStartMs: z.number().int().min(0).optional(),
 })
 export type NarrationSegment = z.infer<typeof NarrationSegmentSchema>
 
@@ -375,6 +377,19 @@ export type TimelineSlot = z.infer<typeof TimelineSlotSchema>
 // Overlays
 // ---------------------------------------------------------------------------
 
+/**
+ * Exemplar code for a chapter or title card, drawn by the same sandbox as a
+ * graphic-code slot. Absent means the composition's built-in card.
+ */
+export const CardCodeSchema = z.object({
+  version: z.number().int().positive(),
+  compiled: z.string().min(1),
+  title: z.string().min(1),
+  words: z.array(GraphicCodeWordSchema),
+  durationMs: z.number().int().positive(),
+})
+export type CardCode = z.infer<typeof CardCodeSchema>
+
 export const OverlaySchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('lowerThird'),
@@ -387,6 +402,7 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     startMs: z.number().int().min(0),
     durationMs: z.number().int().positive(),
     props: z.object({ index: z.number().int().min(1), title: z.string().min(1) }),
+    code: CardCodeSchema.optional(),
   }),
   /** The film's title, shown once after the opening (`chapterMarking: 'title'`). */
   z.object({
@@ -394,6 +410,7 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     startMs: z.number().int().min(0),
     durationMs: z.number().int().positive(),
     props: z.object({ title: z.string().min(1) }),
+    code: CardCodeSchema.optional(),
   }),
   z.object({
     kind: z.literal('watermark'),
