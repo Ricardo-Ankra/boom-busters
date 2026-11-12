@@ -22,8 +22,9 @@ import type {
   PlannedGraphicCode,
 } from '@boom-busters/schemas'
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
+import { holdMsFor } from '@/lib/reading-hold'
 import { compileGraphicSource } from './compile'
-import { dryRunGraphic, GRAPHIC_SAMPLE_MS } from './dry-run'
+import { dryRunGraphic, GRAPHIC_SAMPLE_MS, heldTextSamples } from './dry-run'
 import { restIssue } from './rest'
 import { scanGraphicSource } from './scan'
 
@@ -158,18 +159,35 @@ export function graphicCodeIssue(
   const stored = withMotionPreamble(compiled.compiled, motion)
 
   const { brief } = slot
-  const run = dryRunGraphic({
+  const dryRunInput = {
     compiled: stored,
     durationMs: slot.durationMs,
     props: dryRunProps(context, slot),
     stillMaxMs: motion.stillMaxMs,
-  })
+  }
+  const run = dryRunGraphic(dryRunInput)
   if (run.issue !== null) return { issue: run.issue }
 
   // The render holds a finished graphic so it can be read, so nothing may still
-  // be arriving once the last word has settled (the reading hold).
+  // be arriving once the last word has settled (the reading hold). The render
+  // plays the code on up to the hold, which can run past the planned length, so
+  // the rest check samples that tail too; every other check stays on the plan.
+  const lastWord = slot.words.at(-1)
+  const heldUntilMs =
+    lastWord === undefined
+      ? 0
+      : lastWord.atMs + holdMsFor(brief.type === 'chart' ? 'chart' : 'graphic', answer)
+  const held =
+    heldUntilMs > slot.durationMs
+      ? heldTextSamples(dryRunInput, run.textSamples.landscape.length, heldUntilMs)
+      : null
+  if (held !== null && held.issue !== null) return { issue: held.issue }
   for (const orientation of ['landscape', 'portrait'] as const) {
-    const resting = restIssue(run.textSamples[orientation], slot.words, GRAPHIC_SAMPLE_MS)
+    const resting = restIssue(
+      [...run.textSamples[orientation], ...(held?.texts[orientation] ?? [])],
+      slot.words,
+      GRAPHIC_SAMPLE_MS,
+    )
     if (resting !== null) {
       return { issue: orientation === 'portrait' ? `${resting}, in portrait` : resting }
     }

@@ -206,6 +206,50 @@ describe('graphicCodeIssue (decision 295)', () => {
       ).toHaveProperty('code')
     })
 
+    describe('in the hold the render plays past the planned length', () => {
+      // 3 s planned, the last word at 2.6 s, so the render holds the code to 5.1 s (a
+      // digit fact) or 4.6 s. `changeS` is when the text changes; the plan ends at 3 s.
+      const lateChange = (changeS: number) => `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const sweep = Remotion.interpolate(frame, [0, 89], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>$4bn</div>
+      <div>{frame >= ${changeS * 30} ? 'Acme again' : 'Acme'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+      const shortSlot = {
+        brief: GRAPHIC,
+        durationMs: 3000,
+        words: [{ text: 'four.', atMs: 2600 }],
+      }
+
+      it('refuses text that changes after the planned length but inside the hold', () => {
+        expect(graphicCodeIssue(answer({ source: lateChange(4) }), CONTEXT, shortSlot)).toEqual({
+          issue: REST_ISSUE,
+        })
+      })
+
+      it('refuses the same change on a graphic with no figure, whose hold is shorter', () => {
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(4), facts: [] }), CONTEXT, shortSlot),
+        ).toEqual({ issue: REST_ISSUE })
+      })
+
+      it('passes text that is at rest through the hold, and one that changes after it', () => {
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(0) }), CONTEXT, shortSlot),
+        ).toHaveProperty('code')
+        // After 5.1 s the render has moved on, so it is not the reading hold's business.
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(6) }), CONTEXT, shortSlot),
+        ).toHaveProperty('code')
+      })
+    })
+
     it('refuses in portrait with the portrait suffix when only the Short is still moving', () => {
       expect(
         graphicCodeIssue(answer({ source: typing('height > width', 2) }), CONTEXT, slot(GRAPHIC)),
