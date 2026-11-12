@@ -371,6 +371,18 @@ describe('compileTimeline', () => {
     expect(compileTimeline(goldenInput()).overlays[0]).not.toHaveProperty('code')
   })
 
+  it('card code for a title with an abbreviation has no word but the last ending in a full stop', () => {
+    const chapter = { version: 1, compiled: 'export default 1', title: "Dr. Braun's Empire" }
+    const input = goldenInput()
+    input.paragraphs = input.paragraphs.map((p) =>
+      p.chapterId === CHAPTER_TWO ? { ...p, chapterTitle: "Dr. Braun's Empire" } : p,
+    )
+    const card = compileTimeline({ ...input, cardCode: { chapter } }).overlays[0]!
+    if (card.kind !== 'chapterCard' || !card.code) throw new Error('expected card code')
+    expect(card.code.words).toHaveLength(2)
+    expect(card.code.words.slice(0, -1).some((word) => word.text.endsWith('.'))).toBe(false)
+  })
+
   it('title card uses the title code, and carries none without it', () => {
     const title = { version: 1, compiled: 'export default 2', title: 'The Wirecard Hole' }
     const withCode = compileTimeline(

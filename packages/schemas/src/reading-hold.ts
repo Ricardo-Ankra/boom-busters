@@ -20,12 +20,32 @@ export const CARD_MIN_MS = 3200
 /** How much of the card's end overlaps the next piece of the film. */
 export const CARD_OVERLAP_MS = 900
 
-/** The card title split into words, each timed at the silent reading pace. */
+/** A non-breaking space (U+00A0), built by code so it stays visible in source. */
+const NBSP = String.fromCharCode(0xa0)
+/** A run of whitespace other than the non-breaking space. */
+const SPACE_RUN = new RegExp('[^\\S' + NBSP + ']+')
+
+/**
+ * The card title split into words, each timed at the silent reading pace. A word
+ * ending in a full stop (an abbreviation: "Mr.", "U.S.") is glued to the word after
+ * it with a non-breaking space, so the pair is one card word and never leaves a
+ * stray word ending in "." that a label rule would read as a label. A title's last
+ * word is left as written.
+ */
 export function cardWords(title: string): GraphicCodeWord[] {
-  return title
-    .split(/\s+/)
-    .filter((text) => text.length > 0)
-    .map((text, i) => ({ text, atMs: CARD_FIRST_WORD_MS + CARD_WORD_STEP_MS * i }))
+  const tokens = title.split(SPACE_RUN).filter((text) => text.length > 0)
+  const words: string[] = []
+  let pending = ''
+  tokens.forEach((token, i) => {
+    const joined = pending + token
+    if (i < tokens.length - 1 && joined.endsWith('.')) {
+      pending = joined + NBSP
+    } else {
+      words.push(joined)
+      pending = ''
+    }
+  })
+  return words.map((text, i) => ({ text, atMs: CARD_FIRST_WORD_MS + CARD_WORD_STEP_MS * i }))
 }
 
 /** How long a card with this title needs on screen. */
