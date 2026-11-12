@@ -13,12 +13,30 @@ export { isTitleOnlySample }
 
 type CardTechnique = 'chapter-title' | 'film-title'
 
-/** The house design for a technique, compiled under the motion preamble; null when there is none. */
-function houseCard(technique: CardTechnique): CardCodeSource | null {
+/**
+ * The house design for a technique, compiled under the motion preamble; null when
+ * there is none or it cannot be compiled (the composition then draws its plain
+ * card, and a note says why, so no assembly fails on exemplar code).
+ */
+function houseCard(technique: CardTechnique, name: string, notes: string[]): CardCodeSource | null {
   const design = DESIGNS[technique]
   if (!design) return null
-  const result = compileGraphicSource(design.source)
-  if (!result.ok) return null
+  let result: ReturnType<typeof compileGraphicSource>
+  try {
+    result = compileGraphicSource(design.source)
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error)
+    notes.push(
+      `the house ${name.toLowerCase()} could not be compiled (${why}), so the plain card is used`,
+    )
+    return null
+  }
+  if (!result.ok) {
+    notes.push(
+      `the house ${name.toLowerCase()} could not be compiled (${result.issue}), so the plain card is used`,
+    )
+    return null
+  }
   return {
     version: GRAPHIC_CODE_VERSION,
     compiled: `${MOTION_PREAMBLE}\n${result.compiled}`,
@@ -50,7 +68,7 @@ async function cardFor(
       `${name} v${approved.version} has a label line, so the house ${name.toLowerCase()} is used`,
     )
   }
-  return houseCard(technique)
+  return houseCard(technique, name, notes)
 }
 
 /**

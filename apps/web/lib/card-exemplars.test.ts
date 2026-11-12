@@ -11,6 +11,19 @@ vi.mock('@boom-busters/db', () => ({
     technique === approved.technique ? approved.row : null,
 }))
 
+// The house design compiles for real unless a test sets `compile.override`.
+const compile = vi.hoisted(() => ({
+  override: null as null | (() => { ok: true; compiled: string } | { ok: false; issue: string }),
+}))
+vi.mock('@/lib/graphic-code/compile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/graphic-code/compile')>()
+  return {
+    ...actual,
+    compileGraphicSource: (source: string) =>
+      compile.override ? compile.override() : actual.compileGraphicSource(source),
+  }
+})
+
 import { cardCodesFor, isTitleOnlySample } from './card-exemplars'
 
 const db = {} as Database
@@ -42,6 +55,7 @@ describe('cardCodesFor', () => {
   beforeEach(() => {
     approved.row = null
     approved.technique = 'chapter-title'
+    compile.override = null
   })
 
   it("uses the channel's approved chapter title when its sample is title only", async () => {
@@ -97,5 +111,25 @@ describe('cardCodesFor', () => {
     const cards = await cardCodesFor(db, 'ch1')
     expect(cards.title?.title).toBe(DESIGNS['film-title']!.title)
     expect(cards.notes.some((note) => note.includes('Film title v5'))).toBe(true)
+  })
+
+  it('falls back to the plain card, with a note, when the house card cannot be compiled', async () => {
+    compile.override = () => {
+      throw new Error('the esbuild binary is missing')
+    }
+    const cards = await cardCodesFor(db, 'ch1')
+    expect(cards.chapter).toBeNull()
+    expect(cards.title).toBeNull()
+    expect(cards.notes).toHaveLength(2)
+    expect(cards.notes[0]).toContain('house chapter title could not be compiled')
+    expect(cards.notes[0]).toContain('esbuild binary is missing')
+    expect(cards.notes[1]).toContain('house film title could not be compiled')
+  })
+
+  it('notes a house card whose compile is refused rather than failing silently', async () => {
+    compile.override = () => ({ ok: false, issue: 'the code does not compile: bad token' })
+    const cards = await cardCodesFor(db, 'ch1')
+    expect(cards.chapter).toBeNull()
+    expect(cards.notes.some((note) => note.includes('bad token'))).toBe(true)
   })
 })
