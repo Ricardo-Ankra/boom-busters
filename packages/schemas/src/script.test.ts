@@ -5,6 +5,7 @@ import {
   OUTLINE_BEAT_MAX,
   OutlineSchema,
   SelfCheckSchema,
+  craftWarning,
   WARNING_KINDS,
   countBySeverity,
   countWords,
@@ -664,5 +665,26 @@ describe('narrationTags', () => {
       narrationTags('It stopped [pause] and then [Long Pause] [grave, measured] ended.'),
     ).toEqual(['[pause]', '[Long Pause]', '[grave, measured]'])
     expect(narrationTags('No tags here.')).toEqual([])
+  })
+})
+
+describe('craftWarning', () => {
+  it("makes an advisory craft warning from a finding, cut to the gutter's limit", () => {
+    const warning = craftWarning({
+      sentence: 'And that, in the end, was the lesson.',
+      problem: 'p'.repeat(400),
+      fix: 'f'.repeat(200),
+    })
+    expect(warning.kind).toBe('craft')
+    expect(warning.sentence).toBe('And that, in the end, was the lesson.')
+    expect('severity' in warning).toBe(false)
+    expect(warning.message).toHaveLength(500)
+    expect(warning.message.endsWith('…')).toBe(true)
+    expect(severityOf(warning)).toBe('advisory')
+  })
+
+  it('keeps a short message whole', () => {
+    const warning = craftWarning({ sentence: 'S.', problem: 'It recaps.', fix: 'Cut it.' })
+    expect(warning.message).toBe('It recaps. Instead: Cut it.')
   })
 })

@@ -20,6 +20,7 @@ import {
   buildShortsRequest,
   buildTeaserRequest,
   houseStyle,
+  languageName,
   mockChapter,
   mockOutline,
   mockSelfCheck,
@@ -1639,5 +1640,69 @@ describe('the calm playbook', () => {
     )
     expect(teaser).not.toContain('withholds')
     expect(teaser).not.toContain('central question')
+  })
+})
+
+describe('the writer reads the audience, the language and the scenes (decision 464)', () => {
+  const bible = FIRST_CHANNEL_IN_USE.bible
+  const base = {
+    bible: FIRST_CHANNEL_IN_USE,
+    caseTitle: 'Enron',
+    outline,
+    chapterIndex: 1,
+    previousChapters: [],
+    claims,
+  }
+
+  it("opens on the bible's audience", () => {
+    expect(
+      houseStyle(bible).startsWith(
+        'You write narration for adults who watch long-form money documentaries, for a documentary channel about',
+      ),
+    ).toBe(true)
+  })
+
+  it('keeps the old opening when the audience is empty', () => {
+    expect(
+      houseStyle({ ...bible, audience: '' }).startsWith(
+        'You write narration for a documentary channel about',
+      ),
+    ).toBe(true)
+  })
+
+  it('names a non-English language and stays silent for English', () => {
+    expect(houseStyle({ ...bible, language: 'pt-BR' })).toContain(
+      'Write every word of the narration in Brazilian Portuguese',
+    )
+    for (const language of ['en', 'en-GB', '']) {
+      expect(houseStyle({ ...bible, language })).not.toContain(
+        'Write every word of the narration in',
+      )
+    }
+  })
+
+  it('falls back to the code when the language has no name', () => {
+    expect(languageName('xx')).toBe('xx')
+    expect(languageName('')).toBeNull()
+    expect(languageName('en-GB')).toBeNull()
+  })
+
+  it('tells the writer what the scenes are for', () => {
+    expect(houseStyle(bible).replace(/\s+/g, ' ')).toContain(
+      'A detail in neither is not yours to write.',
+    )
+  })
+
+  it('puts the scenes in the cacheable prefix beside the claims', () => {
+    const request = buildChapterRequest({ ...base, scenes: ['March 2001 — the board met.'] })
+    const first = request.messages[0]!.content as string
+    expect(first).toContain('Claims:\n[1]')
+    expect(first.endsWith('Scenes:\n[S1] March 2001 — the board met.')).toBe(true)
+    expect(request.cacheablePrefixMessages).toBe(1)
+  })
+
+  it('says there are no scenes when none were given', () => {
+    const first = buildChapterRequest(base).messages[0]!.content as string
+    expect(first.endsWith('Scenes:\nNo scenes.')).toBe(true)
   })
 })

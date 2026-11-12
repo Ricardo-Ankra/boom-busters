@@ -230,6 +230,45 @@ export const SelfCheckSchema = z.object({
 export type SelfCheck = z.infer<typeof SelfCheckSchema>
 
 // ---------------------------------------------------------------------------
+// The craft check (decision 464)
+// ---------------------------------------------------------------------------
+
+/** The script editor reports at most this many findings on one chapter. */
+export const CRAFT_FINDINGS_MAX = 8
+
+export const CraftFindingSchema = z.object({
+  /** The exact sentence, as it appears in the chapter. */
+  sentence: z.string().trim().min(1).max(2000),
+  problem: z.string().trim().min(5).max(300),
+  fix: z.string().trim().min(5).max(300),
+})
+export type ScriptCraftFinding = z.infer<typeof CraftFindingSchema>
+
+export const CraftCheckSchema = z.object({
+  findings: z.array(CraftFindingSchema).max(CRAFT_FINDINGS_MAX),
+})
+export type CraftCheck = z.infer<typeof CraftCheckSchema>
+
+/** The gutter's message limit, which `GutterWarningSchema` enforces. */
+const GUTTER_MESSAGE_MAX = 500
+
+/**
+ * A finding as an advisory gutter warning. It carries no severity: the kind's
+ * default (`advisory`) applies, so a craft finding never parks the gate.
+ */
+export function craftWarning(finding: ScriptCraftFinding): GutterWarning {
+  const message = `${finding.problem} Instead: ${finding.fix}`
+  return {
+    kind: 'craft',
+    sentence: finding.sentence,
+    message:
+      message.length > GUTTER_MESSAGE_MAX
+        ? `${message.slice(0, GUTTER_MESSAGE_MAX - 1)}…`
+        : message,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Shorts candidates
 // ---------------------------------------------------------------------------
 
