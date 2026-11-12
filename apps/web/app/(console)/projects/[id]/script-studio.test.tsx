@@ -186,7 +186,11 @@ describe('the Shorts strip when the format has Shorts off', () => {
     estRuntimeSec: 12,
   } as never
 
-  const studio = (shorts: (typeof candidate)[], shortsOff: boolean) => (
+  const studio = (
+    shorts: (typeof candidate)[],
+    shortsOff: boolean,
+    notices = [notice('01J000000000000000000000S1', 'stopped', STOPPED)],
+  ) => (
     <ScriptStudio
       hedgingRules=""
       channelId="01J000000000000000000000H1"
@@ -196,14 +200,20 @@ describe('the Shorts strip when the format has Shorts off', () => {
       targetRuntimeMin={10}
       shorts={shorts}
       usedFallbackModel={false}
-      notices={[notice('01J000000000000000000000S1', 'stopped', STOPPED)]}
+      notices={notices}
       shortsOff={shortsOff}
     />
   )
 
-  it('hides the strip, notices and all, when off and no candidates exist', () => {
-    render(studio([], true))
+  it('hides the strip when off with no candidates and no notices', () => {
+    const { container } = render(studio([], true, []))
     expect(screen.queryByText(STOPPED)).toBeNull()
+    expect(container.querySelector('section')).toBeNull()
+  })
+
+  it('shows the notices when Shorts are off', () => {
+    render(studio([], true))
+    expect(screen.getByText(STOPPED)).toBeInTheDocument()
   })
 
   it('still shows the strip when off but candidates exist, and when on', () => {

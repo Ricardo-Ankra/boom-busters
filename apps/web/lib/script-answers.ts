@@ -1,15 +1,25 @@
 import {
   buildChapterRequest,
+  buildChapterRevisionRequest,
+  buildCraftCheckRequest,
   buildOutlineRequest,
   buildSelfCheckRequest,
   buildShortsRequest,
+  parseCraftCheck,
   parseOutline,
   parseSelfCheck,
   parseShortsCandidates,
 } from '@boom-busters/providers'
 import type { Repair } from '@boom-busters/providers'
-import type { Outline, ShortsCandidate } from '@boom-busters/schemas'
-import { answerOrStop, callForAnswer, callForText, type AnswerComplete } from '@/lib/answer'
+import type { CraftCheck, Outline, ShortsCandidate } from '@boom-busters/schemas'
+import {
+  answerOrStop,
+  callForAnswer,
+  callForText,
+  type Answer,
+  type AnswerComplete,
+  type AnswerRetry,
+} from '@/lib/answer'
 
 /**
  * The script stage's structured answers (decision 292): the outline, each
@@ -83,4 +93,36 @@ export async function draftChapterWith(
     await callForText({ request: buildChapterRequest(input), complete }),
     `Chapter ${input.chapterIndex + 1} could not be drafted`,
   )
+}
+
+/**
+ * The craft check (decision 464): the `Answer` is returned, never thrown, so
+ * a check that cannot be read stops only its own chapter's loop. A budget
+ * stop from `complete` is not caught by `callForAnswer` and propagates.
+ */
+export function craftCheckWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildCraftCheckRequest>[0],
+  /**
+   * `firstOnly` hands back the retry a failed first answer earned, and
+   * `resume` makes only that retry, so a runner can give each call a step of
+   * its own and a fresh deadline (decision 461).
+   */
+  second: { firstOnly?: boolean; resume?: AnswerRetry } = {},
+): Promise<Answer<CraftCheck>> {
+  return callForAnswer({
+    request: buildCraftCheckRequest(input),
+    parse: parseCraftCheck,
+    complete,
+    ...(second.firstOnly ? { firstOnly: true } : {}),
+    ...(second.resume ? { resume: second.resume } : {}),
+  })
+}
+
+/** The chapter's revision against its craft notes: plain text, returned like the check. */
+export function reviseChapterWith(
+  complete: AnswerComplete,
+  input: Parameters<typeof buildChapterRevisionRequest>[0],
+): Promise<Answer<string>> {
+  return callForText({ request: buildChapterRevisionRequest(input), complete })
 }

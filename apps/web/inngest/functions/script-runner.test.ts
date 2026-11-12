@@ -13,6 +13,7 @@ import {
   latestShortsCandidates,
   projects,
   requireTestDatabase,
+  runs,
   saveChapter,
   scripts,
   seed,
@@ -150,6 +151,26 @@ describeDb('markShortsStep (decision 293)', () => {
     expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair])
     expect(recordStop).toHaveBeenCalledTimes(1)
     // The repairs land first, so the stop is added beside them, not replaced.
+    expect(recordRepairs.mock.invocationCallOrder[0]!).toBeLessThan(
+      recordStop.mock.invocationCallOrder[0]!,
+    )
+  })
+
+  it('writes the craft notices after the repairs, and keeps them when the marking stops (decision 464)', async () => {
+    const craft = [
+      { kind: 'trimmed' as const, message: 'Chapter 1 revised for craft: a limp close.' },
+    ]
+    const outlineRepair = { action: 'trimmed' as const, field: "chapter 1's beat" }
+    callLlm.mockResolvedValueOnce({ text: JSON.stringify({ candidates: [candidate] }) })
+    await markShortsStep(PROJECT, { chapters }, [outlineRepair], craft)
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair], craft)
+
+    recordRepairs.mockReset()
+    recordStop.mockReset()
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({ text: 'not json at all' })
+    await markShortsStep(PROJECT, { chapters }, [], craft)
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [], craft)
     expect(recordRepairs.mock.invocationCallOrder[0]!).toBeLessThan(
       recordStop.mock.invocationCallOrder[0]!,
     )
@@ -1073,5 +1094,394 @@ ${text}`
         expect.objectContaining({ body: expect.stringContaining('2 blocking · 0 advisory') }),
       )
     })
+  })
+})
+
+/**
+ * The craft loop's steps (decision 464). A suite of its own: it never seeds,
+ * never truncates and never deletes other suites' scripts, so the files that
+ * share the test database in parallel are not disturbed. It owns one script
+ * row and removes it after each test.
+ */
+describeDb('the craft loop (decision 464)', () => {
+  let engine: InngestTestEngine
+  let scriptId = ''
+
+  const approved = (): [{ name: string; data: Record<string, unknown> }] => [
+    { name: 'gate/dossier.approved', data: { projectId: FIXTURE_PROJECT_ID } },
+  ]
+
+  /** Every step before the marking, as a run that reached it would replay them. */
+  const throughSelfCheck = () => [
+    {
+      id: 'load-dossier',
+      handler: () => ({
+        scriptId,
+        caseTitle: 'Wirecard',
+        targetRuntimeMin: 10,
+        dossierMd: 'The dossier.',
+        claims: [],
+      }),
+    },
+    {
+      id: 'outline',
+      handler: () => ({
+        ok: true,
+        outline: { chapters: [{ title: 'The audit', beat: 'x'.repeat(30), targetWords: 300 }] },
+      }),
+    },
+    { id: 'save-outline', handler: () => undefined },
+    {
+      id: 'draft-chapter-0',
+      handler: () => ({ ok: true, chapterId: 'chapter-0', contentMd: chapters[0]!.contentMd }),
+    },
+    { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
+  ]
+
+  beforeEach(async () => {
+    engine = new InngestTestEngine({ function: scriptRunner })
+    forgetRunRows()
+    callLlm.mockReset()
+    recordRepairs.mockReset()
+    scriptId = (await createScriptVersion(db, FIXTURE_PROJECT_ID)).id
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await db.delete(scripts).where(eq(scripts.id, scriptId))
+    // Only this function's mirror rows, never the whole mirror: the suites that
+    // share the database count runs, and a truncate would cut theirs short.
+    await db.delete(runs).where(eq(runs.functionName, 'script-runner'))
+  })
+
+  const text = chapters[0]!.contentMd
+  const finding = {
+    sentence: 'EY refused to sign the accounts.',
+    problem: 'A flat statement',
+    fix: 'Show the refusal',
+  }
+  const withCraft = () =>
+    throughSelfCheck().map((step) =>
+      step.id === 'load-dossier'
+        ? { ...step, handler: () => ({ ...(step.handler() as object), craftLoop: true }) }
+        : step,
+    )
+  const savedChapter = async (contentMd = text): Promise<string> =>
+    (
+      await saveChapter(db, {
+        scriptId,
+        index: 0,
+        title: 'The audit',
+        contentMd,
+        estRuntimeSec: 60,
+      })
+    ).id
+  const live = (answer: unknown) => {
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm.mockResolvedValue({
+      text: typeof answer === 'string' ? answer : JSON.stringify(answer),
+    })
+  }
+  const withFormat = async (patch: Record<string, string>) => {
+    const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+    channelForProject.mockImplementation(async (...args: unknown[]) => {
+      const channel = await actual.channelForProject(args[0] as never, args[1] as string)
+      return { ...channel, format: { ...channel.format, ...patch } }
+    })
+    return () => channelForProject.mockImplementation(actual.channelForProject)
+  }
+  /** Steps up to the draft, with a saved chapter row behind it. */
+  const upTo = (chapterId: string, contentMd = text) => [
+    ...withCraft().slice(0, 3),
+    { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd }) },
+  ]
+
+  it('sends the scene list in the chapter request', async () => {
+    live('A whole chapter.')
+    const [original] = await db
+      .select({ contentMd: dossiers.contentMd })
+      .from(dossiers)
+      .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    try {
+      await db
+        .update(dossiers)
+        .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+      await engine.executeStep('draft-chapter-0', {
+        events: approved(),
+        steps: withCraft().slice(0, 3),
+      })
+    } finally {
+      await db
+        .update(dossiers)
+        .set({ contentMd: original!.contentMd })
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    }
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
+  })
+
+  it('checks the chapter without its fixed lines', async () => {
+    live({ findings: [] })
+    const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
+    try {
+      await engine.executeStep('craft-check-0', {
+        events: approved(),
+        steps: upTo('c0', fixedChapter),
+      })
+      const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+      const last = sent.messages.at(-1)!.content
+      expect(last).toContain(text)
+      expect(last).not.toContain(FIXED_LINES[0])
+      expect(last).not.toContain(FIXED_LINES[1])
+    } finally {
+      restore()
+    }
+  })
+
+  it('hands back the retry after an unreadable first answer, making no second call', async () => {
+    live('not json')
+    const { result } = await engine.executeStep('craft-check-0', {
+      events: approved(),
+      steps: upTo('c0'),
+    })
+    expect(result).toEqual({
+      ok: true,
+      findings: [],
+      retry: { call: 'retry: refused', issue: expect.any(String) },
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a stop for an unreadable retry, never failing the step', async () => {
+    live('not json')
+    const { result } = await engine.executeStep('craft-check-0-retry', {
+      events: approved(),
+      steps: [
+        ...upTo('c0'),
+        {
+          id: 'craft-check-0',
+          handler: () => ({
+            ok: true,
+            findings: [],
+            retry: { call: 'retry: refused', issue: 'it was not JSON' },
+          }),
+        },
+      ],
+    })
+    expect(result).toEqual({ ok: true, findings: [], stopped: expect.any(String) })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it("runs the check's retry in a step of its own, and its findings drive the revision", async () => {
+    const chapterId = await savedChapter()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm
+      .mockResolvedValueOnce({ text: JSON.stringify({ findings: [finding] }) })
+      .mockResolvedValueOnce({ text: text.replace(finding.sentence, 'EY did not sign.') })
+    const { result, ctx } = await engine.executeStep('craft-revise-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        {
+          id: 'craft-check-0',
+          handler: () => ({
+            ok: true,
+            findings: [],
+            retry: { call: 'retry: refused', issue: 'it was not JSON' },
+          }),
+        },
+      ],
+    })
+    expect(ctx.step.run).toHaveBeenCalledWith('craft-check-0-retry', expect.any(Function))
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    const sent = callLlm.mock.calls[1]![0] as { messages: { content: string }[] }
+    expect(sent.messages.at(-1)!.content).toContain(finding.fix)
+    expect(result).toMatchObject({
+      ok: true,
+      contentMd: expect.stringContaining('EY did not sign.'),
+    })
+  })
+
+  it('refuses a revision far shorter than the draft, keeps the draft and stores the first findings', async () => {
+    const chapterId = await savedChapter()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm
+      .mockResolvedValueOnce({ text: 'Here is the fix.' })
+      .mockResolvedValueOnce({ text: JSON.stringify({ warnings: [] }) })
+    const steps = [
+      ...upTo(chapterId),
+      { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+    ]
+    const { ctx } = await engine.executeStep('self-check-0', { events: approved(), steps })
+    expect(ctx.step.run).not.toHaveBeenCalledWith('craft-recheck-0', expect.any(Function))
+    expect((await getChapter(db, chapterId))!.contentMd).toBe(text)
+    const craft = (await getChapter(db, chapterId))!.warnings.find((w) => w.kind === 'craft')
+    expect(craft).toMatchObject({ kind: 'craft', sentence: finding.sentence })
+    // The self-check read the draft, not the fragment.
+    const sent = callLlm.mock.calls[1]![0] as { messages: { content: string }[] }
+    expect(sent.messages.map((m) => m.content).join(' ')).not.toContain('Here is the fix.')
+  })
+
+  it('returns stopped from the revise step for a fragment', async () => {
+    const chapterId = await savedChapter()
+    live('Here is the fix.')
+    const { result } = await engine.executeStep('craft-revise-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+      ],
+    })
+    expect(result).toEqual({
+      ok: true,
+      stopped: 'the revision came back much shorter than the draft',
+    })
+    expect((await getChapter(db, chapterId))!.contentMd).toBe(text)
+  })
+
+  it('saves the revision with each fixed line once', async () => {
+    const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
+    try {
+      const chapterId = await savedChapter(fixedChapter)
+      live(`${FIXED_LINES[0]}\n\nEY did not sign the accounts. The shares collapsed in nine days.`)
+      const { result } = await engine.executeStep('craft-revise-0', {
+        events: approved(),
+        steps: [
+          ...upTo(chapterId, fixedChapter),
+          { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+        ],
+      })
+      const stored = (await getChapter(db, chapterId))!.contentMd
+      for (const line of FIXED_LINES) expect(stored.split(line)).toHaveLength(2)
+      expect(stored).toContain('EY did not sign the accounts.')
+      expect(result).toEqual({ ok: true, contentMd: stored })
+    } finally {
+      restore()
+    }
+  })
+
+  it("hands the revision to the self-check and stores the recheck's findings as advisory craft warnings", async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+        { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'REVISED. Text.' }) },
+        {
+          id: 'craft-recheck-0',
+          handler: () => ({ ok: true, findings: [{ ...finding, sentence: 'REVISED.' }] }),
+        },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages.map((m) => m.content).join(' ')).toContain('REVISED.')
+    const stored = (await getChapter(db, chapterId))!.warnings
+    const craft = stored.find((w) => w.kind === 'craft')
+    expect(craft).toMatchObject({ kind: 'craft', sentence: 'REVISED.' })
+    expect(craft).not.toHaveProperty('severity')
+  })
+
+  it('skips the revision and the recheck when the first check finds nothing', async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [] }) },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs no craft step for a run that loaded before the deploy', async () => {
+    live({ warnings: [] })
+    const chapterId = await savedChapter()
+    await engine.executeStep('self-check-0', {
+      events: approved(),
+      steps: [
+        ...throughSelfCheck().slice(0, 3),
+        { id: 'draft-chapter-0', handler: () => ({ ok: true, chapterId, contentMd: text }) },
+      ],
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    for (const call of callLlm.mock.calls) {
+      expect((call[0] as { task?: string }).task).not.toBe('scripting')
+    }
+  })
+
+  it('parks the stage when a craft call is over budget', async () => {
+    const { result, ctx } = await engine.execute({
+      events: approved(),
+      steps: [
+        ...withCraft().slice(0, 4),
+        { id: 'craft-check-0', handler: () => ({ ok: false, gate: { message: 'Over budget' } }) },
+        { id: 'craft-0-over-budget', handler: () => undefined },
+      ],
+    })
+    expect(result).toMatchObject({ outcome: 'over-budget' })
+    expect(ctx.step.run).toHaveBeenCalledWith('craft-0-over-budget', expect.any(Function))
+  })
+
+  const trimmedLoop = () => [
+    ...withCraft().slice(0, 4),
+    { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+    { id: 'craft-revise-0', handler: () => ({ ok: true, contentMd: 'EY did not sign.' }) },
+    { id: 'craft-recheck-0', handler: () => ({ ok: true, findings: [] }) },
+    { id: 'self-check-0', handler: () => ({ warnings: 0 }) },
+  ]
+
+  it('puts the craft notices on the strip in mock mode', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    recordRepairs.mockReset()
+    await engine.executeStep('mark-shorts', { events: approved(), steps: trimmedLoop() })
+    expect(recordRepairs).toHaveBeenCalledWith(
+      SCRIPT_NOTICES,
+      [],
+      [expect.objectContaining({ kind: 'trimmed' })],
+    )
+  })
+
+  it('puts the craft notices and the outline repairs on the strip with Shorts off', async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    recordRepairs.mockReset()
+    shortsEnabledForProject.mockResolvedValue(false)
+    const repair = { action: 'trimmed' as const, field: "chapter 1's beat" }
+    try {
+      await engine.executeStep('mark-shorts', {
+        events: approved(),
+        steps: trimmedLoop().map((step) =>
+          step.id === 'outline'
+            ? {
+                ...step,
+                handler: () => ({
+                  ok: true,
+                  outline: {
+                    chapters: [{ title: 'The audit', beat: 'x'.repeat(30), targetWords: 300 }],
+                  },
+                  repairs: [repair],
+                }),
+              }
+            : step,
+        ),
+      })
+      expect(recordRepairs).toHaveBeenCalledWith(
+        SCRIPT_NOTICES,
+        [repair],
+        [expect.objectContaining({ kind: 'trimmed' })],
+      )
+    } finally {
+      const actual = await vi.importActual<typeof Db>('@boom-busters/db')
+      shortsEnabledForProject.mockImplementation(async (...args: unknown[]) =>
+        actual.shortsEnabledForProject(args[0] as never, args[1] as string),
+      )
+    }
   })
 })

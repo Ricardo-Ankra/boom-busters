@@ -38,6 +38,7 @@ import { buildRetypeRequest } from '../retype'
 import { buildScoringRequest } from '../scoring'
 import { buildStoryboardRequest } from '../storyboard'
 import { buildTechniqueProposalRequest } from '../technique-proposal'
+import { buildCraftCheckRequest, buildChapterRevisionRequest } from '../script-craft-check'
 import {
   buildChapterRequest,
   buildOutlineRequest,
@@ -750,6 +751,63 @@ const scriptCases: LiftCase[] = [
       claims: CLAIMS,
       scenes: [
         'March 2001 — the board met in the glass room (the directors). To settle who signed.',
+      ],
+    }),
+  ),
+  liftAware('script-chapter-scenes', (bible) =>
+    buildChapterRequest({
+      bible,
+      caseTitle: 'Wirecard',
+      outline: OUTLINE,
+      chapterIndex: 0,
+      previousChapters: [],
+      claims: CLAIMS,
+      scenes: [
+        'March 2001 — the board met in the glass room (the directors). To settle who signed.',
+      ],
+    }),
+  ),
+  liftAware('script-craft-check', (bible) =>
+    buildCraftCheckRequest({
+      bible,
+      outline: OUTLINE,
+      chapterIndex: 1,
+      claimCount: CLAIMS.length,
+      previousChapters: [CHAPTER_ONE],
+      contentMd: CHAPTER_TWO.contentMd,
+    }),
+  ),
+  liftAware('script-craft-check-calm', (bible) =>
+    buildCraftCheckRequest({
+      bible,
+      outline: OUTLINE,
+      chapterIndex: 1,
+      claimCount: CLAIMS.length,
+      previousChapters: [CHAPTER_ONE],
+      contentMd: CHAPTER_TWO.contentMd,
+      intent: 'calm',
+    }),
+  ),
+  liftAware('script-chapter-revise', (bible) =>
+    buildChapterRevisionRequest({
+      bible,
+      caseTitle: 'Wirecard',
+      outline: OUTLINE,
+      chapterIndex: 1,
+      previousChapters: [CHAPTER_ONE],
+      claims: CLAIMS_FOUR,
+      draft: CHAPTER_TWO.contentMd,
+      findings: [
+        {
+          sentence: 'Nobody wanted to listen.',
+          problem: 'It states the point where a scene could show it.',
+          fix: 'Show one person turning the page over unread.',
+        },
+        {
+          sentence: 'Years earlier, one man had said exactly that.',
+          problem: 'It opens on a vague time marker.',
+          fix: 'Name the year and the man.',
+        },
       ],
     }),
   ),

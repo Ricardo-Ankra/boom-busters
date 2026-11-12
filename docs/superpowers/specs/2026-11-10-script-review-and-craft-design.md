@@ -1,6 +1,6 @@
 # Script review and craft, chosen per channel
 
-Date: 2026-11-10. Status: plan 1 shipped as decision 458; plans 2 to 8 open. Follows the dossier
+Date: 2026-11-10. Status: plans 1 and 2 shipped as decisions 458 and 464; plans 3 to 8 open. Follows the dossier
 research profiles design (2026-11-09) and takes the same principle: **the code
 is the playbook, the bible is the channel.**
 
@@ -339,8 +339,8 @@ step updates the chapter row's `contentMd` and `estRuntimeSec` and returns
 the revised text; the runner's `written` entry for the chapter takes the
 step's returned text, so the self-check and Shorts steps read the revision
 through step memoisation as they read the draft today, and nothing re-reads
-chapters from the database. A run parked before the deploy replays its old
-steps and meets the new step names only for chapters it has not reached.
+chapters from the database. A run parked before the deploy replays a
+load-dossier result without craftLoop and runs no craft step at all: Inngest would otherwise execute the new steps on replay, revising chapters after approval (decision 464).
 
 **Anchors.** A craft finding quotes a sentence; one the model paraphrased
 anchors nowhere and is kept, shown as Script Studio already shows a warning
