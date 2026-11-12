@@ -17,7 +17,7 @@ const draftMd = 'Sentence 1. Sentence 2. Sentence 3. The rest.'
 const revisedMd = 'Sentence 3. The rest, tighter.'
 const base = { chapterNumber: 2, draftMd, first: { findings: [a, b, c] }, recheck: null }
 
-describe('settling the craft loop (decision 463)', () => {
+describe('settling the craft loop (decision 464)', () => {
   it('keeps the first draft and says so when the first check stopped', () => {
     expect(
       settleCraft({

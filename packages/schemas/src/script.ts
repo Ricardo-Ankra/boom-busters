@@ -230,7 +230,7 @@ export const SelfCheckSchema = z.object({
 export type SelfCheck = z.infer<typeof SelfCheckSchema>
 
 // ---------------------------------------------------------------------------
-// The craft check (decision 463)
+// The craft check (decision 464)
 // ---------------------------------------------------------------------------
 
 /** The script editor reports at most this many findings on one chapter. */

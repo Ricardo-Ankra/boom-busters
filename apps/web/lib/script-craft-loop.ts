@@ -6,7 +6,7 @@ import type { GutterWarning, NewNotice, ScriptCraftFinding } from '@boom-busters
 export const CRAFT_REVISION_FLOOR = 0.7
 
 /**
- * What one craft check of a chapter came back with (decision 463). `stopped`
+ * What one craft check of a chapter came back with (decision 464). `stopped`
  * is the reason a check that could not be read gives; its loop ends there.
  */
 export type CraftPass = { findings: ScriptCraftFinding[]; stopped?: string }

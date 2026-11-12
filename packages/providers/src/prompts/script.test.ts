@@ -1643,7 +1643,7 @@ describe('the calm playbook', () => {
   })
 })
 
-describe('the writer reads the audience, the language and the scenes (decision 463)', () => {
+describe('the writer reads the audience, the language and the scenes (decision 464)', () => {
   const bible = FIRST_CHANNEL_IN_USE.bible
   const base = {
     bible: FIRST_CHANNEL_IN_USE,

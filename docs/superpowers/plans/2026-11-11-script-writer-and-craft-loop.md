@@ -55,7 +55,7 @@ Copy (spec section 10):
 - The house style gains this bullet, after the "One canonical name" bullet: `The scenes are the dossier's: use them for what people did, wanted and said. The claims are the facts. A detail in neither is not yours to write.`
 - The numbers bullet keeps its `[[example:script-read-aloud-numbers]]` slot. That slot is already the channel's own, so section 10's "the numbers rule's example slot is the channel's own" needs no change.
 
-- [ ] **Step 1: Write the failing tests** in `script.test.ts`, in a new `describe('the writer reads the audience, the language and the scenes (decision 463)')`:
+- [ ] **Step 1: Write the failing tests** in `script.test.ts`, in a new `describe('the writer reads the audience, the language and the scenes (decision 464)')`:
   - `it('opens on the bible's audience')`: `houseStyle(FIRST_CHANNEL_IN_USE.bible)` starts with `You write narration for adults who watch long-form money documentaries, for a documentary channel about`.
   - `it('keeps the old opening when the audience is empty')`: with `{ ...bible, audience: '' }`, it starts with `You write narration for a documentary channel about`.
   - `it('names a non-English language and stays silent for English')`: with `language: 'pt-BR'` the style contains `Write every word of the narration in Brazilian Portuguese`. With `'en'`, `'en-GB'` and `''` it contains no `Write every word of the narration in`.
@@ -66,7 +66,7 @@ Copy (spec section 10):
 - [ ] **Step 2: Run** `pnpm exec vitest run script.test` from `packages/providers`. Expected: the new tests FAIL. The lift snapshot tests also fail on the changed text; leave them until Task 5.
 - [ ] **Step 3: Implement** the interfaces and copy above.
 - [ ] **Step 4: Run** the same file. Expected: the new tests PASS. Fix every other test in `script.test.ts` and `script-craft.test.ts` that asserted the old opening or the old first message. Only the `lift` snapshots may still fail.
-- [ ] **Step 5: Commit** `feat(prompts): the writer reads the audience, the language and the dossier's scenes (decision 463)`.
+- [ ] **Step 5: Commit** `feat(prompts): the writer reads the audience, the language and the dossier's scenes (decision 464)`.
 
 ---
 
@@ -128,7 +128,7 @@ The revision message: `` `Revise this draft. Fix these and change nothing else.\
 - [ ] **Step 2: Run** `pnpm exec vitest run script.test` from `packages/schemas` and `pnpm exec vitest run script-craft-check` from `packages/providers`. Expected: FAIL on the missing exports.
 - [ ] **Step 3: Implement** the interfaces and copy above.
 - [ ] **Step 4: Run** both again. Expected: PASS. Then `pnpm typecheck` from the root. Expected: clean.
-- [ ] **Step 5: Commit** `feat(prompts): the script editor's craft check and the revision request (decision 463)`.
+- [ ] **Step 5: Commit** `feat(prompts): the script editor's craft check and the revision request (decision 464)`.
 
 ---
 
@@ -164,7 +164,7 @@ A finding is fixed when its sentence is in `draftMd` and not in `revisedMd`. A p
   - `it('never counts a paraphrased finding as fixed')`: a first finding whose sentence is in neither text, and a recheck with no findings, give no `trimmed` notice.
   - `it('lists each fixed finding once in one notice')`: two findings fixed and one not give one `trimmed` notice naming both problems, and the warnings are the recheck's.
 
-  In `script-answers.test.ts`, a new `describe('the craft loop answers (decision 463)')`:
+  In `script-answers.test.ts`, a new `describe('the craft loop answers (decision 464)')`:
   - `it('reads a craft check in one call')`
   - `it('returns a stop after two unreadable answers instead of throwing')`: `ok` is `false` and `complete` was called twice.
   - `it('revises on callForText and returns a stop after two cut-offs')`
@@ -176,7 +176,7 @@ A finding is fixed when its sentence is in `draftMd` and not in `revisedMd`. A p
 - [ ] **Step 2: Run** `pnpm exec vitest run script-craft-loop script-answers notices` from `apps/web`. Expected: FAIL.
 - [ ] **Step 3: Implement** the interfaces above.
 - [ ] **Step 4: Run** the same command. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(web): the craft loop's answers, its settlement and notices beside repairs (decision 463)`.
+- [ ] **Step 5: Commit** `feat(web): the craft loop's answers, its settlement and notices beside repairs (decision 464)`.
 
 ---
 
@@ -208,11 +208,11 @@ The `mark-shorts` step passes `craftNotices` everywhere it writes:
 - mock: `recordRepairs(target, [], craftNotices)`
 - Shorts off: `recordRepairs(target, outlineRepairs, craftNotices)`, where today it writes nothing
 
-Update the function's top comment with one line on the craft loop (decision 463).
+Update the function's top comment with one line on the craft loop (decision 464).
 
 Cost (spec section 8, "the stage's cost estimate"): the script stage shows no estimate before it runs, so the budget guard's per-call reservation is the estimate. A craft call reserves at its `maxTokens`, the guard's pessimistic default. A revision reserves at the chapter draft's first-call estimate. Record this in PROGRESS (Task 5).
 
-- [ ] **Step 1: Write the failing tests**, in a new `describe('the craft loop (decision 463)')` inside the existing database suite. A `withCraft` helper adds `craftLoop: true` to `throughSelfCheck()`'s `load-dossier` result. `live(answer)` and `savedChapter()` follow the decision 458 block's pattern.
+- [ ] **Step 1: Write the failing tests**, in a new `describe('the craft loop (decision 464)')` inside the existing database suite. A `withCraft` helper adds `craftLoop: true` to `throughSelfCheck()`'s `load-dossier` result. `live(answer)` and `savedChapter()` follow the decision 458 block's pattern.
   - `it('sends the scene list in the chapter request')`: put a `## Timeline` bullet on the dossier, as the decision 458 test does. `executeStep('draft-chapter-0')` live with `callLlm` resolving a chapter text. `callLlm`'s first request has `messages[0].content` containing `Scenes:\n[S1]`.
   - `it('checks the chapter without its fixed lines')`: give the format fixed lines (`FIXED_LINES`). Run `executeStep('craft-check-0')` with the draft step returning `fixedChapter`. The request's last message contains `chapters[0].contentMd` and neither fixed line.
   - `it('returns a stop for an unreadable craft check, never failing the step')`: `callLlm` resolves `'not json'` twice. The result is `{ ok: true, findings: [], stopped: <string> }`.
@@ -228,7 +228,7 @@ Cost (spec section 8, "the stage's cost estimate"): the script stage shows no es
 - [ ] **Step 2: Run** `pnpm exec vitest run script-runner` from `apps/web`, with Docker up. Expected: the new tests FAIL and the existing ones PASS.
 - [ ] **Step 3: Implement** the interfaces and steps above.
 - [ ] **Step 4: Run** `pnpm exec vitest run script-runner`, then `pnpm exec vitest run inngest/functions`, then `pnpm exec vitest run lib`, all from `apps/web`. Expected: PASS.
-- [ ] **Step 5: Commit** `feat(script-runner): each chapter passes a craft check with one repair round, and the drafter reads the scenes (decision 463)`.
+- [ ] **Step 5: Commit** `feat(script-runner): each chapter passes a craft check with one repair round, and the drafter reads the scenes (decision 464)`.
 
 ---
 
@@ -249,11 +249,11 @@ Cost (spec section 8, "the stage's cost estimate"): the script stage shows no es
 - [ ] **Step 2: Regenerate** from `packages/providers`: run `pnpm exec vitest run lift -u`, then `git diff --stat -- src/prompts/lift/__fixtures__`. Expected: only `script-*.json` changed or added. Stop and find the stray edit if any other family moved.
 - [ ] **Step 3: Read the diffs** of `script-outline.json`, `script-chapter-first.json` and `script-regenerate.json` in full. List every changed line of prompt text for PROGRESS. Expected: the audience opening, the scenes bullet and the `Scenes:` block, and nothing else.
 - [ ] **Step 4: Write the PROGRESS section** `## Script writer and craft loop (2026-11-11)`, in the house shape of the decision 458 section. It holds:
-  - The blockquote: decision 463, branch, spec and plan paths, no migration.
+  - The blockquote: decision 464, branch, spec and plan paths, no migration.
   - Deliverables, one line per task with its commit hash.
   - Owner actions at deploy: `PUT /api/inngest`; check the `scripting` route, since the craft check judges on it; the hedging-rules paste from decision 458 if it is still undone.
   - The prompt changes from Step 3.
-  - Decision 463's lettered lines:
+  - Decision 464's lettered lines:
     - (a) No stage estimate exists, so each craft call is reserved by the guard at its `maxTokens`, and a revision at the chapter's estimate.
     - (b) The loop runs only for a run whose `load-dossier` carries `craftLoop`, so a run parked before the deploy is never revised after approval.
     - (c) One notice per revised chapter, of kind `trimmed`, listing its fixed findings, so a seven-chapter script carries at most seven Dismiss buttons. A new kind would need a migration.
@@ -262,7 +262,7 @@ Cost (spec section 8, "the stage's cost estimate"): the script stage shows no es
     - (f) The craft notices are written with the strip at mark-shorts, and the Shorts-off branch now writes the outline's repairs too.
     - (g) The mock craft check finds nothing, so mock runs and e2e never revise; the revision path is proven in the runner harness.
     - (h) The calm checklist drops the planted-question and withheld-fact lines.
-- [ ] **Step 5: Amend the spec.** Set the status line to `plans 1 and 2 shipped as decisions 458 and 463; plans 3 to 8 open.` In section 8's "Steps and the revised text" paragraph, replace the last sentence ("A run parked before the deploy replays its old steps and meets the new step names only for chapters it has not reached.") with: `A run parked before the deploy replays a load-dossier result without craftLoop and runs no craft step at all: Inngest would otherwise execute the new steps on replay, revising chapters after approval (decision 463).`
+- [ ] **Step 5: Amend the spec.** Set the status line to `plans 1 and 2 shipped as decisions 458 and 464; plans 3 to 8 open.` In section 8's "Steps and the revised text" paragraph, replace the last sentence ("A run parked before the deploy replays its old steps and meets the new step names only for chapters it has not reached.") with: `A run parked before the deploy replays a load-dossier result without craftLoop and runs no craft step at all: Inngest would otherwise execute the new steps on replay, revising chapters after approval (decision 464).`
 - [ ] **Step 6: Verify**, one package at a time:
   - From the root: `pnpm typecheck`, `pnpm lint`, and `pnpm format:check` on tracked files.
   - `pnpm exec vitest run` from `packages/schemas`, then from `packages/providers`.
@@ -270,5 +270,5 @@ Cost (spec section 8, "the stage's cost estimate"): the script stage shows no es
   - `pnpm e2e` in batches, from the e2e package (memory: scoped e2e runs).
 
   Expected: all green, apart from the four local e2e failures that also fail on master (memory).
-- [ ] **Step 7: Commit** `chore(prompts): regenerate the script lift fixtures; PROGRESS for decision 463`.
+- [ ] **Step 7: Commit** `chore(prompts): regenerate the script lift fixtures; PROGRESS for decision 464`.
 - [ ] **Step 8: Prepare the merge.** Run `git fetch origin master` and compare decision numbers with `origin/master`; renumber in a separate commit if 463 is taken. Merge through a merge branch from the worktree (memory). Push once, and hand the push line to the owner if it is refused.

@@ -156,7 +156,7 @@ describeDb('markShortsStep (decision 293)', () => {
     )
   })
 
-  it('writes the craft notices after the repairs, and keeps them when the marking stops (decision 463)', async () => {
+  it('writes the craft notices after the repairs, and keeps them when the marking stops (decision 464)', async () => {
     const craft = [
       { kind: 'trimmed' as const, message: 'Chapter 1 revised for craft: a limp close.' },
     ]
@@ -1098,12 +1098,12 @@ ${text}`
 })
 
 /**
- * The craft loop's steps (decision 463). A suite of its own: it never seeds,
+ * The craft loop's steps (decision 464). A suite of its own: it never seeds,
  * never truncates and never deletes other suites' scripts, so the files that
  * share the test database in parallel are not disturbed. It owns one script
  * row and removes it after each test.
  */
-describeDb('the craft loop (decision 463)', () => {
+describeDb('the craft loop (decision 464)', () => {
   let engine: InngestTestEngine
   let scriptId = ''
 

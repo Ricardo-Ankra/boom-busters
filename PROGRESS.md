@@ -11378,7 +11378,7 @@ owner edits. `--prod` was not run against Neon.
 
 ## Script writer and craft loop (2026-11-11)
 
-> Decision 463, branch `script-craft-loop`. Plan 2 of the script review and
+> Decision 464, branch `script-craft-loop`. Plan 2 of the script review and
 > craft design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
 > (sections 8 and 10), plan `docs/superpowers/plans/2026-11-11-script-writer-and-craft-loop.md`.
 > The writer now reads the audience, the language and the dossier's scenes;
@@ -11430,7 +11430,7 @@ owner edits. `--prod` was not run against Neon.
 
 ### Decisions made
 
-463. **Script writer and craft loop** (2026-11-11, branch `script-craft-loop`,
+464. **Script writer and craft loop** (2026-11-11, branch `script-craft-loop`,
      no migration, no stack deploy: a Vercel deploy and `PUT /api/inngest`).
      (a) No stage estimate exists, so each craft call is reserved by the guard
      at its `maxTokens`, and a revision at the chapter's estimate.

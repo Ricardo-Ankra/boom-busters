@@ -93,7 +93,7 @@ import { toScriptClaim } from '@/lib/script-claim'
  * and re-charge chapters one to five.
  *
  * Each drafted chapter then passes a craft check, one revision round against
- * its findings and a recheck before the next chapter is drafted (decision 463).
+ * its findings and a recheck before the next chapter is drafted (decision 464).
  * The loop runs only for a run whose `load-dossier` memo carries `craftLoop`.
  *
  * Like the dossier-runner, this waits on approval only; `gate/script.
@@ -137,7 +137,7 @@ export async function markShortsStep(
   input: Omit<Parameters<typeof markShortsWith>[1], 'bible'>,
   /** The outline's repairs (decision 296), kept on the strip beside the marking's. */
   priorRepairs: readonly Repair[] = [],
-  /** The craft loop's notices (decision 463), written after the repairs. */
+  /** The craft loop's notices (decision 464), written after the repairs. */
   priorNotices: readonly NewNotice[] = [],
 ): Promise<MarkedShorts> {
   const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
@@ -346,7 +346,7 @@ export const scriptRunner = inngest.createFunction(
         caseTitle: project.title,
         targetRuntimeMin: project.targetRuntimeMin,
         dossierMd: dossier.contentMd,
-        // The craft loop runs only for a run that loaded after this deploy (decision 463).
+        // The craft loop runs only for a run that loaded after this deploy (decision 464).
         craftLoop: true,
         claims: usable.map((claim) => ({
           ...toScriptClaim(claim),
@@ -504,7 +504,7 @@ export const scriptRunner = inngest.createFunction(
 
       // Only a run whose `load-dossier` memo says so: a memo from before this
       // deploy has no field, and an unmemoised step id would be executed, so
-      // such a run must make no craft step call at all (decision 463).
+      // such a run must make no craft step call at all (decision 464).
       if (setup.craftLoop === true) {
         const previousChapters = written.map(({ title, contentMd }) => ({ title, contentMd }))
         // A check and its retry, each in a step of its own with a fresh deadline.
@@ -701,7 +701,7 @@ export const scriptRunner = inngest.createFunction(
 
     const marking = await step.run('mark-shorts', async (): Promise<MarkedShorts> => {
       // A format with Shorts off pays for no marking, mock or live (ruling 18).
-      // The outline's repairs and the craft notices still reach the strip (decision 463).
+      // The outline's repairs and the craft notices still reach the strip (decision 464).
       const target: NoticeTarget = { projectId, subject: 'script', subjectId: null }
       if (!(await shortsEnabledForProject(db, projectId))) {
         await writeStrip(target, outlineRepairs, craftNotices)

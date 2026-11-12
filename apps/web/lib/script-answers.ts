@@ -96,7 +96,7 @@ export async function draftChapterWith(
 }
 
 /**
- * The craft check (decision 463): the `Answer` is returned, never thrown, so
+ * The craft check (decision 464): the `Answer` is returned, never thrown, so
  * a check that cannot be read stops only its own chapter's loop. A budget
  * stop from `complete` is not caught by `callForAnswer` and propagates.
  */

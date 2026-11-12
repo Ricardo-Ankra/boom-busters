@@ -180,7 +180,7 @@ describe('the chapter draft (decision 293)', () => {
   })
 })
 
-describe('the craft loop answers (decision 463)', () => {
+describe('the craft loop answers (decision 464)', () => {
   const craftInput = {
     bible: FIRST_CHANNEL_IN_USE,
     outline: mockOutline(10),
