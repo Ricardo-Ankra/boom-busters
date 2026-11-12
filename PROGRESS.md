@@ -11782,3 +11782,21 @@ owner edits. `--prod` was not run against Neon.
      Remotion site ignores `trimStartMs` the same way. Projects already
      assembled keep their old timelines and get the pauses and card code
      only on re-assembly. No migration.
+
+466. **The craft loop's follow-ups** (2026-11-12, branch
+     `script-craft-followups`, no migration: a Vercel deploy only).
+     (a) The passage rewrite reads the dossier's scenes. `scenesForProject`
+     (`apps/web/lib/dossier-scenes.ts`) holds what the runner's private
+     `scenesFor` did, and the runner now shares it with `regenerateSection`.
+     `buildRegenerateRequest` sends `Scenes:` beside the claims in its one
+     cacheable prefix message, `No scenes.` for a project with no dossier.
+     The lift fixture `script-regenerate.json` moved once, for that line.
+     (b) A Shorts budget stop writes the outline's repairs and the craft
+     notices before it parks, with the same call as the other stop branch and
+     only when there is something to write. No stop notice is added: the
+     budget gate already says why.
+     (c) The craft-loop runner suite owns its project. It creates one in
+     `beforeEach` with `createProjectFromCase` and deletes it in `afterEach`,
+     and the scenes test writes that project's own dossier, so the suite
+     never edits the shared fixture and runs alone on an unseeded database.
+     (d) Decision 464 (c), one notice per revised chapter, stays as decided.

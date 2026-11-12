@@ -688,6 +688,24 @@ describe('buildChapterRequest', () => {
     })
     expect(regenerate.system).toContain('Script craft: how the plot builds')
   })
+
+  it('gives the passage rewrite the scenes beside the claims', () => {
+    const base = {
+      bible: FIRST_CHANNEL_IN_USE,
+      chapterTitle: 'The turn',
+      contentMd: 'Some narration. More narration.',
+      selection: 'More narration.',
+      note: 'Make it land harder.',
+      claims,
+    }
+    const withScenes = buildRegenerateRequest({
+      ...base,
+      scenes: ['March 2001 — the board met.'],
+    })
+    expect(withScenes.messages[0]!.content).toMatch(/Scenes:\n\[S1\] March 2001 — the board met\.$/)
+    expect(withScenes.cacheablePrefixMessages).toBe(1)
+    expect(buildRegenerateRequest(base).messages[0]!.content).toMatch(/Scenes:\nNo scenes\.$/)
+  })
 })
 
 describe('buildSelfCheckRequest', () => {
