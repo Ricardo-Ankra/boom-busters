@@ -5105,7 +5105,7 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 > what the pipeline draws. Branch `motion-package`, decision 464. Spec
 > `docs/superpowers/specs/2026-11-11-motion-package-and-reading-hold-design.md`,
 > plan `docs/superpowers/plans/2026-11-11-motion-package-and-reading-hold.md`.
-> Timeline schema change: broker redeploy needed.
+> Timeline schema change: redeploy the broker and the Remotion site before the push.
 
 ### Deliverables
 
@@ -5131,8 +5131,13 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] The Brand Kit specimen is a package reel, 16:9 and 9:16 buttons
       (`534fe9df`, `3b5ad6d7`).
 - [x] The film-title exemplar, reserved for the title card (`15eca366`).
-- [ ] Deploy, in order, by the owner: `deploy:stacks boom-busters-broker`,
-      `deploy:remotion`, the Vercel deploy, `PUT /api/inngest`.
+- [x] The final whole-branch review's fixes: the card-aware hold, the
+      in-chapter pause cap, abbreviations in card titles, the film-title full
+      stops, the house-card compile fallback, the rest check's held tail and
+      the reel's card exit fade (decision 464 (i)).
+- [ ] Deploy, in order, by the owner: `deploy:stacks boom-busters-broker`
+      and `deploy:remotion`, then the push to master (which builds Vercel
+      production), then `PUT /api/inngest`.
 - [ ] The owner sees the revised chapter-title and the new film-title in the
       specimen and approves or steers them.
 - [ ] Whole e2e suite in batches on a warm server and the database quiet
@@ -11544,17 +11549,17 @@ owner edits. `--prod` was not run against Neon.
      `TitledCard`; and a graphic cut away at the next shot's first word, so
      the hero, which lands last, got only the narrator's breath.
      (b) The reading hold. A narrated graphic's final state stays up for at
-     least 2000 ms from the start of the last word it covers, 2500 ms for
-     bar-chart, line-chart, racing-chart, comparison-chart, donut-chart,
-     stat-counter, kpi-counter and progress-bars (`READING_HOLD_MS`,
-     `FIGURE_HOLD_MS`). The assembly layer picks the number per slot
+     least 2000 ms from the start of the last word it covers, 2500 ms by
+     proxy, not by technique name: for a chart slot, or for a graphic whose
+     facts hold a digit (see (h); `READING_HOLD_MS`, `FIGURE_HOLD_MS`). The
+     assembly layer picks the number per slot
      (`holdMsFor`, `apps/web/lib/reading-hold.ts`) and the compiler gets it
      as `holdMs`, so the timeline package knows no technique names. A slot
      whose last word starts less than that before its end gets a narration
      pause of the shortfall, capped at 1500 ms (`READING_PAUSE_CAP_MS`),
      right after that word ends. The pause lands only where a reader would
      pause: the last word ends a sentence or clause (`.` `!` `?` `;` `:` `,`,
-     or a closing quote after one). A slot whose last word is mid-clause
+     or a closing quote, `)` or `]` after one). A slot whose last word is mid-clause
      gets no pause and is counted in the report. A pause also needs the next
      shot to start after the cut; if the next shot is already anchored before
      it, the graphic is gone and a pause would only stall the film
@@ -11564,8 +11569,8 @@ owner edits. `--prod` was not run against Neon.
      the take, and keeps its `chapterId` and `paragraphIndex`. Captions,
      music, chapter cue points and slots shift by the same breakpoints. The
      film's last slot is extended by the shortfall with no pause, since
-     nothing follows it. The assembly summary reports `{ pauses, addedMs,
-midClause, overlapped }`.
+     nothing follows it. The assembly summary reports
+     `{ pauses, addedMs, midClause, overlapped }`.
      (c) Silent cards are timed to reading, not speech. `cardWords` lays the
      title's words 250 ms apart from 300 ms (`CARD_FIRST_WORD_MS`,
      `CARD_WORD_STEP_MS`); the entrance settles in 700 ms (`CARD_SETTLE_MS`),
@@ -11645,7 +11650,37 @@ midClause, overlapped }`.
      the real font); a channel identity with a reveal longer than about
      700 ms breaks the rest window on cards; a film's last-slot extension is
      not in the report's added time.
+     (i) The final review's fixes. I1: a graphic whose last word ends a
+     carded chapter was measured to the next slot, but the card covers it
+     from its first frame, 800 ms after the paragraph; the planner now
+     bounds the available time by the card's start (every later chapter
+     under `cards`, the second under `title`, none under `none`), and the
+     pause lands at the paragraph end, which moves the card later. I2: a
+     paragraph-end pause inside a chapter is capped at
+     `DEFAULT_RISE_THRESHOLD_MS - PARAGRAPH_GAP_MS - 1` (1299 ms), so the gap
+     stays under the ducking rise threshold and the music bed does not swell
+     mid-chapter; mid-paragraph pauses and pauses at a chapter break keep
+     1500 ms, since the break is meant to rise. I3: `cardWords` glues a word
+     ending in a full stop to the word after it with a non-breaking space,
+     so "Mr. Madoff Goes to Washington" is not drawn as a label over a cut
+     title. M6: film-title strips only the closing full stop of the whole
+     title, so U.S. and Inc. keep theirs. M1: a house card that cannot
+     compile (a missing esbuild binary), or whose compile is refused, falls
+     back to `TitledCard` with a note in the assembly instead of failing it.
+     M3: the rest check also samples the held tail, up to the last word plus
+     the hold, since the render plays the code past its planned length;
+     every other check stays on the plan. M4: the reel plays card pieces
+     through `CardOverlay`, so it has the render's exit fade. M5: house cards
+     compile under the house motion preamble, not the channel's identity.
      Deploy, owner to run, in this order: `deploy:stacks boom-busters-broker`
-     (the timeline schema, `trimStartMs` and card `code`; every render 422s
-     until it is done), `deploy:remotion` (the compositions), the Vercel
-     deploy, then `PUT /api/inngest`. No migration.
+     and `deploy:remotion` BEFORE the push to master, since both are backward
+     compatible with old timelines and the push itself deploys Vercel
+     production; then the push; then `PUT /api/inngest`. An un-redeployed
+     broker does not 422: `infra/lambdas/broker/core.ts` parses with
+     `TimelineSchema`, and Zod strips unknown keys, so an old broker
+     silently drops `trimStartMs` and card `code`. Every later narration
+     piece of a split paragraph then plays its take from the start (the
+     voice doubles over itself) and cards fall back to `TitledCard`. An old
+     Remotion site ignores `trimStartMs` the same way. Projects already
+     assembled keep their old timelines and get the pauses and card code
+     only on re-assembly. No migration.
