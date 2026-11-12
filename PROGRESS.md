@@ -11375,3 +11375,79 @@ owner edits. `--prod` was not run against Neon.
      they are expected to keep the category of the voice they came from (most
      are professional clones) and sit with those, not in a group of their own.
      The first look at the live panel settles it.
+
+## Script writer and craft loop (2026-11-11)
+
+> Decision 463, branch `script-craft-loop`. Plan 2 of the script review and
+> craft design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
+> (sections 4 and 8), plan `docs/superpowers/plans/2026-11-11-script-writer-and-craft-loop.md`.
+> The writer now reads the audience, the language and the dossier's scenes;
+> each chapter passes a craft check with one repair round before the
+> self-check; the answers, notices and gutter entries sit beside the outline's
+> repairs. No migration, no stack deploy.
+
+### Deliverables
+
+- [x] Task 1: the writer reads the audience, the language and the dossier's scenes (`b22549e5`)
+- [x] Task 2: the script editor's craft check and the revision request (`fe7e9598`)
+- [x] Task 3: the craft loop's answers, its settlement and notices beside repairs (`d99bc658`)
+- [x] Task 4: each chapter passes a craft check with one repair round, and the drafter reads the scenes (`01e22480`, fix `0f3959bf`)
+- [x] Task 5: lift cases and fixtures regenerated, this section, the spec status line and section 8 amended (this section's commit)
+
+### Owner actions at deploy
+
+- `PUT /api/inngest` after the deploy: the runner's steps change.
+- Check the `scripting` model route in Settings: the craft check judges on it.
+- Paste the scoped hedging rules from spec section 6.2 into Boom & Busters'
+  bible in the Bible tab, if decision 458's paste is still undone.
+- No migration.
+
+### Prompt changes to the investigation prompts
+
+- Writer (`script-outline`, `script-chapter-*`, `script-regenerate`; 12
+  fixtures): the system prompt opens "You write narration for adults who watch
+  long-form money documentaries, for a documentary channel about" instead of
+  "You write narration for a documentary channel about" (the audience
+  opening), and the voice rules gain the bullet "The scenes are the
+  dossier's: use them for what people did, wanted and said. The claims are
+  the facts. A detail in neither is not yours to write." The chapter requests
+  (8 fixtures) also gain a `Scenes:` block after the claim list
+  (`No scenes.` when the dossier has none); the outline and regenerate
+  fixtures change in the system prompt only.
+- New cases (4 fixtures created): `script-chapter-scenes` (the writer with a
+  scene), `script-craft-check` and `script-craft-check-calm` (the script
+  editor's check, tension and calm checklists), `script-chapter-revise` (the
+  chapter request plus the draft and the editor's notes).
+- Nothing else moved: the 12 changed fixtures are all `script-*.json`, and
+  `preview.test.ts` reads `script-outline.json`, which is among them.
+
+### Decisions made
+
+463. **Script writer and craft loop** (2026-11-11, branch `script-craft-loop`,
+     no migration, no stack deploy: a Vercel deploy and `PUT /api/inngest`).
+     (a) No stage estimate exists, so each craft call is reserved by the guard
+     at its `maxTokens`, and a revision at the chapter's estimate.
+     (b) The loop runs only for a run whose `load-dossier` carries
+     `craftLoop`, so a run parked before the deploy is never revised after
+     approval.
+     (c) One notice per revised chapter, of kind `trimmed`, listing its fixed
+     findings, so a seven-chapter script carries at most seven Dismiss
+     buttons. A new kind would need a migration.
+     (d) A fixed finding is one whose sentence was in the draft and is gone
+     from the revision.
+     (e) A revision stop stores the first findings; a recheck stop stores
+     those still in the revision.
+     (f) The craft notices are written with the strip at mark-shorts, and the
+     Shorts-off branch now writes the outline's repairs too.
+     (g) The mock craft check finds nothing, so mock runs and e2e never
+     revise; the revision path is proven in the runner harness.
+     (h) The calm checklist drops the planted-question and withheld-fact
+     lines.
+     (i) The finding type is named `ScriptCraftFinding`, because the schemas
+     package already exports a `CraftFinding` for the direction stage.
+     (j) `settleCraft` takes the stored texts with the format's fixed lines. A
+     finding's sentence is quoted from the text without them, so the
+     substring checks answer the same either way.
+     (k) The craft-loop runner tests are a suite of their own that never seeds
+     or truncates the shared test database. Inside the main suite, its
+     `beforeEach` truncated rows that parallel test files were reading.
