@@ -30,7 +30,7 @@ import type {
 } from '@boom-busters/schemas'
 import { anchorSlots, anchorWordRanges } from './anchor'
 import type { ParagraphSpan } from './anchor'
-import { buildDuckingCurve } from './ducking'
+import { buildDuckingCurve, DEFAULT_RISE_THRESHOLD_MS } from './ducking'
 import { chapterCuePoints } from './music'
 import { holdShortfallMs, planReadingPauses } from './reading-hold'
 import type { ReadingHoldReport } from './reading-hold'
@@ -260,6 +260,8 @@ export function compileTimelineWithReport(input: CompileInput): {
   const overlays: Overlay[] = []
   /** Each chapter-card overlay with the paragraph it leads into. */
   const overlayParagraph: { overlay: Overlay; paragraph: number }[] = []
+  /** Each later chapter's first paragraph, with its card's start when it has one. */
+  const chapterBreaks = new Map<number, { cardStartMs?: number }>()
   const chapters: { id: string; title: string }[] = []
   const seenChapters = new Set<string>()
   let oldClock = 0
@@ -271,6 +273,8 @@ export function compileTimelineWithReport(input: CompileInput): {
       if (chapters.length > 1) {
         const leadMs = oldClock + shift + CHAPTER_LEAD_MS
         const marking = input.chapterMarking
+        const hasCard = marking === 'cards' || (marking === 'title' && chapters.length === 2)
+        chapterBreaks.set(paragraphIndex, hasCard ? { cardStartMs: leadMs } : {})
         switch (marking) {
           case 'cards': {
             const durationMs = cardDurationMs(paragraph.chapterTitle)
@@ -374,6 +378,8 @@ export function compileTimelineWithReport(input: CompileInput): {
     words: input.captions.words,
     spans,
     shiftAt,
+    chapterBreaks,
+    withinChapterCapMs: DEFAULT_RISE_THRESHOLD_MS - PARAGRAPH_GAP_MS - 1,
   })
   for (const pause of pauses) {
     const existing = breakpoints.findIndex((breakpoint) => breakpoint.oldStartMs === pause.cutMs)

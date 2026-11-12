@@ -126,6 +126,51 @@ describe('planReadingPauses', () => {
     })
     expect(pauses).toEqual([])
   })
+
+  describe('at a chapter break', () => {
+    const words = [word('one', 0), word('done.', 4000, 4400), word('next', 5000), word('up', 5500)]
+    const spans = [
+      { startMs: 0, endMs: 5000 },
+      { startMs: 5000, endMs: 9000 },
+    ]
+    // 800 lead and a 3400 card before the next paragraph's words (900 overlap).
+    const shiftAt = (t: number) => (t >= 5000 ? 3300 : 0)
+    const base = {
+      slots: [{ startMs: 0, holdMs: READING_HOLD_MS }, { startMs: 5000 }],
+      ranges: [{ first: 0, last: 1 }, null],
+      words,
+      spans,
+      shiftAt,
+    }
+
+    it('measures against the card start, not the next slot', () => {
+      const noCard = planReadingPauses({ ...base, chapterBreaks: new Map([[1, {}]]) })
+      expect(noCard.pauses).toEqual([])
+      const { pauses } = planReadingPauses({
+        ...base,
+        chapterBreaks: new Map([[1, { cardStartMs: 5800 }]]),
+      })
+      // 1800 from the last word's start to the card: 200 short.
+      expect(pauses).toEqual([{ slotIndex: 0, cutMs: 5000, pauseMs: 200, paragraphEnd: true }])
+    })
+
+    it('keeps the full cap at a break and the within-chapter cap inside a chapter', () => {
+      const long = { ...base, slots: [{ startMs: 0, holdMs: 3500 }, { startMs: 5000 }] }
+      const atBreak = planReadingPauses({
+        ...long,
+        chapterBreaks: new Map([[1, { cardStartMs: 5800 }]]),
+        withinChapterCapMs: 1299,
+      })
+      expect(atBreak.pauses[0]!.pauseMs).toBe(READING_PAUSE_CAP_MS)
+      const inside = planReadingPauses({
+        ...long,
+        shiftAt: (t) => (t >= 5000 ? PARAGRAPH_GAP_MS : 0),
+        chapterBreaks: new Map(),
+        withinChapterCapMs: 1299,
+      })
+      expect(inside.pauses[0]!.pauseMs).toBe(1299)
+    })
+  })
 })
 
 describe('endsClause', () => {

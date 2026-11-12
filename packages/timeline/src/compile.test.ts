@@ -850,6 +850,119 @@ describe('the reading pause', () => {
     expect(held.durationMs).toBe(plain.durationMs + 1100)
   })
 
+  /**
+   * Chapter one's last graphic covers "EY refused to sign the accounts." and its
+   * last word starts late in the paragraph, so a card at the chapter break
+   * (paragraph end plus the lead) would cover it too soon.
+   */
+  function carriedGraphicInput(over: Partial<CompileInput> = {}): CompileInput {
+    const input = threeChapterInput(over)
+    const still = input.slots[1]!
+    input.captions.words = input.captions.words.map((w) => {
+      if (w.text === 'accounts.') return { ...w, startMs: 13_000, endMs: 13_350 }
+      if (w.text === 'days.') return { ...w, startMs: 20_000, endMs: 20_350 }
+      return w
+    })
+    const graphic = (startMs: number, durationMs: number, coversText: string): CompileSlot => ({
+      ...still,
+      type: 'graphic',
+      startMs,
+      durationMs,
+      coversText,
+      graphicCode: GRAPHIC,
+      holdMs: 2000,
+    })
+    input.slots = [
+      input.slots[0]!,
+      graphic(8000, 6000, 'EY refused to sign the accounts.'),
+      graphic(14_000, 7000, 'The shares collapsed in nine days.'),
+      { ...still, startMs: 21_000, durationMs: 4000 },
+    ]
+    return input
+  }
+
+  it('cards: a graphic closing a chapter is held against the card, not the next shot', () => {
+    const plain = compileTimeline({
+      ...carriedGraphicInput(),
+      slots: carriedGraphicInput().slots.map((slot) => ({ ...slot, holdMs: undefined })),
+    })
+    const { timeline, readingHold } = compileTimelineWithReport(carriedGraphicInput())
+    // 'accounts.' starts 13700 shifted and the card opens at 15500: 1800 of the
+    // 2000 needed, so 200 is added at the break. The next shot (14000, shifted
+    // to 18000) would have counted the whole card as reading time.
+    expect(readingHold.pauses).toBe(2)
+    const [chapterOne, chapterTwo] = timeline.overlays
+    expect(chapterOne!.startMs).toBe(plain.overlays[0]!.startMs + 200)
+    // The second break is held the same way, and carries the first pause with it.
+    expect(chapterTwo!.startMs).toBe(plain.overlays[1]!.startMs + 400)
+    expect(timeline.music?.cuePoints.map((c) => c.tMs)).toEqual([
+      0,
+      chapterOne!.startMs,
+      chapterTwo!.startMs,
+    ])
+  })
+
+  it('cards: the pause lands at the chapter boundary, so the break is the pause', () => {
+    const { readingHold } = compileTimelineWithReport(carriedGraphicInput())
+    expect(readingHold.addedMs).toBe(400)
+    const timeline = compileTimeline(carriedGraphicInput())
+    const secondEnd = timeline.narration[1]!.startMs + timeline.narration[1]!.durationMs
+    expect(timeline.overlays[0]!.startMs).toBe(secondEnd + CHAPTER_LEAD_MS + 200)
+  })
+
+  it('none: a graphic closing a chapter keeps its measurement to the next shot', () => {
+    const { readingHold } = compileTimelineWithReport(
+      carriedGraphicInput({ chapterMarking: 'none' }),
+    )
+    expect(readingHold.pauses).toBe(0)
+  })
+
+  it('title: only the second chapter has a card to be held against', () => {
+    const { timeline, readingHold } = compileTimelineWithReport(
+      carriedGraphicInput({ chapterMarking: 'title' }),
+    )
+    expect(readingHold.pauses).toBe(1)
+    expect(readingHold.addedMs).toBe(200)
+    expect(timeline.overlays).toHaveLength(1)
+    expect(timeline.music?.cuePoints[1]!.tMs).toBe(timeline.overlays[0]!.startMs)
+  })
+
+  it('caps a paragraph-end pause inside a chapter below the ducking rise', () => {
+    const input = goldenInput()
+    const still = input.slots[1]!
+    input.captions.words = input.captions.words.map((w) =>
+      w.text === 'money.' ? { ...w, startMs: 7900, endMs: 7950 } : w,
+    )
+    input.slots = [
+      {
+        ...still,
+        type: 'graphic',
+        startMs: 0,
+        durationMs: 8000,
+        coversText: 'By June, the auditors could not find the money.',
+        graphicCode: GRAPHIC,
+        // A 1500 ms shortfall once the 700 ms paragraph gap is counted.
+        holdMs: 2300,
+      },
+      { ...still, startMs: 8000, durationMs: 6000 },
+    ]
+    const { timeline, readingHold } = compileTimelineWithReport(input)
+    expect(readingHold.addedMs).toBe(DEFAULT_RISE_THRESHOLD_MS - PARAGRAPH_GAP_MS - 1)
+    const [first, second] = timeline.narration
+    const firstEnd = first!.startMs + first!.durationMs
+    expect(second!.startMs - firstEnd).toBeLessThan(DEFAULT_RISE_THRESHOLD_MS)
+    const bed = resolveBrandKit(DEFAULT_SETTINGS).music.bedGainDb
+    const risen = timeline.music!.duckingCurve.filter(
+      (point) => point.gainDb === bed && point.tMs > firstEnd && point.tMs < second!.startMs,
+    )
+    expect(risen).toEqual([])
+  })
+
+  it('a mid-paragraph pause keeps the full cap', () => {
+    const { readingHold } = compileTimelineWithReport(pausedInput(true))
+    expect(readingHold.addedMs).toBe(2 * 1500)
+  })
+
   it('leaves a timeline without holds unchanged', () => {
     const input = goldenInput()
     expect(compileTimelineWithReport(input).readingHold).toEqual({
