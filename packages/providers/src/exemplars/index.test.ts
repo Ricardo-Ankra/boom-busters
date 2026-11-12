@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DESIGNS } from './designs/index'
-import { MECHANISM_KEYS } from '@boom-busters/schemas'
+import {
+  cardDurationMs,
+  cardWords,
+  FIGURE_HOLD_MS,
+  MECHANISM_KEYS,
+  READING_HOLD_MS,
+} from '@boom-busters/schemas'
 import { exemplarFor, exemplars, MANIFEST, TECHNIQUES, techniqueFor, vendoredPath } from './index'
 
 const HERE = new URL('./', import.meta.url)
@@ -28,6 +34,43 @@ describe('the exemplar manifest (decision 305)', () => {
     )
   })
 
+  it('leaves the real reading hold after each last word of each sample (a chapter card is title only)', () => {
+    const figures = [
+      'bar-chart',
+      'line-chart',
+      'racing-chart',
+      'comparison-chart',
+      'donut-chart',
+      'stat-counter',
+      'kpi-counter',
+      'progress-bars',
+    ]
+    for (const entry of MANIFEST) {
+      if (entry.id === 'chapter-title') {
+        expect(entry.slot.words).toEqual(cardWords('The missing billion.'))
+        expect(entry.slot.durationMs).toBe(cardDurationMs('The missing billion.'))
+        continue
+      }
+      if (entry.id === 'film-title') {
+        expect(entry.slot.words).toEqual(cardWords('The Wirecard Collapse'))
+        expect(entry.slot.durationMs).toBe(cardDurationMs('The Wirecard Collapse'))
+        continue
+      }
+      const lastAt = entry.slot.words.at(-1)!.atMs
+      expect(entry.slot.durationMs - lastAt, entry.id).toBe(
+        figures.includes(entry.id) ? FIGURE_HOLD_MS : READING_HOLD_MS,
+      )
+    }
+  })
+
+  it('film-title strips only the closing full stop of the whole title, not an abbreviation', () => {
+    const { source } = DESIGNS['film-title']!
+    expect(source).toContain('index === props.words.length - 1 ? word.text.replace(')
+    expect(source).not.toMatch(
+      /props\.words\.map\(\(word\) => \(\{ atMs: word\.atMs, text: word\.text\.replace/,
+    )
+  })
+
   it('names a vendored file that exists, beside its licence', () => {
     for (const entry of MANIFEST) {
       const file = new URL(vendoredPath(entry), HERE)
@@ -49,7 +92,7 @@ describe('the exemplar manifest (decision 305)', () => {
 
   it('gives every entry a synthetic slot with timed words, and data on the chart techniques', () => {
     for (const entry of MANIFEST) {
-      expect(entry.slot.durationMs).toBeGreaterThanOrEqual(4000)
+      expect(entry.slot.durationMs).toBeGreaterThanOrEqual(3200)
       expect(entry.slot.words.length).toBeGreaterThanOrEqual(3)
       let last = -1
       for (const word of entry.slot.words) {

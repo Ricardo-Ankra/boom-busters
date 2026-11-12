@@ -496,7 +496,7 @@ describeDb('motion-exemplar-deriver', () => {
     it("fails the technique with the storyboard's reason after one retry", async () => {
       const late = {
         ...mockStoryboardPlan(stat),
-        slot: { intent: 'x', words: [{ text: 'late', atMs: 6000 }] },
+        slot: { intent: 'x', words: [{ text: 'late', atMs: stat.slot.durationMs }] },
       }
       callLlm.mockResolvedValue({ text: JSON.stringify(late) })
       const { after } = await launch(['stat-counter'])

@@ -5097,6 +5097,52 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
       owner on the Exemplars tab.
 
+## The motion package and the reading hold (2026-11-11)
+
+> Graphics stay on screen long enough to read, the narration waits for them
+> where it can, chapter cards and the film title are drawn from the exemplars
+> instead of the fixed fade-and-rise card, and the Brand Kit specimen plays
+> what the pipeline draws. Branch `motion-package`, decision 465. Spec
+> `docs/superpowers/specs/2026-11-11-motion-package-and-reading-hold-design.md`,
+> plan `docs/superpowers/plans/2026-11-11-motion-package-and-reading-hold.md`.
+> Timeline schema change: redeploy the broker and the Remotion site before the push.
+
+### Deliverables
+
+- [x] Timeline schema: `NarrationSegment.trimStartMs`, and card overlays carry
+      optional `code`; shared hold and card values in
+      `packages/schemas/src/reading-hold.ts` (`642c3e1b`, `5c131953`).
+- [x] Compositions: card overlays draw exemplar code through `GraphicCode`,
+      fall back to `TitledCard`, host fade on exit; narration pieces play from
+      their trim (`445f7c07`).
+- [x] Compiler: the reading hold (pauses, paragraph split, last-slot
+      extension, report) and the no-pause guard when the next shot starts
+      before the cut (`66e77124`, `551133fa`).
+- [x] Cards last as long as their titles take to read, and the chapter shift
+      follows (`cd67971d`).
+- [x] The graphics check: at rest after the last word (`restIssue`); the
+      designer is told the render holds the ending; exemplar samples re-timed;
+      the chapter title needs no label (`684c453a`, `dd4b787f`).
+- [x] Assembly sets each graphic's hold and resolves the card code from the
+      channel's chapter title or the house design (`c278337d`).
+- [x] Shorts slice a paragraph the reading pause split (`c3dceb21`).
+- [x] The board's graphic player holds the ending as the render will
+      (`b3c4063a`).
+- [x] The Brand Kit specimen is a package reel, 16:9 and 9:16 buttons
+      (`534fe9df`, `3b5ad6d7`).
+- [x] The film-title exemplar, reserved for the title card (`15eca366`).
+- [x] The final whole-branch review's fixes: the card-aware hold, the
+      in-chapter pause cap, abbreviations in card titles, the film-title full
+      stops, the house-card compile fallback, the rest check's held tail and
+      the reel's card exit fade (decision 465 (i)).
+- [ ] Deploy, in order, by the owner: `deploy:stacks boom-busters-broker`
+      and `deploy:remotion`, then the push to master (which builds Vercel
+      production), then `PUT /api/inngest`.
+- [ ] The owner sees the revised chapter-title and the new film-title in the
+      specimen and approves or steers them.
+- [ ] Whole e2e suite in batches on a warm server and the database quiet
+      (two shared-database interferences were seen on the way).
+
 ---
 
 # Decisions made
@@ -11587,3 +11633,152 @@ owner edits. `--prod` was not run against Neon.
      step, the same exposure as the chapter draft.
      (p) A revision that landed always leaves its `trimmed` notice, bare
      ("Chapter N revised for craft.") when no first finding counts as fixed.
+
+465. **The motion package and the reading hold** (2026-11-11, branch
+     `motion-package`; numbered 464 on the branch, renumbered to 465 at merge:
+     master took 464 for the script craft loop; timeline schema change, so a broker redeploy).
+     (a) The owner's rulings: the title card and chapter card overlays come
+     from the exemplars, and the chapter card stays title only (decision 457:
+     no number, no label). The brief was a broadcast package designer's view:
+     one family of film title, chapter breaks, lower thirds and graphics,
+     on-screen text given the time it takes to read, and the package signed
+     off as a reel. Three faults drove it: the Brand Kit specimen played four
+     fixed components, not what the pipeline draws; cards used the old
+     `TitledCard`; and a graphic cut away at the next shot's first word, so
+     the hero, which lands last, got only the narrator's breath.
+     (b) The reading hold. A narrated graphic's final state stays up for at
+     least 2000 ms from the start of the last word it covers, 2500 ms by
+     proxy, not by technique name: for a chart slot, or for a graphic whose
+     facts hold a digit (see (h); `READING_HOLD_MS`, `FIGURE_HOLD_MS`). The
+     assembly layer picks the number per slot
+     (`holdMsFor`, `apps/web/lib/reading-hold.ts`) and the compiler gets it
+     as `holdMs`, so the timeline package knows no technique names. A slot
+     whose last word starts less than that before its end gets a narration
+     pause of the shortfall, capped at 1500 ms (`READING_PAUSE_CAP_MS`),
+     right after that word ends. The pause lands only where a reader would
+     pause: the last word ends a sentence or clause (`.` `!` `?` `;` `:` `,`,
+     or a closing quote, `)` or `]` after one). A slot whose last word is mid-clause
+     gets no pause and is counted in the report. A pause also needs the next
+     shot to start after the cut; if the next shot is already anchored before
+     it, the graphic is gone and a pause would only stall the film
+     (`551133fa`). A pause at a paragraph end adds to the paragraph gap. A
+     pause inside a paragraph splits its narration into one piece more than
+     it has pauses; each later piece carries `trimStartMs`, its offset into
+     the take, and keeps its `chapterId` and `paragraphIndex`. Captions,
+     music, chapter cue points and slots shift by the same breakpoints. The
+     film's last slot is extended by the shortfall with no pause, since
+     nothing follows it. The assembly summary reports
+     `{ pauses, addedMs, midClause, overlapped }`.
+     (c) Silent cards are timed to reading, not speech. `cardWords` lays the
+     title's words 250 ms apart from 300 ms (`CARD_FIRST_WORD_MS`,
+     `CARD_WORD_STEP_MS`); the entrance settles in 700 ms (`CARD_SETTLE_MS`),
+     the card rests 1500 ms (`CARD_REST_MS`), then exits over a 900 ms
+     overlap (`CARD_OVERLAP_MS`). `cardDurationMs` is the larger of 3200 ms
+     (`CARD_MIN_MS`) and last word + 700 + 1500 + 900, so one word is 3400 ms
+     and five words 4400 ms. The chapter break shift, the overlap with the
+     next chapter's first words and the music assertion follow the computed
+     length, and a card after a reading pause shifts with it. An old 3200 ms
+     card still cues music.
+     (d) Card code is resolved at assembly and stored in the timeline, so an
+     assembled timeline never changes; a newly approved version reaches a
+     project on its next assembly (as decision 459). A card's code is the
+     channel's approved chapter-title version only when its sample is title
+     only (`isTitleOnlySample`, `card-sample.ts`), else the house design. A
+     failed or missing card falls back to `TitledCard` with the title, and
+     the assembly says why. The host fades the card out over the last 700 ms.
+     The film title card uses the new `film-title` exemplar, hand-made,
+     reserved for the title card and kept out of the designer's technique
+     list.
+     (e) The rest check. `restIssue` (`apps/web/lib/graphic-code/rest.ts`)
+     refuses a design in which visible text changes after the last word plus
+     700 ms; a refused design is retried once like other refusals. It reads
+     text only. The exemplar samples were re-timed so each leaves exactly its
+     technique's hold after its last word; all seventeen existing exemplars
+     passed, and only chapter-title was revised (it rested at 1350 ms against
+     a 1500 ms limit; its label is now optional and title only is the hook).
+     (f) The board and the specimen. The board's graphic player and still
+     extend the slot by the shortfall, so the board shows the hold the render
+     gives. The Brand Kit specimen is a package reel: film title, chapter
+     card, lower third, bar-chart and stat-counter, each from the channel's
+     approved exemplar or the house design with the form's live tokens, then
+     karaoke captions in the 9:16 frame labelled Shorts only. Labelled
+     buttons switch 16:9 and 9:16. A piece that cannot compile says so in
+     its caption and the rest play. The reel uses a channel card only when
+     the render would (the same title-only rule).
+     (g) Shorts slice the master, so a Short whose window holds a split
+     paragraph takes its pieces and counts the pause against its 180 s
+     limit; the shorts-review window length is now the extent, paragraph gaps
+     included. Points and teasers compile their own narration and so get no
+     reading hold.
+     (h) Controller rulings made while building. R1: the hold and card values
+     and `cardWords`, `cardDurationMs`, `holdShortfallMs` live in
+     `packages/schemas/src/reading-hold.ts`, because providers cannot import
+     timeline and schemas is the one package every consumer has; timeline
+     keeps `CHAPTER_CARD_MS` and `CHAPTER_OVERLAP_MS` as aliases (cost if
+     wrong: moving a few pure functions). R2: a last covered word that ends
+     the film's last paragraph is the last-slot case, extended with no
+     pause (cost if wrong: none, nothing follows). R4: exemplars failing the
+     rest check were revised minimally and without the hand-made reviewer
+     loop or owner stills, because the plan could not pause for the owner;
+     a design reviewer read them afterwards and the owner sees them in the
+     specimen before merge (cost if wrong: the owner asks for different
+     revisions to a few). R5: had more than six of eighteen exemplars failed
+     after re-timing, the work would have stopped to report, since a
+     majority means the rule needs a second look; it did not trigger. R6:
+     the film-title exemplar is a house exemplar, written by hand and stored
+     with `exemplar:check --write`, shipping in the bundle with no upload,
+     and a design reviewer stands in for the owner's stills review (cost if
+     wrong: a redesign of one exemplar). The ledger holds no R3.
+     Decisions made where the spec left room: the numbers above (the
+     owner's to tune by eye on real renders; cost if wrong: a constant); a
+     digit-fact proxy for the 2500 ms hold, the brief carries no technique, so
+     `holdMsFor` gives 2500 ms to every chart slot and to a graphic whose
+     facts hold a digit (cost if wrong: a longer pause on a few text
+     graphics, a shorter one on a chart technique with no digit); the cap acts per pause, so
+     two slots sharing a last word can sum past 1500 ms (cost if wrong: one
+     long pause, rare); the specimen's variant pickers needed no removal
+     because the Brand Kit form has none, only the specimen's caption changed.
+     Deliberately left out: Points and teasers have no reading hold; the
+     rest check reads text only, so a silent draw or move after the last word
+     is caught by the designer prompt alone (follow-up: a geometry or pixel
+     sampler); the board can preview a longer hold than a capped render
+     pause, since it extends by the whole shortfall and the render caps at
+     1500 ms and skips mid-clause and overlapped slots; the film-title
+     sizing ignores word margins (check a very long title in portrait with
+     the real font); a channel identity with a reveal longer than about
+     700 ms breaks the rest window on cards; a film's last-slot extension is
+     not in the report's added time.
+     (i) The final review's fixes. I1: a graphic whose last word ends a
+     carded chapter was measured to the next slot, but the card covers it
+     from its first frame, 800 ms after the paragraph; the planner now
+     bounds the available time by the card's start (every later chapter
+     under `cards`, the second under `title`, none under `none`), and the
+     pause lands at the paragraph end, which moves the card later. I2: a
+     paragraph-end pause inside a chapter is capped at
+     `DEFAULT_RISE_THRESHOLD_MS - PARAGRAPH_GAP_MS - 1` (1299 ms), so the gap
+     stays under the ducking rise threshold and the music bed does not swell
+     mid-chapter; mid-paragraph pauses and pauses at a chapter break keep
+     1500 ms, since the break is meant to rise. I3: `cardWords` glues a word
+     ending in a full stop to the word after it with a non-breaking space,
+     so "Mr. Madoff Goes to Washington" is not drawn as a label over a cut
+     title. M6: film-title strips only the closing full stop of the whole
+     title, so U.S. and Inc. keep theirs. M1: a house card that cannot
+     compile (a missing esbuild binary), or whose compile is refused, falls
+     back to `TitledCard` with a note in the assembly instead of failing it.
+     M3: the rest check also samples the held tail, up to the last word plus
+     the hold, since the render plays the code past its planned length;
+     every other check stays on the plan. M4: the reel plays card pieces
+     through `CardOverlay`, so it has the render's exit fade. M5: house cards
+     compile under the house motion preamble, not the channel's identity.
+     Deploy, owner to run, in this order: `deploy:stacks boom-busters-broker`
+     and `deploy:remotion` BEFORE the push to master, since both are backward
+     compatible with old timelines and the push itself deploys Vercel
+     production; then the push; then `PUT /api/inngest`. An un-redeployed
+     broker does not 422: `infra/lambdas/broker/core.ts` parses with
+     `TimelineSchema`, and Zod strips unknown keys, so an old broker
+     silently drops `trimStartMs` and card `code`. Every later narration
+     piece of a split paragraph then plays its take from the start (the
+     voice doubles over itself) and cards fall back to `TitledCard`. An old
+     Remotion site ignores `trimStartMs` the same way. Projects already
+     assembled keep their old timelines and get the pauses and card code
+     only on re-assembly. No migration.

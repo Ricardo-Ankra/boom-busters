@@ -376,6 +376,7 @@ function renderSamples(
   size: FrameSize,
   { React, sandboxReact, renderToStaticMarkup, FrameContext, oneFrameScope }: DryRunRuntime,
   times: readonly number[],
+  pastEnd = false,
 ): { issue: string | null; samples: Sample[] } {
   const durationInFrames = Math.max(1, Math.round((input.durationMs * GRAPHIC_FPS) / 1000))
   const props: GraphicProps = { ...input.props, safeArea: safeInsets(size) }
@@ -412,7 +413,9 @@ function renderSamples(
       return { samples, failure: 'the code does not run: Graphic is not a function' }
     }
     for (const atMs of times) {
-      const frame = Math.min(durationInFrames - 1, Math.round((atMs * GRAPHIC_FPS) / 1000))
+      const at = Math.round((atMs * GRAPHIC_FPS) / 1000)
+      // Past the planned length only when asked: a held graphic keeps running there.
+      const frame = pastEnd ? at : Math.min(durationInFrames - 1, at)
       const started = performance.now()
       let markup: string
       try {
@@ -465,6 +468,33 @@ export function dryRunGraphic(input: DryRunInput): DryRunResult {
     if (issue !== null) return { issue, textSamples, figureSamples }
   }
   return { issue: null, textSamples, figureSamples }
+}
+
+/**
+ * The visible text after the planned length, while the render holds the graphic
+ * (the reading hold): samples at the dry run's own 250 ms steps, numbered on
+ * from `firstIndex` (how many samples the dry run took), up to `untilMs`, with the
+ * frame count running on past `durationMs` as it does in the render. No check of
+ * its own runs on these; the dry run has passed first.
+ */
+export function heldTextSamples(
+  input: DryRunInput,
+  firstIndex: number,
+  untilMs: number,
+): { issue: string | null; texts: { landscape: string[]; portrait: string[] } } {
+  const texts: { landscape: string[]; portrait: string[] } = { landscape: [], portrait: [] }
+  const times: number[] = []
+  for (let index = firstIndex; index * GRAPHIC_SAMPLE_MS <= untilMs; index += 1) {
+    times.push(index * GRAPHIC_SAMPLE_MS)
+  }
+  if (times.length === 0) return { issue: null, texts }
+  const loaded = loadRuntime()
+  for (const size of FRAME_SIZES) {
+    const { issue, samples } = renderSamples(input, size, loaded, times, true)
+    texts[size.orientation] = samples.map((sample) => visibleText(sample.markup))
+    if (issue !== null) return { issue, texts }
+  }
+  return { issue: null, texts }
 }
 
 /**

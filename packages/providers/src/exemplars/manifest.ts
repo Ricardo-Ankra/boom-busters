@@ -1,3 +1,4 @@
+import { cardDurationMs, cardWords } from '@boom-busters/schemas'
 import type { ChartKind, ChartSeries, Mechanism, Technique } from '@boom-busters/schemas'
 
 /**
@@ -58,6 +59,11 @@ const yearly = (label: string, unit: string, values: readonly [string, number][]
   points: values.map(([x, y]) => ({ x, y })),
 })
 
+/** A chapter card carries its title only, so its sample has no label (Task 7). */
+const CHAPTER_TITLE = 'The missing billion.'
+/** The film title card carries the film's title alone, so its sample is a title (Task 10). */
+const FILM_TITLE = 'The Wirecard Collapse'
+
 export const MANIFEST: readonly ExemplarEntry[] = [
   {
     id: 'stat-counter',
@@ -67,7 +73,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['word-splits-open', 'drum', 'draw-on'],
     source: rve('templates/stat-counter.tsx'),
     slot: {
-      durationMs: 6000,
+      durationMs: 7200,
       words: spoken('The company had raised 1.2bn by the end of the year.', 200, 450),
       intent: 'The 1.2bn is the whole story of the year.',
     },
@@ -80,7 +86,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['drum', 'docking', 'cause-to-effect'],
     source: rendercomp('src/components/kpi-counter/KpiCounter.tsx'),
     slot: {
-      durationMs: 8000,
+      durationMs: 7700,
       words: spoken('Revenue of 4.2bn, a loss of 900m, and 12,000 staff gone.', 200, 500),
       intent: 'Three figures tell the collapse: 4.2bn revenue, a 900m loss, 12,000 staff gone.',
     },
@@ -94,7 +100,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     source: rendercomp('src/components/bar-chart-anim/BarChartAnim.tsx'),
     chart: { kind: 'bar' },
     slot: {
-      durationMs: 8000,
+      durationMs: 9600,
       words: [
         { text: 'In', atMs: 300 },
         { text: '2019', atMs: 600 },
@@ -132,7 +138,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     source: rendercomp('src/components/line-chart-anim/LineChartAnim.tsx'),
     chart: { kind: 'line' },
     slot: {
-      durationMs: 8000,
+      durationMs: 9300,
       words: [
         { text: 'The', atMs: 300 },
         { text: 'share', atMs: 500 },
@@ -171,7 +177,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     source: rendercomp('src/components/racing-chart/RacingChart.tsx'),
     chart: { kind: 'bar' },
     slot: {
-      durationMs: 10000,
+      durationMs: 11000,
       words: [
         { text: 'Year', atMs: 300 },
         { text: 'by', atMs: 500 },
@@ -225,7 +231,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     source: rve('templates/comparison-chart.tsx'),
     chart: { kind: 'bar' },
     slot: {
-      durationMs: 8000,
+      durationMs: 8500,
       words: [
         { text: 'Reported', atMs: 300 },
         { text: 'against', atMs: 800 },
@@ -263,7 +269,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['draw-on', 'drum', 'cause-to-effect'],
     source: rve('templates/donut-chart.tsx'),
     slot: {
-      durationMs: 6000,
+      durationMs: 6750,
       words: spoken('Forty per cent of the money, 40%, was simply gone.', 200, 450),
       intent: '40% of the money was gone.',
     },
@@ -276,7 +282,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['draw-on', 'tally'],
     source: rve('templates/progress-bars.tsx'),
     slot: {
-      durationMs: 7000,
+      durationMs: 6700,
       words: spoken('Banks held 60%, funds 30%, and the public 10%.', 200, 500),
       intent: 'Banks held 60%, funds 30%, the public 10%.',
     },
@@ -289,7 +295,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['draw-on', 'tally', 'density-from-hierarchy'],
     source: rve('templates/progress-steps.tsx'),
     slot: {
-      durationMs: 8000,
+      durationMs: 8200,
       words: spoken(
         'First the loan, second the shell company, third the transfer, fourth the silence.',
         200,
@@ -306,7 +312,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['persistent-actor', 'drum', 'density-from-hierarchy'],
     source: rendercomp('src/components/kinetic-word-stack/KineticWordStack.tsx'),
     slot: {
-      durationMs: 6000,
+      durationMs: 5050,
       words: spoken('Nobody asked. Nobody checked. Nobody knew.', 300, 550),
       intent: 'Nobody asked, nobody checked, nobody knew.',
     },
@@ -319,7 +325,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['draw-on', 'marker-stroke'],
     source: rendercomp('src/components/typewriter/Typewriter.tsx'),
     slot: {
-      durationMs: 6000,
+      durationMs: 5300,
       words: spoken('The email said: delete everything tonight.', 300, 600),
       intent: 'The email said to delete everything tonight.',
     },
@@ -332,7 +338,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['marker-stroke', 'density-from-hierarchy'],
     source: rve('templates/text-highlight.tsx'),
     slot: {
-      durationMs: 5000,
+      durationMs: 5300,
       words: spoken('The auditors signed off every single year.', 300, 500),
       intent: 'The auditors signed off every single year.',
     },
@@ -345,7 +351,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['foreground-becomes-transition', 'draw-on'],
     source: rve('templates/quote-card.tsx'),
     slot: {
-      durationMs: 7000,
+      durationMs: 6800,
       words: spoken('"We never saw the money," the chairman told the court.', 300, 500),
       intent: 'The chairman told the court they never saw the money.',
     },
@@ -358,7 +364,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['tally', 'persistent-actor', 'density-from-hierarchy'],
     source: rve('templates/animated-list.tsx'),
     slot: {
-      durationMs: 7000,
+      durationMs: 6300,
       words: spoken('Three banks, two funds, one regulator, and no questions.', 300, 500),
       intent: 'Three banks, two funds, one regulator, no questions.',
     },
@@ -371,7 +377,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['door', 'cause-to-effect'],
     source: rve('templates/lower-third.tsx'),
     slot: {
-      durationMs: 5000,
+      durationMs: 4800,
       words: spoken('Jane Doe, the chief financial officer.', 300, 500),
       intent: 'Jane Doe is the chief financial officer.',
     },
@@ -380,13 +386,26 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     id: 'chapter-title',
     technique: 'chapter-title',
     description:
-      "the chapter label over a rule that draws out to the title's width, the title words dropping out from under it",
+      "a short rule that draws out to the title's width as the first word lands, the title words dropping out from under it, a label above it when one is given",
     mechanisms: ['draw-on', 'cause-to-effect'],
     source: rendercomp('src/components/chapter-title/ChapterTitle.tsx'),
     slot: {
-      durationMs: 5000,
-      words: spoken('Chapter three. The missing billion.', 300, 500),
-      intent: 'Chapter three: the missing billion.',
+      durationMs: cardDurationMs(CHAPTER_TITLE),
+      words: cardWords(CHAPTER_TITLE),
+      intent: 'The chapter is called the missing billion.',
+    },
+  },
+  {
+    id: 'film-title',
+    technique: 'film-title',
+    description:
+      "the film's name at the package's largest size, two hairlines opening from the centre to frame it, each word pulled out of defocus as it is said",
+    mechanisms: ['draw-on', 'camera-push'],
+    source: rendercomp('src/components/chapter-title/ChapterTitle.tsx'),
+    slot: {
+      durationMs: cardDurationMs(FILM_TITLE),
+      words: cardWords(FILM_TITLE),
+      intent: 'The film is called The Wirecard Collapse.',
     },
   },
   {
@@ -397,7 +416,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['door', 'docking'],
     source: rendercomp('src/components/logo-split-reveal/LogoSplitReveal.tsx'),
     slot: {
-      durationMs: 5000,
+      durationMs: 5300,
       words: spoken('Acme was the name on every door.', 300, 500),
       intent: 'Acme was the name on every door.',
     },
@@ -410,7 +429,7 @@ export const MANIFEST: readonly ExemplarEntry[] = [
     mechanisms: ['foreground-becomes-transition', 'word-splits-open', 'cause-to-effect'],
     source: rve('templates/split-screen.tsx'),
     slot: {
-      durationMs: 6000,
+      durationMs: 5300,
       words: spoken('What they said, against what they did.', 300, 500),
       intent: 'What they said against what they did.',
     },

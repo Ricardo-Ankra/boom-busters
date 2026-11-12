@@ -125,7 +125,10 @@ describe('parseStoryboardPlan', () => {
     const parsed = parseStoryboardPlan(JSON.stringify(PLAN), bounds)
     expect(parsed.mechanisms).toEqual(['word-splits-open', 'drum'])
     expect(parsed.leansOn).toHaveLength(1)
-    const late = { ...PLAN, slot: { ...PLAN.slot, words: [{ text: 'late', atMs: 6000 }] } }
+    const late = {
+      ...PLAN,
+      slot: { ...PLAN.slot, words: [{ text: 'late', atMs: stat.slot.durationMs }] },
+    }
     expect(() => parseStoryboardPlan(JSON.stringify(late), { ...bounds, wordCount: 1 })).toThrow(
       /past the slot/,
     )

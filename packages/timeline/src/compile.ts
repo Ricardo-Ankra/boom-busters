@@ -1,5 +1,9 @@
 import {
   canonicalTimelineIssues,
+  CARD_MIN_MS,
+  CARD_OVERLAP_MS,
+  cardDurationMs,
+  cardWords,
   SHORT_RULES,
   TIMELINE_VERSION,
   TimelineSchema,
@@ -8,6 +12,7 @@ import {
 import type {
   BrandKitTokens,
   Caption,
+  CardCode,
   ChapterMarking,
   ChartBrief,
   GraphicCodePayload,
@@ -23,10 +28,12 @@ import type {
   TimelineSlot,
   Transition,
 } from '@boom-busters/schemas'
-import { anchorSlots } from './anchor'
+import { anchorSlots, anchorWordRanges } from './anchor'
 import type { ParagraphSpan } from './anchor'
-import { buildDuckingCurve } from './ducking'
+import { buildDuckingCurve, DEFAULT_RISE_THRESHOLD_MS } from './ducking'
 import { chapterCuePoints } from './music'
+import { holdShortfallMs, planReadingPauses } from './reading-hold'
+import type { ReadingHoldReport } from './reading-hold'
 
 /**
  * The timeline compiler (build spec section 14.6): a pure function from an
@@ -65,6 +72,11 @@ export interface CompileSlot {
   coversText?: string
   transition: Transition
   motion: MotionSpec
+  /**
+   * How long the slot must stay up after its last covered word, so the viewer
+   * can read it. Set on narrated graphics and charts; absent means no hold.
+   */
+  holdMs?: number
   media?: {
     kind: 'image' | 'video'
     r2Key?: string
@@ -121,6 +133,15 @@ export interface CompileInput {
   chapterMarking: ChapterMarking
   /** The film's title; `title` marking shows it once, at the second chapter. */
   filmTitle: string
+  /**
+   * Exemplar code for the chapter and title cards. The compiler adds the
+   * words and the length, which depend on the title. Absent means the
+   * composition's built-in card.
+   */
+  cardCode?: {
+    chapter?: Omit<CardCode, 'words' | 'durationMs'>
+    title?: Omit<CardCode, 'words' | 'durationMs'>
+  }
   fps?: number
   width?: number
   height?: number
@@ -175,7 +196,7 @@ export const MASTER_HEIGHT = 1080
 // ---------------------------------------------------------------------------
 
 /** How long a chapter card holds the screen. */
-export const CHAPTER_CARD_MS = 3200
+export const CHAPTER_CARD_MS = CARD_MIN_MS
 /** Silence between a chapter's last word and the next card's first frame. */
 export const CHAPTER_LEAD_MS = 800
 /**
@@ -192,7 +213,7 @@ export const CHAPTER_HOLD_MS = 1400
  * chapter's first visual happens out of sight and the slow fade-out lands on
  * the image the new words are about — never on leftover footage.
  */
-export const CHAPTER_OVERLAP_MS = 900
+export const CHAPTER_OVERLAP_MS = CARD_OVERLAP_MS
 /**
  * The cut's own breath between paragraphs; [pause] tags are the narrator's.
  *
@@ -212,6 +233,13 @@ export const PARAGRAPH_GAP_MS = 700
 export const MIN_SHOT_MS = 1000
 
 export function compileTimeline(input: CompileInput): Timeline {
+  return compileTimelineWithReport(input).timeline
+}
+
+export function compileTimelineWithReport(input: CompileInput): {
+  timeline: Timeline
+  readingHold: ReadingHoldReport
+} {
   if (input.paragraphs.length === 0) {
     throw new ValidationError('a timeline needs narration — no approved takes were provided', {
       field: 'paragraphs',
@@ -230,36 +258,69 @@ export function compileTimeline(input: CompileInput): Timeline {
   const narration: NarrationSegment[] = []
   const breakpoints: { oldStartMs: number; shiftMs: number }[] = []
   const overlays: Overlay[] = []
+  /** Each chapter-card overlay with the paragraph it leads into. */
+  const overlayParagraph: { overlay: Overlay; paragraph: number }[] = []
+  /** Each later chapter's first paragraph, with its card's start when it has one. */
+  const chapterBreaks = new Map<number, { cardStartMs?: number }>()
   const chapters: { id: string; title: string }[] = []
   const seenChapters = new Set<string>()
   let oldClock = 0
   let shift = 0
-  for (const paragraph of input.paragraphs) {
+  for (const [paragraphIndex, paragraph] of input.paragraphs.entries()) {
     if (!seenChapters.has(paragraph.chapterId)) {
       seenChapters.add(paragraph.chapterId)
       chapters.push({ id: paragraph.chapterId, title: paragraph.chapterTitle })
       if (chapters.length > 1) {
         const leadMs = oldClock + shift + CHAPTER_LEAD_MS
         const marking = input.chapterMarking
+        const hasCard = marking === 'cards' || (marking === 'title' && chapters.length === 2)
+        chapterBreaks.set(paragraphIndex, hasCard ? { cardStartMs: leadMs } : {})
         switch (marking) {
-          case 'cards':
-            overlays.push({
-              kind: 'chapterCard',
-              startMs: leadMs,
-              durationMs: CHAPTER_CARD_MS,
-              props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
+          case 'cards': {
+            const durationMs = cardDurationMs(paragraph.chapterTitle)
+            overlayParagraph.push({
+              overlay: {
+                kind: 'chapterCard',
+                startMs: leadMs,
+                durationMs,
+                props: { index: paragraph.chapterIndex + 1, title: paragraph.chapterTitle },
+                ...(input.cardCode?.chapter
+                  ? {
+                      code: {
+                        ...input.cardCode.chapter,
+                        words: cardWords(paragraph.chapterTitle),
+                        durationMs,
+                      },
+                    }
+                  : {}),
+              },
+              paragraph: paragraphIndex,
             })
-            shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+            shift += CHAPTER_LEAD_MS + durationMs - CHAPTER_OVERLAP_MS
             break
+          }
           case 'title':
             if (chapters.length === 2) {
-              overlays.push({
-                kind: 'titleCard',
-                startMs: leadMs,
-                durationMs: CHAPTER_CARD_MS,
-                props: { title: input.filmTitle },
+              const durationMs = cardDurationMs(input.filmTitle)
+              overlayParagraph.push({
+                overlay: {
+                  kind: 'titleCard',
+                  startMs: leadMs,
+                  durationMs,
+                  props: { title: input.filmTitle },
+                  ...(input.cardCode?.title
+                    ? {
+                        code: {
+                          ...input.cardCode.title,
+                          words: cardWords(input.filmTitle),
+                          durationMs,
+                        },
+                      }
+                    : {}),
+                },
+                paragraph: paragraphIndex,
               })
-              shift += CHAPTER_LEAD_MS + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS
+              shift += CHAPTER_LEAD_MS + durationMs - CHAPTER_OVERLAP_MS
             } else {
               shift += CHAPTER_LEAD_MS + CHAPTER_HOLD_MS
             }
@@ -279,15 +340,10 @@ export function compileTimeline(input: CompileInput): Timeline {
       shift += PARAGRAPH_GAP_MS
     }
     breakpoints.push({ oldStartMs: oldClock, shiftMs: shift })
-    narration.push({
-      r2Key: paragraph.r2Key,
-      startMs: oldClock + shift,
-      durationMs: paragraph.durationMs,
-      chapterId: paragraph.chapterId,
-      paragraphIndex: paragraph.paragraphIndex,
-    })
     oldClock += paragraph.durationMs
   }
+  /** The gaps alone, before any reading pause: each paragraph's shift. */
+  const gapShifts = breakpoints.map((breakpoint) => breakpoint.shiftMs)
 
   /** Old-clock time → how far it moved. Inclusive at paragraph starts, so a
    * slot ENDING at a boundary stretches across the inserted pause (it holds
@@ -311,6 +367,61 @@ export function compileTimeline(input: CompileInput): Timeline {
     spanClock += paragraph.durationMs
   }
   const anchoredSlots = anchorSlots(input.slots, input.captions.words, spans)
+  const ranges = anchorWordRanges(input.slots, input.captions.words, spans)
+
+  // The reading pause: a graphic whose next shot would cut away too soon after
+  // its last word makes the narration wait. Planned on the gap-only clock above,
+  // then merged into the same breakpoints, so slots, captions and music follow.
+  const { pauses, report: readingHold } = planReadingPauses({
+    slots: anchoredSlots,
+    ranges,
+    words: input.captions.words,
+    spans,
+    shiftAt,
+    chapterBreaks,
+    withinChapterCapMs: DEFAULT_RISE_THRESHOLD_MS - PARAGRAPH_GAP_MS - 1,
+  })
+  for (const pause of pauses) {
+    const existing = breakpoints.findIndex((breakpoint) => breakpoint.oldStartMs === pause.cutMs)
+    let from = existing
+    if (existing === -1) {
+      const before = shiftAt(pause.cutMs)
+      from = breakpoints.findIndex((breakpoint) => breakpoint.oldStartMs > pause.cutMs)
+      if (from === -1) from = breakpoints.length
+      breakpoints.splice(from, 0, { oldStartMs: pause.cutMs, shiftMs: before })
+    }
+    for (let k = from; k < breakpoints.length; k += 1) breakpoints[k]!.shiftMs += pause.pauseMs
+  }
+
+  // Narration: one segment per paragraph, or one per piece where a pause cuts it.
+  // A piece after a cut plays from inside its take (`trimStartMs`).
+  const midCuts = [
+    ...new Set(pauses.filter((pause) => !pause.paragraphEnd).map((pause) => pause.cutMs)),
+  ].sort((a, b) => a - b)
+  for (const [index, paragraph] of input.paragraphs.entries()) {
+    const span = spans[index]!
+    const cuts = midCuts.filter((cut) => cut > span.startMs && cut < span.endMs)
+    const edges = [span.startMs, ...cuts, span.endMs]
+    for (let k = 0; k < edges.length - 1; k += 1) {
+      const pieceStart = edges[k]!
+      narration.push({
+        r2Key: paragraph.r2Key,
+        startMs: pieceStart + shiftAt(pieceStart),
+        durationMs: edges[k + 1]! - pieceStart,
+        ...(pieceStart > span.startMs ? { trimStartMs: pieceStart - span.startMs } : {}),
+        chapterId: paragraph.chapterId,
+        paragraphIndex: paragraph.paragraphIndex,
+      })
+    }
+  }
+  // A chapter card waits out any pause that falls before its chapter starts.
+  for (const { overlay, paragraph } of overlayParagraph) {
+    const startMs = spans[paragraph]!.startMs
+    overlays.push({
+      ...overlay,
+      startMs: overlay.startMs + shiftAt(startMs) - gapShifts[paragraph]!,
+    })
+  }
 
   const slots: TimelineSlot[] = anchoredSlots.map((slot, index) => {
     const motion = resolveMotion(slot.motion, slot)
@@ -390,6 +501,14 @@ export function compileTimeline(input: CompileInput): Timeline {
    * them. Planned durations therefore survive only on the film's last shot;
    * everywhere else a shot lasts exactly as long as its narration does.
    */
+  const holds = new Map<TimelineSlot, { holdMs: number; lastWordAtMs: number }>()
+  slots.forEach((slot, index) => {
+    const holdMs = anchoredSlots[index]!.holdMs
+    const range = ranges[index]
+    if (holdMs === undefined || !range) return
+    const last = input.captions.words[range.last]
+    if (last) holds.set(slot, { holdMs, lastWordAtMs: last.startMs + shiftAt(last.startMs) })
+  })
   slots.sort((a, b) => a.startMs - b.startMs)
   for (let i = 0; i < slots.length - 1; i += 1) {
     const slot = slots[i]!
@@ -408,6 +527,18 @@ export function compileTimeline(input: CompileInput): Timeline {
       opening.durationMs += opening.startMs - openedMs
       opening.startMs = openedMs
     }
+  }
+
+  // The film's last graphic has no next shot to wait for, so it simply stays up
+  // until its last word has had its hold. Nothing caps this: nothing follows.
+  const closing = slots[slots.length - 1]
+  const closingHold = closing === undefined ? undefined : holds.get(closing)
+  if (closing !== undefined && closingHold !== undefined) {
+    closing.durationMs += holdShortfallMs(
+      closingHold.lastWordAtMs,
+      closing.startMs + closing.durationMs,
+      closingHold.holdMs,
+    )
   }
 
   const music = input.music
@@ -461,5 +592,5 @@ export function compileTimeline(input: CompileInput): Timeline {
     )
   }
 
-  return timeline
+  return { timeline, readingHold }
 }

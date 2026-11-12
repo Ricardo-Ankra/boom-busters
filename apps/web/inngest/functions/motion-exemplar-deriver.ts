@@ -37,6 +37,7 @@ import {
   BudgetExceededError,
   criticPasses,
   isHouseTechnique,
+  isReservedTechnique,
   pairwiseOutcome,
   parseEventData,
   resolveBrandKit,
@@ -748,11 +749,13 @@ export const motionExemplarDeriver = inngest.createFunction(
             const input = {
               motion: channel.motion,
               readings,
-              catalogue: MANIFEST.map((entry) => ({
-                technique: entry.technique,
-                description: entry.description,
-                mechanisms: entry.mechanisms,
-              })),
+              catalogue: MANIFEST.filter((entry) => !isReservedTechnique(entry.technique)).map(
+                (entry) => ({
+                  technique: entry.technique,
+                  description: entry.description,
+                  mechanisms: entry.mechanisms,
+                }),
+              ),
               channelTechniques: own,
             }
             const keys = [

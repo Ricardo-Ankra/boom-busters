@@ -11,6 +11,7 @@ import {
   evenlySpacedWords,
   narrationPlan,
   pickMusicBed,
+  readingHoldSummary,
   slotPlan,
   timelineKey,
 } from './assembly'
@@ -678,6 +679,20 @@ describe('slotPlan', () => {
       })
       expect(plan.slots[0]?.graphic).toBeUndefined()
       expect(plan.slots[0]?.graphicCode).not.toHaveProperty('data')
+      // Its facts cite a figure ("4 billion"), so it holds the longer figure hold.
+      expect(plan.slots[0]?.holdMs).toBe(2500)
+    })
+
+    it('puts a reading hold on every slot that carries code, and on no other', () => {
+      const withCode = slotPlan({
+        slots: [chartRow(CODE)],
+        assetsById: new Map(),
+        logoLibrary: LIBRARY,
+      })
+      // A chart is a figure.
+      expect(withCode.slots[0]?.holdMs).toBe(2500)
+      const without = slotPlan({ slots: [chartRow()], assetsById: new Map(), logoLibrary: LIBRARY })
+      expect(without.slots[0]).not.toHaveProperty('holdMs')
     })
 
     it('carries a chart with code as code on a chart slot, its series as data and its refs as claims', () => {
@@ -951,5 +966,23 @@ describe('pickMusicBed', () => {
 describe('timelineKey', () => {
   it('is versioned under the app prefix', () => {
     expect(timelineKey('p1', 3)).toBe('boom-busters/timelines/p1/v3.json')
+  })
+})
+
+describe('readingHoldSummary', () => {
+  it('says how many pauses were added and how long they add up to', () => {
+    expect(readingHoldSummary({ pauses: 3, addedMs: 4200, midClause: 0 }, [])).toBe(
+      ' · Reading pauses: 3, adding 4.2 s',
+    )
+  })
+  it('names graphics that end mid-sentence only when there are some, and lists card notes', () => {
+    expect(
+      readingHoldSummary({ pauses: 0, addedMs: 0, midClause: 2 }, ['Chapter title v2 is labelled']),
+    ).toBe(
+      ' · Reading pauses: 0, adding 0.0 s · 2 graphics end mid-sentence and get no pause · Chapter title v2 is labelled',
+    )
+  })
+  it('says nothing for a compile result stored before the report existed', () => {
+    expect(readingHoldSummary(undefined, undefined)).toBe('')
   })
 })

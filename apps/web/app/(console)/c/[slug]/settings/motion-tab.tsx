@@ -2,6 +2,7 @@
 
 import {
   LAST_RESORT_TECHNIQUES,
+  isReservedTechnique,
   type MotionIdentity,
   type Settings,
   type SettingsPatch,
@@ -82,7 +83,7 @@ export function MotionTab({
   settings,
   saving,
   commit,
-  techniqueOptions,
+  techniqueOptions: allTechniqueOptions,
   references,
   storageReady,
   readingEstimateUsd,
@@ -131,6 +132,11 @@ export function MotionTab({
     else ms[key] = value
     set('ms', ms)
   }
+
+  // A reserved technique (the film title) is never ticked, derived or listed here.
+  const techniqueOptions = allTechniqueOptions.filter(
+    (option) => !isReservedTechnique(option.technique),
+  )
 
   const toggleTechnique = (technique: TechniqueKey, on: boolean) => {
     const techniques = on

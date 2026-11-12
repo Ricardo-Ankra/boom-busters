@@ -176,6 +176,87 @@ describe('graphicCodeIssue (decision 295)', () => {
     )
   })
 
+  describe('a graphic at rest after its last word', () => {
+    // Types "Acme" four letters a second from `fromS` seconds in, over a held figure.
+    const typing = (condition: string, fromS: number) => `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height } = Remotion.useVideoConfig()
+  const letters = Math.max(0, Math.min(4, Math.floor(frame / 6) - ${fromS * 4}))
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>$4bn</div>
+      <div>{(${condition}) ? 'Acme'.slice(0, letters) : 'Acme'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+    const REST_ISSUE = expect.stringContaining('the graphic is still changing')
+
+    it('refuses a design that types a word after the last spoken word', () => {
+      expect(
+        graphicCodeIssue(answer({ source: typing('true', 2) }), CONTEXT, slot(GRAPHIC)),
+      ).toEqual({ issue: REST_ISSUE })
+    })
+
+    it('passes a design that has finished typing before the last word has settled', () => {
+      expect(
+        graphicCodeIssue(answer({ source: typing('true', 0) }), CONTEXT, slot(GRAPHIC)),
+      ).toHaveProperty('code')
+    })
+
+    describe('in the hold the render plays past the planned length', () => {
+      // 3 s planned, the last word at 2.6 s, so the render holds the code to 5.1 s (a
+      // digit fact) or 4.6 s. `changeS` is when the text changes; the plan ends at 3 s.
+      const lateChange = (changeS: number) => `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const sweep = Remotion.interpolate(frame, [0, 89], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>$4bn</div>
+      <div>{frame >= ${changeS * 30} ? 'Acme again' : 'Acme'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+      const shortSlot = {
+        brief: GRAPHIC,
+        durationMs: 3000,
+        words: [{ text: 'four.', atMs: 2600 }],
+      }
+
+      it('refuses text that changes after the planned length but inside the hold', () => {
+        expect(graphicCodeIssue(answer({ source: lateChange(4) }), CONTEXT, shortSlot)).toEqual({
+          issue: REST_ISSUE,
+        })
+      })
+
+      it('refuses the same change on a graphic with no figure, whose hold is shorter', () => {
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(4), facts: [] }), CONTEXT, shortSlot),
+        ).toEqual({ issue: REST_ISSUE })
+      })
+
+      it('passes text that is at rest through the hold, and one that changes after it', () => {
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(0) }), CONTEXT, shortSlot),
+        ).toHaveProperty('code')
+        // After 5.1 s the render has moved on, so it is not the reading hold's business.
+        expect(
+          graphicCodeIssue(answer({ source: lateChange(6) }), CONTEXT, shortSlot),
+        ).toHaveProperty('code')
+      })
+    })
+
+    it('refuses in portrait with the portrait suffix when only the Short is still moving', () => {
+      expect(
+        graphicCodeIssue(answer({ source: typing('height > width', 2) }), CONTEXT, slot(GRAPHIC)),
+      ).toEqual({ issue: expect.stringMatching(/only the camera may move, in portrait$/) })
+    })
+  })
+
   it('scans the compiled code before it runs anything', () => {
     const source = countUp(4).replace('const frame', 'const seed = Math.random()\n  const frame')
     expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
@@ -389,7 +470,7 @@ describe('a figure built from pieces, or struck on its way (decision 449)', () =
   const showing = (figure: string) => `function Graphic() {
   const frame = Remotion.useCurrentFrame()
   const { fps } = Remotion.useVideoConfig()
-  const beat = Math.floor(frame / Math.round(1.2 * fps))
+  const beat = Math.floor(frame / Math.round(0.4 * fps))
   const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
   return (
     <Remotion.AbsoluteFill>
@@ -437,7 +518,7 @@ describe('a figure built from pieces, or struck on its way (decision 449)', () =
   it('refuses a count that lands on a figure no cited claim holds, and a held figure no count passes', () => {
     const wrong = showing(`<div>{'$' + (beat === 0 ? '1' : beat === 1 ? '2' : '7') + 'bn'}</div>`)
     expect(graphicCodeIssue(lossAnswer(wrong), LOSS, slot(GRAPHIC))).toEqual({
-      issue: 'the graphic shows 1, which no cited claim contains',
+      issue: 'the graphic shows 7, which no cited claim contains',
     })
     const label = showing(`<div>{'3 years'}</div><div>{'$3.4bn'}</div>`)
     expect(graphicCodeIssue(lossAnswer(label), LOSS, slot(GRAPHIC))).toEqual({

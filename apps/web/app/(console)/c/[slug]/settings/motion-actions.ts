@@ -47,6 +47,7 @@ import {
   ReferenceMimeSchema,
   ReferenceReadingEditSchema,
   referenceExtension,
+  isReservedTechnique,
   referenceKind,
   resolveBrandKit,
   resolveMotionIdentity,
@@ -592,7 +593,7 @@ export async function draftMotionIdentityAction(
         Object.entries(brand.typography).map(([role, face]) => [role, face.family]),
       ),
     },
-    techniques: MANIFEST.map((entry) => ({
+    techniques: MANIFEST.filter((entry) => !isReservedTechnique(entry.technique)).map((entry) => ({
       technique: entry.technique,
       description: entry.description,
     })),

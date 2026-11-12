@@ -13,8 +13,8 @@ test.describe('Exemplars tab', () => {
     await page.goto(channelPath('/settings?tab=exemplars'))
   })
 
-  test('lists the eighteen written examples and plays one in portrait', async ({ page }) => {
-    await expect(page.getByText('18 of 18 examples written')).toBeVisible()
+  test('lists the nineteen written examples and plays one in portrait', async ({ page }) => {
+    await expect(page.getByText('19 of 19 examples written')).toBeVisible()
     const stat = page.getByRole('region', { name: 'Stat counter' })
     await expect(stat.getByRole('link', { name: 'stat-counter' })).toHaveAttribute(
       'href',

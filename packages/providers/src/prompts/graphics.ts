@@ -364,7 +364,7 @@ Craft. You are a motion designer, not a slide builder: the graphic is one idea t
   entrance, a highlight, a bar growing or a line drawing across.
 ${craftFromIdentity(motion)}
 - Entrances, exits and moves come from the tokens, in the house motion below. ${OVERSHOOT_CRAFT[motion.overshoot]}
-- An ending that holds rather than vanishes.
+- The ending holds. The last thing said lands as it is said; after it, the finished graphic holds, and the render gives it the time to be read. Nothing new enters, draws or moves into place once the last word's entrance has settled; only the camera push continues.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
 - Colour carries meaning: semantic.collapse for loss and failure, semantic.recovery for

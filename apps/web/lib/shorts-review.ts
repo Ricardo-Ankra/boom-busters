@@ -174,7 +174,8 @@ export function emptyShortsModel(): ShortsModel {
   return { shorts: [] }
 }
 
-function segmentDurationMs(
+/** The window's length on the master clock: first piece start to last piece end, pauses included. */
+export function segmentDurationMs(
   master: Timeline | null,
   segmentRef: { chapterId: string; fromParagraph: number; toParagraph: number },
 ): number | null {
@@ -186,7 +187,9 @@ function segmentDurationMs(
       segment.paragraphIndex <= segmentRef.toParagraph,
   )
   if (segments.length === 0) return null
-  return segments.reduce((total, segment) => total + segment.durationMs, 0)
+  const start = Math.min(...segments.map((segment) => segment.startMs))
+  const end = Math.max(...segments.map((segment) => segment.startMs + segment.durationMs))
+  return end - start
 }
 
 export async function shortsModel(

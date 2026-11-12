@@ -77,9 +77,16 @@ describe('the derived slot (spec 2026-11-04, section 9.2)', () => {
       expect(brief.intentClaimIds).toEqual(context.claims.map((claim) => claim.id))
     }
     const slot = derivedSlot(stat, PLAN, context)
-    expect(slot).toMatchObject({ chapterId: 'exemplar', startMs: 0, durationMs: 6000 })
+    expect(slot).toMatchObject({
+      chapterId: 'exemplar',
+      startMs: 0,
+      durationMs: stat.slot.durationMs,
+    })
     expect(slot.brief).toEqual(brief)
-    expect(planBounds(stat)).toEqual({ durationMs: 6000, wordCount: stat.slot.words.length })
+    expect(planBounds(stat)).toEqual({
+      durationMs: stat.slot.durationMs,
+      wordCount: stat.slot.words.length,
+    })
     expect(planBounds(bar)).toEqual({
       durationMs: bar.slot.durationMs,
       wordCount: bar.slot.words.length,

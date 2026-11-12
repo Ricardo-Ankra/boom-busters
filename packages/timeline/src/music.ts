@@ -1,6 +1,6 @@
 import { TimelineSchema } from '@boom-busters/schemas'
 import type { Timeline } from '@boom-busters/schemas'
-import { CHAPTER_CARD_MS, CHAPTER_HOLD_MS, CHAPTER_OVERLAP_MS } from './compile'
+import { CHAPTER_HOLD_MS, CHAPTER_OVERLAP_MS } from './compile'
 import { buildDuckingCurve } from './ducking'
 
 /**
@@ -37,7 +37,7 @@ export function chapterCuePoints(
     const card = timeline.overlays.find(
       (overlay) =>
         (overlay.kind === 'chapterCard' || overlay.kind === 'titleCard') &&
-        overlay.startMs + CHAPTER_CARD_MS - CHAPTER_OVERLAP_MS === first.startMs,
+        overlay.startMs + overlay.durationMs - CHAPTER_OVERLAP_MS === first.startMs,
     )
     return {
       tMs: card ? card.startMs : Math.max(0, first.startMs - CHAPTER_HOLD_MS),

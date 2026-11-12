@@ -2,12 +2,14 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { GRAPHIC_CODE_VERSION } from './graphic-code'
 import { DEFAULT_SETTINGS, resolveBrandKit } from './settings'
 import {
   canonicalTimelineIssues,
   gainAt,
   GraphicCodePayloadSchema,
   GraphicPayloadSchema,
+  NarrationSegmentSchema,
   SLOT_PAYLOAD_KINDS,
   TIMELINE_VERSION,
   timelineDurationMs,
@@ -580,5 +582,56 @@ describe('playbook Shorts additions', () => {
       const json = JSON.parse(readFileSync(join(dir, name), 'utf8'))
       expect(TimelineSchema.safeParse(json).success, name).toBe(true)
     }
+  })
+
+  describe('narration trim and card code', () => {
+    const segment = {
+      r2Key: 'narration/a.mp3',
+      startMs: 0,
+      durationMs: 4000,
+      chapterId: CHAPTER,
+      paragraphIndex: 0,
+    }
+    const code = {
+      version: GRAPHIC_CODE_VERSION,
+      compiled: 'x',
+      title: 'T',
+      words: [{ text: 'T', atMs: 300 }],
+      durationMs: 3400,
+    }
+    it('accepts a narration segment with a trim start', () => {
+      const parsed = NarrationSegmentSchema.parse({ ...segment, trimStartMs: 2310 })
+      expect(parsed.trimStartMs).toBe(2310)
+    })
+    it('refuses a negative trim start', () => {
+      expect(NarrationSegmentSchema.safeParse({ ...segment, trimStartMs: -1 }).success).toBe(false)
+    })
+    it('accepts a chapter card carrying code and one without', () => {
+      const withCode = OverlaySchema.parse({
+        kind: 'chapterCard',
+        startMs: 0,
+        durationMs: 3400,
+        props: { index: 2, title: 'T' },
+        code,
+      })
+      expect(withCode).toHaveProperty('code', code)
+      const without = OverlaySchema.parse({
+        kind: 'chapterCard',
+        startMs: 0,
+        durationMs: 3200,
+        props: { index: 2, title: 'T' },
+      })
+      expect(without).not.toHaveProperty('code')
+    })
+    it('accepts a title card carrying code', () => {
+      const parsed = OverlaySchema.parse({
+        kind: 'titleCard',
+        startMs: 0,
+        durationMs: 3400,
+        props: { title: 'T' },
+        code,
+      })
+      expect(parsed).toHaveProperty('code', code)
+    })
   })
 })

@@ -77,12 +77,17 @@ export interface ShortCompileInput {
  */
 export function segmentInMaster(master: Timeline, segmentRef: ShortSegmentRef): boolean {
   if (segmentRef.toParagraph < segmentRef.fromParagraph) return false
-  const found = master.narration.filter(
-    (segment) =>
-      segment.chapterId === segmentRef.chapterId &&
-      segment.paragraphIndex >= segmentRef.fromParagraph &&
-      segment.paragraphIndex <= segmentRef.toParagraph,
-  ).length
+  // A reading pause can split a paragraph into several pieces: count paragraphs, not pieces.
+  const found = new Set(
+    master.narration
+      .filter(
+        (segment) =>
+          segment.chapterId === segmentRef.chapterId &&
+          segment.paragraphIndex >= segmentRef.fromParagraph &&
+          segment.paragraphIndex <= segmentRef.toParagraph,
+      )
+      .map((segment) => segment.paragraphIndex),
+  ).size
   return found === segmentRef.toParagraph - segmentRef.fromParagraph + 1
 }
 
@@ -121,9 +126,11 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
     .sort((a, b) => a.startMs - b.startMs)
 
   const expected = segmentRef.toParagraph - segmentRef.fromParagraph + 1
-  if (segments.length !== expected) {
+  // A paragraph the reading pause split has several pieces: count paragraphs, not pieces.
+  const paragraphsFound = new Set(segments.map((segment) => segment.paragraphIndex)).size
+  if (paragraphsFound !== expected) {
     throw new ValidationError(
-      `the master timeline has ${segments.length} of the ${expected} narration segment(s) the ` +
+      `the master timeline has ${paragraphsFound} of the ${expected} narration segment(s) the ` +
         `Short references (chapter ${segmentRef.chapterId}, paragraphs ` +
         `${segmentRef.fromParagraph}..${segmentRef.toParagraph})`,
       { field: 'segmentRef' },
@@ -148,6 +155,7 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
     durationMs: segment.durationMs,
     chapterId: segment.chapterId,
     paragraphIndex: segment.paragraphIndex,
+    ...(segment.trimStartMs === undefined ? {} : { trimStartMs: segment.trimStartMs }),
   }))
 
   // Captions: the window's words, re-clocked. Snap built them inside their

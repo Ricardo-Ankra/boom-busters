@@ -18,7 +18,7 @@ import { frameScale, typeStyle, withAlpha } from './brand'
  * `TitledCard` is the one presentational function both this card and
  * `TitleCard` (the film's title, in `title` chapter marking) render through.
  */
-const FADE_MS = 700
+export const FADE_MS = 700
 
 export function TitledCard({
   title,

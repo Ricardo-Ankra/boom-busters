@@ -20,6 +20,7 @@ import type {
 import type { VoiceTakeRow } from '@boom-busters/db'
 import { offsetCaptions, snapToScript } from '@boom-busters/timeline'
 import type { CompileParagraph, CompileSlot, SnapGap } from '@boom-busters/timeline'
+import { holdMsFor } from '@/lib/reading-hold'
 
 /**
  * The assembly-runner's pure logic (build spec section 7.5): approved DB
@@ -315,6 +316,7 @@ export function slotPlan(input: {
         slots.push({
           ...base,
           type: 'chart',
+          holdMs: holdMsFor('chart', brief.code),
           graphicCode: {
             ...codePayload(brief.code, input.logoLibrary),
             claimIds: [
@@ -392,6 +394,7 @@ export function slotPlan(input: {
         slots.push({
           ...base,
           type: 'graphic',
+          holdMs: holdMsFor('graphic', brief.code),
           graphicCode: {
             ...codePayload(brief.code, input.logoLibrary),
             claimIds: [
@@ -577,4 +580,25 @@ export function pickShortsBed(
 /** The R2 key a compiled timeline is stored under. */
 export function timelineKey(projectId: string, version: number): string {
   return `boom-busters/timelines/${projectId}/v${version}.json`
+}
+
+/**
+ * What the gate summary says about reading pauses and the cards, each part
+ * led by the separator the summary uses. Both inputs may be missing: a run
+ * parked before they existed replays a compile result without them.
+ */
+export function readingHoldSummary(
+  report: { pauses: number; addedMs: number; midClause: number } | undefined,
+  cardNotes: readonly string[] | undefined,
+): string {
+  let text = ''
+  if (report) {
+    text += ` · Reading pauses: ${report.pauses}, adding ${(report.addedMs / 1000).toFixed(1)} s`
+    if (report.midClause > 0) {
+      const n = report.midClause
+      text += ` · ${n} ${n === 1 ? 'graphic ends' : 'graphics end'} mid-sentence and get no pause`
+    }
+  }
+  for (const note of cardNotes ?? []) text += ` · ${note}`
+  return text
 }

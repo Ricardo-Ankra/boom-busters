@@ -8,7 +8,7 @@ import {
   resolveMotionIdentity,
 } from './motion-identity'
 import { DEFAULT_SETTINGS, SettingsPatchSchema, SettingsSchema } from './settings'
-import { LAST_RESORT_TECHNIQUES, TECHNIQUES } from './techniques'
+import { CHOOSABLE_TECHNIQUES, LAST_RESORT_TECHNIQUES, TECHNIQUES } from './techniques'
 
 /**
  * The channel motion identity (spec 2026-11-04, section 8.1): every taste
@@ -25,7 +25,9 @@ describe('the motion identity', () => {
 
   it('holds the house values: the ban list, every technique, the cadence and the still limit', () => {
     expect(DEFAULT_MOTION_IDENTITY.never).toEqual(HOUSE_NEVER)
-    expect(DEFAULT_MOTION_IDENTITY.techniques).toEqual([...TECHNIQUES])
+    expect(DEFAULT_MOTION_IDENTITY.techniques).toEqual([...CHOOSABLE_TECHNIQUES])
+    expect(DEFAULT_MOTION_IDENTITY.techniques).not.toContain('film-title')
+    expect(TECHNIQUES).toContain('film-title')
     expect(DEFAULT_MOTION_IDENTITY.changeEveryMs).toBe(1500)
     expect(DEFAULT_MOTION_IDENTITY.stillMaxMs).toBe(6000)
     expect(DEFAULT_MOTION_IDENTITY.overshoot).toBe('hair')

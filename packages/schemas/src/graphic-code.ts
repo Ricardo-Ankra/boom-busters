@@ -38,6 +38,7 @@ export const GraphicCodeWordSchema = z.object({
   text: z.string().min(1),
   atMs: z.number().int().min(0),
 })
+export type GraphicCodeWord = z.infer<typeof GraphicCodeWordSchema>
 
 /** A number or quoted phrase the graphic shows, and the claim it comes from. */
 export const GraphicFactSchema = z.object({
