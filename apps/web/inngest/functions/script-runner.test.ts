@@ -6,7 +6,9 @@ import {
   createChannel,
   createProjectFromCase,
   createScriptVersion,
+  deleteProject,
   dossiers,
+  FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
   getChapter,
   getProject,
@@ -15,6 +17,7 @@ import {
   requireTestDatabase,
   runs,
   saveChapter,
+  saveDossier,
   scripts,
   seed,
   setChapterWarnings,
@@ -1129,9 +1132,11 @@ ${text}`
 describeDb('the craft loop (decision 464)', () => {
   let engine: InngestTestEngine
   let scriptId = ''
+  let projectId = ''
+  let notices: { projectId: string; subject: string; subjectId: null }
 
   const approved = (): [{ name: string; data: Record<string, unknown> }] => [
-    { name: 'gate/dossier.approved', data: { projectId: FIXTURE_PROJECT_ID } },
+    { name: 'gate/dossier.approved', data: { projectId: projectId } },
   ]
 
   /** Every step before the marking, as a run that reached it would replay them. */
@@ -1166,7 +1171,13 @@ describeDb('the craft loop (decision 464)', () => {
     forgetRunRows()
     callLlm.mockReset()
     recordRepairs.mockReset()
-    scriptId = (await createScriptVersion(db, FIXTURE_PROJECT_ID)).id
+    // The suite's own project, so it never reads or edits the shared fixture's rows.
+    await seed(db)
+    projectId = (
+      await createProjectFromCase(db, { caseId: FIXTURE_CASE_ID, title: 'Craft loop test' })
+    ).id
+    notices = { projectId, subject: 'script', subjectId: null }
+    scriptId = (await createScriptVersion(db, projectId)).id
   })
 
   afterEach(async () => {
@@ -1175,6 +1186,7 @@ describeDb('the craft loop (decision 464)', () => {
     // Only this function's mirror rows, never the whole mirror: the suites that
     // share the database count runs, and a truncate would cut theirs short.
     await db.delete(runs).where(eq(runs.functionName, 'script-runner'))
+    await deleteProject(db, projectId)
   })
 
   const text = chapters[0]!.contentMd
@@ -1222,25 +1234,15 @@ describeDb('the craft loop (decision 464)', () => {
 
   it('sends the scene list in the chapter request', async () => {
     live('A whole chapter.')
-    const [original] = await db
-      .select({ contentMd: dossiers.contentMd })
-      .from(dossiers)
-      .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-    try {
-      await db
-        .update(dossiers)
-        .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
-        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-      await engine.executeStep('draft-chapter-0', {
-        events: approved(),
-        steps: withCraft().slice(0, 3),
-      })
-    } finally {
-      await db
-        .update(dossiers)
-        .set({ contentMd: original!.contentMd })
-        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
-    }
+    await saveDossier(db, {
+      projectId,
+      contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n',
+      claims: [],
+    })
+    await engine.executeStep('draft-chapter-0', {
+      events: approved(),
+      steps: withCraft().slice(0, 3),
+    })
     const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
     expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
   })
@@ -1466,7 +1468,7 @@ describeDb('the craft loop (decision 464)', () => {
     recordRepairs.mockReset()
     await engine.executeStep('mark-shorts', { events: approved(), steps: trimmedLoop() })
     expect(recordRepairs).toHaveBeenCalledWith(
-      SCRIPT_NOTICES,
+      notices,
       [],
       [expect.objectContaining({ kind: 'trimmed' })],
     )
@@ -1496,7 +1498,7 @@ describeDb('the craft loop (decision 464)', () => {
         ),
       })
       expect(recordRepairs).toHaveBeenCalledWith(
-        SCRIPT_NOTICES,
+        notices,
         [repair],
         [expect.objectContaining({ kind: 'trimmed' })],
       )
