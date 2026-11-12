@@ -12,16 +12,23 @@ import { BrandSpecimenPanel } from './brand-specimen'
  * has no frames to draw.
  */
 
+interface PlayerMockProps {
+  component: React.ComponentType<Record<string, unknown>>
+  durationInFrames: number
+  inputProps: { brand: { colors: { accent: string } } } & Record<string, unknown>
+  compositionWidth: number
+  compositionHeight: number
+}
+
 vi.mock('@remotion/player', () => ({
   Player: Object.assign(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ({
       component: Component,
       durationInFrames,
       inputProps,
       compositionWidth,
       compositionHeight,
-    }: any) => (
+    }: PlayerMockProps) => (
       <div data-testid="player">
         frames:{durationInFrames} size:{compositionWidth}x{compositionHeight} accent:
         {inputProps.brand.colors.accent}

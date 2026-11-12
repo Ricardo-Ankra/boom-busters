@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Database } from '@boom-busters/db'
+import type * as CompileModule from '@/lib/graphic-code/compile'
 import { DESIGNS } from '@boom-busters/providers'
 import { GRAPHIC_CODE_VERSION, cardWords } from '@boom-busters/schemas'
 
@@ -16,7 +17,7 @@ const compile = vi.hoisted(() => ({
   override: null as null | (() => { ok: true; compiled: string } | { ok: false; issue: string }),
 }))
 vi.mock('@/lib/graphic-code/compile', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/graphic-code/compile')>()
+  const actual = await importOriginal<typeof CompileModule>()
   return {
     ...actual,
     compileGraphicSource: (source: string) =>
