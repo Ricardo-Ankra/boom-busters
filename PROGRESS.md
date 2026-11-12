@@ -5102,7 +5102,7 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 > Graphics stay on screen long enough to read, the narration waits for them
 > where it can, chapter cards and the film title are drawn from the exemplars
 > instead of the fixed fade-and-rise card, and the Brand Kit specimen plays
-> what the pipeline draws. Branch `motion-package`, decision 464. Spec
+> what the pipeline draws. Branch `motion-package`, decision 465. Spec
 > `docs/superpowers/specs/2026-11-11-motion-package-and-reading-hold-design.md`,
 > plan `docs/superpowers/plans/2026-11-11-motion-package-and-reading-hold.md`.
 > Timeline schema change: redeploy the broker and the Remotion site before the push.
@@ -5134,7 +5134,7 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [x] The final whole-branch review's fixes: the card-aware hold, the
       in-chapter pause cap, abbreviations in card titles, the film-title full
       stops, the house-card compile fallback, the rest check's held tail and
-      the reel's card exit fade (decision 464 (i)).
+      the reel's card exit fade (decision 465 (i)).
 - [ ] Deploy, in order, by the owner: `deploy:stacks boom-busters-broker`
       and `deploy:remotion`, then the push to master (which builds Vercel
       production), then `PUT /api/inngest`.
@@ -11634,9 +11634,9 @@ owner edits. `--prod` was not run against Neon.
      (p) A revision that landed always leaves its `trimmed` notice, bare
      ("Chapter N revised for craft.") when no first finding counts as fixed.
 
-464. **The motion package and the reading hold** (2026-11-11, branch
-     `motion-package`; numbered 464 on the branch, renumbered at merge if
-     another branch took it; timeline schema change, so a broker redeploy).
+465. **The motion package and the reading hold** (2026-11-11, branch
+     `motion-package`; numbered 464 on the branch, renumbered to 465 at merge:
+     master took 464 for the script craft loop; timeline schema change, so a broker redeploy).
      (a) The owner's rulings: the title card and chapter card overlays come
      from the exemplars, and the chapter card stays title only (decision 457:
      no number, no label). The brief was a broadcast package designer's view:
