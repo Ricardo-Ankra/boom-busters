@@ -1124,10 +1124,11 @@ ${text}`
 })
 
 /**
- * The craft loop's steps (decision 464). A suite of its own: it never seeds,
- * never truncates and never deletes other suites' scripts, so the files that
- * share the test database in parallel are not disturbed. It owns one script
- * row and removes it after each test.
+ * The craft loop's steps (decision 464). A suite of its own: it seeds (upserts
+ * only), creates its own project and script, and deletes that project after
+ * each test. It never truncates and never touches the shared fixture project or
+ * other suites' scripts, so the files that share the test database in parallel
+ * are not disturbed.
  */
 describeDb('the craft loop (decision 464)', () => {
   let engine: InngestTestEngine
@@ -1182,11 +1183,14 @@ describeDb('the craft loop (decision 464)', () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs()
-    await db.delete(scripts).where(eq(scripts.id, scriptId))
-    // Only this function's mirror rows, never the whole mirror: the suites that
-    // share the database count runs, and a truncate would cut theirs short.
-    await db.delete(runs).where(eq(runs.functionName, 'script-runner'))
-    await deleteProject(db, projectId)
+    try {
+      // The project's script goes with it (the foreign key cascades).
+      await deleteProject(db, projectId)
+    } finally {
+      // Only this function's mirror rows, never the whole mirror: the suites that
+      // share the database count runs, and a truncate would cut theirs short.
+      await db.delete(runs).where(eq(runs.functionName, 'script-runner'))
+    }
   })
 
   const text = chapters[0]!.contentMd
