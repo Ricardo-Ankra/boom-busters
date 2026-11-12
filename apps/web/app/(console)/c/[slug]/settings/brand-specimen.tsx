@@ -3,9 +3,15 @@
 import { Player } from '@remotion/player'
 import * as React from 'react'
 import { AbsoluteFill, Sequence } from 'remotion'
-import { GraphicCode, KaraokeCaptions, loadBrandFonts } from '@boom-busters/compositions'
+import {
+  CardOverlay,
+  GraphicCode,
+  KaraokeCaptions,
+  loadBrandFonts,
+} from '@boom-busters/compositions'
 import { resolveBrandKit } from '@boom-busters/schemas'
 import type { BrandKitTokens, Caption, GraphicCodePayload, Settings } from '@boom-busters/schemas'
+import { isCardTechnique, SPECIMEN_CARD_TITLE } from '@/lib/specimen-reel'
 import type { ReelPiece } from '@/lib/specimen-reel'
 
 /**
@@ -35,6 +41,8 @@ export const SPECIMEN_WORDS: Caption[] = ['The', 'money', 'was', 'never', 'reall
 interface PlayablePiece {
   payload: GraphicCodePayload
   frames: number
+  /** A chapter or film title: the render plays these through the card overlay and its exit fade. */
+  card: boolean
 }
 
 const framesOf = (ms: number) => Math.max(1, Math.round((ms * FPS) / 1000))
@@ -58,7 +66,22 @@ function Specimen({
         from += piece.frames
         return (
           <Sequence key={index} from={start} durationInFrames={piece.frames}>
-            <GraphicCode payload={piece.payload} brand={brand} durationInFrames={piece.frames} />
+            {piece.card ? (
+              <CardOverlay
+                title={SPECIMEN_CARD_TITLE}
+                code={{
+                  version: piece.payload.version,
+                  compiled: piece.payload.compiled,
+                  title: piece.payload.title,
+                  words: piece.payload.words,
+                  durationMs: piece.payload.durationMs,
+                }}
+                brand={brand}
+                durationInFrames={piece.frames}
+              />
+            ) : (
+              <GraphicCode payload={piece.payload} brand={brand} durationInFrames={piece.frames} />
+            )}
           </Sequence>
         )
       })}
@@ -79,7 +102,13 @@ export function BrandSpecimenPanel({ settings, reel }: { settings: Settings; ree
     () =>
       reel.flatMap((piece) =>
         piece.payload
-          ? [{ payload: piece.payload, frames: framesOf(piece.payload.durationMs) }]
+          ? [
+              {
+                payload: piece.payload,
+                frames: framesOf(piece.payload.durationMs),
+                card: isCardTechnique(piece.technique),
+              },
+            ]
           : [],
       ),
     [reel],

@@ -30,6 +30,10 @@ const ORDER: readonly { technique: TechniqueKey; label: string; card: boolean }[
   { technique: 'stat-counter', label: 'Counter', card: false },
 ]
 
+/** True for the pieces drawn as a card, which the render plays through the card overlay. */
+export const isCardTechnique = (technique: TechniqueKey): boolean =>
+  ORDER.some((piece) => piece.technique === technique && piece.card)
+
 /** The card title every card piece shows, so two palettes compare like for like. */
 export const SPECIMEN_CARD_TITLE = "The Money That Wasn't There"
 

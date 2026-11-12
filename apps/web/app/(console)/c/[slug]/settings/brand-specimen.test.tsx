@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS, SettingsSchema } from '@boom-busters/schemas'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
+import { SPECIMEN_CARD_TITLE } from '@/lib/specimen-reel'
 import type { ReelPiece } from '@/lib/specimen-reel'
 import { BrandSpecimenPanel } from './brand-specimen'
 
@@ -14,18 +15,29 @@ import { BrandSpecimenPanel } from './brand-specimen'
 vi.mock('@remotion/player', () => ({
   Player: Object.assign(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ durationInFrames, inputProps, compositionWidth, compositionHeight }: any) => (
+    ({
+      component: Component,
+      durationInFrames,
+      inputProps,
+      compositionWidth,
+      compositionHeight,
+    }: any) => (
       <div data-testid="player">
         frames:{durationInFrames} size:{compositionWidth}x{compositionHeight} accent:
         {inputProps.brand.colors.accent}
+        <Component {...inputProps} />
       </div>
     ),
     { displayName: 'Player' },
   ),
 }))
-vi.mock('remotion', () => ({ AbsoluteFill: () => null, Sequence: () => null }))
+vi.mock('remotion', () => ({
+  AbsoluteFill: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  Sequence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}))
 vi.mock('@boom-busters/compositions', () => ({
-  GraphicCode: () => null,
+  GraphicCode: () => <div data-testid="graphic-code" />,
+  CardOverlay: ({ title }: { title: string }) => <div data-testid="card-overlay">{title}</div>,
   KaraokeCaptions: () => null,
   loadBrandFonts: () => Promise.resolve(),
 }))
@@ -59,6 +71,14 @@ describe('BrandSpecimenPanel', () => {
     expect(player).toHaveTextContent('size:1920x1080')
     expect(player).toHaveTextContent(`accent:${settings().brandKit.colors.accent}`)
     expect(screen.getByRole('button', { name: 'Landscape 16:9' })).toBeInTheDocument()
+  })
+
+  it('plays a card piece through the card overlay, as the render does, and the rest as graphics', () => {
+    render(<BrandSpecimenPanel settings={settings()} reel={REEL} />)
+    // The chapter card gets the overlay (its exit fade); the lower third stays a plain graphic.
+    expect(screen.getAllByTestId('card-overlay')).toHaveLength(1)
+    expect(screen.getByTestId('card-overlay')).toHaveTextContent(SPECIMEN_CARD_TITLE)
+    expect(screen.getAllByTestId('graphic-code')).toHaveLength(1)
   })
 
   it('adds the captions beat in portrait', () => {
