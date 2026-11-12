@@ -239,6 +239,29 @@ describeDb('markShortsStep (decision 293)', () => {
     expect(recordRepairs).not.toHaveBeenCalled()
   })
 
+  it('keeps the outline repairs and the craft notices on the strip when the marking is over budget', async () => {
+    callLlm.mockRejectedValueOnce(
+      new BudgetExceededError({
+        provider: 'anthropic',
+        operation: 'llm.metadata',
+        budgetUsd: 5,
+        monthSpendUsd: 5,
+        estimateUsd: 0.01,
+      }),
+    )
+    const outlineRepair = { action: 'trimmed' as const, field: "chapter 1's beat" }
+    const craft = [
+      { kind: 'trimmed' as const, message: 'Chapter 1 revised for craft: a limp close.' },
+    ]
+
+    expect(await markShortsStep(PROJECT, { chapters }, [outlineRepair], craft)).toMatchObject({
+      ok: false,
+      gate: { gate: 'budget', provider: 'anthropic' },
+    })
+    expect(recordRepairs).toHaveBeenCalledWith(SCRIPT_NOTICES, [outlineRepair], craft)
+    expect(recordStop).not.toHaveBeenCalled()
+  })
+
   it('stores none after a provider error and says so on the strip, never failing the script', async () => {
     callLlm.mockRejectedValueOnce(
       new TransientProviderError('anthropic', 'overloaded', { status: 529 }),

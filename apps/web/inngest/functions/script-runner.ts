@@ -155,7 +155,14 @@ export async function markShortsStep(
       bible: requireCompleteBible(channel),
     })
   } catch (error) {
-    if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
+    if (error instanceof BudgetExceededError) {
+      // Parked, not stopped: no notice is added, the budget gate says why. What the
+      // outline repaired and the craft loop noted still reaches the strip.
+      if (priorRepairs.length > 0 || priorNotices.length > 0) {
+        await writeStrip(target, priorRepairs, priorNotices)
+      }
+      return { ok: false, gate: budgetGateData(error) }
+    }
     console.error('[script-runner] Shorts marking failed', serialiseError(error))
     const reason =
       error instanceof NonRetriableError
