@@ -63,6 +63,14 @@ describe('the exemplar manifest (decision 305)', () => {
     }
   })
 
+  it('film-title strips only the closing full stop of the whole title, not an abbreviation', () => {
+    const { source } = DESIGNS['film-title']!
+    expect(source).toContain('index === props.words.length - 1 ? word.text.replace(')
+    expect(source).not.toMatch(
+      /props\.words\.map\(\(word\) => \(\{ atMs: word\.atMs, text: word\.text\.replace/,
+    )
+  })
+
   it('names a vendored file that exists, beside its licence', () => {
     for (const entry of MANIFEST) {
       const file = new URL(vendoredPath(entry), HERE)
