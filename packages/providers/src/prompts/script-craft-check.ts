@@ -98,7 +98,7 @@ ${checklist}
 
 Report at most eight findings, and only what you would make the writer fix. A chapter with nothing worth fixing gets an empty list. A fix never adds a fact, a figure, a name or a quote: it cuts, moves or rewords.
 
-The text may contain bracketed narration tags — [pause], [long pause], [sighs] and the like: direction for the narrator, not words. Ignore them entirely; never flag one and never quote one in a sentence.
+The text may contain bracketed narration tags — [pause], [long pause], [sighs] and the like: direction for the narrator, not words. Never quote one in a sentence, and flag them only under the tag line above.
 
 Quote the sentence EXACTLY as it appears, including its punctuation: it is matched back to the text character for character.
 
@@ -185,7 +185,7 @@ export function buildChapterRevisionRequest(
       ...base.messages,
       {
         role: 'user',
-        content: `Revise this draft. Fix these and change nothing else.\n\nThe draft:\n\n${draft}\n\nThe script editor's notes:\n${notes}`,
+        content: `Revise this draft. Fix these and change nothing else.\n\nThe draft:\n\n${draft}\n\nThe script editor's notes:\n${notes}\n\nAnswer with the whole revised chapter as plain prose and nothing else: no preamble, no notes, no list of what changed.`,
       },
     ],
   }

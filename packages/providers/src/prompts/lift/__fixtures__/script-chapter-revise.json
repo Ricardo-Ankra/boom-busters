@@ -28,7 +28,7 @@
     },
     {
       "role": "user",
-      "content": "Revise this draft. Fix these and change nothing else.\n\nThe draft:\n\nYears earlier, one man had said exactly that. Nobody wanted to listen.\n\nThe script editor's notes:\n1. \"Nobody wanted to listen.\": It states the point where a scene could show it. Instead: Show one person turning the page over unread.\n2. \"Years earlier, one man had said exactly that.\": It opens on a vague time marker. Instead: Name the year and the man."
+      "content": "Revise this draft. Fix these and change nothing else.\n\nThe draft:\n\nYears earlier, one man had said exactly that. Nobody wanted to listen.\n\nThe script editor's notes:\n1. \"Nobody wanted to listen.\": It states the point where a scene could show it. Instead: Show one person turning the page over unread.\n2. \"Years earlier, one man had said exactly that.\": It opens on a vague time marker. Instead: Name the year and the man.\n\nAnswer with the whole revised chapter as plain prose and nothing else: no preamble, no notes, no list of what changed."
     }
   ],
   "cacheablePrefixMessages": 1,
