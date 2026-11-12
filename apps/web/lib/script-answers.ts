@@ -18,6 +18,7 @@ import {
   callForText,
   type Answer,
   type AnswerComplete,
+  type AnswerRetry,
 } from '@/lib/answer'
 
 /**
@@ -102,11 +103,19 @@ export async function draftChapterWith(
 export function craftCheckWith(
   complete: AnswerComplete,
   input: Parameters<typeof buildCraftCheckRequest>[0],
+  /**
+   * `firstOnly` hands back the retry a failed first answer earned, and
+   * `resume` makes only that retry, so a runner can give each call a step of
+   * its own and a fresh deadline (decision 461).
+   */
+  second: { firstOnly?: boolean; resume?: AnswerRetry } = {},
 ): Promise<Answer<CraftCheck>> {
   return callForAnswer({
     request: buildCraftCheckRequest(input),
     parse: parseCraftCheck,
     complete,
+    ...(second.firstOnly ? { firstOnly: true } : {}),
+    ...(second.resume ? { resume: second.resume } : {}),
   })
 }
 

@@ -86,7 +86,7 @@ describe('settling the craft loop (decision 463)', () => {
       revisedMd,
       recheck: { findings: [] },
     })
-    expect(result.notices).toEqual([])
+    expect(result.notices).toEqual([{ kind: 'trimmed', message: 'Chapter 2 revised for craft.' }])
     expect(result.warnings).toEqual([])
   })
 

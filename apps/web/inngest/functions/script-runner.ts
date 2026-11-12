@@ -26,6 +26,7 @@ import {
 import type { Repair, ScriptClaim } from '@boom-busters/providers'
 import {
   countBySeverity,
+  countWords,
   evidenceLabel,
   hedgeDensity,
   researchProfileOf,
@@ -50,9 +51,10 @@ import {
 } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
+import type { AnswerRetry } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { recordRepairs, recordStop } from '@/lib/notices'
-import { settleCraft, type CraftPass } from '@/lib/script-craft-loop'
+import { CRAFT_REVISION_FLOOR, settleCraft, type CraftPass } from '@/lib/script-craft-loop'
 import {
   craftCheckWith,
   draftChapterWith,
@@ -184,6 +186,7 @@ function writeStrip(
   repairs: readonly Repair[],
   notices: readonly NewNotice[],
 ): Promise<void> {
+  // The third argument is passed only with notices: a run with none calls recordRepairs exactly as before.
   return notices.length > 0
     ? recordRepairs(target, repairs, notices)
     : recordRepairs(target, repairs)
@@ -196,10 +199,15 @@ async function scenesFor(projectId: string): Promise<string[]> {
 }
 
 type CraftStepResult =
-  | { ok: true; findings: ScriptCraftFinding[]; stopped?: string }
+  | { ok: true; findings: ScriptCraftFinding[]; stopped?: string; retry?: AnswerRetry }
   | { ok: false; gate: Record<string, unknown> }
 
-/** One craft check, on the chapter without the format's fixed lines. */
+/**
+ * One craft check, on the chapter without the format's fixed lines. Its two
+ * calls never share a step (decision 461): the first step hands back the
+ * retry a bad answer earned (`firstOnly`), and a step of its own makes it
+ * (`resume`), so a slow route cannot pass the function's ceiling.
+ */
 async function craftCheckStep(
   projectId: string,
   mocked: boolean,
@@ -210,24 +218,30 @@ async function craftCheckStep(
     previousChapters: { title: string; contentMd: string }[]
     contentMd: string
   },
+  second: { firstOnly: true } | { resume: AnswerRetry },
 ): Promise<CraftStepResult> {
   const channel = await channelForProject(db, projectId)
   const frozen = requireCompleteBible(channel)
   const contentMd = dropFixedParagraphs(input.contentMd, channel.format)
   if (mocked) return { ok: true, findings: mockCraftCheck(contentMd).findings }
   try {
-    const answer = await craftCheckWith(completeForProject(projectId), {
-      bible: frozen,
-      outline: input.outline,
-      chapterIndex: input.chapterIndex,
-      claimCount: input.claimCount,
-      previousChapters: input.previousChapters,
-      contentMd,
-      intent: channel.format.intent,
-    })
-    return answer.ok
-      ? { ok: true, findings: answer.value.findings }
-      : { ok: true, findings: [], stopped: answer.issue }
+    const answer = await craftCheckWith(
+      completeForProject(projectId),
+      {
+        bible: frozen,
+        outline: input.outline,
+        chapterIndex: input.chapterIndex,
+        claimCount: input.claimCount,
+        previousChapters: input.previousChapters,
+        contentMd,
+        intent: channel.format.intent,
+      },
+      second,
+    )
+    if (answer.ok) return { ok: true, findings: answer.value.findings }
+    // A retry is still due: no `stopped`, so the caller makes it in its own step.
+    if (answer.retry) return { ok: true, findings: [], retry: answer.retry }
+    return { ok: true, findings: [], stopped: answer.issue }
   } catch (error) {
     if (error instanceof BudgetExceededError) return { ok: false, gate: budgetGateData(error) }
     throw error
@@ -493,15 +507,25 @@ export const scriptRunner = inngest.createFunction(
       // such a run must make no craft step call at all (decision 463).
       if (setup.craftLoop === true) {
         const previousChapters = written.map(({ title, contentMd }) => ({ title, contentMd }))
-        const check = await step.run(`craft-check-${index}`, () =>
-          craftCheckStep(projectId, mocked, {
+        // A check and its retry, each in a step of its own with a fresh deadline.
+        const craftPass = async (name: string, text: string): Promise<CraftStepResult> => {
+          const request = {
             outline,
             chapterIndex: index,
             claimCount: setup.claims.length,
             previousChapters,
-            contentMd: drafted.contentMd,
-          }),
-        )
+            contentMd: text,
+          }
+          const firstCall: CraftStepResult = await step.run(name, () =>
+            craftCheckStep(projectId, mocked, request, { firstOnly: true }),
+          )
+          if (!firstCall.ok || firstCall.retry === undefined) return firstCall
+          const due = firstCall.retry
+          return step.run(`${name}-retry`, () =>
+            craftCheckStep(projectId, mocked, request, { resume: due }),
+          )
+        }
+        const check = await craftPass(`craft-check-${index}`, drafted.contentMd)
         if (!check.ok) {
           await step.run(`craft-${index}-over-budget`, () => markStageFailed(ctx, check.gate))
           return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }
@@ -523,6 +547,7 @@ export const scriptRunner = inngest.createFunction(
             > => {
               const channel = await channelForProject(db, projectId)
               const frozen = requireCompleteBible(channel)
+              const draft = dropFixedParagraphs(drafted.contentMd, channel.format)
               try {
                 const answer = await reviseChapterWith(
                   completeForProject(projectId, {
@@ -537,15 +562,21 @@ export const scriptRunner = inngest.createFunction(
                     claims: setup.claims,
                     intent: channel.format.intent,
                     scenes: await scenesFor(projectId),
-                    draft: dropFixedParagraphs(drafted.contentMd, channel.format),
+                    draft,
                     findings: first.findings,
                   },
                 )
                 if (!answer.ok) return { ok: true, stopped: answer.issue }
                 // Each fixed line appears once: a revision that echoes one is
                 // stripped of it first, then the lines are placed as the draft's were.
+                const revised = dropFixedParagraphs(answer.value, channel.format)
+                // A preamble, a list of changes or a fragment must never be voiced:
+                // a revision far shorter than the draft is refused and the draft kept.
+                if (countWords(revised) < countWords(draft) * CRAFT_REVISION_FLOOR) {
+                  return { ok: true, stopped: 'the revision came back much shorter than the draft' }
+                }
                 const stored = placeFixedLines(
-                  dropFixedParagraphs(answer.value, channel.format),
+                  revised,
                   index,
                   outline.chapters.length,
                   channel.format,
@@ -573,15 +604,7 @@ export const scriptRunner = inngest.createFunction(
           if (revision.contentMd !== undefined) {
             revisedMd = revision.contentMd
             const landed = revisedMd
-            const again = await step.run(`craft-recheck-${index}`, () =>
-              craftCheckStep(projectId, mocked, {
-                outline,
-                chapterIndex: index,
-                claimCount: setup.claims.length,
-                previousChapters,
-                contentMd: landed,
-              }),
-            )
+            const again = await craftPass(`craft-recheck-${index}`, landed)
             if (!again.ok) {
               await step.run(`craft-${index}-over-budget`, () => markStageFailed(ctx, again.gate))
               return { projectId, outcome: 'over-budget' as const, chaptersWritten: written.length }

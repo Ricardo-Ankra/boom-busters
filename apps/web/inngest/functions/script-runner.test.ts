@@ -1158,7 +1158,7 @@ describeDb('the craft loop (decision 463)', () => {
   const finding = {
     sentence: 'EY refused to sign the accounts.',
     problem: 'A flat statement',
-    direction: 'Show the refusal',
+    fix: 'Show the refusal',
   }
   const withCraft = () =>
     throughSelfCheck().map((step) =>
@@ -1240,20 +1240,114 @@ describeDb('the craft loop (decision 463)', () => {
     }
   })
 
-  it('returns a stop for an unreadable craft check, never failing the step', async () => {
+  it('hands back the retry after an unreadable first answer, making no second call', async () => {
     live('not json')
     const { result } = await engine.executeStep('craft-check-0', {
       events: approved(),
       steps: upTo('c0'),
     })
+    expect(result).toEqual({
+      ok: true,
+      findings: [],
+      retry: { call: 'retry: refused', issue: expect.any(String) },
+    })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns a stop for an unreadable retry, never failing the step', async () => {
+    live('not json')
+    const { result } = await engine.executeStep('craft-check-0-retry', {
+      events: approved(),
+      steps: [
+        ...upTo('c0'),
+        {
+          id: 'craft-check-0',
+          handler: () => ({
+            ok: true,
+            findings: [],
+            retry: { call: 'retry: refused', issue: 'it was not JSON' },
+          }),
+        },
+      ],
+    })
     expect(result).toEqual({ ok: true, findings: [], stopped: expect.any(String) })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+  })
+
+  it("runs the check's retry in a step of its own, and its findings drive the revision", async () => {
+    const chapterId = await savedChapter()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm
+      .mockResolvedValueOnce({ text: JSON.stringify({ findings: [finding] }) })
+      .mockResolvedValueOnce({ text: text.replace(finding.sentence, 'EY did not sign.') })
+    const { result, ctx } = await engine.executeStep('craft-revise-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        {
+          id: 'craft-check-0',
+          handler: () => ({
+            ok: true,
+            findings: [],
+            retry: { call: 'retry: refused', issue: 'it was not JSON' },
+          }),
+        },
+      ],
+    })
+    expect(ctx.step.run).toHaveBeenCalledWith('craft-check-0-retry', expect.any(Function))
+    expect(callLlm).toHaveBeenCalledTimes(2)
+    const sent = callLlm.mock.calls[1]![0] as { messages: { content: string }[] }
+    expect(sent.messages.at(-1)!.content).toContain(finding.fix)
+    expect(result).toMatchObject({
+      ok: true,
+      contentMd: expect.stringContaining('EY did not sign.'),
+    })
+  })
+
+  it('refuses a revision far shorter than the draft, keeps the draft and stores the first findings', async () => {
+    const chapterId = await savedChapter()
+    vi.stubEnv('MOCK_PROVIDERS', '')
+    callLlm.mockReset()
+    callLlm
+      .mockResolvedValueOnce({ text: 'Here is the fix.' })
+      .mockResolvedValueOnce({ text: JSON.stringify({ warnings: [] }) })
+    const steps = [
+      ...upTo(chapterId),
+      { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+    ]
+    const { ctx } = await engine.executeStep('self-check-0', { events: approved(), steps })
+    expect(ctx.step.run).not.toHaveBeenCalledWith('craft-recheck-0', expect.any(Function))
+    expect((await getChapter(db, chapterId))!.contentMd).toBe(text)
+    const craft = (await getChapter(db, chapterId))!.warnings.find((w) => w.kind === 'craft')
+    expect(craft).toMatchObject({ kind: 'craft', sentence: finding.sentence })
+    // The self-check read the draft, not the fragment.
+    const sent = callLlm.mock.calls[1]![0] as { messages: { content: string }[] }
+    expect(sent.messages.map((m) => m.content).join(' ')).not.toContain('Here is the fix.')
+  })
+
+  it('returns stopped from the revise step for a fragment', async () => {
+    const chapterId = await savedChapter()
+    live('Here is the fix.')
+    const { result } = await engine.executeStep('craft-revise-0', {
+      events: approved(),
+      steps: [
+        ...upTo(chapterId),
+        { id: 'craft-check-0', handler: () => ({ ok: true, findings: [finding] }) },
+      ],
+    })
+    expect(result).toEqual({
+      ok: true,
+      stopped: 'the revision came back much shorter than the draft',
+    })
+    expect((await getChapter(db, chapterId))!.contentMd).toBe(text)
   })
 
   it('saves the revision with each fixed line once', async () => {
     const restore = await withFormat({ introLine: FIXED_LINES[0], outroLine: FIXED_LINES[1] })
     try {
       const chapterId = await savedChapter(fixedChapter)
-      live(`${FIXED_LINES[0]}\n\nEY did not sign. The shares fell.`)
+      live(`${FIXED_LINES[0]}\n\nEY did not sign the accounts. The shares collapsed in nine days.`)
       const { result } = await engine.executeStep('craft-revise-0', {
         events: approved(),
         steps: [
@@ -1263,7 +1357,7 @@ describeDb('the craft loop (decision 463)', () => {
       })
       const stored = (await getChapter(db, chapterId))!.contentMd
       for (const line of FIXED_LINES) expect(stored.split(line)).toHaveLength(2)
-      expect(stored).toContain('EY did not sign.')
+      expect(stored).toContain('EY did not sign the accounts.')
       expect(result).toEqual({ ok: true, contentMd: stored })
     } finally {
       restore()

@@ -230,6 +230,28 @@ describe('the craft loop answers (decision 463)', () => {
     expect(complete).toHaveBeenCalledTimes(2)
   })
 
+  it('hands back the retry after an unreadable first answer with firstOnly, and makes only it with resume', async () => {
+    const unreadable = vi.fn().mockResolvedValue({ text: 'not json at all' })
+    const first = await craftCheckWith(unreadable, craftInput, { firstOnly: true })
+    expect(unreadable).toHaveBeenCalledTimes(1)
+    expect(first).toMatchObject({
+      ok: false,
+      calls: 1,
+      retry: { call: 'retry: refused', issue: expect.any(String) },
+    })
+    const retry = first.ok ? undefined : first.retry
+    expect(retry).toBeDefined()
+
+    const good = vi.fn().mockResolvedValue({ text: JSON.stringify({ findings: [] }) })
+    expect(await craftCheckWith(good, craftInput, { resume: retry! })).toEqual({
+      ok: true,
+      value: { findings: [] },
+      calls: 2,
+    })
+    expect(good).toHaveBeenCalledTimes(1)
+    expect(good.mock.calls[0]![1]).toBe('retry: refused')
+  })
+
   it('revises on callForText and returns a stop after two cut-offs', async () => {
     const good = vi.fn().mockResolvedValue({ text: 'The accounts were empty.' })
     expect(await reviseChapterWith(good, reviseInput)).toEqual({
