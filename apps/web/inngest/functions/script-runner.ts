@@ -20,7 +20,6 @@ import {
   mockSelfCheck,
   mockShortsCandidates,
   mockProvidersEnabled,
-  sceneLines,
   tensionFromOutline,
 } from '@boom-busters/providers'
 import type { Repair, ScriptClaim } from '@boom-busters/providers'
@@ -53,6 +52,7 @@ import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import type { AnswerRetry } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
+import { scenesForProject } from '@/lib/dossier-scenes'
 import { recordRepairs, recordStop } from '@/lib/notices'
 import { CRAFT_REVISION_FLOOR, settleCraft, type CraftPass } from '@/lib/script-craft-loop'
 import {
@@ -190,12 +190,6 @@ function writeStrip(
   return notices.length > 0
     ? recordRepairs(target, repairs, notices)
     : recordRepairs(target, repairs)
-}
-
-/** The dossier's scenes, read inside the step that builds the request. */
-async function scenesFor(projectId: string): Promise<string[]> {
-  const dossier = await getDossier(db, projectId)
-  return dossier ? sceneLines({ research: dossier.research, contentMd: dossier.contentMd }) : []
 }
 
 type CraftStepResult =
@@ -465,7 +459,7 @@ export const scriptRunner = inngest.createFunction(
                   previousChapters: written.map(({ title, contentMd }) => ({ title, contentMd })),
                   claims: setup.claims,
                   intent: channel.format.intent,
-                  scenes: await scenesFor(projectId),
+                  scenes: await scenesForProject(projectId),
                 },
               )
             } catch (error) {
@@ -561,7 +555,7 @@ export const scriptRunner = inngest.createFunction(
                     previousChapters,
                     claims: setup.claims,
                     intent: channel.format.intent,
-                    scenes: await scenesFor(projectId),
+                    scenes: await scenesForProject(projectId),
                     draft,
                     findings: first.findings,
                   },
@@ -660,7 +654,7 @@ export const scriptRunner = inngest.createFunction(
         // The fixed lines are the owner's words, not claims: the check never sees them.
         const checked = dropFixedParagraphs(chapter.contentMd, channel.format)
         // Read inside the step, so a run parked before this deploy replays safely.
-        const scenes = await scenesFor(projectId)
+        const scenes = await scenesForProject(projectId)
         const check = mocked
           ? mockSelfCheck(checked)
           : await selfCheckWith(completeForProject(projectId), {

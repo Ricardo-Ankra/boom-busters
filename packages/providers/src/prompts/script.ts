@@ -1259,6 +1259,8 @@ export function buildRegenerateRequest(input: {
   selection: string
   note: string
   claims: readonly ScriptClaim[]
+  /** The dossier's scenes, as the chapter pass reads them; absent reads as none. */
+  scenes?: readonly string[]
   /** The format's intent; absent or 'tension' is the documentary playbook. */
   intent?: ScriptIntent
 }): LLMTaskRequest {
@@ -1279,7 +1281,10 @@ Keep roughly the same length unless the instruction says otherwise.`,
       input.bible,
     ),
     messages: [
-      { role: 'user', content: `Claims:\n${claimList(input.claims)}` },
+      {
+        role: 'user',
+        content: `Claims:\n${claimList(input.claims)}\n\nScenes:\n${sceneList(input.scenes ?? [])}`,
+      },
       {
         role: 'user',
         content: `Chapter "${input.chapterTitle}" for context:\n\n${input.contentMd}`,

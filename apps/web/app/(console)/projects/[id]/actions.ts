@@ -32,6 +32,7 @@ import { requireCompleteBible } from '@/inngest/lib/channel'
 import { db } from '@/lib/db'
 import { callForText } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
+import { scenesForProject } from '@/lib/dossier-scenes'
 import { toScriptClaim } from '@/lib/script-claim'
 
 /**
@@ -242,6 +243,7 @@ export async function regenerateSection(
   if (!chapter) return { ok: false, error: 'That chapter no longer exists' }
 
   const claims = (await scriptableClaims(db, projectId)).map(toScriptClaim)
+  const scenes = await scenesForProject(projectId)
 
   try {
     // Read here, in the action that builds the request, before any mock branch.
@@ -260,6 +262,7 @@ export async function regenerateSection(
         selection,
         note,
         claims,
+        scenes,
         intent: channel.format.intent,
       }),
       complete: completeForProject(projectId),

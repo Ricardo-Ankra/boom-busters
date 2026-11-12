@@ -2,13 +2,18 @@
 
 import {
   claims,
+  createProjectFromCase,
   createScriptVersion,
+  deleteProject,
+  dossiers,
+  FIXTURE_CASE_ID,
   FIXTURE_PROJECT_ID,
   requireTestDatabase,
   saveChapter,
   seed,
 } from '@boom-busters/db'
 import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ANSWER_CUT_OFF } from '@/lib/answer'
 import { db } from '@/lib/db'
@@ -88,5 +93,52 @@ describeDb('regenerateSection (decision 293)', () => {
       await regenerateSection(FIXTURE_PROJECT_ID, chapterId, SELECTION, 'Make it plainer'),
     ).toEqual({ ok: false, error: ANSWER_CUT_OFF })
     expect(callLlm).toHaveBeenCalledTimes(2)
+  })
+
+  it("sends the dossier's scenes with the passage", async () => {
+    callLlm.mockResolvedValue({ text: 'By June, nobody could say where the money had gone.' })
+    const [original] = await db
+      .select({ contentMd: dossiers.contentMd })
+      .from(dossiers)
+      .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    try {
+      await db
+        .update(dossiers)
+        .set({ contentMd: '## Timeline\n- 2020-06 — EY refuses to sign the accounts.\n' })
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+      await regenerateSection(FIXTURE_PROJECT_ID, chapterId, SELECTION, 'Make it plainer')
+    } finally {
+      await db
+        .update(dossiers)
+        .set({ contentMd: original!.contentMd })
+        .where(eq(dossiers.projectId, FIXTURE_PROJECT_ID))
+    }
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages[0]!.content).toContain('Scenes:\n[S1]')
+  })
+
+  it('rewrites with no scenes when the dossier is gone', async () => {
+    callLlm.mockResolvedValue({ text: 'By June, nobody could say where the money had gone.' })
+    const project = await createProjectFromCase(db, {
+      caseId: FIXTURE_CASE_ID,
+      title: 'No dossier test',
+    })
+    try {
+      const script = await createScriptVersion(db, project.id)
+      const chapter = await saveChapter(db, {
+        scriptId: script.id,
+        index: 0,
+        title: 'The audit',
+        contentMd: `${SELECTION} EY refused to sign the accounts.`,
+        estRuntimeSec: 20,
+      })
+      expect(await regenerateSection(project.id, chapter.id, SELECTION, 'Make it plainer')).toEqual(
+        { ok: true, proposal: 'By June, nobody could say where the money had gone.' },
+      )
+    } finally {
+      await deleteProject(db, project.id)
+    }
+    const sent = callLlm.mock.calls[0]![0] as { messages: { content: string }[] }
+    expect(sent.messages[0]!.content).toMatch(/Scenes:\nNo scenes\.$/)
   })
 })
