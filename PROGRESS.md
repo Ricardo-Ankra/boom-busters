@@ -11380,7 +11380,7 @@ owner edits. `--prod` was not run against Neon.
 
 > Decision 463, branch `script-craft-loop`. Plan 2 of the script review and
 > craft design: `docs/superpowers/specs/2026-11-10-script-review-and-craft-design.md`
-> (sections 4 and 8), plan `docs/superpowers/plans/2026-11-11-script-writer-and-craft-loop.md`.
+> (sections 8 and 10), plan `docs/superpowers/plans/2026-11-11-script-writer-and-craft-loop.md`.
 > The writer now reads the audience, the language and the dossier's scenes;
 > each chapter passes a craft check with one repair round before the
 > self-check; the answers, notices and gutter entries sit beside the outline's
@@ -11418,6 +11418,13 @@ owner edits. `--prod` was not run against Neon.
   scene), `script-craft-check` and `script-craft-check-calm` (the script
   editor's check, tension and calm checklists), `script-chapter-revise` (the
   chapter request plus the draft and the editor's notes).
+- Final review fixes: the revision request ends "Answer with the whole revised
+  chapter as plain prose and nothing else: no preamble, no notes, no list of
+  what changed." and the craft check's tag sentence now reads "Never quote one
+  in a sentence, and flag them only under the tag line above." (it no longer
+  says to ignore tags entirely, which contradicted the checklist's tag line).
+  Only `script-chapter-revise.json`, `script-craft-check.json` and
+  `script-craft-check-calm.json` moved.
 - Nothing else moved: the 12 changed fixtures are all `script-*.json`, and
   `preview.test.ts` reads `script-outline.json`, which is among them.
 
@@ -11451,3 +11458,18 @@ owner edits. `--prod` was not run against Neon.
      (k) The craft-loop runner tests are a suite of their own that never seeds
      or truncates the shared test database. Inside the main suite, its
      `beforeEach` truncated rows that parallel test files were reading.
+     (l) With Shorts off, Script Studio still shows the script's notices: the
+     strip hides only when Shorts are off, no candidates exist and no notice
+     exists.
+     (m) The revision is told to answer with the whole chapter as plain prose.
+     (n) A revision under 70% of the draft's words (`CRAFT_REVISION_FLOOR`,
+     both counted without the fixed lines) is refused: the draft is kept, the
+     step returns `stopped`, and the first findings are stored as craft
+     warnings.
+     (o) The craft check's retry runs in a step of its own with a fresh
+     deadline (`craft-check-N-retry`, `craft-recheck-N-retry`), as decision 461
+     does for the designer, so a slow `scripting` route cannot pass the 300 s
+     ceiling. The revise step still makes `callForText`'s two calls in one
+     step, the same exposure as the chapter draft.
+     (p) A revision that landed always leaves its `trimmed` notice, bare
+     ("Chapter N revised for craft.") when no first finding counts as fixed.
