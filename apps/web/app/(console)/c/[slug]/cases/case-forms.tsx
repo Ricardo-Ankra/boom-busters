@@ -92,7 +92,7 @@ function PeopleAndLinksFields({
 }
 
 /**
- * Seed keywords (decision 467): phrases the research run measures beside what
+ * Seed keywords (decision 468): phrases the research run measures beside what
  * it finds, ranked like the rest. Comma separated, like People.
  */
 function SeedKeywordsField({

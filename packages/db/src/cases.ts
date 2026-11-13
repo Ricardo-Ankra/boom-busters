@@ -49,7 +49,7 @@ export interface CaseSummary {
   subject: string | null
   people: string[]
   sourceLinks: { url: string; note?: string }[]
-  /** Phrases the research run measures as keywords beside what it finds (decision 467). */
+  /** Phrases the research run measures as keywords beside what it finds (decision 468). */
   seedKeywords: string[]
   /** The VidIQ research brief for `subject`; null when none, or when the stored row does not parse. */
   searchBrief: SearchBrief | null
@@ -572,7 +572,7 @@ export async function saveCaseFieldCheck(
 export type AddOwnerKeywordResult = 'added' | 'present' | 'full' | 'no-brief'
 
 /**
- * `Add keyword` (decision 467): put one measured phrase on the brief's other
+ * `Add keyword` (decision 468): put one measured phrase on the brief's other
  * keywords, marked as the owner's, and keep it as a seed so the next run
  * measures it again. Under the row lock, so a run saving its brief meanwhile
  * is never overwritten. `present` when the brief already shows the phrase,

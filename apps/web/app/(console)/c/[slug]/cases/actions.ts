@@ -136,7 +136,7 @@ const CaseFormSchema = z.object({
     )
     .max(CASE_SOURCE_LINKS_MAX, `Add at most ${CASE_SOURCE_LINKS_MAX} source links`)
     .default([]),
-  /** Phrases the research run measures as keywords beside what it finds (decision 467). */
+  /** Phrases the research run measures as keywords beside what it finds (decision 468). */
   seedKeywords: z
     .array(SeedKeywordSchema)
     .max(CASE_SEED_KEYWORDS_MAX, `Give at most ${CASE_SEED_KEYWORDS_MAX} seed keywords`)
@@ -778,7 +778,7 @@ export async function testAngleAction(
 }
 
 /**
- * `Add keyword` (decision 467): measure one phrase the owner types (one VidIQ
+ * `Add keyword` (decision 468): measure one phrase the owner types (one VidIQ
  * keyword call, 5 credits) and put it on the brief's other keywords as theirs,
  * where `Make target` can promote it. It is kept as a seed keyword too, so the
  * next research run measures and judges it with the rest. Every refusal comes

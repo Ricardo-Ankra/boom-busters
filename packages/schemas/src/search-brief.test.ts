@@ -244,7 +244,7 @@ describe('a brief and its format', () => {
     expect(caseResearchCredits({ formatSeed: false, people: 0, exactPhrases: 3 })).toBe(70)
   })
 
-  test('a brief holds the owner flag and up to fifteen other keywords (decision 467)', () => {
+  test('a brief holds the owner flag and up to fifteen other keywords (decision 468)', () => {
     const owned = kw('owned', 50, { owner: true })
     const fifteen = Array.from({ length: 15 }, (_, i) => ({ ...owned, keyword: `k${i}` }))
     expect(
@@ -257,7 +257,7 @@ describe('a brief and its format', () => {
   })
 })
 
-describe('exactPhrases, phraseKey and briefPhrases (decision 467)', () => {
+describe('exactPhrases, phraseKey and briefPhrases (decision 468)', () => {
   test('the subject first, then each seed once, compared without case or extra spaces', () => {
     expect(
       exactPhrases('Ueno Bank Paraguay', [

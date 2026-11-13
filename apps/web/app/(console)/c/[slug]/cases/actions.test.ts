@@ -1002,7 +1002,7 @@ describe('rateAnglesAction and rateAnglesEstimate', () => {
   })
 })
 
-describe('addCaseKeywordAction (decision 467)', () => {
+describe('addCaseKeywordAction (decision 468)', () => {
   const CASE_ID = '01J00000000000000000000C01'
   const kw = (keyword: string, over: Record<string, unknown> = {}) => ({
     keyword,

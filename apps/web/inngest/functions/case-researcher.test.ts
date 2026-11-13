@@ -599,7 +599,7 @@ describeDb('case-researcher (mock mode)', () => {
       expect(rows.map((r) => (r.args as { mode?: string }).mode)).toEqual(['matching_terms'])
     })
 
-    it("measures the owner's seed keywords exactly, marks them theirs and keeps every one on the brief (decision 467)", async () => {
+    it("measures the owner's seed keywords exactly, marks them theirs and keeps every one on the brief (decision 468)", async () => {
       const seeds = ['wework documentary', 'my own phrase', 'another own phrase']
       await updateCase(db, caseId, { seedKeywords: seeds })
       const { result } = await engine.execute(request())
@@ -621,7 +621,7 @@ describeDb('case-researcher (mock mode)', () => {
       expect(shown.find((k) => k.keyword === SUBJECT.toLowerCase())?.owner).toBeUndefined()
     })
 
-    it('gives the fit the pillar the owner filed under, so the mock keeps it (decision 467)', async () => {
+    it('gives the fit the pillar the owner filed under, so the mock keeps it (decision 468)', async () => {
       await engine.execute(request())
       const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
       expect(brief.fit?.pillarKey).toBe('con')

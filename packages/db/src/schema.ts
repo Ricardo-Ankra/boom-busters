@@ -565,7 +565,7 @@ export const cases = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<{ url: string; note?: string }[]>(),
-    /** Phrases the owner wants the research run to measure as keywords (decision 467). */
+    /** Phrases the owner wants the research run to measure as keywords (decision 468). */
     seedKeywords: jsonb('seed_keywords')
       .notNull()
       .default(sql`'[]'::jsonb`)

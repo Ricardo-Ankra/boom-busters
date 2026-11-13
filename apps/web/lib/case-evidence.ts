@@ -46,7 +46,7 @@ export async function searchField(keyword: string, channelId: string): Promise<F
 }
 
 /**
- * One phrase's own measures (decision 467): VidIQ's `research` mode with no
+ * One phrase's own measures (decision 468): VidIQ's `research` mode with no
  * related keywords, one purchase. The row VidIQ returns for the phrase (it
  * lower-cases it), compared by `phraseKey`; a single row in another spelling
  * stands in for it. Null when VidIQ returned no row for the phrase.

@@ -886,7 +886,7 @@ export function mockRateAngles(input: RateAnglesInput): AngleRating {
 export interface FitInput {
   bible: BibleInUse
   subject: string
-  /** The pillar the owner filed the case under (its category), when it is one of the bible's (decision 467). */
+  /** The pillar the owner filed the case under (its category), when it is one of the bible's (decision 468). */
   filedUnder?: { key: string; label: string } | null
   /** The owner's own angle idea for the case, when they gave one. */
   angleIdea?: string | null

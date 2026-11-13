@@ -11801,7 +11801,7 @@ owner edits. `--prod` was not run against Neon.
      never edits the shared fixture and runs alone on an unseeded database.
      (d) Decision 464 (c), one notice per revised chapter, stays as decided.
 
-467. **Seed keywords, Add keyword, and a fit that reads the case**
+468. **Seed keywords, Add keyword, and a fit that reads the case**
      (2026-11-13, branch `worktree-case-seed-keywords`, migration 0055).
      Found on the Ueno Bank Paraguay case: the brief's target was
      "paraguay ueno bank" (overall 52, about 9,200 searches a month) while

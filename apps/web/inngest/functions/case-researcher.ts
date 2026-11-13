@@ -142,7 +142,7 @@ interface Loaded {
   formatKeywords?: string[]
   pillarKeywords?: string[]
   pillarLabel?: string | null
-  /** The case's own category key when the bible lists it, and the owner's seed keywords (decision 467). */
+  /** The case's own category key when the bible lists it, and the owner's seed keywords (decision 468). */
   pillarKey?: string | null
   seedKeywords?: string[]
 }
@@ -209,7 +209,7 @@ const byOverall = (a: SearchKeyword, b: SearchKeyword) => (b.overall ?? -1) - (a
 
 /**
  * The first `limit` of a ranked list, then every one of the owner's own
- * keywords that missed the cut, in rank order (decision 467): the owner's
+ * keywords that missed the cut, in rank order (decision 468): the owner's
  * phrases are ranked like any other, but never dropped from the brief.
  */
 function keepOwner(ranked: readonly SearchKeyword[], limit: number): SearchKeyword[] {
@@ -377,7 +377,7 @@ export const caseResearcher = inngest.createFunction(
       peopleTerms.push(...found)
     }
     // 1d. The subject phrase itself and each of the owner's seed keywords, measured exactly
-    // (decision 467): matching terms leave the subject phrase out, and a seed may not be among
+    // (decision 468): matching terms leave the subject phrase out, and a seed may not be among
     // them at all. Optional: a refused or failed measure is recorded, never fails the run.
     // A seed is marked the owner's here and then judged like any other term.
     const seedKeys = new Set((loaded.seedKeywords ?? []).map(phraseKey))
@@ -447,7 +447,7 @@ export const caseResearcher = inngest.createFunction(
 
     // 2b. Whether the subject belongs on this channel, and under which pillar. No credits. It reads
     // the pillar the owner filed under, their angle and what was measured, because the model's own
-    // memory of a subject can be older than the story (decision 467).
+    // memory of a subject can be older than the story (decision 468).
     const fitSearches = [...keywords]
       .sort(byMonthlySearchesDesc)
       .slice(0, FIT_SEARCHES_MAX)

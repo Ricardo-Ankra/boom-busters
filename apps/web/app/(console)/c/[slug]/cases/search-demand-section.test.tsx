@@ -210,7 +210,7 @@ describe('SearchDemandSection', () => {
     expect(screen.queryByRole('button', { name: 'Add keyword' })).not.toBeInTheDocument()
   })
 
-  it("marks the owner's own keyword (decision 467)", () => {
+  it("marks the owner's own keyword (decision 468)", () => {
     render(
       <SearchDemandSection
         item={kase({
@@ -228,7 +228,7 @@ describe('SearchDemandSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('Add keyword asks first with its cost, then measures the typed phrase and clears the box (decision 467)', async () => {
+  it('Add keyword asks first with its cost, then measures the typed phrase and clears the box (decision 468)', async () => {
     actions.addCaseKeywordAction.mockResolvedValue({ ok: true })
     render(<SearchDemandSection item={kase()} run={run} />)
     const add = screen.getByRole('button', { name: 'Add keyword' })

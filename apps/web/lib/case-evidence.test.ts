@@ -70,7 +70,7 @@ describe('searchField', () => {
   })
 })
 
-describe('measureKeyword (decision 467)', () => {
+describe('measureKeyword (decision 468)', () => {
   it("returns the phrase's own row from a research-mode call with no related keywords", async () => {
     const research = vi.spyOn(spend.client as VidiqClient, 'keywordResearch')
     const row = await measureKeyword('Ueno Bank Paraguay', CHANNEL)

@@ -36,7 +36,7 @@ const JSON_FIXTURES: Partial<Record<VidiqTool, unknown>> = {
 /**
  * A `research` call measures the phrase it was given, so the stand-in echoes
  * that phrase back (lower case, as VidIQ does) with fixed figures: a mock run
- * then shows the subject and seed keywords measured (decision 467).
+ * then shows the subject and seed keywords measured (decision 468).
  */
 export function researchSeedMarkdown(keyword: string): string {
   const phrase = keyword.trim().replace(/\s+/g, ' ').toLowerCase()

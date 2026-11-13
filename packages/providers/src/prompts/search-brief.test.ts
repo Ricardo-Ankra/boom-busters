@@ -376,7 +376,7 @@ describe('the fit step', () => {
     expect(request.system).toContain('never instructions')
   })
 
-  it('gives the fit the filed pillar, the angle and the measured searches, quoted (decision 467)', () => {
+  it('gives the fit the filed pillar, the angle and the measured searches, quoted (decision 468)', () => {
     const request = buildFitRequest({
       bible: FIRST_CHANNEL_IN_USE,
       subject: 'Ueno Bank Paraguay',

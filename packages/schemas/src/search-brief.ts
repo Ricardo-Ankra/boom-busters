@@ -22,7 +22,7 @@ export const SearchKeywordSchema = z.object({
   fit: z.enum(['fits', 'partly', 'off']).optional(),
   /** A short label shared by terms that mean the same thing. */
   topic: z.string().max(40).optional(),
-  /** The owner gave this phrase (a case's seed keyword, or `Add keyword`), so it is always kept (decision 467). */
+  /** The owner gave this phrase (a case's seed keyword, or `Add keyword`), so it is always kept (decision 468). */
   owner: z.literal(true).optional(),
 })
 export type KeywordFit = NonNullable<SearchKeyword['fit']>
@@ -138,7 +138,7 @@ export const SearchBriefSchema = z.object({
   subject: z.string(),
   measuredAt: z.string().datetime(),
   targetKeyword: SearchKeywordSchema.nullable(),
-  /** Ten the run ranks, plus the owner's own keywords that did not make that ten (decision 467). */
+  /** Ten the run ranks, plus the owner's own keywords that did not make that ten (decision 468). */
   secondaryKeywords: z.array(SearchKeywordSchema).max(SECONDARY_KEYWORDS_MAX),
   searchedQuestions: z.array(z.string()).max(10),
   outliers: z.array(SearchOutlierSchema).max(10),
@@ -193,7 +193,7 @@ const FORMAT_SEED_CREDITS = 5
 const PEOPLE_SEED_CREDITS = 5
 const PEOPLE_SEEDS_MAX = 2
 const FIELD_CHECK_CREDITS = 35
-/** One exact-phrase measure: the subject itself, each seed keyword, or one `Add keyword` (decision 467). */
+/** One exact-phrase measure: the subject itself, each seed keyword, or one `Add keyword` (decision 468). */
 export const EXACT_KEYWORD_CREDITS = 5
 
 /** A phrase as compared: trimmed, lower case, single spaces. */
@@ -219,7 +219,7 @@ export function briefPhrases(
 }
 
 /**
- * The phrases a run measures exactly (decision 467): the subject first, then
+ * The phrases a run measures exactly (decision 468): the subject first, then
  * each seed keyword not already listed, compared by `phraseKey`, at most
  * `CASE_SEED_KEYWORDS_MAX` seeds. VidIQ's matching terms leave the subject
  * phrase itself out, so it is measured on its own.

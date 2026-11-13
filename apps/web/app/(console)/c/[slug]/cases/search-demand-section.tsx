@@ -256,7 +256,7 @@ function KeywordTable({
 }
 
 /**
- * `Add keyword` (decision 467): the owner types a phrase; VidIQ measures it and
+ * `Add keyword` (decision 468): the owner types a phrase; VidIQ measures it and
  * it joins the other keywords as theirs, where `Make target` can pick it.
  */
 function AddKeyword({ item, run }: { item: CaseSummary; run: Run }) {

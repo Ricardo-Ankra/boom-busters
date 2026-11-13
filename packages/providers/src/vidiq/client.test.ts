@@ -39,7 +39,7 @@ describe('the widened VidIQ calls', () => {
     expect(call.data[0]?.estimatedMonthlySearch).toEqual(expect.any(Number))
   })
 
-  it('measures one phrase in research mode, sending includeRelated only when given (decision 467)', async () => {
+  it('measures one phrase in research mode, sending includeRelated only when given (decision 468)', async () => {
     const call = await mockVidiqClient().keywordResearch('Ueno Bank  Paraguay', {
       mode: 'research',
       includeRelated: false,

@@ -55,7 +55,7 @@ export interface VidiqClient {
   keywordResearch(
     keyword: string,
     options?: {
-      /** `research` measures the phrase itself (decision 467); the others list longer terms. */
+      /** `research` measures the phrase itself (decision 468); the others list longer terms. */
       mode?: 'matching_terms' | 'questions' | 'research'
       limit?: number
       /** Research only: false returns the phrase's own row and no related keywords. */

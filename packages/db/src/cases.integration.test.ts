@@ -280,7 +280,7 @@ suite('cases', () => {
     expect(got?.sourceLinks).toEqual([{ url: 'https://example.com/a', note: 'FT' }])
   })
 
-  it('stores seed keywords, defaults them empty and patches them (decision 467)', async () => {
+  it('stores seed keywords, defaults them empty and patches them (decision 468)', async () => {
     const bare = await createCase(db, { channelId, title: 'No seeds', category: 'con' })
     expect((await getCase(db, bare.id))?.seedKeywords).toEqual([])
     const row = await createCase(db, {
@@ -731,7 +731,7 @@ suite('cases', () => {
       })
     })
 
-    describe('addCaseOwnerKeyword (decision 467)', () => {
+    describe('addCaseOwnerKeyword (decision 468)', () => {
       it("adds the phrase as the owner's keyword and keeps it as a seed", async () => {
         const id = await researched()
         expect(await addCaseOwnerKeyword(db, id, kw('wework documentary', 75))).toBe('added')
