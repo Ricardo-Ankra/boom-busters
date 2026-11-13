@@ -17,6 +17,7 @@ import { createChannel, ensureFirstChannel, getChannelBySlug } from './channels'
 import { createDb } from './client'
 import { countCases } from './queries'
 import {
+  addCaseOwnerKeyword,
   caseSubjectTaken,
   chooseCaseAngle,
   createCase,
@@ -277,6 +278,20 @@ suite('cases', () => {
     expect(got?.subject).toBe('Wirecard')
     expect(got?.people).toEqual(['Markus Braun'])
     expect(got?.sourceLinks).toEqual([{ url: 'https://example.com/a', note: 'FT' }])
+  })
+
+  it('stores seed keywords, defaults them empty and patches them (decision 468)', async () => {
+    const bare = await createCase(db, { channelId, title: 'No seeds', category: 'con' })
+    expect((await getCase(db, bare.id))?.seedKeywords).toEqual([])
+    const row = await createCase(db, {
+      channelId,
+      title: 'Seeded',
+      category: 'collapse',
+      seedKeywords: ['ueno bank paraguay'],
+    })
+    expect((await getCase(db, row.id))?.seedKeywords).toEqual(['ueno bank paraguay'])
+    const updated = await updateCase(db, row.id, { seedKeywords: ['ueno bank collapse'] })
+    expect(updated?.seedKeywords).toEqual(['ueno bank collapse'])
   })
 
   it('updateCase patches subject, people and source links', async () => {
@@ -713,6 +728,45 @@ suite('cases', () => {
         expect(await saveCaseFieldCheck(db, id, check('a', 'not a date'))).toBeNull()
         expect((await getCase(db, id))?.searchBrief?.fieldChecks).toBeUndefined()
         expect(await saveCaseNicheTest(db, id, test('a', 'x'.repeat(301)))).toBeNull()
+      })
+    })
+
+    describe('addCaseOwnerKeyword (decision 468)', () => {
+      it("adds the phrase as the owner's keyword and keeps it as a seed", async () => {
+        const id = await researched()
+        expect(await addCaseOwnerKeyword(db, id, kw('wework documentary', 75))).toBe('added')
+        const got = await getCase(db, id)
+        expect(got?.searchBrief?.secondaryKeywords.at(-1)).toEqual({
+          ...kw('wework documentary', 75),
+          owner: true,
+        })
+        expect(got?.seedKeywords).toEqual(['wework documentary'])
+        // The owner's keyword can then be made the target.
+        const swapped = await setCaseTargetKeyword(db, id, 'wework documentary')
+        expect(swapped.searchBrief?.targetKeyword?.keyword).toBe('wework documentary')
+      })
+
+      it('refuses a phrase the brief already shows, in any case or spacing', async () => {
+        const id = await researched()
+        expect(await addCaseOwnerKeyword(db, id, kw('WeWork  Collapse'))).toBe('present')
+        expect(await addCaseOwnerKeyword(db, id, kw('wework bankruptcy'))).toBe('present')
+        expect((await getCase(db, id))?.seedKeywords).toEqual([])
+      })
+
+      it("stops at five of the owner's own keywords", async () => {
+        const id = await researched()
+        for (const n of ['one', 'two', 'three', 'four', 'five']) {
+          expect(await addCaseOwnerKeyword(db, id, kw(`wework ${n}`))).toBe('added')
+        }
+        expect(await addCaseOwnerKeyword(db, id, kw('wework six'))).toBe('full')
+        const got = await getCase(db, id)
+        expect(got?.searchBrief?.secondaryKeywords.filter((k) => k.owner)).toHaveLength(5)
+        expect(got?.seedKeywords).toHaveLength(5)
+      })
+
+      it('says no-brief for a case never researched', async () => {
+        const bare = await createCase(db, { channelId, title: 'Unresearched', category: 'con' })
+        expect(await addCaseOwnerKeyword(db, bare.id, kw('anything'))).toBe('no-brief')
       })
     })
 

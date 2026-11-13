@@ -54,7 +54,13 @@ export interface VidiqClient {
   videoTranscript(args: { videoId: string; language?: string }): Promise<VidiqCall<VidiqTranscript>>
   keywordResearch(
     keyword: string,
-    options?: { mode?: 'matching_terms' | 'questions'; limit?: number },
+    options?: {
+      /** `research` measures the phrase itself (decision 468); the others list longer terms. */
+      mode?: 'matching_terms' | 'questions' | 'research'
+      limit?: number
+      /** Research only: false returns the phrase's own row and no related keywords. */
+      includeRelated?: boolean
+    },
   ): Promise<VidiqCall<VidiqKeywordRow[]>>
   scoreTitle(args: {
     title: string
@@ -163,7 +169,14 @@ export function clientOver(call: VidiqCaller, close: () => Promise<void>): Vidiq
     keywordResearch: (keyword, options) =>
       run(
         'vidiq_keyword_research',
-        { keyword, mode: options?.mode ?? 'matching_terms', limit: options?.limit ?? 8 },
+        {
+          keyword,
+          mode: options?.mode ?? 'matching_terms',
+          limit: options?.limit ?? 8,
+          ...(options?.includeRelated === undefined
+            ? {}
+            : { includeRelated: options.includeRelated }),
+        },
         VIDIQ_CREDIT_COST.keywordResearch,
         (raw) => parseKeywordTable(typeof raw === 'string' ? raw : ''),
       ),

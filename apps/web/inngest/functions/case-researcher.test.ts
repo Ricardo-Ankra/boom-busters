@@ -21,6 +21,7 @@ import type * as EvidenceModule from '@/lib/case-evidence'
 import type * as RateAnglesModule from '@/lib/rate-angles'
 import {
   CASE_RESEARCH_CREDITS,
+  EXACT_KEYWORD_CREDITS,
   DEFAULT_WORKSPACE_SETTINGS,
   FIRST_CHANNEL_BIBLE,
   FIRST_CHANNEL_ID,
@@ -185,7 +186,7 @@ describeDb('case-researcher (mock mode)', () => {
     await deleteCase(db, caseId)
   })
 
-  it('saves a brief with a target keyword, short lists and two or three angles, in four required ledger rows worth 20 credits', async () => {
+  it('saves a brief with a target keyword, short lists and two or three angles, in five required ledger rows worth 25 credits', async () => {
     const { result } = await engine.execute(request())
     expect(result).toMatchObject({ outcome: 'researched' })
 
@@ -211,8 +212,10 @@ describeDb('case-researcher (mock mode)', () => {
     expect(row?.searchJob).toMatchObject({ state: 'done', current: null, error: null })
 
     const rows = await requiredRows()
-    expect(rows).toHaveLength(4)
-    expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(CASE_RESEARCH_CREDITS)
+    expect(rows).toHaveLength(5)
+    expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(
+      CASE_RESEARCH_CREDITS + EXACT_KEYWORD_CREDITS,
+    )
     expect(
       rows.every(
         (r) =>
@@ -223,14 +226,22 @@ describeDb('case-researcher (mock mode)', () => {
       'vidiq_get_videos_by_ids',
       'vidiq_keyword_research',
       'vidiq_keyword_research',
+      'vidiq_keyword_research',
       'vidiq_outliers',
     ])
-    // The ledger holds the arguments as sent on the wire.
+    // The ledger holds the arguments as sent on the wire: the subject phrase is measured on its own.
     const modes = rows
       .filter((r) => r.tool === 'vidiq_keyword_research')
       .map((r) => (r.args as { mode?: string }).mode)
       .sort()
-    expect(modes).toEqual(['matching_terms', 'questions'])
+    expect(modes).toEqual(['matching_terms', 'questions', 'research'])
+    const exact = rows.find((r) => (r.args as { mode?: string }).mode === 'research')
+    expect(exact?.args).toEqual({
+      keyword: SUBJECT,
+      mode: 'research',
+      limit: 1,
+      includeRelated: false,
+    })
   })
 
   it('stores titles apart from keywords', async () => {
@@ -370,11 +381,11 @@ describeDb('case-researcher (mock mode)', () => {
     expect(brief.angleOptions).toHaveLength(2)
     expect(row?.searchJob?.state).toBe('done')
 
-    // Three calls were made (no details call with no outliers), and no volume was invented.
-    expect(await db.select().from(vidiqCredits)).toHaveLength(3)
+    // Four calls were made (no details call with no outliers), and no volume was invented.
+    expect(await db.select().from(vidiqCredits)).toHaveLength(4)
   })
 
-  it('a VidiqError on the outliers call fails the job with its message, keeps the first two ledger rows and stores no brief (Review Focus 2)', async () => {
+  it('a VidiqError on the outliers call fails the job with its message, keeps the three keyword rows before it and stores no brief (Review Focus 2)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const { VidiqError } = await import('@boom-busters/providers/vidiq')
     seams.clientOverride = (real) => ({
@@ -395,7 +406,7 @@ describeDb('case-researcher (mock mode)', () => {
       error: 'vidiq_outliers: The VidIQ key was refused',
     })
     const rows = await db.select().from(vidiqCredits)
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     expect(rows.every((r) => r.tool === 'vidiq_keyword_research')).toBe(true)
   })
 
@@ -564,8 +575,8 @@ describeDb('case-researcher (mock mode)', () => {
     })
 
     it('skips optional steps at the cap and says so', async () => {
-      // The 20 credits of the required calls fit; the field check (15) does not.
-      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 22 } })
+      // The 25 credits of the required calls and the subject measure fit; the field check (15) does not.
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 27 } })
       const { result } = await engine.execute(request())
       expect(result).toMatchObject({ outcome: 'researched' })
       const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
@@ -574,7 +585,46 @@ describeDb('case-researcher (mock mode)', () => {
         expect.arrayContaining(['field check: credit cap', 'comments: credit cap']),
       )
       expect(brief.skipped).toContain('niche test: credit cap')
-      expect(await db.select().from(vidiqCredits)).toHaveLength(4)
+      expect(await db.select().from(vidiqCredits)).toHaveLength(5)
+    })
+
+    it('an exact measure the cap refuses is skipped and recorded, and the run goes on', async () => {
+      // matching terms (5) fit; the subject's exact measure would make 10 of 9.
+      await updateWorkspace(db, { ...DEFAULT_WORKSPACE_SETTINGS, vidiq: { monthlyCreditCap: 9 } })
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { error } = await engine.execute(request())
+      // The required questions call then stops the run at the cap, as it always did.
+      expect(JSON.stringify(error)).toContain('The VidIQ cap is reached')
+      const rows = await db.select().from(vidiqCredits)
+      expect(rows.map((r) => (r.args as { mode?: string }).mode)).toEqual(['matching_terms'])
+    })
+
+    it("measures the owner's seed keywords exactly, marks them theirs and keeps every one on the brief (decision 468)", async () => {
+      const seeds = ['wework documentary', 'my own phrase', 'another own phrase']
+      await updateCase(db, caseId, { seedKeywords: seeds })
+      const { result } = await engine.execute(request())
+      expect(result).toMatchObject({ outcome: 'researched' })
+      const exact = (await db.select().from(vidiqCredits))
+        .filter((r) => (r.args as { mode?: string }).mode === 'research')
+        .map((r) => (r.args as { keyword: string }).keyword)
+      expect(exact).toEqual([SUBJECT, ...seeds])
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      const shown = [
+        ...(brief.targetKeyword ? [brief.targetKeyword] : []),
+        ...brief.secondaryKeywords,
+        ...(brief.offIntent ?? []),
+      ]
+      for (const seed of seeds) {
+        expect(shown.find((k) => k.keyword === seed)).toMatchObject({ owner: true })
+      }
+      // The subject phrase is measured, not marked as the owner's.
+      expect(shown.find((k) => k.keyword === SUBJECT.toLowerCase())?.owner).toBeUndefined()
+    })
+
+    it('gives the fit the pillar the owner filed under, so the mock keeps it (decision 468)', async () => {
+      await engine.execute(request())
+      const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
+      expect(brief.fit?.pillarKey).toBe('con')
     })
 
     it('seeds research with up to two people', async () => {
@@ -716,8 +766,10 @@ describeDb('case-researcher (mock mode)', () => {
         expect(brief.formatKey).toBe('sleep')
         expect(brief.fit).toMatchObject({ inScope: true, reason: 'Mock fit.' })
         const rows = await requiredRows()
-        expect(rows).toHaveLength(5)
-        expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(CASE_RESEARCH_CREDITS + 5)
+        expect(rows).toHaveLength(6)
+        expect(rows.reduce((sum, r) => sum + r.credits, 0)).toBe(
+          CASE_RESEARCH_CREDITS + 5 + EXACT_KEYWORD_CREDITS,
+        )
       })
     })
 
@@ -728,7 +780,7 @@ describeDb('case-researcher (mock mode)', () => {
         expect(searched).toEqual([SUBJECT])
         const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
         expect(brief.formatKey).toBe('main')
-        expect(await requiredRows()).toHaveLength(4)
+        expect(await requiredRows()).toHaveLength(5)
       })
     })
 
@@ -751,7 +803,7 @@ describeDb('case-researcher (mock mode)', () => {
       expect(searched).toEqual([SUBJECT])
       const brief = SearchBriefSchema.parse((await getCase(db, caseId))?.searchBrief)
       expect(brief.formatKey).toBeNull()
-      expect(await requiredRows()).toHaveLength(4)
+      expect(await requiredRows()).toHaveLength(5)
     })
 
     it('a stale case key resolves to the primary', async () => {

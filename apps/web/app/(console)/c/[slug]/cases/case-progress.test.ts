@@ -15,6 +15,7 @@ function kase(overrides: Partial<CaseSummary>): CaseSummary {
     subject: 'Wirecard',
     people: [],
     sourceLinks: [],
+    seedKeywords: [],
     searchBrief: null,
     searchJob: null,
     formatKey: null,

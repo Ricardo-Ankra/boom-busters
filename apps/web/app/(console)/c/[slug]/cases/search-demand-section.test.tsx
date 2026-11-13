@@ -13,6 +13,7 @@ const actions = vi.hoisted(() => ({
   rateAnglesAction: vi.fn(),
   rateAnglesEstimate: vi.fn(),
   checkWhoRanksAction: vi.fn(),
+  addCaseKeywordAction: vi.fn(),
 }))
 vi.mock('./actions', () => actions)
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -206,6 +207,59 @@ describe('SearchDemandSection', () => {
   it('offers no Make target for a brief on another subject', () => {
     render(<SearchDemandSection item={kase({ subject: 'Fiat' })} run={run} />)
     expect(screen.queryByRole('button', { name: /Make target/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add keyword' })).not.toBeInTheDocument()
+  })
+
+  it("marks the owner's own keyword (decision 468)", () => {
+    render(
+      <SearchDemandSection
+        item={kase({
+          searchBrief: brief({
+            secondaryKeywords: [keyword({ keyword: 'stellantis collapse', owner: true })],
+          }),
+        })}
+        run={run}
+      />,
+    )
+    const row = screen.getByText('stellantis collapse').closest('tr')!
+    expect(within(row).getByText('Your keyword')).toBeInTheDocument()
+    expect(
+      within(row).getByRole('button', { name: 'Make target: stellantis collapse' }),
+    ).toBeInTheDocument()
+  })
+
+  it('Add keyword asks first with its cost, then measures the typed phrase and clears the box (decision 468)', async () => {
+    actions.addCaseKeywordAction.mockResolvedValue({ ok: true })
+    render(<SearchDemandSection item={kase()} run={run} />)
+    const add = screen.getByRole('button', { name: 'Add keyword' })
+    expect(add).toBeDisabled()
+    const box = screen.getByLabelText('Add a keyword of your own')
+    await userEvent.type(box, 'stellantis collapse explained')
+    await userEvent.click(add)
+    expect(screen.getByText('About 5 VidIQ credits.')).toBeInTheDocument()
+    expect(actions.addCaseKeywordAction).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Measure and add' }))
+    await waitFor(() =>
+      expect(actions.addCaseKeywordAction).toHaveBeenCalledWith(
+        CASE_ID,
+        'stellantis collapse explained',
+      ),
+    )
+    await waitFor(() => expect(box).toHaveValue(''))
+  })
+
+  it('keeps the typed phrase when Add keyword is refused', async () => {
+    actions.addCaseKeywordAction.mockResolvedValue({
+      ok: false,
+      error: 'That keyword is already on this brief',
+    })
+    render(<SearchDemandSection item={kase()} run={run} />)
+    const box = screen.getByLabelText('Add a keyword of your own')
+    await userEvent.type(box, 'stellantis news')
+    await userEvent.click(screen.getByRole('button', { name: 'Add keyword' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Measure and add' }))
+    await waitFor(() => expect(actions.addCaseKeywordAction).toHaveBeenCalled())
+    expect(box).toHaveValue('stellantis news')
   })
 
   it('lists searched titles apart', () => {

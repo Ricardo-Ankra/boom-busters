@@ -565,6 +565,11 @@ export const cases = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`)
       .$type<{ url: string; note?: string }[]>(),
+    /** Phrases the owner wants the research run to measure as keywords (decision 468). */
+    seedKeywords: jsonb('seed_keywords')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
     /** The VidIQ research brief for `subject` (`SearchBriefSchema`); null until a run saves one. */
     searchBrief: jsonb('search_brief').$type<SearchBrief>(),
     /** The case research run in flight or last finished (`CaseResearchJobSchema`). */

@@ -1,0 +1,1 @@
+ALTER TABLE "cases" ADD COLUMN "seed_keywords" jsonb DEFAULT '[]'::jsonb NOT NULL;

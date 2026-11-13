@@ -1,6 +1,7 @@
 import { VIDIQ_CREDIT_COST, VidiqError } from '@boom-busters/providers/vidiq'
 import type { VidiqComment } from '@boom-busters/providers/vidiq'
-import type { FieldCheck, NicheTest } from '@boom-busters/schemas'
+import { phraseKey } from '@boom-busters/schemas'
+import type { FieldCheck, NicheTest, SearchKeyword } from '@boom-busters/schemas'
 import { spendVidiq, VidiqCapReached, withVidiqClient } from '@/lib/vidiq-spend'
 
 /**
@@ -41,6 +42,41 @@ export async function searchField(keyword: string, channelId: string): Promise<F
       publishedAt: r.publishedAt,
       seconds: r.seconds,
     })),
+  }
+}
+
+/**
+ * One phrase's own measures (decision 468): VidIQ's `research` mode with no
+ * related keywords, one purchase. The row VidIQ returns for the phrase (it
+ * lower-cases it), compared by `phraseKey`; a single row in another spelling
+ * stands in for it. Null when VidIQ returned no row for the phrase.
+ */
+export async function measureKeyword(
+  phrase: string,
+  channelId: string,
+  purpose: 'case-research' = PURPOSE,
+): Promise<SearchKeyword | null> {
+  const { data } = await spendVidiq(
+    {
+      channelId,
+      purpose,
+      tool: 'vidiq_keyword_research',
+      cost: VIDIQ_CREDIT_COST.keywordResearch,
+    },
+    (client) =>
+      client.keywordResearch(phrase, { mode: 'research', includeRelated: false, limit: 1 }),
+  )
+  const wanted = phraseKey(phrase)
+  const row =
+    data.find((r) => phraseKey(r.keyword) === wanted) ?? (data.length === 1 ? data[0] : undefined)
+  if (!row) return null
+  return {
+    keyword: row.keyword,
+    volume: row.volume,
+    competition: row.competition,
+    overall: row.overall,
+    estimatedMonthlySearch: row.estimatedMonthlySearch,
+    growthPct: row.growthPct,
   }
 }
 

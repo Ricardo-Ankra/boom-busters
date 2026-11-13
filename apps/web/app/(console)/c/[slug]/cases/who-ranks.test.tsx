@@ -70,6 +70,7 @@ function kase(searchBrief: SearchBrief): CaseSummary {
     subject: 'Wirecard',
     people: [],
     sourceLinks: [],
+    seedKeywords: [],
     searchBrief,
     searchJob: null,
     formatKey: null,

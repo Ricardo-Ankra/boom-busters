@@ -33,10 +33,32 @@ const JSON_FIXTURES: Partial<Record<VidiqTool, unknown>> = {
   vidiq_job_poll: jobPoll,
 }
 
+/**
+ * A `research` call measures the phrase it was given, so the stand-in echoes
+ * that phrase back (lower case, as VidIQ does) with fixed figures: a mock run
+ * then shows the subject and seed keywords measured (decision 468).
+ */
+export function researchSeedMarkdown(keyword: string): string {
+  const phrase = keyword.trim().replace(/\s+/g, ' ').toLowerCase()
+  return [
+    `## Keyword research — mode: research`,
+    '',
+    '### seedKeyword (1)',
+    '| keyword | volume | competition | overall | estimatedMonthlySearch | searchDemandGrowthPct | topMarkets (top 3) |',
+    '|---|---|---|---|---|---|---|',
+    `| ${phrase} | 66 | 30 | 68 | 24000 | null | none |`,
+    '',
+  ].join('\n')
+}
+
 const serve: VidiqCaller = async (tool, args): Promise<VidiqRawResult> => {
   if (tool === 'vidiq_keyword_research') {
     const text =
-      args['mode'] === 'questions' ? KEYWORD_QUESTIONS_MARKDOWN : KEYWORD_RESEARCH_MARKDOWN
+      args['mode'] === 'research'
+        ? researchSeedMarkdown(String(args['keyword'] ?? ''))
+        : args['mode'] === 'questions'
+          ? KEYWORD_QUESTIONS_MARKDOWN
+          : KEYWORD_RESEARCH_MARKDOWN
     return { content: [{ type: 'text', text }] }
   }
   return { structuredContent: JSON_FIXTURES[tool] }

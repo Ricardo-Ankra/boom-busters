@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
   CASE_RESEARCH_CREDITS,
+  SECONDARY_KEYWORDS_MAX,
+  briefPhrases,
+  exactPhrases,
+  phraseKey,
   caseResearchCredits,
   CaseResearchJobSchema,
   SEARCH_BRIEF_STALE_DAYS,
@@ -232,10 +236,74 @@ describe('a brief and its format', () => {
     expect(parsed.fit).toEqual(fit)
   })
 
-  test('counts every call in the estimate', () => {
-    expect(caseResearchCredits({ formatSeed: true, people: 2 })).toBe(70)
-    expect(caseResearchCredits({ formatSeed: false, people: 0 })).toBe(55)
-    expect(caseResearchCredits({ formatSeed: false, people: 5 })).toBe(65)
+  test('counts every call in the estimate, the subject phrase measure included', () => {
+    expect(caseResearchCredits({ formatSeed: true, people: 2 })).toBe(75)
+    expect(caseResearchCredits({ formatSeed: false, people: 0 })).toBe(60)
+    expect(caseResearchCredits({ formatSeed: false, people: 5 })).toBe(70)
+    // The subject and two seeds: three exact measures.
+    expect(caseResearchCredits({ formatSeed: false, people: 0, exactPhrases: 3 })).toBe(70)
+  })
+
+  test('a brief holds the owner flag and up to fifteen other keywords (decision 468)', () => {
+    const owned = kw('owned', 50, { owner: true })
+    const fifteen = Array.from({ length: 15 }, (_, i) => ({ ...owned, keyword: `k${i}` }))
+    expect(
+      SearchBriefSchema.parse(fixture({ secondaryKeywords: fifteen })).secondaryKeywords,
+    ).toHaveLength(15)
+    expect(SECONDARY_KEYWORDS_MAX).toBe(15)
+    expect(
+      SearchBriefSchema.safeParse(fixture({ secondaryKeywords: [...fifteen, owned] })).success,
+    ).toBe(false)
+  })
+})
+
+describe('exactPhrases, phraseKey and briefPhrases (decision 468)', () => {
+  test('the subject first, then each seed once, compared without case or extra spaces', () => {
+    expect(
+      exactPhrases('Ueno Bank Paraguay', [
+        'ueno  bank paraguay',
+        ' Ueno bank collapse ',
+        'UENO BANK COLLAPSE',
+        '',
+      ]),
+    ).toEqual(['Ueno Bank Paraguay', 'Ueno bank collapse'])
+  })
+
+  test('takes five seeds at most, and no seeds by default', () => {
+    expect(exactPhrases('S', ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'])).toEqual([
+      'S',
+      'a1',
+      'a2',
+      'a3',
+      'a4',
+      'a5',
+    ])
+    expect(exactPhrases('S')).toEqual(['S'])
+    expect(exactPhrases('', ['only seed'])).toEqual(['only seed'])
+  })
+
+  test('phraseKey folds case and spaces', () => {
+    expect(phraseKey('  Ueno   Bank ')).toBe('ueno bank')
+  })
+
+  test('briefPhrases names every list a phrase can already be on', () => {
+    const k = (keyword: string) => kw(keyword, 50)
+    const phrases = briefPhrases(
+      fixture({
+        targetKeyword: k('Target One'),
+        secondaryKeywords: [k('second')],
+        searchedTitles: [k('a title')],
+        otherLanguages: [k('otra lengua')],
+        offIntent: [k('off one')],
+      }),
+    )
+    expect([...phrases].sort()).toEqual([
+      'a title',
+      'off one',
+      'otra lengua',
+      'second',
+      'target one',
+    ])
   })
 })
 

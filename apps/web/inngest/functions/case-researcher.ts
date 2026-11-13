@@ -7,6 +7,7 @@ import {
   writeCaseResearchJob,
 } from '@boom-busters/db'
 import {
+  FIT_SEARCHES_MAX,
   buildAngleOptionsRequest,
   buildCommentThemesRequest,
   buildFitRequest,
@@ -36,15 +37,18 @@ import type {
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import type { VidiqVideo } from '@boom-busters/providers/vidiq'
 import {
+  SECONDARY_KEYWORDS_MAX,
   SearchBriefSchema,
   TITLE_PATTERNS_MAX,
   TOLD_ALREADY_MAX,
   byMonthlySearchesDesc,
+  exactPhrases,
   fieldCompetition,
   isStaleField,
   leadKeyword,
   openDoors,
   parseEventData,
+  phraseKey,
   pickTargetCandidates,
   preferredWords,
   resolveFormat,
@@ -69,6 +73,7 @@ import {
   CAP_REACHED,
   CapReached,
   awaitNicheTest,
+  measureKeyword,
   readComments,
   searchField,
   startNicheTest,
@@ -137,6 +142,9 @@ interface Loaded {
   formatKeywords?: string[]
   pillarKeywords?: string[]
   pillarLabel?: string | null
+  /** The case's own category key when the bible lists it, and the owner's seed keywords (decision 468). */
+  pillarKey?: string | null
+  seedKeywords?: string[]
 }
 
 /** What an optional step returns when the monthly cap refused its purchase. */
@@ -198,6 +206,16 @@ const byBreakout = (a: SearchOutlier, b: SearchOutlier) =>
   (b.breakoutScore ?? -1) - (a.breakoutScore ?? -1)
 
 const byOverall = (a: SearchKeyword, b: SearchKeyword) => (b.overall ?? -1) - (a.overall ?? -1)
+
+/**
+ * The first `limit` of a ranked list, then every one of the owner's own
+ * keywords that missed the cut, in rank order (decision 468): the owner's
+ * phrases are ranked like any other, but never dropped from the brief.
+ */
+function keepOwner(ranked: readonly SearchKeyword[], limit: number): SearchKeyword[] {
+  const top = ranked.slice(0, limit)
+  return [...top, ...ranked.slice(limit).filter((row) => row.owner)]
+}
 
 /** Whether this run still owns the case's job: the same start, and still running. */
 function owns(job: CaseResearchJob | null, jobStartedAt: string): job is CaseResearchJob {
@@ -297,6 +315,8 @@ export const caseResearcher = inngest.createFunction(
         formatKeywords: format.keywords,
         pillarKeywords: pillar?.keywords ?? [],
         pillarLabel: pillar?.label ?? null,
+        pillarKey: pillar?.key ?? null,
+        seedKeywords: row.seedKeywords ?? [],
       }
     })
     const { channelId, subject, angleIdea } = loaded
@@ -356,7 +376,26 @@ export const caseResearcher = inngest.createFunction(
       })
       peopleTerms.push(...found)
     }
-    const measured = firstOfEach([...terms, ...formatTerms, ...peopleTerms], (row) => row.keyword)
+    // 1d. The subject phrase itself and each of the owner's seed keywords, measured exactly
+    // (decision 468): matching terms leave the subject phrase out, and a seed may not be among
+    // them at all. Optional: a refused or failed measure is recorded, never fails the run.
+    // A seed is marked the owner's here and then judged like any other term.
+    const seedKeys = new Set((loaded.seedKeywords ?? []).map(phraseKey))
+    const exact: SearchKeyword[] = []
+    let exactCapped = false
+    for (const [at, phrase] of exactPhrases(subject, loaded.seedKeywords ?? []).entries()) {
+      const found = await step.run(`keywords-exact-${at}`, async () => {
+        await beat(caseId, jobStartedAt, `keywords-exact-${at}`)
+        return optional(`the exact measure of "${phrase}"`, () => measureKeyword(phrase, channelId))
+      })
+      if (isCapped(found)) exactCapped = true
+      else if (found)
+        exact.push(seedKeys.has(phraseKey(phrase)) ? { ...found, owner: true } : found)
+    }
+    const measured = firstOfEach(
+      [...exact, ...terms, ...formatTerms, ...peopleTerms],
+      (row) => row.keyword,
+    )
 
     // 2. The model keeps the terms that are about this subject, and says what each searcher wants,
     // whether this channel's format would satisfy them, and a topic that groups the same wants.
@@ -394,17 +433,38 @@ export const caseResearcher = inngest.createFunction(
         },
       ]
     })
-    const offIntent = judged
-      .filter((row) => row.fit === 'off')
-      .sort(byMonthlySearchesDesc)
-      .slice(0, OFF_INTENT_KEPT)
+    // An owner's seed the understanding left out was judged not about the subject: it is shown
+    // with the terms that do not fit, so the owner sees it was measured.
+    const judgedKeys = new Set(judged.map((row) => phraseKey(row.keyword)))
+    const ownerUnjudged: SearchKeyword[] = exact
+      .filter((row) => row.owner && !judgedKeys.has(phraseKey(row.keyword)))
+      .map((row) => ({ ...row, fit: 'off' as const }))
+    const offIntent = keepOwner(
+      [...judged.filter((row) => row.fit === 'off'), ...ownerUnjudged].sort(byMonthlySearchesDesc),
+      OFF_INTENT_KEPT,
+    )
     const keywords = judged.filter((row) => row.fit !== 'off')
 
-    // 2b. Whether the subject belongs on this channel, and under which pillar. No credits.
+    // 2b. Whether the subject belongs on this channel, and under which pillar. No credits. It reads
+    // the pillar the owner filed under, their angle and what was measured, because the model's own
+    // memory of a subject can be older than the story (decision 468).
+    const fitSearches = [...keywords]
+      .sort(byMonthlySearchesDesc)
+      .slice(0, FIT_SEARCHES_MAX)
+      .map((row) => ({ keyword: row.keyword, ...(row.intent ? { intent: row.intent } : {}) }))
     const fit: BriefFit = await step.run('fit', async () => {
       await beat(caseId, jobStartedAt, 'fit')
       const bible = await currentBible(db, channelId)
-      const input: FitInput = { bible, subject }
+      const input: FitInput = {
+        bible,
+        subject,
+        filedUnder:
+          loaded.pillarKey && loaded.pillarLabel
+            ? { key: loaded.pillarKey, label: loaded.pillarLabel }
+            : null,
+        angleIdea,
+        searches: fitSearches,
+      }
       if (mockProvidersEnabled()) return mockFit(input)
       const answer = await callForAnswer({
         request: buildFitRequest(input),
@@ -509,7 +569,7 @@ export const caseResearcher = inngest.createFunction(
         }),
       }
     })
-    const skipped: string[] = []
+    const skipped: string[] = exactCapped ? [`exact keywords: ${CAP_REACHED}`] : []
 
     // 6b. Who ranks now for each candidate: one search a step. The cap ends the group.
     const fieldChecks: FieldCheck[] = []
@@ -534,10 +594,11 @@ export const caseResearcher = inngest.createFunction(
       }) ??
       candidates[0] ??
       null
-    const secondary = split.keywords
-      .filter((row) => row.keyword !== target?.keyword)
-      .sort(byOverall)
-      .slice(0, SECONDARY_KEPT)
+    // The ten best by overall score, then any of the owner's own keywords that missed the ten.
+    const secondary = keepOwner(
+      split.keywords.filter((row) => row.keyword !== target?.keyword).sort(byOverall),
+      SECONDARY_KEPT,
+    )
     const targetCheck = target === null ? undefined : checkOf(target.keyword)
     // App-built text. It carries the target keyword (VidIQ's own data), which the angle prompt
     // JSON-quotes as data, so it never reads as an instruction.
@@ -640,7 +701,7 @@ export const caseResearcher = inngest.createFunction(
       subject,
       measuredAt: new Date().toISOString(),
       targetKeyword: target,
-      secondaryKeywords: secondary.slice(0, SECONDARY_KEPT),
+      secondaryKeywords: secondary.slice(0, SECONDARY_KEYWORDS_MAX),
       searchedQuestions: questions.slice(0, QUESTIONS_LIMIT),
       outliers: winning.slice(0, OUTLIERS_KEPT),
       titlePatterns: winners.titlePatterns.slice(0, TITLE_PATTERNS_MAX),

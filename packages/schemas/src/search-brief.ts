@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CASE_SEED_KEYWORDS_MAX } from './cases'
 import { DEFAULT_RESEARCH_THRESHOLDS } from './research-thresholds'
 import {
   SEARCHED_TERMS_MAX,
@@ -21,6 +22,8 @@ export const SearchKeywordSchema = z.object({
   fit: z.enum(['fits', 'partly', 'off']).optional(),
   /** A short label shared by terms that mean the same thing. */
   topic: z.string().max(40).optional(),
+  /** The owner gave this phrase (a case's seed keyword, or `Add keyword`), so it is always kept (decision 468). */
+  owner: z.literal(true).optional(),
 })
 export type KeywordFit = NonNullable<SearchKeyword['fit']>
 export type SearchKeyword = z.infer<typeof SearchKeywordSchema>
@@ -128,11 +131,15 @@ export function pendingNicheJob(
   )
 }
 
+/** The ten a run ranks plus up to five of the owner's own keywords (`CASE_SEED_KEYWORDS_MAX`). */
+export const SECONDARY_KEYWORDS_MAX = 10 + CASE_SEED_KEYWORDS_MAX
+
 export const SearchBriefSchema = z.object({
   subject: z.string(),
   measuredAt: z.string().datetime(),
   targetKeyword: SearchKeywordSchema.nullable(),
-  secondaryKeywords: z.array(SearchKeywordSchema).max(10),
+  /** Ten the run ranks, plus the owner's own keywords that did not make that ten (decision 468). */
+  secondaryKeywords: z.array(SearchKeywordSchema).max(SECONDARY_KEYWORDS_MAX),
   searchedQuestions: z.array(z.string()).max(10),
   outliers: z.array(SearchOutlierSchema).max(10),
   titlePatterns: z.array(z.string()).max(TITLE_PATTERNS_MAX),
@@ -156,7 +163,7 @@ export const SearchBriefSchema = z.object({
   /** The niche the run understood the subject to sit in. */
   niche: z.string().max(80).optional(),
   /** Measured rows the understanding step judged off the channel's intent. */
-  offIntent: z.array(SearchKeywordSchema).max(10).optional(),
+  offIntent: z.array(SearchKeywordSchema).max(SECONDARY_KEYWORDS_MAX).optional(),
   fieldChecks: z.array(FieldCheckSchema).max(4).optional(),
   commentThemes: z.array(CommentThemeSchema).max(5).optional(),
   commentsRead: z.object({ videos: z.number().int(), comments: z.number().int() }).optional(),
@@ -186,13 +193,67 @@ const FORMAT_SEED_CREDITS = 5
 const PEOPLE_SEED_CREDITS = 5
 const PEOPLE_SEEDS_MAX = 2
 const FIELD_CHECK_CREDITS = 35
+/** One exact-phrase measure: the subject itself, each seed keyword, or one `Add keyword` (decision 468). */
+export const EXACT_KEYWORD_CREDITS = 5
 
-/** The estimate for a run: 20, 5 for the format seed, 5 per People seed (two at most), and 35 for the field check, comments and niche test. */
-export function caseResearchCredits(input: { formatSeed: boolean; people: number }): number {
+/** A phrase as compared: trimmed, lower case, single spaces. */
+export const phraseKey = (phrase: string): string =>
+  phrase.trim().replace(/\s+/g, ' ').toLowerCase()
+
+/** Every phrase a brief already shows, by `phraseKey`: the target, the keywords, the titles, the other languages, the off-fit list. */
+export function briefPhrases(
+  brief: Pick<
+    SearchBrief,
+    'targetKeyword' | 'secondaryKeywords' | 'searchedTitles' | 'otherLanguages' | 'offIntent'
+  >,
+): Set<string> {
+  return new Set(
+    [
+      ...(brief.targetKeyword ? [brief.targetKeyword] : []),
+      ...brief.secondaryKeywords,
+      ...(brief.searchedTitles ?? []),
+      ...(brief.otherLanguages ?? []),
+      ...(brief.offIntent ?? []),
+    ].map((k) => phraseKey(k.keyword)),
+  )
+}
+
+/**
+ * The phrases a run measures exactly (decision 468): the subject first, then
+ * each seed keyword not already listed, compared by `phraseKey`, at most
+ * `CASE_SEED_KEYWORDS_MAX` seeds. VidIQ's matching terms leave the subject
+ * phrase itself out, so it is measured on its own.
+ */
+export function exactPhrases(subject: string, seeds: readonly string[] = []): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const add = (phrase: string) => {
+    const key = phraseKey(phrase)
+    if (key === '' || seen.has(key)) return
+    seen.add(key)
+    out.push(phrase.trim().replace(/\s+/g, ' '))
+  }
+  add(subject)
+  for (const seed of seeds.slice(0, CASE_SEED_KEYWORDS_MAX)) add(seed)
+  return out
+}
+
+/**
+ * The estimate for a run: 20, 5 for the format seed, 5 per People seed (two at
+ * most), 5 per exact phrase (the subject and each seed keyword), and 35 for the
+ * field check, comments and niche test.
+ */
+export function caseResearchCredits(input: {
+  formatSeed: boolean
+  people: number
+  /** `exactPhrases(subject, seeds).length`; absent counts the subject alone. */
+  exactPhrases?: number
+}): number {
   return (
     CASE_RESEARCH_CREDITS +
     (input.formatSeed ? FORMAT_SEED_CREDITS : 0) +
     PEOPLE_SEED_CREDITS * Math.min(Math.max(input.people, 0), PEOPLE_SEEDS_MAX) +
+    EXACT_KEYWORD_CREDITS * Math.max(input.exactPhrases ?? 1, 0) +
     FIELD_CHECK_CREDITS
   )
 }

@@ -40,6 +40,10 @@ export const CASE_SUBJECT_MAX = 120
 export const CASE_PEOPLE_MAX = 6
 export const CASE_PERSON_MAX = 80
 export const CASE_SOURCE_LINKS_MAX = 20
+/** Seed keywords the owner gives a case for the research run to measure (decision 468). */
+export const CASE_SEED_KEYWORDS_MAX = 5
+export const CASE_SEED_KEYWORD_MIN = 2
+export const CASE_SEED_KEYWORD_MAX = 80
 
 export const CaseSuggestionSchema = z.object({
   title: z.string().min(CASE_TITLE_MIN).max(CASE_TITLE_MAX),
