@@ -108,6 +108,11 @@ safe area is as low as it may go. Judge balance within the safe area, not the wh
 The browser layout check (crops, overlaps, text too small to read at full size) has already
 passed every design you are shown. The frames are photographed at half size.
 
+The render holds a graphic's final state for at least two seconds after its last word so it
+can be read, and the narration waits for it (decision 465). So a design must be at rest from
+700 ms after its last word, and the checks refuse one whose text still changes after that. A
+design that is still for its last stretch is holding for reading, not stalling.
+
 Figures set in `fonts.numbers` are JetBrains Mono in every frame (checked in the browser: the
 face is loaded before the first moment). At half size its digits and "%" can look like a sans;
 do not report a change of typeface unless the glyph widths differ between frames.

@@ -1,0 +1,77 @@
+{
+  "slot": {
+    "intent": "Deposits at three banks from 2004 to 2008: the challenger passed the incumbent, then the newcomer passed both and led by 2008.",
+    "words": [
+      { "text": "Deposits:", "atMs": 0 },
+      { "text": "2004,", "atMs": 1100 },
+      { "text": "2005,", "atMs": 2200 },
+      { "text": "2006,", "atMs": 3300 },
+      { "text": "2007,", "atMs": 4400 },
+      { "text": "2008.", "atMs": 5500 },
+      { "text": "The", "atMs": 6600 },
+      { "text": "newcomer", "atMs": 7700 },
+      { "text": "overtook", "atMs": 8800 },
+      { "text": "both.", "atMs": 9900 }
+    ],
+    "data": {
+      "series": [
+        {
+          "label": "Incumbent",
+          "unit": "bn",
+          "points": [
+            { "x": "2004", "y": 40 },
+            { "x": "2005", "y": 41 },
+            { "x": "2006", "y": 42 },
+            { "x": "2007", "y": 42 },
+            { "x": "2008", "y": 42 }
+          ]
+        },
+        {
+          "label": "Challenger",
+          "unit": "bn",
+          "points": [
+            { "x": "2004", "y": 28 },
+            { "x": "2005", "y": 36 },
+            { "x": "2006", "y": 47 },
+            { "x": "2007", "y": 56 },
+            { "x": "2008", "y": 58 }
+          ]
+        },
+        {
+          "label": "Newcomer",
+          "unit": "bn",
+          "points": [
+            { "x": "2004", "y": 6 },
+            { "x": "2005", "y": 18 },
+            { "x": "2006", "y": 34 },
+            { "x": "2007", "y": 50 },
+            { "x": "2008", "y": 64 }
+          ]
+        }
+      ],
+      "takeaway": "The newcomer overtook both"
+    }
+  },
+  "concept": "Three named bars rise out of the baseline, step on to each year's deposits as it is read and rest there, trading places as they pass; the newcomer climbs from last to first and is lit red when named.",
+  "storyboard": [
+    "0.5 s, on \"Deposits:\": the kicker DEPOSITS, BN settles top left in grey tracked caps; the baseline draws down the left and the three labels fade in, NEWCOMER off white, the others grey",
+    "1.2 s, on \"2004,\": the three bars rise out of the baseline together, each value counting at its bar's end in small bold mono, one size for all; 2004 fades in top right in large grey mono",
+    "3.75 s, just after \"2006,\": CHALLENGER passes INCUMBENT, the two changing rows in one smooth 400 ms move, CHALLENGER's longer bar showing past INCUMBENT's the whole way",
+    "4.85 s, just after \"2007,\": NEWCOMER passes INCUMBENT the same way",
+    "5.95 s, just after \"2008.\": NEWCOMER passes CHALLENGER into the first row, and all three come to rest on their 2008 values",
+    "7.7 s, on \"newcomer\": a red wipe runs along its bar from the baseline, its 64 turning red as the wipe arrives, while the two it overtook step back to pale grey, a plain tone change",
+    "As each year is spoken its last digit rolls on like a reel and the bars set off for its values in one smooth step, then rest on that year's own figures until the next.",
+    "Then a full hold on the finished race to the end, nothing moving."
+  ],
+  "mechanisms": ["reel", "rise-from-baseline", "persistent-actor"],
+  "leansOn": [
+    {
+      "title": "Bar chart (this channel's approved version)",
+      "why": "Bars rise out of a hairline baseline as their years are spoken, values in small bold mono beside the marks, grey bars with the payoff in red, no marks that carry no data."
+    },
+    {
+      "title": "Line chart (this channel's hand-made draft)",
+      "why": "The marks reach each year's value at one steady pace as the year is spoken, slowing only into the last."
+    }
+  ]
+}

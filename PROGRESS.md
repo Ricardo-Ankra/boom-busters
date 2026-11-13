@@ -5092,6 +5092,23 @@ The nine findings the final review parked, plus the flaky test (decision 453):
       (2026-11-11): progress-bars v2 and typewriter v2 at cost 0, each with
       its parent, the owner's steer and a steer verdict on v1, 8 shots and 2
       sheets each in R2; read back read-only.
+- Third batch (owner, 2026-11-13: "Please now do the: Racing Chart, Donut
+  Chart, Progress Steps, Film Title"; each uploaded as a draft as soon as a
+  fresh reviewer said ship, on the owner's go-ahead for the batch; decision
+  467):
+  - [x] donut-chart (no version yet): one review, ship; uploaded as v1, cost
+        0, 8 shots and 2 sheets in R2
+  - [x] progress-steps (approved v2, derived): two reviews, ship, held to
+        the owner's own note on v1; uploaded as v3 with no parent, so
+        approving it retires v2
+  - [x] racing-chart (no version yet): eight reviews, rounds four to seven
+        on Opus, the last a check that its two code-only fixes left every
+        frame unchanged; uploaded as v1
+  - [x] film-title (no version yet): eight reviews, rounds four to seven on
+        Opus, with stress renders of one to eight word titles; uploaded as
+        v1, 6 shots and 2 sheets in R2
+  - [x] The ten drafts of 2026-11-11 re-run through the current checks
+        offline, decision 465's rest check included: all pass.
 - [ ] First batch approved by the owner on the Exemplars tab (lower-third:
       "Lower third is good").
 - [ ] Later batches uploaded (owner's go-ahead per batch) and approved by the
@@ -11800,3 +11817,50 @@ owner edits. `--prod` was not run against Neon.
      and the scenes test writes that project's own dossier, so the suite
      never edits the shared fixture and runs alone on an unseeded database.
      (d) Decision 464 (c), one notice per revised chapter, stays as decided.
+
+467. **Hand-made exemplars, third batch** (2026-11-13, owner: "Please now do
+     the: Racing Chart, Donut Chart, Progress Steps, Film Title"; branch
+     `hand-exemplars-batch3`, docs only, no migration).
+     (a) Four Boom & Busters exemplars made by hand as decision 463 sets out,
+     a fresh reviewer after every design and revision, each stored as a
+     draft at cost 0 once a reviewer said ship: donut-chart v1,
+     progress-steps v3, racing-chart v1 and film-title v1. The channel's
+     technique list (read on 2026-11-11) has neither the racing chart nor the
+     donut chart, so the designer will not pick them until they are ticked
+     in Settings. The film title is no designer technique: once approved,
+     the channel's version is drawn as the title card of every film
+     (decision 465 (d), `cardCodesFor`, title only), so it was stress-rendered
+     at one, three, five, six, seven and eight words, in capitals and in
+     mixed case, through a temporary probe script that was deleted after use.
+     (b) Progress steps already had an approved v2, derived. With no steer of
+     the owner's on v2 to file it under, the hand-made version is a fresh
+     draft with no parent; approving it retires v2. It keeps the owner's
+     note on v1 (the connecting line, modest type, the last step marked). The
+     steps carry the spoken ordinals, since the facts check refuses digits
+     the narration does not say ("01").
+     (c) The house film title pulls words out of defocus under a camera push;
+     this channel bans both. Its version stands the whole name in a quiet
+     grey (above 3:1), settles each word to off white in place as it is
+     read, opens two hairlines hung on the laid-out name from the centre,
+     and has a red highlighter write the last word. Line breaks weigh
+     phrases: no line ends on a weak word or a numeral, a leading "The" may
+     stand alone, a break after a colon is preferred, no word stands alone
+     on a later line. Known limit: in a title-case title every major word is
+     capitalised, so a name can still split across lines in 9:16 ("of
+     Lehman / Brothers").
+     (d) The racing chart's pass: two rows that trade places share a row for
+     an instant. Every label (on a plate of the ground) and every figure sits
+     in one layer beneath all the bars, the shorter row in front in each, so
+     a bar may hide a word but a word never cuts a bar. Each year is a step
+     that starts as it is spoken, then a rest on its own figures (the
+     channel's one beat at a time, over a reviewer who asked for steady
+     motion). Years are found in order, skipped ones spaced between, values
+     read by year, the leader lit only once the race is over.
+     (e) Found while reviewing: a layer with opacity below 1 is painted after
+     in-flow content, so a grey copy with opacity under an off white copy
+     dulls the settled word (#f4f4f5 measured at about #d2d2d2). The quiet
+     grey is a colour with alpha instead. None of the ten earlier drafts has
+     the pattern, and all ten pass the current checks, the rest check
+     included.
+     (f) The reviewer brief now states decision 465's reading hold: a design
+     is at rest 700 ms after its last word.
