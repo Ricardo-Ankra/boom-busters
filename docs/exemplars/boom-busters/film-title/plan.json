@@ -1,0 +1,25 @@
+{
+  "slot": {
+    "intent": "The film is called The Wirecard Collapse: its name, framed, at the largest size the package uses.",
+    "words": [
+      { "text": "The", "atMs": 0 },
+      { "text": "Wirecard", "atMs": 1300 },
+      { "text": "Collapse", "atMs": 2600 }
+    ]
+  },
+  "concept": "The film's name, read into its frame: whole at the largest size in quiet grey, each word settles to off white as it is read, two hairlines open to its width, and a red highlighter writes the last.",
+  "storyboard": [
+    "0.2 s, on \"The\": the whole name fades up in a quiet grey at the package's largest size; The settles to off white as two grey hairlines start opening from the centre above and below it",
+    "1.4 s, on \"Wirecard\": Wirecard settles to off white in its place, nothing moving, and the hairlines open on at a steady pace",
+    "2.7 s, on \"Collapse\": a red highlighter wipes along Collapse, turning it off white on red as it passes, while the hairlines slow into the name's width",
+    "3.3 s: at rest, the name framed by the two hairlines, its last word on the red bar, held for reading; the card fades it out",
+    "In 9:16 the name stands on three lines at a size it can hold within the safe area. The camera never moves."
+  ],
+  "mechanisms": ["draw-on", "marker-stroke"],
+  "leansOn": [
+    {
+      "title": "Chapter title (this channel's approved version)",
+      "why": "A rule drawn to the title's width, the title's words settling from grey to off white as they are said, and one red highlighter sweep behind the last words as they land."
+    }
+  ]
+}
