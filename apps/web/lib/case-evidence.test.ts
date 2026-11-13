@@ -7,6 +7,7 @@ import {
   awaitNicheTest,
   CAP_REACHED,
   CapReached,
+  measureKeyword,
   rankFor,
   readComments,
   searchField,
@@ -66,6 +67,40 @@ describe('searchField', () => {
     spend.cap = true
     await expect(searchField('x', CHANNEL)).rejects.toBeInstanceOf(CapReached)
     expect(CAP_REACHED).toBe('credit cap')
+  })
+})
+
+describe('measureKeyword (decision 467)', () => {
+  it("returns the phrase's own row from a research-mode call with no related keywords", async () => {
+    const research = vi.spyOn(spend.client as VidiqClient, 'keywordResearch')
+    const row = await measureKeyword('Ueno Bank Paraguay', CHANNEL)
+    expect(research).toHaveBeenCalledWith('Ueno Bank Paraguay', {
+      mode: 'research',
+      includeRelated: false,
+      limit: 1,
+    })
+    expect(row).toEqual({
+      keyword: 'ueno bank paraguay',
+      volume: 66,
+      competition: 30,
+      overall: 68,
+      estimatedMonthlySearch: 24000,
+      growthPct: null,
+    })
+  })
+
+  it('is null when VidIQ returns no row', async () => {
+    vi.spyOn(spend.client as VidiqClient, 'keywordResearch').mockResolvedValue({
+      data: [],
+      credits: 5,
+      args: {},
+    } as never)
+    expect(await measureKeyword('nothing here', CHANNEL)).toBeNull()
+  })
+
+  it('turns a cap refusal into CapReached', async () => {
+    spend.cap = true
+    await expect(measureKeyword('x', CHANNEL)).rejects.toBeInstanceOf(CapReached)
   })
 })
 

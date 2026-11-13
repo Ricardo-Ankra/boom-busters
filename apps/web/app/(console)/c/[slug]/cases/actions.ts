@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  addCaseOwnerKeyword,
   caseSubjectTaken,
   channelForCase,
   channelResearchThresholds,
@@ -34,17 +35,24 @@ import {
   canonicalModelId,
   CASE_PEOPLE_MAX,
   CASE_PERSON_MAX,
+  CASE_SEED_KEYWORD_MAX,
+  CASE_SEED_KEYWORD_MIN,
+  CASE_SEED_KEYWORDS_MAX,
   CASE_SOURCE_LINKS_MAX,
   CASE_SUBJECT_MAX,
   CASE_SUBJECT_MIN,
+  EXACT_KEYWORD_CREDITS,
   EXAMPLE_SLOT_IDS,
   UlidSchema,
+  briefPhrases,
   caseResearchCredits,
   caseResearchJobIsRunning,
+  exactPhrases,
   isBibleComplete,
   keywordHasFigure,
   leadKeyword,
   pendingNicheJob,
+  phraseKey,
   resolveFormat,
   serialiseError,
 } from '@boom-busters/schemas'
@@ -58,7 +66,13 @@ import { BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import { caseCategoryKeys } from '@/lib/case-category'
 import { completeForChannel } from '@/lib/answer-call'
-import { CapReached, awaitNicheTest, searchField, startNicheTest } from '@/lib/case-evidence'
+import {
+  CapReached,
+  awaitNicheTest,
+  measureKeyword,
+  searchField,
+  startNicheTest,
+} from '@/lib/case-evidence'
 import { rateAngles } from '@/lib/rate-angles'
 import { rateAnglesEstimateUsd } from '@/lib/rate-angles-estimate'
 import { checkVidiqBudget } from '@/lib/vidiq-spend'
@@ -79,6 +93,17 @@ async function requireOwner(): Promise<void> {
   const session = await auth()
   if (!session?.user?.email) throw new Error('Not signed in')
 }
+
+/** One seed keyword, or one `Add keyword` phrase, with single spaces. A figure is allowed: it only bars the target. */
+const SeedKeywordSchema = z
+  .string()
+  .transform((phrase) => phrase.trim().replace(/\s+/g, ' '))
+  .pipe(
+    z
+      .string()
+      .min(CASE_SEED_KEYWORD_MIN, `Each keyword needs at least ${CASE_SEED_KEYWORD_MIN} characters`)
+      .max(CASE_SEED_KEYWORD_MAX, `Keep each keyword to ${CASE_SEED_KEYWORD_MAX} characters`),
+  )
 
 const CaseFormSchema = z.object({
   title: z.string().trim().min(3, 'Give the case a title of at least 3 characters').max(200),
@@ -110,6 +135,11 @@ const CaseFormSchema = z.object({
       }),
     )
     .max(CASE_SOURCE_LINKS_MAX, `Add at most ${CASE_SOURCE_LINKS_MAX} source links`)
+    .default([]),
+  /** Phrases the research run measures as keywords beside what it finds (decision 467). */
+  seedKeywords: z
+    .array(SeedKeywordSchema)
+    .max(CASE_SEED_KEYWORDS_MAX, `Give at most ${CASE_SEED_KEYWORDS_MAX} seed keywords`)
     .default([]),
 })
 
@@ -158,6 +188,7 @@ export async function editCase(id: string, input: unknown): Promise<ActionResult
     .extend({
       people: CaseFormSchema.shape.people.unwrap().optional(),
       sourceLinks: CaseFormSchema.shape.sourceLinks.unwrap().optional(),
+      seedKeywords: CaseFormSchema.shape.seedKeywords.unwrap().optional(),
     })
     .safeParse(input)
   if (!parsed.success) {
@@ -390,15 +421,27 @@ async function researchableCase(id: string) {
   return { ok: true as const, existing, subject, credits: researchCredits(channel, existing) }
 }
 
-/** What a run costs: more when the case's format (against the channel's current bible) has a lead keyword. */
+/**
+ * What a run costs: more when the case's format (against the channel's current
+ * bible) has a lead keyword, and 5 for the subject phrase and each seed keyword.
+ */
 function researchCredits(
   channel: { bible: { formats: readonly ChannelFormat[] } } | null,
-  existing: { formatKey: string | null; people: readonly string[] },
+  existing: {
+    formatKey: string | null
+    people: readonly string[]
+    subject: string | null
+    seedKeywords: readonly string[]
+  },
 ): number {
   const formats = channel?.bible.formats ?? []
   const hasFormatSeed =
     formats.length > 0 && leadKeyword(resolveFormat(formats, existing.formatKey)) !== null
-  return caseResearchCredits({ formatSeed: hasFormatSeed, people: existing.people.length })
+  return caseResearchCredits({
+    formatSeed: hasFormatSeed,
+    people: existing.people.length,
+    exactPhrases: exactPhrases(existing.subject ?? '', existing.seedKeywords).length,
+  })
 }
 
 export type CaseResearchEstimate =
@@ -729,6 +772,65 @@ export async function testAngleAction(
   const saved = await saveCaseNicheTest(db, caseId, wait.test)
   if (!saved) {
     return { ok: false, error: 'The research changed while this was running. Test again.' }
+  }
+  revalidatePath('/c/[slug]', 'layout')
+  return { ok: true }
+}
+
+/**
+ * `Add keyword` (decision 467): measure one phrase the owner types (one VidIQ
+ * keyword call, 5 credits) and put it on the brief's other keywords as theirs,
+ * where `Make target` can promote it. It is kept as a seed keyword too, so the
+ * next research run measures and judges it with the rest. Every refusal comes
+ * before the purchase.
+ */
+export async function addCaseKeywordAction(caseId: string, phrase: unknown): Promise<ActionResult> {
+  await requireOwner()
+  const checked = await evidenceCase(caseId)
+  if (!checked.ok) return checked
+  const { existing, channelId } = checked
+  const parsed = SeedKeywordSchema.safeParse(typeof phrase === 'string' ? phrase : '')
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Type a keyword to add' }
+  }
+  const brief = existing.searchBrief
+  if (!brief) return { ok: false, error: 'Research this case first, then add keywords to it' }
+  if (briefPhrases(brief).has(phraseKey(parsed.data))) {
+    return { ok: false, error: 'That keyword is already on this brief' }
+  }
+  if (brief.secondaryKeywords.filter((k) => k.owner).length >= CASE_SEED_KEYWORDS_MAX) {
+    return {
+      ok: false,
+      error: `You can add at most ${CASE_SEED_KEYWORDS_MAX} keywords of your own`,
+    }
+  }
+  if (existing.searchJob && caseResearchJobIsRunning(existing.searchJob)) return RESEARCH_RUNNING
+
+  let row: Awaited<ReturnType<typeof measureKeyword>>
+  try {
+    row = await measureKeyword(parsed.data, channelId)
+  } catch (error) {
+    if (error instanceof CapReached) return { ok: false, error: error.message }
+    throw error
+  }
+  if (!row) {
+    return {
+      ok: false,
+      error: `VidIQ returned no figures for that phrase. The ${EXACT_KEYWORD_CREDITS} credits were spent.`,
+    }
+  }
+  const added = await addCaseOwnerKeyword(db, caseId, row)
+  if (added === 'present') {
+    return {
+      ok: false,
+      error: `VidIQ reads that phrase as "${row.keyword}", already on this brief`,
+    }
+  }
+  if (added !== 'added') {
+    return {
+      ok: false,
+      error: 'The research changed while this was running. Add the keyword again.',
+    }
   }
   revalidatePath('/c/[slug]', 'layout')
   return { ok: true }

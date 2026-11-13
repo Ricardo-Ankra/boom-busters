@@ -18,6 +18,7 @@ import {
 } from '@boom-busters/schemas'
 import {
   addCase,
+  addCaseKeywordAction,
   caseResearchEstimate,
   checkWhoRanksAction,
   chooseAngleAction,
@@ -45,6 +46,7 @@ const store = vi.hoisted(() => ({
   caseSubjectTaken: vi.fn(),
   chooseCaseAngle: vi.fn(),
   setCaseTargetKeyword: vi.fn(),
+  addCaseOwnerKeyword: vi.fn(),
   setCaseFormat: vi.fn(),
   costPerMinute: vi.fn(),
   saveCaseAngleRating: vi.fn(),
@@ -80,6 +82,7 @@ const evidence = vi.hoisted(() => {
   return {
     CapReached,
     searchField: vi.fn(),
+    measureKeyword: vi.fn(),
     startNicheTest: vi.fn(),
     awaitNicheTest: vi.fn(),
   }
@@ -333,7 +336,7 @@ describe('researchCaseAction and caseResearchEstimate', () => {
 
   it('stamps the job with the case subject and sends the run', async () => {
     expect(await researchCaseAction(CASE_ID)).toEqual({ ok: true })
-    expect(checkVidiqBudget).toHaveBeenCalledWith(55)
+    expect(checkVidiqBudget).toHaveBeenCalledWith(60)
     expect(stored).toMatchObject({ state: 'running', error: null, subject: 'WeWork' })
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0]![0]).toMatchObject({
@@ -446,10 +449,10 @@ describe('researchCaseAction and caseResearchEstimate', () => {
     expect(stored).toMatchObject({ state: 'running', startedAt: '2099-01-01T00:00:00.000Z' })
   })
 
-  it('the estimate is 55 credits with what is left of the cap and the balance, and spends nothing', async () => {
+  it('the estimate is 60 credits with what is left of the cap and the balance, and spends nothing', async () => {
     expect(await caseResearchEstimate(CASE_ID)).toEqual({
       ok: true,
-      credits: 55,
+      credits: 60,
       capLeft: 1000,
       balance: 1443,
     })
@@ -523,7 +526,7 @@ describe('setCaseFormatAction and the estimate by format', () => {
     expect(store.setCaseFormat).not.toHaveBeenCalled()
   })
 
-  it('the estimate and the run cost 70 with a lead keyword and two People seeds (a third is not searched)', async () => {
+  it('the estimate and the run cost 75 with a lead keyword, two People seeds and the subject phrase (a third is not searched)', async () => {
     store.getCase.mockResolvedValue({
       id: CASE_ID,
       subject: 'WeWork',
@@ -532,11 +535,11 @@ describe('setCaseFormatAction and the estimate by format', () => {
       formatKey: 'sleep',
       people: ['Adam Neumann', 'Miguel McKelvey', 'Third Person'],
     })
-    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 70 })
-    expect(checkVidiqBudget).toHaveBeenLastCalledWith(70)
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 75 })
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(75)
     store.writeCaseResearchJob.mockImplementation(async (_db, _id, update) => update(null))
     await researchCaseAction(CASE_ID)
-    expect(checkVidiqBudget).toHaveBeenLastCalledWith(70)
+    expect(checkVidiqBudget).toHaveBeenLastCalledWith(75)
   })
 
   it('a stored key no longer in the bible costs the primary format price', async () => {
@@ -547,7 +550,7 @@ describe('setCaseFormatAction and the estimate by format', () => {
       formatKey: 'gone',
       people: [],
     })
-    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 55 })
+    expect(await caseResearchEstimate(CASE_ID)).toMatchObject({ ok: true, credits: 60 })
   })
 })
 
@@ -996,6 +999,120 @@ describe('rateAnglesAction and rateAnglesEstimate', () => {
       expect.objectContaining({ provider: route.provider, model }),
     )
     expect(await rateAnglesEstimate('nope')).toEqual({ ok: false, error: 'Unknown case' })
+  })
+})
+
+describe('addCaseKeywordAction (decision 467)', () => {
+  const CASE_ID = '01J00000000000000000000C01'
+  const kw = (keyword: string, over: Record<string, unknown> = {}) => ({
+    keyword,
+    volume: 73,
+    competition: 22,
+    overall: 75,
+    estimatedMonthlySearch: 79257,
+    growthPct: null,
+    ...over,
+  })
+  const brief = (over: Record<string, unknown> = {}) => ({
+    subject: 'Ueno Bank Paraguay',
+    targetKeyword: kw('paraguay ueno bank'),
+    secondaryKeywords: [kw('ueno bank paraguay bankruptcy')],
+    searchedTitles: [],
+    otherLanguages: [],
+    offIntent: [kw('ueno bank paraguay matriz')],
+    ...over,
+  })
+  const found = (over: Record<string, unknown> = {}) => ({
+    id: CASE_ID,
+    status: 'shortlisted',
+    subject: 'Ueno Bank Paraguay',
+    searchBrief: brief(),
+    searchJob: null,
+    ...over,
+  })
+
+  beforeEach(() => {
+    store.getCase.mockReset().mockResolvedValue(found())
+    store.channelForCase
+      .mockReset()
+      .mockResolvedValue({ id: CHANNEL_ID, bible: FIRST_CHANNEL_BIBLE, archivedAt: null })
+    store.addCaseOwnerKeyword.mockReset().mockResolvedValue('added')
+    evidence.measureKeyword.mockReset().mockResolvedValue(kw('ueno bank paraguay'))
+  })
+
+  it('measures the phrase, single-spaced, and adds it as the owner keyword', async () => {
+    expect(await addCaseKeywordAction(CASE_ID, '  Ueno  Bank Paraguay ')).toEqual({ ok: true })
+    expect(evidence.measureKeyword).toHaveBeenCalledWith('Ueno Bank Paraguay', CHANNEL_ID)
+    expect(store.addCaseOwnerKeyword).toHaveBeenCalledWith(
+      { marker: 'db' },
+      CASE_ID,
+      kw('ueno bank paraguay'),
+    )
+  })
+
+  it('refuses before buying: a phrase on the brief, a short phrase, no brief, five of their own, a run going', async () => {
+    expect(await addCaseKeywordAction(CASE_ID, 'Paraguay UENO bank')).toEqual({
+      ok: false,
+      error: 'That keyword is already on this brief',
+    })
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay matriz')).toEqual({
+      ok: false,
+      error: 'That keyword is already on this brief',
+    })
+    expect((await addCaseKeywordAction(CASE_ID, ' x ')).ok).toBe(false)
+    expect((await addCaseKeywordAction(CASE_ID, 42)).ok).toBe(false)
+    store.getCase.mockResolvedValue(found({ searchBrief: null }))
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).toEqual({
+      ok: false,
+      error: 'Research this case first, then add keywords to it',
+    })
+    store.getCase.mockResolvedValue(
+      found({
+        searchBrief: brief({
+          secondaryKeywords: ['a1', 'a2', 'a3', 'a4', 'a5'].map((k) => kw(k, { owner: true })),
+        }),
+      }),
+    )
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).toEqual({
+      ok: false,
+      error: 'You can add at most 5 keywords of your own',
+    })
+    store.getCase.mockResolvedValue(
+      found({
+        searchJob: {
+          state: 'running',
+          current: null,
+          error: null,
+          startedAt: new Date().toISOString(),
+          subject: 'Ueno Bank Paraguay',
+        },
+      }),
+    )
+    expect((await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).ok).toBe(false)
+    expect(evidence.measureKeyword).not.toHaveBeenCalled()
+  })
+
+  it('says the credits were spent when VidIQ returns no row, and saves nothing', async () => {
+    evidence.measureKeyword.mockResolvedValue(null)
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).toEqual({
+      ok: false,
+      error: 'VidIQ returned no figures for that phrase. The 5 credits were spent.',
+    })
+    expect(store.addCaseOwnerKeyword).not.toHaveBeenCalled()
+  })
+
+  it("passes the cap refusal through, and names VidIQ's spelling when it is already there", async () => {
+    evidence.measureKeyword.mockRejectedValue(new evidence.CapReached('The VidIQ cap is reached'))
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).toEqual({
+      ok: false,
+      error: 'The VidIQ cap is reached',
+    })
+    evidence.measureKeyword.mockResolvedValue(kw('ueno bank paraguay'))
+    store.addCaseOwnerKeyword.mockResolvedValue('present')
+    expect(await addCaseKeywordAction(CASE_ID, 'ueno bank paraguay')).toEqual({
+      ok: false,
+      error: 'VidIQ reads that phrase as "ueno bank paraguay", already on this brief',
+    })
   })
 })
 

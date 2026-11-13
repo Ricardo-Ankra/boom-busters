@@ -4,6 +4,7 @@ import type { CaseSummary } from '@boom-busters/db'
 import {
   briefIsStale,
   caseResearchCredits,
+  exactPhrases,
   caseResearchJobIsRunning,
   leadKeyword,
   resolveFormat,
@@ -117,6 +118,7 @@ export function ResearchControl({ item, run }: { item: CaseSummary; run: Run }) 
   const credits = caseResearchCredits({
     formatSeed: useFormatSeed(item),
     people: item.people.length,
+    exactPhrases: exactPhrases(item.subject ?? '', item.seedKeywords).length,
   })
   const [estimate, setEstimate] = React.useState<CaseResearchEstimate | null>(null)
   const job = item.searchJob
@@ -197,6 +199,7 @@ export function NewProjectButton({
   const credits = caseResearchCredits({
     formatSeed: useFormatSeed(item),
     people: item.people.length,
+    exactPhrases: exactPhrases(item.subject ?? '', item.seedKeywords).length,
   })
   const [busy, setBusy] = React.useState(false)
   const caseFormat = formats.length > 0 ? resolveFormat(formats, item.formatKey) : null

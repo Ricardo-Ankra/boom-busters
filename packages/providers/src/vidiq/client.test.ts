@@ -39,6 +39,31 @@ describe('the widened VidIQ calls', () => {
     expect(call.data[0]?.estimatedMonthlySearch).toEqual(expect.any(Number))
   })
 
+  it('measures one phrase in research mode, sending includeRelated only when given (decision 467)', async () => {
+    const call = await mockVidiqClient().keywordResearch('Ueno Bank  Paraguay', {
+      mode: 'research',
+      includeRelated: false,
+      limit: 1,
+    })
+    expect(call.args).toEqual({
+      keyword: 'Ueno Bank  Paraguay',
+      mode: 'research',
+      limit: 1,
+      includeRelated: false,
+    })
+    expect(call.data).toEqual([
+      {
+        keyword: 'ueno bank paraguay',
+        volume: 66,
+        competition: 30,
+        overall: 68,
+        estimatedMonthlySearch: 24000,
+        growthPct: null,
+      },
+    ])
+    expect(call.credits).toBe(VIDIQ_CREDIT_COST.keywordResearch)
+  })
+
   it('keeps the default keyword call as it was', async () => {
     const call = await mockVidiqClient().keywordResearch('wework')
     expect(call.args).toEqual({ keyword: 'wework', mode: 'matching_terms', limit: 8 })

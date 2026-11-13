@@ -45,6 +45,7 @@ function kase(overrides: Partial<CaseSummary> = {}): CaseSummary {
     subject: 'Wirecard',
     people: ['Markus Braun'],
     sourceLinks: [{ url: 'https://example.com/a' }],
+    seedKeywords: [],
     searchBrief: null,
     searchJob: null,
     formatKey: null,

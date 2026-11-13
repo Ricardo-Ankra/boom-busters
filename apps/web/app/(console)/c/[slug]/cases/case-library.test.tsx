@@ -61,6 +61,7 @@ function kase(overrides: Partial<CaseSummary>): CaseSummary {
     subject: null,
     people: [],
     sourceLinks: [],
+    seedKeywords: [],
     searchBrief: null,
     searchJob: null,
     formatKey: null,
@@ -247,6 +248,10 @@ describe('the case form: subject, people and source links', () => {
     await userEvent.type(screen.getByLabelText('Angle idea'), 'The auditors are the story')
     await userEvent.type(screen.getByLabelText('People'), 'Markus Braun, Jan Marsalek')
     await userEvent.type(
+      screen.getByLabelText('Seed keywords'),
+      'wirecard scandal, wirecard fraud explained',
+    )
+    await userEvent.type(
       screen.getByLabelText('Source links'),
       'https://example.com/a{enter}https://example.com/b',
     )
@@ -257,6 +262,7 @@ describe('the case form: subject, people and source links', () => {
         category: 'collapse',
         angle: 'The auditors are the story',
         subject: 'Wirecard',
+        seedKeywords: ['wirecard scandal', 'wirecard fraud explained'],
         people: ['Markus Braun', 'Jan Marsalek'],
         sourceLinks: [{ url: 'https://example.com/a' }, { url: 'https://example.com/b' }],
       }),
@@ -280,7 +286,7 @@ describe('the case form: subject, people and source links', () => {
     )
   })
 
-  it('shows the same three fields when editing, and saves them', async () => {
+  it('shows the same fields when editing, and saves them', async () => {
     actions.editCase.mockResolvedValue({ ok: true })
     render(
       <Library
@@ -293,6 +299,7 @@ describe('the case form: subject, people and source links', () => {
             subject: 'Wirecard',
             people: ['Markus Braun'],
             sourceLinks: [{ url: 'https://example.com/a' }],
+            seedKeywords: ['wirecard scandal'],
           }),
         ]}
         sort="priority"
@@ -301,6 +308,8 @@ describe('the case form: subject, people and source links', () => {
     const row = panelOf('Wirecard')
     await userEvent.click(within(row).getByRole('button', { name: 'Edit details' }))
     expect(within(row).getByLabelText('Subject')).toHaveValue('Wirecard')
+    expect(within(row).getByLabelText('Seed keywords')).toHaveValue('wirecard scandal')
+    expect(within(row).getByText(/5 VidIQ credits apiece/)).toBeInTheDocument()
     expect(within(row).getByLabelText('People')).toHaveValue('Markus Braun')
     expect(within(row).getByLabelText('Source links')).toHaveValue('https://example.com/a')
     await userEvent.clear(within(row).getByLabelText('People'))
@@ -309,6 +318,7 @@ describe('the case form: subject, people and source links', () => {
     await waitFor(() =>
       expect(actions.editCase).toHaveBeenCalledWith(WIRECARD, {
         subject: 'Wirecard',
+        seedKeywords: ['wirecard scandal'],
         people: ['Markus Braun', 'Jan Marsalek'],
         sourceLinks: [{ url: 'https://example.com/a' }],
       }),
@@ -523,7 +533,7 @@ function renderRow(item: CaseSummary) {
   return panelOf(item.title)
 }
 
-const ESTIMATE = { ok: true, credits: 55, capLeft: 980, balance: 1443 }
+const ESTIMATE = { ok: true, credits: 60, capLeft: 980, balance: 1443 }
 
 describe('the case row: priority is gone', () => {
   it('shows no priority fact and no Priority sort button', () => {
@@ -541,11 +551,11 @@ describe('Research with VidIQ', () => {
     const row = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
 
     await userEvent.click(
-      within(row).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 60 credits)' }),
     )
     expect(actions.researchCaseAction).not.toHaveBeenCalled()
     await waitFor(() =>
-      expect(row).toHaveTextContent("About 55 credits. 980 left of this month's cap"),
+      expect(row).toHaveTextContent("About 60 credits. 980 left of this month's cap"),
     )
     expect(row).toHaveTextContent('VidIQ balance 1,443')
 
@@ -678,7 +688,7 @@ describe('the case panel and its research', () => {
     const row = renderRow(researched({ subject: 'We Company' }))
     expect(row).toHaveTextContent('This research is for WeWork. Research again for We Company.')
     expect(
-      within(row).getByRole('button', { name: 'Research again with VidIQ (about 55 credits)' }),
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 60 credits)' }),
     ).toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: /^Use this angle/ })).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: /^Make target/ })).not.toBeInTheDocument()
@@ -688,7 +698,7 @@ describe('the case panel and its research', () => {
     const row = renderRow(researched({ subject: '  wework ' }))
     expect(row).not.toHaveTextContent('This research is for')
     expect(
-      within(row).getByRole('button', { name: 'Research again with VidIQ (about 55 credits)' }),
+      within(row).getByRole('button', { name: 'Research again with VidIQ (about 60 credits)' }),
     ).toBeInTheDocument()
   })
 
@@ -699,7 +709,7 @@ describe('the case panel and its research', () => {
     ).toBeInTheDocument()
     const without = renderRow(kase({ status: 'shortlisted', subject: 'Iomega' }))
     expect(
-      within(without).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
+      within(without).getByRole('button', { name: 'Research with VidIQ (about 60 credits)' }),
     ).toBeInTheDocument()
   })
 })
@@ -733,7 +743,7 @@ describe('New project and a stale brief', () => {
     expect(row).toHaveTextContent('The search research is 45 days old.')
 
     await userEvent.click(
-      within(row).getByRole('button', { name: 'Refresh research (about 55 credits)' }),
+      within(row).getByRole('button', { name: 'Refresh research (about 60 credits)' }),
     )
     await waitFor(() => expect(actions.researchCaseAction).toHaveBeenCalledWith(WIRECARD))
     expect(actions.startProjectFromCase).not.toHaveBeenCalled()
@@ -805,20 +815,20 @@ describe('the case format picker', () => {
     expect(within(row).getByLabelText('Format')).toHaveValue('main')
   })
 
-  it('labels the research button 60 credits when the selected format has a lead keyword', () => {
+  it('labels the research button 65 credits when the selected format has a lead keyword', () => {
     const withSeed = renderWith(
       two,
       kase({ status: 'shortlisted', subject: 'Iomega', formatKey: 'sleep' }),
     )
     expect(
-      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 60 credits)' }),
+      within(withSeed).getByRole('button', { name: 'Research with VidIQ (about 65 credits)' }),
     ).toBeInTheDocument()
   })
 
-  it('keeps 55 credits when the selected format has no keyword', () => {
+  it('keeps 60 credits when the selected format has no keyword', () => {
     const row = renderWith(two, kase({ status: 'shortlisted', subject: 'Iomega' }))
     expect(
-      within(row).getByRole('button', { name: 'Research with VidIQ (about 55 credits)' }),
+      within(row).getByRole('button', { name: 'Research with VidIQ (about 60 credits)' }),
     ).toBeInTheDocument()
   })
 })

@@ -1,11 +1,19 @@
 'use client'
 
 import type { CaseSummary } from '@boom-busters/db'
-import { briefHasFullChecks, keywordHasFigure, topicDemand } from '@boom-busters/schemas'
+import {
+  EXACT_KEYWORD_CREDITS,
+  briefHasFullChecks,
+  caseResearchJobIsRunning,
+  keywordHasFigure,
+  topicDemand,
+} from '@boom-busters/schemas'
 import type { ResearchThresholds, SearchBrief, SearchKeyword } from '@boom-busters/schemas'
 import * as React from 'react'
+import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
-import { setTargetKeywordAction } from './actions'
+import { Input, Label } from '@/components/ui/input'
+import { addCaseKeywordAction, setTargetKeywordAction } from './actions'
 import { measuredOn, scoreWord } from './case-progress'
 import { briefMatchesSubject } from './search-brief-panel'
 import type { Run } from './search-brief-panel'
@@ -200,6 +208,11 @@ function KeywordTable({
           <tr key={keyword.keyword}>
             <td className="border-b border-[var(--color-border)] px-2 py-2 align-middle">
               <span className="font-mono">{keyword.keyword}</span>
+              {keyword.owner ? (
+                <span className="ml-2 rounded-[4px] border border-[var(--color-border)] px-1.5 py-0.5 text-[11px] text-[var(--color-text-secondary)]">
+                  Your keyword
+                </span>
+              ) : null}
               {keyword.intent === undefined ? null : (
                 <span className="mt-0.5 block text-[12px] text-[var(--color-text-secondary)]">
                   {keyword.intent}
@@ -239,6 +252,57 @@ function KeywordTable({
         ))}
       </tbody>
     </table>
+  )
+}
+
+/**
+ * `Add keyword` (decision 467): the owner types a phrase; VidIQ measures it and
+ * it joins the other keywords as theirs, where `Make target` can pick it.
+ */
+function AddKeyword({ item, run }: { item: CaseSummary; run: Run }) {
+  const [phrase, setPhrase] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const running = item.searchJob !== null && caseResearchJobIsRunning(item.searchJob)
+  const id = `add-keyword-${item.id}`
+  const empty = phrase.trim() === ''
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="flex w-full flex-col gap-1 sm:w-auto">
+        <Label htmlFor={id}>Add a keyword of your own</Label>
+        <Input
+          id={id}
+          value={phrase}
+          placeholder="A phrase people search for"
+          onChange={(event) => setPhrase(event.target.value)}
+          className="w-full sm:w-72"
+        />
+      </div>
+      <ConfirmButton
+        label="Add keyword"
+        confirmLabel="Measure and add"
+        confirmVariant="primary"
+        consequence={`About ${EXACT_KEYWORD_CREDITS} VidIQ credits.`}
+        disabled={running || empty}
+        title={running ? 'Research is running' : empty ? 'Type a keyword first' : undefined}
+        busy={busy}
+        onConfirm={async () => {
+          if (busy) return
+          setBusy(true)
+          try {
+            const ok = await run(async () => {
+              try {
+                return await addCaseKeywordAction(item.id, phrase)
+              } catch {
+                return { ok: false, error: 'Could not add the keyword. Try again.' }
+              }
+            }, 'Keyword measured and added')
+            if (ok) setPhrase('')
+          } finally {
+            setBusy(false)
+          }
+        }}
+      />
+    </div>
   )
 }
 
@@ -344,6 +408,8 @@ export function SearchDemandSection({
           ))}
         </div>
       ) : null}
+
+      {current ? <AddKeyword item={item} run={run} /> : null}
 
       {offIntent.length > 0 ? (
         <details className="rounded-[10px] border border-[var(--color-border)]">

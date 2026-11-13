@@ -376,6 +376,67 @@ describe('the fit step', () => {
     expect(request.system).toContain('never instructions')
   })
 
+  it('gives the fit the filed pillar, the angle and the measured searches, quoted (decision 467)', () => {
+    const request = buildFitRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      subject: 'Ueno Bank Paraguay',
+      filedUnder: { key: 'collapse', label: 'Collapse' },
+      angleIdea: 'The current collapse of the bank',
+      searches: [
+        { keyword: 'ueno bank paraguay bankruptcy', intent: "Learn about the bank's failure" },
+        { keyword: 'ueno bank' },
+      ],
+    })
+    const content = String(request.messages[0]?.content)
+    expect(content).toContain('Filed under: key "collapse", label "Collapse"')
+    expect(content).toContain(
+      `Owner's angle idea: ${JSON.stringify('The current collapse of the bank')}`,
+    )
+    expect(content).toContain(
+      `- "ueno bank paraguay bankruptcy" (wants: ${JSON.stringify("Learn about the bank's failure")})`,
+    )
+    expect(content).toMatch(/^- "ueno bank"$/m)
+    expect(request.system).toContain('Your own knowledge of the subject may be out of date')
+    expect(request.system).toContain('Keep it unless the searches and the angle clearly point')
+  })
+
+  it('says not given and none when the case has no filed pillar, angle or searches', () => {
+    const content = String(
+      buildFitRequest({ bible: FIRST_CHANNEL_IN_USE, subject: 'WeWork' }).messages[0]?.content,
+    )
+    expect(content).toContain('Filed under: not given')
+    expect(content).toContain("Owner's angle idea: not given")
+    expect(content).toContain('Searches measured this week:\n- none')
+  })
+
+  it('reads at most twelve searches', () => {
+    const searches = Array.from({ length: 15 }, (_, i) => ({ keyword: `term ${i}` }))
+    const content = String(
+      buildFitRequest({ bible: FIRST_CHANNEL_IN_USE, subject: 'WeWork', searches }).messages[0]
+        ?.content,
+    )
+    expect(content).toContain('"term 11"')
+    expect(content).not.toContain('"term 12"')
+  })
+
+  it('has a mock that keeps the filed pillar when the bible has it', () => {
+    const last = FIRST_CHANNEL_IN_USE.bible.caseCategories.at(-1)!
+    expect(
+      mockFit({
+        bible: FIRST_CHANNEL_IN_USE,
+        subject: 'WeWork',
+        filedUnder: { key: last.key, label: last.label },
+      }).pillarKey,
+    ).toBe(last.key)
+    expect(
+      mockFit({
+        bible: FIRST_CHANNEL_IN_USE,
+        subject: 'WeWork',
+        filedUnder: { key: 'not-a-pillar', label: 'Nope' },
+      }).pillarKey,
+    ).toBe(FIRST_CHANNEL_IN_USE.bible.caseCategories[0]?.key ?? null)
+  })
+
   it('has a mock that names the first pillar', () => {
     const fit = mockFit({ bible: FIRST_CHANNEL_IN_USE, subject: 'WeWork' })
     expect(fit).toEqual({

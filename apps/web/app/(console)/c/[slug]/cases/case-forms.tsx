@@ -1,6 +1,7 @@
 'use client'
 
 import type { CaseSummary } from '@boom-busters/db'
+import { CASE_SEED_KEYWORDS_MAX, EXACT_KEYWORD_CREDITS } from '@boom-busters/schemas'
 import { Pencil } from 'lucide-react'
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
@@ -90,10 +91,42 @@ function PeopleAndLinksFields({
   )
 }
 
-/** The `Edit details` form on a case: the same three fields, saved with `editCase`. */
+/**
+ * Seed keywords (decision 467): phrases the research run measures beside what
+ * it finds, ranked like the rest. Comma separated, like People.
+ */
+function SeedKeywordsField({
+  idPrefix,
+  seeds,
+  onSeeds,
+}: {
+  idPrefix: string
+  seeds: string
+  onSeeds: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={`${idPrefix}-seeds`}>Seed keywords</Label>
+      <Input
+        id={`${idPrefix}-seeds`}
+        value={seeds}
+        placeholder={`Optional: up to ${CASE_SEED_KEYWORDS_MAX}, separated by commas`}
+        aria-describedby={`${idPrefix}-seeds-note`}
+        onChange={(event) => onSeeds(event.target.value)}
+        className="w-full sm:w-72"
+      />
+      <span id={`${idPrefix}-seeds-note`} className="text-[12px] text-[var(--color-text-muted)]">
+        Research measures each one too, {EXACT_KEYWORD_CREDITS} VidIQ credits apiece.
+      </span>
+    </div>
+  )
+}
+
+/** The `Edit details` form on a case: the same fields, saved with `editCase`. */
 export function EditDetails({ item, run }: { item: CaseSummary; run: Run }) {
   const [open, setOpen] = React.useState(false)
   const [subject, setSubject] = React.useState(item.subject ?? '')
+  const [seeds, setSeeds] = React.useState(joinPeople(item.seedKeywords))
   const [people, setPeople] = React.useState(joinPeople(item.people))
   const [links, setLinks] = React.useState(joinSourceLinks(item.sourceLinks))
   const [busy, setBusy] = React.useState(false)
@@ -110,6 +143,7 @@ export function EditDetails({ item, run }: { item: CaseSummary; run: Run }) {
   return (
     <div className="flex w-full flex-wrap items-end gap-3 rounded-[8px] border border-[var(--color-border)] p-3">
       <SubjectField idPrefix={`edit-${item.id}`} subject={subject} onSubject={setSubject} />
+      <SeedKeywordsField idPrefix={`edit-${item.id}`} seeds={seeds} onSeeds={setSeeds} />
       <PeopleAndLinksFields
         idPrefix={`edit-${item.id}`}
         people={people}
@@ -130,7 +164,13 @@ export function EditDetails({ item, run }: { item: CaseSummary; run: Run }) {
               return note === undefined ? { url } : { url, note }
             })
             const ok = await run(
-              () => editCase(item.id, { subject, people: splitPeople(people), sourceLinks }),
+              () =>
+                editCase(item.id, {
+                  subject,
+                  seedKeywords: splitPeople(seeds),
+                  people: splitPeople(people),
+                  sourceLinks,
+                }),
               'Details saved',
             )
             if (ok) setOpen(false)
@@ -166,6 +206,7 @@ export function AddCaseForm({
   const [titleTouched, setTitleTouched] = React.useState(false)
   const [category, setCategory] = React.useState<string>(categories[0]?.key ?? '')
   const [angle, setAngle] = React.useState('')
+  const [seeds, setSeeds] = React.useState('')
   const [people, setPeople] = React.useState('')
   const [links, setLinks] = React.useState('')
   const [busy, setBusy] = React.useState(false)
@@ -222,6 +263,7 @@ export function AddCaseForm({
             ))}
           </Select>
         </div>
+        <SeedKeywordsField idPrefix="case" seeds={seeds} onSeeds={setSeeds} />
         <PeopleAndLinksFields
           idPrefix="case"
           people={people}
@@ -244,6 +286,7 @@ export function AddCaseForm({
                     category,
                     angle: angle || undefined,
                     subject,
+                    seedKeywords: splitPeople(seeds),
                     people: splitPeople(people),
                     sourceLinks: splitSourceLinks(links),
                   }),

@@ -1,6 +1,9 @@
 import {
+  CASE_SEED_KEYWORDS_MAX,
   CaseResearchJobSchema,
   SearchBriefSchema,
+  briefPhrases,
+  phraseKey,
   RECOMMENDATION_REASON_MAX,
   StoredSearchBriefSchema,
   briefDemandNotes,
@@ -46,6 +49,8 @@ export interface CaseSummary {
   subject: string | null
   people: string[]
   sourceLinks: { url: string; note?: string }[]
+  /** Phrases the research run measures as keywords beside what it finds (decision 467). */
+  seedKeywords: string[]
   /** The VidIQ research brief for `subject`; null when none, or when the stored row does not parse. */
   searchBrief: SearchBrief | null
   /** The research run in flight or last finished; null when none, or when the stored row does not parse. */
@@ -70,6 +75,7 @@ const summaryColumns = {
   subject: cases.subject,
   people: cases.people,
   sourceLinks: cases.sourceLinks,
+  seedKeywords: cases.seedKeywords,
   searchBrief: cases.searchBrief,
   searchJob: cases.searchJob,
   formatKey: cases.formatKey,
@@ -160,6 +166,7 @@ export interface CaseInput {
   subject?: string | null
   people?: string[]
   sourceLinks?: { url: string; note?: string }[]
+  seedKeywords?: string[]
   priorityScore?: number
   status?: CaseStatus
 }
@@ -177,6 +184,7 @@ export async function createCase(db: Database, input: CaseInput): Promise<CaseRo
       subject: input.subject ?? null,
       people: input.people ?? [],
       sourceLinks: input.sourceLinks ?? [],
+      seedKeywords: input.seedKeywords ?? [],
       priorityScore: input.priorityScore ?? 0,
       status: input.status ?? 'idea',
     })
@@ -558,6 +566,49 @@ export async function saveCaseFieldCheck(
       kept.splice(kept.indexOf(oldest), 1)
     }
     return { ...brief, fieldChecks: [...kept, check] }
+  })
+}
+
+export type AddOwnerKeywordResult = 'added' | 'present' | 'full' | 'no-brief'
+
+/**
+ * `Add keyword` (decision 467): put one measured phrase on the brief's other
+ * keywords, marked as the owner's, and keep it as a seed so the next run
+ * measures it again. Under the row lock, so a run saving its brief meanwhile
+ * is never overwritten. `present` when the brief already shows the phrase,
+ * `full` when the owner already has `CASE_SEED_KEYWORDS_MAX` of their own on it.
+ */
+export async function addCaseOwnerKeyword(
+  db: Database,
+  caseId: string,
+  row: SearchKeyword,
+): Promise<AddOwnerKeywordResult> {
+  return db.transaction(async (tx) => {
+    const { brief } = await lockCaseResearch(tx, caseId)
+    if (!brief) return 'no-brief'
+    const key = phraseKey(row.keyword)
+    if (briefPhrases(brief).has(key)) return 'present'
+    const owned = brief.secondaryKeywords.filter((k) => k.owner).length
+    if (owned >= CASE_SEED_KEYWORDS_MAX) return 'full'
+    const next: SearchBrief = {
+      ...brief,
+      secondaryKeywords: [...brief.secondaryKeywords, { ...row, owner: true }],
+    }
+    if (!SearchBriefSchema.safeParse(next).success) return 'full'
+    const [stored] = await tx
+      .select({ seedKeywords: cases.seedKeywords })
+      .from(cases)
+      .where(eq(cases.id, caseId))
+    const seeds = stored?.seedKeywords ?? []
+    const nextSeeds =
+      seeds.some((seed) => phraseKey(seed) === key) || seeds.length >= CASE_SEED_KEYWORDS_MAX
+        ? seeds
+        : [...seeds, row.keyword]
+    await tx
+      .update(cases)
+      .set({ searchBrief: next, seedKeywords: nextSeeds, updatedAt: new Date() })
+      .where(eq(cases.id, caseId))
+    return 'added'
   })
 }
 
