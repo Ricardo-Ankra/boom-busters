@@ -1,0 +1,13 @@
+{
+  "title": "Deposits 2004 to 2008: the newcomer overtook both",
+  "facts": [
+    { "text": "2004", "claim": 1 },
+    { "text": "2005", "claim": 2 },
+    { "text": "2006", "claim": 3 },
+    { "text": "2007", "claim": 4 },
+    { "text": "2008", "claim": 5 },
+    { "text": "42", "claim": 10 },
+    { "text": "58", "claim": 15 },
+    { "text": "64", "claim": 20 }
+  ]
+}
