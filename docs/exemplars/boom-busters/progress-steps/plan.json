@@ -1,0 +1,41 @@
+{
+  "slot": {
+    "intent": "The scheme ran in four steps, each one named in turn: the loan, the shell company, the transfer, and last the silence, where it lands.",
+    "words": [
+      { "text": "First", "atMs": 0 },
+      { "text": "the", "atMs": 631 },
+      { "text": "loan,", "atMs": 1262 },
+      { "text": "second", "atMs": 1892 },
+      { "text": "the", "atMs": 2523 },
+      { "text": "shell", "atMs": 3154 },
+      { "text": "company,", "atMs": 3785 },
+      { "text": "third", "atMs": 4415 },
+      { "text": "the", "atMs": 5046 },
+      { "text": "transfer,", "atMs": 5677 },
+      { "text": "fourth", "atMs": 6308 },
+      { "text": "the", "atMs": 6938 },
+      { "text": "silence.", "atMs": 7569 }
+    ]
+  },
+  "concept": "The steps are walked along one hairline: each ring is reached as its step is named and the walked ones step back; the last ring waits hollow in red until the line slows into it on \"silence\".",
+  "storyboard": [
+    "0.4 s, on \"First\": a pale hairline draws left to right through four hollow rings; the first ring fills off white and grows a touch as FIRST settles above it in grey tracked caps",
+    "1.3 s, on \"loan,\": The loan has built under the first ring a word at a time, each word grey settling to off white",
+    "2.5 s, after \"second\": SECOND has settled over the second ring and the off white line draws toward it at a steady pace; the first step has stepped back, ring smaller and grey, name smaller in mid grey",
+    "3.2 s, on \"shell\": the line reaches the second ring, which fills off white and grows as The shell company builds beneath it",
+    "6.4 s, on \"fourth\": the fourth ring turns into a hollow red ring and waits as the line sets off toward it; the first two steps sit pale, the third in mid grey",
+    "7.6 s, on \"silence.\": the line slows into the red ring, which fills red as it lands; silence arrives in off white as a red highlighter wipes behind it, and the walked line steps back to grey",
+    "Then a full hold to the end: the walked steps and their line quiet in grey, only the last ring and its word marked in red."
+  ],
+  "mechanisms": ["draw-on", "tally", "density-from-hierarchy"],
+  "leansOn": [
+    {
+      "title": "Progress steps (this channel's approved version)",
+      "why": "One hairline joins the steps; each lights as it is named, the walked ones step back to grey, the last lands in red with its word marked."
+    },
+    {
+      "title": "Line chart (this channel's hand-made draft)",
+      "why": "A line that draws steadily and slows into a hollow red ring waiting at its end, which fills as the line arrives."
+    }
+  ]
+}

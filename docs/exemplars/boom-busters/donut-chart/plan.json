@@ -1,0 +1,36 @@
+{
+  "slot": {
+    "intent": "Of everything investors put in, 40% was simply gone: the ring is all the money, and the red slice is the share that disappeared.",
+    "words": [
+      { "text": "Of", "atMs": 0 },
+      { "text": "everything", "atMs": 750 },
+      { "text": "investors", "atMs": 1500 },
+      { "text": "put", "atMs": 2250 },
+      { "text": "in,", "atMs": 3000 },
+      { "text": "40%", "atMs": 3750 },
+      { "text": "was", "atMs": 4500 },
+      { "text": "simply", "atMs": 5250 },
+      { "text": "gone.", "atMs": 6000 }
+    ]
+  },
+  "concept": "The ring is all the money. It draws in as the opening words are read, then an arc sweeps round locked to the count to 40% and lands red; on \"gone\" that red slice pulls out of the ring.",
+  "storyboard": [
+    "0.8 s, on \"everything\": the kicker builds word by word in grey tracked caps above centre while a pale grey ring draws clockwise from twelve o'clock, steady and slowing into its close",
+    "3.9 s, just after \"40%\": an off white arc sweeps clockwise from twelve o'clock over the pale ring, locked to a heavy mono figure counting up at the centre",
+    "4.7 s, as the count lands on 40%: the arc and the figure settle from off white to red together, the only accent in the frame",
+    "6.0 s, on \"gone.\": the red slice pulls out of the ring along its middle in one smooth 400 ms move, leaving a gap, as GONE fades in under the figure in small red tracked caps",
+    "6.4 s: at rest, the 60% that stayed a quiet pale ring, the slice that went red and apart from it",
+    "Then a full hold to the end, nothing moving."
+  ],
+  "mechanisms": ["draw-on", "drum", "cause-to-effect"],
+  "leansOn": [
+    {
+      "title": "Stat counter (this channel's approved version)",
+      "why": "A heavy mono figure counts with a mark locked to it, then the figure and the mark settle from off white to red together as the count lands."
+    },
+    {
+      "title": "Line chart (this channel's hand-made draft)",
+      "why": "A draw that runs steadily and slows into its close, and the red endpoint as the one accent in the frame."
+    }
+  ]
+}
