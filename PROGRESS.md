@@ -11800,3 +11800,42 @@ owner edits. `--prod` was not run against Neon.
      and the scenes test writes that project's own dossier, so the suite
      never edits the shared fixture and runs alone on an unseeded database.
      (d) Decision 464 (c), one notice per revised chapter, stays as decided.
+
+467. **Seed keywords, Add keyword, and a fit that reads the case**
+     (2026-11-13, branch `worktree-case-seed-keywords`, migration 0055).
+     Found on the Ueno Bank Paraguay case: the brief's target was
+     "paraguay ueno bank" (overall 52, about 9,200 searches a month) while
+     "ueno bank paraguay" scored 75 with about 79,000, and the fit filed a
+     current bank collapse under Empire. VidIQ's matching terms never
+     returned the subject phrase itself, so nothing could pick it; the fit
+     saw only the subject's four words and five bare pillar labels, and
+     Opus 5.5 remembers Ueno only as a fast-growing bank, from before the
+     collapse.
+     (a) `cases.seed_keywords` (jsonb, up to `CASE_SEED_KEYWORDS_MAX` = 5,
+     2 to 80 characters each), on the Add and Edit forms as Seed keywords,
+     comma separated like People. Owner ruling: seeds compete on equal
+     footing. A run measures the subject phrase and each seed exactly
+     (`measureKeyword`: VidIQ `research` mode, `includeRelated: false`, one
+     row, 5 credits each, an optional step whose cap refusal is recorded as
+     `exact keywords: credit cap`), puts those rows first among the measured
+     terms, and the understanding step judges them like any other term. A
+     seed carries `owner: true` on the brief and is never dropped: the ten
+     best by overall stay the ten, and an owner keyword that missed them is
+     appended (`SECONDARY_KEYWORDS_MAX` = 15, and the off-fit list likewise).
+     A seed the understanding left out shows with the terms that do not fit.
+     The estimate adds 5 for the subject phrase and 5 per seed, so a plain
+     run is 60 credits, not 55.
+     (b) `Add keyword` on a researched case: one typed phrase, refused before
+     any spend when the brief already shows it (`briefPhrases`, compared by
+     `phraseKey`), when the owner already has five of their own on it, or
+     while research runs; then measured (5 credits, behind a confirm), added
+     to the other keywords as the owner's with no model call, and kept as a
+     seed so the next run judges it. `Make target` then promotes it as usual.
+     (c) The fit reads the pillar the owner filed the case under, their angle
+     idea and up to `FIT_SEARCHES_MAX` = 12 measured keywords with intents,
+     and is told its memory may be older than the story and to keep the
+     filed pillar unless the searches and angle clearly point elsewhere.
+     The mock fit keeps the filed pillar.
+     Not done: live web search in case research. The run's VidIQ evidence
+     already showed the collapse; the fit simply never read it. The channel
+     bible's pillars still carry no keywords, which the fit would also read.
