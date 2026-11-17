@@ -10,9 +10,14 @@ import {
   parseGraphicCode,
   priceOf,
   vendoredPath,
+  withSubscriptionBridge,
 } from '@boom-busters/providers'
 import type { ExemplarEntry, LLMTaskRequest } from '@boom-busters/providers'
-import { FIRST_CHANNEL_IN_USE, ValidationError } from '@boom-busters/schemas'
+import {
+  FIRST_CHANNEL_IN_USE,
+  readSubscriptionBridgeEnv,
+  ValidationError,
+} from '@boom-busters/schemas'
 import { callForAnswer } from '@/lib/answer'
 import {
   exemplarBrief,
@@ -34,11 +39,15 @@ import { BudgetExceeded, LiveBudget } from '@/lib/live-budget'
  * designer's own prompt and ladder, check the answer with the real
  * `graphicCodeIssue`, and write a passing design to `designs/<id>.ts`.
  *
- * Never part of `pnpm test`: it needs a real Anthropic key and spends
- * money, under a `LiveBudget` cap (default $1, at most $5). It writes
- * nothing to any database and does not record to the app's cost ledger;
- * the console is the record. It never edits the manifest and never writes
- * a design the checks refused.
+ * Never part of `pnpm test`: it needs the real model. With `LLM_BRIDGE_URL`
+ * and `LLM_BRIDGE_SECRET` set (decision 469) it runs on the owner's Claude
+ * subscription through the bridge on their PC, costs nothing per token, and
+ * stops with the reason if the bridge is not there, never falling back to the
+ * API key. Without them it needs `ANTHROPIC_API_KEY` and spends money, under
+ * a `LiveBudget` cap (default $1, at most $5). It writes nothing to any
+ * database and does not record to the app's cost ledger; the console is the
+ * record. It never edits the manifest and never writes a design the checks
+ * refused.
  */
 
 /** A reserve never drops below this: a translation reads a long template and writes a long design. */
@@ -82,8 +91,21 @@ async function main(): Promise<void> {
     throw new Error(
       'MOCK_PROVIDERS is set; the translation needs the real model. Nothing was spent.',
     )
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('Set ANTHROPIC_API_KEY in .env.local. Nothing was spent.')
+  // The subscription when the bridge is configured, the API key otherwise:
+  // the same rule the app's own calls follow (decision 469).
+  const bridge = readSubscriptionBridgeEnv(process.env)
+  const adapter = bridge ? withSubscriptionBridge(anthropic, bridge) : anthropic
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? ''
+  if (!bridge && !apiKey)
+    throw new Error(
+      'Set LLM_BRIDGE_URL and LLM_BRIDGE_SECRET (your Claude subscription) or ANTHROPIC_API_KEY ' +
+        'in .env.local. Nothing was spent.',
+    )
+  console.log(
+    bridge
+      ? `Running on your Claude subscription through ${bridge.url}.`
+      : 'Running on the API key; this spends money.',
+  )
   const model = findModel(anthropic, args.model)
   if (!model)
     throw new Error(`${args.model} is not an Anthropic model this build knows. Nothing was spent.`)
@@ -130,15 +152,21 @@ async function main(): Promise<void> {
             const reserved = Math.max(MIN_RESERVE_USD, estimate)
             budget.reserve(label, reserved)
             try {
-              const result = await anthropic.complete(request, { apiKey, model: model.id })
-              budget.record(label, priceOf(model, result.usage))
+              const result = await adapter.complete(request, { apiKey, model: model.id })
+              // A subscription answer cost nothing per token.
+              budget.record(
+                label,
+                result.billing === 'subscription' ? 0 : priceOf(model, result.usage),
+              )
               return { text: result.text, truncated: result.truncated }
             } catch (error) {
               // A reply that spent its whole output budget on reasoning and wrote
               // no text throws a maxTokens ValidationError, yet is billed in
-              // full: it keeps its reservation, so the cap still counts it. Any
-              // other failure (network, a rejected key) cost nothing.
-              const billed = error instanceof ValidationError && error.field === 'maxTokens'
+              // full on the API key: it keeps its reservation, so the cap still
+              // counts it. On the subscription, and for any other failure
+              // (network, a rejected key, a parked bridge), nothing was spent.
+              const billed =
+                !bridge && error instanceof ValidationError && error.field === 'maxTokens'
               budget.record(label, billed ? reserved : 0)
               throw error
             }

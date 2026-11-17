@@ -134,6 +134,42 @@ export class BudgetExceededError extends PipelineError {
   }
 }
 
+/** Why the subscription bridge could not take a call. */
+export type BridgeParkReason = 'offline' | 'plan-limit' | 'auth'
+
+/**
+ * The owner's PC, which answers Anthropic calls on their Claude subscription
+ * (decision 469), could not take this call: it is off or asleep, the plan's
+ * usage limit is spent, or its token was refused.
+ *
+ * The owner chose parking over paying: a run waits for the PC instead of
+ * quietly falling back to the API key. It is a `BudgetExceededError` so that
+ * every runner's existing budget gate parks it with no change of its own; the
+ * gate card reads `reason` and asks for a Resume instead of an overage, and a
+ * $0 approval resumes the run without touching the month's approved overage.
+ * Not retriable, so the router never walks to another provider's paid model.
+ */
+export class SubscriptionBridgeUnavailableError extends BudgetExceededError {
+  readonly reason: BridgeParkReason
+
+  constructor(details: {
+    provider: string
+    operation: string
+    reason: BridgeParkReason
+    message: string
+  }) {
+    super({
+      provider: details.provider,
+      operation: details.operation,
+      budgetUsd: 0,
+      monthSpendUsd: 0,
+      estimateUsd: 0,
+    })
+    this.message = details.message
+    this.reason = details.reason
+  }
+}
+
 /**
  * A channel id that names no channel. Only the first channel is ever created
  * implicitly; any other missing id is a bug or a stale link, and retrying
@@ -216,6 +252,9 @@ export function serialiseError(error: unknown): Record<string, unknown> {
       budgetUsd: error.budgetUsd,
       monthSpendUsd: error.monthSpendUsd,
       estimateUsd: error.estimateUsd,
+      ...(error instanceof SubscriptionBridgeUnavailableError
+        ? { bridgeReason: error.reason }
+        : {}),
     }
   }
 

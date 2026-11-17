@@ -212,7 +212,9 @@ export async function route(
         const model =
           modelFor(config, adapter, choice.provider, choice.model) ??
           findModel(adapter, choice.model)!
-        return { ...result, downgrades, costUsd: priceOf(model, result.usage), requested }
+        // A subscription answer cost nothing per token (decision 469).
+        const costUsd = result.billing === 'subscription' ? 0 : priceOf(model, result.usage)
+        return { ...result, downgrades, costUsd, requested }
       } catch (error) {
         lastError = error
 

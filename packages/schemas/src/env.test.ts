@@ -1,13 +1,81 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assertNoSubscriptionTokenOnServer,
   ConfigError,
   DEFERRED_GROUPS,
   EnvValidationError,
   hasEnvGroup,
   parseBootEnv,
   readCaseFinderEnv,
+  readSubscriptionBridgeEnv,
   requireEnv,
 } from './env'
+
+describe('the subscription bridge settings (decision 469)', () => {
+  const secret = 'a-secret-that-is-long-enough-for-hmac-0123'
+
+  it('is off when neither variable is set', () => {
+    expect(readSubscriptionBridgeEnv({})).toBeNull()
+    expect(readSubscriptionBridgeEnv({ LLM_BRIDGE_URL: ' ', LLM_BRIDGE_SECRET: '' })).toBeNull()
+  })
+
+  it('reads both, dropping a trailing slash from the address', () => {
+    expect(
+      readSubscriptionBridgeEnv({
+        LLM_BRIDGE_URL: 'https://my-pc.tailnet.ts.net/',
+        LLM_BRIDGE_SECRET: secret,
+      }),
+    ).toEqual({ url: 'https://my-pc.tailnet.ts.net', secret })
+  })
+
+  it('refuses half a setup, naming the missing half', () => {
+    expect(() =>
+      readSubscriptionBridgeEnv({ LLM_BRIDGE_URL: 'https://my-pc.tailnet.ts.net' }),
+    ).toThrow(ConfigError)
+    expect(() => readSubscriptionBridgeEnv({ LLM_BRIDGE_SECRET: secret })).toThrow(/LLM_BRIDGE_URL/)
+  })
+
+  it('refuses plain http anywhere but this machine, and a short secret', () => {
+    expect(() =>
+      readSubscriptionBridgeEnv({
+        LLM_BRIDGE_URL: 'http://my-pc.example',
+        LLM_BRIDGE_SECRET: secret,
+      }),
+    ).toThrow(/https/)
+    expect(
+      readSubscriptionBridgeEnv({
+        LLM_BRIDGE_URL: 'http://127.0.0.1:8787',
+        LLM_BRIDGE_SECRET: secret,
+      }),
+    ).not.toBeNull()
+    expect(() =>
+      readSubscriptionBridgeEnv({
+        LLM_BRIDGE_URL: 'https://my-pc.tailnet.ts.net',
+        LLM_BRIDGE_SECRET: 'short',
+      }),
+    ).toThrow(/32 characters/)
+  })
+
+  it('refuses the subscription token on a Vercel deployment, without printing it', () => {
+    const token = 'sk-ant-oat01-a-token-that-must-never-be-printed'
+    const call = () =>
+      assertNoSubscriptionTokenOnServer({ VERCEL: '1', CLAUDE_CODE_OAUTH_TOKEN: token })
+    expect(call).toThrow(EnvValidationError)
+    expect(call).toThrow(/must not be set on Vercel/)
+    try {
+      call()
+    } catch (error) {
+      expect((error as Error).message).not.toContain(token)
+    }
+  })
+
+  it('allows the token off Vercel, and Vercel without the token', () => {
+    expect(() =>
+      assertNoSubscriptionTokenOnServer({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x' }),
+    ).not.toThrow()
+    expect(() => assertNoSubscriptionTokenOnServer({ VERCEL: '1' })).not.toThrow()
+  })
+})
 
 const VALID_KEY = Buffer.alloc(32, 7).toString('base64')
 

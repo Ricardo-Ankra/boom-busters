@@ -1,4 +1,8 @@
-import { ContentPolicyError, ValidationError } from '@boom-busters/schemas'
+import {
+  ContentPolicyError,
+  SubscriptionBridgeUnavailableError,
+  ValidationError,
+} from '@boom-busters/schemas'
 import type { ModelRouting } from '@boom-busters/schemas'
 import { describe, expect, it, vi } from 'vitest'
 import { createMockLLM, mockFailures } from './mock'
@@ -296,5 +300,48 @@ describe('an injected resolver (decision 288)', () => {
       /has no price, so the budget guard cannot estimate this call\. Set one in Settings → Models/,
     )
     expect(adapter.calls).toHaveLength(0)
+  })
+})
+
+describe('subscription answers (decision 469)', () => {
+  it('prices a subscription-billed answer at $0', async () => {
+    const mock = createMockLLM()
+    const subscription = {
+      ...mock,
+      complete: async (...args: Parameters<typeof mock.complete>) => ({
+        ...(await mock.complete(...args)),
+        billing: 'subscription' as const,
+      }),
+    }
+
+    const result = await route(config({ adapters: { anthropic: subscription } }), request)
+
+    expect(result.costUsd).toBe(0)
+    expect(result.billing).toBe('subscription')
+  })
+
+  it('stops at a parked bridge instead of crossing to another provider', async () => {
+    const parked = new SubscriptionBridgeUnavailableError({
+      provider: 'anthropic',
+      operation: 'llm.research',
+      reason: 'offline',
+      message: 'Your PC did not answer.',
+    })
+    const anthropic = createMockLLM({ failFirst: { times: 99, error: () => parked } })
+    const google = createMockLLM({}, 'google')
+
+    await expect(
+      route(
+        config({
+          adapters: { anthropic, google },
+          credentials: { anthropic: 'key-a', google: 'key-g' },
+          fallbackChain: ['google'],
+        }),
+        request,
+      ),
+    ).rejects.toBe(parked)
+
+    expect(anthropic.calls).toHaveLength(1)
+    expect(google.calls).toHaveLength(0)
   })
 })

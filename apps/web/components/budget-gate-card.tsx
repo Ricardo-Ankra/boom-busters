@@ -3,7 +3,7 @@
 import type { OpenBudgetGate } from '@boom-busters/db'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { abortOverage, approveOverage } from '@/app/(console)/projects/actions'
+import { abortOverage, approveOverage, resumeBridgeGate } from '@/app/(console)/projects/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -24,21 +24,30 @@ export function BudgetGateCard({ gate }: { gate: OpenBudgetGate }) {
   // case is one click and the uncommon case is a deliberate edit.
   const suggested = Math.max(0.01, Math.ceil(gate.estimateUsd * 100) / 100)
   const [amount, setAmount] = React.useState(String(suggested))
-  const [busy, setBusy] = React.useState<'approve' | 'abort' | null>(null)
+  const [busy, setBusy] = React.useState<'approve' | 'resume' | 'abort' | null>(null)
 
   const projectId = gate.projectId
 
-  async function run(action: 'approve' | 'abort'): Promise<void> {
+  async function run(action: 'approve' | 'resume' | 'abort'): Promise<void> {
     if (!projectId) return
     setBusy(action)
     try {
       const result =
         action === 'approve'
           ? await approveOverage(projectId, gate.provider, Number(amount))
-          : await abortOverage(projectId, gate.provider)
+          : action === 'resume'
+            ? await resumeBridgeGate(projectId, gate.provider)
+            : await abortOverage(projectId, gate.provider)
 
       if (result.ok) {
-        toast({ title: action === 'approve' ? 'Overage approved' : 'Run aborted' })
+        toast({
+          title:
+            action === 'approve'
+              ? 'Overage approved'
+              : action === 'resume'
+                ? 'Resuming'
+                : 'Run aborted',
+        })
         router.refresh()
       } else {
         toast({ title: 'That did not work', description: result.error, variant: 'error' })
@@ -46,6 +55,35 @@ export function BudgetGateCard({ gate }: { gate: OpenBudgetGate }) {
     } finally {
       setBusy(null)
     }
+  }
+
+  // Parked because the PC that answers on the Claude subscription could not
+  // take the call (decision 469). Nothing to approve: turn the PC on, Resume.
+  if (gate.bridgeReason) {
+    return (
+      <Card className="border-[var(--color-warning)]">
+        <CardHeader>
+          <CardTitle>Waiting for your PC — the run is parked</CardTitle>
+          <CardDescription>{`${gate.provider} · ${gate.operation}`}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            {gate.message ?? 'Your PC could not take this Claude call.'}
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <Button variant="primary" busy={busy === 'resume'} onClick={() => run('resume')}>
+              Resume
+            </Button>
+            <Button variant="danger" busy={busy === 'abort'} onClick={() => run('abort')}>
+              Abort this run
+            </Button>
+          </div>
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Resume tries your PC again. Nothing is charged to the API key while it waits.
+          </p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (

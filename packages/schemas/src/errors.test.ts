@@ -11,7 +11,34 @@ import {
   retryAfterMs,
   serialiseError,
   spentUsd,
+  SubscriptionBridgeUnavailableError,
 } from './errors'
+
+describe('SubscriptionBridgeUnavailableError (decision 469)', () => {
+  const error = new SubscriptionBridgeUnavailableError({
+    provider: 'anthropic',
+    operation: 'llm.scripting',
+    reason: 'plan-limit',
+    message: 'Your Claude plan’s usage limit is spent.',
+  })
+
+  it('parks like a budget stop, so every runner already knows what to do with it', () => {
+    expect(error).toBeInstanceOf(BudgetExceededError)
+    expect(isGated(error)).toBe(true)
+    expect(isRetriable(error)).toBe(false)
+    expect(spentUsd(error)).toBeUndefined()
+  })
+
+  it('keeps its own words and reason, not the budget arithmetic', () => {
+    expect(error.message).toBe('Your Claude plan’s usage limit is spent.')
+    expect(error.name).toBe('SubscriptionBridgeUnavailableError')
+    expect(serialiseError(error)).toMatchObject({
+      gated: true,
+      bridgeReason: 'plan-limit',
+      message: 'Your Claude plan’s usage limit is spent.',
+    })
+  })
+})
 
 describe('retry classification', () => {
   it('retries transient provider failures', () => {

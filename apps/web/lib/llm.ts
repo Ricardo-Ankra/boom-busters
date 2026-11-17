@@ -147,6 +147,9 @@ export async function callLlm(
           truncated: result.truncated,
           answerChars: result.text.length,
           durationMs: Date.now() - startedAt,
+          // $0 because the owner's Claude plan answered (decision 469), not
+          // because the call was free by accident.
+          ...(result.billing ? { billing: result.billing } : {}),
         },
       }
     },

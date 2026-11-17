@@ -668,6 +668,29 @@ export async function approveOverage(
 }
 
 /**
+ * Resume a run parked because the owner's PC could not take a Claude call
+ * (decision 469). Answers the same `budget/approved` wait as an overage, with
+ * $0: nothing is granted, the runner simply tries the PC again and parks
+ * once more if it is still not there.
+ */
+export async function resumeBridgeGate(projectId: string, provider: string): Promise<ActionResult> {
+  await requireOwner()
+  const invalid = badId(projectId)
+  if (invalid) return invalid
+
+  const parsedProvider = ProviderSchema.safeParse(provider)
+  if (!parsedProvider.success) return { ok: false, error: `Unknown provider "${provider}"` }
+
+  const sent = await send(
+    events.budgetApproved.create({ projectId, provider: parsedProvider.data, additionalUsd: 0 }),
+    'resume the run',
+  )
+
+  refresh(projectId)
+  return sent
+}
+
+/**
  * Aborting at a budget gate *is* stopping the project — `project/cancelled`
  * is the event every runner's `cancelOn` and the reconciler actually honour.
  * A `budget/aborted` event used to be sent here first; nothing ever waited on

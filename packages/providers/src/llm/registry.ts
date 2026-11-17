@@ -1,5 +1,6 @@
-import type { LlmProvider } from '@boom-busters/schemas'
+import { readSubscriptionBridgeEnv, type LlmProvider } from '@boom-busters/schemas'
 import { anthropic } from './anthropic'
+import { withSubscriptionBridge } from './subscription-bridge'
 import { google } from './google'
 import { createMockLLM } from './mock'
 import { openai } from './openai'
@@ -45,10 +46,19 @@ export function mockProvidersEnabled(
   return env['MOCK_PROVIDERS'] === '1'
 }
 
+/**
+ * The adapters every LLM call goes through. With `LLM_BRIDGE_URL` and
+ * `LLM_BRIDGE_SECRET` set, Anthropic calls go to the owner's PC and their
+ * Claude subscription instead of the API key (decision 469); mock mode never
+ * reaches the bridge, so tests and e2e cannot spend a plan's limit.
+ */
 export function llmAdapters(
   env: Record<string, string | undefined> = process.env,
 ): Record<LlmProvider, LLMProvider> {
-  return mockProvidersEnabled(env) ? mockAdapters() : LIVE_ADAPTERS
+  if (mockProvidersEnabled(env)) return mockAdapters()
+  const bridge = readSubscriptionBridgeEnv(env)
+  if (!bridge) return LIVE_ADAPTERS
+  return { ...LIVE_ADAPTERS, anthropic: withSubscriptionBridge(anthropic, bridge) }
 }
 
 /**

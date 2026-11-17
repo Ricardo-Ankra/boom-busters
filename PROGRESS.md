@@ -11903,3 +11903,71 @@ owner edits. `--prod` was not run against Neon.
      Not done: live web search in case research. The run's VidIQ evidence
      already showed the collapse; the fit simply never read it. The channel
      bible's pillars still carry no keywords, which the fit would also read.
+
+469. **Anthropic calls on the owner's Claude subscription, through a bridge
+     on their PC** (2026-11-17, branch `worktree-subscription-bridge`). Owner
+     ask: switch from the API key to their Claude subscription via the Claude
+     Agent SDK, personal use only, while keeping the deployed Vercel app as
+     the place they work. The SDK runs the Claude Code binary as a child
+     process, so it cannot answer from the Vercel function (371 MB Linux
+     binary against the 250 MB limit, one process per call on a 2 GB Hobby
+     instance, and a one-year personal token on a cloud server, which
+     Anthropic's terms warn against). Owner rulings: keep the API path as it
+     is; Tailscale Funnel (no Cloudflare domain); when the PC is off, park,
+     never fall back to the API key.
+     (a) `apps/llm-bridge`: a loopback HTTP server on the PC, exposed by
+     `tailscale funnel`, answering `POST /complete` and `GET /health` signed
+     with HMAC-SHA256 over timestamp, method, path and body
+     (`LLM_BRIDGE_SECRET`, 5 minute skew). Each call runs
+     `@anthropic-ai/claude-agent-sdk` 0.3.316 (pinned, released 2026-10-31)
+     with no tools (`tools: []` plus every built-in named in
+     `disallowedTools`), `settingSources: []`, no MCP, `maxTurns: 1`,
+     `persistSession: false`, an empty temp `cwd`, its own
+     `CLAUDE_CONFIG_DIR`, and a child env built from an allow-list holding
+     the token, never `ANTHROPIC_API_KEY` or an app secret. The prompts quote
+     documents nobody here wrote, so a tool left on would be a way in.
+     `CLAUDE_CODE_MAX_OUTPUT_TOKENS` carries `maxTokens`;
+     `CLAUDE_CODE_MAX_RETRIES=2` keeps a busy minute inside the 300 s step;
+     effort is set to the API's per-model default (medium on Opus 5.5 and
+     Haiku 5.5, high on other 5-series) because Claude Code's default is
+     higher. A multi-turn request (the dossier passes) is flattened into one
+     user turn with earlier answers in `<your_earlier_answer>`; images go
+     first in that turn. The bridge refuses to start with
+     `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` set or the token missing.
+     A `rate_limit_event` that is rejected, or that shows paid extra usage
+     in use, stops the call as `plan-limit`.
+     (b) `withSubscriptionBridge` (providers) wraps the Anthropic adapter when
+     `LLM_BRIDGE_URL` and `LLM_BRIDGE_SECRET` are both set
+     (`readSubscriptionBridgeEnv`; one alone is a `ConfigError`; mock mode
+     never wraps). A signed health check, trusted 30 s per URL, comes first;
+     no answer, a bad status, a refused signature, a spent plan or a refused
+     token throws `SubscriptionBridgeUnavailableError`, a
+     `BudgetExceededError` subclass carrying `reason`, so every runner's
+     existing budget handling parks or stops on it unchanged and the router
+     never walks to another provider. Upstream trouble stays a
+     `TransientProviderError`. `verifyKey` and the model list stay on the
+     API key. Answers carry `billing: 'subscription'`; the router prices
+     them at $0 and `callLlm` writes `billing` into the ledger meta.
+     (c) Only the dossier and demo runners wait on `budget/approved`; the
+     others fail the stage with the gate's message, as a budget stop always
+     has, so the park messages say "resume the run". The budget gate card
+     shows "Waiting for your PC" with Resume and Abort when
+     `bridgeReason` is set (`listOpenBudgetGates` returns it and the
+     message); Resume sends `budget/approved` with $0 (`resumeBridgeGate`),
+     and `grantOverage` now ignores $0, which would otherwise have replaced
+     the month's approved overage.
+     (d) `assertNoSubscriptionTokenOnServer` fails boot on Vercel when
+     `CLAUDE_CODE_OAUTH_TOKEN` is set. README: `apps/llm-bridge/README.md`.
+     The budget guard still reserves the API-price estimate before each call
+     and settles at $0; with subscription calls at $0 the month's spend
+     stays low enough that this is not worth special-casing.
+     (e) `scripts/translate-exemplars.ts`, the one Anthropic caller outside
+     `llmAdapters()` and among the most expensive (long template in, long
+     design out, up to three calls per exemplar), follows the same rule: with
+     the bridge variables set in `.env.local` it wraps the adapter in
+     `withSubscriptionBridge`, records $0 against its `LiveBudget`, and stops
+     with the bridge's reason instead of falling back to `ANTHROPIC_API_KEY`.
+     `live-set-test.ts` and `live-plan-test.ts` call Gemini, which the
+     subscription cannot answer, and are unchanged.
+     Vercel's default install now downloads the SDK's platform binary for the
+     bridge package; it never enters the web bundle.
