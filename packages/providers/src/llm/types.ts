@@ -65,6 +65,12 @@ export interface LLMResult {
   model: string
   /** True when the provider returned a truncated answer at `maxTokens`. */
   truncated: boolean
+  /**
+   * `subscription` when the owner's Claude plan answered through the bridge
+   * (decision 469): the call cost nothing per token, so the router prices it
+   * at $0 and the ledger says why. Absent means pay-per-token, as always.
+   */
+  billing?: 'subscription'
 }
 
 /**
