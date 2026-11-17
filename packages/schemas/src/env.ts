@@ -227,6 +227,77 @@ export function readCaseFinderEnv(source: EnvSource = process.env): CaseFinderEn
   })
 }
 
+// ---------------------------------------------------------------------------
+// Subscription bridge (decision 469)
+// ---------------------------------------------------------------------------
+
+export interface SubscriptionBridgeEnv {
+  /** The bridge's public address, e.g. https://my-pc.tailnet.ts.net. No trailing slash. */
+  url: string
+  /** Shared HMAC secret; the bridge on the PC holds the same value. */
+  secret: string
+}
+
+const BridgeUrlSchema = z.url().refine((value) => {
+  const { protocol, hostname } = new URL(value)
+  return protocol === 'https:' || hostname === '127.0.0.1' || hostname === 'localhost'
+}, 'must be https (plain http only for localhost)')
+
+/**
+ * The owner's PC that answers Anthropic calls on their Claude subscription.
+ *
+ * Both variables or neither: neither means "no bridge, call the API with the
+ * stored key exactly as before". One without the other is a half-made setup,
+ * and guessing which half was meant would either spend money or park every
+ * run, so it fails loudly instead.
+ */
+export function readSubscriptionBridgeEnv(
+  source: EnvSource = process.env,
+): SubscriptionBridgeEnv | null {
+  const url = source['LLM_BRIDGE_URL']?.trim() ?? ''
+  const secret = source['LLM_BRIDGE_SECRET']?.trim() ?? ''
+  if (url === '' && secret === '') return null
+  const missing = [
+    ...(url === '' ? ['LLM_BRIDGE_URL'] : []),
+    ...(secret === '' ? ['LLM_BRIDGE_SECRET'] : []),
+  ]
+  if (missing.length > 0) throw new ConfigError('subscription bridge', missing)
+  const parsedUrl = BridgeUrlSchema.safeParse(url)
+  if (!parsedUrl.success) {
+    throw new EnvValidationError([`LLM_BRIDGE_URL: ${parsedUrl.error.issues[0]?.message}`], [])
+  }
+  if (secret.length < 32) {
+    throw new EnvValidationError(
+      ['LLM_BRIDGE_SECRET: must be at least 32 characters (openssl rand -base64 32)'],
+      [],
+    )
+  }
+  return { url: url.replace(/\/+$/, ''), secret }
+}
+
+/**
+ * The subscription token belongs on the owner's PC only (decision 469).
+ *
+ * On a Vercel deployment it would mean a cloud server spending a personal
+ * Claude plan, which is what Anthropic's terms warn against, and a leaked
+ * one-year token readable by anyone with project access. Thrown rather than
+ * ignored so a misplaced variable is found on the first deploy, not in an
+ * account notice. Reads only whether the variable is set, never its value.
+ */
+export function assertNoSubscriptionTokenOnServer(source: EnvSource = process.env): void {
+  const onVercel = (source['VERCEL'] ?? '') !== ''
+  const tokenSet = (source['CLAUDE_CODE_OAUTH_TOKEN']?.trim() ?? '') !== ''
+  if (onVercel && tokenSet) {
+    throw new EnvValidationError(
+      [
+        'CLAUDE_CODE_OAUTH_TOKEN: must not be set on Vercel. It lives on your PC, in ' +
+          'apps/llm-bridge/.env; the deployment reaches it through LLM_BRIDGE_URL.',
+      ],
+      [],
+    )
+  }
+}
+
 /** Whether a deferred group is fully configured — for UI status chips. */
 export function hasEnvGroup(group: DeferredGroup, source: EnvSource = process.env): boolean {
   try {
