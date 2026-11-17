@@ -100,6 +100,22 @@ bridge when you sign in to Windows, create a Task Scheduler task that runs
 Set Windows sleep to "Never" while the PC is plugged in, or runs will park
 whenever it sleeps.
 
+## Local runs on the subscription too
+
+`pnpm dev` and the exemplar translation script (`pnpm --filter
+@boom-busters/web live:exemplars`) read the repo's root `.env.local`. Add the
+bridge there as well, pointing straight at this machine:
+
+```dotenv
+LLM_BRIDGE_URL="http://127.0.0.1:8787"
+LLM_BRIDGE_SECRET="the same secret as in apps/llm-bridge/.env"
+```
+
+With the bridge running, the exemplar translation then runs on your plan and
+reports $0. If the bridge is not running, the script stops and says so rather
+than spending on `ANTHROPIC_API_KEY`. Remove the two lines to go back to the
+API key.
+
 ## What the bridge allows Claude to do
 
 Nothing but write text. Every call runs with:

@@ -11961,6 +11961,13 @@ owner edits. `--prod` was not run against Neon.
      The budget guard still reserves the API-price estimate before each call
      and settles at $0; with subscription calls at $0 the month's spend
      stays low enough that this is not worth special-casing.
-     Not done: `scripts/translate-exemplars.ts` still calls the API with
-     `ANTHROPIC_API_KEY`. Vercel's default install now downloads the SDK's
-     platform binary for the bridge package; it never enters the web bundle.
+     (e) `scripts/translate-exemplars.ts`, the one Anthropic caller outside
+     `llmAdapters()` and among the most expensive (long template in, long
+     design out, up to three calls per exemplar), follows the same rule: with
+     the bridge variables set in `.env.local` it wraps the adapter in
+     `withSubscriptionBridge`, records $0 against its `LiveBudget`, and stops
+     with the bridge's reason instead of falling back to `ANTHROPIC_API_KEY`.
+     `live-set-test.ts` and `live-plan-test.ts` call Gemini, which the
+     subscription cannot answer, and are unchanged.
+     Vercel's default install now downloads the SDK's platform binary for the
+     bridge package; it never enters the web bundle.
