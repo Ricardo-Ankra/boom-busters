@@ -401,6 +401,14 @@ export interface OpenBudgetGate {
   budgetUsd: number
   monthSpendUsd: number
   estimateUsd: number
+  /**
+   * Set when the run parked because the owner's PC could not take a Claude
+   * call (decision 469): 'offline', 'plan-limit' or 'auth'. The card then
+   * asks for a Resume instead of an overage.
+   */
+  bridgeReason: string | null
+  /** The reason in words, as the runner wrote it. */
+  message: string | null
   openedAt: Date
 }
 
@@ -457,6 +465,8 @@ export async function listOpenBudgetGates(
       budgetUsd: Number(data['budgetUsd'] ?? 0),
       monthSpendUsd: Number(data['monthSpendUsd'] ?? 0),
       estimateUsd: Number(data['estimateUsd'] ?? 0),
+      bridgeReason: typeof data['bridgeReason'] === 'string' ? data['bridgeReason'] : null,
+      message: typeof data['message'] === 'string' ? data['message'] : null,
       openedAt: row.openedAt,
     }
   })

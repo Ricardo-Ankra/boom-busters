@@ -22,6 +22,7 @@ import {
 import { budgetStatus, truncateLedger } from '@boom-busters/cost'
 import {
   BudgetExceededError,
+  SubscriptionBridgeUnavailableError,
   FIRST_CHANNEL_ID,
   monthKey,
   takeIdempotencyKey,
@@ -232,6 +233,34 @@ describeDb('gate helpers', () => {
       const [run] = await listRuns(db)
       expect(run?.status).toBe('running')
     })
+
+    it('says the PC is off, not over budget, when the subscription bridge parked it (decision 469)', async () => {
+      notify.mockClear()
+      const parked = new SubscriptionBridgeUnavailableError({
+        provider: 'anthropic',
+        operation: 'llm.research',
+        reason: 'offline',
+        message: 'Your PC did not answer.',
+      })
+      const ctx = context()
+      await openBudgetGate(ctx, budgetGateData(parked))
+
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
+      expect(gate).toMatchObject({ bridgeReason: 'offline', message: 'Your PC did not answer.' })
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Parked: waiting for your PC',
+          body: 'Your PC did not answer.',
+        }),
+      )
+    })
+
+    it('leaves the reason empty on a plain budget gate', async () => {
+      const ctx = context()
+      await openBudgetGate(ctx, budgetGateData(error))
+      const [gate] = await listOpenBudgetGates(db, FIRST_CHANNEL_ID)
+      expect(gate?.bridgeReason).toBeNull()
+    })
   })
 
   describe('grantOverage', () => {
@@ -257,6 +286,13 @@ describeDb('gate helpers', () => {
       await grantOverage(5)
       const { budgets } = (await getWorkspace(db)).settings
       expect(budgets.approvedOverage?.approvedAt).toBeTruthy()
+    })
+
+    it('treats $0 as a Resume and keeps the overage already approved (decision 469)', async () => {
+      await grantOverage(25)
+      await grantOverage(0)
+      const { budgets } = (await getWorkspace(db)).settings
+      expect(budgets.approvedOverage).toMatchObject({ month: monthKey(new Date()), usd: 25 })
     })
 
     it('does not apply to a different month', async () => {

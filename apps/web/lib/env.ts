@@ -1,4 +1,4 @@
-import { getEnv } from '@boom-busters/schemas'
+import { assertNoSubscriptionTokenOnServer, getEnv } from '@boom-busters/schemas'
 import 'server-only'
 
 /**
@@ -8,3 +8,7 @@ import 'server-only'
  * environment throws `EnvValidationError` naming every missing variable.
  */
 export const env = getEnv()
+
+// The Claude subscription token lives on the owner's PC, never on a
+// deployment (decision 469). Checked at the same moment as the rest of boot.
+assertNoSubscriptionTokenOnServer()

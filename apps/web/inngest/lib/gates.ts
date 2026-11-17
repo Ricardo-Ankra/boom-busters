@@ -8,7 +8,7 @@ import {
   updateWorkspace,
 } from '@boom-busters/db'
 import type { ProjectStage } from '@boom-busters/db'
-import { monthKey } from '@boom-busters/schemas'
+import { monthKey, SubscriptionBridgeUnavailableError } from '@boom-busters/schemas'
 import type { BudgetExceededError, GateStage, NoticeSubject } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
 import { channelHref } from '@/lib/channel-href'
@@ -157,6 +157,9 @@ export function budgetGateData(error: BudgetExceededError): Record<string, unkno
      * (audit, decision 234). The error already says it best.
      */
     message: error.message,
+    // The PC that answers on the Claude subscription could not take the call
+    // (decision 469): the card asks for a Resume, not an overage.
+    ...(error instanceof SubscriptionBridgeUnavailableError ? { bridgeReason: error.reason } : {}),
   }
 }
 
@@ -169,21 +172,26 @@ export async function openBudgetGate(
   const { slug } = await channelForProject(db, ctx.projectId)
   const runId = await runRowId(ctx)
 
+  const bridgeParked = gate['bridgeReason'] !== undefined
+
   await recordRunEvent(db, {
     runId,
     kind: 'gate.opened',
-    message: `Over budget on ${String(gate['provider'])} — approve the overage or abort`,
+    message: bridgeParked
+      ? `Parked: your PC could not take the Claude call. ${String(gate['message'])}`
+      : `Over budget on ${String(gate['provider'])} — approve the overage or abort`,
     data: gate,
   })
   await setRunStatus(db, runId, 'awaiting_gate')
 
   await notify({
     kind: 'budget-gate',
-    title: 'Over budget',
-    body:
-      `${String(gate['provider'])} needs $${Number(gate['estimateUsd']).toFixed(4)} ` +
-      `against a $${Number(gate['budgetUsd']).toFixed(2)} cap.`,
-    href: channelHref(slug, '/costs'),
+    title: bridgeParked ? 'Parked: waiting for your PC' : 'Over budget',
+    body: bridgeParked
+      ? String(gate['message'])
+      : `${String(gate['provider'])} needs $${Number(gate['estimateUsd']).toFixed(4)} ` +
+        `against a $${Number(gate['budgetUsd']).toFixed(2)} cap.`,
+    href: bridgeParked ? `/projects/${ctx.projectId}` : channelHref(slug, '/costs'),
   })
 }
 
@@ -206,6 +214,10 @@ export async function closeBudgetGate(ctx: GateContext, message: string): Promis
  * same number, and so it expires with the month.
  */
 export async function grantOverage(additionalUsd: number, now: Date = new Date()): Promise<void> {
+  // A $0 approval is the Resume of a run parked on the subscription bridge
+  // (decision 469). Writing it would replace, not add to, an overage the owner
+  // already approved this month, so it changes nothing.
+  if (additionalUsd <= 0) return
   await updateWorkspace(db, {
     budgets: {
       approvedOverage: {
