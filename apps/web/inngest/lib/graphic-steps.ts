@@ -2,6 +2,7 @@ import { getShotSlot, updateSlotBrief } from '@boom-busters/db'
 import type { NewShotSlot } from '@boom-busters/db'
 import { BudgetExceededError, ChartBriefSchema, GraphicBriefSchema } from '@boom-busters/schemas'
 import type { DesignableBrief } from '@boom-busters/schemas'
+import type { AnswerRetry } from '@/lib/answer'
 import { db } from '@/lib/db'
 import {
   designGraphic,
@@ -75,7 +76,7 @@ export async function designPlannedGraphics(
       brief.type === 'chart' ? `${input.prefix}-chart-${charts}` : `${input.prefix}-${graphics}`
     if (brief.type === 'chart') charts += 1
     else graphics += 1
-    const outcome = await run(id, async () => {
+    const design = (options: { firstOnly: true } | { resume: AnswerRetry }) => async () => {
       try {
         const result = await designGraphic(
           { ...input.context, chapterTitle: input.chapterTitle },
@@ -85,15 +86,27 @@ export async function designPlannedGraphics(
             durationMs: row.durationMs,
             brief,
           },
+          options,
         )
-        return { ok: true as const, brief: withDesign(brief, result) }
+        return {
+          ok: true as const,
+          brief: withDesign(brief, result),
+          ...(!result.ok && result.retry ? { retry: result.retry } : {}),
+        }
       } catch (error) {
         if (error instanceof BudgetExceededError) {
           return { ok: false as const, gate: budgetGateData(error) }
         }
         throw error
       }
-    })
+    }
+    // The first answer, and the retry it earned in a step of its own with a
+    // fresh 240 s (decision 470, after 461): two Opus answers never fit one.
+    // A run parked on this step before the deploy replays an outcome with no
+    // `retry`, so it goes on as it did.
+    const first = await run(id, design({ firstOnly: true }))
+    const outcome =
+      first.ok && first.retry ? await run(`${id}-retry`, design({ resume: first.retry })) : first
     if (!outcome.ok) return { ok: false, gate: outcome.gate }
     if (outcome.brief.designIssue !== undefined) undesigned += 1
     let designed = outcome.brief

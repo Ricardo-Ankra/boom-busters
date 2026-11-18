@@ -233,6 +233,35 @@ describeDb('slot-retyper (mock mode)', () => {
     }
   })
 
+  it('makes the retry the first answer earned in a step of its own, holding the marker between (decision 470)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    const retry = { call: 'retry: refused' as const, issue: '"WeWork" is set at 24 px' }
+    let between: unknown = 'not read'
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: retry.issue, retry })
+      .mockImplementationOnce(async (...args) => {
+        between = (await getShotSlot(db, slotId))?.retype
+        return real(...args)
+      })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(spy.mock.calls[0]![2]).toEqual({ firstOnly: true })
+      expect(spy.mock.calls[1]![2]).toEqual({ resume: retry })
+      // Nothing landed between the two steps: the card still says drafting.
+      expect(between).toEqual({ state: 'drafting', target: 'graphic' })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.brief).toHaveProperty('code')
+      expect(slot?.brief).not.toHaveProperty('designIssue')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the reason on the brief when the designer refuses a retyped graphic', async () => {
     const design = await import('@/lib/graphic-design')
     const refuse = vi

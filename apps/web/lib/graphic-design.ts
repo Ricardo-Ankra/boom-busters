@@ -9,6 +9,7 @@ import {
 } from '@boom-busters/providers'
 import { resolveBrandKit, resolveMotionIdentity } from '@boom-busters/schemas'
 import type { DesignableBrief, TechniqueKey } from '@boom-busters/schemas'
+import type { AnswerRetry } from '@/lib/answer'
 import { db } from '@/lib/db'
 import { criticReferencesFor } from '@/lib/critic-references'
 import { channelTechniquesInUse, exemplarFromApproved } from '@/lib/exemplar-entries'
@@ -94,7 +95,18 @@ export async function channelExemplarFor(
 export async function designGraphic(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { guidance?: string; redesign?: boolean } = {},
+  options: {
+    guidance?: string
+    redesign?: boolean
+    /**
+     * One answer only, the retry it earns handed back as `retry` (decision
+     * 470, after 461): two Opus answers do not fit one step's 240 s, so the
+     * caller makes the retry in a step of its own through `resume`.
+     */
+    firstOnly?: boolean
+    /** Only the retry an earlier step's first answer earned. */
+    resume?: AnswerRetry
+  } = {},
 ): Promise<GraphicDesignResult> {
   // Read here, inside the step that designs, so the bible is the project's frozen one and never
   // an earlier step's memoised copy. The gate sits before the mock branch.

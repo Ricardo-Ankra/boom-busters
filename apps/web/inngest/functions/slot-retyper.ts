@@ -30,7 +30,7 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
-import { callForAnswer, type Answer } from '@/lib/answer'
+import { callForAnswer, type Answer, type AnswerRetry } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
@@ -268,7 +268,12 @@ export const slotRetyper = inngest.createFunction(
     // no design (decision 295); the designer writes either in a step of its
     // own.
     if (targetType === 'graphic' || targetType === 'chart') {
-      const designed = await step.run('design-graphic', async () => {
+      /**
+       * One designer answer per step (decision 470, after 461): two Opus
+       * answers never fit one step's 240 s, so a first answer that earns a
+       * retry hands it back unlanded and the retry runs in a step of its own.
+       */
+      const design = (options: { firstOnly: true } | { resume: AnswerRetry }) => async () => {
         const slot = await getShotSlot(db, slotId)
         if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
         const brief = designableBrief(slot)
@@ -293,12 +298,18 @@ export const slotRetyper = inngest.createFunction(
         }
         try {
           const context = await loadGraphicContext(projectId, slot.chapterId)
-          const result = await designGraphic(context, {
-            chapterId: slot.chapterId,
-            startMs: slot.startMs,
-            durationMs: slot.durationMs,
-            brief,
-          })
+          const result = await designGraphic(
+            context,
+            {
+              chapterId: slot.chapterId,
+              startMs: slot.startMs,
+              durationMs: slot.durationMs,
+              brief,
+            },
+            options,
+          )
+          // The drafting marker stays while the retry is still to come.
+          if (!result.ok && result.retry) return { ok: true as const, retry: result.retry }
           await land(result)
           return { ok: true as const }
         } catch (error) {
@@ -311,7 +322,13 @@ export const slotRetyper = inngest.createFunction(
           }
           throw error
         }
-      })
+      }
+      // A run parked on this step before the deploy replays no `retry`.
+      const first = await step.run('design-graphic', design({ firstOnly: true }))
+      const designed =
+        first.ok && 'retry' in first && first.retry
+          ? await step.run('design-graphic-retry', design({ resume: first.retry }))
+          : first
       if (!designed.ok) {
         // The brief's design issue is the card's "Not designed" line, so no
         // notice repeats it (decision 294).

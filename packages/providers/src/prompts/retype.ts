@@ -38,6 +38,17 @@ import type { LLMTaskRequest } from '../llm/types'
  * message travels to the board as the action's error.
  */
 
+/**
+ * A retype to graphic is the producer's call (decision 470). The model may
+ * still refuse a beat no claim supports, but never because another type
+ * would suit it better: on the WeWork film both chart-to-graphic retypes came
+ * back "a value moving through time belongs in a chart".
+ */
+export const GRAPHIC_IS_THE_PRODUCERS_CHOICE = `The producer chose a graphic for this beat, and the choice is theirs. A
+series of values through time can be a graphic too: the figures counting
+through their years, a before and after, a timeline of dated values. Never
+refuse because another type, a chart included, would suit the beat better.`
+
 export interface RetypeInput {
   /** The channel bible the project froze: its worked examples for charts and maps. */
   bible: BibleInUse
@@ -102,7 +113,9 @@ with real coordinates. "route" is true only when the story MOVES between
 them in order ([[example:shotlist-map-route-example]]).`
         : `${GRAPHIC_INTENT_SHAPE}
 
-${GRAPHIC_INTENT_RULES}`
+${GRAPHIC_INTENT_RULES}
+
+${GRAPHIC_IS_THE_PRODUCERS_CHOICE}`
 
   return {
     task: 'shotlist',
@@ -118,8 +131,11 @@ currently has a brief of type "${input.brief.type}"; the producer wants the
 same story beat expressed as type "${input.targetType}" instead.`
       }
 
-Return JSON: {"brief": {...}} — or {"error": "one sentence why"} if this
-beat cannot honestly be a ${input.targetType}.
+Return JSON: {"brief": {...}} — or {"error": "one sentence why"} ${
+        input.targetType === 'graphic'
+          ? 'only if no claim\nin the list supports what this beat says.'
+          : `if this\nbeat cannot honestly be a ${input.targetType}.`
+      }
 
 The new brief keeps the slot's place in the film: reuse "coversText"
 EXACTLY as given, keep "motion" and "transition" unless the new type makes

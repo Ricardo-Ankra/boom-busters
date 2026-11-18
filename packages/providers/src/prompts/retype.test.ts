@@ -8,7 +8,12 @@ import {
 import type { ShotBrief } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import type { Repair } from './repair'
-import { buildRetypeRequest, mockRetypedBrief, parseRetypedBrief } from './retype'
+import {
+  buildRetypeRequest,
+  GRAPHIC_IS_THE_PRODUCERS_CHOICE,
+  mockRetypedBrief,
+  parseRetypedBrief,
+} from './retype'
 import { GRAPHIC_INTENT_RULES } from './shotlist'
 
 const CLAIM_A = '01HQ00000000000000000000AA'
@@ -114,6 +119,32 @@ describe('buildRetypeRequest', () => {
     expect(request.system).not.toContain('"kind": "figure"')
     expect(request.system).not.toContain('12 by 12 grid')
     expect(request.messages[0]?.content).toContain('Wirecard AG')
+  })
+
+  it("takes a retype to graphic as the producer's choice, refusable only for want of a claim (decision 470)", () => {
+    const request = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'WeWork',
+      brief: still,
+      targetType: 'graphic',
+      claims,
+    })
+    expect(request.system).toContain(GRAPHIC_IS_THE_PRODUCERS_CHOICE)
+    expect(request.system).not.toMatch(/fewer points/)
+    expect(request.system).not.toMatch(/cannot honestly be a graphic/)
+    expect(request.system.replace(/\s+/g, ' ')).toContain(
+      'only if no claim in the list supports what this beat says',
+    )
+    // A chart may still refuse on its own honest grounds.
+    const chart = buildRetypeRequest({
+      bible: FIRST_CHANNEL_IN_USE,
+      caseTitle: 'WeWork',
+      brief: still,
+      targetType: 'chart',
+      claims,
+    })
+    expect(chart.system.replace(/\s+/g, ' ')).toContain('cannot honestly be a chart')
+    expect(chart.system).not.toContain(GRAPHIC_IS_THE_PRODUCERS_CHOICE)
   })
 
   it('offers no "pan": the renderer cannot do one', () => {

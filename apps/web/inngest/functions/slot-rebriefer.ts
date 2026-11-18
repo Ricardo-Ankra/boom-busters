@@ -32,7 +32,7 @@ import type { ShotBrief } from '@boom-busters/schemas'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { designGraphic, loadGraphicContext, withDesign } from '@/lib/graphic-design'
-import { callForAnswer, type Answer } from '@/lib/answer'
+import { callForAnswer, type Answer, type AnswerRetry } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { recordRepairs } from '@/lib/notices'
 import { requireVisualKeys, resolveSlotBrief } from '@/lib/visual-assets'
@@ -94,6 +94,58 @@ export async function rebriefReferences(projectId: string): Promise<{
   }
 }
 
+/**
+ * One designer answer for Redesign graphic or Redesign chart (decisions 289,
+ * 295): the intent or the series stay, and the designer writes the code again
+ * from them, the current code and the steer. A refusal leaves the design the
+ * card already shows.
+ *
+ * One answer per step (decision 470, after 461): two Opus answers never fit
+ * one step's 240 s, so the first answer is made with `firstOnly`, and one that
+ * earns a retry hands it back, writing nothing, for `redesign-retry` to make
+ * in a step of its own through `resume`.
+ */
+async function redesignSlot(input: {
+  slotId: string
+  slot: { chapterId: string; startMs: number; durationMs: number }
+  brief: Extract<ShotBrief, { type: 'graphic' | 'chart' }>
+  projectId: string
+  resolveNow: boolean
+  guidance: string | undefined
+  options: { firstOnly: true } | { resume: AnswerRetry }
+}) {
+  const { slotId, slot, brief, guidance } = input
+  try {
+    const context = await loadGraphicContext(input.projectId, slot.chapterId)
+    const result = await designGraphic(
+      context,
+      { chapterId: slot.chapterId, startMs: slot.startMs, durationMs: slot.durationMs, brief },
+      { redesign: true, ...(guidance === undefined ? {} : { guidance }), ...input.options },
+    )
+    if (!result.ok && result.retry) {
+      return {
+        ok: true as const,
+        resolveNow: input.resolveNow,
+        designed: true as const,
+        retry: result.retry,
+      }
+    }
+    if (!result.ok) {
+      // The bare reason; the card words it.
+      await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: result.issue })
+      return { ok: false as const, refused: result.issue }
+    }
+    await updateSlotBrief(db, slotId, withDesign(brief, result))
+    await setSlotRetype(db, slotId, null)
+    return { ok: true as const, resolveNow: input.resolveNow, designed: true as const }
+  } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      return { ok: false as const, gate: budgetGateData(error) }
+    }
+    throw error
+  }
+}
+
 export const slotRebriefer = inngest.createFunction(
   {
     id: FUNCTION_ID,
@@ -131,7 +183,7 @@ export const slotRebriefer = inngest.createFunction(
     const { projectId, slotId, guidance } = parseEventData('visuals/rebrief.requested', event.data)
     const ctx: GateContext = { inngestRunId: runId, functionId: FUNCTION_ID, projectId }
 
-    const drafted = await step.run('draft-brief', async () => {
+    const first = await step.run('draft-brief', async () => {
       const slot = await getShotSlot(db, slotId)
       if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
 
@@ -165,36 +217,15 @@ export const slotRebriefer = inngest.createFunction(
       // from them, the current code and the steer. A refusal leaves the
       // design the card already shows.
       if (brief.type === 'graphic' || brief.type === 'chart') {
-        try {
-          const context = await loadGraphicContext(projectId, slot.chapterId)
-          const result = await designGraphic(
-            context,
-            {
-              chapterId: slot.chapterId,
-              startMs: slot.startMs,
-              durationMs: slot.durationMs,
-              brief,
-            },
-            { redesign: true, ...(guidance === undefined ? {} : { guidance }) },
-          )
-          if (!result.ok) {
-            // The bare reason; the card words it.
-            await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: result.issue })
-            return { ok: false as const, refused: result.issue }
-          }
-          await updateSlotBrief(db, slotId, withDesign(brief, result))
-          await setSlotRetype(db, slotId, null)
-          return {
-            ok: true as const,
-            resolveNow: project.visualsPhase === 'board',
-            designed: true as const,
-          }
-        } catch (error) {
-          if (error instanceof BudgetExceededError) {
-            return { ok: false as const, gate: budgetGateData(error) }
-          }
-          throw error
-        }
+        return redesignSlot({
+          slotId,
+          slot,
+          brief,
+          projectId,
+          resolveNow: project.visualsPhase === 'board',
+          guidance,
+          options: { firstOnly: true },
+        })
       }
 
       let answer: Answer<ShotBrief>
@@ -287,6 +318,32 @@ export const slotRebriefer = inngest.createFunction(
       await recordRepairs({ projectId, subject: 'slot', subjectId: slotId }, answer.repairs)
       return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
     })
+
+    // The redesign's retry, when its first answer earned one (decision 470).
+    // A run parked on `draft-brief` before the deploy replays no `retry`.
+    const drafted =
+      first.ok && 'retry' in first && first.retry
+        ? await step.run('redesign-retry', async () => {
+            const slot = await getShotSlot(db, slotId)
+            if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
+            const current = ShotBriefSchema.safeParse(slot.brief)
+            if (
+              !current.success ||
+              (current.data.type !== 'graphic' && current.data.type !== 'chart')
+            ) {
+              throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic or a chart`)
+            }
+            return redesignSlot({
+              slotId,
+              slot,
+              brief: current.data,
+              projectId,
+              resolveNow: first.resolveNow,
+              guidance,
+              options: { resume: first.retry },
+            })
+          })
+        : first
 
     if (!drafted.ok) {
       if ('gate' in drafted && drafted.gate) {
