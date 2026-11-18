@@ -12114,3 +12114,34 @@ owner edits. `--prod` was not run against Neon.
      claims keep their physical order, which a row update between two steps
      could change (a fact then cites the wrong number and is refused). 25
      captured designer prompts gained only the new rule.
+473. **The designer gets the whole output ceiling; the bridge reports a continued
+     answer as cut off** (2026-11-18, owner: "This error is now coming up alot:
+     The model returned malformed JSON for graphic code: Expected property name
+     or '}' in JSON at position 1"; branch `worktree-chart-design-retry`, no
+     migration: a Vercel deploy, `PUT /api/inngest`, and the bridge checkout
+     moved and restarted).
+     (a) Six of nine Redesigns after 472 landed. The three failures (2/7, 2/9,
+     the 5/2 chart) were answers of 511 to 2,775 characters that used 16,000
+     to 17,000 output tokens. Read back from the bridge's job cache, each was
+     the tail of the JSON's `source` string ("4000), c, 1, unit)}…"); the
+     reader found a `{` in that code and failed at position 1.
+     (b) The cause: the designer asked for `outputBudget(12000)`, 16,000 with
+     4,000 to think, and Opus thought for 8,000 to 25,000 tokens. At
+     `CLAUDE_CODE_MAX_OUTPUT_TOKENS` Claude Code asks the model to carry on in
+     a further message, the bridge ignored the `max_output_tokens` notice, and
+     the SDK's `result` is the last message only. Joining the messages was
+     tried and dropped: a live probe (Haiku, a 1,000-token cap) showed the
+     continuation restart the JSON in a new fence, repeating part of the last
+     item.
+     (c) The bridge reports `truncated: true` when any top-level assistant
+     message hit `max_output_tokens`, as the API adapter reports `max_tokens`.
+     The answer ladder then treats the reply as cut off, never as malformed.
+     (d) `GRAPHIC_THINKING_TOKENS = 20_000`: the designer asks for
+     `outputBudget(12000, 20000)`, the 32,000 ceiling. A ceiling costs nothing
+     unused. A cut-off at the ceiling ends the attempt at once ("cut off at its
+     length limit"): there is no bigger budget to double to, so the
+     designer's cut-off retry is gone and its tests now say so. 25 captured
+     prompts changed only `maxTokens` (16000 to 32000).
+     (e) Not changed: the critic, the review's fix call and every other task
+     keep their budgets; the reservation each design makes before its call
+     doubles with the budget and settles at $0 on the subscription.
