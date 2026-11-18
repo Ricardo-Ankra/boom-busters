@@ -12007,3 +12007,30 @@ owner edits. `--prod` was not run against Neon.
      multi-series years axis to racing-chart). The channel's Motion settings
      leave donut-chart and racing-chart out of its techniques in use, so a
      chart never reaches them however they are approved.
+471. **The designer's side jobs wait in Inngest, not at the bridge**
+     (2026-11-18, owner: "there's a lot of errors coming from timeout errors
+     where it says the designer took longer than 240s"; branch
+     `worktree-chart-design-retry`, no migration: a Vercel deploy and
+     `PUT /api/inngest`).
+     (a) After decision 470 went live, 8 Redesigns pressed between 14:47 and
+     14:55 UTC ended mostly "no answer came back within 240 s". The bridge's
+     log starts its clock when a call gets one of its slots
+     (`LLM_BRIDGE_CONCURRENCY`, 3 on the owner's PC), while the app's 240 s
+     start when the request is sent: lines like "abandoned by the app after
+     26039 ms" were calls that had queued about 214 s. A few did get a slot
+     at once and still ran 238 and 246 s. An aborted call writes no ledger
+     row, so the ledger's 64 to 204 s had hidden every call that ran over.
+     (b) The bridge on the owner's PC now runs 8 calls at a time (its
+     `apps/llm-bridge/.env`; restarted, Funnel smoke passed). The code
+     default stays 3.
+     (c) `DESIGNER_SIDE_JOBS_CONCURRENCY` (`graphic-steps.ts`):
+     `{ scope: 'env', key: '"graphics-designer-side-jobs"', limit: 5 }` on
+     the slot-rebriefer and the slot-retyper, beside their singletons. An
+     Inngest concurrency limit holds a step before it executes, so a burst of
+     Redesigns waits there and its 240 s start only with a place; five leaves
+     the bridge three for the pipeline, a derive and every other call. The
+     function test checks both carry the identical value, as Inngest asks of
+     a shared key.
+     (d) Not changed: the 240 s itself (the route's `maxDuration` is 300 s)
+     and the designer's thinking; the rare single answer over 240 s still
+     ends "took too long".

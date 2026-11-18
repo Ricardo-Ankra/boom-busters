@@ -38,7 +38,11 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
-import { designableBrief, reviewStoredGraphic } from '../lib/graphic-steps'
+import {
+  designableBrief,
+  DESIGNER_SIDE_JOBS_CONCURRENCY,
+  reviewStoredGraphic,
+} from '../lib/graphic-steps'
 import { toScriptClaim } from '@/lib/script-claim'
 
 /**
@@ -74,6 +78,8 @@ export const slotRetyper = inngest.createFunction(
     // A double-fired request cancels the one it duplicates, so it is never
     // paid for twice over (decision 233, amended).
     singleton: { key: 'event.data.slotId', mode: 'cancel' },
+    // A burst waits in Inngest, not at the bridge (decision 471).
+    concurrency: [DESIGNER_SIDE_JOBS_CONCURRENCY],
     cancelOn: [
       {
         event: 'project/cancelled',

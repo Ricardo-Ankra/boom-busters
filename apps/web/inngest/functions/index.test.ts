@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest'
+import { DESIGNER_SIDE_JOBS_CONCURRENCY } from '../lib/graphic-steps'
 import { functions } from './index'
 
 /**
@@ -131,5 +132,35 @@ describe('function singletons (decision 233)', () => {
       .map((singleton) => singleton.mode)
     expect(modes.length).toBeGreaterThan(0)
     expect([...new Set(modes)]).toEqual(['cancel'])
+  })
+})
+
+describe("the designer's side jobs share one limit (decision 471)", () => {
+  const concurrencyOf = (fn: (typeof functions)[number]) =>
+    (fn as unknown as { opts: { concurrency?: unknown } }).opts.concurrency
+
+  it('holds a burst of Redesigns and retypes in Inngest, not at the bridge', () => {
+    const sharing = functions
+      .filter((fn) => {
+        const concurrency = concurrencyOf(fn)
+        return (
+          Array.isArray(concurrency) &&
+          concurrency.some(
+            (option: { key?: string }) => option.key === DESIGNER_SIDE_JOBS_CONCURRENCY.key,
+          )
+        )
+      })
+      .map((fn) => fn.id())
+      .sort()
+    expect(sharing).toEqual(['slot-rebriefer', 'slot-retyper'])
+    // Inngest asks every function on a shared key to pass the same scope and limit.
+    for (const fn of functions.filter((f) => sharing.includes(f.id()))) {
+      expect(concurrencyOf(fn)).toContainEqual(DESIGNER_SIDE_JOBS_CONCURRENCY)
+    }
+    expect(DESIGNER_SIDE_JOBS_CONCURRENCY).toEqual({
+      scope: 'env',
+      key: '"graphics-designer-side-jobs"',
+      limit: 5,
+    })
   })
 })

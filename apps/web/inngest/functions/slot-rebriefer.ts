@@ -40,7 +40,7 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
-import { reviewStoredGraphic } from '../lib/graphic-steps'
+import { DESIGNER_SIDE_JOBS_CONCURRENCY, reviewStoredGraphic } from '../lib/graphic-steps'
 import { toScriptClaim } from '@/lib/script-claim'
 
 /**
@@ -154,6 +154,8 @@ export const slotRebriefer = inngest.createFunction(
     // One re-brief per slot at a time; a double-fired request cancels the one
     // it duplicates, so it is never paid for twice over.
     singleton: { key: 'event.data.slotId', mode: 'cancel' },
+    // A burst of Redesigns waits in Inngest, not at the bridge (decision 471).
+    concurrency: [DESIGNER_SIDE_JOBS_CONCURRENCY],
     cancelOn: [
       {
         event: 'project/cancelled',
