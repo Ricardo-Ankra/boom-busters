@@ -11,6 +11,7 @@ import {
   type BridgeCompleteResponse,
   type BridgeErrorBody,
   type BridgeErrorKind,
+  type BridgeJob,
 } from '@boom-busters/providers/llm'
 
 /**
@@ -50,9 +51,39 @@ export interface BridgeServerOptions {
   log?: (line: string) => void
   /** Base64 images make bodies large; anything past this is refused unread. */
   maxBodyBytes?: number
+  /** How long a job's finished answer waits to be collected (decision 472). */
+  resultTtlMs?: number
+  /** The longest one job may run before it is stopped, counted from its creation. */
+  jobTimeoutMs?: number
+  /** How long a job may go with no request holding it before it is stopped. */
+  idleAbandonMs?: number
 }
 
 const DEFAULT_MAX_BODY_BYTES = 32 * 1024 * 1024
+const DEFAULT_RESULT_TTL_MS = 30 * 60 * 1000
+const DEFAULT_JOB_TIMEOUT_MS = 15 * 60 * 1000
+
+/**
+ * How long a job may go with no request holding it before it is stopped. An
+ * app step that comes back to collect arrives within seconds, or after it
+ * queued behind the designer's concurrency limit (a step's 240 s at most), so
+ * this is longer than both; a run cancelled or given up never comes back.
+ */
+const DEFAULT_IDLE_ABANDON_MS = 5 * 60 * 1000
+
+/** A job's state: `settled` once it has an answer or a failure; `done` resolves then. */
+interface Job {
+  settled:
+    { ok: true; answer: BridgeCompleteResponse } | { ok: false; error: BridgeCallError } | undefined
+  done: Promise<void>
+  abort: AbortController
+  /** Why the bridge stopped it, when it did. */
+  stopped: 'timeout' | 'abandoned' | undefined
+  /** Requests holding it now. */
+  holders: number
+  /** Runs while no request holds it and the answer is not in. */
+  idle: ReturnType<typeof setTimeout> | undefined
+}
 
 /** First come, first served; `release` must be called exactly once per `acquire`. */
 function semaphore(limit: number) {
@@ -115,6 +146,9 @@ export function createBridgeServer(options: BridgeServerOptions): Server {
   const now = options.now ?? Date.now
   const log = options.log ?? ((line: string) => process.stdout.write(`${line}\n`))
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES
+  const resultTtlMs = options.resultTtlMs ?? DEFAULT_RESULT_TTL_MS
+  const jobTimeoutMs = options.jobTimeoutMs ?? DEFAULT_JOB_TIMEOUT_MS
+  const idleAbandonMs = options.idleAbandonMs ?? DEFAULT_IDLE_ABANDON_MS
   const slots = semaphore(options.concurrency)
 
   function authorised(request: IncomingMessage, path: string, body: string): boolean {
@@ -131,6 +165,146 @@ export function createBridgeServer(options: BridgeServerOptions): Server {
         now(),
       ) === 'ok'
     )
+  }
+
+  /**
+   * Jobs (decision 472): a call that runs to its end on the PC whatever
+   * happens to the request that started it. The app's step holds a request
+   * open only as long as Vercel lets it, so an answer that takes longer is
+   * collected by the same key from a later step. A finished answer is kept
+   * for `resultTtlMs`; a failure is handed over once and then forgotten, so a
+   * Resume after a spent plan or a refused token runs the call again.
+   */
+  const jobs = new Map<string, Job>()
+
+  function startJob(key: string, call: BridgeCompleteRequest): Job {
+    const job: Job = {
+      settled: undefined,
+      done: Promise.resolve(),
+      abort: new AbortController(),
+      stopped: undefined,
+      holders: 0,
+      idle: undefined,
+    }
+    const { signal } = job.abort
+    // Counted from creation, so a job queued for a slot is bounded too.
+    const cap = setTimeout(() => stop(job, 'timeout'), jobTimeoutMs)
+    cap.unref?.()
+    job.done = (async () => {
+      const release = await slots.acquire()
+      const startedAt = now()
+      try {
+        // Given up while it queued: never start a Claude process for it.
+        if (signal.aborted) throw new Error('stopped before it started')
+        const answer = await options.complete(call, signal)
+        job.settled = { ok: true, answer }
+        log(
+          `[bridge] job ${call.request.task} on ${call.model}: ok in ${now() - startedAt} ms ` +
+            `(${answer.usage.inputTokens} in, ${answer.usage.outputTokens} out)`,
+        )
+      } catch (error) {
+        const failure =
+          error instanceof BridgeCallError && !signal.aborted
+            ? error
+            : new BridgeCallError(
+                'upstream',
+                job.stopped === 'timeout'
+                  ? `the job ran past ${jobTimeoutMs} ms and was stopped`
+                  : job.stopped === 'abandoned'
+                    ? `no request asked for the job for ${idleAbandonMs} ms, so it was stopped`
+                    : error instanceof Error
+                      ? error.message
+                      : String(error),
+              )
+        job.settled = { ok: false, error: failure }
+        log(`[bridge] job ${call.request.task}: ${failure.kind} (${failure.message})`)
+      } finally {
+        clearTimeout(cap)
+        if (job.idle) clearTimeout(job.idle)
+        release()
+        // An abandoned job is nobody's: forget it now. Any other result waits
+        // to be collected.
+        if (job.stopped === 'abandoned') {
+          if (jobs.get(key) === job) jobs.delete(key)
+        } else {
+          const expiry = setTimeout(() => {
+            if (jobs.get(key) === job) jobs.delete(key)
+          }, resultTtlMs)
+          expiry.unref?.()
+        }
+      }
+    })()
+    return job
+  }
+
+  function stop(job: Job, why: 'timeout' | 'abandoned'): void {
+    if (job.settled || job.stopped) return
+    job.stopped = why
+    job.abort.abort()
+  }
+
+  /**
+   * A request stopped holding the job. When none is left and the answer is
+   * not in, the app has `idleAbandonMs` to come back for it (its next step
+   * may queue behind the concurrency limit for a while); a run that was
+   * cancelled or gave up never does, and its job then stops, freeing its slot.
+   */
+  function letGo(job: Job): void {
+    job.holders -= 1
+    if (job.holders > 0 || job.settled) return
+    if (job.idle) clearTimeout(job.idle)
+    job.idle = setTimeout(() => stop(job, 'abandoned'), idleAbandonMs)
+    job.idle.unref?.()
+  }
+
+  async function answerJob(
+    call: BridgeCompleteRequest,
+    spec: BridgeJob,
+    response: ServerResponse,
+  ): Promise<void> {
+    let job = jobs.get(spec.key)
+    if (!job) {
+      job = startJob(spec.key, call)
+      jobs.set(spec.key, job)
+    }
+    job.holders += 1
+    if (job.idle) {
+      clearTimeout(job.idle)
+      job.idle = undefined
+    }
+    try {
+      if (!job.settled) {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let onClose: (() => void) | undefined
+        await Promise.race([
+          job.done,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, spec.holdMs)
+            // The app stopped listening: stop holding for it.
+            onClose = resolve
+            response.on('close', onClose)
+          }),
+        ])
+        clearTimeout(timer)
+        if (onClose) response.off('close', onClose)
+      }
+    } finally {
+      letGo(job)
+    }
+    // The app stopped listening; the job carries on for the next request.
+    if (response.destroyed || response.writableEnded) return
+    const settled = job.settled
+    if (!settled) {
+      sendJson(response, 202, { pending: true })
+      return
+    }
+    if (settled.ok) {
+      sendJson(response, 200, settled.answer)
+      return
+    }
+    // A failure is handed over once: the next request with this key starts afresh.
+    if (jobs.get(spec.key) === job) jobs.delete(spec.key)
+    sendError(response, settled.error.kind, settled.error.message, settled.error.status)
   }
 
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -176,6 +350,11 @@ export function createBridgeServer(options: BridgeServerOptions): Server {
       parsed = result.data
     } catch {
       sendError(response, 'invalid', 'request body is not JSON')
+      return
+    }
+
+    if (parsed.job) {
+      await answerJob(parsed, parsed.job, response)
       return
     }
 
