@@ -344,6 +344,7 @@ export const visualsReplanner = inngest.createFunction(
             paragraphs: setup.paragraphs,
           },
           chapterTitle: chapter.title,
+          runId,
         })
         if (!designed.ok) {
           await step.run(`replan-graphic-${index}-over-budget`, () =>

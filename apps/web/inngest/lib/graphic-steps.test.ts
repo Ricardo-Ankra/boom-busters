@@ -12,7 +12,7 @@ vi.mock('@/lib/graphic-design', async (importOriginal) => ({
   reviewGraphic: (...args: unknown[]) => reviewGraphic(...args),
 }))
 
-import { designPlannedGraphics } from './graphic-steps'
+import { DESIGN_COLLECTS_MAX, designPlannedGraphics, GAVE_UP_ISSUE } from './graphic-steps'
 
 const graphic = (coversText: string) => ({
   chapterId: 'c1',
@@ -229,6 +229,74 @@ describe('designPlannedGraphics (decisions 289, 295)', () => {
     expect(result).toMatchObject({ ok: true, undesigned: 1 })
     if (!result.ok) throw new Error('unreachable')
     expect(result.rows[0]!.brief).toMatchObject({ designIssue: 'second' })
+  })
+
+  it('collects an answer the bridge was still writing in the next steps, under one job name (decision 472)', async () => {
+    const pending = { ok: false, issue: 'still writing', pending: true }
+    designGraphic
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ok: true, code: CODE })
+    const ids: string[] = []
+    const result = await designPlannedGraphics(
+      async (id, fn) => {
+        ids.push(id)
+        return fn()
+      },
+      {
+        prefix: 'graphic-0',
+        rows: [graphic('a')] as never,
+        context: CONTEXT,
+        chapterTitle: 'One',
+        runId: 'run-1',
+      },
+    )
+    expect(ids).toEqual([
+      'graphic-0-0',
+      'graphic-0-0-collect-1',
+      'graphic-0-0-collect-2',
+      'graphic-0-0-review',
+    ])
+    // Every step of the attempt asks under the same job name, so it collects that answer.
+    for (const call of designGraphic.mock.calls) {
+      expect(call[2]).toEqual({ firstOnly: true, bridgeJobScope: 'run-1/graphic-0-0' })
+    }
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.rows[0]!.brief).toMatchObject({ code: CODE })
+    expect(result).toMatchObject({ undesigned: 0 })
+  })
+
+  it('says so on the slot when every collect is still writing (decision 472)', async () => {
+    designGraphic.mockResolvedValue({ ok: false, issue: 'still writing', pending: true })
+    const ids: string[] = []
+    const result = await designPlannedGraphics(
+      async (id, fn) => {
+        ids.push(id)
+        return fn()
+      },
+      {
+        prefix: 'graphic-0',
+        rows: [graphic('a')] as never,
+        context: CONTEXT,
+        chapterTitle: 'One',
+        runId: 'run-1',
+      },
+    )
+    expect(ids).toHaveLength(1 + DESIGN_COLLECTS_MAX)
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.rows[0]!.brief).toMatchObject({ designIssue: GAVE_UP_ISSUE })
+    expect(result).toMatchObject({ undesigned: 1 })
+  })
+
+  it('names no job without a run, so a call runs as before (decision 472)', async () => {
+    designGraphic.mockResolvedValueOnce({ ok: true, code: CODE })
+    await designPlannedGraphics(async (_id, fn) => fn(), {
+      prefix: 'graphic-0',
+      rows: [graphic('a')] as never,
+      context: CONTEXT,
+      chapterTitle: 'One',
+    })
+    expect(designGraphic.mock.calls[0]![2]).toEqual({ firstOnly: true })
   })
 
   it('leaves a chart that already carries code alone (decision 295)', async () => {

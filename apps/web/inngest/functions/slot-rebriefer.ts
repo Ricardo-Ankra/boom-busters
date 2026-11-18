@@ -40,7 +40,13 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { requireCompleteBible } from '../lib/channel'
 import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from '../lib/gates'
-import { DESIGNER_SIDE_JOBS_CONCURRENCY, reviewStoredGraphic } from '../lib/graphic-steps'
+import {
+  DESIGN_COLLECTS_MAX,
+  DESIGNER_SIDE_JOBS_CONCURRENCY,
+  GAVE_UP_ISSUE,
+  reviewStoredGraphic,
+  untilAnswered,
+} from '../lib/graphic-steps'
 import { toScriptClaim } from '@/lib/script-claim'
 
 /**
@@ -113,6 +119,8 @@ async function redesignSlot(input: {
   resolveNow: boolean
   guidance: string | undefined
   options: { firstOnly: true } | { resume: AnswerRetry }
+  /** The attempt's bridge job, named for the run and its first step (decision 472). */
+  bridgeJobScope: string
 }) {
   const { slotId, slot, brief, guidance } = input
   try {
@@ -120,8 +128,22 @@ async function redesignSlot(input: {
     const result = await designGraphic(
       context,
       { chapterId: slot.chapterId, startMs: slot.startMs, durationMs: slot.durationMs, brief },
-      { redesign: true, ...(guidance === undefined ? {} : { guidance }), ...input.options },
+      {
+        redesign: true,
+        ...(guidance === undefined ? {} : { guidance }),
+        ...input.options,
+        bridgeJobScope: input.bridgeJobScope,
+      },
     )
+    // Still being written on the bridge (decision 472): write nothing, collect it next.
+    if (!result.ok && result.pending) {
+      return {
+        ok: true as const,
+        resolveNow: input.resolveNow,
+        designed: true as const,
+        pending: true as const,
+      }
+    }
     if (!result.ok && result.retry) {
       return {
         ok: true as const,
@@ -227,6 +249,7 @@ export const slotRebriefer = inngest.createFunction(
           resolveNow: project.visualsPhase === 'board',
           guidance,
           options: { firstOnly: true },
+          bridgeJobScope: `${runId}/draft-brief`,
         })
       }
 
@@ -321,31 +344,66 @@ export const slotRebriefer = inngest.createFunction(
       return { ok: true as const, resolveNow: project.visualsPhase === 'board' }
     })
 
-    // The redesign's retry, when its first answer earned one (decision 470).
-    // A run parked on `draft-brief` before the deploy replays no `retry`.
+    /**
+     * A redesign step after `draft-brief` (decisions 470, 472): the slot read
+     * again, and the attempt made or collected. The same scope as the step
+     * that started the attempt, so a collect gets that attempt's answer.
+     */
+    const redesignStep =
+      (
+        options: { firstOnly: true } | { resume: AnswerRetry },
+        scope: string,
+        resolveNow: boolean,
+      ) =>
+      async () => {
+        const slot = await getShotSlot(db, slotId)
+        if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
+        const current = ShotBriefSchema.safeParse(slot.brief)
+        if (
+          !current.success ||
+          (current.data.type !== 'graphic' && current.data.type !== 'chart')
+        ) {
+          throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic or a chart`)
+        }
+        return redesignSlot({
+          slotId,
+          slot,
+          brief: current.data,
+          projectId,
+          resolveNow,
+          guidance,
+          options,
+          bridgeJobScope: `${runId}/${scope}`,
+        })
+      }
+
+    // The first answer, collected over further steps while the bridge is
+    // still writing it (decision 472); then the retry it earned (decision
+    // 470), the same way. A run parked on these steps before a deploy replays
+    // no `retry` and no `pending`.
+    let answered: typeof first = first
+    for (let n = 1; answered.ok && 'pending' in answered && n <= DESIGN_COLLECTS_MAX; n += 1) {
+      answered = await step.run(
+        `draft-brief-collect-${n}`,
+        redesignStep({ firstOnly: true }, 'draft-brief', answered.resolveNow),
+      )
+    }
+    const retried =
+      answered.ok && 'retry' in answered && answered.retry
+        ? await untilAnswered(
+            (id, fn) => step.run(id, fn) as never,
+            'redesign-retry',
+            redesignStep({ resume: answered.retry }, 'redesign-retry', answered.resolveNow),
+          )
+        : answered
+    // Every collect came back still writing: the card says so, the old design stays.
     const drafted =
-      first.ok && 'retry' in first && first.retry
-        ? await step.run('redesign-retry', async () => {
-            const slot = await getShotSlot(db, slotId)
-            if (!slot) throw new NonRetriableError(`Shot slot ${slotId} no longer exists`)
-            const current = ShotBriefSchema.safeParse(slot.brief)
-            if (
-              !current.success ||
-              (current.data.type !== 'graphic' && current.data.type !== 'chart')
-            ) {
-              throw new NonRetriableError(`Shot slot ${slotId} is no longer a graphic or a chart`)
-            }
-            return redesignSlot({
-              slotId,
-              slot,
-              brief: current.data,
-              projectId,
-              resolveNow: first.resolveNow,
-              guidance,
-              options: { resume: first.retry },
-            })
+      retried.ok && 'pending' in retried
+        ? await step.run('redesign-gave-up', async () => {
+            await setSlotRetype(db, slotId, { state: 'rebrief-refused', reason: GAVE_UP_ISSUE })
+            return { ok: false as const, refused: GAVE_UP_ISSUE }
           })
-        : first
+        : retried
 
     if (!drafted.ok) {
       if ('gate' in drafted && drafted.gate) {

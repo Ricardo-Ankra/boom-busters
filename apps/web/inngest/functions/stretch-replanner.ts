@@ -228,6 +228,7 @@ export const stretchReplanner = inngest.createFunction(
           paragraphs: setup.paragraphs,
         },
         chapterTitle,
+        runId,
       })
       if (!designed.ok) {
         await step.run('graphic-over-budget', () =>

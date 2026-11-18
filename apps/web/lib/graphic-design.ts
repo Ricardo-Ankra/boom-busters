@@ -106,6 +106,8 @@ export async function designGraphic(
     firstOnly?: boolean
     /** Only the retry an earlier step's first answer earned. */
     resume?: AnswerRetry
+    /** Each call as a bridge job, named for this run and step (decision 472). */
+    bridgeJobScope?: string
   } = {},
 ): Promise<GraphicDesignResult> {
   // Read here, inside the step that designs, so the bible is the project's frozen one and never

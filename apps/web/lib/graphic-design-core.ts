@@ -16,6 +16,7 @@ import {
   parseGraphicCode,
   techniqueFor,
   wordsInSlot,
+  type BridgeJobOption,
   type CriticPlan,
   type CriticReference,
   type Exemplar,
@@ -26,6 +27,7 @@ import {
   type ScriptClaim,
 } from '@boom-busters/providers'
 import {
+  BridgeAnswerPending,
   BudgetExceededError,
   DEFAULT_MOTION_IDENTITY,
   graphicIntentOf,
@@ -105,6 +107,12 @@ export type GraphicDesignResult =
       nearMiss?: { code: GraphicCode; issue: string }
       /** With `firstOnly`: the retry the first answer earned, for the caller's next step (decision 461). */
       retry?: AnswerRetry
+      /**
+       * The bridge is still writing this call's answer (decision 472): not an
+       * outcome. The caller asks again with the same options in a later step,
+       * which collects the answer, and stores nothing until then.
+       */
+      pending?: true
     }
 
 /**
@@ -113,7 +121,7 @@ export type GraphicDesignResult =
  */
 export type GraphicCompleteFn = (
   request: LLMTaskRequest,
-  options: { signal?: AbortSignal; purpose?: string },
+  options: { signal?: AbortSignal; purpose?: string; bridgeJob?: BridgeJobOption },
 ) => Promise<{ text: string; truncated?: boolean }>
 
 /** The paragraphs a slot overlaps, and its words on the slot clock, as the prompt and the dry run read them. */
@@ -182,6 +190,14 @@ function currentDesign(code: GraphicCode): NonNullable<GraphicDesignInput['curre
 export const GRAPHIC_DESIGN_DEADLINE_MS = 240_000
 /** Less than this left: a call would only be aborted, so none is started. */
 const MIN_CALL_MS = 15_000
+/**
+ * What a bridge job leaves of the deadline for the checks (decision 472):
+ * the scan, compile, dry run and the browser's layout check. An answer not in
+ * by then is collected in the next step, which has the whole 240 s for them.
+ */
+export const CHECKS_RESERVE_MS = 75_000
+/** A pending design's issue; never stored, since the answer is still coming. */
+export const STILL_WRITING_ISSUE = 'the designer is still writing; its answer is collected next'
 /**
  * What an inspection leaves of the deadline, for the step to write its
  * outcome; with less than `FRAMES_MIN_MS` to spend, no inspection starts and
@@ -448,6 +464,15 @@ export async function designGraphicWith(
     firstOnly?: boolean
     /** Make only this retry: the first answer was made and failed in an earlier step. */
     resume?: AnswerRetry
+    /**
+     * Run each call as a job on the subscription bridge (decision 472): the
+     * attempt's name, unique to this run and step (the call's label is added).
+     * The bridge holds the call only while the checks still have time after
+     * it; past that the design comes back `pending`, the job keeps running on
+     * the PC, and the same options in a later step collect its answer. The
+     * same scope must be passed for every step of one attempt.
+     */
+    bridgeJobScope?: string
   } & FramesOptions,
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
@@ -475,6 +500,14 @@ export async function designGraphicWith(
     return complete(request, {
       signal: AbortSignal.timeout(remaining),
       ...(label === 'answer' ? {} : { purpose: label }),
+      ...(options.bridgeJobScope
+        ? {
+            bridgeJob: {
+              scope: `${options.bridgeJobScope}:${label}`,
+              holdMs: Math.max(0, remaining - CHECKS_RESERVE_MS),
+            },
+          }
+        : {}),
     })
   }
   const inspect = inspector(context, slot, checkSlot, options, deadline)
@@ -525,6 +558,11 @@ export async function designGraphicWith(
       ...(answer.retry ? { retry: answer.retry } : {}),
     }
   } catch (error) {
+    // The bridge is still writing (decision 472): nothing to store, ask again.
+    if (error instanceof BridgeAnswerPending) {
+      options.log?.(`still writing: ${error.jobKey}`)
+      return { ok: false, issue: STILL_WRITING_ISSUE, pending: true }
+    }
     // The clock's end keeps a near miss already paid for (decision 461).
     const kept = nearMiss ? { nearMiss } : {}
     if (error instanceof DesignEnded) return { ok: false, issue: error.issue, ...kept }

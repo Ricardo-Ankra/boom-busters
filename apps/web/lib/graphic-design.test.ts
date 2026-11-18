@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  BridgeAnswerPending,
   BudgetExceededError,
   ChartBriefSchema,
   FIRST_CHANNEL_IN_USE,
@@ -127,7 +128,14 @@ vi.mock('./graphic-code/compile', async (importOriginal) => {
 })
 
 import { graphicCodeIssue } from './graphic-code/check'
-import { criticPlanOf, photographForCritic, slotIntent, slotTechnique } from './graphic-design-core'
+import {
+  CHECKS_RESERVE_MS,
+  criticPlanOf,
+  photographForCritic,
+  slotIntent,
+  slotTechnique,
+  STILL_WRITING_ISSUE,
+} from './graphic-design-core'
 import { DEFAULT_MOTION_IDENTITY } from '@boom-busters/schemas'
 import {
   channelExemplarFor,
@@ -1201,6 +1209,54 @@ describe('the layout check in the design (decision 389)', () => {
           `its first answer was refused: ${LAYOUT}, and the second did not come back within the 240 s`,
         ),
       })
+    })
+  })
+
+  describe('as a bridge job (decision 472)', () => {
+    it('names each call for its attempt and holds it only while the checks keep their time', async () => {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        bridgeJobScope: 'run-1/graphic-0-0',
+      })
+      expect(result.ok).toBe(true)
+      const [, options] = complete.mock.calls[0]!
+      expect(options.bridgeJob.scope).toBe('run-1/graphic-0-0:answer')
+      // A fresh step: the deadline less what the checks keep for themselves.
+      expect(options.bridgeJob.holdMs).toBeGreaterThan(
+        GRAPHIC_DESIGN_DEADLINE_MS - CHECKS_RESERVE_MS - 5_000,
+      )
+      expect(options.bridgeJob.holdMs).toBeLessThanOrEqual(
+        GRAPHIC_DESIGN_DEADLINE_MS - CHECKS_RESERVE_MS,
+      )
+    })
+
+    it('names a resumed retry for its own call', async () => {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        bridgeJobScope: 'run-1/graphic-0-0-retry',
+        resume: { call: 'retry: refused', issue: 'too small' },
+      })
+      expect(complete.mock.calls[0]![1].bridgeJob.scope).toBe(
+        'run-1/graphic-0-0-retry:retry: refused',
+      )
+    })
+
+    it('comes back pending, storing nothing, while the bridge is still writing', async () => {
+      const complete = vi.fn().mockRejectedValue(new BridgeAnswerPending('run-1:answer:abc'))
+      const result = await designGraphicWith(complete, CONTEXT, SLOT, {
+        bible: FIRST_CHANNEL_IN_USE,
+        bridgeJobScope: 'run-1/graphic-0-0',
+        firstOnly: true,
+      })
+      expect(result).toEqual({ ok: false, issue: STILL_WRITING_ISSUE, pending: true })
+    })
+
+    it('sends no job without a scope, as before', async () => {
+      const complete = vi.fn().mockResolvedValue(answer('$4bn'))
+      await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
+      expect(complete.mock.calls[0]![1]).not.toHaveProperty('bridgeJob')
     })
   })
 

@@ -32,6 +32,45 @@ export const DESIGNER_SIDE_JOBS_CONCURRENCY = {
 export type StepRunner = <T>(id: string, fn: () => Promise<T>) => Promise<T>
 
 /**
+ * How many more steps may come back for one attempt's answer while the
+ * bridge is still writing it (decision 472). Each holds the call up to 165 s,
+ * so with the first that is about 14 minutes, inside the bridge's 15-minute
+ * limit on a job.
+ */
+export const DESIGN_COLLECTS_MAX = 4
+
+/** What a slot says when the bridge had still not answered after every collect. */
+export const GAVE_UP_ISSUE =
+  'the designer took too long (no answer after about 14 minutes); press Redesign to try again'
+
+/**
+ * One designer attempt over as many steps as its answer needs (decision 472):
+ * `id` asks; while the bridge is still writing, `<id>-collect-<n>` asks again
+ * with the same options, which collects the answer the moment it exists and
+ * leaves that step the whole 240 s for the checks. The outcome after the last
+ * collect may still be pending; the caller says so on the slot.
+ */
+export async function untilAnswered<T>(
+  run: StepRunner,
+  id: string,
+  attempt: () => Promise<T>,
+): Promise<T> {
+  let outcome = await run(id, attempt)
+  for (let n = 1; isPending(outcome) && n <= DESIGN_COLLECTS_MAX; n += 1) {
+    outcome = await run(`${id}-collect-${n}`, attempt)
+  }
+  return outcome
+}
+
+function isPending(outcome: unknown): boolean {
+  return (
+    typeof outcome === 'object' &&
+    outcome !== null &&
+    (outcome as { pending?: unknown }).pending === true
+  )
+}
+
+/**
  * The brief the designer writes for (decision 295): a graphic's or a chart's,
  * as its own schema reads it. Null for any other row, or one that no longer
  * parses.
@@ -72,6 +111,11 @@ export async function designPlannedGraphics(
     rows: readonly NewShotSlot[]
     context: Omit<GraphicDesignContext, 'chapterTitle'>
     chapterTitle: string
+    /**
+     * The Inngest run, which names each attempt's bridge job (decision 472).
+     * Absent, each call runs as before, held to one step's 240 s.
+     */
+    runId?: string
   },
 ): Promise<
   | { ok: true; rows: NewShotSlot[]; undesigned: number }
@@ -91,38 +135,48 @@ export async function designPlannedGraphics(
       brief.type === 'chart' ? `${input.prefix}-chart-${charts}` : `${input.prefix}-${graphics}`
     if (brief.type === 'chart') charts += 1
     else graphics += 1
-    const design = (options: { firstOnly: true } | { resume: AnswerRetry }) => async () => {
-      try {
-        const result = await designGraphic(
-          { ...input.context, chapterTitle: input.chapterTitle },
-          {
-            chapterId: row.chapterId,
-            startMs: row.startMs,
-            durationMs: row.durationMs,
-            brief,
-          },
-          options,
-        )
-        return {
-          ok: true as const,
-          brief: withDesign(brief, result),
-          ...(!result.ok && result.retry ? { retry: result.retry } : {}),
+    const design =
+      (options: { firstOnly: true } | { resume: AnswerRetry }, scope: string) => async () => {
+        try {
+          const result = await designGraphic(
+            { ...input.context, chapterTitle: input.chapterTitle },
+            {
+              chapterId: row.chapterId,
+              startMs: row.startMs,
+              durationMs: row.durationMs,
+              brief,
+            },
+            input.runId ? { ...options, bridgeJobScope: `${input.runId}/${scope}` } : options,
+          )
+          // Still being written on the bridge: nothing to keep yet (decision 472).
+          if (!result.ok && result.pending) return { ok: true as const, pending: true as const }
+          return {
+            ok: true as const,
+            brief: withDesign(brief, result),
+            ...(!result.ok && result.retry ? { retry: result.retry } : {}),
+          }
+        } catch (error) {
+          if (error instanceof BudgetExceededError) {
+            return { ok: false as const, gate: budgetGateData(error) }
+          }
+          throw error
         }
-      } catch (error) {
-        if (error instanceof BudgetExceededError) {
-          return { ok: false as const, gate: budgetGateData(error) }
-        }
-        throw error
       }
-    }
     // The first answer, and the retry it earned in a step of its own with a
     // fresh 240 s (decision 470, after 461): two Opus answers never fit one.
-    // A run parked on this step before the deploy replays an outcome with no
-    // `retry`, so it goes on as it did.
-    const first = await run(id, design({ firstOnly: true }))
+    // Each is collected over further steps while the bridge is still writing
+    // it (decision 472). A run parked on these steps before a deploy replays
+    // outcomes with neither `retry` nor `pending`, so it goes on as it did.
+    const first = await untilAnswered(run, id, design({ firstOnly: true }, id))
+    const second =
+      first.ok && 'retry' in first && first.retry
+        ? await untilAnswered(run, `${id}-retry`, design({ resume: first.retry }, `${id}-retry`))
+        : first
+    if (!second.ok) return { ok: false, gate: second.gate }
     const outcome =
-      first.ok && first.retry ? await run(`${id}-retry`, design({ resume: first.retry })) : first
-    if (!outcome.ok) return { ok: false, gate: outcome.gate }
+      'pending' in second
+        ? { brief: withDesign(brief, { ok: false, issue: GAVE_UP_ISSUE }) }
+        : second
     if (outcome.brief.designIssue !== undefined) undesigned += 1
     let designed = outcome.brief
     if (designed.code && !designed.code.review) {

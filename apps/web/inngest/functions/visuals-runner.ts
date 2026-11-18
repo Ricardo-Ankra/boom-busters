@@ -270,6 +270,7 @@ export const visualsRunner = inngest.createFunction(
             paragraphs: setup.paragraphs,
           },
           chapterTitle: chapter.title,
+          runId,
         })
         if (!designed.ok) {
           await step.run(`graphic-${index}-over-budget`, () => markStageFailed(ctx, designed.gate))
