@@ -11971,3 +11971,39 @@ owner edits. `--prod` was not run against Neon.
      subscription cannot answer, and are unchanged.
      Vercel's default install now downloads the SDK's platform binary for the
      bridge package; it never enters the web bundle.
+470. **The project designer's retry in a step of its own; a retype to graphic
+     is the producer's choice** (2026-11-18, owner: "the shot type of chart is
+     selected for a lot of cases, but it is not using the exemplars that we
+     have. Then when I try change to a motion graphic for some, it says a
+     chart is best"; branch `worktree-chart-design-retry`, no migration: a
+     Vercel deploy and `PUT /api/inngest`).
+     (a) Read of the WeWork project (read only, granted): 28 designable slots,
+     2 charts and 26 graphics, and 21 of them with no design, each "the
+     designer took too long". Every Boom & Busters chart exemplar is
+     approved and `techniqueFor` picked `line-chart` for both line charts,
+     so the exemplar choice was right; the designs never landed, and a chart
+     with no code plays the old `ChartReveal`. The ledger: every graphics
+     call on Opus 5.5 took 64 to 204 s. A first answer refused (text at 24 or
+     26 px, malformed JSON, a figure not in its claim) left too little of the
+     240 s for its retry. Decision 461 found the same for the derive and left
+     the project designer untouched.
+     (b) `designGraphic` passes `firstOnly` and `resume` through. The
+     pipeline (`designPlannedGraphics`) makes the first answer in `<id>` and
+     a retry it earned in `<id>-retry`; the retyper in `design-graphic` and
+     `design-graphic-retry`, holding its drafting marker between them; the
+     rebriefer (Redesign graphic, Redesign chart) in `draft-brief` and
+     `redesign-retry`, which re-reads the slot and stops if it is no longer
+     a graphic or chart. A run parked on the old step replays an outcome with
+     no `retry` and goes on as before.
+     (c) Both WeWork chart-to-graphic retypes were refused with the shared
+     graphic rules' own sentence ("a value moving through time belongs in a
+     chart"). That sentence moves to `GRAPHIC_NOT_A_CHART`, sent by the shot
+     list (and the repair and stretch prompts built on it) alone. A retype to
+     graphic adds `GRAPHIC_IS_THE_PRODUCERS_CHOICE` and may refuse only when no
+     claim supports the beat. Thirteen captured prompts were updated; a word
+     diff showed only these sentences moved.
+     (d) Not changed: chart technique choice by kind (line and area to
+     line-chart, bar with two or more series to comparison-chart, a long
+     multi-series years axis to racing-chart). The channel's Motion settings
+     leave donut-chart and racing-chart out of its techniques in use, so a
+     chart never reaches them however they are approved.
