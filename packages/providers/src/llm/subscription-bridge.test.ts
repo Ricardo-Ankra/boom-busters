@@ -1,4 +1,5 @@
 import {
+  BridgeAnswerPending,
   isGated,
   isRetriable,
   SubscriptionBridgeUnavailableError,
@@ -260,5 +261,67 @@ describe('withSubscriptionBridge (decision 469)', () => {
     expect(verify).toHaveBeenCalledWith('sk-ant-stored', undefined)
     expect(calls).not.toHaveBeenCalled()
     expect(adapter.models).toBe(base.models)
+  })
+})
+
+describe('a call run as a job (decision 472)', () => {
+  const jobOf = (seen: Seen[]) =>
+    (JSON.parse(seen.find((s) => s.url.endsWith('/complete'))!.body) as { job?: unknown }).job
+
+  it('sends no job when the caller asks for none, as before', async () => {
+    const { impl, seen } = fakeFetch({})
+    await bridged(impl).adapter.complete(request, options)
+    expect(jobOf(seen)).toBeUndefined()
+  })
+
+  it('keys the job on the attempt and the model, and passes the hold', async () => {
+    const { impl, seen } = fakeFetch({})
+    const { adapter } = bridged(impl)
+    const bridgeJob = { scope: 'run-1/graphic-0-0:answer', holdMs: 165_000 }
+
+    const result = await adapter.complete(request, { ...options, bridgeJob })
+
+    expect(result.text).toBe(answer.text)
+    const job = jobOf(seen) as { key: string; holdMs: number }
+    expect(job.holdMs).toBe(165_000)
+    expect(job.key).toBe('run-1/graphic-0-0:answer@claude-opus-5')
+
+    // A request rebuilt in a later step from replayed, key-sorted data is the
+    // same attempt: it must collect the same job, not start another.
+    await adapter.complete({ ...request, system: 'Rebuilt.' }, { ...options, bridgeJob })
+    await adapter.complete(request, {
+      ...options,
+      bridgeJob: { ...bridgeJob, scope: 'run-1/graphic-0-0-retry:retry: refused' },
+    })
+    const keys = seen
+      .filter((s) => s.url.endsWith('/complete'))
+      .map((s) => (JSON.parse(s.body) as { job: { key: string } }).job.key)
+    expect(keys[1]).toBe(keys[0])
+    expect(keys[2]).not.toBe(keys[0])
+  })
+
+  it('caps the hold at what the bridge accepts', async () => {
+    const { impl, seen } = fakeFetch({})
+    await bridged(impl).adapter.complete(request, {
+      ...options,
+      bridgeJob: { scope: 's', holdMs: 900_000 },
+    })
+    expect((jobOf(seen) as { holdMs: number }).holdMs).toBe(280_000)
+  })
+
+  it('throws BridgeAnswerPending on a 202, which nothing retries or parks', async () => {
+    const { impl } = fakeFetch({
+      complete: () => Response.json({ pending: true }, { status: 202 }),
+    })
+    const { adapter } = bridged(impl)
+
+    const error = await adapter
+      .complete(request, { ...options, bridgeJob: { scope: 'run-1:answer', holdMs: 1000 } })
+      .catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(BridgeAnswerPending)
+    expect((error as BridgeAnswerPending).jobKey).toBe('run-1:answer@claude-opus-5')
+    expect(isRetriable(error)).toBe(false)
+    expect(isGated(error)).toBe(false)
   })
 })

@@ -34,6 +34,25 @@ const MsgSchema = z.object({
   images: z.array(ImageSchema).optional(),
 })
 
+/** The longest a bridge holds a job's request open before it answers "still running". */
+export const BRIDGE_JOB_HOLD_MAX_MS = 280_000
+
+/**
+ * A call the bridge runs as a job (decision 472): it keeps running on the PC
+ * whether or not the request that started it is still open, and the same key
+ * collects its answer later. The bridge holds the request up to `holdMs` for
+ * the answer, then replies 202 with `{ pending: true }`. A finished answer is
+ * kept for a while, so a later request with the same key gets it at once.
+ * A bridge from before decision 472 drops the field and answers as it always
+ * has, so either end can be updated first.
+ */
+export const BridgeJobSchema = z.object({
+  key: z.string().min(1).max(300),
+  holdMs: z.number().int().nonnegative().max(BRIDGE_JOB_HOLD_MAX_MS),
+})
+
+export type BridgeJob = z.infer<typeof BridgeJobSchema>
+
 /** `LLMTaskRequest` as it crosses the wire. `useBatch` stays behind: the bridge has no batch mode. */
 export const BridgeCompleteRequestSchema = z.object({
   model: z.string().min(1),
@@ -44,7 +63,11 @@ export const BridgeCompleteRequestSchema = z.object({
     maxTokens: z.number().int().positive(),
     cacheablePrefixMessages: z.number().int().nonnegative().optional(),
   }),
+  job: BridgeJobSchema.optional(),
 })
+
+/** A job's reply when its answer is not ready within the hold (HTTP 202). */
+export const BridgePendingResponseSchema = z.object({ pending: z.literal(true) })
 
 export type BridgeCompleteRequest = z.infer<typeof BridgeCompleteRequestSchema>
 

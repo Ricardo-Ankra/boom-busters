@@ -1,4 +1,5 @@
 import {
+  BridgeAnswerPending,
   ContentPolicyError,
   SubscriptionBridgeUnavailableError,
   ValidationError,
@@ -342,6 +343,34 @@ describe('subscription answers (decision 469)', () => {
     ).rejects.toBe(parked)
 
     expect(anthropic.calls).toHaveLength(1)
+    expect(google.calls).toHaveLength(0)
+  })
+})
+
+describe('a bridge job (decision 472)', () => {
+  it('hands the job to the adapter, and never retries or falls back on a pending answer', async () => {
+    const pending = new BridgeAnswerPending('run-1:answer:abc')
+    const complete = vi.fn(async () => {
+      throw pending
+    })
+    const google = createMockLLM({}, 'google')
+    const anthropic = { ...createMockLLM(), complete }
+    const bridgeJob = { scope: 'run-1:answer', holdMs: 1000 }
+
+    await expect(
+      route(
+        config({
+          adapters: { anthropic, google },
+          credentials: { anthropic: 'key-a', google: 'key-g' },
+          fallbackChain: ['google'],
+        }),
+        request,
+        { bridgeJob },
+      ),
+    ).rejects.toBe(pending)
+
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(complete).toHaveBeenCalledWith(request, expect.objectContaining({ bridgeJob }))
     expect(google.calls).toHaveLength(0)
   })
 })
