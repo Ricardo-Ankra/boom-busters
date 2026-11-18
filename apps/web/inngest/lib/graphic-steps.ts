@@ -13,6 +13,21 @@ import {
 } from '@/lib/graphic-design'
 import { budgetGateData } from './gates'
 
+/**
+ * The designer's side jobs (Redesign through the rebriefer, a retype to
+ * graphic or chart) share one environment-wide limit of executing steps
+ * (decision 471). A step that waits for a place is held by Inngest before it
+ * starts, so its 240 s never begin; without the limit a burst of Redesigns
+ * queued at the subscription bridge (8 calls at a time) and spent the
+ * deadline there. Five leaves the bridge room for the pipeline, a derive and
+ * every other call. Every function that uses it must pass this same value.
+ */
+export const DESIGNER_SIDE_JOBS_CONCURRENCY = {
+  scope: 'env',
+  key: '"graphics-designer-side-jobs"',
+  limit: 5,
+} as const
+
 /** `step.run`, as the helper needs it; the runners pass `(id, fn) => step.run(id, fn)`. */
 export type StepRunner = <T>(id: string, fn: () => Promise<T>) => Promise<T>
 
