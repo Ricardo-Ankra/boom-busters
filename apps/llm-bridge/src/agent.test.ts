@@ -193,6 +193,34 @@ describe('completeOnSubscription (decision 469)', () => {
     expect(captured[0]!.options.abortController?.signal.aborted).toBe(true)
   })
 
+  describe('an answer past the output cap (decision 473)', () => {
+    const said = (id: string, text: string, error?: string) =>
+      ({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        ...(error ? { error } : {}),
+        message: { id, content: [{ type: 'text', text }] },
+      }) as unknown as SDKMessage
+
+    it('says cut off when Claude Code had to carry the answer on', async () => {
+      // WeWork: the first message hit the cap mid-code; `result` held the rest only.
+      const tail = '</div> }"}'
+      const { deps: d } = deps([
+        said('msg_1', '{"concept": "x", "source": "function G() {', 'max_output_tokens'),
+        said('msg_2', tail),
+        success({ result: tail }),
+      ])
+      const answer = await completeOnSubscription(d, input, new AbortController().signal)
+      expect(answer.truncated).toBe(true)
+    })
+
+    it('says nothing of the kind for an answer that fit', async () => {
+      const { deps: d } = deps([said('msg_1', '{"answer":true}'), success()])
+      const answer = await completeOnSubscription(d, input, new AbortController().signal)
+      expect(answer).toMatchObject({ text: '{"answer":true}', truncated: false })
+    })
+  })
+
   it('carries on through an ordinary allowed rate-limit notice', async () => {
     const { deps: d } = deps([
       {

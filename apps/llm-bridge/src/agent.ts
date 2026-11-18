@@ -227,11 +227,23 @@ export async function completeOnSubscription(
   let result: SDKResultMessage | undefined
   let assistantError: string | undefined
   let limit: BridgeCallError | undefined
+  /**
+   * The answer reached `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (decision 473). Claude
+   * Code then asks the model to carry on in a further message, and `result`
+   * holds only that last message: a long WeWork design came back as the last
+   * 511 to 2,775 characters of its code, which the app read as "malformed
+   * JSON ... at position 1". The pieces cannot be joined either: a live probe
+   * showed the continuation restart the JSON in a new fence, repeating part
+   * of the last item. So the answer is reported cut off, as the API adapter
+   * reports `max_tokens`, and the caller's cut-off retry asks again with more.
+   */
+  let hitOutputCap = false
 
   try {
     const stream = deps.query({ prompt: promptFor(request.messages), options })
     for await (const message of stream as AsyncIterable<SDKMessage>) {
       if (message.type === 'assistant' && message.parent_tool_use_id === null) {
+        if (message.error === 'max_output_tokens') hitOutputCap = true
         if (message.error && message.error !== 'max_output_tokens') assistantError = message.error
       } else if (message.type === 'rate_limit_event') {
         const info = message.rate_limit_info
@@ -299,6 +311,6 @@ export async function completeOnSubscription(
       ...(written > 0 ? { cacheWriteInputTokens: written } : {}),
     },
     model,
-    truncated: result.stop_reason === 'max_tokens',
+    truncated: result.stop_reason === 'max_tokens' || hitOutputCap,
   }
 }
