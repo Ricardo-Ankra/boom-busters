@@ -17,6 +17,7 @@ import {
   parseShotRepairAnswers,
   referencesPrefix,
   GRAPHIC_INTENT_RULES,
+  GRAPHIC_NOT_A_CHART,
   SHOT_LIST_FLOOR_TOKENS,
 } from './shotlist'
 import { MIN_SHOT_RULE } from './stretch'
@@ -303,9 +304,16 @@ describe('the graphic shot (decision 268, Plan B)', () => {
     )
     expect(rules).toContain('a designer writes it afterwards')
     expect(rules).not.toContain('one or two cited figures')
-    expect(rules).toContain(
+  })
+
+  it('draws the line between a graphic and a chart in the shot list alone (decision 470)', () => {
+    // The shared rules also go to a retype to graphic, where the line read as
+    // a reason to refuse the producer's choice.
+    expect(GRAPHIC_INTENT_RULES).not.toMatch(/fewer points/)
+    expect(GRAPHIC_NOT_A_CHART.replace(/\s+/g, ' ')).toContain(
       'never a chart with fewer points: a value moving through time is a "chart"',
     )
+    expect(buildShotListRequest(baseRequest()).system).toContain(GRAPHIC_NOT_A_CHART)
   })
 
   it('says nothing about logos when the library is empty', () => {

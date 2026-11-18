@@ -57,11 +57,19 @@ export const GRAPHIC_INTENT_SHAPE = `{"type": "graphic", "coversText", "descript
 
 export const GRAPHIC_INTENT_RULES = `A "graphic" is for a beat a motion designer would build: a figure, a comparison, a
   timeline of dated moments, a diagram of who did what to whom, or a kinetic restatement of
-  the narration's key phrase. It is never a chart with fewer points: a value moving through
-  time is a "chart". You do not design it: a designer writes it afterwards from your
+  the narration's key phrase. You do not design it: a designer writes it afterwards from your
   "intent" (what the viewer must take away, not how it looks) and the claims you list in
   "intentRefs". "intentRefs" lists at most ${GRAPHIC_INTENT_REFS_MAX} claim numbers: the claims its figures or names
   come from, most important first. "intent" is at most ${GRAPHIC_INTENT_MAX} characters.`
+
+/**
+ * The planner's own line between a graphic and a chart (decision 470). The
+ * shot list alone says it: a retype to graphic is the producer's choice, and
+ * this sentence there gave the model a reason to refuse it ("a value moving
+ * through time belongs in a chart").
+ */
+export const GRAPHIC_NOT_A_CHART = `A graphic is never a chart with fewer points: a value moving through
+  time is a "chart".`
 
 export interface ShotParagraph {
   index: number
@@ -382,6 +390,7 @@ ${peopleRules(input.bible)}${sets.length > 0 ? SET_RULES : ''}  Never quote the 
   Cite the claim NUMBER marked X POST in the list above; any other claim has no post behind it.
   Never write the post's words, the account's name, its handle or the date: the app reads them from the post.
 - ${GRAPHIC_INTENT_RULES}
+  ${GRAPHIC_NOT_A_CHART}
 - Narration may contain bracketed tags — [pause], [sighs]. They are direction
   for the narrator, not content; never plan a visual around one and never quote
   one in "coversText".
