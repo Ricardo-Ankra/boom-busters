@@ -474,7 +474,9 @@ describe('buildGraphicRequest (decision 295)', () => {
     expect(request.messages).toHaveLength(2)
     expect(request.cacheablePrefixMessages).toBe(1)
     expect(GRAPHIC_ANSWER_TOKENS).toBe(12_000)
-    expect(request.maxTokens).toBe(outputBudget(12_000))
+    // Room to think as Opus does on a design (decision 473): the whole ceiling.
+    expect(request.maxTokens).toBe(outputBudget(12_000, 20_000))
+    expect(request.maxTokens).toBe(32_000)
   })
 
   it('keeps the film message identical across two slots of one film', () => {

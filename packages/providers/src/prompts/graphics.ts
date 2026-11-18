@@ -51,6 +51,15 @@ export { GRAPHIC_CODE_FIXTURE_SOURCE }
 export const GRAPHIC_ANSWER_TOKENS = 12_000
 
 /**
+ * The designer's room to think (decision 473), on top of the answer: the
+ * whole of `MAX_OUTPUT_TOKENS` with the answer. On 18 November Opus spent
+ * 8,000 to 25,000 tokens thinking before about 3,000 of code, so the default
+ * 4,000 cut answers off (16,000 in all): through the bridge the tail came
+ * back as "malformed JSON". A ceiling costs nothing unused.
+ */
+export const GRAPHIC_THINKING_TOKENS = 20_000
+
+/**
  * The smallest text the designer is told to set, in frame pixels (decision
  * 472). The browser's layout check refuses anything under this less 6 px and
  * asks for this, so the prompt and the check read one number. Before it, the
@@ -464,7 +473,7 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
         : []),
     ],
     cacheablePrefixMessages: 1,
-    maxTokens: outputBudget(GRAPHIC_ANSWER_TOKENS),
+    maxTokens: outputBudget(GRAPHIC_ANSWER_TOKENS, GRAPHIC_THINKING_TOKENS),
   }
 }
 

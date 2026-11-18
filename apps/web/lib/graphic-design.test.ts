@@ -381,12 +381,15 @@ describe('designGraphic (decisions 289, 295)', () => {
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
-  it('retries a cut-off answer once at double the budget', async () => {
+  it('asks with the whole output ceiling, and ends at once on a cut-off (decision 473)', async () => {
+    // Thinking took 8,000 to 25,000 tokens on 18 November: the first answer
+    // gets the whole 32,000, so a cut-off has no bigger budget to try.
     callLlm
       .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
       .mockResolvedValueOnce(answer('$4bn'))
-    await designGraphic(CONTEXT, SLOT)
-    expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
+    expect(callLlm).toHaveBeenCalledTimes(1)
+    expect(callLlm.mock.calls[0]![0].maxTokens).toBe(32_000)
   })
 
   it('refuses code that does not compile, and retries with the reason (decision 295)', async () => {
@@ -399,44 +402,24 @@ describe('designGraphic (decisions 289, 295)', () => {
     expect(callLlm.mock.calls[1]![0].messages.at(-1).content).toContain(issueOf(BROKEN))
   })
 
-  it('reports an answer cut off twice as a design issue, without a reason-retry', async () => {
-    callLlm.mockRejectedValue(new ValidationError('cut off', { field: 'maxTokens' }))
-    await expect(designGraphic(CONTEXT, SLOT)).resolves.toEqual({ ok: false, issue: CUT_OFF })
-    // The first try and its doubled retry; a third call at the doubled
-    // budget would be cut off again (final review I2).
-    expect(callLlm).toHaveBeenCalledTimes(2)
-  })
-
-  it('retries an answer cut off mid-JSON at double the budget', async () => {
+  it('ends the design at once on an answer cut off mid-JSON, without a reason-retry (decision 473)', async () => {
     callLlm.mockResolvedValueOnce(HALF).mockResolvedValueOnce(answer('$4bn'))
-    const result = await designGraphic(CONTEXT, SLOT)
-    expect(result.ok).toBe(true)
-    expect(callLlm).toHaveBeenCalledTimes(2)
-    expect(callLlm.mock.calls[1]![0].maxTokens).toBe(callLlm.mock.calls[0]![0].maxTokens * 2)
-    // The doubled call is the same request, not a reason-retry.
-    expect(callLlm.mock.calls[1]![0].messages).toEqual(callLlm.mock.calls[0]![0].messages)
+    expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
+    expect(callLlm).toHaveBeenCalledTimes(1)
   })
 
-  it('ends the design at once when the doubled answer is cut off mid-JSON too', async () => {
-    callLlm.mockResolvedValue(HALF)
+  it('takes a reply the bridge marks cut off for a cut-off, whatever its text (decision 473)', async () => {
+    // The bridge's tail of a continued answer: no parse could make it whole.
+    callLlm
+      .mockResolvedValueOnce({ text: '4000), c, 1, unit)}\n  </span>"}', truncated: true })
+      .mockResolvedValueOnce(answer('$4bn'))
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
-    expect(callLlm).toHaveBeenCalledTimes(2)
+    expect(callLlm).toHaveBeenCalledTimes(1)
   })
 
   it('stops at two calls when the retry after a refusal is cut off (decision 292)', async () => {
     callLlm.mockResolvedValueOnce(answer('$5bn')).mockResolvedValueOnce(HALF)
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({ ok: false, issue: CUT_OFF })
-    expect(callLlm).toHaveBeenCalledTimes(2)
-  })
-
-  it('stops at two calls when the doubled answer is refused (decision 292)', async () => {
-    callLlm
-      .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
-      .mockResolvedValueOnce(answer('$5bn'))
-    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
-      ok: false,
-      issue: issueOf(planned('$5bn')),
-    })
     expect(callLlm).toHaveBeenCalledTimes(2)
   })
 
@@ -480,30 +463,13 @@ describe('designGraphic (decisions 289, 295)', () => {
     expect(callLlm).toHaveBeenCalledTimes(1)
   })
 
-  it('says the first answer was cut off when the clock stops the doubled retry (decision 460)', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(1_000_000)
-    callLlm.mockImplementation(async () => {
-      vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS - 14_000)
-      return HALF
-    })
-    expect(await designGraphic(CONTEXT, SLOT)).toEqual({
-      ok: false,
-      issue: tooLong(
-        'its first answer was cut off at its length limit, ' +
-          'and too little of the 240 s was left to ask again',
-      ),
-    })
-    expect(callLlm).toHaveBeenCalledTimes(1)
-  })
-
-  it('says the second answer ran out the clock when the retry is aborted (decision 460)', async () => {
+  it('says the second answer ran out the clock when the retry after a refusal is aborted (decision 460)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(1_000_000)
     callLlm
       .mockImplementationOnce(async () => {
         vi.setSystemTime(1_000_000 + 60_000)
-        return HALF
+        return answer('$5bn')
       })
       .mockImplementationOnce(async () => {
         vi.setSystemTime(1_000_000 + GRAPHIC_DESIGN_DEADLINE_MS + 1)
@@ -512,7 +478,7 @@ describe('designGraphic (decisions 289, 295)', () => {
     expect(await designGraphic(CONTEXT, SLOT)).toEqual({
       ok: false,
       issue: tooLong(
-        'its first answer was cut off at its length limit, ' +
+        `its first answer was refused: ${issueOf(planned('$5bn')).slice(0, 300)}, ` +
           'and the second did not come back within the 240 s',
       ),
     })
@@ -1016,16 +982,14 @@ describe('designGraphicWith (the model call is injected)', () => {
     expect(callLlm).not.toHaveBeenCalled()
   })
 
-  it('keeps the cut-off doubling of the app path, and stops at two calls (decision 292)', async () => {
+  it('ends the app path at once on a cut-off at the ceiling (decision 473)', async () => {
     const complete = vi
       .fn()
       .mockRejectedValueOnce(new ValidationError('cut off', { field: 'maxTokens' }))
-      .mockResolvedValueOnce(answer('$5bn'))
+      .mockResolvedValueOnce(answer('$4bn'))
     const result = await designGraphicWith(complete, CONTEXT, SLOT, { bible: FIRST_CHANNEL_IN_USE })
-    expect(result.ok).toBe(false)
-    expect(complete).toHaveBeenCalledTimes(2)
-    expect(complete.mock.calls[1]![0].maxTokens).toBe(complete.mock.calls[0]![0].maxTokens * 2)
-    expect(complete.mock.calls[1]![1]).toMatchObject({ purpose: 'retry: cut off' })
+    expect(result).toEqual({ ok: false, issue: CUT_OFF })
+    expect(complete).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the reason-retry of the app path', async () => {
