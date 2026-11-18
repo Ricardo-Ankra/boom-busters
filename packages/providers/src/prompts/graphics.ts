@@ -50,6 +50,15 @@ export { GRAPHIC_CODE_FIXTURE_SOURCE }
 /** A whole component, with room to think first; a cut-off is asked again at double (decision 292). */
 export const GRAPHIC_ANSWER_TOKENS = 12_000
 
+/**
+ * The smallest text the designer is told to set, in frame pixels (decision
+ * 472). The browser's layout check refuses anything under this less 6 px and
+ * asks for this, so the prompt and the check read one number. Before it, the
+ * prompt named no floor and the check refused a third of WeWork's answers
+ * for 24 to 26 px labels, each a whole Opus answer wasted.
+ */
+export const GRAPHIC_TEXT_MIN_PX = 32
+
 export interface SlotWord {
   text: string
   offsetMs: number
@@ -367,6 +376,9 @@ ${craftFromIdentity(motion)}
 - The ending holds. The last thing said lands as it is said; after it, the finished graphic holds, and the render gives it the time to be read. Nothing new enters, draws or moves into place once the last word's entrance has settled; only the camera push continues.
 - Portrait is a first-class frame, not a squeeze: stack what sits side by side, and size
   type from Math.min(width, height).
+- No text that is read is smaller than ${GRAPHIC_TEXT_MIN_PX} px in the frame, at the size it is shown
+  (a scale transform counts): kickers, labels, axis values, units and dates included. Smaller
+  type is refused before anyone sees it, so size the smallest line first and the rest from it.
 - Colour carries meaning: semantic.collapse for loss and failure, semantic.recovery for
   gain, accent or captionHighlight for the one thing to look at, chartSeries to tell
   compared things apart, textPrimary and textSecondary for words.

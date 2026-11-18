@@ -12034,3 +12034,83 @@ owner edits. `--prod` was not run against Neon.
      (d) Not changed: the 240 s itself (the route's `maxDuration` is 300 s)
      and the designer's thinking; the rare single answer over 240 s still
      ends "took too long".
+472. **The designer's calls run as bridge jobs, collected across steps; the
+     32 px floor in the prompt; the JSON behind a stray bracket**
+     (2026-11-18, owner: "it keeps giving timeout errors. Do we still need
+     these 240s limits? ... find the best practical solution"; chose the
+     async bridge with the prompt fixes over Vercel Pro; branch
+     `worktree-chart-design-retry`, no migration: a Vercel deploy,
+     `PUT /api/inngest`, and the bridge checkout on the owner's PC moved
+     and restarted).
+     (a) After 471, four WeWork Redesigns: one designed; two single answers
+     ran 245 and 246 s with the bridge idle (no queue); one first answer
+     (193 s) and its retry (142 s) were both refused for 25 px text. Opus
+     answers ran 100 to 246 s, about 80% thinking. The 240 s is the Vercel
+     Hobby ceiling of 300 s per function call (Pro is 800 s) less a margin,
+     and it binds only because the call is waited on inside a step. Of the
+     slots' recorded refusals, 7 were text under 32 px (the prompt named no
+     floor), 6 "malformed JSON" (the reader took the first bracket in the
+     answer, and through the bridge Opus often writes a line or a code
+     fragment before its JSON: `[head.length - 1]`, a parse failure at
+     position 1, "expected object, received array"), 3 a figure not in its
+     claim.
+     (b) The bridge protocol gains an optional `job: {key, holdMs}`. A job
+     runs on the PC whatever happens to the request that started it; the
+     bridge holds the request up to `holdMs` (at most 280 s), or until it
+     closes, then answers 202 `{pending: true}`. A finished answer is kept
+     30 minutes for the same key; a failure is handed over once and
+     forgotten, so a Resume runs the call again. A job no request has held
+     for 5 minutes is stopped (a run cancelled by its singleton or by
+     `project/cancelled`, or one that gave up, never comes back), and one
+     abandoned while it queued for a slot never starts; the 15-minute cap
+     counts from creation. A bridge from before this drops the field and
+     answers as before, so either end can be updated first.
+     (c) `CallOptions.bridgeJob {scope, holdMs}` passes through `callLlm` and
+     the router; the bridge client keys the job `scope@model` and throws
+     `BridgeAnswerPending` (a `PipelineError`, not retriable, not gated, no
+     ledger row) on a 202. Every other adapter ignores it. Not keyed on the
+     request: a collect step rebuilds it from replayed step data, which
+     Inngest hands back key-sorted (`JSON.stringify(input.data)` in the
+     designer's prompt), and from rows re-read since, so a hash of it would
+     orphan the job and buy the answer again.
+     (d) `designGraphicWith` takes `bridgeJobScope`; each call is named
+     `<scope>:<label>` and held for the deadline less `CHECKS_RESERVE_MS`
+     (75 s), so the checks keep their time. A pending call returns
+     `{pending: true}` and stores nothing. `untilAnswered` re-runs the same
+     attempt as `<id>-collect-<n>` (at most 4, about 14 minutes in all),
+     which collects the answer and has the whole 240 s for the checks. The
+     pipeline (`designPlannedGraphics`, named for the run, so Re-plan and
+     the stretch replanner too), the retyper and the rebriefer (Redesign)
+     use it for the first answer and its retry;
+     every collect still pending ends "no answer after about 14 minutes"
+     (the retyper's brief, the rebriefer's card, the old design kept).
+     Scopes carry the Inngest `runId`, which is one for a run; the test
+     engine gives each step execution its own, so the collect tests compare
+     the step part only.
+     (e) `GRAPHIC_TEXT_MIN_PX = 32` in the designer's rules ("No text that is
+     read is smaller than 32 px in the frame, at the size it is shown"), and
+     the layout check refuses below that less 6 px from the same constant.
+     (f) `parseJsonCompletion`: an answer whose first region parses and fits
+     is read as before. When it does not and that region closed, the
+     regions after it are tried, longest first: only regions side by side
+     (each scan resumes after the region it found, and stops at the first
+     opener that never closes), so a piece nested in an answer is never a
+     candidate and each character is scanned once. The first that parses
+     and fits the schema is the answer; none, and the first region's error
+     stands. A first region that never closes keeps its cut-off or no-JSON
+     message, with no fallback.
+     (g) A fresh Opus review of the first draft found three defects, fixed
+     before merging: jobs nothing could stop (orphans from cancelled runs
+     holding bridge slots for 15 minutes, now the 5-minute idle stop), a
+     JSON fallback that could take a nested piece of an answer under a
+     loose schema (now regions side by side only, never after a first
+     region that did not close), and a request-hash key that replayed,
+     key-sorted step data could change (now the attempt's name).
+     (h) Not changed: the review step's critic and fix calls, the derive and
+     every non-designer call still run synchronously and keep the 240 s; a
+     collect reserves the call's estimate as any call does; the collect's
+     ledger row times the collect, not the answer (the bridge's log keeps
+     the real time); claims are ordered by `createdAt` alone, so tied
+     claims keep their physical order, which a row update between two steps
+     could change (a fact then cites the wrong number and is refused). 25
+     captured designer prompts gained only the new rule.

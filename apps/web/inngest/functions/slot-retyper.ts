@@ -41,7 +41,10 @@ import { budgetGateData, markSideJobFailed, slotSubject, type GateContext } from
 import {
   designableBrief,
   DESIGNER_SIDE_JOBS_CONCURRENCY,
+  GAVE_UP_ISSUE,
   reviewStoredGraphic,
+  untilAnswered,
+  type StepRunner,
 } from '../lib/graphic-steps'
 import { toScriptClaim } from '@/lib/script-claim'
 
@@ -279,62 +282,88 @@ export const slotRetyper = inngest.createFunction(
        * answers never fit one step's 240 s, so a first answer that earns a
        * retry hands it back unlanded and the retry runs in a step of its own.
        */
-      const design = (options: { firstOnly: true } | { resume: AnswerRetry }) => async () => {
-        const slot = await getShotSlot(db, slotId)
-        if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
-        const brief = designableBrief(slot)
-        if (!brief || brief.type !== targetType) {
-          throw new NonRetriableError(`Shot slot ${slotId} is no longer a ${targetType}`)
-        }
-        /**
-         * The design lands only on a slot that is still the type this retype
-         * made it (final review I4). A second retype cancels this run, but a
-         * step already in flight still finishes; written blind, its brief
-         * would sit on a slot of another type. Then the drafting marker goes,
-         * but only this run's: a newer retype's marker is that run's to clear.
-         */
-        const land = async (designed: Parameters<typeof withDesign>[1]) => {
-          const latest = await getShotSlot(db, slotId)
-          if (latest?.type !== targetType) return
-          await updateSlotBrief(db, slotId, withDesign(brief, designed))
-          const marker = latest.retype
-          if (marker?.['state'] === 'drafting' && marker['target'] === targetType) {
-            await setSlotRetype(db, slotId, null)
+      const design =
+        (
+          options: { firstOnly: true } | { resume: AnswerRetry } | { gaveUp: true },
+          scope: string,
+        ) =>
+        async () => {
+          const slot = await getShotSlot(db, slotId)
+          if (!slot) throw new NonRetriableError(`Shot slot ${slotId} vanished mid-retype`)
+          const brief = designableBrief(slot)
+          if (!brief || brief.type !== targetType) {
+            throw new NonRetriableError(`Shot slot ${slotId} is no longer a ${targetType}`)
+          }
+          /**
+           * The design lands only on a slot that is still the type this retype
+           * made it (final review I4). A second retype cancels this run, but a
+           * step already in flight still finishes; written blind, its brief
+           * would sit on a slot of another type. Then the drafting marker goes,
+           * but only this run's: a newer retype's marker is that run's to clear.
+           */
+          const land = async (designed: Parameters<typeof withDesign>[1]) => {
+            const latest = await getShotSlot(db, slotId)
+            if (latest?.type !== targetType) return
+            await updateSlotBrief(db, slotId, withDesign(brief, designed))
+            const marker = latest.retype
+            if (marker?.['state'] === 'drafting' && marker['target'] === targetType) {
+              await setSlotRetype(db, slotId, null)
+            }
+          }
+          // Every collect came back still writing (decision 472): say so on the slot.
+          if ('gaveUp' in options) {
+            await land({ ok: false, issue: GAVE_UP_ISSUE })
+            return { ok: true as const }
+          }
+          try {
+            const context = await loadGraphicContext(projectId, slot.chapterId)
+            const result = await designGraphic(
+              context,
+              {
+                chapterId: slot.chapterId,
+                startMs: slot.startMs,
+                durationMs: slot.durationMs,
+                brief,
+              },
+              { ...options, bridgeJobScope: `${runId}/${scope}` },
+            )
+            // The drafting marker stays while the answer or its retry is still to come.
+            if (!result.ok && result.pending) return { ok: true as const, pending: true as const }
+            if (!result.ok && result.retry) return { ok: true as const, retry: result.retry }
+            await land(result)
+            return { ok: true as const }
+          } catch (error) {
+            if (error instanceof BudgetExceededError) {
+              const gate = budgetGateData(error)
+              // The slot has no design; say why on the brief, or a graphic's
+              // card reads "being designed" for good and a chart's says nothing.
+              await land({ ok: false, issue: String(gate['message'] ?? 'Over budget') })
+              return { ok: false as const, gate }
+            }
+            throw error
           }
         }
-        try {
-          const context = await loadGraphicContext(projectId, slot.chapterId)
-          const result = await designGraphic(
-            context,
-            {
-              chapterId: slot.chapterId,
-              startMs: slot.startMs,
-              durationMs: slot.durationMs,
-              brief,
-            },
-            options,
-          )
-          // The drafting marker stays while the retry is still to come.
-          if (!result.ok && result.retry) return { ok: true as const, retry: result.retry }
-          await land(result)
-          return { ok: true as const }
-        } catch (error) {
-          if (error instanceof BudgetExceededError) {
-            const gate = budgetGateData(error)
-            // The slot has no design; say why on the brief, or a graphic's
-            // card reads "being designed" for good and a chart's says nothing.
-            await land({ ok: false, issue: String(gate['message'] ?? 'Over budget') })
-            return { ok: false as const, gate }
-          }
-          throw error
-        }
-      }
-      // A run parked on this step before the deploy replays no `retry`.
-      const first = await step.run('design-graphic', design({ firstOnly: true }))
-      const designed =
+      // Each attempt is collected over further steps while the bridge is still
+      // writing it (decision 472). A run parked on these steps before a deploy
+      // replays no `retry` and no `pending`.
+      const run: StepRunner = (id, fn) => step.run(id, fn) as never
+      const first = await untilAnswered(
+        run,
+        'design-graphic',
+        design({ firstOnly: true }, 'design-graphic'),
+      )
+      const second =
         first.ok && 'retry' in first && first.retry
-          ? await step.run('design-graphic-retry', design({ resume: first.retry }))
+          ? await untilAnswered(
+              run,
+              'design-graphic-retry',
+              design({ resume: first.retry }, 'design-graphic-retry'),
+            )
           : first
+      const designed =
+        second.ok && 'pending' in second
+          ? await step.run('design-graphic-gave-up', design({ gaveUp: true }, 'gave-up'))
+          : second
       if (!designed.ok) {
         // The brief's design issue is the card's "Not designed" line, so no
         // notice repeats it (decision 294).

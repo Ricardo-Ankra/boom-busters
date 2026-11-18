@@ -29,6 +29,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import type * as Notices from '@/lib/notices'
+import { DESIGN_COLLECTS_MAX, GAVE_UP_ISSUE } from '../lib/graphic-steps'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { slotRetyper } from './slot-retyper'
 
@@ -249,13 +250,73 @@ describeDb('slot-retyper (mock mode)', () => {
       const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
       expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
       expect(spy).toHaveBeenCalledTimes(2)
-      expect(spy.mock.calls[0]![2]).toEqual({ firstOnly: true })
-      expect(spy.mock.calls[1]![2]).toEqual({ resume: retry })
+      expect(spy.mock.calls[0]![2]).toEqual({
+        firstOnly: true,
+        bridgeJobScope: expect.stringMatching(/\/design-graphic$/),
+      })
+      expect(spy.mock.calls[1]![2]).toEqual({
+        resume: retry,
+        bridgeJobScope: expect.stringMatching(/\/design-graphic-retry$/),
+      })
       // Nothing landed between the two steps: the card still says drafting.
       expect(between).toEqual({ state: 'drafting', target: 'graphic' })
       const slot = await getShotSlot(db, slotId)
       expect(slot?.brief).toHaveProperty('code')
       expect(slot?.brief).not.toHaveProperty('designIssue')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('collects an answer the bridge was still writing, under one job name, holding the marker (decision 472)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const real = design.designGraphic
+    const pending = { ok: false as const, issue: 'still writing', pending: true as const }
+    let between: unknown = 'not read'
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce(pending)
+      .mockImplementationOnce(async (...args) => {
+        between = (await getShotSlot(db, slotId))?.retype
+        return real(...args)
+      })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+      expect(spy).toHaveBeenCalledTimes(2)
+      // The collect asks under the first step's name, so it gets that answer.
+      // (The test engine gives each step execution its own runId; Inngest
+      // keeps one for the run, so only the run part is set aside here.)
+      const named = (call: unknown[]) => ({
+        ...(call[2] as object),
+        bridgeJobScope: (call[2] as { bridgeJobScope: string }).bridgeJobScope.split('/')[1],
+      })
+      expect(named(spy.mock.calls[1]!)).toEqual(named(spy.mock.calls[0]!))
+      expect(named(spy.mock.calls[0]!)).toEqual({
+        firstOnly: true,
+        bridgeJobScope: 'design-graphic',
+      })
+      expect(between).toEqual({ state: 'drafting', target: 'graphic' })
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.brief).toHaveProperty('code')
+      expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('says so on the brief when every collect is still writing (decision 472)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValue({ ok: false, issue: 'still writing', pending: true })
+    try {
+      const { result } = await engine.execute({ events: retypeEvent(slotId, 'graphic') })
+      expect(result).toMatchObject({ outcome: 'retyped', targetType: 'graphic' })
+      expect(spy).toHaveBeenCalledTimes(1 + DESIGN_COLLECTS_MAX)
+      const slot = await getShotSlot(db, slotId)
+      expect(slot?.brief).toMatchObject({ type: 'graphic', designIssue: GAVE_UP_ISSUE })
       expect(slot?.retype).toBeNull()
     } finally {
       spy.mockRestore()

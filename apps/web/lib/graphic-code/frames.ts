@@ -1,6 +1,7 @@
 import { safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { AVAILABLE_FONTS } from '@boom-busters/compositions/fonts'
+import { GRAPHIC_TEXT_MIN_PX } from '@boom-busters/providers'
 import type { Browser, Page } from 'playwright-core'
 import { FRAME_SIZES, GRAPHIC_SAMPLE_MS, graphicMarkupAt, type FrameSize } from './dry-run'
 import { SHEET_WIDTH, sheetDocument, type SheetTile } from './sheet-document'
@@ -219,8 +220,12 @@ const READ_OPACITY = 0.5
 const OVERLAP_SHARE = 0.2
 /** How far into the safe area's margin a run may sit: the camera's slow push moves the edges a little. */
 const EDGE_SLACK_PX = 24
-/** Type set smaller than this, in frame pixels, is too small to read on a phone. */
-const MIN_FONT_PX = 26
+/**
+ * Type set smaller than this, in frame pixels, is too small to read on a
+ * phone. The designer is told `GRAPHIC_TEXT_MIN_PX` (decision 472): the
+ * floor it is asked for sits 6 px above the one it is refused at.
+ */
+const MIN_FONT_PX = GRAPHIC_TEXT_MIN_PX - 6
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 const quoted = (text: string) => `"${text.length > 32 ? `${text.slice(0, 31)}…` : text}"`

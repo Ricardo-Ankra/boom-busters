@@ -1,4 +1,5 @@
 import {
+  BridgeAnswerPending,
   SubscriptionBridgeUnavailableError,
   TransientProviderError,
   ValidationError,
@@ -7,8 +8,10 @@ import {
 import {
   BRIDGE_COMPLETE_PATH,
   BRIDGE_HEALTH_PATH,
+  BRIDGE_JOB_HOLD_MAX_MS,
   BridgeCompleteResponseSchema,
   BridgeErrorBodySchema,
+  BridgePendingResponseSchema,
   signBridgeRequest,
   type BridgeCompleteRequest,
 } from './bridge-protocol'
@@ -131,7 +134,7 @@ export function withSubscriptionBridge(
     async complete(request: LLMTaskRequest, options: CallOptions): Promise<LLMResult> {
       await ensureReachable(request, options.signal)
 
-      const payload: BridgeCompleteRequest = {
+      const call: BridgeCompleteRequest = {
         model: options.model,
         request: {
           task: request.task,
@@ -143,6 +146,22 @@ export function withSubscriptionBridge(
             : { cacheablePrefixMessages: request.cacheablePrefixMessages }),
         },
       }
+      // A job (decision 472) is keyed on the attempt and the model alone: the
+      // same attempt asked again collects its answer. Not on the request: a
+      // later step rebuilds it from replayed step data, which Inngest hands
+      // back key-sorted, and from rows re-read since, so a hash of it could
+      // differ between the step that started the job and the one collecting
+      // it, orphaning the job and buying the answer again.
+      const job = options.bridgeJob
+        ? {
+            key: `${options.bridgeJob.scope}@${options.model}`.slice(0, 300),
+            holdMs: Math.min(
+              BRIDGE_JOB_HOLD_MAX_MS,
+              Math.max(0, Math.round(options.bridgeJob.holdMs)),
+            ),
+          }
+        : undefined
+      const payload: BridgeCompleteRequest = job ? { ...call, job } : call
       const body = JSON.stringify(payload)
       const headers = signBridgeRequest(
         config.secret,
@@ -211,6 +230,12 @@ export function withSubscriptionBridge(
         throw new TransientProviderError(`${base.id} (subscription bridge)`, message, {
           status: response.status,
         })
+      }
+
+      // The job is still running on the PC: not an answer, not a failure.
+      if (response.status === 202 && job) {
+        BridgePendingResponseSchema.parse(await response.json())
+        throw new BridgeAnswerPending(job.key)
       }
 
       const answer = BridgeCompleteResponseSchema.parse(await response.json())

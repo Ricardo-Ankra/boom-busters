@@ -3,7 +3,12 @@ import 'server-only'
 import { estimateLlmUsd, withCost } from '@boom-busters/cost'
 import { getChannelSettings, getWorkspace, llmCredentials, recordRunEvent } from '@boom-busters/db'
 import { findModel, llmAdapters, resolveLlmModel, route } from '@boom-busters/providers'
-import type { Downgrade, LLMTaskRequest, RoutedResult } from '@boom-busters/providers'
+import type {
+  BridgeJobOption,
+  Downgrade,
+  LLMTaskRequest,
+  RoutedResult,
+} from '@boom-busters/providers'
 import { canonicalModelId } from '@boom-busters/schemas'
 import type { LlmProvider } from '@boom-busters/schemas'
 import { db } from '@/lib/db'
@@ -50,6 +55,12 @@ export interface CallOptions {
    */
   meta?: Record<string, unknown>
   signal?: AbortSignal
+  /**
+   * Run the call as a job on the subscription bridge (decision 472); ignored
+   * by every other route. A call still being written throws
+   * `BridgeAnswerPending` and writes no ledger row.
+   */
+  bridgeJob?: BridgeJobOption
 }
 
 /** ~4 characters per token: close enough for an estimate, and always rounded up. */
@@ -126,7 +137,10 @@ export async function callLlm(
           resolveModel,
         },
         request,
-        options.signal ? { signal: options.signal } : {},
+        {
+          ...(options.signal ? { signal: options.signal } : {}),
+          ...(options.bridgeJob ? { bridgeJob: options.bridgeJob } : {}),
+        },
       )
 
       // Settle on what the answering model actually charged, which may be a

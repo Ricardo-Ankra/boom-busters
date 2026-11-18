@@ -30,6 +30,7 @@ import { InngestTestEngine } from '@inngest/test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
+import { DESIGN_COLLECTS_MAX, GAVE_UP_ISSUE } from '../lib/graphic-steps'
 import { rebriefReferences, slotRebriefer } from './slot-rebriefer'
 
 /**
@@ -331,16 +332,65 @@ describeDb('slot-rebriefer (mock mode)', () => {
         redesign: true,
         guidance: 'The whole decade.',
         firstOnly: true,
+        bridgeJobScope: expect.stringMatching(/\/draft-brief$/),
       })
       expect(spy.mock.calls[1]![2]).toEqual({
         redesign: true,
         guidance: 'The whole decade.',
         resume: retry,
+        bridgeJobScope: expect.stringMatching(/\/redesign-retry$/),
       })
       // The second call is the mock designer's, and its design lands.
       const slot = await getShotSlot(db, chartSlot)
       expect((slot?.brief as { code?: { title: string } }).code?.title).toMatch(/^\[mock\]/)
       expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('collects a redesign the bridge was still writing, under one job name (decision 472)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: 'still writing', pending: true })
+    try {
+      const chartSlot = await seedSlot({ ...chartBrief, code: STORED_CODE })
+      const { result } = await engine.execute({ events: rebriefEvent(chartSlot, 'Bigger.') })
+      expect(result).toMatchObject({ outcome: 'rebriefed' })
+      expect(spy).toHaveBeenCalledTimes(2)
+      // The test engine gives each step execution its own runId; Inngest
+      // keeps one for the run, so only the run part is set aside here.
+      const named = (call: unknown[]) => ({
+        ...(call[2] as object),
+        bridgeJobScope: (call[2] as { bridgeJobScope: string }).bridgeJobScope.split('/')[1],
+      })
+      expect(named(spy.mock.calls[1]!)).toEqual(named(spy.mock.calls[0]!))
+      expect(named(spy.mock.calls[0]!)).toMatchObject({
+        firstOnly: true,
+        bridgeJobScope: 'draft-brief',
+      })
+      const slot = await getShotSlot(db, chartSlot)
+      expect((slot?.brief as { code?: { title: string } }).code?.title).toMatch(/^\[mock\]/)
+      expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('keeps the old design and says so when every collect is still writing (decision 472)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValue({ ok: false, issue: 'still writing', pending: true })
+    try {
+      const chartSlot = await seedSlot({ ...chartBrief, code: STORED_CODE })
+      const { result } = await engine.execute({ events: rebriefEvent(chartSlot) })
+      expect(result).toMatchObject({ outcome: 'refused', reason: GAVE_UP_ISSUE })
+      expect(spy).toHaveBeenCalledTimes(1 + DESIGN_COLLECTS_MAX)
+      const slot = await getShotSlot(db, chartSlot)
+      expect((slot?.brief as { code?: unknown }).code).toEqual(STORED_CODE)
+      expect(slot?.retype).toEqual({ state: 'rebrief-refused', reason: GAVE_UP_ISSUE })
     } finally {
       spy.mockRestore()
     }

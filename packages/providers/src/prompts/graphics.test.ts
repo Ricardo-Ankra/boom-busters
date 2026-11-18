@@ -13,6 +13,7 @@ import {
   estimatedWords,
   GRAPHIC_ANSWER_TOKENS,
   GRAPHIC_CODE_FIXTURE_SOURCE,
+  GRAPHIC_TEXT_MIN_PX,
   mockGraphicCode,
   parseGraphicCode,
   wordsInSlot,
@@ -77,6 +78,14 @@ describe('the designer prompt (decision 295)', () => {
   const system = buildGraphicRequest(input()).system
   // The rules are one string, wrapped for reading; compare with the wrapping removed.
   const rules = system.replace(/\s+/g, ' ')
+
+  it('names the smallest text the layout check accepts (decision 472)', () => {
+    expect(GRAPHIC_TEXT_MIN_PX).toBe(32)
+    expect(rules).toContain(
+      `No text that is read is smaller than ${GRAPHIC_TEXT_MIN_PX} px in the frame, at the size it is shown`,
+    )
+    expect(rules).toContain('kickers, labels, axis values, units and dates included')
+  })
 
   it('asks for the concept and the storyboard first, then a title, a facts manifest and the source as one JSON string (decision 388)', () => {
     expect(system).toContain(

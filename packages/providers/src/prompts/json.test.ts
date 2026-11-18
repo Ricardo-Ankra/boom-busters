@@ -129,3 +129,56 @@ describe('parseJsonCompletion', () => {
     expect(error.message.length).toBeLessThan(400)
   })
 })
+
+describe('parseJsonCompletion past a stray bracket (decision 472)', () => {
+  const answer = '{"name":"x","score":1}'
+
+  it('finds the answer behind a fragment of code in the prose before it', () => {
+    // Production: "Unexpected token 'h', "[head.length - 1]" is not valid JSON".
+    const text = `I'll take the last word with words[head.length - 1] and land it.\n\n${answer}`
+    expect(parseJsonCompletion(text, schema, 'thing')).toEqual({ name: 'x', score: 1 })
+  })
+
+  it('finds the answer behind a brace in the prose before it', () => {
+    // Production: "Expected property name or '}' in JSON at position 1".
+    const text = `The insets come in as {top, right, bottom, left}.\n${answer}`
+    expect(parseJsonCompletion(text, schema, 'thing')).toEqual({ name: 'x', score: 1 })
+  })
+
+  it('finds the answer behind a stray array that parses but is the wrong shape', () => {
+    // Production: "(root): Invalid input: expected object, received array".
+    const text = `Timings [1, 2, 3] first, then:\n\`\`\`json\n${answer}\n\`\`\``
+    expect(parseJsonCompletion(text, schema, 'thing')).toEqual({ name: 'x', score: 1 })
+  })
+
+  it('never takes a nested piece of a wrong answer for the whole', () => {
+    // The answer itself is the wrong shape; a piece inside it happens to fit.
+    const text = '{"wrapper": {"name":"x","score":1}}'
+    expect(() => parseJsonCompletion(text, schema, 'thing')).toThrow(/did not match/)
+  })
+
+  it('keeps the first region’s error when nothing else fits', () => {
+    expect(() => parseJsonCompletion('Using [a] and {"name":"x"} only.', schema, 'thing')).toThrow(
+      /malformed JSON/,
+    )
+  })
+
+  describe('with a schema any object fits', () => {
+    const loose = z.looseObject({})
+
+    it('never takes a piece nested in a malformed answer behind a stray bracket', () => {
+      const text = 'Using [a] first.\n{"source": "x", "props": {"a": 1}, broken}'
+      expect(() => parseJsonCompletion(text, loose, 'thing')).toThrow(/malformed JSON/)
+    })
+
+    it('still calls a cut-off answer cut off when it holds a closed object', () => {
+      const text = '{"source": "const s = {}; return null", "title": "unfinish'
+      expect(() => parseJsonCompletion(text, loose, 'thing')).toThrow(/cut off mid-answer/)
+    })
+  })
+
+  it('still calls an answer cut off when it is', () => {
+    const text = '{"name":"x","items":[{"a":1},{"b":'
+    expect(() => parseJsonCompletion(text, schema, 'thing')).toThrow(/cut off mid-answer/)
+  })
+})

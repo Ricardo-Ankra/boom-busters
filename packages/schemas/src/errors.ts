@@ -171,6 +171,23 @@ export class SubscriptionBridgeUnavailableError extends BudgetExceededError {
 }
 
 /**
+ * The bridge took the call as a job and is still writing the answer
+ * (decision 472). Not a failure: the job keeps running on the owner's PC, and
+ * the caller asks again in a later step with the same job key, which hands
+ * back the finished answer the moment it exists. Not retriable, so the router
+ * neither retries it nor walks to another model, and no ledger row is written
+ * for it: the call that collects the answer writes the row.
+ */
+export class BridgeAnswerPending extends PipelineError {
+  readonly jobKey: string
+
+  constructor(jobKey: string) {
+    super(`The bridge is still writing this answer (job ${jobKey}).`)
+    this.jobKey = jobKey
+  }
+}
+
+/**
  * A channel id that names no channel. Only the first channel is ever created
  * implicitly; any other missing id is a bug or a stale link, and retrying
  * cannot conjure the row.

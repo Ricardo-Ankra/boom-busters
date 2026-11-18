@@ -132,10 +132,23 @@ export interface VerifyOptions {
   fetchImpl?: typeof fetch
 }
 
+/**
+ * Run this call as a job on the subscription bridge (decision 472): `scope`
+ * names the attempt (the run, the step and which call), and the bridge client
+ * adds the model, so the same attempt asked again in a later step collects
+ * the same answer. `holdMs` is how long to wait for it before the call throws
+ * `BridgeAnswerPending`. Every other adapter ignores it.
+ */
+export interface BridgeJobOption {
+  scope: string
+  holdMs: number
+}
+
 export interface CallOptions {
   apiKey: string
   model: string
   signal?: AbortSignal
+  bridgeJob?: BridgeJobOption
   /** Overridden by tests and by the mock adapter; adapters never call fetch directly. */
   fetchImpl?: typeof fetch
 }

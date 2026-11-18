@@ -1,7 +1,7 @@
 import { RateLimitError, ValidationError, isRetriable } from '@boom-busters/schemas'
 import type { LlmProvider, LlmTask, ModelRouting } from '@boom-busters/schemas'
 import { findModel, nextTierBelow, priceOf } from './types'
-import type { KnownModel, LLMProvider, LLMResult, LLMTaskRequest } from './types'
+import type { BridgeJobOption, KnownModel, LLMProvider, LLMResult, LLMTaskRequest } from './types'
 
 /**
  * The model router (build spec section 6).
@@ -174,7 +174,7 @@ function backoffMs(attempt: number, error: unknown, random: () => number): numbe
 export async function route(
   config: RouterConfig,
   request: LLMTaskRequest,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; bridgeJob?: BridgeJobOption } = {},
 ): Promise<RoutedResult> {
   const path = fallbackPath(config, request.task)
   const requested = path[0]!
@@ -208,6 +208,7 @@ export async function route(
           apiKey,
           model: choice.model,
           ...(options.signal ? { signal: options.signal } : {}),
+          ...(options.bridgeJob ? { bridgeJob: options.bridgeJob } : {}),
         })
         const model =
           modelFor(config, adapter, choice.provider, choice.model) ??
