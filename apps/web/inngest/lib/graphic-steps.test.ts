@@ -180,6 +180,57 @@ describe('designPlannedGraphics (decisions 289, 295)', () => {
     })
   })
 
+  it('makes the retry a first answer earned in a step of its own (decision 470)', async () => {
+    const retry = { call: 'retry: refused', issue: '"From 97%" is set at 26 px' }
+    designGraphic
+      .mockResolvedValueOnce({ ok: false, issue: '"From 97%" is set at 26 px', retry })
+      .mockResolvedValueOnce({ ok: true, code: CODE })
+    const ids: string[] = []
+    const result = await designPlannedGraphics(
+      async (id, fn) => {
+        ids.push(id)
+        return fn()
+      },
+      {
+        prefix: 'graphic-0',
+        rows: [chart()] as never,
+        context: CONTEXT,
+        chapterTitle: 'One',
+      },
+    )
+    expect(ids).toEqual([
+      'graphic-0-chart-0',
+      'graphic-0-chart-0-retry',
+      'graphic-0-chart-0-review',
+    ])
+    expect(designGraphic.mock.calls[0]![2]).toEqual({ firstOnly: true })
+    expect(designGraphic.mock.calls[1]![2]).toEqual({ resume: retry })
+    expect(result).toMatchObject({ ok: true, undesigned: 0 })
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.rows[0]!.brief).toMatchObject({ type: 'chart', code: CODE })
+    expect(result.rows[0]!.brief).not.toHaveProperty('designIssue')
+  })
+
+  it("stores the retry's issue when the retry is refused too (decision 470)", async () => {
+    designGraphic
+      .mockResolvedValueOnce({
+        ok: false,
+        issue: 'first',
+        retry: { call: 'retry: refused', issue: 'first' },
+      })
+      .mockResolvedValueOnce({ ok: false, issue: 'second' })
+    const result = await designPlannedGraphics(async (_id, fn) => fn(), {
+      prefix: 'graphic-0',
+      rows: [graphic('a')] as never,
+      context: CONTEXT,
+      chapterTitle: 'One',
+    })
+    expect(designGraphic).toHaveBeenCalledTimes(2)
+    expect(result).toMatchObject({ ok: true, undesigned: 1 })
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.rows[0]!.brief).toMatchObject({ designIssue: 'second' })
+  })
+
   it('leaves a chart that already carries code alone (decision 295)', async () => {
     const designed = chart(CODE)
     const result = await designPlannedGraphics(async (_id, fn) => fn(), {

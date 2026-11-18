@@ -314,6 +314,38 @@ describeDb('slot-rebriefer (mock mode)', () => {
     }
   })
 
+  it('makes the redesign retry its first answer earned in a step of its own (decision 470)', async () => {
+    const design = await import('@/lib/graphic-design')
+    const retry = { call: 'retry: refused' as const, issue: '"Annual" is set at 26 px' }
+    const spy = vi
+      .spyOn(design, 'designGraphic')
+      .mockResolvedValueOnce({ ok: false, issue: retry.issue, retry })
+    try {
+      const chartSlot = await seedSlot({ ...chartBrief, code: STORED_CODE })
+      const { result } = await engine.execute({
+        events: rebriefEvent(chartSlot, 'The whole decade.'),
+      })
+      expect(result).toMatchObject({ outcome: 'rebriefed' })
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(spy.mock.calls[0]![2]).toEqual({
+        redesign: true,
+        guidance: 'The whole decade.',
+        firstOnly: true,
+      })
+      expect(spy.mock.calls[1]![2]).toEqual({
+        redesign: true,
+        guidance: 'The whole decade.',
+        resume: retry,
+      })
+      // The second call is the mock designer's, and its design lands.
+      const slot = await getShotSlot(db, chartSlot)
+      expect((slot?.brief as { code?: { title: string } }).code?.title).toMatch(/^\[mock\]/)
+      expect(slot?.retype).toBeNull()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('keeps the chart and the design it has when the redesign is refused (decision 295)', async () => {
     const design = await import('@/lib/graphic-design')
     const refuse = vi
