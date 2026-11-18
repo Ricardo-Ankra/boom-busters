@@ -29,7 +29,12 @@ import type { z } from 'zod'
 export function extractJson(text: string): string | undefined {
   const start = text.search(/[[{]/)
   if (start === -1) return undefined
+  const end = balancedEnd(text, start)
+  return end === undefined ? undefined : text.slice(start, end + 1)
+}
 
+/** Where the object or array opening at `start` closes, or undefined when it never does. */
+function balancedEnd(text: string, start: number): number | undefined {
   const opener = text[start]!
   const closer = opener === '{' ? '}' : ']'
   let depth = 0
@@ -56,10 +61,53 @@ export function extractJson(text: string): string | undefined {
     if (char === opener) depth += 1
     else if (char === closer) {
       depth -= 1
-      if (depth === 0) return text.slice(start, i + 1)
+      if (depth === 0) return i
     }
   }
 
+  return undefined
+}
+
+/**
+ * The regions after the first, for when the first one is not the answer
+ * (decision 472), longest first. A model answering through the subscription
+ * bridge often writes a line or a fragment of code before its JSON, and the
+ * first bracket was then a stray `[head.length - 1]` or `{top, right}`:
+ * production read "malformed JSON" or "expected object, received array" off
+ * a good answer behind it.
+ *
+ * Only regions side by side: each scan resumes after the region it found, so
+ * a piece nested inside an answer is never a candidate, and the scan stops at
+ * the first opener that never closes (an answer cut off), so nothing inside
+ * that is either. Each character is scanned once.
+ */
+function laterRegions(text: string, after: number): string[] {
+  const found: string[] = []
+  let from = after
+  while (from < text.length) {
+    const offset = text.slice(from).search(/[[{]/)
+    if (offset === -1) break
+    const start = from + offset
+    const end = balancedEnd(text, start)
+    if (end === undefined) break
+    found.push(text.slice(start, end + 1))
+    from = end + 1
+  }
+  return found.sort((a, b) => b.length - a.length)
+}
+
+/** The value of the first candidate that parses and fits the schema, or undefined. */
+function firstFitting<T>(candidates: readonly string[], schema: z.ZodType<T>): T | undefined {
+  for (const json of candidates) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(json)
+    } catch {
+      continue
+    }
+    const result = schema.safeParse(parsed)
+    if (result.success) return result.data
+  }
   return undefined
 }
 
@@ -68,6 +116,24 @@ export function extractJson(text: string): string | undefined {
  * carrying enough detail for the runner to feed back on a retry.
  */
 export function parseJsonCompletion<T>(text: string, schema: z.ZodType<T>, what: string): T {
+  try {
+    return parseFirstJson(text, schema, what)
+  } catch (error) {
+    // The first region was not the answer: look for the answer after it
+    // (decision 472). Only when it closed: an answer whose first region never
+    // closes was cut off or holds no JSON, and says so. Nothing that fits,
+    // and the first region's error stands.
+    if (!(error instanceof ValidationError)) throw error
+    const start = text.search(/[[{]/)
+    const end = start === -1 ? undefined : balancedEnd(text, start)
+    if (end === undefined) throw error
+    const found = firstFitting(laterRegions(text, end + 1), schema)
+    if (found !== undefined) return found
+    throw error
+  }
+}
+
+function parseFirstJson<T>(text: string, schema: z.ZodType<T>, what: string): T {
   const json = extractJson(text)
   if (!json) {
     /**
