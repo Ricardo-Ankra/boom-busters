@@ -107,6 +107,16 @@ describe('the point plan request', () => {
     expect(text).toContain('opening words')
   })
 
+  it('paces designed graphics by their words: one shot each, held, never replayed', () => {
+    expect(text).toContain('Designed graphics, the library entries marked (graphic-code)')
+    expect(text).toContain('each figure lands as the narration says it')
+    expect(text).toContain('every sentence that speaks its figures, as one shot')
+    // The settle and the hold, in seconds.
+    expect(text).toContain('2.2 seconds longer so it can be read')
+    expect(text).toContain('Show each graphic once')
+    expect(text).toContain('up to 9 seconds with its hold')
+  })
+
   it('leaves the note out when there is none', () => {
     const none = buildPointPlanRequest({
       bible: FIRST_CHANNEL_IN_USE,

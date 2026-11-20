@@ -8,6 +8,7 @@ import type {
   TimelineSlot,
   WordTiming,
 } from '@boom-busters/schemas'
+import { graphicCueWords, paceGraphicShots, sameGraphic } from './point-graphics'
 import { offsetCaptions, snapToScript } from './snap'
 import { evenTimings } from './teaser'
 
@@ -44,6 +45,8 @@ export interface ResolvedPointShot {
   slot: TimelineSlot
   crop: CropFocus
   motion: PointShotMotion
+  /** A designed graphic's last cue word, as `paceGraphicShots` wrote it. */
+  cueEndWord?: number
 }
 
 /** The motion a shot plays: the plan's choice on pictures, the slot's own elsewhere. */
@@ -118,7 +121,10 @@ export function compileShortMaster(input: {
     throw new ValidationError('a point Short needs a bridge paragraph', { field: 'paragraphs' })
   }
 
-  const starts = input.shots.map((shot, index) => {
+  // Designed graphics are paced by their words before any slot is laid out.
+  const shots = paceGraphicShots(input.shots, words, narrationEndMs).shots
+
+  const starts = shots.map((shot, index) => {
     const word = words[shot.startWord]
     if (!word) {
       throw new ValidationError(
@@ -129,19 +135,43 @@ export function compileShortMaster(input: {
     return index === 0 ? 0 : word.startMs
   })
 
-  const slots = input.shots.map((shot, index): TimelineSlot => {
+  // Cue words already given to each graphic, for its later appearances.
+  const shown: { slot: TimelineSlot; texts: string[] }[] = []
+  const slots = shots.map((shot, index): TimelineSlot => {
     const startMs = starts[index]!
-    const endMs = index === input.shots.length - 1 ? narrationEndMs : starts[index + 1]!
+    const endMs = index === shots.length - 1 ? narrationEndMs : starts[index + 1]!
     if (endMs <= startMs) {
       throw new ValidationError(
         `shot ${index} would last no time: shots must start on later words`,
         { field: `shots.${index}.startWord` },
       )
     }
+    const durationMs = endMs - startMs
+    let payload = shot.slot.payload
+    if (payload.kind === 'graphic-code') {
+      // The graphic plays on the Short's words, over the Short's shot.
+      const firstWord = index === 0 ? 0 : shot.startWord
+      const lastWord =
+        index === shots.length - 1 ? words.length - 1 : shots[index + 1]!.startWord - 1
+      const cueEndWord = Math.max(firstWord, Math.min(shot.cueEndWord ?? lastWord, lastWord))
+      const before = shown.find((entry) => sameGraphic(entry.slot, shot.slot))
+      const cues = graphicCueWords({
+        words,
+        firstWord,
+        cueEndWord,
+        startMs,
+        earlier: before?.texts ?? [],
+      })
+      payload = { ...payload, words: cues, durationMs }
+      const texts = words.slice(firstWord, cueEndWord + 1).map((word) => word.text)
+      if (before) before.texts.push(...texts)
+      else shown.push({ slot: shot.slot, texts })
+    }
     return {
       ...shot.slot,
+      payload,
       startMs,
-      durationMs: endMs - startMs,
+      durationMs,
       transition: 'cut',
       motion: shotMotion(shot.slot, shot.motion),
       crop: shot.crop,

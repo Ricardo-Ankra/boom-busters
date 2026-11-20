@@ -48,6 +48,16 @@ export const SHORT_RULES = {
   shotTargetMaxMs: 2_500,
   shotMaxMs: 3_500,
   cardShotMaxMs: 4_500,
+  /**
+   * A designed graphic animates on the words spoken over it (its cues), so it
+   * is paced by them, not by the picture cadence: it stays up until its last
+   * cue word has had `graphicSettleMs` to land and the result has been held
+   * `graphicHoldMs` to be read. The hold is never cut short; a graphic shot
+   * longer than `graphicShotMaxMs` is reported as a finding.
+   */
+  graphicSettleMs: 700,
+  graphicHoldMs: 1_500,
+  graphicShotMaxMs: 9_000,
   hookPunchByMs: 1_200,
   punchScale: 1.15,
   punchMs: 250,

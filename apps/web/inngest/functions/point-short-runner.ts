@@ -251,7 +251,11 @@ export const pointShortRunner = inngest.createFunction(
       })
       const plan: PointPlanRecord = fetched.plan
       const fetches: PointFetchesRecord = fetchesUsed
-      const { timeline, findings } = assemblePointShort({
+      const {
+        timeline,
+        findings,
+        plan: pacedPlan,
+      } = assemblePointShort({
         master: TimelineSchema.parse(row.json),
         script,
         voice,
@@ -268,7 +272,8 @@ export const pointShortRunner = inngest.createFunction(
         pointId,
         script,
         voice,
-        plan,
+        // The plan as paced at assembly: the cut the render makes.
+        plan: pacedPlan,
         fetches,
         timeline,
       })

@@ -152,6 +152,12 @@ export const PointPlanShotSchema = z
     motion: PointShotMotionSchema,
     slot: TimelineSlotSchema.nullable(),
     pending: PointPendingSchema.nullable(),
+    /**
+     * A designed graphic's last cue word: its beats follow the words from
+     * `startWord` to this one, and it holds after it. Written when the shots
+     * are paced (`paceGraphicShots`), so a later cut never moves the cues.
+     */
+    cueEndWord: z.number().int().min(0).optional(),
   })
   .refine((shot) => (shot.slot === null) !== (shot.pending === null), {
     message: 'a shot carries exactly one of slot and pending',
