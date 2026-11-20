@@ -32,7 +32,8 @@ export const SHORT_RULES = {
   wordsMin: 110,
   wordsMax: 160,
   runtimeMinMs: 45_000,
-  runtimeMaxMs: 60_000,
+  /** The owner accepts a Short up to 90 s (decision 474); the script still aims at 45 to 60. */
+  runtimeMaxMs: 90_000,
   wpmMin: 150,
   wpmMax: 170,
   phaseEndMs: {
