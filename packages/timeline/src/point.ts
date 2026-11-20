@@ -162,7 +162,11 @@ export function compileShortMaster(input: {
         startMs,
         earlier: before?.texts ?? [],
       })
-      payload = { ...payload, words: cues, durationMs }
+      // Its planned length ends once its last cue has landed, as a long-form
+      // graphic's ends near its last word: code that times its closing beats
+      // from `durationMs` lands them there, and the shot holds the ending.
+      const plannedMs = Math.min(durationMs, cues.at(-1)!.atMs + SHORT_RULES.graphicSettleMs)
+      payload = { ...payload, words: cues, durationMs: Math.max(1, plannedMs) }
       const texts = words.slice(firstWord, cueEndWord + 1).map((word) => word.text)
       if (before) before.texts.push(...texts)
       else shown.push({ slot: shot.slot, texts })

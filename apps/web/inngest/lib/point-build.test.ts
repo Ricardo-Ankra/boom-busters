@@ -481,7 +481,8 @@ describe('assemblePointShort', () => {
     expect(shown).toHaveLength(1)
     const slot = shown[0]!
     if (slot.payload.kind !== 'graphic-code') throw new Error('not a graphic')
-    expect(slot.payload.durationMs).toBe(slot.durationMs)
+    // Planned to end as its last cue lands; the shot holds the ending after it.
+    expect(slot.payload.durationMs).toBeLessThan(slot.durationMs)
     expect(slot.payload.words.map((word) => word.text)).not.toContain('long-form')
   })
 
