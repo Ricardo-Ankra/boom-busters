@@ -12145,3 +12145,60 @@ owner edits. `--prod` was not run against Neon.
      (e) Not changed: the critic, the review's fix call and every other task
      keep their budgets; the reservation each design makes before its call
      doubles with the budget and settles at $0 on the subscription.
+474. **A point Short's designed graphics are paced by their words** (2026-11-20,
+     owner: "The graphics are cutting short or not finishing because of some
+     rule that is limiting the time on screen. We need the graphics to play
+     through on the word timing and actually finish"; branch
+     `worktree-short-graphic-pacing`, no migration, no timeline schema change,
+     so no broker or Remotion redeploy).
+     (a) What WeWork's five point Shorts showed (read only, with the owner's
+     leave): 8 to 12 designed graphics a Short, about 40% of the shots, each on
+     screen 1.6 to 4.4 s against 8.3 to 23.2 s in the long form. A reused
+     graphic kept the long form's `durationMs` and word times
+     (`GraphicCode` reads the payload, not the slot), so it played the start
+     of its long-form choreography against the wrong voice and was cut
+     mid-animation. The planner split one graphic across back-to-back shots
+     nine times ("wide, then a punch-in") and one Short showed the cash-pile
+     graphic four times; every new shot is a new `<Sequence>`, so each replayed
+     the entrance. Points had no reading hold (465(g)).
+     (b) `paceGraphicShots` (`packages/timeline/src/point-graphics.ts`). A
+     shot of the same graphic next to it is joined to it. Its last cue word is
+     written on the plan shot as `cueEndWord` (optional, on
+     `PointPlanShotSchema`; a jsonb field, no migration) before any cut moves,
+     so pacing a paced plan changes nothing. If the next cut comes before the
+     last cue word plus `graphicSettleMs` 700 and `graphicHoldMs` 1500 (the
+     owner set the hold at 1.5 s; the settle is the rest check's 700 ms), the
+     cut moves to the first word at or after it. Shots starting inside the
+     hold are dropped, except the last, which takes over at the new cut when
+     `shotMinMs` of it remains; the same graphic inside the hold, or next once
+     those shots are dropped, joins it. The narration never pauses: the voice
+     keeps its tempo and the graphic takes time from the shots after it.
+     (c) `compileShortMaster` paces, then gives each graphic its cue words on
+     its own clock and `durationMs` equal to its shot, so its beats land on the
+     Short's words (`graphicCueWords`). A graphic shown again later gets the
+     cue words of its earlier appearances first, at 0 ms, as already said.
+     (d) The plan is paced where it is made (`planPointShots`) and again at
+     assembly (`assemblePointShort` now returns the paced plan, and the runner
+     and the studio's Assemble store it), so the studio lists the cut the
+     render makes, and an existing Short is fixed by pressing Assemble, with
+     no re-plan.
+     (e) The rule book: `graphicShotMaxMs` 9000 is a finding, not a clamp. A
+     first cut capped the hold at 9 s from the graphic's start; the WeWork
+     replay showed the joined cash-pile graphic then cut 0.6 s after its last
+     cue, so the hold is always given and a long graphic is reported ("no
+     more than 9 s for a graphic"). The planner prompt now has a designed
+     graphics section: start on the word that brings in its first figure, give
+     it every sentence that speaks its figures as one shot, show it once, never
+     split it, and the app adds 2.2 s; the sequence advice is for photos,
+     stills and archival pictures only.
+     (f) Replayed offline on WeWork's stored plans: shots per Short 29 to 33
+     became 17 to 22, graphics 6 to 9 a Short, each on screen 3.9 to 12.6 s and
+     held 2.2 to 3.9 s after its last cue word. Runtime is unchanged (66 to 76 s,
+     already over the 60 s rule book; not this decision's to fix).
+     (g) Left out: a cue word the Short never says lands on the code's own
+     fallback cadence, which the hold does not measure; the dry run could
+     sample the retimed graphic for its true rest time (it reads text only, and
+     counts text at opacity 0, so it would miss an opacity entrance). Teasers
+     and excerpts are untouched. Decisions made where the owner left room: the
+     join rule for repeats (cost if wrong: a graphic shown in two places plays
+     once, held longer); the 9 s finding (a constant).
