@@ -7,7 +7,7 @@ describe('short rules', () => {
       wordsMin: 110,
       wordsMax: 160,
       runtimeMinMs: 45_000,
-      runtimeMaxMs: 60_000,
+      runtimeMaxMs: 90_000,
       wpmMin: 150,
       wpmMax: 170,
       phaseEndMs: {

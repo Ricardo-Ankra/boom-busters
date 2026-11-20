@@ -210,7 +210,7 @@ describe('compileShortMaster with a designed graphic', () => {
     return input
   }
 
-  it('plays the graphic once, on the Short’s words, for the length of its shot', () => {
+  it('plays the graphic once, on the Short’s words, then holds its ending', () => {
     const input = withGraphic()
     const timeline = compileShortMaster(input)
     expect(TimelineSchema.safeParse(timeline).success).toBe(true)
@@ -218,16 +218,16 @@ describe('compileShortMaster with a designed graphic', () => {
     expect(shown).toHaveLength(1)
     const slot = shown[0]!
     if (slot.payload.kind !== 'graphic-code') throw new Error('not a graphic')
-    expect(slot.payload.durationMs).toBe(slot.durationMs)
     // Its first cue is the Short's word at the shot's start, at 0 ms.
     const first = timeline.captions.words.find((word) => word.startMs === slot.startMs)!
     expect(slot.payload.words[0]).toEqual({ text: first.text, atMs: 0 })
     expect(slot.payload.words.some((word) => word.text === 'long-form')).toBe(false)
-    // Its last cue has landed and been held before the cut.
+    // Its planned length ends when its last cue has landed, as the long form's
+    // ends near its last word: the code's own closing beats land there, and the
+    // shot holds the finished graphic after it.
     const lastCue = slot.payload.words.at(-1)!
-    expect(slot.durationMs - lastCue.atMs).toBeGreaterThanOrEqual(
-      R.graphicSettleMs + R.graphicHoldMs,
-    )
+    expect(slot.payload.durationMs).toBe(lastCue.atMs + R.graphicSettleMs)
+    expect(slot.durationMs - slot.payload.durationMs).toBeGreaterThanOrEqual(R.graphicHoldMs)
   })
 
   it('reports a graphic longer than the graphic limit', () => {

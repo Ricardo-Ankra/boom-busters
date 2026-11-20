@@ -62,11 +62,11 @@ describe('checkShortRules', () => {
 
   it('flags a runtime over the limit', () => {
     const base = clean()
-    // A Short that ends past 60 s also ends its bridge past 60 s.
-    const findings = checkShortRules({ ...base, timeline: stretch(base.timeline, 4, 8000) })
+    // A Short that ends past 90 s; its bridge runs long too.
+    const findings = checkShortRules({ ...base, timeline: stretch(base.timeline, 4, 38_000) })
     const runtime = findings.filter((f) => f.rule === 'runtime')
     expect(runtime).toHaveLength(1)
-    expect(runtime[0]!.message).toContain('60.7 s')
+    expect(runtime[0]!.message).toContain('90.7 s')
   })
 
   it('flags a runtime under the limit', () => {
