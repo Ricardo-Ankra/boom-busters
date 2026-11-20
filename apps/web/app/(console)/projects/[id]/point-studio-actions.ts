@@ -512,7 +512,7 @@ export async function assemblePoint(shortId: string): Promise<ActionResult> {
   try {
     const channel = await channelForProject(db, short.projectId)
     const fetches = PointFetchesRecordSchema.safeParse((await getShort(db, shortId))?.pointFetches)
-    const { timeline } = assemblePointShort({
+    const { timeline, plan: pacedPlan } = assemblePointShort({
       master: TimelineSchema.parse(timelineRow.json),
       script: script.data,
       voice: voice.data,
@@ -522,6 +522,8 @@ export async function assemblePoint(shortId: string): Promise<ActionResult> {
     })
     await updateShort(db, shortId, {
       sourceTimeline: timeline as unknown as Record<string, unknown>,
+      // Graphics are paced at assembly; the studio shows the cut the render makes.
+      pointPlan: pacedPlan,
       // The old render is a render of the old cut.
       renderId: null,
     })

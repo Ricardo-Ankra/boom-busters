@@ -433,6 +433,58 @@ describe('assemblePointShort', () => {
     expect(Array.isArray(findings)).toBe(true)
   })
 
+  it('paces a designed graphic split across shots into one, and returns the paced plan', () => {
+    const { master: m, script, voice, plan } = builtInputs()
+    const graphic: TimelineSlot = {
+      type: 'chart',
+      startMs: 0,
+      durationMs: 20_000,
+      transition: 'cut',
+      motion: { kind: 'static' },
+      payload: {
+        kind: 'graphic-code',
+        version: 1,
+        compiled: '/* cash pile */',
+        title: 'Cash pile',
+        words: [{ text: 'long-form', atMs: 9_000 }],
+        durationMs: 20_000,
+        logos: {},
+        claimIds: [],
+      },
+    }
+    const resolved: PointPlanRecord = {
+      ...plan,
+      shots: plan.shots.map((shot, index) => ({
+        ...shot,
+        slot:
+          index === 1 || index === 2
+            ? graphic
+            : (shot.slot ?? imageSlot(0, 'boom-busters/stills/new.png')),
+        pending: null,
+      })),
+    }
+
+    const { timeline, plan: paced } = assemblePointShort({
+      master: m,
+      script,
+      voice,
+      plan: resolved,
+      bridge: BRIDGE,
+      newImageCount: 0,
+    })
+
+    // The two shots are one, its cues written on it, and the stored plan is the render's cut.
+    expect(paced.shots.length).toBeLessThan(resolved.shots.length)
+    expect(paced.shots[1]!.cueEndWord).toBeGreaterThanOrEqual(resolved.shots[2]!.startWord)
+    expect(timeline.slots).toHaveLength(paced.shots.length)
+    const shown = timeline.slots.filter((slot) => slot.payload.kind === 'graphic-code')
+    expect(shown).toHaveLength(1)
+    const slot = shown[0]!
+    if (slot.payload.kind !== 'graphic-code') throw new Error('not a graphic')
+    expect(slot.payload.durationMs).toBe(slot.durationMs)
+    expect(slot.payload.words.map((word) => word.text)).not.toContain('long-form')
+  })
+
   it('refuses a plan that still waits for a picture', () => {
     const { master: m, script, voice, plan } = builtInputs()
     expect(() =>

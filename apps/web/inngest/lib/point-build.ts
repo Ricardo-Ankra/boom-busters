@@ -39,6 +39,7 @@ import {
   compileShortMaster,
   layoutPointNarration,
   masterChapterIds,
+  paceGraphicShots,
   POINT_CHAPTER_ID,
 } from '@boom-busters/timeline'
 import type { PointParagraphAudio, ResolvedPointShot, RuleFinding } from '@boom-busters/timeline'
@@ -382,7 +383,8 @@ export async function planPointShots(
   },
 ): Promise<PointPlanResult> {
   const audio = pointParagraphAudio(input.script, input.voice)
-  const words = layoutPointNarration(audio).words.map((word, index) => ({
+  const narration = layoutPointNarration(audio)
+  const words = narration.words.map((word, index) => ({
     index,
     text: word.text,
     startMs: word.startMs,
@@ -417,7 +419,7 @@ export async function planPointShots(
     }
   }
 
-  const shots: PointPlanShot[] = planned.map((shot) => ({
+  const unpaced: PointPlanShot[] = planned.map((shot) => ({
     startWord: shot.startWord,
     crop: shot.crop,
     motion: shot.motion,
@@ -429,6 +431,8 @@ export async function planPointShots(
           ? { kind: 'still', prompt: shot.source.prompt }
           : null,
   }))
+  // Designed graphics are paced by their words now, so the studio shows the cut the render makes.
+  const shots = paceGraphicShots(unpaced, narration.words, narration.narrationEndMs).shots
   return {
     ok: true,
     plan: {
@@ -599,16 +603,29 @@ export function assemblePointShort(input: {
   plan: PointPlanRecord
   bridge: { label: string; channelName: string; handle: string }
   newImageCount: number
-}): { timeline: Timeline; findings: RuleFinding[] } {
+}): { timeline: Timeline; findings: RuleFinding[]; plan: PointPlanRecord } {
   const paragraphs = pointParagraphAudio(input.script, input.voice)
-  const shots = input.plan.shots.map((shot, index): ResolvedPointShot => {
+  input.plan.shots.forEach((shot, index) => {
     if (shot.slot === null) {
       throw new ValidationError(`shot ${index + 1} still waits for its new picture`, {
         field: `plan.shots.${index}`,
       })
     }
-    return { startWord: shot.startWord, slot: shot.slot, crop: shot.crop, motion: shot.motion }
   })
+  // Pace the stored plan as the compiler will, so a plan made before graphics
+  // were paced is stored as the cut the render makes.
+  const narration = layoutPointNarration(paragraphs)
+  const plan: PointPlanRecord = {
+    ...input.plan,
+    shots: paceGraphicShots(input.plan.shots, narration.words, narration.narrationEndMs).shots,
+  }
+  const shots = plan.shots.map((shot): ResolvedPointShot => ({
+    startWord: shot.startWord,
+    slot: shot.slot!,
+    crop: shot.crop,
+    motion: shot.motion,
+    ...(shot.cueEndWord !== undefined ? { cueEndWord: shot.cueEndWord } : {}),
+  }))
   const timeline = compileShortMaster({
     master: input.master,
     paragraphs,
@@ -620,7 +637,7 @@ export function assemblePointShort(input: {
     paragraphs,
     newImageCount: input.newImageCount,
   })
-  return { timeline, findings }
+  return { timeline, findings, plan }
 }
 
 /** A point Short's whole narration as a segment: the pseudo chapter, every paragraph. */
