@@ -12202,3 +12202,22 @@ owner edits. `--prod` was not run against Neon.
      and excerpts are untouched. Decisions made where the owner left room: the
      join rule for repeats (cost if wrong: a graphic shown in two places plays
      once, held longer); the 9 s finding (a constant).
+     (h) Follow-up after the first merge: the graphic's planned length. (c)
+     first set the payload's `durationMs` to the whole shot, hold included, and
+     a dry-run probe of all 37 WeWork graphics in the 9:16 frame found 11 still
+     changing at the cut: designs that time their closing beats from
+     `props.durationMs` (a line of words fading in a second before the end)
+     slid them into the hold. The long form's `durationMs` is the length the
+     designer timed, ending near the last word, and the render holds the
+     ending past it, so the Short now does the same: `durationMs` is the last
+     cue plus `graphicSettleMs`, and the shot holds the finished frame. The
+     same probe, counting any markup change (the camera push too), then found
+     all 37 at rest before the cut, still for 1.3 to 5.1 s (median 2.1 s;
+     the two under 1.5 s are within the probe's 250 ms step). That probe
+     answers (g)'s first gap for WeWork: a cue the Short never says falls on
+     the code's own cadence, which finishes early, not late.
+     (i) The owner: "As long as the shorts are less than 90s its fine."
+     `runtimeMaxMs` is now 90 000, so the runtime finding and the studio's
+     runtime window accept up to 90 s. The script prompt still asks for 45 to
+     60 s and 110 to 160 words, and the phase "done by" times still read a
+     60 s Short, so a 75 s Short still gets phase-timing findings.
