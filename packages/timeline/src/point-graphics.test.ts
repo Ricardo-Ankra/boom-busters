@@ -148,12 +148,11 @@ describe('paceGraphicShots', () => {
     expect(report.merged).toBe(1)
   })
 
-  it('gives the hold even when it takes the graphic past the rule book maximum', () => {
-    // Cues end at word 22 (8.2 s), so the hold runs past 9 s; it is still given whole.
-    const input = [shot(0, graphic('g')), shot(23, photo('b')), shot(80, photo('c'))]
+  it('gives a long graphic its whole hold: a graphic has no longest time', () => {
+    // Cues end at word 40 (14.9 s); the hold after it is given whole.
+    const input = [shot(0, graphic('g')), shot(41, photo('b')), shot(100, photo('c'))]
     const { shots } = paceGraphicShots(input, words, END_MS)
-    expect(shots[1]!.startWord).toBe(holdWord(22))
-    expect(holdWord(22) * WORD_MS).toBeGreaterThan(R.graphicShotMaxMs)
+    expect(shots[1]!.startWord).toBe(holdWord(40))
   })
 
   it('changes nothing when run on its own output', () => {
@@ -230,16 +229,16 @@ describe('compileShortMaster with a designed graphic', () => {
     expect(slot.durationMs - slot.payload.durationMs).toBeGreaterThanOrEqual(R.graphicHoldMs)
   })
 
-  it('reports a graphic longer than the graphic limit', () => {
+  it('reports no length finding for a long graphic', () => {
     const input = pointFixtureInput()
     const g = graphic('Long graphic')
-    // Shots 5 to 9 all show it: one graphic over about twelve seconds of words.
+    // Shots 5 to 9 all show it: one graphic over about seventeen seconds of words.
     for (let at = 5; at <= 9; at += 1) input.shots[at] = { ...input.shots[at]!, slot: g }
     const timeline = compileShortMaster(input)
+    const shown = timeline.slots.find((slot) => slot.payload.kind === 'graphic-code')!
+    expect(shown.durationMs).toBeGreaterThan(15_000)
     const findings = checkShortRules({ timeline, paragraphs: input.paragraphs, newImageCount: 0 })
-    const long = findings.filter((finding) => finding.rule === 'shot-length')
-    expect(long).toHaveLength(1)
-    expect(long[0]!.message).toContain('no more than 9 s for a graphic')
+    expect(findings.filter((finding) => finding.rule === 'shot-length')).toEqual([])
   })
 
   it('is measured against the graphic limit, not the picture limit', () => {

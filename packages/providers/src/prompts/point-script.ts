@@ -50,7 +50,7 @@ One paragraph per phase, in this order:
 2. STAKES (3 to 15 s): why it matters: the cost, the paradox, who stood to lose.
 3. DELIVERY (15 to 42 s): the substance, at speed, with "but" and "then" turns rather than "and".
 4. RESOLUTION (42 to 52 s): the answer to the hook's question, in plain words. Pay it off; do not withhold it.
-5. BRIDGE (52 to 60 s): what the full video has that this Short does not, then asking once to tap the linked video below.
+5. BRIDGE (52 to 60 s): what the full video has that this Short does not, then asking once to tap the linked video below. Point at the full video once only: say what is still untold as the story itself ("Why the losses never stopped comes down to decades of fixed rent."), never as "the full video shows" or "the long version shows", and let the one ask be the only sentence that names the full video, the full story or the channel.
 
 Rules:
 - Every fact comes from the chapters below. Invent nothing: no leaks, no documents, no sources the chapters do not name.
@@ -58,7 +58,7 @@ Rules:
 - The words never ask for a subscribe, a like or a comment, and never ask for a click more than once.
 - Spoken register: short sentences, concrete nouns, numbers said plainly.
 - Each paragraph carries the chapterIndex whose part of the story it draws from, so the edit can show that chapter's visuals behind it. The bridge paragraph cites a bridge chapter.
-${input.ctaLine ? `- The channel call to action, which the bridge's ask follows in wording: ${input.ctaLine}\n` : ''}
+${input.ctaLine ? `- The channel call to action, which the bridge's ask follows in wording: ${input.ctaLine}. It is that one sentence; no other sentence in the bridge points at the full video or the channel.\n` : ''}
 Limits (the app checks them): title 3 to ${TITLE_MAX} characters; each paragraph 10 to ${PARAGRAPH_MAX} characters; chapterIndex is the number of a chapter below, 0 to ${input.chapters.length - 1}.
 
 Return exactly:
@@ -88,6 +88,19 @@ Return exactly:
     ],
     maxTokens: outputBudget(2000),
   }
+}
+
+/** A phrase pointing the viewer at the long form: the full video, story or version, or the channel. */
+const FULL_VIDEO =
+  /\b(?:full|whole|long|longer|complete)\s+(?:video|version|story|film|documentary|episode)\b|\bon (?:the|our|this) channel\b/i
+
+/**
+ * How many sentences of a bridge point at the full video (decision 475): the
+ * owner heard "The full video shows..." and then "The full story is on the
+ * channel" in every WeWork Short. One sentence is the ask; two say it twice.
+ */
+export function fullVideoSentences(text: string): number {
+  return text.split(/(?<=[.!?])\s+/).filter((sentence) => FULL_VIDEO.test(sentence)).length
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -133,6 +146,14 @@ export function parsePointScript(
     })
   }
   const issues = pointScriptIssues(parsed.data, chapterCount)
+  // The model's answer only: an owner's own edit is theirs to word.
+  const bridge = parsed.data.paragraphs.find((p) => p.phase === 'bridge')
+  const pointers = bridge ? fullVideoSentences(bridge.text) : 0
+  if (pointers > 1) {
+    issues.push(
+      `the bridge points at the full video in ${pointers} sentences; say what is untold as the story, and name the full video or the channel only in the one ask`,
+    )
+  }
   if (issues.length > 0) {
     throw new ValidationError(`The point script is not usable: ${issues.join('; ')}`, {
       field: 'point script',

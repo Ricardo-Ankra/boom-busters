@@ -1111,7 +1111,7 @@
     {
       "type": "still",
       "startMs": 0,
-      "durationMs": 1860,
+      "durationMs": 2754,
       "transition": "cut",
       "motion": {
         "kind": "punch",
@@ -1130,8 +1130,8 @@
     },
     {
       "type": "stock",
-      "startMs": 1860,
-      "durationMs": 2382,
+      "startMs": 2754,
+      "durationMs": 2604,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1149,8 +1149,8 @@
     },
     {
       "type": "archival",
-      "startMs": 4242,
-      "durationMs": 2232,
+      "startMs": 5358,
+      "durationMs": 2604,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1169,8 +1169,8 @@
     },
     {
       "type": "still",
-      "startMs": 6474,
-      "durationMs": 2232,
+      "startMs": 7962,
+      "durationMs": 2976,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1189,8 +1189,8 @@
     },
     {
       "type": "map",
-      "startMs": 8706,
-      "durationMs": 1860,
+      "startMs": 10938,
+      "durationMs": 3126,
       "transition": "cut",
       "motion": {
         "kind": "static"
@@ -1215,8 +1215,8 @@
     },
     {
       "type": "still",
-      "startMs": 10566,
-      "durationMs": 2232,
+      "startMs": 14064,
+      "durationMs": 2604,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1235,8 +1235,8 @@
     },
     {
       "type": "stock",
-      "startMs": 12798,
-      "durationMs": 2382,
+      "startMs": 16668,
+      "durationMs": 4836,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1254,8 +1254,8 @@
     },
     {
       "type": "archival",
-      "startMs": 15180,
-      "durationMs": 2232,
+      "startMs": 21504,
+      "durationMs": 3348,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1274,8 +1274,8 @@
     },
     {
       "type": "still",
-      "startMs": 17412,
-      "durationMs": 2232,
+      "startMs": 24852,
+      "durationMs": 2976,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1293,9 +1293,9 @@
       }
     },
     {
-      "type": "still",
-      "startMs": 19644,
-      "durationMs": 1860,
+      "type": "archival",
+      "startMs": 27828,
+      "durationMs": 2604,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1303,26 +1303,6 @@
         "intensity": 0.3
       },
       "crop": "centre",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/stamp.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "archival",
-      "startMs": 21504,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "in",
-        "intensity": 0.3
-      },
-      "crop": "left",
       "payload": {
         "kind": "image",
         "src": {
@@ -1334,13 +1314,13 @@
     },
     {
       "type": "chart",
-      "startMs": 23736,
-      "durationMs": 2232,
+      "startMs": 30432,
+      "durationMs": 2604,
       "transition": "cut",
       "motion": {
         "kind": "draw-on"
       },
-      "crop": "right",
+      "crop": "left",
       "payload": {
         "kind": "chart",
         "chartKind": "line",
@@ -1369,15 +1349,15 @@
     },
     {
       "type": "still",
-      "startMs": 25968,
-      "durationMs": 2232,
+      "startMs": 33036,
+      "durationMs": 3348,
       "transition": "cut",
       "motion": {
-        "kind": "punch",
-        "scale": 1.15,
-        "durationMs": 250
+        "kind": "kenburns",
+        "direction": "out",
+        "intensity": 0.3
       },
-      "crop": "centre",
+      "crop": "right",
       "payload": {
         "kind": "image",
         "src": {
@@ -1389,15 +1369,15 @@
     },
     {
       "type": "still",
-      "startMs": 28200,
-      "durationMs": 2232,
+      "startMs": 36384,
+      "durationMs": 3870,
       "transition": "cut",
       "motion": {
-        "kind": "kenburns",
-        "direction": "out",
-        "intensity": 0.3
+        "kind": "punch",
+        "scale": 1.15,
+        "durationMs": 250
       },
-      "crop": "left",
+      "crop": "centre",
       "payload": {
         "kind": "image",
         "src": {
@@ -1408,75 +1388,16 @@
       }
     },
     {
-      "type": "archival",
-      "startMs": 30432,
-      "durationMs": 1860,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "in",
-        "intensity": 0.3
-      },
-      "crop": "right",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/filing.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
       "type": "still",
-      "startMs": 32292,
-      "durationMs": 2232,
+      "startMs": 40254,
+      "durationMs": 4464,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
         "direction": "out",
-        "intensity": 0.3
-      },
-      "crop": "centre",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/boardroom.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "stock",
-      "startMs": 34524,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "in",
         "intensity": 0.3
       },
       "crop": "left",
-      "payload": {
-        "kind": "video",
-        "src": {
-          "externalUrl": "https://cdn.example.com/street.mp4"
-        },
-        "muted": true
-      }
-    },
-    {
-      "type": "still",
-      "startMs": 36756,
-      "durationMs": 2382,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "out",
-        "intensity": 0.3
-      },
-      "crop": "right",
       "payload": {
         "kind": "image",
         "src": {
@@ -1487,36 +1408,16 @@
       }
     },
     {
-      "type": "archival",
-      "startMs": 39138,
-      "durationMs": 2232,
+      "type": "still",
+      "startMs": 44718,
+      "durationMs": 3498,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
         "direction": "in",
         "intensity": 0.3
       },
-      "crop": "centre",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/invoice.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "still",
-      "startMs": 41370,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "out",
-        "intensity": 0.3
-      },
-      "crop": "left",
+      "crop": "right",
       "payload": {
         "kind": "image",
         "src": {
@@ -1528,28 +1429,8 @@
     },
     {
       "type": "still",
-      "startMs": 43602,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "in",
-        "intensity": 0.3
-      },
-      "crop": "right",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/ledger-two.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "still",
-      "startMs": 45834,
-      "durationMs": 2382,
+      "startMs": 48216,
+      "durationMs": 4464,
       "transition": "cut",
       "motion": {
         "kind": "kenburns",
@@ -1557,46 +1438,6 @@
         "intensity": 0.3
       },
       "crop": "centre",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/signature.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "archival",
-      "startMs": 48216,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "in",
-        "intensity": 0.3
-      },
-      "crop": "left",
-      "payload": {
-        "kind": "image",
-        "src": {
-          "r2Key": "boom-busters/stills/point/headline-clipping.png"
-        },
-        "width": 1344,
-        "height": 768
-      }
-    },
-    {
-      "type": "still",
-      "startMs": 50448,
-      "durationMs": 2232,
-      "transition": "cut",
-      "motion": {
-        "kind": "kenburns",
-        "direction": "out",
-        "intensity": 0.3
-      },
-      "crop": "right",
       "payload": {
         "kind": "image",
         "src": {

@@ -4,6 +4,7 @@ import {
   graphicEnterTimes,
   graphicOnScreen,
   intervalsMeet,
+  SHORT_RULES,
 } from '@boom-busters/schemas'
 import type {
   BrandKitTokens,
@@ -83,7 +84,13 @@ const RULE_MIN_THICKNESS_PX = 2
 const BARS_GAP_PX = 12
 /** The gap `GraphicCard` gives a figure's caption below its value, scaled with the frame. */
 const FIGURE_LABEL_GAP_PX = 6
-/** The frame minus the caption band and the margin: where elements may sit. */
+/**
+ * The frame minus the caption band and the margin: where elements may sit.
+ * A 9:16 frame is a Short's, so it also keeps clear of the Shorts interface
+ * (decision 475): the bar across the top and the buttons down the right,
+ * `SHORT_RULES.safeArea` on the 1080 x 1920 frame, scaled to this one. The
+ * owner saw graphic text under both on the WeWork Shorts.
+ */
 export function safeArea(frame: GraphicFrame): Box {
   const margin = Math.round(GRAPHIC_MARGIN_PX * frameScale(frame.width, frame.height))
   const captions = captionSafeArea(frame.width, frame.height)
@@ -91,11 +98,24 @@ export function safeArea(frame: GraphicFrame): Box {
   const captionTop =
     frame.height * captions.bottomFraction -
     140 * captions.fontScale * frameScale(frame.width, frame.height)
+  let left = margin
+  let top = margin
+  let right = frame.width - margin
+  let bottom = Math.min(frame.height - margin, captionTop)
+  if (frame.height > frame.width) {
+    const shorts = SHORT_RULES.safeArea
+    const sx = frame.width / 1080
+    const sy = frame.height / 1920
+    left = Math.max(left, shorts.x0 * sx)
+    right = Math.min(right, shorts.x1 * sx)
+    top = Math.max(top, shorts.y0 * sy)
+    bottom = Math.min(bottom, shorts.y1 * sy)
+  }
   return {
-    x: margin,
-    y: margin,
-    w: frame.width - margin * 2,
-    h: Math.max(1, Math.min(frame.height - margin, captionTop) - margin),
+    x: left,
+    y: top,
+    w: Math.max(1, right - left),
+    h: Math.max(1, bottom - top),
   }
 }
 

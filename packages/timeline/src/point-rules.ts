@@ -111,19 +111,15 @@ export function checkShortRules(input: {
 
   const lastShot = timeline.slots.length - 1
   for (const [index, slot] of timeline.slots.entries()) {
-    // A designed graphic is paced by its words, so it has its own, longer limit.
+    // A designed graphic is paced by its words and has no longest time (decision 475).
     const isGraphic = slot.payload.kind === 'graphic-code'
     const isCard = (CARD_SLOT_TYPES as readonly string[]).includes(slot.type)
-    const maxMs = isGraphic
-      ? rules.graphicShotMaxMs
-      : isCard
-        ? rules.cardShotMaxMs
-        : rules.shotMaxMs
+    const maxMs = isGraphic ? Infinity : isCard ? rules.cardShotMaxMs : rules.shotMaxMs
     if (slot.durationMs > maxMs) {
       findings.push({
         rule: 'shot-length',
         shotIndex: index,
-        message: `Shot ${index + 1} holds ${seconds(slot.durationMs)}; the rule book wants no more than ${limit(maxMs)}${isGraphic ? ' for a graphic' : isCard ? ' for a card' : ''}`,
+        message: `Shot ${index + 1} holds ${seconds(slot.durationMs)}; the rule book wants no more than ${limit(maxMs)}${isCard ? ' for a card' : ''}`,
       })
     } else if (index !== lastShot && slot.durationMs < rules.shotMinMs) {
       findings.push({

@@ -168,7 +168,8 @@ describe('remotionScope', () => {
 describe('safeInsets', () => {
   it("gives the code the graphic card's safe area as rounded insets from each edge", () => {
     expect(safeInsets(WIDE)).toEqual({ top: 36, right: 36, bottom: 270, left: 36 })
-    expect(safeInsets(TALL)).toEqual({ top: 36, right: 36, bottom: 699, left: 36 })
+    // 9:16 also keeps clear of the Shorts interface's top bar and side buttons (decision 475).
+    expect(safeInsets(TALL)).toEqual({ top: 380, right: 120, bottom: 699, left: 60 })
     for (const frame of [WIDE, TALL]) {
       const box = safeArea(frame)
       expect(safeInsets(frame)).toEqual({

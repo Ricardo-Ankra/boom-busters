@@ -45,20 +45,24 @@ export const SHORT_RULES = {
   } satisfies Record<ShortPhase, number>,
   bridgeMinMs: 5_000,
   bridgeMaxMs: 8_000,
-  shotMinMs: 1_500,
-  shotTargetMaxMs: 2_500,
-  shotMaxMs: 3_500,
-  cardShotMaxMs: 4_500,
+  /**
+   * A picture's time on screen (decision 475, the owner: 2.5 s at least, 2.5
+   * to 4 s, faster than the long form's 3 s but never a flash). A shorter
+   * picture is folded into its neighbour when the plan is paced.
+   */
+  shotMinMs: 2_500,
+  shotTargetMaxMs: 4_000,
+  shotMaxMs: 5_000,
+  cardShotMaxMs: 6_000,
   /**
    * A designed graphic animates on the words spoken over it (its cues), so it
    * is paced by them, not by the picture cadence: it stays up until its last
    * cue word has had `graphicSettleMs` to land and the result has been held
-   * `graphicHoldMs` to be read. The hold is never cut short; a graphic shot
-   * longer than `graphicShotMaxMs` is reported as a finding.
+   * `graphicHoldMs` to be read. A graphic has no longest time (decision 475):
+   * it takes what its words take, then the hold.
    */
   graphicSettleMs: 700,
   graphicHoldMs: 1_500,
-  graphicShotMaxMs: 9_000,
   hookPunchByMs: 1_200,
   punchScale: 1.15,
   punchMs: 250,

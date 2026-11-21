@@ -1,6 +1,7 @@
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { CSSProperties } from 'react'
 import type { BrandKitTokens, HeadlinePayload } from '@boom-busters/schemas'
+import { safeArea } from '../lib/graphic'
 import { formatPublished, splitHeadline } from '../lib/headline'
 import { easeInOut, markerSweep } from '../lib/motion'
 import { frameScale, typeStyle } from './brand'
@@ -51,6 +52,7 @@ export function HeadlineCard({
   const { fps, width, height } = useVideoConfig()
   const scale = frameScale(width, height)
   const portrait = height > width
+  const shorts = safeArea({ width, height })
   const { colors, typography } = brand
 
   const settle = progress(frame, fps, 0, SETTLE_MS)
@@ -87,7 +89,11 @@ export function HeadlineCard({
       >
         <div
           style={{
-            width: width * (portrait ? 0.86 : 0.62),
+            // On 9:16, inside the Shorts safe zone's width, less room for the tilt,
+            // and centred on it, clear of the buttons down the right (decision 475).
+            width: portrait ? Math.min(width * 0.86, shorts.w - 24 * scale) : width * 0.62,
+            position: 'relative',
+            left: portrait ? shorts.x + shorts.w / 2 - width / 2 : 0,
             backgroundColor: PAPER,
             padding: `${(portrait ? 44 : 52) * scale}px ${(portrait ? 44 : 60) * scale}px ${(portrait ? 34 : 40) * scale}px`,
             boxShadow: `0 ${34 * scale}px ${72 * scale}px rgba(0,0,0,0.62)`,

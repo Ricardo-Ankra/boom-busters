@@ -53,8 +53,11 @@ const ENTITY = /(@\w{1,15}|#\w+|https?:\/\/\S+)/g
 
 export interface SocialLayout {
   portrait: boolean
-  /** The vertical band the card is centred in: below the Shorts bar, above the captions. */
-  band: { top: number; height: number }
+  /**
+   * The band the card is centred in: below the Shorts bar, above the captions,
+   * and on 9:16 clear of the Shorts buttons down the right (decision 475).
+   */
+  band: { top: number; height: number; left: number; width: number }
   card: { width: number; maxHeight: number; padding: number }
   avatarPx: number
   namePx: number
@@ -167,7 +170,13 @@ export function socialLayout(input: {
   const safe = safeArea(frame)
   const top = portrait ? Math.max(safe.y, frame.height * SHORTS_TOP_FRACTION) : safe.y
   const bandHeight = safe.y + safe.h - top
-  const width = frame.width * (portrait ? CARD_WIDTH_FRACTION.tall : CARD_WIDTH_FRACTION.wide)
+  // On 9:16 the band is the safe area's own span; landscape keeps the whole width.
+  const bandLeft = portrait ? safe.x : 0
+  const bandWidth = portrait ? safe.w : frame.width
+  const width = Math.min(
+    frame.width * (portrait ? CARD_WIDTH_FRACTION.tall : CARD_WIDTH_FRACTION.wide),
+    bandWidth,
+  )
   const padding = (portrait ? PADDING_PX.tall : PADDING_PX.wide) * scale
   const inner = width - padding * 2
   const maxHeight = bandHeight * MAX_HEIGHT_FRACTION
@@ -193,7 +202,7 @@ export function socialLayout(input: {
   const textPx = chosen ?? ladder[ladder.length - 1]!
   return {
     portrait,
-    band: { top, height: bandHeight },
+    band: { top, height: bandHeight, left: bandLeft, width: bandWidth },
     card: { width, maxHeight, padding },
     avatarPx,
     namePx: NAME_PX * scale,

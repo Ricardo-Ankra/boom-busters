@@ -12221,3 +12221,76 @@ owner edits. `--prod` was not run against Neon.
      runtime window accept up to 90 s. The script prompt still asks for 45 to
      60 s and 110 to 160 words, and the phase "done by" times still read a
      60 s Short, so a 75 s Short still gets phase-timing findings.
+475. **A point Short's pictures keep the narration's beat, graphics have no
+     cap, 9:16 graphics stay clear of the Shorts interface, and the bridge
+     names the full video once** (2026-11-21, owner, on the WeWork Shorts:
+     "some photos are on the screens for a second, then the graphics is also
+     still too rushed. The beat just seems out of pace as well with the speed
+     of the narration", "There is also text overlaps on some of the graphics",
+     "The full CTA also seemed to repeat it self"; branch
+     `worktree-short-graphic-pacing`, no migration, no timeline schema change;
+     the compositions change needs `deploy:remotion`, which the owner approved).
+     (a) What production showed (read only): only one of the five WeWork
+     Shorts had been re-assembled after 474; the other four still carried the
+     14:4x cut. The re-assembled one had pictures of 1.5 to 2.1 s (the rule
+     book's least was 1.5 s against the long form's 3 s), cuts mid-phrase
+     ("But the listing fixed | nothing."), and graphics whose whole animation
+     ran in the 2 to 3 s their figures took to say. A 9:16 frame probe put 115
+     runs of graphic text under the Shorts interface (the graphic safe area
+     kept only a 36 px margin), and the cash-pile design, which writes the
+     spoken sentence as its headline, wrapped the Short's longer sentence onto
+     its bars.
+     (b) Pictures, the owner's choice of three: at least 2.5 s, 2.5 to 4 s.
+     `SHORT_RULES` `shotMinMs` 2500, `shotTargetMaxMs` 4000, `shotMaxMs` 5000,
+     `cardShotMaxMs` 6000. `pacePictureShots` (`point-pictures.ts`) moves a
+     picture cut made mid-phrase to the nearest phrase start within
+     `PHRASE_SNAP_WORDS` 3 (a word after `endsClause`; never earlier into a
+     graphic's hold) and folds a picture under 2.5 s into the shot before (a
+     short first picture takes in the one after). `pacePointShots` runs the
+     graphics pass then the pictures pass until neither changes anything,
+     since a fold can leave one graphic's two shots side by side; the planner,
+     the assembly and the compiler all pace through it. The compiler now
+     checks the plan's start words before pacing, which would otherwise fold a
+     bad shot away unreported. The planner prompt says to cut where a phrase
+     starts. The fixture was rebuilt to 16 shots of 2.6 to 4.84 s, every cut a
+     fixed point of the pacing; the mock planner cuts every 8 words.
+     (c) Graphics, the owner: "there should be no cap on the time allocated to
+     graphics, it should just have the breathing gap after the graphic", the
+     gap staying 1.5 s. `graphicShotMaxMs` is gone: no length finding for a
+     graphic, and the prompt says a graphic shot has no longest time.
+     (d) The owner then asked whether the graphics should be redesigned for
+     Shorts outright ("None of these, perhaps we should redesign them for the
+     shorts completely?") rather than played on the long form's clock or
+     re-timed to the Short's words. Agreed as its own piece of work with a
+     written design first: each design was written for the long form's
+     sentence and pace, so re-timing can only squeeze it (the SoftBank $13bn
+     design never shows its "driven in part by WeWork" line because the Short
+     never says "driven").
+     (e) Safe zone: `safeArea` (compositions `lib/graphic.ts`) intersects a
+     9:16 frame with `SHORT_RULES.safeArea` scaled to the frame, so
+     `safeInsets` hands designed graphics top 380, right 120, bottom 699,
+     left 60 on 1080 x 1920, and the layout check, the dry run, the board and
+     the render all read the same numbers. The social card's band and the
+     headline card now sit inside the zone's width, centred on it (both were
+     88 and 86% of the frame, so under the side buttons). Four portrait
+     goldens regenerated one by one by name (GraphicCardTall,
+     GraphicCardStagedTall-8500ms, SocialPostTall, HeadlineCardTall), checked
+     by eye against the zone. The same probe over all 24 designs in the five
+     Shorts: text under the interface in every design before, now one line
+     in two designs (13 px, within the checker's slack, and 146 px); the
+     cash-pile design, which lays its rows at fixed fractions of the height,
+     now crowds its year labels onto its figures. Both are for (d).
+     (f) The CTA, its cause: the bridge was asked for "what the full video
+     has" and given the channel line "The full story is on the channel", so
+     the model wrote both in every WeWork Short. The prompt now asks for the
+     untold part as the story, never "the full video shows", with the ask as
+     the one sentence naming the full video, the full story or the channel.
+     `parsePointScript` refuses a bridge with two such sentences
+     (`fullVideoSentences`), which earns the model its one retry with the
+     reason; an owner's own edit is not checked. Existing Shorts keep their
+     bridges until the owner edits the script (then Re-voice and Assemble).
+     (g) Decisions made where the owner left room: the 3-word snap window and
+     the later phrase start on a tie (cost if wrong: a cut a word off the
+     phrase); folding into the shot before rather than after (the picture
+     chosen for the earlier words stays); 5 s and 6 s as the new picture and
+     card ceilings, scaled from the owner's 2.5 to 4 s.

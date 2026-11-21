@@ -8,7 +8,12 @@ import {
 } from '@boom-busters/schemas'
 import type { TalkingPoint } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { buildPointScriptRequest, mockPointScript, parsePointScript } from './point-script'
+import {
+  buildPointScriptRequest,
+  fullVideoSentences,
+  mockPointScript,
+  parsePointScript,
+} from './point-script'
 import type { Note, Repair } from './repair'
 
 const chapters = [
@@ -78,6 +83,15 @@ describe('the point script request', () => {
     expect(flat(null)).not.toContain('The channel call to action')
     expect(flat('Watch the full case below')).toContain('The channel call to action')
   })
+
+  it('asks the bridge to point at the full video once only (decision 475)', () => {
+    const text = flat('The full story is on the channel')
+    expect(text).toContain('Point at the full video once only')
+    expect(text).toContain('never as "the full video shows"')
+    expect(text).toContain(
+      'no other sentence in the bridge points at the full video or the channel',
+    )
+  })
 })
 
 describe('parsePointScript', () => {
@@ -92,6 +106,46 @@ describe('parsePointScript', () => {
     const noBridge = [...paragraphs().slice(0, 4), paragraphs()[3]!]
     expect(() => parsePointScript(script(noBridge), 3)).toThrow(/no bridge paragraph/)
     expect(() => parsePointScript(script(noBridge), 3)).toThrow(ValidationError)
+  })
+
+  it('refuses a bridge that points at the full video twice (decision 475)', () => {
+    // The WeWork bridges as the model wrote them.
+    const twice = paragraphs().map((p) =>
+      p.phase === 'bridge'
+        ? {
+            ...p,
+            text: 'The full video shows why the losses never stopped: decades of fixed rent, paid for with month-to-month desk fees. The full story is on the channel, so tap the linked video below.',
+          }
+        : p,
+    )
+    expect(() => parsePointScript(script(twice), 3)).toThrow(
+      /points at the full video in 2 sentences/,
+    )
+    const longVersion = paragraphs().map((p) =>
+      p.phase === 'bridge'
+        ? {
+            ...p,
+            text: 'The long version shows the plan that died before Christmas. The full story is on the channel. Tap the linked video below.',
+          }
+        : p,
+    )
+    expect(() => parsePointScript(script(longVersion), 3)).toThrow(ValidationError)
+  })
+
+  it('accepts a bridge that names the full video once, in its ask', () => {
+    const once = paragraphs().map((p) =>
+      p.phase === 'bridge'
+        ? {
+            ...p,
+            text: 'Why the losses never stopped comes down to decades of fixed rent, paid for with month-to-month desk fees. The full story is on the channel, so tap the linked video below.',
+          }
+        : p,
+    )
+    expect(parsePointScript(script(once), 3).paragraphs.at(-1)!.text).toContain('fixed rent')
+    expect(
+      fullVideoSentences('The full story is on the channel. Tap the linked video below.'),
+    ).toBe(1)
+    expect(fullVideoSentences('Tap the linked video below.')).toBe(0)
   })
 
   it('refuses a chapter the film does not have', () => {

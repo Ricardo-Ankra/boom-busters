@@ -8,7 +8,8 @@ import type {
   TimelineSlot,
   WordTiming,
 } from '@boom-busters/schemas'
-import { graphicCueWords, paceGraphicShots, sameGraphic } from './point-graphics'
+import { graphicCueWords, sameGraphic } from './point-graphics'
+import { pacePointShots } from './point-pictures'
 import { offsetCaptions, snapToScript } from './snap'
 import { evenTimings } from './teaser'
 
@@ -121,8 +122,26 @@ export function compileShortMaster(input: {
     throw new ValidationError('a point Short needs a bridge paragraph', { field: 'paragraphs' })
   }
 
-  // Designed graphics are paced by their words before any slot is laid out.
-  const shots = paceGraphicShots(input.shots, words, narrationEndMs).shots
+  // A plan's words are checked as given: pacing folds a short shot away, so a
+  // shot past the end or not after the one before would vanish unreported.
+  input.shots.forEach((shot, index) => {
+    if (words[shot.startWord] === undefined) {
+      throw new ValidationError(
+        `shot ${index} starts at word ${shot.startWord}, but the narration has ${words.length}`,
+        { field: `shots.${index}.startWord` },
+      )
+    }
+    if (index > 0 && shot.startWord <= input.shots[index - 1]!.startWord) {
+      throw new ValidationError(
+        `shot ${index - 1} would last no time: shots must start on later words`,
+        { field: `shots.${index}.startWord` },
+      )
+    }
+  })
+
+  // Graphics are paced by their words and pictures by the phrasing before any
+  // slot is laid out (decisions 474 and 475).
+  const shots = pacePointShots(input.shots, words, narrationEndMs).shots
 
   const starts = shots.map((shot, index) => {
     const word = words[shot.startWord]

@@ -172,14 +172,14 @@ describe('the point fixture', () => {
     expect(bridge.durationMs).toBeLessThanOrEqual(SHORT_RULES.bridgeMaxMs)
   })
 
-  it('cuts every 1.5 to 3.5 s, all hard cuts, with a punch inside the first 1.2 s', () => {
+  it('cuts every 2.5 to 5 s, all hard cuts, with a punch inside the first 1.2 s', () => {
     for (const slot of timeline.slots) {
       expect(slot.durationMs).toBeGreaterThanOrEqual(SHORT_RULES.shotMinMs)
-      expect(slot.durationMs).toBeLessThanOrEqual(SHORT_RULES.shotTargetMaxMs)
+      expect(slot.durationMs).toBeLessThanOrEqual(SHORT_RULES.shotMaxMs)
       expect(slot.transition).toBe('cut')
     }
-    expect(timeline.slots.length).toBeGreaterThanOrEqual(18)
-    expect(timeline.slots.length).toBeLessThanOrEqual(24)
+    expect(timeline.slots.length).toBeGreaterThanOrEqual(14)
+    expect(timeline.slots.length).toBeLessThanOrEqual(20)
     const punch = timeline.slots.find((slot) => slot.motion.kind === 'punch')!
     expect(punch.startMs).toBeLessThanOrEqual(SHORT_RULES.hookPunchByMs)
   })

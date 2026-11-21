@@ -109,10 +109,10 @@ describe('checkShortRules', () => {
   it('flags a shot that holds too long', () => {
     const base = clean()
     const timeline = structuredClone(base.timeline)
-    timeline.slots[3]!.durationMs = 3800
+    timeline.slots[3]!.durationMs = 5300
     const finding = only(checkShortRules({ ...base, timeline }), 'shot-length')
     expect(finding.shotIndex).toBe(3)
-    expect(finding.message).toContain('3.8 s')
+    expect(finding.message).toContain('5.3 s')
   })
 
   it('flags a shot that is too brief', () => {
@@ -124,18 +124,18 @@ describe('checkShortRules', () => {
     expect(finding.message).toContain('1.0 s')
   })
 
-  it('lets a chart card hold to 4.5 s but not beyond', () => {
+  it('lets a chart card hold to 6 s but not beyond', () => {
     const base = clean()
     const chart = base.timeline.slots.findIndex((slot) => slot.type === 'chart')
     expect(chart).toBeGreaterThan(0)
     const ok = structuredClone(base.timeline)
-    ok.slots[chart]!.durationMs = 4000
+    ok.slots[chart]!.durationMs = 5500
     expect(checkShortRules({ ...base, timeline: ok })).toEqual([])
     const long = structuredClone(base.timeline)
-    long.slots[chart]!.durationMs = 4600
+    long.slots[chart]!.durationMs = 6100
     const finding = only(checkShortRules({ ...base, timeline: long }), 'shot-length')
     expect(finding.shotIndex).toBe(chart)
-    expect(finding.message).toContain('4.6 s')
+    expect(finding.message).toContain('6.1 s')
   })
 
   it('does not hold the last shot to the minimum', () => {
