@@ -114,9 +114,12 @@ describe('socialLayout', () => {
 
   it('sizes the TALL card and band from the frame and the safe area', () => {
     const layout = socialLayout({ text: 'x', hasMedia: false, frame: TALL, brand })
-    expect(layout.card.width).toBe(1080 * 0.88)
-    expect(layout.band.top).toBeGreaterThanOrEqual(1920 * 0.1)
     const safe = safeArea(TALL)
+    // No wider than the Shorts safe zone, and centred in it (decision 475).
+    expect(layout.card.width).toBe(Math.min(1080 * 0.88, safe.w))
+    expect(layout.band.left).toBe(safe.x)
+    expect(layout.band.width).toBe(safe.w)
+    expect(layout.band.top).toBeGreaterThanOrEqual(1920 * 0.1)
     expect(layout.band.top + layout.band.height).toBe(safe.y + safe.h)
   })
 })

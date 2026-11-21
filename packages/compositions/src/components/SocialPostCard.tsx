@@ -88,9 +88,9 @@ export function SocialPostCard({
       <div
         style={{
           position: 'absolute',
-          left: 0,
+          left: layout.band.left,
           top: layout.band.top,
-          width: frame.width,
+          width: layout.band.width,
           height: layout.band.height,
           display: 'flex',
           alignItems: 'center',

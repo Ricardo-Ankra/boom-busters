@@ -99,6 +99,18 @@ describe('safeArea', () => {
     expect(tall.y + tall.h).toBeLessThan(1920 * 0.72)
     expect(tall.y + tall.h).toBeLessThan(1920)
   })
+
+  it('keeps a 9:16 graphic clear of the Shorts interface (decision 475)', () => {
+    const tall = safeArea(TALL)
+    // Below the top bar, right of the left edge zone, left of the buttons.
+    expect(tall.y).toBe(380)
+    expect(tall.x).toBe(60)
+    expect(tall.x + tall.w).toBe(960)
+    // The caption band is still the lower bound, above the interface's own.
+    expect(tall.y + tall.h).toBeLessThan(1540)
+    // Landscape is untouched.
+    expect(safeArea(WIDE)).toMatchObject({ x: 36, y: 36 })
+  })
 })
 
 describe('graphicLayout', () => {
