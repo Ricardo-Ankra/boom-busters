@@ -212,6 +212,18 @@ suite('shorts bookkeeping', () => {
       expect(await claimPointWork(db, row.id, 'still', new Date(Date.now() + 60_000))).toBe(true)
     })
 
+    it('holds a re-plan to its own, later limit, by the kind of work in the slot (decision 476)', async () => {
+      const row = await draftPoint()
+      const past = new Date(Date.now() + 60_000)
+      const limits = { default: past, plan: farPast }
+      expect(await claimPointWork(db, row.id, 'plan', limits)).toBe(true)
+      // A re-plan in the slot is held by its own limit, which has not passed.
+      expect(await claimPointWork(db, row.id, 'voice', limits)).toBe(false)
+      expect(await claimPointWork(db, row.id, 'voice', { default: past, plan: past })).toBe(true)
+      // A re-voice in the slot is held by the default, which has passed.
+      expect(await claimPointWork(db, row.id, 'plan', limits)).toBe(true)
+    })
+
     it('settles to null or to failed words without touching the stored pool', async () => {
       const row = await draftPoint()
       await updateShort(db, row.id, {

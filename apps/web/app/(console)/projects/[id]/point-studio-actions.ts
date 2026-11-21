@@ -51,7 +51,7 @@ import {
   framedPrompt,
   pointParagraphAudio,
 } from '@/inngest/lib/point-build'
-import { POINT_WORK_COOLDOWN_MS, pointWorkPending } from '@/lib/point-studio-model'
+import { pointWorkPending, pointWorkStaleBefore } from '@/lib/point-studio-model'
 import { ingestCandidateBytes } from '@/lib/stock-ingest'
 import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
 import {
@@ -117,7 +117,7 @@ function busyMessage(what: PointWork): string {
 
 /** Win the Short's slot of work, or say that it is taken. */
 async function win(shortId: string, what: PointWork): Promise<ActionResult> {
-  const won = await claimPointWork(db, shortId, what, new Date(Date.now() - POINT_WORK_COOLDOWN_MS))
+  const won = await claimPointWork(db, shortId, what, pointWorkStaleBefore())
   if (won) return { ok: true }
   const short = await getShort(db, shortId)
   const running = short ? workInFlight(short) : null
