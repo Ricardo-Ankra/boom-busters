@@ -8,7 +8,7 @@ import type {
   TimelineSlot,
   WordTiming,
 } from '@boom-busters/schemas'
-import { graphicCueWords, sameGraphic } from './point-graphics'
+import { graphicCueWords, pointGraphicWindow, sameGraphic } from './point-graphics'
 import { pacePointShots } from './point-pictures'
 import { offsetCaptions, snapToScript } from './snap'
 import { evenTimings } from './teaser'
@@ -168,11 +168,16 @@ export function compileShortMaster(input: {
     const durationMs = endMs - startMs
     let payload = shot.slot.payload
     if (payload.kind === 'graphic-code') {
-      // The graphic plays on the Short's words, over the Short's shot.
-      const firstWord = index === 0 ? 0 : shot.startWord
-      const lastWord =
-        index === shots.length - 1 ? words.length - 1 : shots[index + 1]!.startWord - 1
-      const cueEndWord = Math.max(firstWord, Math.min(shot.cueEndWord ?? lastWord, lastWord))
+      // The graphic plays on the Short's words, over the Short's shot. Its
+      // planned length ends once its last cue has landed, as a long-form
+      // graphic's ends near its last word: code that times its closing beats
+      // from `durationMs` lands them there, and the shot holds the ending.
+      const { firstWord, cueEndWord, plannedMs } = pointGraphicWindow(
+        shots,
+        index,
+        words,
+        narrationEndMs,
+      )
       const before = shown.find((entry) => sameGraphic(entry.slot, shot.slot))
       const cues = graphicCueWords({
         words,
@@ -181,11 +186,7 @@ export function compileShortMaster(input: {
         startMs,
         earlier: before?.texts ?? [],
       })
-      // Its planned length ends once its last cue has landed, as a long-form
-      // graphic's ends near its last word: code that times its closing beats
-      // from `durationMs` lands them there, and the shot holds the ending.
-      const plannedMs = Math.min(durationMs, cues.at(-1)!.atMs + SHORT_RULES.graphicSettleMs)
-      payload = { ...payload, words: cues, durationMs: Math.max(1, plannedMs) }
+      payload = { ...payload, words: cues, durationMs: plannedMs }
       const texts = words.slice(firstWord, cueEndWord + 1).map((word) => word.text)
       if (before) before.texts.push(...texts)
       else shown.push({ slot: shot.slot, texts })

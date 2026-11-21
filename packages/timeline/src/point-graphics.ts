@@ -159,6 +159,46 @@ export function paceGraphicShots<T extends PaceableShot>(
   return { shots, report }
 }
 
+/** Where a paced graphic shot plays on the Short's clock (`pointGraphicWindow`). */
+export interface PointGraphicWindow {
+  /** The shot's start: 0 for the first shot, else its first word's. */
+  startMs: number
+  /** The next shot's start, or the narration's end for the last. */
+  endMs: number
+  /** The first of its cue words: 0 for the first shot, else its own first word. */
+  firstWord: number
+  /** The last of its cue words, never past the word before the next shot. */
+  cueEndWord: number
+  /** The code's planned length: until its last cue has landed and settled, within the shot. */
+  plannedMs: number
+}
+
+/**
+ * Where the paced graphic shot at `at` plays, as `compileShortMaster` lays it
+ * out: the compile reads it to time the code, and a Short's own design
+ * (decision 476) is written to the same window, so the code is designed for
+ * exactly the words and the length the render plays it on. A shot's planned
+ * length ends once its last cue has landed and settled; the shot runs on
+ * through the hold.
+ */
+export function pointGraphicWindow(
+  shots: readonly PaceableShot[],
+  at: number,
+  words: readonly { startMs: number }[],
+  narrationEndMs: number,
+): PointGraphicWindow {
+  const shot = shots[at]!
+  const next = shots[at + 1]
+  const startMs = at === 0 ? 0 : (words[shot.startWord]?.startMs ?? 0)
+  const endMs = next ? (words[next.startWord]?.startMs ?? narrationEndMs) : narrationEndMs
+  const firstWord = at === 0 ? 0 : shot.startWord
+  const lastWord = next ? next.startWord - 1 : words.length - 1
+  const cueEndWord = Math.max(firstWord, Math.min(shot.cueEndWord ?? lastWord, lastWord))
+  const cueMs = Math.max(0, (words[cueEndWord]?.startMs ?? startMs) - startMs)
+  const plannedMs = Math.max(1, Math.min(endMs - startMs, cueMs + SHORT_RULES.graphicSettleMs))
+  return { startMs, endMs, firstWord, cueEndWord, plannedMs }
+}
+
 /**
  * A graphic's words on its own clock: its cue words from its first word to
  * `cueEndWord`, offset from its start. Words of the same graphic's earlier

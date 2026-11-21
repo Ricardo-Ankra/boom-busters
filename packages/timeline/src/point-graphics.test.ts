@@ -1,10 +1,17 @@
 import { SHORT_RULES, TimelineSchema } from '@boom-busters/schemas'
 import type { TimelineSlot } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { compileShortMaster } from './point'
+import { compileShortMaster, layoutPointNarration } from './point'
+import { pacePointShots } from './point-pictures'
 import { pointFixtureInput } from './point.fixture'
 import { checkShortRules } from './point-rules'
-import { graphicCueWords, isCuedGraphic, paceGraphicShots, sameGraphic } from './point-graphics'
+import {
+  graphicCueWords,
+  isCuedGraphic,
+  paceGraphicShots,
+  pointGraphicWindow,
+  sameGraphic,
+} from './point-graphics'
 import type { PaceableShot } from './point-graphics'
 
 const R = SHORT_RULES
@@ -196,6 +203,56 @@ describe('graphicCueWords', () => {
       { text: 'w11', atMs: WORD_MS },
       { text: 'w12', atMs: 2 * WORD_MS },
     ])
+  })
+})
+
+describe('pointGraphicWindow (decision 476)', () => {
+  const plan = [shot(0, photo('a')), shot(10, graphic('g')), shot(30, photo('b'))]
+
+  it('spans the shot and cues to the word before the next shot, planned no longer than the shot', () => {
+    // The last cue's settle would run past the cut, so the plan ends with the shot.
+    expect(pointGraphicWindow(plan, 1, words, END_MS)).toEqual({
+      startMs: 10 * WORD_MS,
+      endMs: 30 * WORD_MS,
+      firstWord: 10,
+      cueEndWord: 29,
+      plannedMs: 20 * WORD_MS,
+    })
+  })
+
+  it('ends the plan at its stored last cue, and the first shot starts at word 0', () => {
+    const paced = [{ ...shot(4, graphic('g')), cueEndWord: 8 }, shot(30, photo('b'))]
+    expect(pointGraphicWindow(paced, 0, words, END_MS)).toMatchObject({
+      startMs: 0,
+      firstWord: 0,
+      cueEndWord: 8,
+      plannedMs: 8 * WORD_MS + R.graphicSettleMs,
+    })
+  })
+
+  it('never plans past the shot, nor cues past the narration for the last shot', () => {
+    const last = [shot(0, photo('a')), { ...shot(138, graphic('g')), cueEndWord: 500 }]
+    const window = pointGraphicWindow(last, 1, words, END_MS)
+    expect(window.cueEndWord).toBe(139)
+    expect(window.endMs).toBe(END_MS)
+    expect(window.plannedMs).toBe(END_MS - 138 * WORD_MS)
+  })
+
+  it('is the window the compile times the code on', () => {
+    const input = pointFixtureInput()
+    input.shots[5] = { ...input.shots[5]!, slot: graphic('Cash pile') }
+    const timeline = compileShortMaster(input)
+    const at = timeline.slots.findIndex((s) => s.payload.kind === 'graphic-code')
+    const slot = timeline.slots[at]!
+    if (slot.payload.kind !== 'graphic-code') throw new Error('not a graphic')
+    // The compile paces the plan first; the window is read on the paced shots.
+    const { words: said, narrationEndMs } = layoutPointNarration(input.paragraphs)
+    const paced = pacePointShots(input.shots, said, narrationEndMs).shots
+    const window = pointGraphicWindow(paced, at, said, narrationEndMs)
+    expect(slot.startMs).toBe(window.startMs)
+    expect(slot.startMs + slot.durationMs).toBe(window.endMs)
+    expect(slot.payload.durationMs).toBe(window.plannedMs)
+    expect(slot.payload.words).toHaveLength(window.cueEndWord - window.firstWord + 1)
   })
 })
 

@@ -158,6 +158,19 @@ export const PointPlanShotSchema = z
      * are paced (`paceGraphicShots`), so a later cut never moves the cues.
      */
     cueEndWord: z.number().int().min(0).optional(),
+    /**
+     * A designed graphic drawn again for this Short (decision 476): `designed`
+     * when the slot plays the Short's own design, written from its words for
+     * its 9:16 frame; `kept` when that design could not be made and the film's
+     * plays, with why. Absent until the Short's design has been tried, which
+     * is what lets a resumed build skip a graphic it already has.
+     */
+    shortDesign: z
+      .discriminatedUnion('outcome', [
+        z.object({ outcome: z.literal('designed') }),
+        z.object({ outcome: z.literal('kept'), issue: z.string().max(500) }),
+      ])
+      .optional(),
   })
   .refine((shot) => (shot.slot === null) !== (shot.pending === null), {
     message: 'a shot carries exactly one of slot and pending',
