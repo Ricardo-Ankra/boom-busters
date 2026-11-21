@@ -43,6 +43,7 @@ import {
   writeOrReusePointScript,
 } from '../lib/point-build'
 import type { PendingOutcome } from '../lib/point-build'
+import { designShortGraphics } from '../lib/point-design'
 
 /**
  * point-short-runner (playbook Shorts design 3.4): `shorts/point.build.requested`
@@ -237,6 +238,25 @@ export const pointShortRunner = inngest.createFunction(
     const fetchesUsed = hadPending ? fetched.fetches : (planned.fetches ?? fetched.fetches)
 
     // -----------------------------------------------------------------------
+    // The Short's own graphics (decision 476): each lifted film graphic
+    // designed again from the Short's words for its 9:16 frame, each in steps
+    // of its own, and stored as they land so a resumed build skips them.
+    // -----------------------------------------------------------------------
+    const designed = await designShortGraphics((id, fn) => step.run(id, fn) as never, {
+      projectId,
+      script: written.script,
+      voice,
+      plan: fetched.plan,
+      runId,
+    })
+    if (!designed.ok) return overBudget('design-over-budget', designed.gate)
+    if (designed.changed) {
+      await step.run('save-designed', () =>
+        savePointProgress({ projectId, pointId, plan: designed.plan }),
+      )
+    }
+
+    // -----------------------------------------------------------------------
     // Assemble and store
     // -----------------------------------------------------------------------
     const assembled = await step.run('assemble', async () => {
@@ -249,7 +269,7 @@ export const pointShortRunner = inngest.createFunction(
         scriptVersion: written.scriptVersion,
         pointId,
       })
-      const plan: PointPlanRecord = fetched.plan
+      const plan: PointPlanRecord = designed.plan
       const fetches: PointFetchesRecord = fetchesUsed
       const {
         timeline,
@@ -282,7 +302,11 @@ export const pointShortRunner = inngest.createFunction(
       // could not be had, on the Short's own card; the skip note an earlier
       // attempt left on the point is retired now there is a row.
       const repairs: Repair[] = [...written.repairs, ...planned.repairs, ...fetched.repairs]
-      await recordRepairs({ projectId, subject: 'short', subjectId: saved.shortId }, repairs)
+      await recordRepairs(
+        { projectId, subject: 'short', subjectId: saved.shortId },
+        repairs,
+        designed.kept.map((message) => ({ kind: 'stopped' as const, message })),
+      )
       await recordRepairs(target, [])
       return { shortId: saved.shortId, findings: findings.length }
     })

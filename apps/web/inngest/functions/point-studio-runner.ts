@@ -28,6 +28,7 @@ import { inngest } from '../client'
 import { events } from '../events'
 import { fetchPendingShots, planPointShots, voiceOrReusePointParagraph } from '../lib/point-build'
 import type { PendingOutcome } from '../lib/point-build'
+import { designShortGraphics } from '../lib/point-design'
 
 /**
  * point-studio-runner (playbook Shorts design 6): the point Short studio's
@@ -101,7 +102,7 @@ export const pointStudioRunner = inngest.createFunction(
     },
     triggers: [events.shortsPointStudioRequested],
   },
-  async ({ event, step }) => {
+  async ({ event, step, runId }) => {
     const { projectId, shortId, op, note } = parseEventData(
       'shorts/point.studio.requested',
       event.data,
@@ -232,6 +233,19 @@ export const pointStudioRunner = inngest.createFunction(
       return { projectId, shortId, outcome: 'skipped' as const, reason: fetched.skipped }
     }
 
+    // The Short's own graphics (decision 476), as the first build makes them.
+    const designed = await designShortGraphics((id, fn) => step.run(id, fn) as never, {
+      projectId,
+      script,
+      voice,
+      plan: fetched.plan,
+      runId,
+    })
+    if (!designed.ok) {
+      await fail('design-over-budget', 'plan', `Graphics: ${gateWords(designed.gate)}`)
+      return { projectId, shortId, outcome: 'over-budget' as const }
+    }
+
     await step.run('store-plan', async () => {
       // What the owner already bought stays in the pool beside what this plan
       // fetched: paid pixels are never silently discarded.
@@ -244,15 +258,16 @@ export const pointStudioRunner = inngest.createFunction(
         ...fetched.fetches.candidates,
       ].filter((candidate) => !seen.has(candidate.id) && seen.add(candidate.id))
       const fetches: PointFetchesRecord = { candidates: candidates.slice(-60), state: null }
-      await updateShort(db, shortId, { pointPlan: fetched.plan, pointFetches: fetches })
-      await recordRepairs({ projectId, subject: 'short', subjectId: shortId }, [
-        ...planned.repairs,
-        ...fetched.repairs,
-      ])
+      await updateShort(db, shortId, { pointPlan: designed.plan, pointFetches: fetches })
+      await recordRepairs(
+        { projectId, subject: 'short', subjectId: shortId },
+        [...planned.repairs, ...fetched.repairs],
+        designed.kept.map((message) => ({ kind: 'stopped' as const, message })),
+      )
       await notify({
         kind: 'heads-up',
         title: 'The shots are re-planned',
-        body: `${fetched.plan.shots.length} shots are ready in the studio. Look them over, then Assemble and render.`,
+        body: `${designed.plan.shots.length} shots are ready in the studio. Look them over, then Assemble and render.`,
         href: `/projects/${projectId}?stage=shorts`,
       })
     })
@@ -261,8 +276,9 @@ export const pointStudioRunner = inngest.createFunction(
       projectId,
       shortId,
       outcome: 'planned' as const,
-      shots: fetched.plan.shots.length,
+      shots: designed.plan.shots.length,
       fetched: fetched.fetched,
+      keptFilmGraphics: designed.kept.length,
     }
   },
 )
