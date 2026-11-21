@@ -76,6 +76,7 @@ export function buildPointPlanRequest(input: {
 Pacing:
 - A visual change every ${seconds(R.shotMinMs)} to ${seconds(R.shotTargetMaxMs)} seconds. No shot shorter than ${seconds(R.shotMinMs)} seconds and none longer than ${seconds(R.shotMaxMs)}, except a headline, social or chart card, which may hold up to ${seconds(R.cardShotMaxMs)} so it can be read, and a designed graphic (below).
 - A shot runs from its first word to the next shot's first word, so choose the words by their times below.
+- Cut where a phrase starts: on the first word of a sentence, or the word after a comma, colon or semicolon. Never cut in the middle of a phrase. The app moves a cut made mid-phrase to the nearest phrase start and folds a picture left under ${seconds(R.shotMinMs)} seconds into the shot before it.
 - A "change" is a new shot, or the same library photo, still or archival picture again with a new crop or motion. To keep up the pace without many pictures, show one such picture as a sequence: wide, then a punch-in on a detail.
 - Cuts only. No fades or dissolves.
 
@@ -83,7 +84,7 @@ Designed graphics, the library entries marked (graphic-code):
 - A designed graphic animates in time with the words spoken over it: each figure lands as the narration says it. It needs those words under it to make sense.
 - Start it on the word that brings in its first figure, and give it every sentence that speaks its figures, as one shot. Start the next shot on the word after its last figure; the app then keeps the graphic up ${seconds(R.graphicSettleMs + R.graphicHoldMs)} seconds longer so it can be read, taking that time from the next shot.
 - Show each graphic once. Never split one across shots or bring it back with a new crop or motion: every new shot replays its animation from the start.
-- A graphic shot may run up to ${seconds(R.graphicShotMaxMs)} seconds with its hold. Pick graphics whose figures the script actually says.
+- A graphic shot has no longest time: it runs as long as its figures are being said, then its hold. Pick graphics whose figures the script actually says.
 
 The hook:
 - The first shot starts at word 0, and is the hook picture from the first frame. Give it the "punch" motion, which scales in within the first ${seconds(R.hookPunchByMs)} seconds. Use "punch" again only on an emphasis word.
@@ -220,7 +221,9 @@ export function mockPointPlan(
 ): PlannedPointShot[] {
   const crops: CropFocus[] = ['centre', 'left', 'right']
   const shots: PlannedPointShot[] = []
-  for (let at = 0, n = 0; at < words.length; at += 5, n++) {
+  // Every 8 words, about 3 s at the mock voice's pace: inside decision 475's
+  // 2.5 to 4 s, so pacing keeps every mock shot, the new still included.
+  for (let at = 0, n = 0; at < words.length; at += 8, n++) {
     const entry = library.length > 0 ? library[n % library.length]! : undefined
     // One generated still, on the second shot; a library of none makes the first shot one.
     const wantsStill = entry === undefined || (n === 1 && library.length > 0)

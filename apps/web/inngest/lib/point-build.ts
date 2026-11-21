@@ -39,7 +39,7 @@ import {
   compileShortMaster,
   layoutPointNarration,
   masterChapterIds,
-  paceGraphicShots,
+  pacePointShots,
   POINT_CHAPTER_ID,
 } from '@boom-busters/timeline'
 import type { PointParagraphAudio, ResolvedPointShot, RuleFinding } from '@boom-busters/timeline'
@@ -431,8 +431,8 @@ export async function planPointShots(
           ? { kind: 'still', prompt: shot.source.prompt }
           : null,
   }))
-  // Designed graphics are paced by their words now, so the studio shows the cut the render makes.
-  const shots = paceGraphicShots(unpaced, narration.words, narration.narrationEndMs).shots
+  // Graphics and pictures are paced now, so the studio shows the cut the render makes.
+  const shots = pacePointShots(unpaced, narration.words, narration.narrationEndMs).shots
   return {
     ok: true,
     plan: {
@@ -612,12 +612,12 @@ export function assemblePointShort(input: {
       })
     }
   })
-  // Pace the stored plan as the compiler will, so a plan made before graphics
-  // were paced is stored as the cut the render makes.
+  // Pace the stored plan as the compiler will, so a plan made before the
+  // pacing rules is stored as the cut the render makes.
   const narration = layoutPointNarration(paragraphs)
   const plan: PointPlanRecord = {
     ...input.plan,
-    shots: paceGraphicShots(input.plan.shots, narration.words, narration.narrationEndMs).shots,
+    shots: pacePointShots(input.plan.shots, narration.words, narration.narrationEndMs).shots,
   }
   const shots = plan.shots.map((shot): ResolvedPointShot => ({
     startWord: shot.startWord,

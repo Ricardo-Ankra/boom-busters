@@ -10,7 +10,9 @@ import type { PointParagraphAudio, ResolvedPointShot } from './point'
  * - 140 words over five phases, voiced at 161 words a minute;
  * - 52.7 s end to end; phases end at 2.6, 13.9, 38.2, 46.6 and 52.7 s;
  * - a 5.95 s bridge;
- * - 24 shots of 1.86 to 2.38 s, every cut on a word, a punch from frame one;
+ * - 16 shots of 2.6 to 4.84 s (decision 475's 2.5 s least and 5 s most), every
+ *   cut on a phrase start or four words or more from one, so pacing keeps
+ *   them all, and a punch from frame one;
  * - one video, one chart and one map among the pictures.
  *
  * Word timings are synthetic: an even 372 ms a word, which is also what makes
@@ -185,8 +187,8 @@ function map(): TimelineSlot {
   }
 }
 
-/** Words per shot: four 5s among twenty 6s, 140 in all. */
-const SHOT_WORDS = [5, 6, 6, 6, 5, 6, 6, 6, 6, 5, 6, 6, 6, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6]
+/** Each shot's first word, of 140: a fixed point of `pacePointShots`. */
+const SHOT_STARTS = [0, 7, 14, 21, 29, 37, 44, 57, 66, 74, 81, 88, 97, 107, 119, 128]
 
 const SHOT_SLOTS: TimelineSlot[] = [
   still('hook'),
@@ -198,20 +200,12 @@ const SHOT_SLOTS: TimelineSlot[] = [
   video('server-room'),
   archival('trustee'),
   still('contract'),
-  still('stamp'),
   archival('letter'),
   chart(),
   still('shares'),
   still('regulator'),
-  archival('filing'),
-  still('boardroom'),
-  video('street'),
   still('balance'),
-  archival('invoice'),
   still('empty-vault'),
-  still('ledger-two'),
-  still('signature'),
-  archival('headline-clipping'),
   still('closing'),
 ]
 
@@ -224,17 +218,12 @@ function shotMotion(index: number): PointShotMotion {
 }
 
 function shots(): ResolvedPointShot[] {
-  let startWord = 0
-  return SHOT_WORDS.map((length, index) => {
-    const shot: ResolvedPointShot = {
-      startWord,
-      slot: SHOT_SLOTS[index]!,
-      crop: SHOT_CROPS[index % SHOT_CROPS.length]!,
-      motion: shotMotion(index),
-    }
-    startWord += length
-    return shot
-  })
+  return SHOT_STARTS.map((startWord, index) => ({
+    startWord,
+    slot: SHOT_SLOTS[index]!,
+    crop: SHOT_CROPS[index % SHOT_CROPS.length]!,
+    motion: shotMotion(index),
+  }))
 }
 
 /** Everything `compileShortMaster` takes, rebuilt fresh on each call. */

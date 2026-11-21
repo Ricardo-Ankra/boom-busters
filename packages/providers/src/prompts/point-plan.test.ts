@@ -97,10 +97,9 @@ describe('the point plan request', () => {
   })
 
   it('states the pacing numbers from the rule book in seconds', () => {
-    expect(text).toContain('1.5')
-    expect(text).toContain('2.5')
-    expect(text).toContain('3.5')
-    expect(text).toContain('4.5')
+    expect(text).toContain('2.5 to 4 seconds')
+    expect(text).toContain('none longer than 5')
+    expect(text).toContain('up to 6 so it can be read')
     expect(text).toContain('1.2')
     expect(text).toContain(String(SHORT_RULES.newImagesMax))
     expect(text).toContain('9:16')
@@ -114,7 +113,13 @@ describe('the point plan request', () => {
     // The settle and the hold, in seconds.
     expect(text).toContain('2.2 seconds longer so it can be read')
     expect(text).toContain('Show each graphic once')
-    expect(text).toContain('up to 9 seconds with its hold')
+    expect(text).toContain('A graphic shot has no longest time')
+    expect(text).not.toContain('up to 9 seconds')
+  })
+
+  it('cuts pictures where a phrase starts (decision 475)', () => {
+    expect(text).toContain('Cut where a phrase starts')
+    expect(text).toContain('folds a picture left under 2.5 seconds')
   })
 
   it('leaves the note out when there is none', () => {
@@ -202,14 +207,14 @@ describe('mockPointPlan', () => {
     libraryCount: number,
   ) => parsePointPlan(JSON.stringify({ shots }), { wordCount, libraryCount })
 
-  it('plans a shot every 5 words, round-robin, punching first, with one still', () => {
+  it('plans a shot every 8 words, round-robin, punching first, with one still', () => {
     const shots = mockPointPlan(words, library)
-    expect(shots.map((s) => s.startWord)).toEqual([0, 5, 10, 15, 20, 25])
+    expect(shots.map((s) => s.startWord)).toEqual([0, 8, 16, 24])
     expect(shots[0]!.motion).toBe('punch')
     expect(shots.filter((s) => s.source.kind === 'still')).toHaveLength(1)
     // the still takes the second shot's turn in the round-robin
     expect(shots.map((s) => (s.source.kind === 'library' ? s.source.ref : -1))).toEqual([
-      0, -1, 0, 1, 0, 1,
+      0, -1, 0, 1,
     ])
     expect(check(shots, 30, 2)).toEqual(shots)
     expect(mockPointPlan(words, library)).toEqual(shots)
@@ -220,7 +225,7 @@ describe('mockPointPlan', () => {
     expect(check(shots, 30, 1)).toEqual(shots)
   })
 
-  it('copes with fewer than 5 words', () => {
+  it('copes with fewer than 8 words', () => {
     const shots = mockPointPlan(words.slice(0, 3), library)
     expect(shots).toHaveLength(1)
     expect(shots[0]!.startWord).toBe(0)
