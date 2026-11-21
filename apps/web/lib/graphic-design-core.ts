@@ -21,6 +21,7 @@ import {
   type CriticReference,
   type Exemplar,
   type GraphicDesignInput,
+  type GraphicFrame,
   type LLMTaskRequest,
   type MsgImage,
   type ReviewFrame,
@@ -60,7 +61,7 @@ import {
 } from '@/lib/graphic-code/frames'
 import { motionMetrics } from '@/lib/graphic-code/motion-metrics'
 import { ensureGraphicCompiler } from '@/lib/graphic-code/compile'
-import { ensureDryRunRuntime } from '@/lib/graphic-code/dry-run'
+import { ensureDryRunRuntime, type GraphicFrameSet } from '@/lib/graphic-code/dry-run'
 import { timedParagraphs, type TimedParagraph } from '@/inngest/lib/shot-list'
 
 /**
@@ -311,6 +312,22 @@ export function slotTechnique(
   })
 }
 
+/**
+ * A Short's own design (decision 476): it plays in the Short's 9:16 frame
+ * alone, is checked there alone, and is shown the film's design of the same
+ * beat for its idea and look. Absent, the design is the film's, in both frames.
+ */
+export interface ShortDesignOptions {
+  frame?: GraphicFrame
+  /** The film's design this Short's reworks; only with `frame: 'short'`. */
+  filmDesign?: GraphicCode
+}
+
+/** The frames a design is run and checked in. */
+export function frameSetOf(frame: GraphicFrame | undefined): GraphicFrameSet {
+  return frame === 'short' ? 'portrait' : 'both'
+}
+
 /** What every graphics call shares for a slot: the request's base and what the checks read. */
 function designInput(
   context: GraphicDesignContext,
@@ -322,7 +339,7 @@ function designInput(
     redesign?: boolean
     /** The exemplar to show: given, used as is (null for none); absent, the house one for the slot's technique. */
     exemplar?: Exemplar | null
-  },
+  } & ShortDesignOptions,
 ): {
   base: GraphicDesignInput
   checkSlot: { brief: DesignableBrief; durationMs: number; words: { text: string; atMs: number }[] }
@@ -343,6 +360,12 @@ function designInput(
       : exemplarFor(slotTechnique(context, slot, motion, options.guidance))
 
   const base: GraphicDesignInput = {
+    ...(options.frame === 'short'
+      ? {
+          frame: 'short' as const,
+          ...(options.filmDesign ? { filmDesign: currentDesign(options.filmDesign) } : {}),
+        }
+      : {}),
     bible: options.bible,
     motion,
     caseTitle: context.caseTitle,
@@ -395,6 +418,8 @@ function inspector(
   deadline: number,
   /** Told why an inspection gave nothing (decision 445). */
   onNone?: (reason: string) => void,
+  /** The frames the design plays in (decision 476): both by default. */
+  frames: GraphicFrameSet = 'both',
 ) {
   let framesDown = !options.frames
   let downReason = 'the browser is off'
@@ -421,6 +446,7 @@ function inspector(
         compiled: code.compiled,
         props: dryRunProps(context, checkSlot, options.brand),
         durationMs: slot.durationMs,
+        ...(frames === 'both' ? {} : { frames }),
         ...mode,
         timeoutMs: Math.min(INSPECT_MAX_MS, left),
       })
@@ -473,7 +499,8 @@ export async function designGraphicWith(
      * same scope must be passed for every step of one attempt.
      */
     bridgeJobScope?: string
-  } & FramesOptions,
+  } & FramesOptions &
+    ShortDesignOptions,
 ): Promise<GraphicDesignResult> {
   // The checks load React, react-dom/server and Remotion at run time and
   // compile with esbuild's native binary. A host that cannot do either is
@@ -510,7 +537,8 @@ export async function designGraphicWith(
         : {}),
     })
   }
-  const inspect = inspector(context, slot, checkSlot, options, deadline)
+  const frames = frameSetOf(options.frame)
+  const inspect = inspector(context, slot, checkSlot, options, deadline, undefined, frames)
   const refuse = (issue: string): never => {
     options.log?.(`refused: ${issue}`)
     throw new ValidationError(issue, { field: 'graphic code' })
@@ -529,6 +557,7 @@ export async function designGraphicWith(
         try {
           const checked = graphicCodeIssue(parseGraphicCode(text, note), context, checkSlot, {
             motion: options.motion ?? DEFAULT_MOTION_IDENTITY,
+            ...(frames === 'both' ? {} : { frames }),
           })
           if ('issue' in checked) return refuse(checked.issue)
           const inspected = await inspect(checked.code, { shots: false, measure: true })
@@ -609,7 +638,8 @@ export async function photographForCritic(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
   code: GraphicCode,
-  options: FramesOptions & { motion: MotionIdentity; dense: readonly number[]; deadline: number },
+  options: FramesOptions &
+    ShortDesignOptions & { motion: MotionIdentity; dense: readonly number[]; deadline: number },
 ): Promise<{ photographed: FramesResult; metrics: MotionMetrics | null } | { none: string }> {
   const words = slotWords(context, slot)
   let why = 'the browser is off'
@@ -622,6 +652,7 @@ export async function photographForCritic(
     (reason) => {
       why = reason
     },
+    frameSetOf(options.frame),
   )
   const photographed = await inspect(code, {
     shots: true,
@@ -671,7 +702,8 @@ export async function reviewGraphicWith(
     references?: readonly CriticReference[]
     /** The exemplar the fix is shown; absent, the house one for the slot's technique. */
     exemplar?: Exemplar | null
-  } & FramesOptions,
+  } & FramesOptions &
+    ShortDesignOptions,
 ): Promise<GraphicReviewResult> {
   const skipped = (reason: string): GraphicReviewResult => {
     options.log?.(`review skipped: ${reason}`)
@@ -688,7 +720,8 @@ export async function reviewGraphicWith(
   const motion = options.motion ?? DEFAULT_MOTION_IDENTITY
   const { base, checkSlot } = designInput(context, slot, options)
   const deadline = Date.now() + GRAPHIC_DESIGN_DEADLINE_MS
-  const inspect = inspector(context, slot, checkSlot, options, deadline)
+  const frameSet = frameSetOf(options.frame)
+  const inspect = inspector(context, slot, checkSlot, options, deadline, undefined, frameSet)
   const image = (data: string): MsgImage => ({ mimeType: 'image/jpeg', data })
 
   try {
@@ -769,7 +802,10 @@ export async function reviewGraphicWith(
     }
     let checked: ReturnType<typeof graphicCodeIssue>
     try {
-      checked = graphicCodeIssue(parseGraphicCode(fixReply.text), context, checkSlot, { motion })
+      checked = graphicCodeIssue(parseGraphicCode(fixReply.text), context, checkSlot, {
+        motion,
+        ...(frameSet === 'both' ? {} : { frames: frameSet }),
+      })
     } catch (error) {
       if (!(error instanceof ValidationError)) throw error
       return kept(`the fix was refused: ${error.message}`)

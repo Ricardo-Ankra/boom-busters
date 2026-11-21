@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm
 import type { Database } from './client'
 import { scripts, shorts } from './schema'
 import type { ShortRow } from './schema'
+import { POINT_WORK } from '@boom-busters/schemas'
 import type {
   PointFetchesRecord,
   PointPlanRecord,
@@ -171,14 +172,25 @@ export async function updateShort(
  * matches the WHERE. A slot already `fetching` is refused until `staleBefore`,
  * so a run that vanished without writing its failure cannot lock the Short
  * for good (decision 234); a record with no timestamp predates the guard and
- * may be claimed.
+ * may be claimed. `staleBefore` may name a later limit for one kind of work in
+ * the slot (decision 476: a re-plan designs graphics and runs far longer).
  */
 export async function claimPointWork(
   db: Database,
   id: string,
   what: PointWork,
-  staleBefore: Date,
+  staleBefore: Date | ({ default: Date } & Partial<Record<PointWork, Date>>),
 ): Promise<boolean> {
+  const limits = staleBefore instanceof Date ? { default: staleBefore } : staleBefore
+  const running = sql`${shorts.pointFetches} -> 'state' ->> 'what'`
+  const byKind = POINT_WORK.flatMap((kind) => {
+    const limit = limits[kind]
+    return limit ? [sql`when ${running} = ${kind} then ${limit.toISOString()}::timestamptz`] : []
+  })
+  const limit =
+    byKind.length === 0
+      ? sql`${limits.default.toISOString()}::timestamptz`
+      : sql`(case ${sql.join(byKind, sql` `)} else ${limits.default.toISOString()}::timestamptz end)`
   const state = JSON.stringify({
     state: 'fetching',
     what,
@@ -196,7 +208,7 @@ export async function claimPointWork(
         or(
           sql`${shorts.pointFetches} is null`,
           sql`coalesce(${shorts.pointFetches} -> 'state' ->> 'state', '') <> 'fetching'`,
-          sql`coalesce((${shorts.pointFetches} -> 'state' ->> 'startedAt')::timestamptz, '-infinity'::timestamptz) < ${staleBefore.toISOString()}::timestamptz`,
+          sql`coalesce((${shorts.pointFetches} -> 'state' ->> 'startedAt')::timestamptz, '-infinity'::timestamptz) < ${limit}`,
         ),
       ),
     )
@@ -221,6 +233,28 @@ export async function settlePointWork(
       updatedAt: new Date(),
     })
     .where(eq(shorts.id, id))
+}
+
+/**
+ * Keep a long job's hold on the studio's slot fresh (decision 476): its
+ * `startedAt` moves to now, but only while that same work still holds the
+ * slot, so a failure or a release written meanwhile is left as it is. A
+ * re-plan calls it before each graphic's step, so its hold counts from the
+ * last step rather than the press.
+ */
+export async function touchPointWork(db: Database, id: string, what: PointWork): Promise<void> {
+  await db
+    .update(shorts)
+    .set({
+      pointFetches: sql`jsonb_set(${shorts.pointFetches}, '{state,startedAt}', to_jsonb(${new Date().toISOString()}::text))`,
+    })
+    .where(
+      and(
+        eq(shorts.id, id),
+        sql`${shorts.pointFetches} -> 'state' ->> 'state' = 'fetching'`,
+        sql`${shorts.pointFetches} -> 'state' ->> 'what' = ${what}`,
+      ),
+    )
 }
 
 /**

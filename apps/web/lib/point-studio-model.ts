@@ -58,6 +58,26 @@ import { stillSlotEstimateUsd } from '@/lib/visual-assets'
  */
 export const POINT_WORK_COOLDOWN_MS = 10 * 60 * 1000
 
+/**
+ * A re-plan's own, longer hold (decision 476): it designs each graphic for
+ * the Short, a few minutes apiece, so ten minutes would free the slot while
+ * it still runs and let a second press buy every design again.
+ */
+export const POINT_PLAN_COOLDOWN_MS = 45 * 60 * 1000
+
+/** How long work of this kind holds the studio's slot. */
+export function pointWorkCooldownMs(what: PointWork): number {
+  return what === 'plan' ? POINT_PLAN_COOLDOWN_MS : POINT_WORK_COOLDOWN_MS
+}
+
+/** The claim's limits: work started before these is stale, by the kind of work in the slot. */
+export function pointWorkStaleBefore(now = Date.now()): { default: Date; plan: Date } {
+  return {
+    default: new Date(now - POINT_WORK_COOLDOWN_MS),
+    plan: new Date(now - POINT_PLAN_COOLDOWN_MS),
+  }
+}
+
 export interface PointStudioShot {
   index: number
   startMs: number
@@ -111,7 +131,7 @@ export function pointWorkPending(
   if (!state || state.state !== 'fetching') return null
   const startedAt = state.startedAt ? Date.parse(state.startedAt) : Number.NaN
   if (!Number.isFinite(startedAt)) return null
-  return now - startedAt < POINT_WORK_COOLDOWN_MS ? state.what : null
+  return now - startedAt < pointWorkCooldownMs(state.what) ? state.what : null
 }
 
 /** Two slots show the same footage when their payloads agree exactly. */

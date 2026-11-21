@@ -131,5 +131,10 @@ export const MotionMetricsSchema = z.object({
   speedProfile: z
     .array(z.object({ atMs: z.number().int().min(0), change: z.number().min(0) }))
     .max(64),
+  /**
+   * The frame the shots were compared in: 16:9 when absent. A Short's own
+   * design plays in 9:16 alone, so it is measured there (decision 476).
+   */
+  frame: z.enum(['16:9', '9:16']).optional(),
 })
 export type MotionMetrics = z.infer<typeof MotionMetricsSchema>

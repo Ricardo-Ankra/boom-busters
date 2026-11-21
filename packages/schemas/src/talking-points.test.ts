@@ -160,4 +160,16 @@ describe('PointPlanShotSchema', () => {
       false,
     )
   })
+
+  it("records the Short's own design, or the film's kept with why (decision 476)", () => {
+    const shot = (shortDesign: unknown) =>
+      PointPlanShotSchema.safeParse({ ...base, slot, pending: null, shortDesign })
+    expect(shot({ outcome: 'designed' }).success).toBe(true)
+    expect(shot({ outcome: 'kept', issue: 'the designer took too long' }).success).toBe(true)
+    expect(shot({ outcome: 'kept' }).success).toBe(false)
+    expect(shot({ outcome: 'kept', issue: 'x'.repeat(501) }).success).toBe(false)
+    expect(shot({ outcome: 'redesigned' }).success).toBe(false)
+    // A shot stored before decision 476 has none.
+    expect(PointPlanShotSchema.parse({ ...base, slot, pending: null }).shortDesign).toBeUndefined()
+  })
 })

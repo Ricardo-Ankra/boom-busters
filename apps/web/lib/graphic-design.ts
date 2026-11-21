@@ -20,6 +20,7 @@ import { browserFrames } from '@/lib/graphic-code/frames'
 import {
   chartData,
   designGraphicWith,
+  frameSetOf,
   loadGraphicContextFrom,
   reviewGraphicWith,
   slotIntent,
@@ -29,6 +30,7 @@ import {
   type GraphicDesignResult,
   type GraphicReviewResult,
   type GraphicSlotTiming,
+  type ShortDesignOptions,
 } from '@/lib/graphic-design-core'
 
 /**
@@ -53,6 +55,7 @@ export {
   type GraphicDesignResult,
   type GraphicReviewResult,
   type GraphicSlotTiming,
+  type ShortDesignOptions,
 } from '@/lib/graphic-design-core'
 
 /**
@@ -108,7 +111,7 @@ export async function designGraphic(
     resume?: AnswerRetry
     /** Each call as a bridge job, named for this run and step (decision 472). */
     bridgeJobScope?: string
-  } = {},
+  } & ShortDesignOptions = {},
 ): Promise<GraphicDesignResult> {
   // Read here, inside the step that designs, so the bible is the project's frozen one and never
   // an earlier step's memoised copy. The gate sits before the mock branch.
@@ -132,7 +135,10 @@ export async function designGraphic(
       planned,
       context,
       { brief, durationMs: slot.durationMs, words: slotWords(context, slot) },
-      { motion: resolveMotionIdentity(channel.settings) },
+      {
+        motion: resolveMotionIdentity(channel.settings),
+        ...(options.frame === 'short' ? { frames: frameSetOf(options.frame) } : {}),
+      },
     )
     return 'code' in checked
       ? { ok: true, code: checked.code }
@@ -169,7 +175,7 @@ export async function designGraphic(
 export async function reviewGraphic(
   context: GraphicDesignContext,
   slot: GraphicSlotTiming & { brief: DesignableBrief },
-  options: { guidance?: string } = {},
+  options: { guidance?: string } & ShortDesignOptions = {},
 ): Promise<GraphicReviewResult> {
   const channel = await channelForProject(db, context.projectId)
   const inUse = requireCompleteBible(channel)

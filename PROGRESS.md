@@ -12294,3 +12294,80 @@ owner edits. `--prod` was not run against Neon.
      phrase); folding into the shot before rather than after (the picture
      chosen for the earlier words stays); 5 s and 6 s as the new picture and
      card ceilings, scaled from the owner's 2.5 to 4 s.
+
+476. **Each graphic in a point Short is designed for the Short, as the Short
+     is made** (2026-11-21, owner: "Yes please run the design graphics for
+     shorts. It should do this when the shorts are being created not after
+     they are already created. Since we are using the agent SDK through the
+     bridge the cost is not to relevant at the moment, but you can do a run
+     to get an estimate"; branch `short-graphic-redesign`, no migration, no
+     timeline schema change, no compositions change, so no broker or Remotion
+     redeploy). Follows 475 (d).
+     (a) Where: between the new pictures and the cut, in the first build
+     (`point-short-runner`) and in the studio's Re-plan (`point-studio-
+runner`), so an existing Short gets its own graphics by Re-plan. A shot
+     the planner filled with a film graphic (`graphic-code` payload) is
+     designed again by `designShortGraphics` (`inngest/lib/point-design.ts`),
+     each in steps of its own as the film's are (`short-graphic-<n>`, its
+     `-retry` and their bridge collects, then `-review`). The first build
+     stores the plan after each graphic (`<id>-save`), so a later run of it (a
+     budget Re-run, an exhausted retry) reuses the designs instead of buying
+     them again; the Re-plan stores once at the end, as it always has.
+     (b) What the designer is given: the film's brief (found on the board by
+     its stored code, `brief.code.compiled === payload.compiled`, since a
+     master slot carries no row id), its claims, logos and chapter; the
+     Short's whole narration as the paragraph; only the shot's cue words,
+     timed; and the window `compileShortMaster` plays the code in
+     (`pointGraphicWindow`, now read by the compile too, so the two cannot
+     drift): from the shot's start until its last cue has landed and settled.
+     The brief's covered words become the Short's. The film's design is shown
+     after the slot, for its idea and look, with "rebuild the layout for 9:16,
+     and time every change to these words, not the film's."
+     (c) 9:16 alone: `frame: 'short'` tells the designer the graphic plays
+     only in the Short's 1080 x 1920 frame, clear of the platform's buttons
+     and caption, and the dry run, the facts, the reading hold, the browser's
+     layout check and the critic's photographs all run in 9:16 alone
+     (`frameSizesFor('portrait')`; the critic gets six 9:16 moments where a
+     film design gets two), and the critic's measured motion is taken from
+     the 9:16 shots and says so (`MotionMetrics.frame`), where it had read
+     the 16:9 shots only and would have told the critic nothing was measured.
+     A design is never refused for a 16:9 layout no viewer of the Short sees.
+     The film's prompt and checks are unchanged.
+     (d) The new payload keeps the film's logos and chart data, takes the new
+     code, title, words and length, and cites the new facts' claims beside the
+     film's. The shot records `shortDesign: { outcome: 'designed' }`.
+     (e) Failure never stops the Short: a refused design (after its one retry),
+     a bridge that never answered, or a brief no longer on the board keeps the
+     film's graphic, records `shortDesign: { outcome: 'kept', issue }`, and
+     puts one line per graphic on the Short's card ("Shot N plays the film's
+     graphic: the Short's own could not be made: ..."), read from the whole
+     plan so a later run's card keeps an earlier run's lines. A brief is not
+     found when the film's graphic was redesigned after the film was last
+     assembled (the master still plays the old code); the line says to
+     assemble the film again, then Re-plan. The budget still parks the
+     stage, as every paid step does.
+     (f) The studio's slot of work holds a re-plan for 45 minutes, other work
+     for 10 as before (`pointWorkCooldownMs`; `claimPointWork` reads the limit
+     from the kind of work in the slot), and each graphic's step first
+     refreshes the re-plan's `startedAt` (`touchPointWork`, only while that
+     re-plan still holds the slot): a re-plan designing five graphics runs 15
+     to 25 minutes and can run longer, and a lapsed hold would show the
+     studio idle mid-run and let a second press buy every design again. A
+     re-plan the budget stops after its pictures were bought keeps them in the
+     pool (`store-fetched-pool`), as the plan's own store would have.
+     Choosing another picture for a shot in the studio drops its
+     `shortDesign` and `cueEndWord`, which belonged to the picture it
+     replaced; a crop or motion change keeps both. A film graphic picked by
+     hand plays the film's design until the next Re-plan.
+     (g) Cost, from the ledger (read only, last 21 days): a first answer
+     $0.096 (Opus 5.5, 207 calls), a retry on about a quarter ($0.089), the
+     critic $0.034 (Sonnet 5), a fix now and then ($0.098): about $0.13 a
+     graphic at list price, about $3 for WeWork's 24. Through the bridge it
+     is the subscription's.
+     (h) Decisions made where the owner left room: the review runs on a
+     Short's design as on a film's (the owner's word on quality); the film's
+     design is shown as a reference, not as the design to change, so the
+     designer is free to rebuild it; a lifted graphic shown twice in one
+     Short is designed once per appearance, for its own words; no Redesign
+     button in the studio yet (the owner asked for it at creation, and
+     Re-plan does it again).

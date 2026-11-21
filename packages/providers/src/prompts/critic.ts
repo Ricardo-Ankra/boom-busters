@@ -168,7 +168,7 @@ function metricsLines(metrics: MotionMetrics | null, stillMaxMs: number): string
     .map((point) => `${seconds(point.atMs)} ${Math.round(point.change)}`)
     .join(', ')
   return [
-    `Measured motion, from the 16:9 frames compared neighbour to neighbour (change is the mean grey difference per pixel, 0 to 255):`,
+    `Measured motion, from the ${metrics.frame ?? '16:9'} frames compared neighbour to neighbour (change is the mean grey difference per pixel, 0 to 255):`,
     `- Longest frozen run ${metrics.longestFrozenMs} ms (limit ${stillMaxMs} ms)${metrics.frozenCritical ? ', past the limit' : ''}; frozen in total ${metrics.frozenMs} ms.`,
     `- ${Math.round(metrics.simultaneity * 100)}% of the change inside one 250 ms window.`,
     `- The ending holds ${metrics.holdAfterLastMs} ms after the last change.`,

@@ -51,7 +51,7 @@ import {
   framedPrompt,
   pointParagraphAudio,
 } from '@/inngest/lib/point-build'
-import { POINT_WORK_COOLDOWN_MS, pointWorkPending } from '@/lib/point-studio-model'
+import { pointWorkPending, pointWorkStaleBefore } from '@/lib/point-studio-model'
 import { ingestCandidateBytes } from '@/lib/stock-ingest'
 import { slotFromTeaserCandidate, teaserCandidateReady } from '@/lib/teaser-fetch'
 import {
@@ -117,7 +117,7 @@ function busyMessage(what: PointWork): string {
 
 /** Win the Short's slot of work, or say that it is taken. */
 async function win(shortId: string, what: PointWork): Promise<ActionResult> {
-  const won = await claimPointWork(db, shortId, what, new Date(Date.now() - POINT_WORK_COOLDOWN_MS))
+  const won = await claimPointWork(db, shortId, what, pointWorkStaleBefore())
   if (won) return { ok: true }
   const short = await getShort(db, shortId)
   const running = short ? workInFlight(short) : null
@@ -337,8 +337,13 @@ export async function savePointShot(
     slot = built
   }
 
+  // A new picture is not the one the Short's design or cues were made for
+  // (decision 476): its record goes with it, and pacing works its cues out
+  // again. Only crop and motion changed (`choice: null`): the shot keeps both.
+  const { shortDesign: _tried, cueEndWord: _cue, ...unmarked } = current
+  const base = choice === null ? current : unmarked
   const shots = plan.data.shots.map((shot, index) =>
-    index === shotIndex ? { ...current, slot, pending: null, crop, motion } : shot,
+    index === shotIndex ? { ...base, slot, pending: null, crop, motion } : shot,
   )
   const record: PointPlanRecord = { ...plan.data, shots }
   // One conditional write: the plan only if it is still the one read, and just

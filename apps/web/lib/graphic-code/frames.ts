@@ -3,7 +3,13 @@ import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { AVAILABLE_FONTS } from '@boom-busters/compositions/fonts'
 import { GRAPHIC_TEXT_MIN_PX } from '@boom-busters/providers'
 import type { Browser, Page } from 'playwright-core'
-import { FRAME_SIZES, GRAPHIC_SAMPLE_MS, graphicMarkupAt, type FrameSize } from './dry-run'
+import {
+  frameSizesFor,
+  GRAPHIC_SAMPLE_MS,
+  graphicMarkupAt,
+  type FrameSize,
+  type GraphicFrameSet,
+} from './dry-run'
 import { SHEET_WIDTH, sheetDocument, type SheetTile } from './sheet-document'
 
 /**
@@ -57,6 +63,8 @@ export interface FramesInput {
   compiled: string
   props: Omit<GraphicProps, 'safeArea'>
   durationMs: number
+  /** The frames the design plays in: both by default, the 9:16 alone for a Short's own (decision 476). */
+  frames?: GraphicFrameSet
   /** Photograph the review's moments. */
   shots: boolean
   /**
@@ -174,10 +182,12 @@ export function restMoments(words: readonly { atMs: number }[], durationMs: numb
 /**
  * The review's pictures: up to six moments of the film's 16:9 frame, evenly
  * across the rest moments and always the last, and the Short's 9:16 frame at
- * its middle moment and its last.
+ * its middle moment and its last. A design made for one Short (decision 476)
+ * plays only in 9:16, so its 9:16 frame takes the six.
  */
 export function shotMoments(
   moments: readonly number[],
+  frames: GraphicFrameSet = 'both',
 ): Record<FrameSize['orientation'], number[]> {
   const last = moments[moments.length - 1]
   if (last === undefined) return { landscape: [], portrait: [] }
@@ -188,6 +198,7 @@ export function shotMoments(
           { length: 6 },
           (_, index) => moments[Math.round((index * (moments.length - 1)) / 5)]!,
         )
+  if (frames === 'portrait') return { landscape: [], portrait: [...new Set(wide)] }
   const middle = moments[Math.floor((moments.length - 1) / 2)]!
   return { landscape: [...new Set(wide)], portrait: [...new Set([middle, last])] }
 }
@@ -553,7 +564,8 @@ async function inspectWith(
   hardStop: number,
 ): Promise<FramesResult> {
   const moments = restMoments(input.props.words, input.durationMs)
-  const wanted = input.shots ? shotMoments(moments) : { landscape: [], portrait: [] }
+  const sizes = frameSizesFor(input.frames)
+  const wanted = input.shots ? shotMoments(moments, input.frames) : { landscape: [], portrait: [] }
   const measured = input.measure === false ? [] : moments
   const faultsAsFindings = input.measure === 'findings'
   const dense = [...new Set(input.dense ?? [])].sort((a, b) => a - b)
@@ -568,7 +580,7 @@ async function inspectWith(
       ...findings,
       ...(cutShort
         ? [
-            `the dense set was cut short at ${result.dense.length} of ${dense.length * FRAME_SIZES.length} shots`,
+            `the dense set was cut short at ${result.dense.length} of ${dense.length * sizes.length} shots`,
           ]
         : []),
     ]
@@ -578,7 +590,7 @@ async function inspectWith(
   // Chromium runs as a single process, and closing its last page closes the
   // browser: a page per size lost the browser before the 9:16 frame.
   // Half the frame's pixels for the pictures; the measurements are in CSS pixels either way.
-  const first = FRAME_SIZES[0]
+  const first = sizes[0]!
   const page = await browser.newPage({
     viewport: { width: first.width, height: first.height },
     deviceScaleFactor: 0.5,
@@ -595,8 +607,8 @@ async function inspectWith(
     })
   }
 
-  // Phase one: the rest moments, both frame sizes.
-  for (const size of FRAME_SIZES) {
+  // Phase one: the rest moments, in each frame size the design plays in.
+  for (const size of sizes) {
     const rest = [...new Set([...measured, ...wanted[size.orientation]])].sort((a, b) => a - b)
     const markup = graphicMarkupAt(
       { compiled: input.compiled, props: input.props, durationMs: input.durationMs },
@@ -633,7 +645,7 @@ async function inspectWith(
     Date.now() + (input.denseMaxMs ?? Infinity),
     hardStop - DENSE_MARGIN_MS,
   )
-  for (const size of FRAME_SIZES) {
+  for (const size of sizes) {
     const samples = rendered.get(size.orientation)!
     if (Date.now() >= denseStop) {
       cutShort = true

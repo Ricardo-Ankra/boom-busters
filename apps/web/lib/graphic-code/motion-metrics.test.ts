@@ -130,5 +130,22 @@ describe('motionMetrics', () => {
     expect(m?.frozenMs).toBe(0)
     expect(await motionMetrics([shots[0]!], 2000, 6000)).toBeNull()
     expect(await motionMetrics([shots[1]!, shots[0]!], 2000, 6000)).toBeNull()
+    expect(m?.frame).toBeUndefined()
+  })
+
+  it("measures a Short's own design in 9:16, the only frame it has, and says so (decision 476)", async () => {
+    const dark = (await black()).toString('base64')
+    const lit = (await struck()).toString('base64')
+    const m = await motionMetrics(
+      [
+        { orientation: 'portrait', atMs: 500, jpeg: lit },
+        { orientation: 'portrait', atMs: 0, jpeg: dark },
+      ],
+      2000,
+      6000,
+    )
+    expect(m?.frame).toBe('9:16')
+    expect(m?.speedProfile.map((p) => p.atMs)).toEqual([500])
+    expect(m?.speedProfile[0]!.change).toBeGreaterThan(100)
   })
 })

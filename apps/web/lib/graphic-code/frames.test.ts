@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MOTION_PREAMBLE } from '@boom-busters/compositions/motion-tokens'
 import { compileGraphicSource } from './compile'
 import { DRY_RUN_BRAND } from './check'
-import { FRAME_SIZES } from './dry-run'
+import { FRAME_SIZES, frameSizesFor } from './dry-run'
 import {
   browserFrames,
   contrastFindingIn,
@@ -130,6 +130,21 @@ describe('shotMoments (decision 389)', () => {
 
   it('has nothing to photograph with no moments', () => {
     expect(shotMoments([])).toEqual({ landscape: [], portrait: [] })
+  })
+
+  it("gives a Short's own design the six moments in 9:16 and none in 16:9 (decision 476)", () => {
+    const moments = [900, 2390, 3150, 4000, 4800, 5200, 5600, 5950]
+    const shots = shotMoments(moments, 'portrait')
+    expect(shots.landscape).toEqual([])
+    expect(shots.portrait).toEqual(shotMoments(moments).landscape)
+  })
+})
+
+describe('frameSizesFor (decision 476)', () => {
+  it('runs both frames by default and the 9:16 alone for a Short', () => {
+    expect(frameSizesFor().map((size) => size.orientation)).toEqual(['landscape', 'portrait'])
+    expect(frameSizesFor('both')).toBe(FRAME_SIZES)
+    expect(frameSizesFor('portrait')).toEqual([FRAME_SIZES[1]])
   })
 })
 
@@ -274,6 +289,35 @@ describe.skipIf(!(await browserAvailable()))(
       ])
       // A JPEG: the magic number, base64 encoded.
       expect(result.shots[0]!.jpeg.startsWith('/9j/')).toBe(true)
+    }, 60_000)
+
+    it("inspects a Short's own design in 9:16 alone, even where 16:9 would be refused (decision 476)", async () => {
+      // The second line is pulled over the first in 16:9 only.
+      const source = twoLines(40).replace(
+        'marginTop: 40 * unit',
+        'marginTop: (width > height ? -80 : 40) * unit',
+      )
+      expect(source).toContain('width > height ? -80')
+      const both = await browserFrames().inspect({
+        compiled: stored(source),
+        props,
+        durationMs: 3000,
+        shots: false,
+      })
+      const tall = await browserFrames().inspect({
+        compiled: stored(source),
+        props,
+        durationMs: 3000,
+        frames: 'portrait',
+        shots: true,
+      })
+      expect(both.layoutIssue).toMatch(/in landscape, "Revenue" and "Loss" overlap/)
+      expect(tall.layoutIssue).toBeNull()
+      expect(tall.shots.map((shot) => [shot.orientation, shot.atMs])).toEqual([
+        ['portrait', 900],
+        ['portrait', 1900],
+        ['portrait', 2950],
+      ])
     }, 60_000)
 
     /** The second line pulled over the first, inside a wrapper styled `wrap`. */

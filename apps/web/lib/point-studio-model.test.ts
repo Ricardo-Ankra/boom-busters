@@ -18,7 +18,12 @@ import { PointScriptRecordSchema, TimelineSchema } from '@boom-busters/schemas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { CHAPTER_IDS, seedPointShort } from './point-studio.fixture'
-import { pointStudioModel } from './point-studio-model'
+import {
+  pointStudioModel,
+  pointWorkCooldownMs,
+  pointWorkPending,
+  pointWorkStaleBefore,
+} from './point-studio-model'
 import { shortsModel } from './shorts-review'
 
 /**
@@ -226,5 +231,31 @@ describeDb('pointStudioModel', () => {
     expect(card.point).toBeNull()
     expect(card.studio).toBeNull()
     expect(await pointStudioModel(db, shortId, { presign })).toBeNull()
+  })
+})
+
+describe("the studio slot's hold, by the work in it (decision 476)", () => {
+  const started = Date.parse('2026-11-21T10:00:00.000Z')
+  const at = (minutes: number) => started + minutes * 60_000
+  const fetching = (what: 'plan' | 'voice') =>
+    ({ state: 'fetching', what, startedAt: new Date(started).toISOString() }) as const
+
+  it('holds a re-plan for 45 minutes, since it designs the graphics', () => {
+    expect(pointWorkCooldownMs('plan')).toBe(45 * 60_000)
+    expect(pointWorkPending(fetching('plan'), at(30))).toBe('plan')
+    expect(pointWorkPending(fetching('plan'), at(46))).toBeNull()
+  })
+
+  it('holds any other work for 10 minutes, as before', () => {
+    expect(pointWorkCooldownMs('voice')).toBe(10 * 60_000)
+    expect(pointWorkPending(fetching('voice'), at(9))).toBe('voice')
+    expect(pointWorkPending(fetching('voice'), at(11))).toBeNull()
+  })
+
+  it('gives the claim both limits', () => {
+    expect(pointWorkStaleBefore(at(60))).toEqual({
+      default: new Date(at(50)),
+      plan: new Date(at(15)),
+    })
   })
 })

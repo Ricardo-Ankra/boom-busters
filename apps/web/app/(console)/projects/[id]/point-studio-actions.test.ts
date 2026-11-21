@@ -262,6 +262,26 @@ describeDb('point studio actions', () => {
       })
     })
 
+    it("drops the Short's design record and cues with a new picture, and keeps them on a crop change (decision 476)", async () => {
+      const marked = PointPlanRecordSchema.parse((await stored()).pointPlan)
+      marked.shots = marked.shots.map((shot, index) =>
+        index <= 1
+          ? { ...shot, shortDesign: { outcome: 'designed' as const }, cueEndWord: 9 }
+          : shot,
+      )
+      await updateShort(db, shortId, { pointPlan: marked })
+
+      expect(await savePointShot(shortId, 1, { ref: 3 }, 'right', 'kenburns-out')).toEqual({
+        ok: true,
+      })
+      expect(await savePointShot(shortId, 0, null, 'left', 'punch')).toEqual({ ok: true })
+
+      const after = PointPlanRecordSchema.parse((await stored()).pointPlan)
+      expect(after.shots[1]!.shortDesign).toBeUndefined()
+      expect(after.shots[1]!.cueEndWord).toBeUndefined()
+      expect(after.shots[0]).toMatchObject({ shortDesign: { outcome: 'designed' }, cueEndWord: 9 })
+    })
+
     it('keeps the picture and changes only crop and motion when no choice is given', async () => {
       const before = PointPlanRecordSchema.parse((await stored()).pointPlan)
 
