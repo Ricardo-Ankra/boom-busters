@@ -15,6 +15,7 @@ import {
   savePointShotChoice,
   settlePointWork,
   shortForPoint,
+  touchPointWork,
   updateShort,
 } from './shorts'
 import { requireTestDatabase } from './test-database'
@@ -222,6 +223,31 @@ suite('shorts bookkeeping', () => {
       expect(await claimPointWork(db, row.id, 'voice', { default: past, plan: past })).toBe(true)
       // A re-voice in the slot is held by the default, which has passed.
       expect(await claimPointWork(db, row.id, 'plan', limits)).toBe(true)
+    })
+
+    it("refreshes a re-plan's hold only while that re-plan holds the slot (decision 476)", async () => {
+      const row = await draftPoint()
+      expect(await claimPointWork(db, row.id, 'plan', farPast)).toBe(true)
+      await updateShort(db, row.id, {
+        pointFetches: {
+          candidates: [],
+          state: { state: 'fetching', what: 'plan', startedAt: '2020-01-01T00:00:00.000Z' },
+        },
+      })
+      await touchPointWork(db, row.id, 'plan')
+      const touched = (await getShort(db, row.id))?.pointFetches as {
+        state: { startedAt: string }
+      }
+      expect(Date.now() - Date.parse(touched.state.startedAt)).toBeLessThan(60_000)
+
+      // Another kind of work, or a stored failure, is left exactly as it is.
+      await touchPointWork(db, row.id, 'voice')
+      expect((await getShort(db, row.id))?.pointFetches).toEqual(touched)
+      await settlePointWork(db, row.id, { state: 'failed', what: 'plan', reason: 'it broke' })
+      await touchPointWork(db, row.id, 'plan')
+      expect((await getShort(db, row.id))?.pointFetches).toMatchObject({
+        state: { state: 'failed', what: 'plan', reason: 'it broke' },
+      })
     })
 
     it('settles to null or to failed words without touching the stored pool', async () => {

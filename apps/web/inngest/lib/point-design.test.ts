@@ -265,10 +265,41 @@ describe("designShortGraphics: a Short's own graphics (decision 476)", () => {
       shot(20, graphicSlot, { shortDesign: { outcome: 'kept', issue: 'earlier' } }),
       shot(40, photo('b')),
     ])
-    const result = await designOf({ plan: tried })
-    expect(result).toMatchObject({ ok: true, changed: false, kept: [] })
+    const result = await designOf({ plan: tried, save: vi.fn() })
+    expect(result).toMatchObject({ ok: true, changed: false })
     expect(designGraphic).not.toHaveBeenCalled()
     expect(steps).toEqual([])
+    // A graphic an earlier run kept still says so on the card.
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.kept).toEqual([expect.stringMatching(/could not be made: earlier$/)])
+  })
+
+  it('stores the plan after each graphic, so a later run reuses what was designed', async () => {
+    designGraphic.mockResolvedValue({ ok: true, code: SHORT_CODE })
+    const twice = plan([
+      shot(0, photo('a')),
+      shot(10, graphicSlot),
+      shot(20, photo('b')),
+      shot(30, { ...graphicSlot, payload: { ...filmPayload, title: 'Another' } }),
+      shot(40, photo('c')),
+    ])
+    const saved: PointPlanRecord[] = []
+    const result = await designOf({
+      plan: twice,
+      save: async (p) => {
+        saved.push(structuredClone(p))
+      },
+    })
+    if (!result.ok) throw new Error('unreachable')
+    const graphics = result.plan.shots.filter((s) => s.shortDesign)
+    expect(graphics.length).toBeGreaterThan(0)
+    expect(steps.filter((id) => id.endsWith('-save'))).toHaveLength(graphics.length)
+    expect(steps[2]).toBe('short-graphic-0-save')
+    // The first save holds the first design and the rest of the plan as it was.
+    const first = saved[0]!
+    expect(first.shots).toHaveLength(result.plan.shots.length)
+    expect(first.shots.filter((s) => s.shortDesign)).toHaveLength(1)
+    expect(saved.at(-1)).toEqual(result.plan)
   })
 
   it("keeps the film's design with why when the Short's is refused twice", async () => {

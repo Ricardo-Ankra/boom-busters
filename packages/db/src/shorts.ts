@@ -236,6 +236,28 @@ export async function settlePointWork(
 }
 
 /**
+ * Keep a long job's hold on the studio's slot fresh (decision 476): its
+ * `startedAt` moves to now, but only while that same work still holds the
+ * slot, so a failure or a release written meanwhile is left as it is. A
+ * re-plan calls it before each graphic's step, so its hold counts from the
+ * last step rather than the press.
+ */
+export async function touchPointWork(db: Database, id: string, what: PointWork): Promise<void> {
+  await db
+    .update(shorts)
+    .set({
+      pointFetches: sql`jsonb_set(${shorts.pointFetches}, '{state,startedAt}', to_jsonb(${new Date().toISOString()}::text))`,
+    })
+    .where(
+      and(
+        eq(shorts.id, id),
+        sql`${shorts.pointFetches} -> 'state' ->> 'state' = 'fetching'`,
+        sql`${shorts.pointFetches} -> 'state' ->> 'what' = ${what}`,
+      ),
+    )
+}
+
+/**
  * Give back the studio's slot only when it is held for `what` (the render
  * runner releases an `assemble` claim this way): one UPDATE with the condition
  * in its WHERE, so a re-voice, a re-plan, a fetch or a stored failure that is

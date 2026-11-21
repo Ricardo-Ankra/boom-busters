@@ -142,6 +142,14 @@ describe('buildCriticRequest (spec 10.4)', () => {
     )
   })
 
+  it("names the frame the motion was measured in: 16:9, or a Short's 9:16 (decision 476)", () => {
+    expect(buildCriticRequest(INPUT).messages[1]!.content).toContain(
+      'Measured motion, from the 16:9 frames',
+    )
+    const tall = buildCriticRequest({ ...INPUT, metrics: { ...INPUT.metrics!, frame: '9:16' } })
+    expect(tall.messages[1]!.content).toContain('Measured motion, from the 9:16 frames')
+  })
+
   it('writes no dash a reader would see', () => {
     const request = buildCriticRequest(INPUT)
     for (const text of [request.system, ...request.messages.map((m) => m.content)]) {

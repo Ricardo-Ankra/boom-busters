@@ -48,9 +48,13 @@ import { pointParagraphAudio } from './point-build'
 export const SHORT_GAVE_UP_ISSUE =
   'the designer took too long (no answer after about 14 minutes); Re-plan the shots to try again'
 
-/** Why a graphic shot kept the film's design when its brief is gone from the board. */
+/**
+ * Why a graphic shot kept the film's design when no board brief holds the
+ * code it plays: the film's graphic was redesigned after the film was last
+ * assembled (or its slot is gone), so the lifted code is not on the board.
+ */
 export const NO_FILM_BRIEF_ISSUE =
-  "its film design is no longer on the board, so there is no brief to design the Short's from"
+  "the film's graphic has changed on the board since the film was last assembled, so its brief could not be found; assemble the film again, then Re-plan"
 
 /** A shot playing a film graphic that this Short has not yet tried to design for itself. */
 export function wantsShortDesign(shot: PointPlanShot): boolean {
@@ -177,13 +181,18 @@ export async function designShortGraphics(
     /** The Inngest run, which names each attempt's bridge job (decision 472). */
     runId?: string
     prefix?: string
+    /**
+     * Store the plan after each graphic, in a step of its own (`<id>-save`),
+     * so a later run of the first build reuses what was designed rather than
+     * buying it again. The studio's Re-plan stores once, at the end.
+     */
+    save?: (plan: PointPlanRecord) => Promise<void>
   },
 ): Promise<ShortGraphicsResult> {
   const prefix = input.prefix ?? 'short-graphic'
   const clock = shortClock(input.script, input.voice, input.plan)
   const scriptText = input.script.paragraphs.map((paragraph) => paragraph.text).join('\n\n')
   const shots: PointPlanShot[] = []
-  const kept: string[] = []
   let n = 0
 
   for (const [at, shot] of clock.shots.entries()) {
@@ -235,34 +244,53 @@ export async function designShortGraphics(
 
     if (!('code' in second)) {
       const issue = designIssueText('pending' in second ? SHORT_GAVE_UP_ISSUE : second.issue)
-      kept.push(
-        `Shot ${shots.length + 1} plays the film's graphic: the Short's own could not be made: ${issue}`,
-      )
       shots.push({ ...shot, shortDesign: { outcome: 'kept', issue } })
-      continue
+    } else {
+      // The review, in a step of its own with its whole time (decision 389).
+      // A skipped review keeps the design as it was.
+      const designed = second.code
+      const reviewed = await run(`${id}-review`, async () => {
+        const film = await filmBrief(input.projectId, payload.compiled)
+        if (!film) return null
+        const { context, slot } = await shortDesignSlot(
+          input.projectId,
+          film,
+          clock,
+          at,
+          scriptText,
+        )
+        const result = await reviewGraphic(
+          context,
+          { ...slot, brief: { ...slot.brief, code: designed } },
+          { frame: 'short', filmDesign: film.brief.code },
+        )
+        return result.outcome === 'skipped' ? null : result.code
+      })
+      shots.push({
+        ...shot,
+        slot: { ...shot.slot!, payload: shortPayload(payload, reviewed ?? designed) },
+        shortDesign: { outcome: 'designed' },
+      })
     }
 
-    // The review, in a step of its own with its whole time (decision 389). A
-    // skipped review keeps the design as it was.
-    const designed = second.code
-    const reviewed = await run(`${id}-review`, async () => {
-      const film = await filmBrief(input.projectId, payload.compiled)
-      if (!film) return null
-      const { context, slot } = await shortDesignSlot(input.projectId, film, clock, at, scriptText)
-      const result = await reviewGraphic(
-        context,
-        { ...slot, brief: { ...slot.brief, code: designed } },
-        { frame: 'short', filmDesign: film.brief.code },
-      )
-      return result.outcome === 'skipped' ? null : result.code
-    })
-    const code = reviewed ?? designed
-    shots.push({
-      ...shot,
-      slot: { ...shot.slot!, payload: shortPayload(payload, code) },
-      shortDesign: { outcome: 'designed' },
-    })
+    // What is designed so far, stored before the next graphic is asked for.
+    const save = input.save
+    if (save) {
+      const sofar: PointPlanRecord = {
+        ...input.plan,
+        shots: [...shots, ...clock.shots.slice(at + 1)],
+      }
+      await run(`${id}-save`, () => save(sofar))
+    }
   }
 
+  // Every graphic that plays the film's, including those an earlier run tried.
+  const kept = shots.flatMap((shot, index) =>
+    shot.shortDesign?.outcome === 'kept'
+      ? [
+          `Shot ${index + 1} plays the film's graphic: the Short's own could not be made: ${shot.shortDesign.issue}`,
+        ]
+      : [],
+  )
   return { ok: true, plan: { ...input.plan, shots }, changed: n > 0, kept }
 }

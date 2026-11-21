@@ -240,7 +240,8 @@ export const pointShortRunner = inngest.createFunction(
     // -----------------------------------------------------------------------
     // The Short's own graphics (decision 476): each lifted film graphic
     // designed again from the Short's words for its 9:16 frame, each in steps
-    // of its own, and stored as they land so a resumed build skips them.
+    // of its own, and stored after each, so a later run of this build (a
+    // budget Re-run, an exhausted retry) reuses them rather than buying again.
     // -----------------------------------------------------------------------
     const designed = await designShortGraphics((id, fn) => step.run(id, fn) as never, {
       projectId,
@@ -248,13 +249,9 @@ export const pointShortRunner = inngest.createFunction(
       voice,
       plan: fetched.plan,
       runId,
+      save: (plan) => savePointProgress({ projectId, pointId, plan }),
     })
     if (!designed.ok) return overBudget('design-over-budget', designed.gate)
-    if (designed.changed) {
-      await step.run('save-designed', () =>
-        savePointProgress({ projectId, pointId, plan: designed.plan }),
-      )
-    }
 
     // -----------------------------------------------------------------------
     // Assemble and store

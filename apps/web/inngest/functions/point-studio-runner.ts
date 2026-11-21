@@ -3,6 +3,7 @@ import {
   getShort,
   latestTimeline,
   settlePointWork,
+  touchPointWork,
   updateShort,
 } from '@boom-busters/db'
 import {
@@ -233,22 +234,11 @@ export const pointStudioRunner = inngest.createFunction(
       return { projectId, shortId, outcome: 'skipped' as const, reason: fetched.skipped }
     }
 
-    // The Short's own graphics (decision 476), as the first build makes them.
-    const designed = await designShortGraphics((id, fn) => step.run(id, fn) as never, {
-      projectId,
-      script,
-      voice,
-      plan: fetched.plan,
-      runId,
-    })
-    if (!designed.ok) {
-      await fail('design-over-budget', 'plan', `Graphics: ${gateWords(designed.gate)}`)
-      return { projectId, shortId, outcome: 'over-budget' as const }
-    }
-
-    await step.run('store-plan', async () => {
-      // What the owner already bought stays in the pool beside what this plan
-      // fetched: paid pixels are never silently discarded.
+    /**
+     * The pool with this plan's fetched pictures added: what the owner already
+     * bought stays beside them, so paid pixels are never silently discarded.
+     */
+    const poolWithFetched = async (state: PointFetchesRecord['state']) => {
       const current = PointFetchesRecordSchema.safeParse(
         (await getShort(db, shortId))?.pointFetches,
       )
@@ -257,7 +247,36 @@ export const pointStudioRunner = inngest.createFunction(
         ...(current.success ? current.data.candidates : []),
         ...fetched.fetches.candidates,
       ].filter((candidate) => !seen.has(candidate.id) && seen.add(candidate.id))
-      const fetches: PointFetchesRecord = { candidates: candidates.slice(-60), state: null }
+      return { candidates: candidates.slice(-60), state } satisfies PointFetchesRecord
+    }
+
+    // The Short's own graphics (decision 476), as the first build makes them.
+    // Each graphic's steps first refresh the re-plan's hold on the studio, so
+    // a long run is never shown as idle while it still designs.
+    const designed = await designShortGraphics(
+      (id, fn) =>
+        step.run(id, async () => {
+          await touchPointWork(db, shortId, 'plan')
+          return fn()
+        }) as never,
+      { projectId, script, voice, plan: fetched.plan, runId },
+    )
+    if (!designed.ok) {
+      // The pictures this re-plan bought are kept in the pool, though its
+      // plan is not stored: the budget stopped it after they were paid for.
+      await step.run('store-fetched-pool', async () => {
+        const current = PointFetchesRecordSchema.safeParse(
+          (await getShort(db, shortId))?.pointFetches,
+        )
+        const state = current.success ? current.data.state : null
+        await updateShort(db, shortId, { pointFetches: await poolWithFetched(state) })
+      })
+      await fail('design-over-budget', 'plan', `Graphics: ${gateWords(designed.gate)}`)
+      return { projectId, shortId, outcome: 'over-budget' as const }
+    }
+
+    await step.run('store-plan', async () => {
+      const fetches = await poolWithFetched(null)
       await updateShort(db, shortId, { pointPlan: designed.plan, pointFetches: fetches })
       await recordRepairs(
         { projectId, subject: 'short', subjectId: shortId },

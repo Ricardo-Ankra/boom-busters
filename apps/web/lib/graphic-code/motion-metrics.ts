@@ -87,21 +87,26 @@ export function metricsFromChanges(
 
 /**
  * The landscape shots in time order, each decoded and compared with the one
- * before it; null with fewer than two, since one picture has no motion.
+ * before it; null with fewer than two, since one picture has no motion. A
+ * design photographed in 9:16 alone, a Short's own (decision 476), is
+ * measured in 9:16 and says so.
  */
 export async function motionMetrics(
   shots: readonly FrameShot[],
   durationMs: number,
   stillMaxMs: number,
 ): Promise<MotionMetrics | null> {
-  const landscape = shots
-    .filter((shot) => shot.orientation === 'landscape')
-    .sort((a, b) => a.atMs - b.atMs)
-  if (landscape.length < 2) return null
-  const pictures = await Promise.all(landscape.map((shot) => decodeGrey(shot.jpeg)))
-  const changes = landscape.slice(1).map((shot, index) => ({
+  const inOrder = (orientation: FrameShot['orientation']) =>
+    shots.filter((shot) => shot.orientation === orientation).sort((a, b) => a.atMs - b.atMs)
+  const landscape = inOrder('landscape')
+  const portraitOnly = landscape.length === 0
+  const measured = portraitOnly ? inOrder('portrait') : landscape
+  if (measured.length < 2) return null
+  const pictures = await Promise.all(measured.map((shot) => decodeGrey(shot.jpeg)))
+  const changes = measured.slice(1).map((shot, index) => ({
     atMs: shot.atMs,
     change: frameChange(pictures[index]!.data, pictures[index + 1]!.data),
   }))
-  return metricsFromChanges(changes, durationMs, stillMaxMs)
+  const metrics = metricsFromChanges(changes, durationMs, stillMaxMs)
+  return portraitOnly ? { ...metrics, frame: '9:16' } : metrics
 }
