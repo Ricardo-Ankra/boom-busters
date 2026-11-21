@@ -79,7 +79,21 @@ export type CurrentDesign = Pick<PlannedGraphicCode, 'source' | 'title'> & {
   motion?: number
 }
 
+/**
+ * Where a design plays (decision 476): `film`, the long form's, in its 16:9
+ * frame and in the 9:16 Shorts that lift it; `short`, one Short's own design,
+ * in its 9:16 frame alone, written from that Short's words.
+ */
+export type GraphicFrame = 'film' | 'short'
+
 export interface GraphicDesignInput {
+  /** Where the design plays: the film's (both frames) when absent. */
+  frame?: GraphicFrame
+  /**
+   * A Short's design: the film's design of the same beat, shown for its idea
+   * and look. The Short's words and frame are its own (decision 476).
+   */
+  filmDesign?: CurrentDesign
   /** The channel bible the project froze. */
   bible: BibleInUse
   caseTitle: string
@@ -227,13 +241,35 @@ export function motionIdentityBlock(motion: MotionIdentity): string {
   return `This channel's motion:\n${lines.join('\n')}`
 }
 
+/** Where the graphic plays, as the opening says it. */
+const PLAYS_IN: Record<GraphicFrame, string> = {
+  film: 'in the 16:9 film and in\nthe 9:16 Short',
+  short: 'in a 9:16 Short, a vertical\nclip of under a minute told from the film in its own words',
+}
+
+/** Rule 5, the frames it is laid out for and checked in. */
+const FRAMES_RULE: Record<GraphicFrame, string> = {
+  film: `5. Both frames. Lay out from useVideoConfig()'s width and height: the 16:9 frame and the
+   9:16 frame are both rendered and both checked.`,
+  short: `5. One frame. This graphic plays only in the Short's 9:16 frame, 1080 by 1920: lay it out
+   for that tall frame from useVideoConfig()'s width and height. Only the 9:16 frame is
+   rendered and checked. The platform's buttons cover the right edge and its caption the
+   bottom of the frame; props.safeArea already keeps clear of both.`,
+}
+
+/** Where the code is run before it is kept. */
+const RUN_IN: Record<GraphicFrame, string> = {
+  film: 'in both frames',
+  short: 'in the 9:16 frame',
+}
+
 const systemTemplate = (
   bible: ChannelBible,
   motion: MotionIdentity,
+  frame: GraphicFrame = 'film',
   numbers = motionNumbers(motion),
 ): string => `You write ONE motion graphic for a documentary about [[example:direction-premise]], as a React
-component. The narration is recorded; your graphic plays over it in the 16:9 film and in
-the 9:16 Short, and it lands the beat the narrator is speaking.
+component. The narration is recorded; your graphic plays over it ${PLAYS_IN[frame]}, and it lands the beat the narrator is speaking.
 
 You get the case and its numbered claims, the logos the producer holds, and then this
 slot: its chapter, the paragraph it sits in, the words it covers, its length, every
@@ -353,13 +389,12 @@ The rules. Each one is checked, and a graphic that breaks one is refused:
    it is said: a figure as its number is spoken, a name as it is named, a bar as its year
    is read. Dead air is the failure to avoid: a graphic in which nothing changes for
    more than ${secondsWord(motion.stillMaxMs)} is refused.
-5. Both frames. Lay out from useVideoConfig()'s width and height: the 16:9 frame and the
-   9:16 frame are both rendered and both checked.
+${FRAMES_RULE[frame]}
 6. Safe area. Everything sits inside props.safeArea at every frame, entrances included.
    Pad a full-frame layer by the insets, place anything absolutely positioned at or
    inside them, and bring an entrance in with opacity, scale or transform, never from
    outside the insets. Only a Remotion.AbsoluteFill spans the whole frame.
-The code is run at every 250 ms of the slot in both frames before it is kept: a frame
+The code is run at every 250 ms of the slot ${RUN_IN[frame]} before it is kept: a frame
 that throws, or takes more than 2 seconds, is refused. The last second shows the
 finished graphic, with words or figures on screen.
 
@@ -452,12 +487,19 @@ export function buildGraphicRequest(input: GraphicDesignInput): LLMTaskRequest {
   return {
     task: 'graphics',
     system: fillSlots(
-      systemTemplate(input.bible.bible, input.motion ?? DEFAULT_MOTION_IDENTITY),
+      systemTemplate(
+        input.bible.bible,
+        input.motion ?? DEFAULT_MOTION_IDENTITY,
+        input.frame ?? 'film',
+      ),
       input.bible,
     ),
     messages: [
       { role: 'user', content: film },
       { role: 'user', content: slot },
+      ...(input.filmDesign
+        ? [{ role: 'user' as const, content: filmDesignBlock(input.filmDesign) }]
+        : []),
       ...(input.current ? [{ role: 'user' as const, content: currentDesign(input.current) }] : []),
       ...(input.rejection
         ? [
@@ -524,6 +566,24 @@ function currentDesign(current: CurrentDesign): string {
     current.source +
     '\n```' +
     (current.motion === undefined ? PRE_TOKEN_DESIGN : '')
+  )
+}
+
+/**
+ * A Short's starting point (decision 476): the film's design of the same
+ * beat, for its idea and its look. The film's words and its 16:9 layout are
+ * not the Short's: a lifted design waited for words the Short never says and
+ * ran past the Short's safe area, which is why the Short gets its own.
+ */
+function filmDesignBlock(film: CurrentDesign): string {
+  return (
+    "The film's design for this beat, which this Short reworks:\n" +
+    `Title: ${film.title}\n` +
+    '```jsx\n' +
+    film.source +
+    '\n```\n' +
+    "The Short says this beat in its own words, the ones listed above, and plays in a tall frame. Keep the film's idea and its look where they fit these words; rebuild the layout for 9:16, and time every change to these words, not the film's." +
+    (film.motion === undefined ? PRE_TOKEN_DESIGN : '')
   )
 }
 

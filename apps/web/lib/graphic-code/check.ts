@@ -24,7 +24,13 @@ import type {
 import type { GraphicDesignContext } from '@/lib/graphic-design-core'
 import { holdMsFor } from '@/lib/reading-hold'
 import { compileGraphicSource } from './compile'
-import { dryRunGraphic, GRAPHIC_SAMPLE_MS, heldTextSamples } from './dry-run'
+import {
+  dryRunGraphic,
+  frameSizesFor,
+  GRAPHIC_SAMPLE_MS,
+  heldTextSamples,
+  type GraphicFrameSet,
+} from './dry-run'
 import { restIssue } from './rest'
 import { scanGraphicSource } from './scan'
 
@@ -149,6 +155,8 @@ export function graphicCodeIssue(
   options: {
     /** The channel's motion identity (spec 2026-11-04): its tokens and its still limit; the house one by default. */
     motion?: MotionIdentity
+    /** The frames the design plays in: both by default, the 9:16 alone for a Short's own (decision 476). */
+    frames?: GraphicFrameSet
   } = {},
 ): { code: GraphicCode } | { issue: string } {
   const motion = options.motion ?? DEFAULT_MOTION_IDENTITY
@@ -164,7 +172,9 @@ export function graphicCodeIssue(
     durationMs: slot.durationMs,
     props: dryRunProps(context, slot),
     stillMaxMs: motion.stillMaxMs,
+    ...(options.frames ? { frames: options.frames } : {}),
   }
+  const orientations = frameSizesFor(options.frames).map((size) => size.orientation)
   const run = dryRunGraphic(dryRunInput)
   if (run.issue !== null) return { issue: run.issue }
 
@@ -179,10 +189,10 @@ export function graphicCodeIssue(
       : lastWord.atMs + holdMsFor(brief.type === 'chart' ? 'chart' : 'graphic', answer)
   const held =
     heldUntilMs > slot.durationMs
-      ? heldTextSamples(dryRunInput, run.textSamples.landscape.length, heldUntilMs)
+      ? heldTextSamples(dryRunInput, run.textSamples[orientations[0]!].length, heldUntilMs)
       : null
   if (held !== null && held.issue !== null) return { issue: held.issue }
-  for (const orientation of ['landscape', 'portrait'] as const) {
+  for (const orientation of orientations) {
     const resting = restIssue(
       [...run.textSamples[orientation], ...(held?.texts[orientation] ?? [])],
       slot.words,
@@ -203,7 +213,7 @@ export function graphicCodeIssue(
     ...answer.facts.flatMap((fact) => context.claims[fact.claim - 1]?.text ?? []),
     ...(brief.type === 'chart' ? [seriesText(brief)] : []),
   ]
-  for (const orientation of ['landscape', 'portrait'] as const) {
+  for (const orientation of orientations) {
     const factsIssue = graphicFactsIssue({
       shown: shownFigures(run.figureSamples[orientation], SHOWN_MIN_SAMPLES, cited),
       facts: answer.facts,

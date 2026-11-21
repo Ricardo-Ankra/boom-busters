@@ -176,6 +176,72 @@ describe('graphicCodeIssue (decision 295)', () => {
     )
   })
 
+  describe("a Short's own design, checked in 9:16 alone (decision 476)", () => {
+    const wideOnly = (wide: string, tall: string) => `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const { width, height } = Remotion.useVideoConfig()
+  const sweep = Remotion.interpolate(frame, [0, 179], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>{height > width ? '${tall}' : '${wide}'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+
+    it('keeps a design whose 16:9 frame alone would be refused, since it never plays there', () => {
+      const source = wideOnly('$7bn', '$4bn')
+      expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
+        issue: 'the graphic shows 7, which no cited claim contains',
+      })
+      expect(
+        graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC), { frames: 'portrait' }),
+      ).toHaveProperty('code')
+    })
+
+    it('still refuses what its 9:16 frame shows', () => {
+      const source = wideOnly('$4bn', '$7bn')
+      expect(
+        graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC), { frames: 'portrait' }),
+      ).toEqual({ issue: 'the graphic shows 7, which no cited claim contains, in portrait' })
+    })
+
+    it('never runs the 16:9 frame, so code that would throw there is kept', () => {
+      const source = countUp(4).replace(
+        'const { fps } = Remotion.useVideoConfig()',
+        "const { fps, width, height } = Remotion.useVideoConfig()\n  if (width > height) throw new Error('wide')",
+      )
+      expect(source).toContain("throw new Error('wide')")
+      expect(graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC))).toEqual({
+        issue: expect.stringContaining('wide'),
+      })
+      expect(
+        graphicCodeIssue(answer({ source }), CONTEXT, slot(GRAPHIC), { frames: 'portrait' }),
+      ).toHaveProperty('code')
+    })
+
+    it("reads the reading hold from the 9:16 frame's own samples", () => {
+      // The text changes at 4 s, inside the hold the render plays to 5.1 s.
+      const late = `function Graphic() {
+  const frame = Remotion.useCurrentFrame()
+  const sweep = Remotion.interpolate(frame, [0, 89], [0, 100], { easing: motion.ease.linear, extrapolateRight: 'clamp' })
+  return (
+    <Remotion.AbsoluteFill>
+      <div>$4bn</div>
+      <div>{frame >= 120 ? 'Acme again' : 'Acme'}</div>
+      <div style={{ width: sweep + '%', height: 4 }} />
+    </Remotion.AbsoluteFill>
+  )
+}
+`
+      const shortSlot = { brief: GRAPHIC, durationMs: 3000, words: [{ text: 'four.', atMs: 2600 }] }
+      expect(
+        graphicCodeIssue(answer({ source: late }), CONTEXT, shortSlot, { frames: 'portrait' }),
+      ).toEqual({ issue: expect.stringContaining('the graphic is still changing') })
+    })
+  })
+
   describe('a graphic at rest after its last word', () => {
     // Types "Acme" four letters a second from `fromS` seconds in, over a held figure.
     const typing = (condition: string, fromS: number) => `function Graphic() {

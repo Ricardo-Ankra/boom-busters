@@ -134,6 +134,8 @@ export interface DryRunInput {
   frameMaxMs?: number
   /** The channel's still limit (spec 2026-11-04, section 8.1); the house `GRAPHIC_STILL_MAX_MS` by default. */
   stillMaxMs?: number
+  /** Which frames the code plays in: both by default, the 9:16 alone for a Short's own design. */
+  frames?: GraphicFrameSet
 }
 
 export interface DryRunResult {
@@ -157,6 +159,20 @@ export const FRAME_SIZES = [
   { orientation: 'portrait', width: 1080, height: 1920 },
 ] as const
 export type FrameSize = (typeof FRAME_SIZES)[number]
+
+/**
+ * The frames a design plays in (decision 476): `both` for the film's, which
+ * also plays in its Shorts, and `portrait` for a design written for one Short,
+ * which never plays in 16:9 and so is never run, checked or refused there.
+ */
+export type GraphicFrameSet = 'both' | 'portrait'
+
+/** The frame sizes a frame set runs in, in `FRAME_SIZES` order. */
+export function frameSizesFor(frames: GraphicFrameSet = 'both'): readonly FrameSize[] {
+  return frames === 'portrait'
+    ? FRAME_SIZES.filter((size) => size.orientation === 'portrait')
+    : FRAME_SIZES
+}
 
 export type Sample = { atMs: number; markup: string }
 type Run = { samples: Sample[]; failure: string | null }
@@ -461,7 +477,7 @@ export function dryRunGraphic(input: DryRunInput): DryRunResult {
   const loaded = loadRuntime()
   const textSamples: DryRunResult['textSamples'] = { landscape: [], portrait: [] }
   const figureSamples: DryRunResult['figureSamples'] = { landscape: [], portrait: [] }
-  for (const size of FRAME_SIZES) {
+  for (const size of frameSizesFor(input.frames)) {
     const { issue, samples } = runFrameSize(input, size, loaded)
     textSamples[size.orientation] = samples.map((sample) => visibleText(sample.markup))
     figureSamples[size.orientation] = samples.map((sample) => figureText(sample.markup))
@@ -489,7 +505,7 @@ export function heldTextSamples(
   }
   if (times.length === 0) return { issue: null, texts }
   const loaded = loadRuntime()
-  for (const size of FRAME_SIZES) {
+  for (const size of frameSizesFor(input.frames)) {
     const { issue, samples } = renderSamples(input, size, loaded, times, true)
     texts[size.orientation] = samples.map((sample) => visibleText(sample.markup))
     if (issue !== null) return { issue, texts }

@@ -547,6 +547,55 @@ describe('buildGraphicRequest (decision 295)', () => {
   })
 })
 
+describe("a Short's own design (decision 476)", () => {
+  const flat = (text: string) => text.replace(/\s+/g, ' ')
+  const FILM = {
+    title: 'Four billion',
+    source: 'function Graphic() {\n  return null\n}',
+    motion: 2,
+  }
+
+  it('tells the designer the graphic plays in the 9:16 frame alone', () => {
+    const rules = flat(buildGraphicRequest(input({ frame: 'short' })).system)
+    expect(rules).toContain('your graphic plays over it in a 9:16 Short')
+    expect(rules).toContain(
+      "This graphic plays only in the Short's 9:16 frame, 1080 by 1920: lay it out for that tall frame",
+    )
+    expect(rules).toContain('Only the 9:16 frame is rendered and checked.')
+    expect(rules).toContain('props.safeArea already keeps clear of both')
+    expect(rules).toContain('The code is run at every 250 ms of the slot in the 9:16 frame')
+    expect(rules).not.toContain('both rendered and both checked')
+    expect(rules).not.toContain('in the 16:9 film')
+  })
+
+  it("leaves the film's prompt as it was", () => {
+    const film = buildGraphicRequest(input()).system
+    expect(buildGraphicRequest(input({ frame: 'film' })).system).toBe(film)
+    expect(flat(film)).toContain(
+      'your graphic plays over it in the 16:9 film and in the 9:16 Short, and it lands the beat',
+    )
+    expect(flat(film)).toContain('The code is run at every 250 ms of the slot in both frames')
+  })
+
+  it("shows the film's design after the slot, for its idea and look", () => {
+    const request = buildGraphicRequest(input({ frame: 'short', filmDesign: FILM }))
+    expect(request.messages).toHaveLength(3)
+    const block = request.messages[2]!.content as string
+    expect(block).toContain("The film's design for this beat, which this Short reworks:")
+    expect(block).toContain('Title: Four billion\n```jsx\nfunction Graphic() {')
+    expect(block).toContain(
+      "Keep the film's idea and its look where they fit these words; rebuild the layout for 9:16, and time every change to these words, not the film's.",
+    )
+    expect(block).not.toContain('before the motion tokens')
+  })
+
+  it('says a film design from before the motion tokens is one', () => {
+    const { motion: _motion, ...old } = FILM
+    const request = buildGraphicRequest(input({ frame: 'short', filmDesign: old }))
+    expect(request.messages[2]!.content).toContain('before the motion tokens')
+  })
+})
+
 describe('parseGraphicCode (decision 295)', () => {
   const ANSWER = {
     title: 'Raised in one round',
