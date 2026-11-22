@@ -182,7 +182,12 @@ export const publishRunner = inngest.createFunction(
       if (!record.publishAt) return refuse('No publish slot is chosen yet.')
       const metadata = PublishMetadataSchema.safeParse(record.metadata)
       if (!metadata.success) {
-        return refuse('The metadata is not approved yet — a title is the minimum.')
+        const badTags = metadata.error.issues.some((issue) => issue.path[0] === 'tags')
+        return refuse(
+          badTags
+            ? "The tags break YouTube's limits (500 characters in all, quotes included) — remove some on the Publish screen."
+            : 'The metadata is not approved yet — a title is the minimum.',
+        )
       }
       if (targetType === 'master' && record.uploadedThumbKeys.length === 0) {
         return refuse('No thumbnail is uploaded yet — masters need one before upload.')

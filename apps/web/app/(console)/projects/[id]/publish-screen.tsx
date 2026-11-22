@@ -7,6 +7,8 @@ import {
   composeDescription,
   formatTimestamp,
   splitHashtags,
+  YOUTUBE_TAGS_MAX_CHARS,
+  youtubeTagChars,
 } from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Badge } from '@/components/ui/badge'
@@ -722,6 +724,12 @@ function ItemEditor({
   React.useEffect(() => setGlosses(storedGlossesKey.split('\u0000')), [storedGlossesKey])
   const titleScores = record?.titleScores ?? {}
   const unscoredTitles = unscoredDistinctTitles(record?.titleOptions ?? [], titleScores).length
+  const tagChars = youtubeTagChars(
+    tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== ''),
+  )
   const fromVidiq = new Set((record?.searchTags ?? []).map((tag) => tag.toLowerCase()))
   const markedTags = tags
     .split(',')
@@ -1010,9 +1018,15 @@ function ItemEditor({
           </label>
 
           <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-            Tags, comma-separated (max 60)
+            Tags, comma-separated (max 60) · {tagChars}/{YOUTUBE_TAGS_MAX_CHARS} characters
             <Input value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
+          {tagChars > YOUTUBE_TAGS_MAX_CHARS ? (
+            <p role="alert" className="text-[12px] text-[var(--color-danger)]">
+              Over YouTube&apos;s tag limit: a tag with a space counts its two quotes. Remove some
+              before you schedule.
+            </p>
+          ) : null}
           {markedTags.length > 0 ? (
             <ul className="flex flex-wrap gap-1.5" aria-label="Tags that came from VidIQ">
               {markedTags.map((tag) => (

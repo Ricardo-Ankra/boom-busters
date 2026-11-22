@@ -44,7 +44,10 @@ import {
   splitParagraphs,
   TeaserScriptSchema,
   searchBriefLine,
+  tagBudgetMessage,
   UlidSchema,
+  YOUTUBE_TAGS_MAX_CHARS,
+  youtubeTagChars,
 } from '@boom-busters/schemas'
 import type { SearchBrief, TitleSlot, TitleSlotValues } from '@boom-busters/schemas'
 import {
@@ -178,6 +181,9 @@ export async function savePublishDraft(
         `characters each, chapter notes of ${CHAPTER_GLOSS_MAX} characters.`,
     }
   }
+  if (youtubeTagChars(parsed.data.tags) > YOUTUBE_TAGS_MAX_CHARS) {
+    return { ok: false, error: tagBudgetMessage(parsed.data.tags) }
+  }
 
   const record = await ensurePublishRecord(db, type, targetId)
   const blocked = editableReason(record)
@@ -216,14 +222,14 @@ function uniqueNoCase(texts: readonly string[]): string[] {
   })
 }
 
-/** The owner's tags first, then the written ones, inside YouTube's 500 characters. */
+/** The owner's tags first, then the written ones, inside YouTube's 500 characters as YouTube counts them. */
 function joinTags(kept: readonly string[], written: readonly string[]): string[] {
   const tags: string[] = []
   const seen = new Set<string>()
   for (const tag of [...kept, ...written]) {
     const key = tag.toLowerCase()
     if (seen.has(key)) continue
-    if ([...tags, tag].join(',').length > 500 || tags.length >= 60) break
+    if (youtubeTagChars([...tags, tag]) > YOUTUBE_TAGS_MAX_CHARS || tags.length >= 60) break
     seen.add(key)
     tags.push(tag)
   }
@@ -929,10 +935,14 @@ async function requestUpload(
     disclaimer: ingredients.disclaimer,
   })
 
+  const tags = draft.success ? draft.data.tags : []
+  if (youtubeTagChars(tags) > YOUTUBE_TAGS_MAX_CHARS) {
+    return { ok: false, error: tagBudgetMessage(tags) }
+  }
   const metadata = PublishMetadataSchema.safeParse({
     title,
     description: composed.description,
-    tags: draft.success ? draft.data.tags : [],
+    tags,
   })
   if (!metadata.success) {
     return {

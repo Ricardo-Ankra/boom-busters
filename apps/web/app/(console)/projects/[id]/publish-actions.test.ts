@@ -34,6 +34,7 @@ import {
   FIRST_CHANNEL_ID,
   PublishDraftSchema,
   resolveBrandKit,
+  youtubeTagChars,
 } from '@boom-busters/schemas'
 import type { SearchBrief, Timeline } from '@boom-busters/schemas'
 import type * as DbModule from '@boom-busters/db'
@@ -736,6 +737,51 @@ describeDb('the search brief in titles, description and tags', () => {
     })
   })
 
+  /** Thirty characters, with a space, so YouTube counts thirty-two. */
+  const spacedTag = (kind: string, n: number) =>
+    `${kind} tag ${String(n).padStart(2, '0')} `.padEnd(30, 'x')
+
+  it('refuses to save tags over 500 as YouTube counts them, though their plain join fits', async () => {
+    const tags = Array.from({ length: 16 }, (_, n) => spacedTag('owner', n))
+    expect(tags.join(',').length).toBeLessThanOrEqual(500)
+    await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    expect(
+      await savePublishDraft('master', FIXTURE_PROJECT_ID, {
+        title: '',
+        descriptionBody: '',
+        tags: tags.join(', '),
+      }),
+    ).toEqual({
+      ok: false,
+      error: expect.stringContaining("527 of YouTube's 500 characters") as unknown as string,
+    })
+  })
+
+  it('stops joining written tags at 500 as YouTube counts them, quotes included', async () => {
+    const owner = Array.from({ length: 14 }, (_, n) => spacedTag('owner', n))
+    await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    expect(
+      await savePublishDraft('master', FIXTURE_PROJECT_ID, {
+        title: '',
+        descriptionBody: '',
+        tags: owner.join(', '),
+      }),
+    ).toEqual({ ok: true })
+    callLlm.mockResolvedValueOnce({
+      text: JSON.stringify({
+        body: 'How Wirecard collapsed in June 2020.',
+        chapterGlosses: [],
+        hashtags: [],
+        tags: Array.from({ length: 5 }, (_, n) => spacedTag('model', n)),
+      }),
+    })
+    expect(await generateDescription('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    const tags = (await draft())['tags'] as string[]
+    // The plain join would have let a sixteenth in at 495; quoted, that is 527.
+    expect(tags).toEqual([...owner, spacedTag('model', 0)])
+    expect(youtubeTagChars(tags)).toBe(494)
+  })
+
   describe('a channel with tags, a format, a pillar and a hashtag', () => {
     const FILLER = ['a', 'b', 'c', 'd', 'e'].map((letter) => letter.repeat(30))
     /** Channel tags worth 174 characters joined: the last cannot fit in 150. */
@@ -795,7 +841,7 @@ describeDb('the search brief in titles, description and tags', () => {
       expect(tags.slice(1, 7)).toEqual(['history', 'sleep', ...FILLER.slice(0, 4)])
       expect(tags.slice(7, 9)).toEqual(['history for sleep', 'empire'])
       expect(new Set(tags.map((t) => t.toLowerCase())).size).toBe(tags.length)
-      expect(tags.join(',').length).toBeLessThanOrEqual(500)
+      expect(youtubeTagChars(tags)).toBeLessThanOrEqual(500)
       expect(stored['channelTags']).toEqual([
         'history',
         'sleep',
