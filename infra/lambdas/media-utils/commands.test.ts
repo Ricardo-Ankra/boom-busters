@@ -15,8 +15,42 @@ import {
   parseSilences,
   qcArgs,
   whisperJsonToCaptions,
+  youtubeErrorDetail,
   youtubeInitBody,
 } from './commands'
+
+describe('youtubeErrorDetail', () => {
+  it("names YouTube's reason and message from its JSON error", () => {
+    const body = JSON.stringify({
+      error: {
+        code: 400,
+        message: 'The request metadata specifies invalid video keywords.',
+        errors: [
+          {
+            reason: 'invalidTags',
+            message: 'The request metadata specifies invalid video keywords.',
+          },
+        ],
+      },
+    })
+    expect(youtubeErrorDetail(400, body)).toBe(
+      '400 invalidTags: The request metadata specifies invalid video keywords.',
+    )
+  })
+
+  it('falls back to the top-level message, then to the status alone', () => {
+    expect(youtubeErrorDetail(400, JSON.stringify({ error: { message: 'Bad Request' } }))).toBe(
+      '400 Bad Request',
+    )
+    expect(youtubeErrorDetail(502, '<html>gateway</html>')).toBe('502')
+    expect(youtubeErrorDetail(400, '')).toBe('400')
+  })
+
+  it('caps a long message', () => {
+    const body = JSON.stringify({ error: { errors: [{ reason: 'x', message: 'y'.repeat(1000) }] } })
+    expect(youtubeErrorDetail(400, body)).toHaveLength(300)
+  })
+})
 
 describe('qcArgs', () => {
   it('measures silence, black, freeze and loudness in one pass', () => {

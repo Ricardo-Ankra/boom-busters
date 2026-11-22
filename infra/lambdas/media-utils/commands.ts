@@ -383,6 +383,32 @@ export function whisperJsonToCaptions(json: unknown): Caption[] {
 }
 
 /**
+ * A refused YouTube request as one line: the status, then YouTube's machine
+ * reason and its message when the body is YouTube's JSON error. The reason
+ * reaches the publish runner's mapper and the owner, so a 400 says which
+ * field YouTube refused (`invalidTags`, `invalidTitle`) instead of a bare
+ * number. Capped so a vendor page never floods the error column.
+ */
+export function youtubeErrorDetail(status: number, bodyText: string): string {
+  let reason: string | undefined
+  let message: string | undefined
+  try {
+    const parsed = JSON.parse(bodyText) as {
+      error?: { message?: unknown; errors?: { reason?: unknown; message?: unknown }[] }
+    }
+    const first = parsed.error?.errors?.[0]
+    if (typeof first?.reason === 'string') reason = first.reason
+    const text = first?.message ?? parsed.error?.message
+    if (typeof text === 'string') message = text
+  } catch {
+    // Not JSON: the status alone is all there is to say.
+  }
+  const detail = [reason, message].filter(Boolean).join(': ')
+  const line = detail === '' ? String(status) : `${status} ${detail}`
+  return line.length > 300 ? `${line.slice(0, 297)}...` : line
+}
+
+/**
  * The body of the YouTube resumable-upload start request. The category and
  * language keys join the snippet only when the job carries them, so a job
  * without them serialises exactly as it did before the fields existed.
