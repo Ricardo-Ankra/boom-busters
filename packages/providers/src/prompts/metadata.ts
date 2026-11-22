@@ -7,6 +7,8 @@ import {
   splitHashtags,
   stripNarrationMarkup,
   ValidationError,
+  YOUTUBE_TAGS_MAX_CHARS,
+  youtubeTagChars,
 } from '@boom-busters/schemas'
 import type { BibleInUse, SearchBrief } from '@boom-busters/schemas'
 import { z } from 'zod'
@@ -289,8 +291,6 @@ ${
 /** How long the written opening may run before it is trimmed at a sentence. */
 export const DESCRIPTION_BODY_MAX = 1200
 
-/** YouTube's tag field: 500 characters across every tag, commas included. */
-const TAGS_TOTAL_MAX = 500
 const TAGS_COUNT_MAX = 15
 
 export interface DescriptionAnswer {
@@ -449,7 +449,12 @@ export function parseDescriptionAnswer(
     if (typeof tag !== 'string') continue
     const clean = tag.trim()
     if (clean === '' || clean.length > 100 || seen.has(clean.toLowerCase())) continue
-    if ([...tags, clean].join(',').length > TAGS_TOTAL_MAX || tags.length >= TAGS_COUNT_MAX) break
+    if (
+      youtubeTagChars([...tags, clean]) > YOUTUBE_TAGS_MAX_CHARS ||
+      tags.length >= TAGS_COUNT_MAX
+    ) {
+      break
+    }
     seen.add(clean.toLowerCase())
     tags.push(clean)
   }

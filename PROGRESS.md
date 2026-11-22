@@ -12371,3 +12371,34 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      Short is designed once per appearance, for its own words; no Redesign
      button in the studio yet (the owner asked for it at creation, and
      Re-plan does it again).
+477. **Tags are counted as YouTube counts them, and a refused upload says
+     why** (2026-11-22, owner: "I am trying to upload the WeWokr full video
+     but it is failing ... youtube resumabel init failed: 400", then "Please
+     fix and then merge an dpush"; branch `youtube-tag-budget`, no migration,
+     no timeline schema change; the Lambda half needs a media-utils redeploy).
+     (a) Cause, from the production publish record (read only, owner's
+     leave): the WeWork master's 26 tags came to 487 characters joined by
+     commas but 537 as YouTube counts them, since YouTube wraps a tag holding
+     a space in quotes and counts the quotes. Title (68), description (3,525
+     bytes, no angle brackets) and schedule were within limits. Every tag
+     budget in the app counted the plain join: `joinTags` in the publish
+     actions, `parseDescriptionAnswer`, and nothing at all at save or at
+     schedule (`PublishMetadataSchema` checked 100 a tag and 60 tags only).
+     (b) `youtubeTagChars` and `YOUTUBE_TAGS_MAX_CHARS` (schemas) are the one
+     count: commas plus two per spaced tag. `joinTags` and the description
+     parser stop at 500 by it; saving a draft and scheduling refuse a list
+     over it with the count (`tagBudgetMessage`); `PublishMetadataSchema`
+     refuses it, and the runner's preflight names the tags instead of "not
+     approved yet". The Publish screen shows `n/500` beside the tags field and
+     a warning past it. A stored draft over the budget still parses (the
+     draft schema is unchanged), so the owner can edit it down; nothing trims
+     their tags silently.
+     (c) The media-utils Lambda now reads YouTube's error body on a refused
+     resumable start and puts the status, `errors[0].reason` and message in
+     the failure (`youtubeErrorDetail`, capped at 300 characters), so the
+     owner sees "400 invalidTags: ..." and the runner's mapper sees the
+     reason. Live after `deploy:stacks boom-busters-media-utils`; until then the
+     message stays a bare status.
+     (d) The channel-tag sub-budget (`channelTagsWithin`, 150) still counts
+     the plain join; the overall 500 is what YouTube enforces, and the
+     channel share is a soft split inside it.

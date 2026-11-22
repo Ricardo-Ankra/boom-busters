@@ -35,6 +35,7 @@ import {
   toWhisperWavArgs,
   whisperArgs,
   whisperJsonToCaptions,
+  youtubeErrorDetail,
   youtubeInitBody,
 } from './commands'
 import { uploadStreamMultipart } from './multipart'
@@ -443,7 +444,10 @@ async function runUploadYoutube(job: Extract<MediaJob, { kind: 'upload-youtube' 
     },
   )
   if (!startResponse.ok) {
-    throw new Error(`youtube resumable init failed: ${startResponse.status}`)
+    const body = await startResponse.text().catch(() => '')
+    throw new Error(
+      `youtube resumable init failed: ${youtubeErrorDetail(startResponse.status, body)}`,
+    )
   }
   const uploadUrl = startResponse.headers.get('location')
   if (!uploadUrl) throw new Error('youtube resumable init returned no location')

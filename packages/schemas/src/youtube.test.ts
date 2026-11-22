@@ -1,5 +1,72 @@
 import { describe, expect, it } from 'vitest'
-import { describeYoutubeAction, mapYoutubeError, quotaDayStartUtc } from './youtube'
+import {
+  describeYoutubeAction,
+  mapYoutubeError,
+  PublishMetadataSchema,
+  quotaDayStartUtc,
+  tagBudgetMessage,
+  youtubeTagChars,
+} from './youtube'
+
+/** The WeWork upload's tags (2026-11-22): 487 joined by commas, 537 as YouTube counts them. */
+const WEWORK_TAGS = [
+  'business documentary',
+  'finance documentary',
+  'rise and fall of companies',
+  'scam documentary',
+  'business scandals',
+  'financial fraud documentary',
+  'wework documentary',
+  'wework scene',
+  'the fall of wework news channel',
+  'coldfusion wework',
+  'wework documentary empire leder',
+  'wework video clip',
+  'wework downfall',
+  'diary of a ceo adam neumann',
+  'wework bankrupt',
+  'adam neumann doac',
+  'why wework was destined to fail',
+  'wework',
+  'adam neumann',
+  'wework ipo',
+  'Masayoshi Son',
+  'Ronald D. Fisher',
+  'Mark Schwartz',
+  'Marcelo Claure',
+  'David Tolley',
+  'Mark Dixon',
+]
+
+describe('youtubeTagChars', () => {
+  it('counts the commas and two quotes for every tag with a space', () => {
+    expect(youtubeTagChars([])).toBe(0)
+    expect(youtubeTagChars(['wework'])).toBe(6)
+    expect(youtubeTagChars(['wework', 'adam neumann'])).toBe(6 + 1 + 12 + 2)
+  })
+
+  it('puts the WeWork tags over the budget their plain join hid', () => {
+    expect(WEWORK_TAGS.join(',').length).toBe(487)
+    expect(youtubeTagChars(WEWORK_TAGS)).toBe(537)
+    expect(tagBudgetMessage(WEWORK_TAGS)).toContain("537 of YouTube's 500")
+  })
+})
+
+describe('PublishMetadataSchema', () => {
+  const base = { title: 'WeWork', description: '' }
+
+  it('refuses tags over 500 as YouTube counts them', () => {
+    const parsed = PublishMetadataSchema.safeParse({ ...base, tags: WEWORK_TAGS })
+    expect(parsed.success).toBe(false)
+    expect(parsed.error?.issues[0]?.path).toEqual(['tags'])
+  })
+
+  it('takes tags at exactly 500', () => {
+    const tags = ['x'.repeat(100), ...['a', 'b', 'c', 'd'].map((letter) => letter.repeat(99))]
+    expect(youtubeTagChars(tags)).toBe(500)
+    expect(PublishMetadataSchema.safeParse({ ...base, tags }).success).toBe(true)
+  })
+})
 
 /**
  * The error mapper (build spec section 13's "YouTube error mapper" line):

@@ -18,6 +18,7 @@ import {
 } from './metadata'
 import type { Note, Repair } from './repair'
 import type { SearchBrief } from '@boom-busters/schemas'
+import { youtubeTagChars } from '@boom-busters/schemas'
 import type { ScriptClaim } from './script'
 
 const CLAIM: ScriptClaim = {
@@ -344,7 +345,8 @@ describe('parseDescriptionAnswer (decision 303)', () => {
       2,
     )
     expect(parsed.hashtags).toEqual(['#StabilityAI', '#AIDocumentary', '#Four'])
-    expect(parsed.tags.join(',').length).toBeLessThanOrEqual(500)
+    // As YouTube counts them: each of these has a space, so each counts its quotes.
+    expect(youtubeTagChars(parsed.tags)).toBeLessThanOrEqual(500)
     expect(parsed.tags.length).toBeGreaterThan(5)
   })
 

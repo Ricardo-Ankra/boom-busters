@@ -15,16 +15,45 @@
 
 import { z } from 'zod'
 
+/** YouTube's ceiling on a video's tags, counted by `youtubeTagChars`. */
+export const YOUTUBE_TAGS_MAX_CHARS = 500
+
+/**
+ * A tag list's length as YouTube counts it: the tags joined by commas, and a
+ * tag holding a space wrapped in quotes, which count too. Counting the plain
+ * comma-joined string let the WeWork upload through at 537 and YouTube
+ * answered the resumable start with a 400.
+ */
+export function youtubeTagChars(tags: readonly string[]): number {
+  if (tags.length === 0) return 0
+  const chars = tags.reduce((sum, tag) => sum + tag.length + (/\s/.test(tag) ? 2 : 0), 0)
+  return chars + tags.length - 1
+}
+
+/** The owner-facing refusal for a tag list over the budget. */
+export function tagBudgetMessage(tags: readonly string[]): string {
+  return (
+    `The tags come to ${youtubeTagChars(tags)} of YouTube's ${YOUTUBE_TAGS_MAX_CHARS} characters ` +
+    '(a tag with a space counts its two quotes) — remove some and save.'
+  )
+}
+
 /**
  * What a publish_records row's `metadata` must hold before an upload may
  * start (spec section 7.2 item 8: "metadata approved" is a precondition).
- * Limits are YouTube's own: 100-char titles, 5000-byte descriptions, and a
- * combined tag budget of about 500 characters.
+ * Limits are YouTube's own: 100-char titles, 5000-byte descriptions, and the
+ * 500-character tag budget as `youtubeTagChars` counts it.
  */
 export const PublishMetadataSchema = z.object({
   title: z.string().trim().min(1).max(100),
   description: z.string().max(5000),
-  tags: z.array(z.string().trim().min(1).max(100)).max(60).default([]),
+  tags: z
+    .array(z.string().trim().min(1).max(100))
+    .max(60)
+    .default([])
+    .refine((tags) => youtubeTagChars(tags) <= YOUTUBE_TAGS_MAX_CHARS, {
+      message: 'tags over budget',
+    }),
 })
 export type PublishMetadata = z.infer<typeof PublishMetadataSchema>
 
