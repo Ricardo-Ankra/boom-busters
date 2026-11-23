@@ -11,7 +11,13 @@ import {
 import { describe, expect, it } from 'vitest'
 import { compileShortMaster, POINT_CHAPTER_ID } from './point'
 import { pointFixtureInput } from './point.fixture'
-import { compileShortTimeline } from './short'
+import {
+  compileShortTimeline,
+  END_CARD_LABEL,
+  FOLLOW_CARD_HEADLINE,
+  FOLLOW_CARD_LINE,
+  FOLLOW_CARD_MS,
+} from './short'
 
 const GOLDEN_PATH = join(dirname(fileURLToPath(import.meta.url)), 'golden', 'point-timeline.json')
 
@@ -222,5 +228,101 @@ describe('compileShortTimeline with the bridge ending', () => {
       expect(overlay.startMs).toBe(bridge.startMs - windowStart)
       expect(overlay.durationMs).toBe(bridge.durationMs)
     }
+  })
+})
+
+describe('compileShortTimeline with the end card (decision 479)', () => {
+  const card = {
+    title: 'How Wirecard Fell',
+    chapters: [
+      { number: 4, title: 'The audit' },
+      { number: 6, title: 'The trial' },
+      { number: 7, title: '   ' },
+      { number: 8, title: 'The fourth, never shown' },
+      { number: 9, title: 'The fifth, never shown' },
+    ],
+    runtimeMs: 1_122_000,
+  }
+  const short = (master = compiled()) =>
+    compileShortTimeline({
+      master,
+      segmentRef: {
+        chapterId: POINT_CHAPTER_ID,
+        fromParagraph: 0,
+        toParagraph: master.narration.length - 1,
+      },
+      ending: 'bridge',
+      music: { r2Key: 'boom-busters/music/shorts-pulse-01.mp3' },
+      endCard: card,
+    })
+
+  it('puts the end card where the bridge overlays were, and the follow card after the narration', () => {
+    const master = compiled()
+    const bridge = master.overlays[0]!
+    const compiledShort = short(master)
+    const narrationEnd = Math.max(...master.narration.map((s) => s.startMs + s.durationMs))
+
+    expect(compiledShort.overlays).toEqual([
+      {
+        kind: 'endCard',
+        startMs: bridge.startMs,
+        durationMs: bridge.durationMs,
+        props: {
+          channelName: 'Boom & Busters',
+          title: 'How Wirecard Fell',
+          chapters: [
+            { number: 4, title: 'The audit' },
+            { number: 6, title: 'The trial' },
+            { number: 8, title: 'The fourth, never shown' },
+          ],
+          runtimeMs: 1_122_000,
+          label: END_CARD_LABEL,
+        },
+      },
+      {
+        kind: 'followCard',
+        startMs: narrationEnd,
+        durationMs: FOLLOW_CARD_MS,
+        props: {
+          channelName: 'Boom & Busters',
+          headline: FOLLOW_CARD_HEADLINE,
+          line: FOLLOW_CARD_LINE,
+        },
+      },
+    ])
+  })
+
+  it('runs the follow card on the last shot held on, so the Short is 2.5 s longer', () => {
+    const master = compiled()
+    const without = compileShortTimeline({
+      master,
+      segmentRef: {
+        chapterId: POINT_CHAPTER_ID,
+        fromParagraph: 0,
+        toParagraph: master.narration.length - 1,
+      },
+      ending: 'bridge',
+      music: null,
+    })
+    const withCard = short(master)
+    expect(timelineDurationMs(withCard)).toBe(timelineDurationMs(without) + FOLLOW_CARD_MS)
+    expect(withCard.slots.slice(0, -1)).toEqual(without.slots.slice(0, -1))
+    expect(TimelineSchema.safeParse(withCard).success).toBe(true)
+  })
+
+  it('compiles the same from a master that already carries an end card', () => {
+    const once = short()
+    const twice = compileShortTimeline({
+      master: { ...compiled(), overlays: [once.overlays[0]!] },
+      segmentRef: {
+        chapterId: POINT_CHAPTER_ID,
+        fromParagraph: 0,
+        toParagraph: compiled().narration.length - 1,
+      },
+      ending: 'bridge',
+      music: { r2Key: 'boom-busters/music/shorts-pulse-01.mp3' },
+      endCard: card,
+    })
+    expect(twice.overlays).toEqual(once.overlays)
   })
 })
