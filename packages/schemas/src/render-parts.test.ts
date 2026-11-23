@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { LoudnormMeasurement, QcReport } from './broker'
 import {
+  closingCardStartMs,
   combineLoudness,
   mergeQcReports,
   partEstimateUsd,
   partsProgressPct,
   partWaves,
+  withoutClosingCardFindings,
   planRenderParts,
   rendersInParts,
   settleRenderParts,
@@ -240,5 +242,48 @@ describe('settleRenderParts', () => {
 describe('partWaves', () => {
   it('splits into waves', () => {
     expect(partWaves(['a', 'b', 'c', 'd', 'e'], 2)).toEqual([['a', 'b'], ['c', 'd'], ['e']])
+  })
+})
+
+describe('withoutClosingCardFindings (decision 482)', () => {
+  const report = (issues: QcReport['issues']): QcReport => ({
+    passed: issues.length === 0,
+    integratedLufs: -14,
+    issues,
+  })
+  const freeze = (atMs: number) => ({
+    kind: 'glitch' as const,
+    atMs,
+    durationMs: 2500,
+    detail: 'frozen',
+  })
+
+  it('drops the settled card’s freeze and quiet, and passes a report left clean', () => {
+    const cleaned = withoutClosingCardFindings(
+      report([freeze(600_470), { kind: 'silence', atMs: 599_600, detail: '3.4s of silence' }]),
+      600_000,
+    )
+    expect(cleaned).toEqual(report([]))
+  })
+
+  it('keeps a fault that starts before the card, and every other kind', () => {
+    const early = freeze(598_000)
+    const black = { kind: 'black-frames' as const, atMs: 600_200, detail: 'black' }
+    const cleaned = withoutClosingCardFindings(report([early, freeze(601_000), black]), 600_000)
+    expect(cleaned.issues).toEqual([early, black])
+    expect(cleaned.passed).toBe(false)
+  })
+
+  it('leaves a film without a card alone', () => {
+    const original = report([freeze(600_470)])
+    expect(withoutClosingCardFindings(original, null)).toBe(original)
+  })
+
+  it('finds the card on the timeline', () => {
+    const timeline = { overlays: [{ kind: 'followCard', startMs: 1234 }] } as unknown as Parameters<
+      typeof closingCardStartMs
+    >[0]
+    expect(closingCardStartMs(timeline)).toBe(1234)
+    expect(closingCardStartMs({ ...timeline, overlays: [] })).toBeNull()
   })
 })

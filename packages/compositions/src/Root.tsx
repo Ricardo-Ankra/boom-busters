@@ -34,6 +34,7 @@ import {
   FIXTURE_CAPTION_WORDS,
   FIXTURE_MAP_LOCATIONS,
   FIXTURE_SHORT_BRIDGE_TIMELINE,
+  FIXTURE_MASTER_CLOSING_TIMELINE,
   FIXTURE_SHORT_END_CARD_TIMELINE,
   FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
@@ -334,6 +335,14 @@ export function Root() {
         durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_END_CARD_TIMELINE), FPS)}
         {...TALL}
         defaultProps={{ timeline: FIXTURE_SHORT_END_CARD_TIMELINE }}
+      />
+
+      <Composition
+        id="MasterClosingCard"
+        component={DocumentaryMaster}
+        durationInFrames={msToFrames(timelineDurationMs(FIXTURE_MASTER_CLOSING_TIMELINE), FPS)}
+        {...WIDE}
+        defaultProps={{ timeline: FIXTURE_MASTER_CLOSING_TIMELINE }}
       />
 
       <Composition

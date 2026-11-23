@@ -118,6 +118,11 @@ const CASES: SnapshotCase[] = [
   { id: 'ShortEndCardVertical', frame: 200, maxDiffRatio: 0.06, name: 'ShortEndCardChart' },
   // The closing card, trimmed to the mark, the name and the prompt (decision 481).
   { id: 'FollowCardFixture', frame: 45, maxDiffRatio: 0.06 },
+  // The film's closing card (decision 482) on the master's mount path. The
+  // fixture's last word ends at 14 s; frame 423 is 14.1 s, the card half faded in
+  // over the held shot, and frame 480 is 16 s, the card settled.
+  { id: 'MasterClosingCard', frame: 423, maxDiffRatio: 0.06, name: 'MasterClosingCardFading' },
+  { id: 'MasterClosingCard', frame: 480, maxDiffRatio: 0.06 },
   // The channel mark in the corner (decision 268): an image, not the wordmark.
   { id: 'WatermarkLogo', frame: 10, maxDiffRatio: 0.03 },
 ]

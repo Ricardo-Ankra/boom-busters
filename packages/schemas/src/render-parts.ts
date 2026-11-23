@@ -153,6 +153,43 @@ export function mergeQcReports(
   }
 }
 
+/**
+ * How far before the closing card a finding may start and still be the
+ * card's: the last take's own trailing quiet runs into it.
+ */
+export const CLOSING_CARD_QC_LEAD_MS = 1000
+
+/** Where the film's closing card (decision 482) starts, or null when it has none. */
+export function closingCardStartMs(timeline: Timeline): number | null {
+  const card = timeline.overlays.find((overlay) => overlay.kind === 'followCard')
+  return card ? card.startMs : null
+}
+
+/**
+ * A QC report without what the closing card (decision 482) does by design:
+ * it holds still once its words have risen, which the frozen-frame scan
+ * reports as a glitch, and on a film without a bed it is quiet, which the
+ * silence scan reports. Only findings starting inside the card (or just
+ * before it, `CLOSING_CARD_QC_LEAD_MS`) go; a fault that starts earlier and
+ * runs into it stays. Measured 2026-11-23: the settled card is a 2.5 s freeze.
+ */
+export function withoutClosingCardFindings(
+  report: QcReport,
+  closingFromMs: number | null,
+): QcReport {
+  if (closingFromMs === null) return report
+  const issues = report.issues.filter(
+    (issue) =>
+      !(
+        (issue.kind === 'glitch' || issue.kind === 'silence') &&
+        issue.atMs >= closingFromMs - CLOSING_CARD_QC_LEAD_MS
+      ),
+  )
+  return issues.length === report.issues.length
+    ? report
+    : { ...report, issues, passed: issues.length === 0 }
+}
+
 function partFrames(part: RenderPart): number {
   return part.frameRange[1] - part.frameRange[0] + 1
 }

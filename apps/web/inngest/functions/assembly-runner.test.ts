@@ -127,7 +127,7 @@ describeDb('assembly-runner, batched transcription', () => {
 
   async function compileWith(
     chapterMarking: 'none' | 'cards' | 'title',
-    options: { omitMarking?: boolean } = {},
+    options: { omitMarking?: boolean; channel?: { name: string; handle: string | null } } = {},
   ) {
     {
       const timed = (chapter: number, text: string) => ({
@@ -175,7 +175,7 @@ describeDb('assembly-runner, batched transcription', () => {
           },
         ],
         assets: [],
-        brand: resolveBrandKit(DEFAULT_SETTINGS),
+        brand: resolveBrandKit(DEFAULT_SETTINGS, options.channel),
         chapterMarking,
         filmTitle: 'The audit',
         music: null,
@@ -229,6 +229,35 @@ describeDb('assembly-runner, batched transcription', () => {
         'Chapter 1',
         'Chapter 2',
       ])
+    },
+  )
+
+  it(
+    'ends the film on the channel’s closing card (decision 482)',
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const compiled = await compileWith('cards', {
+        channel: { name: 'Boom & Busters', handle: '@boomandbusters' },
+      })
+      expect(compiled.ok).toBe(true)
+      expect(compiled.timeline.overlays.at(-1)).toMatchObject({
+        kind: 'followCard',
+        props: { channelName: 'Boom & Busters' },
+      })
+    },
+  )
+
+  it(
+    'shows no closing card for a brand with no channel on it (an old replayed setup)',
+    {
+      timeout: 120_000,
+    },
+    async () => {
+      const compiled = await compileWith('cards')
+      expect(compiled.ok).toBe(true)
+      expect(compiled.timeline.overlays.some((o) => o.kind === 'followCard')).toBe(false)
     },
   )
 

@@ -296,6 +296,36 @@ export const FIXTURE_SHORT_END_CARD_TIMELINE: Timeline = {
 }
 
 /**
+ * The film's close as decision 482 has it: the 14-second master fixture with
+ * its last shot held on 3000 ms past its end and the closing card over that
+ * hold, after the last word.
+ */
+export const FIXTURE_MASTER_CLOSING_TIMELINE: Timeline = (() => {
+  const last = FIXTURE_TIMELINE.slots.reduce((latest, slot) =>
+    slot.startMs + slot.durationMs >= latest.startMs + latest.durationMs ? slot : latest,
+  )
+  const endMs = Math.max(
+    ...FIXTURE_TIMELINE.slots.map((slot) => slot.startMs + slot.durationMs),
+    ...FIXTURE_TIMELINE.narration.map((segment) => segment.startMs + segment.durationMs),
+  )
+  return {
+    ...FIXTURE_TIMELINE,
+    slots: FIXTURE_TIMELINE.slots.map((slot) =>
+      slot === last ? { ...slot, durationMs: endMs + 3000 - slot.startMs } : slot,
+    ),
+    overlays: [
+      ...FIXTURE_TIMELINE.overlays,
+      {
+        kind: 'followCard',
+        startMs: endMs,
+        durationMs: 3000,
+        props: { channelName: 'Boom & Busters' },
+      },
+    ],
+  }
+})()
+
+/**
  * The RENDER fixture: the spec section 13 "local `renderMedia` of a
  * 20-second fixture instead of Lambda in CI". The 14-second Studio fixture
  * above, extended by a closing chapter — a third narration segment, a

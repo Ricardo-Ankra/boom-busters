@@ -11,17 +11,18 @@ import { ChannelLogo } from './EndCard'
  * drawn button that would do nothing. Opaque and full frame. It is the long
  * form's closing graphic; a Short ends on its end card instead.
  *
- * Sizes are on a 1080 short side; heights are fractions of the frame, so the
- * card holds on a 9:16 Short frame and a 16:9 film frame alike. On 1080 x
- * 1920 every line sits inside the Short safe area.
+ * Sizes are on a 1080 short side; heights are fractions of the frame, one
+ * set for the 9:16 Short frame and one for the 16:9 film frame, where the
+ * same fractions would press the name against the prompt. On 1080 x 1920
+ * every line sits inside the Short safe area.
  */
 export const FOLLOW_CARD_LAYOUT = {
-  /** The mark and the name, from the stack's top. */
-  stack: { top: 0.3 },
   logo: { size: 280, gap: 44 },
   name: { px: 64 },
-  /** The prompt to YouTube's Subscribe button, above the frame's foot. */
-  prompt: { top: 0.71, px: 36 },
+  prompt: { px: 36 },
+  /** The stack's top and the prompt's top, as fractions of the frame's height. */
+  tall: { stackTop: 0.3, promptTop: 0.71 },
+  wide: { stackTop: 0.2, promptTop: 0.76 },
 } as const
 
 function rise(tMs: number, at: number, scale: number): CSSProperties {
@@ -36,6 +37,7 @@ export function FollowCard({ channelName, brand }: { channelName: string; brand:
   const tMs = (frame / fps) * 1000
   const { colors, typography } = brand
   const L = FOLLOW_CARD_LAYOUT
+  const place = height > width ? L.tall : L.wide
   const ground = easeInOut(Math.min(1, tMs / 200))
   const logoIn = easeInOut(Math.min(1, Math.max(0, (tMs - 60) / 320)))
   const centred: CSSProperties = {
@@ -60,7 +62,7 @@ export function FollowCard({ channelName, brand }: { channelName: string; brand:
         }}
       />
 
-      <div style={{ ...centred, top: L.stack.top * height }}>
+      <div style={{ ...centred, top: place.stackTop * height }}>
         <div
           style={{
             opacity: logoIn,
@@ -93,7 +95,7 @@ export function FollowCard({ channelName, brand }: { channelName: string; brand:
       <div
         style={{
           ...centred,
-          top: L.prompt.top * height,
+          top: place.promptTop * height,
           gap: 14 * scale,
           ...rise(tMs, 420, scale),
         }}
