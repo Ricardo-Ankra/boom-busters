@@ -1,5 +1,5 @@
 import { Audio as WebCodecsAudio } from '@remotion/media'
-import { useMemo } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import {
   AbsoluteFill,
@@ -25,7 +25,8 @@ import {
 import { AnimatedMap } from './AnimatedMap'
 import { CardOverlay } from './CardOverlay'
 import { ChartReveal } from './ChartReveal'
-import { EndCard, endCardSlotStyle } from './EndCard'
+import { containScale, EndCard, endCardSlotBox } from './EndCard'
+import type { EndCardSlotBox } from './EndCard'
 import { EndCta } from './EndCta'
 import { FollowCard } from './FollowCard'
 import { GraphicCard } from './GraphicCard'
@@ -49,15 +50,26 @@ import { Watermark } from './Watermark'
  * captions; narration and music are audio-only.
  */
 /**
+ * The box the slots draw into while a point Short's end card is up; null
+ * (the default) means the whole frame.
+ */
+const SlotBoxContext = createContext<EndCardSlotBox | null>(null)
+
+/**
  * The picture's layer. While a point Short's end card is up (decision 479)
  * it shrinks into the card's 16:9 frame and keeps playing there; otherwise
- * it is a plain full frame. Its own component, so only it reads the frame.
+ * it is a plain full frame. It is resized rather than scaled (decision 481),
+ * so photos and clips cover the frame at its own aspect. Its own component,
+ * so only it reads the frame.
  */
 function SlotLayer({
   overlays,
+  surface,
   children,
 }: {
   overlays: Timeline['overlays']
+  /** The frame's fill, behind a drawn slot fitted inside it. */
+  surface: string
   children: ReactNode
 }) {
   const frame = useCurrentFrame()
@@ -69,10 +81,23 @@ function SlotLayer({
       tMs >= overlay.startMs &&
       tMs < overlay.startMs + overlay.durationMs,
   )
+  if (!card) return <AbsoluteFill>{children}</AbsoluteFill>
+  const box = endCardSlotBox(tMs - card.startMs, width, height)
   return (
-    <AbsoluteFill style={card ? endCardSlotStyle(tMs - card.startMs, width, height) : undefined}>
-      {children}
-    </AbsoluteFill>
+    <div
+      style={{
+        position: 'absolute',
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+        borderRadius: box.radius,
+        overflow: 'hidden',
+        backgroundColor: surface,
+      }}
+    >
+      <SlotBoxContext.Provider value={box}>{children}</SlotBoxContext.Provider>
+    </div>
   )
 }
 
@@ -96,7 +121,7 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
 
   return (
     <AbsoluteFill style={{ backgroundColor: brand.colors.background }}>
-      <SlotLayer overlays={timeline.overlays}>
+      <SlotLayer overlays={timeline.overlays} surface={brand.colors.surface}>
         {timeline.slots.map((slot, index) => (
           <Sequence
             key={`slot-${index}`}
@@ -211,7 +236,8 @@ function NarrationAudio({ src, trimBefore }: { src: string; trimBefore?: number 
  */
 export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitTokens }) {
   const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
+  const { fps, width, height } = useVideoConfig()
+  const box = useContext(SlotBoxContext)
   const durationInFrames = msToFrames(slot.durationMs, fps)
   const opacity = transitionOpacity(slot.transition, (frame / fps) * 1000)
 
@@ -224,7 +250,7 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
       ? punchScale(slot.motion.scale, slot.motion.durationMs, (frame / fps) * 1000)
       : undefined
 
-  const content = (
+  const drawn = (
     <>
       {slot.payload.kind === 'image' ? (
         graded(
@@ -263,6 +289,28 @@ export function SlotView({ slot, brand }: { slot: TimelineSlot; brand: BrandKitT
       )}
     </>
   )
+  // In an end card's frame (decision 481) a photo or clip covers the box by
+  // itself; anything laid out on the whole frame keeps the frame's size and
+  // is scaled to fit inside the box, whole, on the frame's surface.
+  const photographic = slot.payload.kind === 'image' || slot.payload.kind === 'video'
+  const content =
+    box === null || photographic ? (
+      drawn
+    ) : (
+      <div
+        style={{
+          position: 'absolute',
+          left: (box.width - width) / 2,
+          top: (box.height - height) / 2,
+          width,
+          height,
+          transform: `scale(${containScale(box, width, height)})`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {drawn}
+      </div>
+    )
 
   return (
     <AbsoluteFill style={{ opacity }}>

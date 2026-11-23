@@ -2,22 +2,26 @@ import type { CSSProperties } from 'react'
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion'
 import type { BrandKitTokens } from '@boom-busters/schemas'
 import { easeInOut } from '../lib/motion'
-import { fixedTypeStyle, frameScale, withAlpha } from './brand'
+import { fixedTypeStyle, frameScale } from './brand'
 import { ChannelLogo } from './EndCard'
 
 /**
- * A point Short's closing card (decision 479): after the narration, on the
- * bed alone, the channel asks for the follow for its long-form videos. It
- * points at YouTube's own Subscribe button below rather than drawing one: a
- * drawn button that does nothing would mislead. Opaque and full frame; every
- * line sits inside the Short safe area on a 1080 x 1920 frame.
+ * The closing card (decision 479, trimmed by 481): the channel's mark, its
+ * name, and a prompt to YouTube's own Subscribe button below, rather than a
+ * drawn button that would do nothing. Opaque and full frame. It is the long
+ * form's closing graphic; a Short ends on its end card instead.
+ *
+ * Sizes are on a 1080 short side; heights are fractions of the frame, so the
+ * card holds on a 9:16 Short frame and a 16:9 film frame alike. On 1080 x
+ * 1920 every line sits inside the Short safe area.
  */
 export const FOLLOW_CARD_LAYOUT = {
-  /** The stack of mark, name, headline and line, from its top, one gap apart. */
-  stack: { y: 500, width: 880 },
-  logo: { size: 280 },
-  /** The prompt to YouTube's Subscribe button, fixed above the safe area's foot. */
-  prompt: { y: 1370 },
+  /** The mark and the name, from the stack's top. */
+  stack: { top: 0.3 },
+  logo: { size: 280, gap: 44 },
+  name: { px: 64 },
+  /** The prompt to YouTube's Subscribe button, above the frame's foot. */
+  prompt: { top: 0.71, px: 36 },
 } as const
 
 function rise(tMs: number, at: number, scale: number): CSSProperties {
@@ -25,17 +29,7 @@ function rise(tMs: number, at: number, scale: number): CSSProperties {
   return { opacity: p, transform: `translateY(${28 * scale * (1 - p)}px)` }
 }
 
-export function FollowCard({
-  channelName,
-  headline,
-  line,
-  brand,
-}: {
-  channelName: string
-  headline: string
-  line: string
-  brand: BrandKitTokens
-}) {
+export function FollowCard({ channelName, brand }: { channelName: string; brand: BrandKitTokens }) {
   const frame = useCurrentFrame()
   const { fps, width, height } = useVideoConfig()
   const scale = frameScale(width, height)
@@ -44,14 +38,13 @@ export function FollowCard({
   const L = FOLLOW_CARD_LAYOUT
   const ground = easeInOut(Math.min(1, tMs / 200))
   const logoIn = easeInOut(Math.min(1, Math.max(0, (tMs - 60) / 320)))
-  // "Follow" leads the line in the accent, as on the end card.
-  const [lead, ...rest] = line.split(' ')
   const centred: CSSProperties = {
     position: 'absolute',
     left: 0,
     width,
     display: 'flex',
-    justifyContent: 'center',
+    flexDirection: 'column',
+    alignItems: 'center',
   }
 
   return (
@@ -67,19 +60,12 @@ export function FollowCard({
         }}
       />
 
-      <div
-        style={{
-          ...centred,
-          top: L.stack.y * scale,
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
+      <div style={{ ...centred, top: L.stack.top * height }}>
         <div
           style={{
             opacity: logoIn,
             transform: `scale(${0.92 + 0.08 * logoIn})`,
-            marginBottom: 44 * scale,
+            marginBottom: L.logo.gap * scale,
           }}
         >
           <ChannelLogo
@@ -92,64 +78,29 @@ export function FollowCard({
 
         <div
           style={{
-            ...fixedTypeStyle(typography.captions, 30, scale),
-            letterSpacing: '0.2em',
-            textTransform: 'uppercase',
-            color: withAlpha(colors.textPrimary, 0.82),
+            ...fixedTypeStyle(typography.heading, L.name.px, scale),
+            lineHeight: 1.1,
+            letterSpacing: '-0.01em',
+            color: colors.textPrimary,
             whiteSpace: 'nowrap',
-            marginBottom: 18 * scale,
-            ...rise(tMs, 160, scale),
+            ...rise(tMs, 200, scale),
           }}
         >
           {channelName}
-        </div>
-
-        <div
-          style={{
-            width: L.stack.width * scale,
-            ...fixedTypeStyle(typography.heading, 96, scale),
-            lineHeight: 1.04,
-            letterSpacing: '-0.015em',
-            textAlign: 'center',
-            textWrap: 'balance',
-            color: colors.textPrimary,
-            marginBottom: 30 * scale,
-            ...rise(tMs, 260, scale),
-          }}
-        >
-          {headline}
-        </div>
-
-        <div
-          style={{
-            width: (L.stack.width - 60) * scale,
-            ...fixedTypeStyle(typography.body, 40, scale),
-            fontWeight: 600,
-            lineHeight: 1.3,
-            textAlign: 'center',
-            textWrap: 'balance',
-            color: withAlpha(colors.textPrimary, 0.85),
-            ...rise(tMs, 380, scale),
-          }}
-        >
-          <span style={{ color: colors.accent }}>{lead}</span>
-          {rest.length > 0 ? ` ${rest.join(' ')}` : ''}
         </div>
       </div>
 
       <div
         style={{
           ...centred,
-          top: L.prompt.y * scale,
-          flexDirection: 'column',
-          alignItems: 'center',
+          top: L.prompt.top * height,
           gap: 14 * scale,
-          ...rise(tMs, 520, scale),
+          ...rise(tMs, 420, scale),
         }}
       >
         <div
           style={{
-            ...fixedTypeStyle(typography.heading, 36, scale),
+            ...fixedTypeStyle(typography.heading, L.prompt.px, scale),
             color: colors.textPrimary,
             whiteSpace: 'nowrap',
           }}
@@ -176,12 +127,5 @@ export function FollowCard({
 
 /** Studio and snapshot fixture. */
 export function FollowCardFixture({ brand }: { brand: BrandKitTokens }) {
-  return (
-    <FollowCard
-      channelName="Boom & Busters"
-      headline="Every case, in full."
-      line="Follow for the long-form investigations"
-      brand={brand}
-    />
-  )
+  return <FollowCard channelName="Boom & Busters" brand={brand} />
 }

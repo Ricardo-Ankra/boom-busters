@@ -109,13 +109,15 @@ const CASES: SnapshotCase[] = [
   // The real mount path: ShortVertical over the bridge timeline. Frame 120 is
   // 4 s: the punched, left-cropped still with both overlays (3 to 5 s) up.
   { id: 'ShortBridgeVertical', frame: 120, maxDiffRatio: 0.06 },
-  // The point Short's end card and follow card (decision 479) on the real
-  // mount path. Frame 95 is 3.17 s: the shot half way into the frame. Frame
-  // 135 is 4.5 s: the card settled, the arrow up. Frame 285 is 9.5 s: the
-  // follow card after the narration.
+  // The point Short's end card (decisions 479, 481) on the real mount path.
+  // Frame 95 is 3.17 s: the still half way into the frame. Frame 135 is 4.5 s:
+  // the card settled, the landscape still whole in the 16:9 frame, the arrow
+  // up. Frame 200 is 6.67 s: the portrait chart fitted whole inside the frame.
   { id: 'ShortEndCardVertical', frame: 95, maxDiffRatio: 0.06, name: 'ShortEndCardShrinking' },
   { id: 'ShortEndCardVertical', frame: 135, maxDiffRatio: 0.06 },
-  { id: 'ShortEndCardVertical', frame: 285, maxDiffRatio: 0.06, name: 'ShortFollowCard' },
+  { id: 'ShortEndCardVertical', frame: 200, maxDiffRatio: 0.06, name: 'ShortEndCardChart' },
+  // The closing card, trimmed to the mark, the name and the prompt (decision 481).
+  { id: 'FollowCardFixture', frame: 45, maxDiffRatio: 0.06 },
   // The channel mark in the corner (decision 268): an image, not the wordmark.
   { id: 'WatermarkLogo', frame: 10, maxDiffRatio: 0.03 },
 ]

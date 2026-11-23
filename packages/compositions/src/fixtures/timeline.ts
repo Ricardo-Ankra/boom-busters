@@ -269,16 +269,13 @@ export const FIXTURE_SHORT_BRIDGE_TIMELINE: Timeline = {
 }
 
 /**
- * The point Short's close as decision 479 has it: the vertical fixture with
- * the end card over 3000 to 8000 ms (the bridge paragraph), the picture
- * shrinking into its frame, and the follow card after the narration, over
- * the chart held on to 10500 ms. The captions are held back under both.
+ * The point Short's close as decisions 479 and 481 have it: the vertical
+ * fixture with the end card over 3000 to 8000 ms (the bridge paragraph) and
+ * the Short ending on it. The picture shrinks into its frame: the skyline
+ * still to 5000 ms, then the chart. The captions are held back under it.
  */
 export const FIXTURE_SHORT_END_CARD_TIMELINE: Timeline = {
   ...FIXTURE_SHORT_TIMELINE,
-  slots: FIXTURE_SHORT_TIMELINE.slots.map((slot, index) =>
-    index === 1 ? { ...slot, durationMs: 5500 } : slot,
-  ),
   overlays: [
     {
       kind: 'endCard',
@@ -293,16 +290,6 @@ export const FIXTURE_SHORT_END_CARD_TIMELINE: Timeline = {
         ],
         runtimeMs: 1_122_000,
         label: 'Watch the full video',
-      },
-    },
-    {
-      kind: 'followCard',
-      startMs: 8000,
-      durationMs: 2500,
-      props: {
-        channelName: 'Boom & Busters',
-        headline: 'Every case, in full.',
-        line: 'Follow for the long-form investigations',
       },
     },
   ],

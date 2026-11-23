@@ -11,13 +11,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import { compileShortMaster, POINT_CHAPTER_ID } from './point'
 import { pointFixtureInput } from './point.fixture'
-import {
-  compileShortTimeline,
-  END_CARD_LABEL,
-  FOLLOW_CARD_HEADLINE,
-  FOLLOW_CARD_LINE,
-  FOLLOW_CARD_MS,
-} from './short'
+import { compileShortTimeline, END_CARD_LABEL } from './short'
 
 const GOLDEN_PATH = join(dirname(fileURLToPath(import.meta.url)), 'golden', 'point-timeline.json')
 
@@ -256,11 +250,10 @@ describe('compileShortTimeline with the end card (decision 479)', () => {
       endCard: card,
     })
 
-  it('puts the end card where the bridge overlays were, and the follow card after the narration', () => {
+  it('puts the end card where the bridge overlays were, and nothing after it (decision 481)', () => {
     const master = compiled()
     const bridge = master.overlays[0]!
     const compiledShort = short(master)
-    const narrationEnd = Math.max(...master.narration.map((s) => s.startMs + s.durationMs))
 
     expect(compiledShort.overlays).toEqual([
       {
@@ -279,20 +272,10 @@ describe('compileShortTimeline with the end card (decision 479)', () => {
           label: END_CARD_LABEL,
         },
       },
-      {
-        kind: 'followCard',
-        startMs: narrationEnd,
-        durationMs: FOLLOW_CARD_MS,
-        props: {
-          channelName: 'Boom & Busters',
-          headline: FOLLOW_CARD_HEADLINE,
-          line: FOLLOW_CARD_LINE,
-        },
-      },
     ])
   })
 
-  it('runs the follow card on the last shot held on, so the Short is 2.5 s longer', () => {
+  it('ends the Short with its narration: the same clock and shots as without the card', () => {
     const master = compiled()
     const without = compileShortTimeline({
       master,
@@ -305,8 +288,8 @@ describe('compileShortTimeline with the end card (decision 479)', () => {
       music: null,
     })
     const withCard = short(master)
-    expect(timelineDurationMs(withCard)).toBe(timelineDurationMs(without) + FOLLOW_CARD_MS)
-    expect(withCard.slots.slice(0, -1)).toEqual(without.slots.slice(0, -1))
+    expect(timelineDurationMs(withCard)).toBe(timelineDurationMs(without))
+    expect(withCard.slots).toEqual(without.slots)
     expect(TimelineSchema.safeParse(withCard).success).toBe(true)
   })
 

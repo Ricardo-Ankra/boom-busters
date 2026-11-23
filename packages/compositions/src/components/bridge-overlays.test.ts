@@ -2,7 +2,7 @@ import { SHORT_RULES } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { RELATED_ARROW_LAYOUT } from './RelatedArrow'
 import { SUBSCRIBE_BADGE_LAYOUT } from './SubscribeBadge'
-import { channelInitials, END_CARD_LAYOUT, endCardSlotStyle } from './EndCard'
+import { channelInitials, containScale, END_CARD_LAYOUT, endCardSlotBox } from './EndCard'
 import { FOLLOW_CARD_LAYOUT } from './FollowCard'
 
 const { x0, x1, y0, y1 } = SHORT_RULES.safeArea
@@ -34,7 +34,7 @@ describe('the bridge overlays sit inside the Short safe area', () => {
   })
 })
 
-describe('the end card and follow card (decision 479)', () => {
+describe('the end card and follow card (decisions 479, 481)', () => {
   const { channel, kicker, frame, title, chapters } = END_CARD_LAYOUT
 
   it('keeps every end card box inside the safe area, above the call to action', () => {
@@ -50,35 +50,45 @@ describe('the end card and follow card (decision 479)', () => {
     expect(chapters.y + 22 + 3 * 48).toBeLessThanOrEqual(RELATED_ARROW_LAYOUT.label.y)
   })
 
-  it('keeps the follow card inside the safe area', () => {
-    const { stack, logo, prompt } = FOLLOW_CARD_LAYOUT
-    expect(stack.y).toBeGreaterThanOrEqual(y0)
-    expect((1080 - stack.width) / 2).toBeGreaterThanOrEqual(x0)
-    // Mark, name, a two-line headline and a two-line line clear the prompt.
-    expect(stack.y + logo.size + 44 + 36 + 18 + 200 + 30 + 104).toBeLessThanOrEqual(prompt.y)
-    expect(prompt.y + 110).toBeLessThanOrEqual(y1)
+  it('keeps the follow card inside the safe area on a Short frame', () => {
+    const { stack, logo, name, prompt } = FOLLOW_CARD_LAYOUT
+    const top = stack.top * 1920
+    expect(top).toBeGreaterThanOrEqual(y0)
+    // The mark, the gap and the name's line end well before the prompt.
+    expect(top + logo.size + logo.gap + name.px * 1.1).toBeLessThan(prompt.top * 1920 - 100)
+    // The prompt and its chevron.
+    expect(prompt.top * 1920 + prompt.px * 1.3 + 14 + 56).toBeLessThanOrEqual(y1)
   })
 
-  it('shrinks the picture onto the frame, starting from the full frame', () => {
-    const start = endCardSlotStyle(0, 1080, 1920)
-    expect(start.transform).toBe('translate(0px, 0px) scale(1)')
-    expect(start.clipPath).toBe('inset(0px 0px 0px 0px round 0px)')
+  it('resizes the picture onto the frame, starting from the full frame (decision 481)', () => {
+    expect(endCardSlotBox(0, 1080, 1920)).toEqual({
+      left: 0,
+      top: 0,
+      width: 1080,
+      height: 1920,
+      radius: 0,
+    })
+    expect(endCardSlotBox(END_CARD_LAYOUT.shrinkMs, 1080, 1920)).toEqual({
+      left: frame.x,
+      top: frame.y,
+      width: frame.width,
+      height: frame.height,
+      radius: frame.radius,
+    })
+    // Half way the box is between the two, on both axes.
+    const mid = endCardSlotBox(END_CARD_LAYOUT.shrinkMs / 2, 1080, 1920)
+    expect(mid.width).toBeLessThan(1080)
+    expect(mid.width).toBeGreaterThan(frame.width)
+    expect(mid.height).toBeLessThan(1920)
+    expect(mid.height).toBeGreaterThan(frame.height)
+  })
 
-    const end = endCardSlotStyle(END_CARD_LAYOUT.shrinkMs, 1080, 1920)
-    const s = frame.width / 1080
-    const dx = frame.x + frame.width / 2 - 540
-    const dy = frame.y + frame.height / 2 - 960
-    expect(end.transform).toBe(`translate(${dx}px, ${dy}px) scale(${s})`)
-    // The clip, mapped back to the screen, is exactly the frame.
-    const [top, right, bottom, left] = String(end.clipPath)
-      .match(/inset\(([^)]*) round/)![1]!
-      .split(' ')
-      .map((value) => Number.parseFloat(value))
-    const toScreen = (local: number, centre: number, d: number) => centre + (local - centre) * s + d
-    expect(toScreen(left!, 540, dx)).toBeCloseTo(frame.x, 6)
-    expect(toScreen(top!, 960, dy)).toBeCloseTo(frame.y, 6)
-    expect(toScreen(1080 - right!, 540, dx)).toBeCloseTo(frame.x + frame.width, 6)
-    expect(toScreen(1920 - bottom!, 960, dy)).toBeCloseTo(frame.y + frame.height, 6)
+  it('fits a drawn slot whole inside the box', () => {
+    const box = { width: frame.width, height: frame.height }
+    const s = containScale(box, 1080, 1920)
+    expect(1080 * s).toBeLessThanOrEqual(box.width)
+    expect(1920 * s).toBeCloseTo(box.height, 6)
+    expect(containScale({ width: 1080, height: 1920 }, 1080, 1920)).toBe(1)
   })
 })
 
