@@ -40,13 +40,11 @@ export const END_CTA_MS = 2600
 export const DEFAULT_CTA_TEXT = 'The full story is on the channel'
 
 /**
- * A point Short's ending (decision 479): the end card over the bridge, then
- * the follow card for this long on the bed alone, after the narration.
+ * A point Short's ending (decision 479): the end card over the bridge. The
+ * Short ends on it; the follow card is the long form's closing graphic, never
+ * a Short's (decision 481).
  */
-export const FOLLOW_CARD_MS = 2500
 export const END_CARD_LABEL = 'Watch the full video'
-export const FOLLOW_CARD_HEADLINE = 'Every case, in full.'
-export const FOLLOW_CARD_LINE = 'Follow for the long-form investigations'
 
 /** What the end card says about the long form, read by the caller at render time. */
 export interface ShortEndCardInput {
@@ -90,8 +88,8 @@ export interface ShortCompileInput {
   captions?: boolean
   /**
    * `bridge` only (decision 479): with it, the bridge's arrow and badge give
-   * way to the full-frame end card, and the follow card plays after the
-   * narration. Absent keeps the overlays as the master carries them.
+   * way to the full-frame end card, which the Short ends on (decision 481).
+   * Absent keeps the overlays as the master carries them.
    */
   endCard?: ShortEndCardInput
 }
@@ -125,15 +123,14 @@ export const STALE_EXCERPT =
 
 /**
  * A point Short's ending (decision 479): the end card over the span the
- * bridge's overlays held (the bridge paragraph), and the follow card after
- * the narration. The channel's name is the badge's, as the master stored it.
+ * bridge's overlays held (the bridge paragraph). The channel's name is the
+ * badge's, as the master stored it.
  */
 function pointEnding(
   bridge: readonly Overlay[],
   card: ShortEndCardInput,
-  narrationEndMs: number,
   master: Timeline,
-): { overlays: Overlay[] } {
+): Overlay[] {
   const startMs = Math.min(...bridge.map((overlay) => overlay.startMs))
   const endMs = Math.max(...bridge.map((overlay) => overlay.startMs + overlay.durationMs))
   const named = bridge.find(
@@ -145,31 +142,23 @@ function pointEnding(
       'Boom & Busters',
     80,
   )
-  return {
-    overlays: [
-      {
-        kind: 'endCard',
-        startMs,
-        durationMs: endMs - startMs,
-        props: {
-          channelName,
-          title: clip(card.title.trim() || channelName, 140),
-          chapters: card.chapters
-            .filter((chapter) => chapter.title.trim() !== '')
-            .slice(0, 3)
-            .map((chapter) => ({ number: chapter.number, title: clip(chapter.title, 120) })),
-          runtimeMs: card.runtimeMs,
-          label: END_CARD_LABEL,
-        },
+  return [
+    {
+      kind: 'endCard',
+      startMs,
+      durationMs: endMs - startMs,
+      props: {
+        channelName,
+        title: clip(card.title.trim() || channelName, 140),
+        chapters: card.chapters
+          .filter((chapter) => chapter.title.trim() !== '')
+          .slice(0, 3)
+          .map((chapter) => ({ number: chapter.number, title: clip(chapter.title, 120) })),
+        runtimeMs: card.runtimeMs,
+        label: END_CARD_LABEL,
       },
-      {
-        kind: 'followCard',
-        startMs: narrationEndMs,
-        durationMs: FOLLOW_CARD_MS,
-        props: { channelName, headline: FOLLOW_CARD_HEADLINE, line: FOLLOW_CARD_LINE },
-      },
-    ],
-  }
+    },
+  ]
 }
 
 export function compileShortTimeline(input: ShortCompileInput): Timeline {
@@ -300,26 +289,10 @@ export function compileShortTimeline(input: ShortCompileInput): Timeline {
             })
         : []
 
-  const ending =
+  const overlays =
     input.ending === 'bridge' && input.endCard && windowOverlays.length > 0
-      ? pointEnding(windowOverlays, input.endCard, durationMs, master)
-      : null
-  const overlays = ending ? ending.overlays : windowOverlays
-  if (ending) {
-    // The follow card plays over the last shot held on: the clock needs a
-    // picture under it, though the card covers the frame.
-    const last = slots.reduce((latest, slot) =>
-      slot.startMs + slot.durationMs >= latest.startMs + latest.durationMs ? slot : latest,
-    )
-    last.durationMs = durationMs + FOLLOW_CARD_MS - last.startMs
-    if (durationMs + FOLLOW_CARD_MS > SHORT_MAX_DURATION_MS) {
-      throw new ValidationError(
-        `the Short and its follow card run ${Math.round((durationMs + FOLLOW_CARD_MS) / 1000)} s, ` +
-          `longer than the ${SHORT_MAX_DURATION_MS / 1000} s YouTube Shorts limit`,
-        { field: 'segmentRef' },
-      )
-    }
-  }
+      ? pointEnding(windowOverlays, input.endCard, master)
+      : windowOverlays
 
   // The bed is the caller's pick (shorts style, not the documentary bed);
   // the curve is rebuilt for the re-clocked narration with the same brand

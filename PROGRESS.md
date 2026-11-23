@@ -12512,3 +12512,34 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      (c) `deploy-stacks.ts` now refuses a deploy that includes
      `boom-busters-media-utils` (or all stacks) while the binary is missing
      or under 50 MB, saying where to get it.
+481. **A point Short ends on its end card; the picture fits the frame**
+     (2026-11-23, owner after the first re-renders: "The video that continues
+     to play in the minimized screen ... doesn't fit that minimized screen
+     properly", the closing card should keep only "the logo, channel name and
+     Tap subscribe below", and "This closing graphic is just for long form and
+     shouldn't be included at all for Shorts"; branch `short-end-card-fixes`).
+     (a) The shrink scaled the whole 9:16 picture down to the frame's width
+     and clipped it to the 16:9 frame, so the frame showed a band from the
+     middle of the portrait crop, about a third of its height: a landscape
+     still came out as a zoomed slice. The slot layer is now a box that is
+     resized from the full frame onto the frame (`endCardSlotBox`), so a photo
+     or clip covers it at whatever aspect it has reached and lands whole in
+     the 16:9 frame. A drawn slot (chart, card, graphic, map) lays out on the
+     whole frame, so it keeps the frame's size and is fitted whole inside the
+     box (`containScale`) on the brand surface: covering would leave a strip
+     of a portrait chart, which reads as nothing.
+     (b) The overlap the owner saw: the follow card faded in over 200 ms at
+     the narration's end while the end card had ended and the picture snapped
+     back to full frame behind it. `compileShortTimeline` no longer emits the
+     follow card, nor holds the last shot 2.5 s for it: a point Short ends
+     with its narration, on the end card. `FOLLOW_CARD_*` constants are gone.
+     (c) The follow card is trimmed to the channel's mark, its name and "Tap
+     Subscribe below" with the chevron; the schema's `followCard` props are
+     `{ channelName }` alone. Its heights are fractions of the frame, so it
+     holds on a 16:9 frame too, for the long form's closing graphic, which no
+     compiler emits yet. The broker's bundled schema still asks for the old
+     props, so a broker redeploy goes with whichever change first emits it.
+     (d) Goldens: ShortEndCardVertical and ShortEndCardShrinking re-rendered,
+     ShortEndCardChart (the chart fitted in the frame) and FollowCardFixture
+     added, ShortFollowCard removed. Ships with `deploy:remotion` alone: the
+     timeline the broker validates for a Short is unchanged in shape.

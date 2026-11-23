@@ -327,17 +327,16 @@ describeDb('short-render-runner', () => {
         ) as Timeline
         expect([uploaded.width, uploaded.height]).toEqual([1080, 1920])
         // Decision 479: the bridge's arrow and badge give way to the end card,
-        // and the follow card plays after the narration.
-        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard', 'followCard'])
-        expect(uploaded.overlays.some((o) => o.kind === 'endCta')).toBe(false)
-        const [card, follow] = uploaded.overlays
+        // and the Short ends on it with its narration (decision 481).
+        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard'])
+        const [card] = uploaded.overlays
         const narrationEnd = Math.max(...own.narration.map((n) => n.startMs + n.durationMs))
-        if (card?.kind !== 'endCard' || follow?.kind !== 'followCard') throw new Error('no cards')
+        if (card?.kind !== 'endCard') throw new Error('no end card')
         expect(card.props.title.length).toBeGreaterThan(0)
         expect(card.props.label).toBe('Watch the full video')
         expect(card.props.runtimeMs).toBeGreaterThan(0)
-        expect(follow.startMs).toBe(narrationEnd)
-        expect(timelineDurationMs(uploaded)).toBe(narrationEnd + follow.durationMs)
+        expect(card.startMs + card.durationMs).toBe(narrationEnd)
+        expect(timelineDurationMs(uploaded)).toBe(narrationEnd)
         // The Short's own narration, not a slice of the project master.
         expect(uploaded.narration).toHaveLength(5)
       },
@@ -370,7 +369,7 @@ describeDb('short-render-runner', () => {
           (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
         ) as Timeline
         expect(uploaded.narration).toHaveLength(5)
-        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard', 'followCard'])
+        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard'])
       },
     )
 

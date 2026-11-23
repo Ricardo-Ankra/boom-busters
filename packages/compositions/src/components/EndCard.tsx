@@ -9,8 +9,8 @@ import { RelatedArrow } from './RelatedArrow'
 /**
  * A point Short's end card (decision 479): the bridge as a full-frame graphic
  * instead of a box over the picture. The Short shrinks into a 16:9 "full
- * video" frame (the composition moves the slot layer, see
- * `endCardSlotStyle`; this component draws only what sits around and on the
+ * video" frame (the composition resizes the slot layer, see
+ * `endCardSlotBox`; this component draws only what sits around and on the
  * frame), under the channel block and its follow ask, the film's title, the
  * chapters the bridge promises, and the call to action with the arrow to the
  * related-video link YouTube draws below.
@@ -38,43 +38,47 @@ function rise(tMs: number, at: number, scale: number): CSSProperties {
 
 const lerp = (from: number, to: number, p: number) => from + (to - from) * p
 
+/** Where the picture sits while an end card is up: a box on the screen, in pixels. */
+export interface EndCardSlotBox {
+  left: number
+  top: number
+  width: number
+  height: number
+  radius: number
+}
+
 /**
- * The slot layer's style while an end card is up, `tMs` after it started:
- * the whole picture scales and slides into the frame and is clipped to it,
- * so the shot keeps playing inside the "full video". Pure, for the test.
+ * The slot layer's box `tMs` after an end card started: the full frame at
+ * first, the card's 16:9 frame once the shrink lands. The layer is resized,
+ * not scaled (decision 481): a photo or clip covers the box at whatever
+ * aspect it has reached, so a landscape still ends up whole in the 16:9 frame
+ * instead of a thin slice of its portrait crop. Pure, for the test.
  */
-export function endCardSlotStyle(tMs: number, width: number, height: number): CSSProperties {
+export function endCardSlotBox(tMs: number, width: number, height: number): EndCardSlotBox {
   const scale = frameScale(width, height)
   const { frame, shrinkMs } = END_CARD_LAYOUT
   const p = easeInOut(Math.min(1, Math.max(0, tMs / shrinkMs)))
-
-  const target = {
-    x: frame.x * scale,
-    y: frame.y * scale,
-    w: frame.width * scale,
-    h: frame.height * scale,
-  }
-  const s = lerp(1, target.w / width, p)
-  const dx = lerp(0, target.x + target.w / 2 - width / 2, p)
-  const dy = lerp(0, target.y + target.h / 2 - height / 2, p)
-  // The visible rectangle on screen, from the whole frame to the target.
-  const left = lerp(0, target.x, p)
-  const top = lerp(0, target.y, p)
-  const right = lerp(width, target.x + target.w, p)
-  const bottom = lerp(height, target.y + target.h, p)
-  // The same rectangle in the layer's own coordinates (origin at its centre).
-  const local = (screen: number, centre: number, d: number) => centre + (screen - centre - d) / s
-  const insetTop = local(top, height / 2, dy)
-  const insetLeft = local(left, width / 2, dx)
-  const insetRight = width - local(right, width / 2, dx)
-  const insetBottom = height - local(bottom, height / 2, dy)
-  const radius = (frame.radius * scale * p) / s
-
   return {
-    transform: `translate(${dx}px, ${dy}px) scale(${s})`,
-    transformOrigin: 'center center',
-    clipPath: `inset(${insetTop}px ${insetRight}px ${insetBottom}px ${insetLeft}px round ${radius}px)`,
+    left: lerp(0, frame.x * scale, p),
+    top: lerp(0, frame.y * scale, p),
+    width: lerp(width, frame.width * scale, p),
+    height: lerp(height, frame.height * scale, p),
+    radius: frame.radius * scale * p,
   }
+}
+
+/**
+ * How a drawn slot (chart, card, graphic, map) fits a box: those lay out on
+ * the whole frame, so they keep its size and are scaled to fit inside the
+ * box, centred and whole. Covering would leave a portrait graphic as a strip
+ * of its middle in the 16:9 frame, which reads as nothing.
+ */
+export function containScale(
+  box: { width: number; height: number },
+  width: number,
+  height: number,
+) {
+  return Math.min(box.width / width, box.height / height)
 }
 
 function formatRuntime(ms: number): string {

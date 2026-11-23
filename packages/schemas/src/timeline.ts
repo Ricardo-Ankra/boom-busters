@@ -469,9 +469,9 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     }),
   }),
   /**
-   * A point Short's closing card (decision 479): after the narration, on the
-   * bed alone, the channel asks for the follow for its long-form videos and
-   * points at YouTube's own Subscribe button. Opaque, full frame.
+   * The closing card (decision 479, trimmed by 481): the channel's mark, its
+   * name and the prompt to YouTube's own Subscribe button, opaque and full
+   * frame. The long form's closing graphic; no compiler emits it for a Short.
    */
   z.object({
     kind: z.literal('followCard'),
@@ -479,8 +479,6 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().positive(),
     props: z.object({
       channelName: z.string().min(1).max(80),
-      headline: z.string().min(1).max(60),
-      line: z.string().min(1).max(80),
     }),
   }),
 ])
