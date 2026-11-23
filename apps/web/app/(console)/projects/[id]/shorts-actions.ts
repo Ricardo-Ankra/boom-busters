@@ -1,7 +1,27 @@
 'use server'
 
-import { getRender, getShort, latestTimeline, updateShort } from '@boom-busters/db'
 import {
+  channelForProject,
+  getLatestScript,
+  getProject,
+  getRender,
+  getShort,
+  latestTimeline,
+  updateShort,
+} from '@boom-busters/db'
+import {
+  buildShortRewriteRequest,
+  buildTeaserRequest,
+  mockProvidersEnabled,
+  mockShortRewrite,
+  parseTeaserRewrite,
+  REWRITE_NOTE_MAX,
+  tensionFromOutline,
+} from '@boom-busters/providers'
+import {
+  BudgetExceededError,
+  OutlineSchema,
+  serialiseError,
   teaserTextHash,
   TeaserFetchesRecordSchema,
   TeaserScriptRecordSchema,
@@ -26,6 +46,9 @@ import {
 import type { TeaserParagraphAudio } from '@boom-busters/timeline'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { requireCompleteBible } from '@/inngest/lib/channel'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
@@ -181,6 +204,83 @@ export async function saveTeaserScript(
   })
   revalidatePath(`/projects/${short.projectId}`)
   return { ok: true }
+}
+
+export type TeaserRewriteResult =
+  { ok: true; paragraphs: { text: string; chapterIndex: number }[] } | { ok: false; error: string }
+
+/**
+ * Ask the teaser writer for a rewrite of the stored script on the owner's note
+ * (decision 478): one beat (`target`) or every beat (`null`). The beats keep
+ * their number and chapters, because the shot picks are stored per beat. It
+ * never writes: the studio saves the proposal through `saveTeaserScript` only
+ * when the owner accepts it.
+ */
+export async function rewriteTeaserScript(
+  shortId: string,
+  note: string,
+  target: number | null,
+): Promise<TeaserRewriteResult> {
+  await requireOwner()
+  if (note.length > REWRITE_NOTE_MAX) {
+    return { ok: false, error: `A note is limited to ${REWRITE_NOTE_MAX} characters.` }
+  }
+  const short = await loadShort(shortId)
+  if (!short) return { ok: false, error: 'Unknown Short' }
+  if (short.kind !== 'teaser') return { ok: false, error: 'Only a teaser has this script.' }
+  const stored = TeaserScriptRecordSchema.safeParse(short.teaserScript)
+  if (!stored.success) return { ok: false, error: 'This teaser has no stored script to rewrite.' }
+  const current = stored.data.paragraphs
+  if (target !== null && (!Number.isInteger(target) || target < 0 || target >= current.length)) {
+    return { ok: false, error: 'That beat is not in the stored script.' }
+  }
+
+  const latest = await getLatestScript(db, short.projectId)
+  if (!latest) return { ok: false, error: 'There is no long-form script to write from.' }
+  const chapters = latest.chapters.map((chapter) => ({
+    index: chapter.index,
+    title: chapter.title,
+    contentMd: chapter.contentMd,
+  }))
+  const outline = OutlineSchema.safeParse(latest.script.outline)
+  const tension = outline.success ? tensionFromOutline(outline.data) : undefined
+
+  try {
+    // Read here, in the action that builds the request, before any mock branch.
+    const bible = requireCompleteBible(await channelForProject(db, short.projectId))
+    if (mockProvidersEnabled()) {
+      return { ok: true, paragraphs: mockShortRewrite(current, target) }
+    }
+    const project = await getProject(db, short.projectId)
+    const answer = await callForAnswer({
+      request: buildShortRewriteRequest({
+        base: buildTeaserRequest({
+          bible,
+          caseTitle: project?.title ?? '',
+          chapters,
+          ...(tension ? { tension } : {}),
+        }),
+        current: stored.data,
+        note,
+        target,
+        keepShape: true,
+      }),
+      parse: (text, repair) =>
+        parseTeaserRewrite(text, { current, target, chapterCount: chapters.length }, repair),
+      complete: completeForProject(short.projectId),
+    })
+    if (!answer.ok) return { ok: false, error: `The rewrite stopped: ${answer.issue}` }
+    return { ok: true, paragraphs: answer.value }
+  } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      return { ok: false, error: `The project budget stopped the rewrite: ${error.message}` }
+    }
+    console.error('[teaser] rewrite failed', serialiseError(error))
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'The rewrite call failed.',
+    }
+  }
 }
 
 /** Ask the voice runner to synthesise the stored script's beats (decision 230). */

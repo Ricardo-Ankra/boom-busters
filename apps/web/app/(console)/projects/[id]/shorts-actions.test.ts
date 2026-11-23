@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  chapters,
   FIXTURE_PROJECT_ID,
   getShort,
   insertRender,
@@ -8,17 +9,25 @@ import {
   insertTimeline,
   renders,
   requireTestDatabase,
+  scripts,
   seed,
   shorts,
+  timelines,
   updateRender,
   updateShort,
 } from '@boom-busters/db'
 import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
 import type { TeaserFetchesRecord } from '@boom-busters/schemas'
 import { TEASER_CHAPTER_ID } from '@boom-busters/timeline'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { fetchTeaserShotOptions, requestShortRender, setShortCaptions } from './shorts-actions'
+import { seedLongForm } from '@/lib/point-studio.fixture'
+import {
+  fetchTeaserShotOptions,
+  requestShortRender,
+  rewriteTeaserScript,
+  setShortCaptions,
+} from './shorts-actions'
 
 /**
  * The in-flight refusals (decision 234): a button pressed twice must spend
@@ -229,5 +238,66 @@ describeDb('shorts action guards (decision 234)', () => {
 
     expect(result.ok).toBe(true)
     expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describeDb('rewriteTeaserScript (decision 478)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    await seed(db)
+    await db.delete(renders)
+    await db.delete(shorts)
+    await clearLongForm()
+    // The writer reads the long form's chapters, as the first draft did.
+    await seedLongForm()
+  })
+
+  afterEach(async () => {
+    await db.delete(shorts)
+    await clearLongForm()
+    vi.unstubAllEnvs()
+  })
+
+  async function clearLongForm() {
+    await db.delete(timelines)
+    await db.delete(chapters)
+    await db.delete(scripts)
+  }
+
+  it('proposes one beat rewritten, the others and every chapter kept, and stores nothing', async () => {
+    const short = await insertTeaser()
+
+    const result = await rewriteTeaserScript(short.id, 'sharper', 1)
+
+    expect(result).toEqual({
+      ok: true,
+      paragraphs: [
+        STORED_SCRIPT.paragraphs[0],
+        {
+          text: `MOCK REWRITE: ${STORED_SCRIPT.paragraphs[1]!.text}`,
+          chapterIndex: 0,
+        },
+      ],
+    })
+    expect((await getShort(db, short.id))?.teaserScript).toEqual(STORED_SCRIPT)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('refuses an excerpt, a beat that is not there and a long note', async () => {
+    const teaser = await insertTeaser()
+    expect(await rewriteTeaserScript(teaser.id, '', 5)).toMatchObject({ ok: false })
+    expect(await rewriteTeaserScript(teaser.id, 'x'.repeat(501), null)).toMatchObject({
+      ok: false,
+    })
+    const excerpt = await insertShort(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      title: 'An excerpt',
+      segmentRef: { chapterId: TEASER_CHAPTER_ID, fromParagraph: 0, toParagraph: 0 },
+    })
+    expect(await rewriteTeaserScript(excerpt.id, '', null)).toMatchObject({
+      ok: false,
+      error: 'Only a teaser has this script.',
+    })
   })
 })
