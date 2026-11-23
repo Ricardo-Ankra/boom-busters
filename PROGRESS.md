@@ -12496,3 +12496,19 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      the boxes are fixed; the copy ("next case", "Every case, in full.") is
      this channel's, and a second channel's copy is left for when one has
      point Shorts.
+480. **A media-utils deploy refuses without the FFmpeg binary** (2026-11-23,
+     owner: "The render failed: QC did not run: spawn /opt/bin/ffmpeg ENOENT
+     ... when trying to render 2 shorts again"; branch `ffmpeg-layer-guard`,
+     no app change).
+     (a) Cause: decision 477's media-utils deploy (2026-11-22, 21:07 UTC) ran
+     from a worktree, which has no `infra/layers/ffmpeg/bin/ffmpeg` (the
+     binary is git-ignored, about 80 MB). CDK shipped the layer folder as it
+     was, README and `.gitignore` only, as layer version 4 (1.3 KB), and
+     CloudFormation replaced the working layer with it. Every render's QC
+     failed from then on; decision 479's deploy did not touch media-utils.
+     (b) Restored 2026-11-23 09:22 UTC: media-utils redeployed from the
+     worktree at `0a3a6a8c` with the binary copied in from the main
+     checkout; layer version 5, 30 MB, holds `bin/ffmpeg`.
+     (c) `deploy-stacks.ts` now refuses a deploy that includes
+     `boom-busters-media-utils` (or all stacks) while the binary is missing
+     or under 50 MB, saying where to get it.
