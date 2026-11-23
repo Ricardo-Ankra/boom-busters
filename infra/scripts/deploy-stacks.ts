@@ -95,6 +95,22 @@ console.log(
 const stacks = process.argv.slice(2)
 const selection = stacks.length > 0 ? [...stacks, '--exclusively'] : ['--all']
 
+// The FFmpeg binary is not committed (layers/ffmpeg/README.md), so a checkout
+// or worktree without it would ship an empty layer and replace the working
+// one: every QC then fails with "spawn /opt/bin/ffmpeg ENOENT" (2026-11-22,
+// a media-utils deploy from a worktree). Refuse instead.
+if (stacks.length === 0 || stacks.includes('boom-busters-media-utils')) {
+  const ffmpeg = path.join(here, '..', 'layers', 'ffmpeg', 'bin', 'ffmpeg')
+  const size = fs.existsSync(ffmpeg) ? fs.statSync(ffmpeg).size : 0
+  if (size < 50_000_000) {
+    fail(
+      `layers/ffmpeg/bin/ffmpeg is missing or too small (${size} bytes). Fetch it as ` +
+        'infra/layers/ffmpeg/README.md says, or copy it from the main checkout (a worktree has ' +
+        'none): without it the layer deploys empty and every render QC fails.',
+    )
+  }
+}
+
 const result = spawnSync(
   'pnpm',
   ['exec', 'cdk', 'deploy', ...selection, '--require-approval', 'never'],
