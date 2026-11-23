@@ -12447,3 +12447,52 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      16:9 "full video" frame, the film title, the bridge chapters, and the
      arrow to YouTube's related-video link), on the design canvas
      "Shorts End Card". It waits for the owner's word on the design.
+479. **A point Short ends on a full-frame end card and a follow card**
+     (2026-11-23, owner: "the Boom & Busters channel box that shows at the
+     end of a short doesn't look nice ... make it like a full graphic, not an
+     overlay over the video", then on the design canvas "Shorts End Card":
+     "If someone reaches the end of the short, they should follow, or go
+     view the full video", "Watch the full video", "include something like
+     this closing graphic, which encourages users to follow for the long
+     form videos", "happy with the closing graphics as well"; branch
+     `shorts-end-card`, no migration; a TIMELINE SCHEMA CHANGE, so the
+     broker needs `deploy:stacks boom-busters-broker` and the compositions
+     `deploy:remotion` before a point Short renders with it).
+     (a) Two overlay kinds: `endCard` (channel name, the long form's title,
+     up to three bridge chapters numbered from 1, its runtime, the call to
+     action) and `followCard` (channel name, headline, line).
+     (b) Made at render time, not at assembly: `compileShortTimeline` with
+     the bridge ending and an `endCard` input puts the end card over the
+     span the master's `relatedArrow` and `subscribeBadge` held (the bridge
+     paragraph), appends the follow card for `FOLLOW_CARD_MS` (2500) after
+     the narration, and holds the last shot on under it, so the Short runs
+     2.5 s longer. Point Shorts assembled before this get the new ending on
+     their next render, with no rebuild; the stored masters are unchanged.
+     Without the input (excerpts, teasers, old callers) nothing changes.
+     (c) The short-render-runner reads the input inside `compile-short`
+     (`pointEndCardInput`): the long form's Publish title when one is set,
+     else the project title, so a render after the Publish screen carries
+     the final title; the point's bridge chapters by the latest script's
+     titles; the long-form master's runtime.
+     (d) The composition: while an end card is up the slot layer shrinks
+     into the card's 16:9 frame over 300 ms and keeps playing there
+     (`endCardSlotStyle`, transform and clip-path, the brand ground around
+     it); the card draws the channel block ("Follow for the next case"), the
+     kicker, the frame's play button and runtime chip, the title (two lines
+     at most), "Only in the full video" with the chapters, and "Watch the
+     full video" with the related arrow's own arrow and pulse. The follow
+     card is opaque: the channel mark large, the name, "Every case, in
+     full.", "Follow for the long-form investigations" and "Tap Subscribe
+     below" pointing at YouTube's own button (a drawn button would mislead).
+     Captions are held clear of both cards (`captionsClearOf`: words under a
+     card are dropped, one running into it is cut where it starts).
+     (e) Decisions made where the owner left room: "Watch the full video"
+     over "See the full story below" (the arrow says where, and the kicker
+     already says "The full story"); the follow card plays after the
+     narration on the bed alone, so the voice's "tap the linked video" stays
+     on the end card; the channel mark falls back to the channel's initials
+     ("B&B") in the same ring when no logo is uploaded; card text sizes are
+     exact pixels whatever the brand's sizeScale (`fixedTypeStyle`), since
+     the boxes are fixed; the copy ("next case", "Every case, in full.") is
+     this channel's, and a second channel's copy is left for when one has
+     point Shorts.

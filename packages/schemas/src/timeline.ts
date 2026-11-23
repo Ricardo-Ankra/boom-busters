@@ -444,6 +444,45 @@ export const OverlaySchema = z.discriminatedUnion('kind', [
     durationMs: z.number().int().positive(),
     props: z.object({ channelName: z.string().min(1).max(80), handle: z.string().max(80) }),
   }),
+  /**
+   * A point Short's bridge as a full-frame card (decision 479): the Short
+   * shrinks into a 16:9 "full video" frame under the film's title, the
+   * chapters the bridge promises, and the call to action with its arrow to
+   * the related-video link. The composition draws the brand ground around
+   * the shrinking shot and holds the captions back while it is up. Only the
+   * Short compiler emits it, in place of `relatedArrow` and `subscribeBadge`.
+   */
+  z.object({
+    kind: z.literal('endCard'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({
+      channelName: z.string().min(1).max(80),
+      title: z.string().min(1).max(140),
+      /** The long form's chapters the bridge promises, numbered from 1 as the film shows them. */
+      chapters: z
+        .array(z.object({ number: z.number().int().min(1), title: z.string().min(1).max(120) }))
+        .max(3),
+      /** The long form's runtime, for the frame's time chip; null shows none. */
+      runtimeMs: z.number().int().positive().nullable(),
+      label: z.string().min(1).max(40),
+    }),
+  }),
+  /**
+   * A point Short's closing card (decision 479): after the narration, on the
+   * bed alone, the channel asks for the follow for its long-form videos and
+   * points at YouTube's own Subscribe button. Opaque, full frame.
+   */
+  z.object({
+    kind: z.literal('followCard'),
+    startMs: z.number().int().min(0),
+    durationMs: z.number().int().positive(),
+    props: z.object({
+      channelName: z.string().min(1).max(80),
+      headline: z.string().min(1).max(60),
+      line: z.string().min(1).max(80),
+    }),
+  }),
 ])
 export type Overlay = z.infer<typeof OverlaySchema>
 

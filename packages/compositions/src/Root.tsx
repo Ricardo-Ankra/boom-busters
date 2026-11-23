@@ -13,7 +13,9 @@ import { TitleCard } from './components/TitleCard'
 import { ChartReveal } from './components/ChartReveal'
 import type { ChartPayload } from './components/ChartReveal'
 import { DocumentaryMaster, SlotView } from './components/DocumentaryMaster'
+import { EndCardFixture } from './components/EndCard'
 import { EndCta } from './components/EndCta'
+import { FollowCardFixture } from './components/FollowCard'
 import { GraphicCard } from './components/GraphicCard'
 import { GraphicCode } from './components/GraphicCode'
 import { HeadlineCard } from './components/HeadlineCard'
@@ -32,6 +34,7 @@ import {
   FIXTURE_CAPTION_WORDS,
   FIXTURE_MAP_LOCATIONS,
   FIXTURE_SHORT_BRIDGE_TIMELINE,
+  FIXTURE_SHORT_END_CARD_TIMELINE,
   FIXTURE_SHORT_TIMELINE,
   FIXTURE_TIMELINE,
 } from './fixtures/timeline'
@@ -323,6 +326,30 @@ export function Root() {
         durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_BRIDGE_TIMELINE), FPS)}
         {...TALL}
         defaultProps={{ timeline: FIXTURE_SHORT_BRIDGE_TIMELINE }}
+      />
+
+      <Composition
+        id="ShortEndCardVertical"
+        component={ShortVertical}
+        durationInFrames={msToFrames(timelineDurationMs(FIXTURE_SHORT_END_CARD_TIMELINE), FPS)}
+        {...TALL}
+        defaultProps={{ timeline: FIXTURE_SHORT_END_CARD_TIMELINE }}
+      />
+
+      <Composition
+        id="EndCardFixture"
+        component={EndCardFixture}
+        durationInFrames={90}
+        {...TALL}
+        defaultProps={{ brand: FIXTURE_BRAND }}
+      />
+
+      <Composition
+        id="FollowCardFixture"
+        component={FollowCardFixture}
+        durationInFrames={75}
+        {...TALL}
+        defaultProps={{ brand: FIXTURE_BRAND }}
       />
 
       <Composition

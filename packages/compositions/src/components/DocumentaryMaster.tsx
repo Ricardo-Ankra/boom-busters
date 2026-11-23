@@ -1,4 +1,5 @@
 import { Audio as WebCodecsAudio } from '@remotion/media'
+import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import {
   AbsoluteFill,
@@ -9,6 +10,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import type { BrandKitTokens, GradePreset, Timeline, TimelineSlot } from '@boom-busters/schemas'
+import { captionsClearOf } from '../lib/captions'
 import { mediaCrossOrigin } from '../lib/cross-origin'
 import { mediaEngine } from '../lib/media-engine'
 import { loadBrandFonts } from '../fonts/load'
@@ -23,7 +25,9 @@ import {
 import { AnimatedMap } from './AnimatedMap'
 import { CardOverlay } from './CardOverlay'
 import { ChartReveal } from './ChartReveal'
+import { EndCard, endCardSlotStyle } from './EndCard'
 import { EndCta } from './EndCta'
+import { FollowCard } from './FollowCard'
 import { GraphicCard } from './GraphicCard'
 import { GraphicCode } from './GraphicCode'
 import { HeadlineCard } from './HeadlineCard'
@@ -44,6 +48,34 @@ import { Watermark } from './Watermark'
  * broker resolved. Layering, bottom to top: slots, grain, overlays,
  * captions; narration and music are audio-only.
  */
+/**
+ * The picture's layer. While a point Short's end card is up (decision 479)
+ * it shrinks into the card's 16:9 frame and keeps playing there; otherwise
+ * it is a plain full frame. Its own component, so only it reads the frame.
+ */
+function SlotLayer({
+  overlays,
+  children,
+}: {
+  overlays: Timeline['overlays']
+  children: ReactNode
+}) {
+  const frame = useCurrentFrame()
+  const { fps, width, height } = useVideoConfig()
+  const tMs = (frame / fps) * 1000
+  const card = overlays.find(
+    (overlay) =>
+      overlay.kind === 'endCard' &&
+      tMs >= overlay.startMs &&
+      tMs < overlay.startMs + overlay.durationMs,
+  )
+  return (
+    <AbsoluteFill style={card ? endCardSlotStyle(tMs - card.startMs, width, height) : undefined}>
+      {children}
+    </AbsoluteFill>
+  )
+}
+
 export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
   const { fps } = useVideoConfig()
   const { brand } = timeline
@@ -51,21 +83,34 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
   // Idempotent; @remotion/google-fonts handles delayRender internally.
   loadBrandFonts(brand.typography)
 
+  // A point Short's end card and follow card (decision 479) hold the
+  // captions back, which would otherwise sit on top of them.
+  const captionWords = useMemo(() => {
+    const cards = timeline.overlays.filter(
+      (overlay) => overlay.kind === 'endCard' || overlay.kind === 'followCard',
+    )
+    return cards.length === 0
+      ? timeline.captions.words
+      : captionsClearOf(timeline.captions.words, cards)
+  }, [timeline.overlays, timeline.captions.words])
+
   return (
     <AbsoluteFill style={{ backgroundColor: brand.colors.background }}>
-      {timeline.slots.map((slot, index) => (
-        <Sequence
-          key={`slot-${index}`}
-          from={msToFrames(slot.startMs, fps)}
-          durationInFrames={msToFrames(slot.durationMs, fps)}
-          name={`${slot.type} slot ${index}`}
-          // Same premount reasoning as narration: a stock clip or image
-          // fetching at its own start frame is a visible hitch in the player.
-          premountFor={fps * 3}
-        >
-          <SlotView slot={slot} brand={brand} />
-        </Sequence>
-      ))}
+      <SlotLayer overlays={timeline.overlays}>
+        {timeline.slots.map((slot, index) => (
+          <Sequence
+            key={`slot-${index}`}
+            from={msToFrames(slot.startMs, fps)}
+            durationInFrames={msToFrames(slot.durationMs, fps)}
+            name={`${slot.type} slot ${index}`}
+            // Same premount reasoning as narration: a stock clip or image
+            // fetching at its own start frame is a visible hitch in the player.
+            premountFor={fps * 3}
+          >
+            <SlotView slot={slot} brand={brand} />
+          </Sequence>
+        ))}
+      </SlotLayer>
 
       <Grain preset={brand.look.grainPreset} />
 
@@ -102,6 +147,10 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
               handle={overlay.props.handle}
               brand={brand}
             />
+          ) : overlay.kind === 'endCard' ? (
+            <EndCard {...overlay.props} brand={brand} />
+          ) : overlay.kind === 'followCard' ? (
+            <FollowCard {...overlay.props} brand={brand} />
           ) : (
             <Watermark brand={brand} />
           )}
@@ -109,7 +158,7 @@ export function DocumentaryMaster({ timeline }: { timeline: Timeline }) {
       ))}
 
       {timeline.captions.style === 'karaoke' ? (
-        <KaraokeCaptions words={timeline.captions.words} brand={brand} />
+        <KaraokeCaptions words={captionWords} brand={brand} />
       ) : null}
 
       {timeline.narration.map((segment, index) => (

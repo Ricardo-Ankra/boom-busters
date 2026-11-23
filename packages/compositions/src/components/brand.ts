@@ -28,3 +28,12 @@ export function withAlpha(hex: string, alpha: number): string {
 export function frameScale(width: number, height: number): number {
   return Math.min(width, height) / 1080
 }
+
+/**
+ * A role's face at an exact size, whatever its sizeScale: for layouts with
+ * fixed boxes (the point Short's end and follow cards, decision 479), where a
+ * brand's bigger headings would overrun the box below.
+ */
+export function fixedTypeStyle(role: TypeRole, px: number, frameScale = 1): CSSProperties {
+  return typeStyle(role, px / role.sizeScale, frameScale)
+}

@@ -36,6 +36,7 @@ import { mockProvidersEnabled } from '@boom-busters/providers'
 import { NonRetriableError } from 'inngest'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { pointEndCardInput } from '@/lib/point-end-card'
 import { brokerCallbackUrl, brokerConfigured, submitMediaJob, submitRender } from '@/lib/broker'
 import { storageConfigured, putObject } from '@/lib/storage'
 import { pickShortsBed } from '../lib/assembly'
@@ -141,6 +142,16 @@ export const shortRenderRunner = inngest.createFunction(
       // The frozen bible's call to action, read here and not carried from an
       // earlier step; a blank line keeps the house default.
       const { bible, settings } = await channelForProject(db, projectId)
+      // A point Short ends on the full-frame end card and the follow card
+      // (decision 479), told about the long form here, at render time.
+      const endCard =
+        short.kind === 'point'
+          ? await pointEndCardInput({
+              projectId,
+              pointId: short.pointId,
+              longFormMaster: TimelineSchema.parse(timelineRow.json),
+            })
+          : undefined
       let timeline: Timeline
       try {
         timeline = compileShortTimeline({
@@ -161,6 +172,7 @@ export const shortRenderRunner = inngest.createFunction(
           music: pickShortsBed(beds, master.brand.music.shortsStyle),
           // The Short's own setting (decision 326), never the master's.
           captions: short.captions,
+          ...(endCard ? { endCard } : {}),
         })
       } catch (error) {
         // A compile refusal is about the rows as they are; retrying buys nothing.

@@ -269,6 +269,46 @@ export const FIXTURE_SHORT_BRIDGE_TIMELINE: Timeline = {
 }
 
 /**
+ * The point Short's close as decision 479 has it: the vertical fixture with
+ * the end card over 3000 to 8000 ms (the bridge paragraph), the picture
+ * shrinking into its frame, and the follow card after the narration, over
+ * the chart held on to 10500 ms. The captions are held back under both.
+ */
+export const FIXTURE_SHORT_END_CARD_TIMELINE: Timeline = {
+  ...FIXTURE_SHORT_TIMELINE,
+  slots: FIXTURE_SHORT_TIMELINE.slots.map((slot, index) =>
+    index === 1 ? { ...slot, durationMs: 5500 } : slot,
+  ),
+  overlays: [
+    {
+      kind: 'endCard',
+      startMs: 3000,
+      durationMs: 5000,
+      props: {
+        channelName: 'Boom & Busters',
+        title: 'How Wirecard fell: the audit that found nothing',
+        chapters: [
+          { number: 4, title: 'The audit' },
+          { number: 6, title: 'The trial' },
+        ],
+        runtimeMs: 1_122_000,
+        label: 'Watch the full video',
+      },
+    },
+    {
+      kind: 'followCard',
+      startMs: 8000,
+      durationMs: 2500,
+      props: {
+        channelName: 'Boom & Busters',
+        headline: 'Every case, in full.',
+        line: 'Follow for the long-form investigations',
+      },
+    },
+  ],
+}
+
+/**
  * The RENDER fixture: the spec section 13 "local `renderMedia` of a
  * 20-second fixture instead of Lambda in CI". The 14-second Studio fixture
  * above, extended by a closing chapter — a third narration segment, a
