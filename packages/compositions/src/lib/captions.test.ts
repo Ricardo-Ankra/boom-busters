@@ -1,6 +1,6 @@
 import type { Caption } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
-import { captionSafeArea, pageAt, paginateCaptions } from './captions'
+import { captionsClearOf, captionSafeArea, pageAt, paginateCaptions } from './captions'
 
 const word = (text: string, startMs: number, endMs: number): Caption => ({
   text,
@@ -57,5 +57,33 @@ describe('captionSafeArea', () => {
   it('sits 16:9 captions in the classic lower third', () => {
     const safe = captionSafeArea(1920, 1080)
     expect(safe.bottomFraction).toBeGreaterThan(0.8)
+  })
+})
+
+describe('captionsClearOf (decision 479)', () => {
+  const word = (text: string, startMs: number, endMs: number): Caption => ({
+    text,
+    startMs,
+    endMs,
+    timestampMs: null,
+    confidence: null,
+  })
+  const words = [word('money', 2400, 2800), word('never', 2850, 3300), word('left', 3350, 3700)]
+
+  it('drops words under a card and cuts one running into it at the card', () => {
+    expect(captionsClearOf(words, [{ startMs: 3000, durationMs: 5000 }])).toEqual([
+      word('money', 2400, 2800),
+      word('never', 2850, 3000),
+    ])
+  })
+
+  it('so no page is on screen once the card is up', () => {
+    const pages = paginateCaptions(captionsClearOf(words, [{ startMs: 3000, durationMs: 5000 }]))
+    expect(pageAt(pages, 2900)).not.toBeNull()
+    expect(pageAt(pages, 3000)).toBeNull()
+  })
+
+  it('leaves the words alone with no card', () => {
+    expect(captionsClearOf(words, [])).toEqual(words)
   })
 })

@@ -75,3 +75,33 @@ export function captionSafeArea(width: number, height: number): CaptionSafeArea 
     ? { sideInsetFraction: 0.12, bottomFraction: 0.72, fontScale: 1.15 }
     : { sideInsetFraction: 0.15, bottomFraction: 0.88, fontScale: 1 }
 }
+
+/**
+ * The caption words with the point Short's cards (decision 479) held clear:
+ * a word that starts under a card is dropped, and one running into a card is
+ * cut where the card starts, so no page is left on screen over the card.
+ */
+export function captionsClearOf(
+  words: readonly Caption[],
+  cards: readonly { startMs: number; durationMs: number }[],
+): Caption[] {
+  if (cards.length === 0) return [...words]
+  const kept: Caption[] = []
+  for (const word of words) {
+    if (
+      cards.some(
+        (card) => word.startMs >= card.startMs && word.startMs < card.startMs + card.durationMs,
+      )
+    ) {
+      continue
+    }
+    const next = cards
+      .filter((card) => card.startMs > word.startMs && card.startMs < word.endMs)
+      .reduce<number | null>(
+        (at, card) => (at === null ? card.startMs : Math.min(at, card.startMs)),
+        null,
+      )
+    kept.push(next === null ? word : { ...word, endMs: next })
+  }
+  return kept
+}
