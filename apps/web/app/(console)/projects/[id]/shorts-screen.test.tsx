@@ -33,6 +33,7 @@ const assembleTeaser = vi.fn()
 const fetchTeaserShotOptions = vi.fn()
 const generateTeaserStill = vi.fn()
 const pickFetchedTeaserShot = vi.fn()
+const rewriteTeaserScript = vi.fn()
 vi.mock('./shorts-actions', () => ({
   updateShortDetails: (...args: unknown[]) => updateShortDetails(...args),
   setShortEnding: (...args: unknown[]) => setShortEnding(...args),
@@ -46,6 +47,7 @@ vi.mock('./shorts-actions', () => ({
   fetchTeaserShotOptions: (...args: unknown[]) => fetchTeaserShotOptions(...args),
   generateTeaserStill: (...args: unknown[]) => generateTeaserStill(...args),
   pickFetchedTeaserShot: (...args: unknown[]) => pickFetchedTeaserShot(...args),
+  rewriteTeaserScript: (...args: unknown[]) => rewriteTeaserScript(...args),
 }))
 
 // The point Short studio's actions load next-auth too; the screen test only
@@ -654,6 +656,26 @@ describe('ShortsScreen', () => {
       { text: 'Nine days was all it took to erase the company.', chapterIndex: 0 },
       { text: 'The auditors finally refused to sign anything at all.', chapterIndex: 0 },
     ])
+  })
+
+  it('Rewrite with AI proposes new beat words and saves them on accept (decision 478)', async () => {
+    const user = userEvent.setup()
+    const proposal = [
+      { text: 'One number was missing, and it was billions.', chapterIndex: 0 },
+      { text: 'Then the auditors refused to sign a single page.', chapterIndex: 0 },
+    ]
+    rewriteTeaserScript.mockResolvedValue({ ok: true, paragraphs: proposal })
+    renderScreen([teaserCard({ id: '01HQ00000000000000000000T1' })], true)
+    await user.click(screen.getByRole('button', { name: 'Open the teaser studio' }))
+
+    const box = screen.getByRole('region', { name: 'Rewrite with AI' })
+    await user.click(within(box).getByRole('button', { name: 'Beat 2' }))
+    await user.click(within(box).getByRole('button', { name: 'Rewrite with AI' }))
+    expect(rewriteTeaserScript).toHaveBeenCalledWith('01HQ00000000000000000000T1', '', 1)
+    expect(within(box).getByText('1 of 2 paragraphs changed. Not saved yet.')).toBeInTheDocument()
+
+    await user.click(within(box).getByRole('button', { name: 'Use this rewrite' }))
+    expect(saveTeaserScript).toHaveBeenCalledWith('01HQ00000000000000000000T1', proposal)
   })
 
   it('Voice the script is a two-step, and says what is re-billed', async () => {

@@ -29,6 +29,7 @@ const actions = vi.hoisted(() => ({
   generatePointStill: vi.fn(),
   assemblePoint: vi.fn(),
   rebuildPointFromScript: vi.fn(),
+  rewritePointScript: vi.fn(),
 }))
 vi.mock('./point-studio-actions', () => ({
   savePointScript: (...args: unknown[]) => actions.savePointScript(...args),
@@ -39,6 +40,7 @@ vi.mock('./point-studio-actions', () => ({
   generatePointStill: (...args: unknown[]) => actions.generatePointStill(...args),
   assemblePoint: (...args: unknown[]) => actions.assemblePoint(...args),
   rebuildPointFromScript: (...args: unknown[]) => actions.rebuildPointFromScript(...args),
+  rewritePointScript: (...args: unknown[]) => actions.rewritePointScript(...args),
 }))
 
 const refresh = vi.fn()
@@ -415,5 +417,66 @@ describe('PointStudio', () => {
     await user.click(screen.getByRole('button', { name: 'Close the studio' }))
 
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('Rewrite with AI (decision 478)', () => {
+  const stored = () =>
+    studioModel().phases.flatMap((block) =>
+      block.paragraphs.map(({ text, chapterIndex }) => ({
+        phase: block.phase,
+        text,
+        chapterIndex,
+      })),
+    )
+
+  it('rewrites the chosen section on the note, shows the proposal, and saves it on accept', async () => {
+    const user = userEvent.setup()
+    const proposal = stored().map((paragraph) =>
+      paragraph.phase === 'stakes'
+        ? { ...paragraph, text: 'Four billion euros rested on one signature.' }
+        : paragraph,
+    )
+    actions.rewritePointScript.mockResolvedValue({ ok: true, paragraphs: proposal })
+    renderStudio()
+
+    const box = screen.getByRole('region', { name: 'Rewrite with AI' })
+    await user.type(within(box).getByLabelText('Your note (optional)'), 'lead with the number')
+    await user.click(within(box).getByRole('button', { name: 'Stakes' }))
+    await user.click(within(box).getByRole('button', { name: 'Rewrite with AI' }))
+
+    expect(actions.rewritePointScript).toHaveBeenCalledWith(SHORT_ID, 'lead with the number', 1)
+    expect(within(box).getByText('1 of 5 paragraphs changed. Not saved yet.')).toBeInTheDocument()
+    expect(within(box).getByText('Four billion euros rested on one signature.')).toBeInTheDocument()
+    expect(actions.savePointScript).not.toHaveBeenCalled()
+
+    await user.click(within(box).getByRole('button', { name: 'Use this rewrite' }))
+    expect(actions.savePointScript).toHaveBeenCalledWith(SHORT_ID, proposal)
+  })
+
+  it('asks for the whole script by default, and Discard drops the proposal unsaved', async () => {
+    const user = userEvent.setup()
+    actions.rewritePointScript.mockResolvedValue({ ok: true, paragraphs: stored() })
+    renderStudio(studioModel(), false)
+
+    const box = screen.getByRole('region', { name: 'Rewrite with AI' })
+    await user.click(within(box).getByRole('button', { name: 'Rewrite with AI (mock)' }))
+    expect(actions.rewritePointScript).toHaveBeenCalledWith(SHORT_ID, '', null)
+
+    await user.click(within(box).getByRole('button', { name: 'Discard' }))
+    expect(within(box).queryByRole('button', { name: 'Use this rewrite' })).toBeNull()
+    expect(actions.savePointScript).not.toHaveBeenCalled()
+  })
+
+  it('is held while the editor has unsaved edits', async () => {
+    const user = userEvent.setup()
+    renderStudio()
+
+    const [hook] = screen.getAllByRole('textbox')
+    await user.type(hook!, ' Really.')
+
+    const box = screen.getByRole('region', { name: 'Rewrite with AI' })
+    expect(within(box).getByRole('button', { name: 'Rewrite with AI' })).toBeDisabled()
+    expect(within(box).getByText(/Save or undo your edits first/)).toBeInTheDocument()
   })
 })
