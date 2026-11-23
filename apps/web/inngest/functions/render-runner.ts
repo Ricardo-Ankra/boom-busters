@@ -19,6 +19,7 @@ import {
   combineLoudness,
   estimateRenderCostUsd,
   JoinResultSchema,
+  closingCardStartMs,
   mergeQcReports,
   newId,
   parseEventData,
@@ -26,6 +27,7 @@ import {
   partWaves,
   planRenderParts,
   QcReportSchema,
+  withoutClosingCardFindings,
   RenderPartsSchema,
   rendersInParts,
   serialiseError,
@@ -206,6 +208,8 @@ export const renderRunner = inngest.createFunction(
         durationSec,
         estimate,
         timeoutMinutes: settings.render.timeoutMinutes,
+        // Where the closing card starts (decision 482), for QC to leave alone.
+        closingFromMs: closingCardStartMs(timeline),
       }
     })
 
@@ -524,7 +528,11 @@ export const renderRunner = inngest.createFunction(
     // around a QC failure" holds by construction. Only QC that never RAN
     // (above) fails the stage; an unmeasured master is a different thing
     // from a measured one with findings.
-    const qcReport = QcReportSchema.parse(qcDone.data.result)
+    // A run parked before decision 482 replays a setup without the card's start.
+    const qcReport = withoutClosingCardFindings(
+      QcReportSchema.parse(qcDone.data.result),
+      setup.closingFromMs ?? null,
+    )
 
     const ready = await step.run('master-ready', async () => {
       await updateRender(db, setup.renderId, {
@@ -576,6 +584,8 @@ interface PartsSetup {
   parts: unknown
   totalFrames: number
   concurrency: number
+  /** Absent on a run parked before decision 482. */
+  closingFromMs?: number | null
 }
 
 type PartsOutcome =
@@ -1036,10 +1046,13 @@ async function renderInParts(
   // ---- Ready --------------------------------------------------------------
 
   const join = joined.result
-  const qcReport = mergeQcReports(
-    reports.map((qc) => ({ qc })),
-    { integratedLufs: join.integratedLufs },
-    -14,
+  const qcReport = withoutClosingCardFindings(
+    mergeQcReports(
+      reports.map((qc) => ({ qc })),
+      { integratedLufs: join.integratedLufs },
+      -14,
+    ),
+    setup.closingFromMs ?? null,
   )
   const sum = spend(parts)
 

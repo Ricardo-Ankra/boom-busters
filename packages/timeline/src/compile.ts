@@ -142,6 +142,13 @@ export interface CompileInput {
     chapter?: Omit<CardCode, 'words' | 'durationMs'>
     title?: Omit<CardCode, 'words' | 'durationMs'>
   }
+  /**
+   * The closing card (decision 482): the channel's mark, its name and the
+   * prompt to YouTube's Subscribe button, for `CLOSING_CARD_MS` after the
+   * film's last word and its last shot's hold. Absent means none, as for the
+   * fixtures; assembly always asks for it.
+   */
+  closingCard?: { channelName: string }
   fps?: number
   width?: number
   height?: number
@@ -231,6 +238,12 @@ export const PARAGRAPH_GAP_MS = 700
  * with the next shot is the cheaper error, and the next shot paints over it.
  */
 export const MIN_SHOT_MS = 1000
+
+/**
+ * The closing card's screen time (decision 482): long enough to read a name
+ * and a prompt, short enough to land before YouTube's own end screen.
+ */
+export const CLOSING_CARD_MS = 3000
 
 export function compileTimeline(input: CompileInput): Timeline {
   return compileTimelineWithReport(input).timeline
@@ -539,6 +552,27 @@ export function compileTimelineWithReport(input: CompileInput): {
       closing.startMs + closing.durationMs,
       closingHold.holdMs,
     )
+  }
+
+  // The closing card (decision 482) follows the last word and the last shot's
+  // hold, whichever ends later. The last shot holds on under it: the card
+  // fades in over the picture, and the clock (narration and slots) needs
+  // something to run to.
+  if (input.closingCard && closing !== undefined) {
+    const lastWordEndMs = Math.max(
+      ...narration.map((segment) => segment.startMs + segment.durationMs),
+    )
+    const startMs = Math.max(lastWordEndMs, closing.startMs + closing.durationMs)
+    const name = input.closingCard.channelName.trim()
+    if (name !== '') {
+      overlays.push({
+        kind: 'followCard',
+        startMs,
+        durationMs: CLOSING_CARD_MS,
+        props: { channelName: name.length <= 80 ? name : `${name.slice(0, 79).trimEnd()}…` },
+      })
+      closing.durationMs = startMs + CLOSING_CARD_MS - closing.startMs
+    }
   }
 
   const music = input.music

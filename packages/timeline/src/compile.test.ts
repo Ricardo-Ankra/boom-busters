@@ -14,6 +14,7 @@ import {
   CHAPTER_HOLD_MS,
   CHAPTER_LEAD_MS,
   CHAPTER_OVERLAP_MS,
+  CLOSING_CARD_MS,
   compileTimeline,
   compileTimelineWithReport,
   KENBURNS_INTENSITY,
@@ -25,6 +26,7 @@ import { SHORT_RULES } from '@boom-busters/schemas'
 import type { CompileInput, CompileSlot } from './compile'
 import type { GraphicCodePayload } from '@boom-busters/schemas'
 import { DEFAULT_RISE_THRESHOLD_MS } from './ducking'
+import { compileShortTimeline } from './short'
 import { offsetCaptions, snapToScript } from './snap'
 
 const CHAPTER_ONE = '01HQ0000000000000000000CH1'
@@ -466,6 +468,77 @@ describe('compileTimeline', () => {
     const input = goldenInput()
     input.paragraphs = []
     expect(() => compileTimeline(input)).toThrow(/needs narration/)
+  })
+})
+
+describe('the closing card (decision 482)', () => {
+  const ends = (timeline: ReturnType<typeof compileTimeline>) => ({
+    lastWord: Math.max(...timeline.narration.map((n) => n.startMs + n.durationMs)),
+    lastShot: Math.max(...timeline.slots.map((s) => s.startMs + s.durationMs)),
+  })
+
+  it('is absent unless asked for, so the golden film is unchanged', () => {
+    expect(compileTimeline(goldenInput()).overlays.some((o) => o.kind === 'followCard')).toBe(false)
+  })
+
+  it('follows the last word and the last shot, with the last shot held under it', () => {
+    const without = compileTimeline(goldenInput())
+    const withCard = compileTimeline({
+      ...goldenInput(),
+      closingCard: { channelName: 'Boom & Busters' },
+    })
+    const before = ends(without)
+    const startMs = Math.max(before.lastWord, before.lastShot)
+
+    expect(withCard.overlays.at(-1)).toEqual({
+      kind: 'followCard',
+      startMs,
+      durationMs: CLOSING_CARD_MS,
+      props: { channelName: 'Boom & Busters' },
+    })
+    // Everything before the card is the film as it was.
+    expect(withCard.narration).toEqual(without.narration)
+    expect(withCard.overlays.slice(0, -1)).toEqual(without.overlays)
+    expect(withCard.slots.slice(0, -1)).toEqual(without.slots.slice(0, -1))
+    // The last shot runs to the card's end, and so does the film.
+    expect(ends(withCard).lastShot).toBe(startMs + CLOSING_CARD_MS)
+    expect(timelineDurationMs(withCard)).toBe(startMs + CLOSING_CARD_MS)
+  })
+
+  it('stays off the clock of every chapter, so YouTube chapters do not move', () => {
+    const without = compileTimeline(goldenInput())
+    const withCard = compileTimeline({ ...goldenInput(), closingCard: { channelName: 'B&B' } })
+    expect(withCard.chapters).toEqual(without.chapters)
+    expect(withCard.captions).toEqual(without.captions)
+  })
+
+  it('stays out of a Short cut from the film’s last paragraph', () => {
+    const master = compileTimeline({ ...goldenInput(), closingCard: { channelName: 'B&B' } })
+    const last = master.narration.at(-1)!
+    const short = compileShortTimeline({
+      master,
+      segmentRef: {
+        chapterId: last.chapterId,
+        fromParagraph: last.paragraphIndex,
+        toParagraph: last.paragraphIndex,
+      },
+      ending: 'bridge',
+      music: null,
+    })
+    expect(short.overlays.some((o) => o.kind === 'followCard')).toBe(false)
+    expect(timelineDurationMs(short)).toBe(last.durationMs)
+  })
+
+  it('shows no card for a blank name, and clips a long one to the schema', () => {
+    const blank = compileTimeline({ ...goldenInput(), closingCard: { channelName: '   ' } })
+    expect(blank.overlays.some((o) => o.kind === 'followCard')).toBe(false)
+    const long = compileTimeline({
+      ...goldenInput(),
+      closingCard: { channelName: 'x'.repeat(120) },
+    })
+    const card = long.overlays.at(-1)
+    if (card?.kind !== 'followCard') throw new Error('no card')
+    expect(card.props.channelName).toHaveLength(80)
   })
 })
 

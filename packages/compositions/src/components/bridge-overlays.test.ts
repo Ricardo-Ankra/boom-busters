@@ -51,13 +51,21 @@ describe('the end card and follow card (decisions 479, 481)', () => {
   })
 
   it('keeps the follow card inside the safe area on a Short frame', () => {
-    const { stack, logo, name, prompt } = FOLLOW_CARD_LAYOUT
-    const top = stack.top * 1920
+    const { logo, name, prompt, tall } = FOLLOW_CARD_LAYOUT
+    const top = tall.stackTop * 1920
     expect(top).toBeGreaterThanOrEqual(y0)
     // The mark, the gap and the name's line end well before the prompt.
-    expect(top + logo.size + logo.gap + name.px * 1.1).toBeLessThan(prompt.top * 1920 - 100)
+    expect(top + logo.size + logo.gap + name.px * 1.1).toBeLessThan(tall.promptTop * 1920 - 100)
     // The prompt and its chevron.
-    expect(prompt.top * 1920 + prompt.px * 1.3 + 14 + 56).toBeLessThanOrEqual(y1)
+    expect(tall.promptTop * 1920 + prompt.px * 1.3 + 14 + 56).toBeLessThanOrEqual(y1)
+  })
+
+  it('spaces the follow card on a film frame, everything on screen (decision 482)', () => {
+    const { logo, name, prompt, wide } = FOLLOW_CARD_LAYOUT
+    const top = wide.stackTop * 1080
+    expect(top).toBeGreaterThanOrEqual(108)
+    expect(top + logo.size + logo.gap + name.px * 1.1).toBeLessThan(wide.promptTop * 1080 - 100)
+    expect(wide.promptTop * 1080 + prompt.px * 1.3 + 14 + 56).toBeLessThanOrEqual(1080 - 54)
   })
 
   it('resizes the picture onto the frame, starting from the full frame (decision 481)', () => {

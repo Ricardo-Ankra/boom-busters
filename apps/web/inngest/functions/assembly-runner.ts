@@ -479,6 +479,10 @@ export const assemblyRunner = inngest.createFunction(
             ...(cards.chapter ? { chapter: cards.chapter } : {}),
             ...(cards.title ? { title: cards.title } : {}),
           },
+          // The film ends on the channel's follow card (decision 482).
+          ...(setup.brand.identity?.name
+            ? { closingCard: { channelName: setup.brand.identity.name } }
+            : {}),
         })
         return {
           ok: true as const,

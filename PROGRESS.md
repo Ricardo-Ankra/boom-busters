@@ -12543,3 +12543,36 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      ShortEndCardChart (the chart fitted in the frame) and FollowCardFixture
      added, ShortFollowCard removed. Ships with `deploy:remotion` alone: the
      timeline the broker validates for a Short is unchanged in shape.
+482. **A long-form film ends on the channel's closing card** (2026-11-23,
+     owner: "yes, add it to the long-form videos", after decision 481 took it
+     off Shorts; branch `long-form-closing-card`).
+     (a) `compileTimeline` takes `closingCard: { channelName }`; with it, a
+     `followCard` overlay plays for `CLOSING_CARD_MS` (3000) from the later of
+     the last word's end and the last shot's end (its reading hold), and the
+     last shot holds on to the card's end, so the card fades in over the
+     picture and the clock runs to it. Nothing before the card moves:
+     narration, captions, chapters and every other overlay are as without it,
+     so YouTube chapter times are unchanged. Assembly passes the brand's
+     channel name (`brand.identity.name`); a replayed setup whose brand has
+     none gets no card. The e2e fixtures compile without it.
+     (b) The card has a 16:9 layout: heights are fractions of the frame, one
+     set for 9:16 and one for 16:9 (`FOLLOW_CARD_LAYOUT.tall` / `.wide`).
+     Snapshots MasterClosingCardFading (14.1 s, half in over the held map)
+     and MasterClosingCard (16 s) on the master's mount path.
+     (c) QC: a render of the fixture's close through the Lambda's own FFmpeg
+     (the layer binary in an amazonlinux:2023 container; Remotion's bundled
+     FFmpeg has no detect filters) showed the settled card as a 2.5 s frozen
+     frame, which every film would carry as a `glitch` finding, and a film
+     with no bed would add a silence finding. The scan cannot tell a designed
+     still from a stuck renderer and the app knows where the card is, so
+     `withoutClosingCardFindings` drops glitch and silence findings starting
+     inside the card or up to 1 s before it (the last take's trailing quiet),
+     on the whole-film and the parts paths, and recomputes `passed`. A fault
+     that starts earlier and runs into the card stays. The render runner's
+     setup carries `closingFromMs`; a run parked before this replays without
+     it and is left unfiltered.
+     (d) Ships with `deploy:remotion` and the broker: the broker's bundled
+     schema still asks for the follow card's old headline and line (decision
+     481 c), so until it is redeployed it would refuse every film compiled
+     with the card. A Short cut from the film's last paragraph carries
+     neither the card nor its 3 s (tested).
