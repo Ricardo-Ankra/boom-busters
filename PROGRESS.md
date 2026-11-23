@@ -12402,3 +12402,48 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      (d) The channel-tag sub-budget (`channelTagsWithin`, 150) still counts
      the plain join; the overall 500 is what YouTube enforces, and the
      channel share is a soft split inside it.
+478. **Rewrite with AI in the Short studios** (2026-11-23, owner: "missing
+     on the Shorts screen now is the ability to use AI to rewrite or
+     regenerate the script for the Shorts, once its generated ... I can only
+     edit it manually", then "Proceed"; branch `shorts-ai-rewrite`, no
+     migration, no timeline schema change, no redeploy).
+     (a) The point Short studio and the teaser studio each get a "Rewrite
+     with AI" box under the script: an optional note (500 characters), a row
+     of buttons choosing what to rewrite (Whole script, or one section:
+     Hook, Stakes, Delivery 2 and so on for a point Short, Beat 1 to 5 for a
+     teaser), and the Rewrite button ("(mock)" in mock mode).
+     (b) The writer answers with a proposal shown beside the stored words
+     (old struck through, new below, unchanged sections marked); "Use this
+     rewrite" saves it through `savePointScript` / `saveTeaserScript`, the
+     same validation as a hand edit, and "Discard" drops it. Nothing is
+     written before the owner accepts, as with the long form's passage
+     rewrite. Re-voice then buys only the changed paragraphs, as before.
+     (c) The request is the writer's own (`buildPointScriptRequest`,
+     `buildTeaserRequest` with the film's tension), built from the same
+     inputs as the first draft, with the stored script, the note and the
+     scope added as a last user message (`buildShortRewriteRequest`), so a
+     rewrite is held to the same rules, bible and chapters. One writer call,
+     two when the first answer is refused (`callForAnswer`), on the
+     project's ledger and budget.
+     (d) Shapes (`parsePointRewrite`, `parseTeaserRewrite`): one section
+     takes only that section's new words and keeps every other paragraph
+     from the stored script whatever the model returned; a teaser's whole
+     rewrite keeps its beats and their chapters, because shot picks are
+     stored per beat; a point Short's whole rewrite may divide the
+     paragraphs differently within the rule book, since Re-plan shots plans
+     over the new words. A broken shape is refused back to the model once.
+     (e) The box works on the stored script, so it is held while the editor
+     has unsaved edits (and while studio work or a teaser shot search is
+     running): a proposal built from the stored words would drop them.
+     (f) Decisions made where the owner left room: both studios, not only
+     point Shorts (excerpt Shorts slice the master and have no script); the
+     note is optional, an empty one asks for a sharper take; the title is
+     never rewritten, it is publish copy edited on the card; a point Short
+     whose talking point is no longer approved is refused in words, since
+     the writer would have no brief.
+     (g) The owner's second ask, the end-of-Short channel box, is designed
+     but not built here: a full-frame end card that replaces the bridge's
+     picture (channel block with the follow ask, the last shot shrunk into a
+     16:9 "full video" frame, the film title, the bridge chapters, and the
+     arrow to YouTube's related-video link), on the design canvas
+     "Shorts End Card". It waits for the owner's word on the design.

@@ -18,10 +18,12 @@ import {
   rebuildPointFromScript,
   replanPoint,
   revoicePoint,
+  rewritePointScript,
   savePointScript,
   savePointShot,
 } from './point-studio-actions'
 import { useAction } from './project-controls'
+import { ShortRewrite } from './short-rewrite'
 
 /**
  * The point Short studio (playbook Shorts design 6): Script, Voice, Shots,
@@ -75,6 +77,18 @@ const WORKING_WORDS: Record<string, string> = {
 const AREA_CLASS =
   'rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[13px] text-[var(--color-text-primary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]'
 
+/** A paragraph's name in the rewrite: its phase, numbered when the phase has more than one. */
+function phaseLabel(
+  all: readonly { phase: ShortPhase }[],
+  paragraph: { phase: ShortPhase },
+  index: number,
+): string {
+  const same = all.filter((other) => other.phase === paragraph.phase).length
+  if (same < 2) return PHASE_LABELS[paragraph.phase]
+  const nth = all.slice(0, index + 1).filter((other) => other.phase === paragraph.phase).length
+  return `${PHASE_LABELS[paragraph.phase]} ${nth}`
+}
+
 function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`
 }
@@ -102,6 +116,11 @@ export function PointStudio({
           )
         : [],
     [studio],
+  )
+  // The stored script as the rewrite reads and saves it.
+  const stored = React.useMemo(
+    () => flat.map(({ phase, text, chapterIndex }) => ({ phase, text, chapterIndex })),
+    [flat],
   )
   const [texts, setTexts] = React.useState(() => flat.map((paragraph) => paragraph.text))
   const dirty = texts.some((text, index) => text !== flat[index]?.text)
@@ -293,6 +312,21 @@ export function PointStudio({
               </p>
             </div>
           ) : null}
+          <ShortRewrite
+            current={stored}
+            targets={stored.map((paragraph, index) => phaseLabel(stored, paragraph, index))}
+            labelOf={(paragraph, index, all) => phaseLabel(all, paragraph, index)}
+            live={live}
+            held={
+              dirty
+                ? 'Save or undo your edits first: the rewrite works on the saved script.'
+                : pending
+                  ? 'Wait for the running work to land.'
+                  : null
+            }
+            rewrite={(rewriteNote, target) => rewritePointScript(short.id, rewriteNote, target)}
+            accept={(paragraphs) => savePointScript(short.id, paragraphs)}
+          />
         </section>
 
         {/* Voice */}

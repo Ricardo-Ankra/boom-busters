@@ -122,6 +122,16 @@ test.describe('the playbook Shorts flow', () => {
     await expect(studio).toBeVisible()
     await expect(studio.getByRole('heading', { name: 'Findings' })).toBeVisible()
     await expect(studio.getByRole('button', { name: /^Assemble and render/ })).toBeVisible()
+
+    // Rewrite with AI (decision 478): a proposal comes back through the real
+    // server action and is discarded, so the stored script is untouched.
+    const rewrite = studio.getByRole('region', { name: 'Rewrite with AI' })
+    await rewrite.getByRole('button', { name: 'Hook' }).click()
+    await rewrite.getByRole('button', { name: 'Rewrite with AI (mock)' }).click()
+    const proposal = rewrite.getByLabel('Rewrite proposal')
+    await expect(proposal.getByText(/^MOCK REWRITE: /)).toHaveCount(1)
+    await proposal.getByRole('button', { name: 'Discard' }).click()
+    await expect(proposal).toHaveCount(0)
   })
 
   test('the Publish screen refuses a point Short before its long form is scheduled', async ({

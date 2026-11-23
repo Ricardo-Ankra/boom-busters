@@ -14,10 +14,12 @@ import {
   generateTeaserStill,
   pickFetchedTeaserShot,
   rebuildTeaser,
+  rewriteTeaserScript,
   saveTeaserScript,
   saveTeaserShot,
 } from './shorts-actions'
 import { useAction } from './project-controls'
+import { ShortRewrite } from './short-rewrite'
 
 /**
  * The teaser studio (decisions 227, 230): the teaser's own mini pipeline in
@@ -45,6 +47,8 @@ export function TeaserStudio({
   const { act, busy, pressed } = useAction()
   const router = useRouter()
   const beats = short.teaser?.beats ?? []
+  // The stored script as the rewrite reads and saves it.
+  const stored = beats.map(({ text, chapterIndex }) => ({ text, chapterIndex }))
   const [texts, setTexts] = React.useState(() => beats.map((beat) => beat.text))
   const dirty = texts.some((text, index) => text !== beats[index]?.text)
   const allVoiced = beats.length > 0 && beats.every((beat) => beat.voiced)
@@ -174,6 +178,22 @@ export function TeaserStudio({
                 </>
               )}
             </div>
+
+            <ShortRewrite
+              current={stored}
+              targets={stored.map((_, index) => `Beat ${index + 1}`)}
+              labelOf={(_, index) => `Beat ${index + 1}`}
+              live={live}
+              held={
+                dirty
+                  ? 'Save or undo your edits first: the rewrite works on the saved script.'
+                  : fetching
+                    ? 'Wait for the running shot search to land.'
+                    : null
+              }
+              rewrite={(note, target) => rewriteTeaserScript(short.id, note, target)}
+              accept={(paragraphs) => saveTeaserScript(short.id, paragraphs)}
+            />
           </>
         )}
       </CardContent>

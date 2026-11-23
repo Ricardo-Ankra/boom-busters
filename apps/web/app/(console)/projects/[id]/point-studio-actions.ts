@@ -1,9 +1,11 @@
 'use server'
 
 import {
+  approvedTalkingPointSet,
   channelForProject,
   claimPointWork,
   getLatestScript,
+  getProject,
   getRender,
   getShort,
   latestScriptParagraphSources,
@@ -14,7 +16,14 @@ import {
   updateShort,
 } from '@boom-busters/db'
 import type { ShortRow } from '@boom-busters/db'
-import { mockProvidersEnabled } from '@boom-busters/providers'
+import {
+  buildPointScriptRequest,
+  buildShortRewriteRequest,
+  mockProvidersEnabled,
+  mockShortRewrite,
+  parsePointRewrite,
+  REWRITE_NOTE_MAX,
+} from '@boom-busters/providers'
 import {
   BudgetExceededError,
   CropFocusSchema,
@@ -25,6 +34,7 @@ import {
   PointShotMotionSchema,
   PointVoiceRecordSchema,
   pointScriptIssues,
+  serialiseError,
   TimelineSchema,
   TimelineSlotSchema,
   UlidSchema,
@@ -41,6 +51,9 @@ import type {
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
 import { auth } from '@/auth'
+import { requireCompleteBible } from '@/inngest/lib/channel'
+import { callForAnswer } from '@/lib/answer'
+import { completeForProject } from '@/lib/answer-call'
 import { db } from '@/lib/db'
 import { inngest } from '@/inngest/client'
 import { events } from '@/inngest/events'
@@ -182,6 +195,93 @@ export async function savePointScript(
   })
   revalidatePath(`/projects/${short.projectId}`)
   return { ok: true }
+}
+
+export type RewriteResult =
+  | { ok: true; paragraphs: { phase: ShortPhase; text: string; chapterIndex: number }[] }
+  | { ok: false; error: string }
+
+/**
+ * Ask the writer for a rewrite of the stored script on the owner's note
+ * (decision 478): one paragraph (`target`, its index in the stored script) or
+ * the whole script (`null`). It never writes: the studio shows the proposal
+ * and saves it through `savePointScript` only when the owner accepts. One
+ * writer call (two when the first answer is refused), on the project's ledger
+ * and budget like every other call.
+ */
+export async function rewritePointScript(
+  shortId: string,
+  note: string,
+  target: number | null,
+): Promise<RewriteResult> {
+  await requireOwner()
+  if (note.length > REWRITE_NOTE_MAX) {
+    return { ok: false, error: `A note is limited to ${REWRITE_NOTE_MAX} characters.` }
+  }
+  const loaded = await loadPoint(shortId)
+  if ('error' in loaded) return { ok: false, error: loaded.error }
+  const { short } = loaded
+  const stored = PointScriptRecordSchema.safeParse(short.pointScript)
+  if (!stored.success) return { ok: false, error: 'This Short has no stored script to rewrite.' }
+  const current = stored.data.paragraphs
+  if (target !== null && (!Number.isInteger(target) || target < 0 || target >= current.length)) {
+    return { ok: false, error: 'That paragraph is not in the stored script.' }
+  }
+
+  const latest = await getLatestScript(db, short.projectId)
+  if (!latest) return { ok: false, error: 'There is no long-form script to write from.' }
+  const chapters = latest.chapters.map((chapter) => ({
+    index: chapter.index,
+    title: chapter.title,
+    contentMd: chapter.contentMd,
+  }))
+  const point = (await approvedTalkingPointSet(db, short.projectId))?.points.find(
+    (candidate) => candidate.id === short.pointId,
+  )
+  if (!point) {
+    return {
+      ok: false,
+      error: 'This Short’s talking point is no longer approved, so the writer has no brief.',
+    }
+  }
+
+  try {
+    // Read here, in the action that builds the request, before any mock branch.
+    const bible = requireCompleteBible(await channelForProject(db, short.projectId))
+    if (mockProvidersEnabled()) {
+      return { ok: true, paragraphs: mockShortRewrite(current, target) }
+    }
+    const project = await getProject(db, short.projectId)
+    const answer = await callForAnswer({
+      request: buildShortRewriteRequest({
+        base: buildPointScriptRequest({
+          bible,
+          caseTitle: project?.title ?? '',
+          point,
+          chapters,
+          ctaLine: bible.bible.ctaLine || null,
+        }),
+        current: stored.data,
+        note,
+        target,
+        keepShape: false,
+      }),
+      parse: (text, repair) =>
+        parsePointRewrite(text, { current, target, chapterCount: chapters.length }, repair),
+      complete: completeForProject(short.projectId),
+    })
+    if (!answer.ok) return { ok: false, error: `The rewrite stopped: ${answer.issue}` }
+    return { ok: true, paragraphs: answer.value }
+  } catch (error) {
+    if (error instanceof BudgetExceededError) {
+      return { ok: false, error: `The project budget stopped the rewrite: ${error.message}` }
+    }
+    console.error('[point studio] rewrite failed', serialiseError(error))
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'The rewrite call failed.',
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

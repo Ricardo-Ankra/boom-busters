@@ -36,6 +36,7 @@ import {
   rebuildPointFromScript,
   replanPoint,
   revoicePoint,
+  rewritePointScript,
   savePointScript,
   savePointShot,
 } from './point-studio-actions'
@@ -182,6 +183,51 @@ describeDb('point studio actions', () => {
 
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/already running/)
+    })
+  })
+
+  describe('rewritePointScript (decision 478)', () => {
+    const storedParagraphs = async () =>
+      PointScriptRecordSchema.parse((await stored()).pointScript).paragraphs
+
+    it('proposes one paragraph rewritten and stores nothing', async () => {
+      const before = await storedParagraphs()
+
+      const result = await rewritePointScript(shortId, 'open on the number', 0)
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.paragraphs[0]!.text).toBe(`MOCK REWRITE: ${before[0]!.text}`.slice(0, 400))
+      expect(result.paragraphs.slice(1)).toEqual(
+        before.slice(1).map(({ phase, text, chapterIndex }) => ({ phase, text, chapterIndex })),
+      )
+      expect(await storedParagraphs()).toEqual(before)
+      expect(send).not.toHaveBeenCalled()
+    })
+
+    it('proposes the whole script, which the studio saves on accept', async () => {
+      const result = await rewritePointScript(shortId, '', null)
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(
+        result.paragraphs.every((paragraph) => paragraph.text.startsWith('MOCK REWRITE')),
+      ).toBe(true)
+      expect(await savePointScript(shortId, result.paragraphs)).toEqual({ ok: true })
+      expect((await storedParagraphs())[2]!.text).toBe(result.paragraphs[2]!.text)
+    })
+
+    it('refuses a paragraph that is not there, a long note, and a point no longer approved', async () => {
+      expect(await rewritePointScript(shortId, '', 99)).toMatchObject({ ok: false })
+      expect(await rewritePointScript(shortId, 'x'.repeat(501), null)).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/500 characters/),
+      })
+      await db.delete(talkingPointSets)
+      expect(await rewritePointScript(shortId, '', null)).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/no longer approved/),
+      })
     })
   })
 
