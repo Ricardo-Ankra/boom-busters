@@ -18,7 +18,7 @@ import {
   updateWorkspace,
 } from '@boom-busters/db'
 import { listLedger, truncateLedger } from '@boom-busters/cost'
-import { DEFAULT_SETTINGS, resolveBrandKit } from '@boom-busters/schemas'
+import { DEFAULT_SETTINGS, resolveBrandKit, timelineDurationMs } from '@boom-busters/schemas'
 import type * as Db from '@boom-busters/db'
 import type { Timeline, TimelineSlot } from '@boom-busters/schemas'
 import { compileShortMaster, POINT_CHAPTER_ID } from '@boom-busters/timeline'
@@ -326,11 +326,18 @@ describeDb('short-render-runner', () => {
           (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
         ) as Timeline
         expect([uploaded.width, uploaded.height]).toEqual([1080, 1920])
-        expect(uploaded.overlays.map((o) => o.kind).sort()).toEqual([
-          'relatedArrow',
-          'subscribeBadge',
-        ])
+        // Decision 479: the bridge's arrow and badge give way to the end card,
+        // and the follow card plays after the narration.
+        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard', 'followCard'])
         expect(uploaded.overlays.some((o) => o.kind === 'endCta')).toBe(false)
+        const [card, follow] = uploaded.overlays
+        const narrationEnd = Math.max(...own.narration.map((n) => n.startMs + n.durationMs))
+        if (card?.kind !== 'endCard' || follow?.kind !== 'followCard') throw new Error('no cards')
+        expect(card.props.title.length).toBeGreaterThan(0)
+        expect(card.props.label).toBe('Watch the full video')
+        expect(card.props.runtimeMs).toBeGreaterThan(0)
+        expect(follow.startMs).toBe(narrationEnd)
+        expect(timelineDurationMs(uploaded)).toBe(narrationEnd + follow.durationMs)
         // The Short's own narration, not a slice of the project master.
         expect(uploaded.narration).toHaveLength(5)
       },
@@ -363,10 +370,7 @@ describeDb('short-render-runner', () => {
           (storage.putObject.mock.calls[0]?.[1] as Buffer).toString(),
         ) as Timeline
         expect(uploaded.narration).toHaveLength(5)
-        expect(uploaded.overlays.map((o) => o.kind).sort()).toEqual([
-          'relatedArrow',
-          'subscribeBadge',
-        ])
+        expect(uploaded.overlays.map((o) => o.kind)).toEqual(['endCard', 'followCard'])
       },
     )
 
