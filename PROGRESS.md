@@ -12576,3 +12576,16 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      481 c), so until it is redeployed it would refuse every film compiled
      with the card. A Short cut from the film's last paragraph carries
      neither the card nor its 3 s (tested).
+483. **Playback speed on the Assembly stage** (2026-11-24, owner: "there is
+     no option for me to play a video at different speeds, e.g. 2x"; branch
+     `preview-playback-speed`). A Speed group of buttons (1×, 1.25×, 1.5×,
+     2×) sits at the end of the cut tabs and drives whichever cut is on
+     stage: the Player's `playbackRate` for the preview, the `<video>`
+     element's `playbackRate` and `defaultPlaybackRate` for a draft or master
+     (the default too, because loading a new src resets the rate to it). One
+     choice holds across a tab switch and resets to 1× on reload. Buttons,
+     not the Player's own rate menu, per section 11.1; the native video
+     buries its rate in an overflow menu. Known limit: the preview's
+     WebCodecs audio plays through Web Audio buffer nodes, whose rate raises
+     the pitch, so narration sounds higher at 1.5× and 2× in the preview; the
+     rendered files keep their pitch.
