@@ -66,6 +66,16 @@ export type PreviewDraftProp = PreviewRenderProp & { timelineVersion: number }
  */
 type Cut = 'preview' | 'draft' | 'master'
 
+/**
+ * Playback speeds for reviewing a cut faster than real time. One choice
+ * drives whichever cut is on stage (the Player's playbackRate, or the
+ * rendered file's), so it holds across a tab switch. The native <video>
+ * hides its own speed menu in an overflow, and the Player shows none, so
+ * these are visible buttons (button-first, spec section 11.1).
+ */
+const SPEEDS = [1, 1.25, 1.5, 2] as const
+type Speed = (typeof SPEEDS)[number]
+
 interface RenderPoll {
   status: PreviewRenderProp['status']
   progressPct: number
@@ -182,6 +192,7 @@ export function PreviewScreen({
   const [chosenCut, setChosenCut] = React.useState<Cut | null>(null)
   const defaultCut: Cut = masterCut ? 'master' : draftCut ? 'draft' : 'preview'
   const activeCut: Cut = chosenCut ?? defaultCut
+  const [speed, setSpeed] = React.useState<Speed>(1)
 
   const droppedTotal = dropped.narration + dropped.slots + (dropped.music ? 1 : 0)
 
@@ -251,6 +262,23 @@ export function PreviewScreen({
               )
             : null}
           {masterCut || masterHandedOff ? tab('master', masterLabel) : null}
+          <div
+            role="group"
+            aria-label="Playback speed"
+            className="ml-auto flex flex-wrap items-center gap-1"
+          >
+            <span className="mr-1 text-[13px] text-[var(--color-text-secondary)]">Speed</span>
+            {SPEEDS.map((rate) => (
+              <Button
+                key={rate}
+                variant={speed === rate ? 'selected' : 'outline'}
+                aria-pressed={speed === rate}
+                onClick={() => setSpeed(rate)}
+              >
+                {rate}×
+              </Button>
+            ))}
+          </div>
         </div>
 
         {activeCut === 'preview' ? (
@@ -272,6 +300,7 @@ export function PreviewScreen({
               compositionWidth={Math.round(timeline.width / 2)}
               compositionHeight={Math.round(timeline.height / 2)}
               controls
+              playbackRate={speed}
               acknowledgeRemotionLicense
               // The WebCodecs audio path schedules through one AudioContext;
               // keeping it alive across pauses removes the resume latency a
@@ -287,6 +316,7 @@ export function PreviewScreen({
             renderingLabel={`Rendering draft… ${draftPct}%`}
             testId="draft-video"
             fileRef={fileRef}
+            speed={speed}
             durationInFrames={durationInFrames}
             footer={
               draftState.current?.status === 'done' && draft
@@ -303,6 +333,7 @@ export function PreviewScreen({
             renderingLabel="Rendering master"
             testId="master-video"
             fileRef={fileRef}
+            speed={speed}
             durationInFrames={durationInFrames}
             footer={
               masterState.current?.status === 'done'
@@ -707,6 +738,7 @@ function FileStage({
   renderingLabel,
   testId,
   fileRef,
+  speed,
   durationInFrames,
   footer,
 }: {
@@ -715,11 +747,22 @@ function FileStage({
   renderingLabel: string
   testId: string
   fileRef: React.RefObject<HTMLVideoElement | null>
+  speed: Speed
   durationInFrames: number
   footer: string | undefined
 }) {
   const { current, poll, inFlight } = state
   const parts = poll?.parts ?? current?.parts ?? null
+  const outputUrl = poll?.outputUrl
+
+  // React has no playbackRate attribute, so the rate is set on the element.
+  // defaultPlaybackRate too: loading a new src resets playbackRate to it.
+  React.useEffect(() => {
+    const video = fileRef.current
+    if (!video) return
+    video.defaultPlaybackRate = speed
+    video.playbackRate = speed
+  }, [fileRef, speed, outputUrl])
 
   if (handedOff && (!current || !inFlight)) {
     return (
