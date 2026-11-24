@@ -16,8 +16,8 @@ import type { PreviewDraftProp, PreviewRenderProp } from './preview-screen'
 vi.mock('@remotion/player', () => ({
   Player: Object.assign(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ durationInFrames, inputProps }: any) => (
-      <div data-testid="player">
+    ({ durationInFrames, inputProps, playbackRate }: any) => (
+      <div data-testid="player" data-playback-rate={playbackRate}>
         frames:{durationInFrames} narration0:{inputProps.timeline.narration[0]?.url}
       </div>
     ),
@@ -311,6 +311,74 @@ describe('PreviewScreen', () => {
     const video = await screen.findByTestId('master-video')
     await user.click(screen.getByRole('button', { name: 'Part 2 · 15:00' }))
     expect((video as HTMLVideoElement).currentTime).toBe(900)
+  })
+
+  it('plays the preview at the chosen speed, normal speed first', async () => {
+    const user = userEvent.setup()
+    render(<PreviewScreen {...props()} />)
+
+    const speeds = screen.getByRole('group', { name: 'Playback speed' })
+    expect(within(speeds).getByRole('button', { name: '1×' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByTestId('player')).toHaveAttribute('data-playback-rate', '1')
+
+    await user.click(within(speeds).getByRole('button', { name: '2×' }))
+    expect(screen.getByTestId('player')).toHaveAttribute('data-playback-rate', '2')
+    expect(within(speeds).getByRole('button', { name: '2×' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(speeds).getByRole('button', { name: '1×' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('carries the chosen speed onto a rendered file', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              status: 'done',
+              progressPct: 100,
+              outputUrl: 'https://signed.example.com/master.mp4',
+              qcReport: null,
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              costUsd: '0.24',
+              parts: null,
+            }),
+        } as unknown as Response),
+      ),
+    )
+    const master: PreviewRenderProp = {
+      id: '01J0000000000000000000000B',
+      status: 'done',
+      progressPct: 100,
+      costUsd: '0.24',
+      qcReport: null,
+      error: null,
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      parts: null,
+    }
+    render(<PreviewScreen {...props({ render: master, atGate: false })} />)
+
+    // Picked before the file's link arrives, applied once the video mounts.
+    await user.click(screen.getByRole('button', { name: '1.5×' }))
+    const video = (await screen.findByTestId('master-video')) as HTMLVideoElement
+    expect(video.playbackRate).toBe(1.5)
+    expect(video.defaultPlaybackRate).toBe(1.5)
+
+    await user.click(screen.getByRole('button', { name: '2×' }))
+    expect(video.playbackRate).toBe(2)
   })
 
   it('reads a part that starts past the first hour as h:mm:ss', async () => {
