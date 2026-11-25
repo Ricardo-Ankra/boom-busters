@@ -6,7 +6,9 @@ import {
   currentBible,
   getChannel,
   getProject,
+  getPublishRecord,
   recordChannelYoutubeVerify,
+  recordsAwaitingTestReminder,
   scheduledPublishItems,
   searchReportsForVideo,
   snapshotsSince,
@@ -291,6 +293,28 @@ export const analyticsRunner = inngest.createFunction(
           }
         }
         return flipped
+      })
+
+      // The Test & Compare reminder: no API starts the test, so a master that
+      // is public with two or more approved thumbnails earns one notice. Rows
+      // are read here, in the step; each stamp follows its own notify, so a
+      // crash between two records never sends the first again.
+      await step.run(`test-reminders-${channelId}`, async () => {
+        for (const waiting of await recordsAwaitingTestReminder(db, channelId)) {
+          const record = await getPublishRecord(db, 'master', waiting.targetId)
+          const draftTitle = record?.metadata?.['title']
+          const title =
+            typeof draftTitle === 'string' && draftTitle.trim() !== ''
+              ? draftTitle
+              : ((await getProject(db, waiting.targetId))?.title ?? 'The video')
+          await notify({
+            kind: 'heads-up',
+            title: 'Start the Test & Compare',
+            body: `${title} is public. Variant 1 is on the video; the other approved variants are waiting on its Publish card.`,
+            href: `/projects/${waiting.targetId}?stage=publish`,
+          })
+          await updatePublishRecord(db, waiting.id, { testReminderSentAt: new Date() })
+        }
       })
 
       // ---------------------------------------------------------------------

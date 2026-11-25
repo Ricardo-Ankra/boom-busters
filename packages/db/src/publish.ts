@@ -130,6 +130,8 @@ export async function updatePublishRecord(
     uploadedThumbKeys: string[]
     metadata: Record<string, unknown>
     error: Record<string, unknown> | null
+    /** Stamped once the owner has been reminded to start the thumbnail test. */
+    testReminderSentAt: Date | null
   }>,
 ): Promise<void> {
   await db

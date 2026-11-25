@@ -1,4 +1,5 @@
 import {
+  approvedDepicts,
   approvedTalkingPointSet,
   channelForProject,
   ensureUploadedPackages,
@@ -201,6 +202,15 @@ export interface PublishItemModel {
 }
 
 /**
+ * One `depicts` entry as the cast spells the person, or the entry as written
+ * (trimmed) when the cast does not hold them. The label's one spelling rule,
+ * shared by the film's likenesses and the approved thumbnails' (decision 262).
+ */
+export function canonicalCastName(entry: string, castNames: readonly string[]): string {
+  return castNames.find((name) => nameMatches(entry, name)) ?? entry.trim()
+}
+
+/**
  * The distinct names in `depicts` across still and hero slots whose CHOSEN
  * candidate is a generated one (fal or google), plus the names a copied
  * candidate carries from the still it was reused from (decision 261). An
@@ -216,8 +226,7 @@ export function syntheticLikenesses(
   slots: readonly { brief: unknown; candidates: unknown }[],
   castNames: readonly string[] = [],
 ): string[] {
-  const canonical = (entry: string) =>
-    castNames.find((name) => nameMatches(entry, name)) ?? entry.trim()
+  const canonical = (entry: string) => canonicalCastName(entry, castNames)
   const names = new Set<string>()
   for (const slot of slots) {
     const candidates = z.array(SlotCandidateSchema).safeParse(slot.candidates)
@@ -728,10 +737,20 @@ export async function publishModel(
   }
 
   const masterRecord = recordFor('master', projectId)
-  const likenesses = syntheticLikenesses(
-    slotRows,
-    cast.map((member) => member.name),
-  )
+  const castNames = cast.map((member) => member.name)
+  const likenesses = syntheticLikenesses(slotRows, castNames)
+  // The master's card also counts the people its approved generated
+  // thumbnails show; a Short's upload keeps the film's list alone.
+  const masterLikenesses = masterRecord
+    ? [
+        ...new Set([
+          ...likenesses,
+          ...(await approvedDepicts(db, masterRecord.id)).map((name) =>
+            canonicalCastName(name, castNames),
+          ),
+        ]),
+      ]
+    : likenesses
   const masterDurationMs = master
     ? master.narration.reduce((end, seg) => Math.max(end, seg.startMs + seg.durationMs), 0)
     : null
@@ -817,7 +836,7 @@ export async function publishModel(
       record: masterRecord
         ? toRecordProp(masterRecord, masterThumbs, current, masterSet.packages)
         : null,
-      syntheticLikenesses: likenesses,
+      syntheticLikenesses: masterLikenesses,
       cohesion: masterCohesion(),
       thumbnailSetCostUsd: masterSet.costUsd,
       studioUrl: masterRecord?.youtubeVideoId

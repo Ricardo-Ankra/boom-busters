@@ -1,4 +1,5 @@
 import {
+  approvedDepicts,
   countUploadsSince,
   getPublishRecord,
   getRender,
@@ -231,12 +232,16 @@ export const publishRunner = inngest.createFunction(
       }
 
       // The altered-content label (decision 252): any chosen generated still
-      // that depicts a real person. Shorts are cut from the same visuals.
+      // that depicts a real person. Shorts are cut from the same visuals. A
+      // master's approved generated thumbnails count too; a Short's thumbnail
+      // is an upload, and the master's is not on it. Read here, in the step:
+      // a run parked before this shipped replays its old result.
       const containsSyntheticMedia =
         syntheticLikenesses(
           await listShotSlots(db, projectId),
           (await listCastMembers(db, projectId)).map((member) => member.name),
-        ).length > 0
+        ).length > 0 ||
+        (targetType === 'master' && (await approvedDepicts(db, record.id)).length > 0)
       /**
        * How this item goes public (decision 226). A slot ahead of now is the
        * classic schedule: private with a `publishAt` YouTube flips itself.

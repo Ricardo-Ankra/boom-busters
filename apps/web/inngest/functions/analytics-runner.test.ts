@@ -6,6 +6,7 @@ import {
   createChannel,
   FIXTURE_PROJECT_ID,
   freezeSearchReport,
+  getProject,
   getPublishRecord,
   latestSnapshotForVideo,
   pendingReport,
@@ -17,6 +18,7 @@ import {
   searchReportsForVideo,
   seed,
   snapshotsSince,
+  thumbnailPackages,
   truncateAnalytics,
   truncateRunMirror,
   truncateSearchReports,
@@ -84,6 +86,8 @@ vi.mock('@/lib/youtube-analytics', async (importOriginal) => ({
 }))
 
 const describeDb = requireTestDatabase() ? describe : describe.skip
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const LIVE_VIDEO = 'yt-live-1'
 const SCHEDULED_VIDEO = 'yt-scheduled-1'
@@ -269,6 +273,82 @@ describeDb('analytics-runner (mock mode)', () => {
       }
     },
   )
+
+  describe('the Test & Compare reminder', () => {
+    async function approvedPackages(recordId: string, count: number): Promise<void> {
+      await db.insert(thumbnailPackages).values(
+        Array.from({ length: count }, (_, position) => ({
+          publishRecordId: recordId,
+          position,
+          source: 'generated' as const,
+          composedKey: `boom-busters/thumbs/${recordId}-${position}.jpg`,
+          approvedAt: new Date(),
+        })),
+      )
+    }
+
+    const reminders = () =>
+      notify.mock.calls
+        .map(([notification]) => notification as { kind: string })
+        .filter((notification) => notification.kind === 'heads-up')
+
+    it(
+      'reminds once when a master with two approved packages goes live',
+      { timeout: 60_000 },
+      async () => {
+        const master = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+        await updatePublishRecord(db, master.id, { metadata: { title: 'The audit that lied' } })
+        await approvedPackages(master.id, 2)
+
+        await engine.execute({ events: refreshEvent() })
+
+        expect(reminders()).toEqual([
+          {
+            kind: 'heads-up',
+            title: 'Start the Test & Compare',
+            body: 'The audit that lied is public. Variant 1 is on the video; the other approved variants are waiting on its Publish card.',
+            href: `/projects/${FIXTURE_PROJECT_ID}?stage=publish`,
+          },
+        ])
+        expect(
+          (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.testReminderSentAt,
+        ).not.toBeNull()
+
+        // The next run finds the stamp and sends nothing. A fresh engine: a
+        // reused one replays its memoised steps.
+        notify.mockClear()
+        engine = new InngestTestEngine({ function: analyticsRunner })
+        await engine.execute({ events: refreshEvent() })
+        expect(reminders()).toEqual([])
+      },
+    )
+
+    it('names the project when the record has no draft title', { timeout: 60_000 }, async () => {
+      const master = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+      await approvedPackages(master.id, 2)
+
+      await engine.execute({ events: refreshEvent() })
+
+      const project = await getProject(db, FIXTURE_PROJECT_ID)
+      expect(reminders()).toMatchObject([
+        {
+          body: expect.stringMatching(new RegExp(`^${escapeRegExp(project!.title)} is public\\.`)),
+        },
+      ])
+    })
+
+    it('sends no reminder for a single thumbnail', { timeout: 60_000 }, async () => {
+      const master = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+      await approvedPackages(master.id, 1)
+
+      await engine.execute({ events: refreshEvent() })
+
+      expect(reminders()).toEqual([])
+      expect(
+        (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.testReminderSentAt,
+      ).toBeNull()
+    })
+  })
 
   it(
     'freezes the due reports in mock mode and reports the count',

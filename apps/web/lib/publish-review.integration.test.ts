@@ -23,6 +23,7 @@ import {
   seed,
   shorts,
   talkingPointSets,
+  thumbnailPackages,
   updatePublishRecord,
   updateChannelSettings,
 } from '@boom-busters/db'
@@ -255,6 +256,54 @@ describeDb('publishModel search brief fields', () => {
       })
     } finally {
       await db.update(projects).set({ searchBrief: null })
+    }
+  })
+})
+
+describeDb('publishModel altered-content list', () => {
+  it('adds the approved thumbnails’ people to the master card and leaves a Short’s list alone', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await db.insert(thumbnailPackages).values([
+      {
+        publishRecordId: master.id,
+        position: 0,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/a.jpg',
+        depicts: ['Jan Marsalek'],
+        approvedAt: new Date(),
+      },
+      {
+        publishRecordId: master.id,
+        position: 1,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/b.jpg',
+        depicts: ['Jan Marsalek'],
+        approvedAt: new Date(),
+      },
+      {
+        publishRecordId: master.id,
+        position: 2,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/c.jpg',
+        depicts: ['Not Approved'],
+        approvedAt: null,
+      },
+    ])
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.syntheticLikenesses).toContain('Jan Marsalek')
+      expect(masterItem.syntheticLikenesses).not.toContain('Not Approved')
+      expect(masterItem.syntheticLikenesses.filter((name) => name === 'Jan Marsalek')).toHaveLength(
+        1,
+      )
+      for (const item of model.items.filter((i) => i.targetType === 'short')) {
+        expect(item.syntheticLikenesses).not.toContain('Jan Marsalek')
+      }
+    } finally {
+      await db.delete(publishRecords)
     }
   })
 })

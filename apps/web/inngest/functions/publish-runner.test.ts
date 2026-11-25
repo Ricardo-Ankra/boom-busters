@@ -16,6 +16,7 @@ import {
   recordChannelYoutubeVerify,
   saveChannelYoutubeConnection,
   shorts,
+  thumbnailPackages,
   truncateRunMirror,
   updateRender,
   updateChannelSettings,
@@ -467,6 +468,56 @@ describeDb('publish-runner', () => {
         expect(job).not.toHaveProperty('publishAt')
       },
     )
+
+    it(
+      'labels the upload when an approved generated thumbnail shows a cast member',
+      { timeout: 120_000 },
+      async () => {
+        await doneMasterRender()
+        const record = await draftRecord('master', FIXTURE_PROJECT_ID, {
+          uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+        })
+        // The film's slots hold no generated likeness; only the thumbnail does.
+        await db.insert(thumbnailPackages).values({
+          publishRecordId: record.id,
+          position: 0,
+          source: 'generated',
+          composedKey: 'boom-busters/thumbs/a.png',
+          depicts: ['Jan Marsalek'],
+          approvedAt: new Date(),
+        })
+
+        await engine.executeStep('submit-upload', {
+          events: requestedEvent('master', FIXTURE_PROJECT_ID),
+        })
+
+        expect(broker.submitMediaJob).toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'upload-youtube', containsSyntheticMedia: true }),
+        )
+      },
+    )
+
+    it('an unapproved package labels nothing', { timeout: 120_000 }, async () => {
+      await doneMasterRender()
+      const record = await draftRecord('master', FIXTURE_PROJECT_ID, {
+        uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+      })
+      await db.insert(thumbnailPackages).values({
+        publishRecordId: record.id,
+        position: 0,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/b.png',
+        depicts: ['Jan Marsalek'],
+        approvedAt: null,
+      })
+
+      await engine.executeStep('submit-upload', {
+        events: requestedEvent('master', FIXTURE_PROJECT_ID),
+      })
+
+      const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
+      expect(job).not.toHaveProperty('containsSyntheticMedia')
+    })
 
     it('waits twenty minutes for a round, not hours', { timeout: 120_000 }, async () => {
       await doneMasterRender()
