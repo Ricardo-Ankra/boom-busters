@@ -225,7 +225,13 @@ export async function stillCatalogue(
   slotRoutes: readonly (StillRoute | null | undefined)[] = [],
 ): Promise<Record<StillProvider, ImageGenProvider>> {
   const listed = (await listCatalogueModels(db)).map(toListed)
-  const routes = [routing.stills, routing.stillsLikeness, routing.setSheet, ...slotRoutes]
+  const routes = [
+    routing.stills,
+    routing.stillsLikeness,
+    routing.setSheet,
+    routing.thumbnails,
+    ...slotRoutes,
+  ]
   return Object.fromEntries(
     STILL_PROVIDERS.map((provider) => [
       provider,
