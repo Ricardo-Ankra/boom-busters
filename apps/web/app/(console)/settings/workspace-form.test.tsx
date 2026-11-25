@@ -64,6 +64,12 @@ vi.mock('../c/[slug]/settings/exemplar-actions', () => ({
   copyMotionFromChannelAction: vi.fn(),
   latestDerivationAction: vi.fn(async () => ({ ok: true })),
 }))
+vi.mock('../c/[slug]/settings/thumbnail-reference-actions', () => ({
+  uploadThumbnailReference: vi.fn(),
+  saveThumbnailReference: vi.fn(),
+  removeThumbnailReference: vi.fn(),
+  saveThumbnailStyle: vi.fn(),
+}))
 vi.mock('../c/[slug]/settings/logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),

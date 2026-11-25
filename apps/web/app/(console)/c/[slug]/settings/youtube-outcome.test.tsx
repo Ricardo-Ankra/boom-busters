@@ -51,6 +51,12 @@ vi.mock('./motion-actions', () => ({
   archiveReferenceAction: vi.fn(),
   draftMotionIdentityAction: vi.fn(),
 }))
+vi.mock('./thumbnail-reference-actions', () => ({
+  uploadThumbnailReference: vi.fn(),
+  saveThumbnailReference: vi.fn(),
+  removeThumbnailReference: vi.fn(),
+  saveThumbnailStyle: vi.fn(),
+}))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),

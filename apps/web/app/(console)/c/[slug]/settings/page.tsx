@@ -53,6 +53,7 @@ const TABS = [
   'motion',
   'voice',
   'logos',
+  'thumbnails',
   'exemplars',
   'publishing',
   'connections',
@@ -182,6 +183,19 @@ export default async function SettingsPage({
     })),
   )
 
+  // The thumbnail references' pictures, presigned like the logos' when storage holds them.
+  const thumbnailReferenceViews = await Promise.all(
+    settings.thumbnails.references.map(async (ref) => ({
+      id: ref.id,
+      note: ref.note,
+      inUse: ref.inUse,
+      url:
+        storageConfigured() && !ref.r2Key.startsWith('mock://')
+          ? await presignGet(ref.r2Key)
+          : null,
+    })),
+  )
+
   // The reference pack's cards: the first frame, the sheets and, for a clip,
   // the original, each presigned when storage holds it (spec 2026-11-04, 11.2).
   const sign = async (key: string | null | undefined) =>
@@ -264,6 +278,7 @@ export default async function SettingsPage({
         youtubeOutcome={typeof params['youtube'] === 'string' ? params['youtube'] : undefined}
         initialTab={tab}
         logos={logoViews}
+        thumbnailReferences={thumbnailReferenceViews}
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}

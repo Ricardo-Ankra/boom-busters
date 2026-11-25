@@ -24,6 +24,7 @@ import type { CopySource } from './copy-from-channel'
 import { ModelsTab } from './models-tab'
 import { VoiceTab } from './voice-tab'
 import { LogosTab, type LogoView } from './logos-tab'
+import { ThumbnailsTab, type ThumbnailReferenceView } from './thumbnails-tab'
 import type { ChannelExemplarView } from '@/lib/exemplar-channel-views'
 import type { DerivationEstimateTable } from '@/lib/derivation-estimate'
 import type { DerivationView } from './exemplar-actions'
@@ -69,6 +70,7 @@ export function SettingsForm({
   youtubeOutcome,
   initialTab = 'models',
   logos = [],
+  thumbnailReferences = [],
   channelMarkKey = null,
   modelOptions,
   exemplars = [],
@@ -113,6 +115,8 @@ export function SettingsForm({
   /** From `?tab=`, validated by the page — deep links land on the right tab. */
   initialTab?: string
   logos?: LogoView[]
+  /** The thumbnail references with their pictures presigned on the server. */
+  thumbnailReferences?: ThumbnailReferenceView[]
   channelMarkKey?: string | null
   /** Live lists merged with the catalogue, built on the server (decision 288). */
   modelOptions: ModelOptions
@@ -278,6 +282,7 @@ export function SettingsForm({
           <TabsTrigger value="motion">Motion</TabsTrigger>
           <TabsTrigger value="voice">Voice</TabsTrigger>
           <TabsTrigger value="logos">Logos</TabsTrigger>
+          <TabsTrigger value="thumbnails">Thumbnails</TabsTrigger>
           <TabsTrigger value="exemplars">Exemplars</TabsTrigger>
           <TabsTrigger value="publishing">Publishing</TabsTrigger>
           <TabsTrigger value="connections">Connections</TabsTrigger>
@@ -381,6 +386,18 @@ export function SettingsForm({
               logos={logos}
               channelMarkKey={channelMarkKey}
               brandBackground={settings.brandKit.colors.background}
+            />
+          </Lock>
+        </TabsContent>
+
+        <TabsContent value="thumbnails">
+          <Lock archived={channel.archived}>
+            {' '}
+            <ThumbnailsTab
+              slug={channelSlug}
+              styleNote={initialSettings.thumbnails.styleNote}
+              markPlacement={initialSettings.brandKit.look.thumbnailMarkPlacement}
+              references={thumbnailReferences}
             />
           </Lock>
         </TabsContent>
