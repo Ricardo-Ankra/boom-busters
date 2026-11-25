@@ -5,11 +5,13 @@ import {
   costLedger,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
+  getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
   replaceUnapprovedGenerated,
   requireTestDatabase,
   seed,
+  publishRecords,
   thumbnailPackages,
 } from '@boom-busters/db'
 import type { PlannedPackage, ThumbnailIdea } from '@boom-busters/schemas'
@@ -83,6 +85,34 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     vi.unstubAllEnvs()
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
+    await clearNote()
+  })
+
+  const clearNote = async () => {
+    const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+    const { thumbnailSetNote: _gone, ...rest } = record.metadata as Record<string, unknown>
+    await db.update(publishRecords).set({ metadata: rest }).where(eq(publishRecords.id, record.id))
+  }
+  const noteOf = async (): Promise<unknown> =>
+    (
+      (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata as Record<
+        string,
+        unknown
+      >
+    )['thumbnailSetNote']
+
+  const onFailure = (
+    thumbnailSetRunner as unknown as {
+      opts: { onFailure: (ctx: unknown) => Promise<void> }
+    }
+  ).opts.onFailure
+  const failure = (message: string) => ({
+    event: {
+      data: {
+        error: { message },
+        event: { data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID } },
+      },
+    },
   })
 
   async function seedThree(): Promise<string[]> {
@@ -132,6 +162,49 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     expect((await getThumbnailPackage(db, ids[0]!))?.state).toBe('ready')
   })
 
+  it('a failed paint is not composed', async () => {
+    adapter.generate
+      .mockImplementationOnce(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
+      .mockImplementationOnce(async () => {
+        throw new Error('the picture was refused')
+      })
+      .mockImplementationOnce(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
+
+    const { state } = await run({ mode: 'set' })
+
+    const rows = await listThumbnailPackages(db, recordId)
+    expect(rows.map((row) => row.state)).toEqual(['ready', 'failed', 'ready'])
+    expect(Object.keys(state)).toEqual(
+      stepKeys([
+        'plan',
+        `paint-${rows[0]!.id}`,
+        `compose-${rows[0]!.id}`,
+        `paint-${rows[1]!.id}`,
+        `paint-${rows[2]!.id}`,
+        `compose-${rows[2]!.id}`,
+      ]),
+    )
+  })
+
+  it('a crash with nothing to mark leaves the reason in the set note', async () => {
+    await onFailure(failure('The planner was unreachable.'))
+
+    expect(await noteOf()).toBe('The set could not be made: The planner was unreachable.')
+  })
+
+  it('a crash keeps a note this run already wrote', async () => {
+    await clearNote()
+    const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+    await db
+      .update(publishRecords)
+      .set({ metadata: { ...record.metadata, thumbnailSetNote: 'Planned 1 of 3. Figure: x.' } })
+      .where(eq(publishRecords.id, record.id))
+
+    await onFailure(failure('The planner was unreachable.'))
+
+    expect(await noteOf()).toBe('Planned 1 of 3. Figure: x.')
+  })
+
   it('a crash marks unfinished packages failed', async () => {
     const ids = await seedThree()
     await db
@@ -142,20 +215,8 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
       .update(thumbnailPackages)
       .set({ state: 'ready', composedKey: 'boom-busters/thumbs/x/done.jpg' })
       .where(eq(thumbnailPackages.id, ids[2]!))
-    const onFailure = (
-      thumbnailSetRunner as unknown as {
-        opts: { onFailure: (ctx: unknown) => Promise<void> }
-      }
-    ).opts.onFailure
 
-    await onFailure({
-      event: {
-        data: {
-          error: { message: 'The browser would not start.' },
-          event: { data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID } },
-        },
-      },
-    })
+    await onFailure(failure('The browser would not start.'))
 
     const rows = await listThumbnailPackages(db, recordId)
     expect(rows.map((row) => row.state)).toEqual(['failed', 'failed', 'ready'])

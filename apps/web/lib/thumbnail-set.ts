@@ -15,6 +15,7 @@ import {
   listThumbnailPackages,
   publishRecords,
   replaceUnapprovedGenerated,
+  updatePublishRecord,
   swapApprovedKey,
   updateThumbnailPackage,
   visualCredentials,
@@ -31,6 +32,7 @@ import type { ImageReference } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   depictedMembers,
+  IDEA_LABELS,
   MAX_CHARACTER_REFERENCES,
   PACKAGES_MAX,
   resolveBrandKit,
@@ -85,6 +87,9 @@ function mimeOfKey(key: string): 'image/png' | 'image/jpeg' | 'image/webp' {
 
 const extOf = (mimeType: string): string =>
   mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png'
+
+/** The planner's answer could not be read at all. */
+class UnplannableError extends Error {}
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -171,17 +176,13 @@ export async function planThumbnailSet(input: {
   // project has none, so the mock set can pass the vet.
   const claims =
     mocked && grounding.claims.length === 0
-      ? [{ id: 'mock-claim', text: '' }]
+      ? [{ id: 'mock-claim', text: project.title }]
       : grounding.claims.map((claim) => ({ id: claim.id, text: claim.text }))
 
   const planned = async (wanted: number, held: ThumbnailIdea[]): Promise<PlannedPackage[]> => {
     if (mocked) {
       return mockThumbnailSet({
-        // A mock title carries no figure: the synthetic claim cannot vouch for one.
-        workingTitle: project.title
-          .replace(/[\d.,]+/g, '')
-          .replace(/\s+/g, ' ')
-          .trim(),
+        workingTitle: project.title,
         places: wanted,
         heldIdeas: held,
         claimIds: claims.map((claim) => claim.id),
@@ -220,9 +221,7 @@ export async function planThumbnailSet(input: {
       parse: (text) => parseThumbnailSet(text),
       complete: completeForProject(projectId, { estimateOutputTokens: 1500 }),
     })
-    if (!answer.ok) {
-      throw new NonRetriableError(`The thumbnail set could not be planned: ${answer.issue}`)
-    }
+    if (!answer.ok) throw new UnplannableError(answer.issue)
     return answer.value
   }
 
@@ -236,17 +235,36 @@ export async function planThumbnailSet(input: {
       places: wanted,
     })
 
+  const cannotPlan = async (reason: string): Promise<never> => {
+    const sentence = `The set could not be planned: ${reason}`.slice(0, 500)
+    await writeSetNote(publishRecordId, sentence)
+    throw new NonRetriableError(sentence)
+  }
+
   let held = approvedIdeas
-  const first = vet(await planned(places, held), places, held)
-  const kept = [...first.kept]
-  const dropped = [...first.dropped]
-  if (first.dropped.length > 0 && kept.length < places) {
-    // Once more for the missing places, never twice.
-    held = [...approvedIdeas, ...kept.map((item) => item.idea)]
-    const missing = places - kept.length
-    const second = vet(await planned(missing, held), missing, held)
-    kept.push(...second.kept)
-    dropped.push(...second.dropped)
+  const kept: PlannedPackage[] = []
+  const dropped: { idea: ThumbnailIdea; reason: string }[] = []
+  try {
+    const first = vet(await planned(places, held), places, held)
+    kept.push(...first.kept)
+    dropped.push(...first.dropped)
+    if (first.dropped.length > 0 && kept.length < places) {
+      // Once more for the missing places, never twice.
+      held = [...approvedIdeas, ...kept.map((item) => item.idea)]
+      const missing = places - kept.length
+      const second = vet(await planned(missing, held), missing, held)
+      kept.push(...second.kept)
+      dropped.push(...second.dropped)
+    }
+  } catch (error) {
+    if (error instanceof UnplannableError) return cannotPlan(error.message)
+    throw error
+  }
+
+  const droppedWords = dropped.map((drop) => `${IDEA_LABELS[drop.idea]}: ${drop.reason}`).join(' ')
+  if (kept.length === 0) {
+    // The owner's painted packages are not traded for nothing.
+    return cannotPlan(droppedWords === '' ? 'The planner offered no package.' : droppedWords)
   }
 
   const { inserted, orphanedKeys } = await replaceUnapprovedGenerated(db, publishRecordId, kept)
@@ -257,7 +275,25 @@ export async function planThumbnailSet(input: {
       })
     }
   }
+  await writeSetNote(
+    publishRecordId,
+    kept.length >= places
+      ? ''
+      : `Planned ${kept.length} of ${places}. ${droppedWords}`.trim().slice(0, 500),
+  )
   return { inserted: inserted.map((row) => row.id), dropped }
+}
+
+/** The run's words for the Publish card: merged over the draft in the record's metadata, never replacing it. */
+export async function writeSetNote(publishRecordId: string, note: string): Promise<void> {
+  const [record] = await db
+    .select({ metadata: publishRecords.metadata })
+    .from(publishRecords)
+    .where(eq(publishRecords.id, publishRecordId))
+  if (!record) return
+  await updatePublishRecord(db, publishRecordId, {
+    metadata: { ...record.metadata, thumbnailSetNote: note },
+  })
 }
 
 /** The master a record belongs to: its target is the project's id. Generated sets are for masters only. */
@@ -299,12 +335,12 @@ async function referenceBytes(key: string, mocked: boolean): Promise<string> {
   return Buffer.from(object.bytes).toString('base64')
 }
 
-/** Paints one package's picture. Never throws: every exit ends in a stored picture or a failed row with words. */
+/** Paints one package's picture. Never throws: every exit ends in a stored picture (still `painting`, awaiting compose) or a failed row with words. */
 export async function paintThumbnailPicture(packageId: string): Promise<void> {
-  const row = await getThumbnailPackage(db, packageId)
-  if (!row) return
-  await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
   try {
+    const row = await getThumbnailPackage(db, packageId)
+    if (!row) return
+    await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
     if (!row.picture) throw new ValidationError('This package has no picture brief to paint.')
     const picture = row.picture
     const projectId = await masterOf(row.publishRecordId)
@@ -446,7 +482,8 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
       await putObject(pictureKey, bytes, mimeType)
     }
     const previous = row.pictureKey
-    await updateThumbnailPackage(db, packageId, { pictureKey, state: 'ready', error: null })
+    // The package is ready only once composed; until then it stays painting.
+    await updateThumbnailPackage(db, packageId, { pictureKey, state: 'painting', error: null })
     if (
       previous !== null &&
       previous !== pictureKey &&
@@ -457,7 +494,11 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
       await deleteObject(previous).catch(() => undefined)
     }
   } catch (error) {
-    await updateThumbnailPackage(db, packageId, { state: 'failed', error: errorMessage(error) })
+    // Even the failure write must not rethrow: the run's onFailure marks what is left.
+    await updateThumbnailPackage(db, packageId, {
+      state: 'failed',
+      error: errorMessage(error),
+    }).catch(() => undefined)
   }
 }
 

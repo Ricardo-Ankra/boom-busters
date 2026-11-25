@@ -337,6 +337,10 @@ describe('PublishDraftSchema', () => {
     expect(old.searchTags).toEqual([])
   })
 
+  it('thumbnailSetNote defaults to an empty string on a draft saved before it', () => {
+    expect(PublishDraftSchema.parse({ titleOptions: ['A'] }).thumbnailSetNote).toBe('')
+  })
+
   it('refuses an overlong title — YouTube would truncate it silently', () => {
     expect(PublishDraftSchema.safeParse({ title: 'x'.repeat(101) }).success).toBe(false)
   })

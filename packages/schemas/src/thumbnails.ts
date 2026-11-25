@@ -35,6 +35,17 @@ export const IDEA_LABELS: Record<ThumbnailIdea, string> = {
 export const PACKAGE_STATES = ['planned', 'painting', 'ready', 'failed'] as const
 export type PackageState = (typeof PACKAGE_STATES)[number]
 
+/** A planned or painting package untouched for this long is a lost run, not work in progress. */
+export const PACKAGE_STALE_MS = 15 * 60_000
+
+/** True while a run may still be working on the package: planned or painting, and touched recently. */
+export function packageInFlight(row: { state: string; updatedAt: Date }, now: Date): boolean {
+  return (
+    (row.state === 'planned' || row.state === 'painting') &&
+    now.getTime() - row.updatedAt.getTime() <= PACKAGE_STALE_MS
+  )
+}
+
 export const TEST_RESULTS = ['won', 'lost', 'same', 'inconclusive'] as const
 export type TestResult = (typeof TEST_RESULTS)[number]
 

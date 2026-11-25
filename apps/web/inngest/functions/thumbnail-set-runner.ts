@@ -1,7 +1,9 @@
 import {
   ensurePublishRecord,
+  getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
+  updatePublishRecord,
   updateThumbnailPackage,
 } from '@boom-busters/db'
 import { parseEventData } from '@boom-busters/schemas'
@@ -20,8 +22,9 @@ import { events } from '../events'
  * `set` plans the free places, then paints and composes each new package;
  * `paint` repaints one package and composes it; `compose` sets the type on one
  * package's stored picture again and buys nothing. A package whose paint
- * failed is not composed. Painting and composing never throw (each leaves its
- * package ready or failed with words), so one package's failure never stops
+ * failed is not composed. Painting and composing never throw (a paint leaves its
+ * package painting with a picture or failed with words, a compose leaves it
+ * ready or failed), so one package's failure never stops
  * the next, and a retry of the run repeats only what a step has not finished.
  */
 
@@ -44,10 +47,24 @@ export const thumbnailSetRunner = inngest.createFunction(
       if (typeof targetId !== 'string') return
       const record = await ensurePublishRecord(db, 'master', targetId)
       const message = event.data.error.message
+      let marked = 0
       for (const row of await listThumbnailPackages(db, record.id)) {
         if (row.state === 'planned' || row.state === 'painting') {
           await updateThumbnailPackage(db, row.id, { state: 'failed', error: message })
+          marked += 1
         }
+      }
+      if (marked > 0) return
+      // Nothing to mark: the owner still reads why, unless this run already said.
+      const current = await getPublishRecord(db, 'master', targetId)
+      const note = (current?.metadata as Record<string, unknown> | undefined)?.['thumbnailSetNote']
+      if (current && (note === undefined || note === '')) {
+        await updatePublishRecord(db, current.id, {
+          metadata: {
+            ...current.metadata,
+            thumbnailSetNote: `The set could not be made: ${message}`.slice(0, 500),
+          },
+        })
       }
     },
     triggers: [events.thumbnailSetRequested],
@@ -58,11 +75,14 @@ export const thumbnailSetRunner = inngest.createFunction(
     /** Paint (when asked) then compose one package; no compose after a failed paint. */
     const finish = async (packageId: string, paint: boolean): Promise<void> => {
       if (paint) {
-        const state = await step.run(`paint-${packageId}`, async () => {
+        // A painted package stays `painting` until composed; compose only what
+        // the paint left with a picture.
+        const composable = await step.run(`paint-${packageId}`, async () => {
           await paintThumbnailPicture(packageId)
-          return (await getThumbnailPackage(db, packageId))?.state ?? 'failed'
+          const row = await getThumbnailPackage(db, packageId)
+          return row !== undefined && row.state !== 'failed' && row.pictureKey !== null
         })
-        if (state === 'failed') return
+        if (!composable) return
       }
       await step.run(`compose-${packageId}`, () => composeThumbnailPackage(packageId))
     }

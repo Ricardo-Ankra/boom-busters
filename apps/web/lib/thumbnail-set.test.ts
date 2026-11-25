@@ -6,6 +6,8 @@ import {
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getChannelSettings,
+  getProject,
+  getPublishRecord,
   getThumbnailPackage,
   insertCastMember,
   listThumbnailPackages,
@@ -15,6 +17,7 @@ import {
   setCastPhotos,
   thumbnailPackages,
   channels,
+  projects,
   publishRecords,
 } from '@boom-busters/db'
 import {
@@ -76,6 +79,18 @@ vi.mock('@/lib/model-catalogue', async (importOriginal) => {
   }
 })
 
+const compose = vi.hoisted(() => ({ composeThumbnail: vi.fn() }))
+vi.mock('@/lib/thumbnail-compose', () => compose)
+
+const storage = vi.hoisted(() => ({ configured: false }))
+vi.mock('@/lib/storage', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  storageConfigured: () => storage.configured,
+  presignGet: async (key: string) => `https://signed.test/${key}`,
+  putObject: async () => undefined,
+  deleteObject: async () => undefined,
+}))
+
 const cost = vi.hoisted(() => ({ refuse: false }))
 vi.mock('@boom-busters/cost', async (importOriginal) => {
   const actual = await importOriginal<typeof Cost>()
@@ -136,7 +151,24 @@ const image = { url: png, width: 2048, height: 1152 }
 
 describeDb('thumbnail set (mock mode)', () => {
   let recordId = ''
+  let originalTitle = ''
   let originalThumbnails: Awaited<ReturnType<typeof getChannelSettings>>['thumbnails']
+
+  const setNote = async (note: string | undefined) => {
+    const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
+    const { thumbnailSetNote: _old, ...rest } = record.metadata as Record<string, unknown>
+    await db
+      .update(publishRecords)
+      .set({ metadata: note === undefined ? rest : { ...rest, thumbnailSetNote: note } })
+      .where(eq(publishRecords.id, record.id))
+  }
+  const noteOf = async (): Promise<unknown> =>
+    (
+      (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata as Record<
+        string,
+        unknown
+      >
+    )['thumbnailSetNote']
 
   const thumbnailLedger = async () =>
     db
@@ -149,6 +181,7 @@ describeDb('thumbnail set (mock mode)', () => {
     vi.clearAllMocks()
     adapter.styles = 3
     cost.refuse = false
+    storage.configured = false
     adapter.generate.mockImplementation(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
     grounding.metadataGrounding.mockResolvedValue({
       claims: CLAIMS,
@@ -156,6 +189,7 @@ describeDb('thumbnail set (mock mode)', () => {
       scriptVersion: 1,
     })
     await seed(db)
+    originalTitle = (await getProject(db, FIXTURE_PROJECT_ID))!.title
     originalThumbnails = (await getChannelSettings(db, FIRST_CHANNEL_ID)).thumbnails
     const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
     recordId = record.id
@@ -172,6 +206,11 @@ describeDb('thumbnail set (mock mode)', () => {
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await setThumbnailSettings(originalThumbnails)
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
+    await setNote(undefined)
+    await db
+      .update(projects)
+      .set({ title: originalTitle })
+      .where(eq(projects.id, FIXTURE_PROJECT_ID))
   })
 
   it("estimates three images at the routed model's 2K price", async () => {
@@ -243,6 +282,10 @@ describeDb('thumbnail set (mock mode)', () => {
 
     it('plans in mock mode on a project with no claims', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '1')
+      await db
+        .update(projects)
+        .set({ title: 'The 1.9 Billion Collapse' })
+        .where(eq(projects.id, FIXTURE_PROJECT_ID))
       grounding.metadataGrounding.mockResolvedValue({
         claims: [],
         centralQuestion: undefined,
@@ -258,6 +301,87 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(result.inserted).toHaveLength(3)
       const rows = await listThumbnailPackages(db, recordId)
       expect(rows.every((row) => row.claimIds.join() === 'mock-claim')).toBe(true)
+    })
+
+    it('a vet that keeps nothing leaves the old packages and says why', async () => {
+      const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+      await db
+        .update(thumbnailPackages)
+        .set({ pictureKey: 'boom-busters/thumbs/x/art-old.png', state: 'ready' })
+        .where(eq(thumbnailPackages.id, inserted[0]!.id))
+      const bad = planned('object', { claimIds: ['zzz'] })
+      answer.callForAnswer.mockResolvedValue({ ok: true, value: [bad], calls: 1 })
+      const sentence =
+        'The set could not be planned: Object: Claim zzz is not a verified claim of this film. ' +
+        'Object: Claim zzz is not a verified claim of this film.'
+
+      await expect(
+        planThumbnailSet({ projectId: FIXTURE_PROJECT_ID, publishRecordId: recordId }),
+      ).rejects.toThrow(sentence)
+
+      const rows = await listThumbnailPackages(db, recordId)
+      expect(rows.map((row) => row.id)).toEqual([inserted[0]!.id])
+      expect(rows[0]!.pictureKey).toBe('boom-busters/thumbs/x/art-old.png')
+      expect(await noteOf()).toBe(sentence)
+    })
+
+    it('a partial plan says what was dropped', async () => {
+      answer.callForAnswer
+        .mockResolvedValueOnce({
+          ok: true,
+          value: [
+            planned('object'),
+            planned('figure', { claimIds: ['zzz'] }),
+            planned('moment', { headline: 'One two three four five' }),
+          ],
+          calls: 1,
+        })
+        .mockResolvedValueOnce({ ok: true, value: [], calls: 1 })
+
+      const result = await planThumbnailSet({
+        projectId: FIXTURE_PROJECT_ID,
+        publishRecordId: recordId,
+      })
+
+      expect(result.inserted).toHaveLength(1)
+      expect(await noteOf()).toBe(
+        'Planned 1 of 3. Figure: Claim zzz is not a verified claim of this film. ' +
+          'Moment: The headline is longer than 4 words.',
+      )
+    })
+
+    it('a clean plan clears the note', async () => {
+      await setNote('Planned 1 of 3. Figure: something old.')
+      answer.callForAnswer.mockResolvedValue({
+        ok: true,
+        value: [planned('object'), planned('moment'), planned('figure')],
+        calls: 1,
+      })
+
+      const result = await planThumbnailSet({
+        projectId: FIXTURE_PROJECT_ID,
+        publishRecordId: recordId,
+      })
+
+      expect(result.inserted).toHaveLength(3)
+      expect(await noteOf()).toBe('')
+    })
+
+    it('an unusable planner answer says why and plans nothing', async () => {
+      answer.callForAnswer.mockResolvedValue({
+        ok: false,
+        issue: 'The answer was not a list of packages.',
+        calls: 2,
+      })
+
+      await expect(
+        planThumbnailSet({ projectId: FIXTURE_PROJECT_ID, publishRecordId: recordId }),
+      ).rejects.toThrow('The set could not be planned: The answer was not a list of packages.')
+
+      expect(await listThumbnailPackages(db, recordId)).toEqual([])
+      expect(await noteOf()).toBe(
+        'The set could not be planned: The answer was not a list of packages.',
+      )
     })
   })
 
@@ -357,7 +481,7 @@ describeDb('thumbnail set (mock mode)', () => {
       for (const id of ids) await paintThumbnailPicture(id)
 
       const rows = await listThumbnailPackages(db, recordId)
-      expect(rows.map((row) => row.state)).toEqual(['ready', 'failed', 'ready'])
+      expect(rows.map((row) => row.state)).toEqual(['painting', 'failed', 'painting'])
       expect(rows[1]!.error).toBe('google: the picture was refused')
       expect(rows[0]!.pictureKey).toContain(`/thumbs/${FIXTURE_PROJECT_ID}/art-`)
       expect(rows[1]!.pictureKey).toBeNull()
@@ -365,6 +489,51 @@ describeDb('thumbnail set (mock mode)', () => {
       const ledger = await thumbnailLedger()
       expect(ledger).toHaveLength(2)
       expect(ledger.every((entry) => entry.actualUsd !== null)).toBe(true)
+    })
+
+    it('a painted package stays painting until it is composed', async () => {
+      await paintThumbnailPicture(ids[0]!)
+
+      const painted = await getThumbnailPackage(db, ids[0]!)
+      expect(painted?.state).toBe('painting')
+      expect(painted?.pictureKey).toContain(`/thumbs/${FIXTURE_PROJECT_ID}/art-`)
+      expect(painted?.composedKey).toBeNull()
+
+      await composeThumbnailPackage(ids[0]!)
+
+      const composed = await getThumbnailPackage(db, ids[0]!)
+      expect(composed?.state).toBe('ready')
+      expect(composed?.composedKey).toBe(
+        `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/mock-${ids[0]}.jpg`,
+      )
+    })
+
+    it('a repaint is not ready until its new compose lands', async () => {
+      const oldComposite = 'boom-busters/thumbs/x/old.jpg'
+      await db
+        .update(thumbnailPackages)
+        .set({
+          pictureKey: 'boom-busters/thumbs/x/art-old.png',
+          composedKey: oldComposite,
+          state: 'ready',
+        })
+        .where(eq(thumbnailPackages.id, ids[0]!))
+
+      await paintThumbnailPicture(ids[0]!)
+
+      const repainted = await getThumbnailPackage(db, ids[0]!)
+      expect(repainted?.state).toBe('painting')
+      expect(repainted?.pictureKey).not.toBe('boom-busters/thumbs/x/art-old.png')
+      expect(repainted?.composedKey).toBe(oldComposite)
+
+      await composeThumbnailPackage(ids[0]!)
+
+      expect((await getThumbnailPackage(db, ids[0]!))?.state).toBe('ready')
+    })
+
+    it('painting an unknown package does nothing and does not throw', async () => {
+      await expect(paintThumbnailPicture(newId())).resolves.toBeUndefined()
+      expect(adapter.generate).not.toHaveBeenCalled()
     })
 
     it('a budget refusal fails the package in words', async () => {
@@ -383,6 +552,28 @@ describeDb('thumbnail set (mock mode)', () => {
   })
 
   describe('composing', () => {
+    it('a compose that fails marks the package failed and keeps its picture', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '0')
+      storage.configured = true
+      compose.composeThumbnail.mockRejectedValue(new Error('The browser would not start.'))
+      const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+      const id = inserted[0]!.id
+      const pictureKey = `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-bbb.png`
+      await db
+        .update(thumbnailPackages)
+        .set({ pictureKey, state: 'painting' })
+        .where(eq(thumbnailPackages.id, id))
+
+      await composeThumbnailPackage(id)
+
+      const row = await getThumbnailPackage(db, id)
+      expect(compose.composeThumbnail).toHaveBeenCalledTimes(1)
+      expect(row?.state).toBe('failed')
+      expect(row?.error).toBe('The browser would not start.')
+      expect(row?.pictureKey).toBe(pictureKey)
+      expect(row?.composedKey).toBeNull()
+    })
+
     it('composing an approved package swaps its key in the record', async () => {
       const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
       const id = inserted[0]!.id

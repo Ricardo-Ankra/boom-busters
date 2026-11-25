@@ -3,6 +3,8 @@ import {
   ThumbnailSetRequestedSchema,
   figuresIn,
   headlineWords,
+  packageInFlight,
+  PACKAGE_STALE_MS,
   vetPlannedPackages,
   type PlannedPackage,
 } from './thumbnails'
@@ -163,5 +165,32 @@ describe('ThumbnailSetRequestedSchema', () => {
         packageId: ID,
       }).success,
     ).toBe(true)
+  })
+})
+
+describe('packageInFlight', () => {
+  const now = new Date('2026-11-25T12:00:00Z')
+  const ago = (ms: number) => new Date(now.getTime() - ms)
+
+  it('a planned or painting package is in flight for fifteen minutes', () => {
+    expect(PACKAGE_STALE_MS).toBe(15 * 60_000)
+    expect(packageInFlight({ state: 'planned', updatedAt: ago(60_000) }, now)).toBe(true)
+    expect(packageInFlight({ state: 'painting', updatedAt: ago(PACKAGE_STALE_MS - 1) }, now)).toBe(
+      true,
+    )
+  })
+
+  it('a stale planned package is no longer in flight', () => {
+    expect(packageInFlight({ state: 'planned', updatedAt: ago(PACKAGE_STALE_MS + 1) }, now)).toBe(
+      false,
+    )
+    expect(packageInFlight({ state: 'painting', updatedAt: ago(PACKAGE_STALE_MS + 1) }, now)).toBe(
+      false,
+    )
+  })
+
+  it('a ready or failed package is never in flight', () => {
+    expect(packageInFlight({ state: 'ready', updatedAt: now }, now)).toBe(false)
+    expect(packageInFlight({ state: 'failed', updatedAt: now }, now)).toBe(false)
   })
 })
