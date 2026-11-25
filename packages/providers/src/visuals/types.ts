@@ -85,9 +85,10 @@ export interface ImageReference {
   /**
    * Which budget this spends (decision 264). Google documents the two
    * separately and by different amounts: a face the model must keep is a
-   * character, a room or a prop it must reproduce is an object.
+   * character, a room or a prop it must reproduce is an object. A style is a
+   * reference thumbnail whose look, never its subject or layout, is followed.
    */
-  kind: 'character' | 'object'
+  kind: 'character' | 'object' | 'style'
   /** For a set plate: the direction it faces, named in the image's label (decision 275). */
   facing?: 'north' | 'east' | 'south' | 'west' | 'detail'
 }
@@ -163,6 +164,8 @@ export interface ImageGenModel {
 export interface ReferenceLimits {
   characters: number
   objects: number
+  /** Reference thumbnails whose look is followed; only Gemini 3 Pro Image has the channel. */
+  styles: number
 }
 
 export interface ImageGenProvider {

@@ -258,7 +258,7 @@ export function createFalImageGen(models: readonly ImageGenModel[] = FAL_MODELS)
      * will accept.
      */
     referenceLimits(): ReferenceLimits {
-      return { characters: 3, objects: 2 }
+      return { characters: 3, objects: 2, styles: 0 }
     },
 
     /** The same routing the call uses, so the estimate names the endpoint billed. */

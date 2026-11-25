@@ -94,7 +94,7 @@ const DIMENSIONS: Record<ImageSize, { width: number; height: number }> = {
  * the app's own policy caps, mirroring `falImageGen.referenceLimits`. Kept as
  * one constant so the table row and the lookup fallback cannot drift apart.
  */
-const UNDOCUMENTED_LIMITS: ReferenceLimits = { characters: 3, objects: 2 }
+const UNDOCUMENTED_LIMITS: ReferenceLimits = { characters: 3, objects: 2, styles: 0 }
 
 /**
  * What each model takes. The Gemini 3 rows are Google's own published figures
@@ -122,8 +122,8 @@ const UNDOCUMENTED_LIMITS: ReferenceLimits = { characters: 3, objects: 2 }
  */
 const REFERENCE_LIMITS: Record<string, ReferenceLimits> = {
   'gemini-2.5-flash-image': UNDOCUMENTED_LIMITS,
-  'gemini-3.1-flash-image': { characters: 4, objects: 10 },
-  'gemini-3-pro-image': { characters: 5, objects: 6 },
+  'gemini-3.1-flash-image': { characters: 4, objects: 10, styles: 0 },
+  'gemini-3-pro-image': { characters: 5, objects: 6, styles: 3 },
 }
 
 /**
@@ -156,7 +156,9 @@ export function referenceLabel(
   const role =
     reference.kind === 'character'
       ? 'use it for the likeness only; pose, clothing and framing come from the text'
-      : "use it for the room's furniture, materials and light"
+      : reference.kind === 'style'
+        ? 'use it for the look only: palette, light and finish. Never copy its subject or its layout'
+        : "use it for the room's furniture, materials and light"
   const facing =
     reference.facing === undefined
       ? ''
@@ -214,6 +216,7 @@ export function createGeminiImageGen(
       const limits = adapter.referenceLimits(request.model)
       const characters = references.filter((reference) => reference.kind === 'character')
       const objects = references.filter((reference) => reference.kind === 'object')
+      const styles = references.filter((reference) => reference.kind === 'style')
       if (characters.length > limits.characters) {
         throw new ValidationError(
           `${model.label} takes at most ${limits.characters} reference photographs of people in ` +
@@ -233,6 +236,17 @@ export function createGeminiImageGen(
         )
       }
 
+      if (styles.length > limits.styles) {
+        throw new ValidationError(
+          limits.styles === 0
+            ? `${model.label} takes no style references. Route thumbnails at Gemini 3 Pro Image, ` +
+                `or switch the references off.`
+            : `${model.label} takes at most ${limits.styles} style references; this request ` +
+                `carries ${styles.length}.`,
+          { field: 'references' },
+        )
+      }
+
       // One clean sentence (decision 287): a prompt or list ending in a full
       // stop used to leave "..", the join the fold added on top of it.
       const trimmed = (text: string) => text.trim().replace(/[\s.]+$/, '')
@@ -241,7 +255,7 @@ export function createGeminiImageGen(
         : request.prompt
 
       const fetchImpl = options.fetchImpl ?? fetch
-      const ordered = [...characters, ...objects]
+      const ordered = [...characters, ...objects, ...styles]
 
       const one = async (): Promise<{ url: string; width: number; height: number }> => {
         let response: Response

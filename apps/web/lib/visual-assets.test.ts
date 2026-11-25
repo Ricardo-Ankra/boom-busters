@@ -280,6 +280,7 @@ describeDb('generateStillCandidates with the cast', () => {
         vi.spyOn(catalogue.google, 'referenceLimits').mockReturnValue({
           characters: 1,
           objects: 0,
+          styles: 0,
         })
         return catalogue
       })
@@ -1234,8 +1235,14 @@ describe('routeForBrief', () => {
 
 describe('referenceBudgets', () => {
   it('spends the app policy under a generous model and the model under a tight one', () => {
-    expect(referenceBudgets({ characters: 5, objects: 6 })).toEqual({ characters: 3, objects: 2 })
-    expect(referenceBudgets({ characters: 1, objects: 0 })).toEqual({ characters: 1, objects: 0 })
+    expect(referenceBudgets({ characters: 5, objects: 6, styles: 0 })).toEqual({
+      characters: 3,
+      objects: 2,
+    })
+    expect(referenceBudgets({ characters: 1, objects: 0, styles: 0 })).toEqual({
+      characters: 1,
+      objects: 0,
+    })
   })
 })
 
