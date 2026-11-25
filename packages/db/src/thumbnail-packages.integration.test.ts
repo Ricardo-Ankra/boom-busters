@@ -260,10 +260,10 @@ suite('thumbnail packages', () => {
   it('making an unapproved package the default leaves the keys alone', async () => {
     await withRecord(async (record) => {
       await seedRow(record.id, 0, { composedKey: 'k0.jpg', approvedAt: new Date() })
-      const second = await seedRow(record.id, 1, { composedKey: 'k1.jpg' })
+      const second = await seedRow(record.id, 1, { title: 'Other', composedKey: 'k1.jpg' })
       await db
         .update(publishRecords)
-        .set({ uploadedThumbKeys: ['k0.jpg'] })
+        .set({ uploadedThumbKeys: ['k0.jpg'], metadata: { title: 'Kept title' } })
         .where(eq(publishRecords.id, record.id))
 
       await makeDefaultPackage(db, record.id, second.id)
@@ -271,6 +271,108 @@ suite('thumbnail packages', () => {
       const rows = await listThumbnailPackages(db, record.id)
       expect(rows[0]?.id).toBe(second.id)
       expect(await storedKeys(record.id)).toEqual(['k0.jpg'])
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata['title']).toBe('Kept title')
+    })
+  })
+
+  it('the title follows the first approved package, not a failed one ahead of it', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, {
+        title: 'Failed title',
+        state: 'failed',
+        composedKey: null,
+        error: 'Painting failed',
+      })
+      await seedRow(record.id, 1, { title: 'Good title', composedKey: 'one.jpg' })
+
+      const result = await approvePackages(db, record.id)
+
+      expect(result).toEqual({ ok: true, keys: ['one.jpg'], title: 'Good title' })
+      expect(await storedKeys(record.id)).toEqual(['one.jpg'])
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata['title']).toBe('Good title')
+    })
+  })
+
+  it('approval keeps a stored key that had no row', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['legacy.png'] })
+        .where(eq(publishRecords.id, record.id))
+      await seedRow(record.id, 0, { composedKey: 'new.jpg' })
+
+      const result = await approvePackages(db, record.id)
+
+      expect(result.ok).toBe(true)
+      expect(await storedKeys(record.id)).toEqual(['new.jpg', 'legacy.png'])
+      const rows = await listThumbnailPackages(db, record.id)
+      expect(rows.find((r) => r.composedKey === 'legacy.png')?.source).toBe('uploaded')
+    })
+  })
+
+  it('making a package the default keeps a stored key that had no row', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['legacy.png'] })
+        .where(eq(publishRecords.id, record.id))
+      const generated = await seedRow(record.id, 0, {
+        composedKey: 'new.jpg',
+        approvedAt: new Date(),
+      })
+
+      await makeDefaultPackage(db, record.id, generated.id)
+
+      expect(await storedKeys(record.id)).toEqual(['new.jpg', 'legacy.png'])
+      const rows = await listThumbnailPackages(db, record.id)
+      expect(rows.map((r) => r.composedKey)).toEqual(['new.jpg', 'legacy.png'])
+    })
+  })
+
+  it('removing the approved default hands the title to the next approved package', async () => {
+    await withRecord(async (record) => {
+      const first = await seedRow(record.id, 0, {
+        title: 'First',
+        composedKey: 'k0.jpg',
+        approvedAt: new Date(),
+      })
+      await seedRow(record.id, 1, {
+        title: 'Second',
+        composedKey: 'k1.jpg',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['k0.jpg', 'k1.jpg'], metadata: { title: 'First' } })
+        .where(eq(publishRecords.id, record.id))
+
+      await removeThumbnailPackage(db, first.id)
+
+      expect(await storedKeys(record.id)).toEqual(['k1.jpg'])
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata['title']).toBe('Second')
+    })
+  })
+
+  it('removing the only approved package leaves the title alone', async () => {
+    await withRecord(async (record) => {
+      const only = await seedRow(record.id, 0, {
+        title: 'Only',
+        composedKey: 'k0.jpg',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['k0.jpg'], metadata: { title: 'Only' } })
+        .where(eq(publishRecords.id, record.id))
+
+      await removeThumbnailPackage(db, only.id)
+
+      expect(await storedKeys(record.id)).toEqual([])
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata['title']).toBe('Only')
     })
   })
 

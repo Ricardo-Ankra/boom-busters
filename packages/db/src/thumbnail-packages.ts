@@ -74,26 +74,41 @@ export async function ensureUploadedPackages(
   if (record.uploadedThumbKeys.length === 0) return
   await db.transaction(async (tx) => {
     await lockRecord(tx, record.id)
-    const held = new Set(
-      (await listThumbnailPackages(tx, record.id)).flatMap((row) =>
-        row.composedKey === null ? [] : [row.composedKey],
-      ),
-    )
-    const missing = record.uploadedThumbKeys.filter((key) => !held.has(key))
-    if (missing.length === 0) return
-    const first = await nextPosition(tx, record.id)
-    const approvedAt = new Date()
-    await tx.insert(thumbnailPackages).values(
-      missing.map((key, index) => ({
-        publishRecordId: record.id,
-        position: first + index,
-        source: 'uploaded' as const,
-        state: 'ready' as const,
-        composedKey: key,
-        approvedAt,
-      })),
-    )
+    await backfillStoredKeys(tx, record.id)
   })
+}
+
+/**
+ * The backfill itself, inside a transaction that already holds the record's
+ * lock: reads the stored keys fresh and adds a package for each no package
+ * holds. Every writer that rebuilds `uploaded_thumb_keys` from rows runs this
+ * first, so a key stored before the table existed is never dropped.
+ */
+async function backfillStoredKeys(tx: Tx, publishRecordId: string): Promise<void> {
+  const [record] = await tx
+    .select({ keys: publishRecords.uploadedThumbKeys })
+    .from(publishRecords)
+    .where(eq(publishRecords.id, publishRecordId))
+  if (!record || record.keys.length === 0) return
+  const held = new Set(
+    (await listThumbnailPackages(tx, publishRecordId)).flatMap((row) =>
+      row.composedKey === null ? [] : [row.composedKey],
+    ),
+  )
+  const missing = record.keys.filter((key) => !held.has(key))
+  if (missing.length === 0) return
+  const first = await nextPosition(tx, publishRecordId)
+  const approvedAt = new Date()
+  await tx.insert(thumbnailPackages).values(
+    missing.map((key, index) => ({
+      publishRecordId,
+      position: first + index,
+      source: 'uploaded' as const,
+      state: 'ready' as const,
+      composedKey: key,
+      approvedAt,
+    })),
+  )
 }
 
 /**
@@ -189,24 +204,27 @@ export async function addUploadedPackage(
 
 /**
  * Writes the approved packages' images to `uploaded_thumb_keys` in position
- * order and, when `withTitle`, the first package's title to `metadata.title`
- * (merged over the rest of the metadata, never replacing it).
+ * order and the first approved package's title to `metadata.title` (merged
+ * over the rest of the metadata, never replacing it). The first approved
+ * package with an image is the one whose image is `keys[0]`, the default the
+ * runner uploads, so the title always belongs to that picture. A blank title,
+ * or no approved package, leaves `metadata.title` alone. Callers hold the
+ * record's lock and have backfilled stored keys.
  */
 async function writeApprovedToRecord(
   tx: Tx,
   publishRecordId: string,
-  withTitle: boolean,
 ): Promise<{ keys: string[]; title: string | null }> {
-  const rows = await listThumbnailPackages(tx, publishRecordId)
-  const keys = rows.flatMap((row) =>
-    row.approvedAt !== null && row.composedKey !== null ? [row.composedKey] : [],
+  const approved = (await listThumbnailPackages(tx, publishRecordId)).filter(
+    (row) => row.approvedAt !== null && row.composedKey !== null,
   )
-  const title = rows[0]?.title.trim() ? rows[0].title : null
-  const setTitle = withTitle && title !== null
+  const keys = approved.flatMap((row) => (row.composedKey === null ? [] : [row.composedKey]))
+  const first = approved[0]
+  const title = first?.title.trim() ? first.title : null
   await tx
     .update(publishRecords)
     .set(
-      setTitle
+      title !== null
         ? {
             uploadedThumbKeys: keys,
             metadata: sql`${publishRecords.metadata} || ${JSON.stringify({ title })}::jsonb`,
@@ -214,10 +232,14 @@ async function writeApprovedToRecord(
         : { uploadedThumbKeys: keys },
     )
     .where(eq(publishRecords.id, publishRecordId))
-  return { keys, title: setTitle ? title : null }
+  return { keys, title }
 }
 
-/** That package becomes the first; the rest keep their order. */
+/**
+ * That package becomes the first; the rest keep their order. Only an approved
+ * package changes the upload: then the keys and the title follow the new first
+ * approved package. Making an unapproved one the default changes neither.
+ */
 export async function makeDefaultPackage(
   db: Database,
   publishRecordId: string,
@@ -225,6 +247,7 @@ export async function makeDefaultPackage(
 ): Promise<void> {
   await db.transaction(async (tx) => {
     await lockRecord(tx, publishRecordId)
+    await backfillStoredKeys(tx, publishRecordId)
     const rows = await listThumbnailPackages(tx, publishRecordId)
     const chosen = rows.find((row) => row.id === packageId)
     if (!chosen) return
@@ -234,14 +257,14 @@ export async function makeDefaultPackage(
         await tx.update(thumbnailPackages).set({ position }).where(eq(thumbnailPackages.id, row.id))
       }
     }
-    if (chosen.approvedAt !== null) await writeApprovedToRecord(tx, publishRecordId, true)
+    if (chosen.approvedAt !== null) await writeApprovedToRecord(tx, publishRecordId)
   })
 }
 
 /**
  * Approves every ready, composed package not yet approved, unless that would
  * leave more than three approved: then nothing changes and `over` says by how
- * many. The first package's title becomes the video's title.
+ * many. The first approved package's title becomes the video's title.
  */
 export async function approvePackages(
   db: Database,
@@ -249,6 +272,7 @@ export async function approvePackages(
 ): Promise<{ ok: true; keys: string[]; title: string | null } | { ok: false; over: number }> {
   return db.transaction(async (tx) => {
     await lockRecord(tx, publishRecordId)
+    await backfillStoredKeys(tx, publishRecordId)
     const rows = await listThumbnailPackages(tx, publishRecordId)
     const approvedCount = rows.filter((row) => row.approvedAt !== null).length
     const candidates = rows.filter(
@@ -268,14 +292,15 @@ export async function approvePackages(
           ),
         )
     }
-    const written = await writeApprovedToRecord(tx, publishRecordId, true)
+    const written = await writeApprovedToRecord(tx, publishRecordId)
     return { ok: true as const, ...written }
   })
 }
 
 /**
  * Deletes a package. When it was approved its image leaves
- * `uploaded_thumb_keys` too. `orphanedKeys` are its images, for the caller to
+ * `uploaded_thumb_keys` too, and the title follows the new first approved
+ * package (none left: the title stays). `orphanedKeys` are its images, for the caller to
  * remove from storage.
  */
 export async function removeThumbnailPackage(
@@ -286,18 +311,14 @@ export async function removeThumbnailPackage(
     const found = await getThumbnailPackage(tx, id)
     if (!found) return undefined
     await lockRecord(tx, found.publishRecordId)
+    await backfillStoredKeys(tx, found.publishRecordId)
     const [removed] = await tx
       .delete(thumbnailPackages)
       .where(eq(thumbnailPackages.id, id))
       .returning()
     if (!removed) return undefined
     if (removed.approvedAt !== null && removed.composedKey !== null) {
-      await tx
-        .update(publishRecords)
-        .set({
-          uploadedThumbKeys: sql`array_remove(${publishRecords.uploadedThumbKeys}, ${removed.composedKey})`,
-        })
-        .where(eq(publishRecords.id, removed.publishRecordId))
+      await writeApprovedToRecord(tx, removed.publishRecordId)
     }
     return {
       orphanedKeys: [removed.pictureKey, removed.composedKey].filter(
