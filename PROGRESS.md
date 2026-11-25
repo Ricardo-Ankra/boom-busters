@@ -12670,10 +12670,13 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      (h) The mark sits top left by default, never bottom right where YouTube
      draws the duration badge, at 8% of the frame height and 80% opacity
      (`THUMB_MARK_HEIGHT_RATIO`, `THUMB_MARK_ALPHA`), against the film
-     watermark's 3.5% and 60%. The owner is to check it at real size.
-     (i) `mergeSettings` now carries the channel's `thumbnails` section, and
-     the Thumbnails tab tells the settings form what it saved, so a later
-     Brand Kit save cannot write the old values back over it.
+     watermark's 3.5% and 60%. The owner is to check it at real size. Its
+     corner is `settings.thumbnails.markPlacement`, not a field of the brand
+     kit's look, because a compiled timeline snapshots the whole brand kit and
+     a thumbnail-only setting there would ride in every film's render contract.
+     (i) `mergeSettings` carries the channel's `thumbnails` section; the
+     Thumbnails tab writes only that section, so it cannot collide with the
+     Brand Kit's write of `look`.
      (j) The altered-content label counts an approved generated thumbnail that
      shows a cast member, for masters only, beside the film's own likenesses.
      YouTube's rule is written for the video and is silent on thumbnails;

@@ -251,9 +251,12 @@ The mark is the same file the film's watermark uses (`brandKit.look.logoR2Key`),
 with the same fallback to the typographic channel name when there is none. It
 differs from the film's in two ways, both because a thumbnail is seen small:
 
-- **Corner**: its own setting, `brandKit.look.thumbnailMarkPlacement`, default
+- **Corner**: its own setting, `settings.thumbnails.markPlacement`, default
   top left. The film's default is bottom right, which is where YouTube draws
-  the duration badge. `none` is allowed.
+  the duration badge. `none` is allowed. It is stored with the thumbnail
+  settings, not in the brand kit's look, because a compiled timeline snapshots
+  the whole brand kit, so a thumbnail-only setting kept there would ride in
+  every film's render contract.
 - **Size and weight**: 8% of the frame height at 80% opacity, against the
   film's 3.5% at 60%. This is my call for the owner to check at real size.
 
@@ -280,10 +283,10 @@ so results can change them:
 ### 7.6 The channel's thumbnail references
 
 A new part of the channel's settings, beside the logos, stored in the
-channel's settings as its own `thumbnails` section (the mark's corner sits in
-`brandKit.look` with the film's):
+channel's settings as its own `thumbnails` section:
 
-- a short style note in the owner's words;
+- a short style note in the owner's words, with the mark's corner stored beside
+  it;
 - up to six reference thumbnails, uploaded as files, each with a one-line note
   on what to take from it, and a switch for "in use". At most three in use,
   which is Pro's style limit.
