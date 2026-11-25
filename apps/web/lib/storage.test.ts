@@ -6,6 +6,9 @@ import {
   presignGet,
   storageConfigured,
   takeStorage,
+  thumbnailComposedKey,
+  thumbnailPictureKey,
+  thumbnailReferenceKey,
 } from './storage'
 
 /**
@@ -129,5 +132,19 @@ describe('cast photos (decision 253)', () => {
 describe('logo marks (decision 268)', () => {
   it('names a mark by its hash under the logos prefix', () => {
     expect(logoKey({ contentHash: 'abc', ext: 'png' })).toBe('boom-busters/logos/abc.png')
+  })
+})
+
+describe('thumbnail keys', () => {
+  it('names the picture, the composed image and a reference', () => {
+    expect(thumbnailPictureKey({ targetId: 't1', contentHash: 'abc', ext: 'png' })).toBe(
+      'boom-busters/thumbs/t1/art-abc.png',
+    )
+    expect(thumbnailComposedKey({ targetId: 't1', contentHash: 'abc' })).toBe(
+      'boom-busters/thumbs/t1/abc.jpg',
+    )
+    expect(thumbnailReferenceKey({ channelId: 'c1', contentHash: 'abc', ext: 'webp' })).toBe(
+      'boom-busters/thumb-refs/c1/abc.webp',
+    )
   })
 })

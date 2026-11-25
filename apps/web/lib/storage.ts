@@ -200,6 +200,29 @@ export function logoKey(input: { contentHash: string; ext: 'png' | 'webp' | 'jpg
   return `${R2_PREFIX}/logos/${input.contentHash}.${input.ext}`
 }
 
+/** The picture the image model painted for a thumbnail, before any type is set on it. */
+export function thumbnailPictureKey(input: {
+  targetId: string
+  contentHash: string
+  ext: string
+}): string {
+  return `${R2_PREFIX}/thumbs/${input.targetId}/art-${input.contentHash}.${input.ext}`
+}
+
+/** The composed thumbnail: the picture with its headline and the channel's mark. */
+export function thumbnailComposedKey(input: { targetId: string; contentHash: string }): string {
+  return `${R2_PREFIX}/thumbs/${input.targetId}/${input.contentHash}.jpg`
+}
+
+/** A style reference the owner kept for a channel's thumbnails. */
+export function thumbnailReferenceKey(input: {
+  channelId: string
+  contentHash: string
+  ext: string
+}): string {
+  return `${R2_PREFIX}/thumb-refs/${input.channelId}/${input.contentHash}.${input.ext}`
+}
+
 /**
  * Where ingested stock/archival bytes live. Content-hash keyed and
  * channel-wide like music: the same Pexels clip chosen in two projects is
