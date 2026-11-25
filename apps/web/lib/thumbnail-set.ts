@@ -110,6 +110,18 @@ export async function thumbnailSetEstimateUsd(channelId: string, images: number)
   return imageGenPrice(live, images, route.model, '2K')
 }
 
+/**
+ * The routed model's label when it takes no style references while the
+ * channel has some in use, so the Publish card can say they were left out.
+ * Null when they are used, or none are in use.
+ */
+export async function thumbnailStyleReferencesLeftOut(channelId: string): Promise<string | null> {
+  const { settings, route, live } = await thumbnailRoute(channelId)
+  if (!settings.thumbnails.references.some((reference) => reference.inUse)) return null
+  if (live.referenceLimits(route.model).styles > 0) return null
+  return live.models.find((model) => model.id === route.model)?.label ?? route.model
+}
+
 export type FilmStill = {
   slotId: string
   shows: string

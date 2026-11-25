@@ -257,6 +257,49 @@ describeDb('publishModel search brief fields', () => {
   })
 })
 
+describeDb('publishModel thumbnail packages', () => {
+  it('lists a master’s packages, brings a stored key in as an uploaded one, and gives a Short none', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, master.id, {
+      uploadedThumbKeys: ['boom-busters/thumbs/p/legacy.png'],
+      youtubeVideoId: 'abc123',
+      metadata: { thumbnailSetNote: 'Planned 1 of 3. Figure: no claim.' },
+    })
+    const shortRow = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items.find(
+      (item) => item.targetType === 'short',
+    )
+    if (shortRow) await ensurePublishRecord(db, 'short', shortRow.targetId)
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, {
+        presign: async (key) => `https://signed.example/${key}`,
+      })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.record?.packages).toMatchObject([
+        {
+          source: 'uploaded',
+          state: 'ready',
+          approved: true,
+          inFlight: false,
+          slotMisses: [],
+          url: 'https://signed.example/boom-busters/thumbs/p/legacy.png',
+        },
+      ])
+      expect(masterItem.record?.thumbnailSetNote).toBe('Planned 1 of 3. Figure: no claim.')
+      expect(masterItem.studioUrl).toBe('https://studio.youtube.com/video/abc123/edit')
+      for (const item of model.items.filter((i) => i.targetType === 'short')) {
+        expect(item.record?.packages ?? []).toEqual([])
+        expect(item.thumbnailSetCostUsd).toBeNull()
+        expect(item.studioUrl).toBeNull()
+        expect(item.styleReferencesLeftOut).toBeNull()
+      }
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+})
+
 describeDb('publishModel cohesion', () => {
   async function projectOn(keywords: string[], title: string) {
     const channel = await createChannel(db, {

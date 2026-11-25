@@ -48,6 +48,17 @@ vi.mock('./publish-actions', () => ({
   uploadThumbnail: (...args: unknown[]) => uploadThumbnail(...args),
 }))
 
+// The master's thumbnail set (its own component) calls these; the screen
+// tests never press them (thumbnail-set.test.tsx does).
+vi.mock('./thumbnail-actions', () => ({
+  approveThumbnailSet: vi.fn(),
+  generateThumbnailSet: vi.fn(),
+  makeDefaultThumbnail: vi.fn(),
+  regenerateThumbnailPicture: vi.fn(),
+  removeThumbnailPackageAction: vi.fn(),
+  saveThumbnailPackage: vi.fn(),
+}))
+
 // The related-link reminder on scheduled Short cards records the Studio act
 // through the Shorts screen's own action — same module, same bookkeeping.
 const setShortRelatedLink = vi.fn()
@@ -103,6 +114,9 @@ function masterItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel
     notReadyReason: null,
     syntheticLikenesses: [],
     cohesion: null,
+    thumbnailSetCostUsd: null,
+    studioUrl: null,
+    styleReferencesLeftOut: null,
     relatedLinkChecked: null,
     record: null,
     ...overrides,
@@ -119,6 +133,9 @@ function shortItem(overrides: Partial<PublishItemModel> = {}): PublishItemModel 
     notReadyReason: null,
     syntheticLikenesses: [],
     cohesion: null,
+    thumbnailSetCostUsd: null,
+    studioUrl: null,
+    styleReferencesLeftOut: null,
     relatedLinkChecked: false,
     record: null,
     ...overrides,
@@ -317,6 +334,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -373,6 +394,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -414,6 +439,19 @@ describe('PublishScreen', () => {
     expect((formData.get('file') as File).name).toBe('thumb.png')
   })
 
+  it('a master shows the thumbnail set in place of the strip; a Short keeps the plain strip', () => {
+    const { unmount } = renderScreen()
+    expect(screen.getByText('Thumbnails and titles')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Generate a set/ })).toBeInTheDocument()
+    expect(screen.queryByText('Set via the API')).not.toBeInTheDocument()
+    unmount()
+
+    renderScreen({ items: [shortItem()] })
+    expect(screen.queryByText('Thumbnails and titles')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Generate a set/ })).not.toBeInTheDocument()
+    expect(screen.getByText('No thumbnails stored yet.')).toBeInTheDocument()
+  })
+
   it('a Short gets the dropzone too, marked optional (decision 232)', async () => {
     const user = userEvent.setup()
     const { container } = renderScreen({ items: [shortItem()] })
@@ -434,8 +472,8 @@ describe('PublishScreen', () => {
     expect(formData.get('targetId')).toBe(SHORT)
   })
 
-  it('the strip reserves its space — an empty dropzone says so instead of shrinking', () => {
-    renderScreen()
+  it('a Short’s strip reserves its space — an empty dropzone says so instead of shrinking', () => {
+    renderScreen({ items: [shortItem()] })
     // The placeholder and the API note are ALWAYS on screen, so an upload
     // swaps pixels inside a fixed-height strip instead of lurching the
     // Schedule card below (the reported drastic shift, decision 232).
@@ -443,11 +481,11 @@ describe('PublishScreen', () => {
     expect(screen.getByText(/set up test & compare with the others/i)).toBeInTheDocument()
   })
 
-  it('marks the first thumbnail as the API one; removing names the target', async () => {
+  it('a Short marks the first thumbnail as the API one; removing names the target', async () => {
     const user = userEvent.setup()
     renderScreen({
       items: [
-        masterItem({
+        shortItem({
           record: {
             id: '01HQ00000000000000000000P1',
             status: 'draft',
@@ -472,6 +510,10 @@ describe('PublishScreen', () => {
               { key: 'boom-busters/thumbs/p/a.png', url: null },
               { key: 'boom-busters/thumbs/p/b.png', url: null },
             ],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -483,7 +525,7 @@ describe('PublishScreen', () => {
     expect(screen.queryByText('No thumbnails stored yet.')).not.toBeInTheDocument()
 
     await user.click(screen.getAllByRole('button', { name: /remove/i })[0]!)
-    expect(removeThumbnail).toHaveBeenCalledWith('master', PROJECT, 'boom-busters/thumbs/p/a.png')
+    expect(removeThumbnail).toHaveBeenCalledWith('short', SHORT, 'boom-busters/thumbs/p/a.png')
   })
 
   it('a scheduled item wears its chip and its public moment', () => {
@@ -512,6 +554,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -550,6 +596,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -690,6 +740,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -750,6 +804,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -793,6 +851,10 @@ describe('PublishScreen', () => {
             channelTags: [],
             channelTagsDropped: [],
             thumbs: [],
+            packages: [],
+            thumbnailSetNote: '',
+            testStartedAtIso: null,
+            testEndedAtIso: null,
           },
         }),
       ],
@@ -828,6 +890,10 @@ describe('the search description (decision 303)', () => {
     channelTags: [],
     channelTagsDropped: [],
     thumbs: [],
+    packages: [],
+    thumbnailSetNote: '',
+    testStartedAtIso: null,
+    testEndedAtIso: null,
     ...over,
   })
 
@@ -973,6 +1039,10 @@ describe('the search brief on the Publish screen', () => {
     channelTags: [],
     channelTagsDropped: [],
     thumbs: [],
+    packages: [],
+    thumbnailSetNote: '',
+    testStartedAtIso: null,
+    testEndedAtIso: null,
     ...over,
   })
 

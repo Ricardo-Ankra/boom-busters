@@ -1,6 +1,8 @@
 import {
   approvedTalkingPointSet,
   channelForProject,
+  ensureUploadedPackages,
+  listThumbnailPackages,
   countUploadsSince,
   dismissedTermKeys,
   getArticleSources,
@@ -27,8 +29,11 @@ import {
   DEFAULT_RESEARCH_THRESHOLDS,
   dropFixedParagraphs,
   matchTermDeterministic,
+  missingTitleSlots,
   nameMatches,
   normaliseArticleUrl,
+  PACKAGES_MAX,
+  packageInFlight,
   PublishDraftSchema,
   quotaDayStartUtc,
   researchKeywords,
@@ -48,7 +53,9 @@ import type {
   SearchBrief,
   SearchReport,
   TermBucket,
+  ThumbnailIdea,
   TitleSlot,
+  TitleSlotValues,
 } from '@boom-busters/schemas'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { z } from 'zod'
@@ -64,6 +71,31 @@ import { shortSlotsAfter } from './schedule-slots'
  * dossier's usable claims, the hook paragraph), the schedule slots from
  * settings, and where today's upload budget stands.
  */
+
+/** One thumbnail and its title, as the Publish card shows it. Masters only. */
+export interface ThumbnailPackageProp {
+  id: string
+  position: number
+  source: 'generated' | 'uploaded'
+  state: 'planned' | 'painting' | 'ready' | 'failed'
+  idea: ThumbnailIdea | null
+  angle: string
+  title: string
+  headline: string
+  textSide: 'left' | 'right'
+  depicts: string[]
+  warnings: string[]
+  error: string | null
+  approved: boolean
+  /** The composed picture, presigned; null when storage is not configured or there is none yet. */
+  url: string | null
+  result: 'won' | 'lost' | 'same' | 'inconclusive' | null
+  watchTimeShare: number | null
+  /** The format's required title slots this package's title lacks. */
+  slotMisses: TitleSlot[]
+  /** Decided on the server: a run may still be working on it (planned or painting, touched recently). */
+  inFlight: boolean
+}
 
 export interface PublishRecordProp {
   id: string
@@ -96,6 +128,12 @@ export interface PublishRecordProp {
   /** The channel tags left out to keep the list inside YouTube's limit. */
   channelTagsDropped: string[]
   thumbs: { key: string; url: string | null }[]
+  /** A master's thumbnail and title packages, in position order; empty for a Short. */
+  packages: ThumbnailPackageProp[]
+  /** The last set run's sentence; empty when it went cleanly. */
+  thumbnailSetNote: string
+  testStartedAtIso: string | null
+  testEndedAtIso: string | null
 }
 
 export interface PublishItemModel {
@@ -131,6 +169,19 @@ export interface PublishItemModel {
    * copy. Information only. Null for a Short.
    */
   cohesion: CohesionReport | null
+  /**
+   * What generating a set for the free places costs on the routed image
+   * model. Master only; null for a Short, when no place is free, or when the
+   * price could not be read.
+   */
+  thumbnailSetCostUsd: number | null
+  /** The video's page in Studio, once it has a video id; null before. */
+  studioUrl: string | null
+  /**
+   * The routed model's label when it takes no style references and the channel
+   * has some in use, so the card can say they were left out. Null otherwise.
+   */
+  styleReferencesLeftOut: string | null
   /**
    * The frozen brief's channel fit with what the panel needs to word it: the
    * case's pillar key and the bible's pillars. Master only; absent when the
@@ -526,6 +577,7 @@ function toRecordProp(
   row: PublishRecordRow,
   thumbs: { key: string; url: string | null }[],
   current: { hook: string; scriptVersion: number },
+  packages: ThumbnailPackageProp[] = [],
 ): PublishRecordProp {
   const draft = PublishDraftSchema.safeParse(row.metadata)
   const error = row.error as { message?: string } | null
@@ -557,6 +609,71 @@ function toRecordProp(
     channelTags: draft.success ? draft.data.channelTags : [],
     channelTagsDropped: draft.success ? draft.data.channelTagsDropped : [],
     thumbs,
+    packages,
+    thumbnailSetNote: draft.success ? draft.data.thumbnailSetNote : '',
+    testStartedAtIso: row.testStartedAt?.toISOString() ?? null,
+    testEndedAtIso: row.testEndedAt?.toISOString() ?? null,
+  }
+}
+
+/** The master's packages as props: images presigned, slot misses and in-flight decided here. */
+async function packagePropsFor(
+  db: Database,
+  record: PublishRecordRow,
+  options: {
+    presign: ((key: string) => Promise<string>) | null
+    frame: { slots: readonly TitleSlot[]; values: TitleSlotValues } | null
+  },
+): Promise<ThumbnailPackageProp[]> {
+  await ensureUploadedPackages(db, record)
+  const rows = await listThumbnailPackages(db, record.id)
+  const now = new Date()
+  return Promise.all(
+    rows.map(async (row): Promise<ThumbnailPackageProp> => ({
+      id: row.id,
+      position: row.position,
+      source: row.source,
+      state: row.state,
+      idea: row.idea,
+      angle: row.angle,
+      title: row.title,
+      headline: row.headline,
+      textSide: row.textSide === 'right' ? 'right' : 'left',
+      depicts: row.depicts,
+      warnings: row.warnings,
+      error: row.error,
+      approved: row.approvedAt !== null,
+      url: row.composedKey && options.presign ? await options.presign(row.composedKey) : null,
+      result: row.result,
+      watchTimeShare: row.watchTimeShare,
+      slotMisses:
+        options.frame && row.title.trim() !== ''
+          ? missingTitleSlots(row.title, options.frame.slots, options.frame.values)
+          : [],
+      inFlight: packageInFlight(row, now),
+    })),
+  )
+}
+
+/**
+ * What the card needs from the routed image model: the price of the free
+ * places and whether the channel's style references go unused on it. Loaded
+ * lazily (the thumbnail runner's module is heavy and server-only); a failed
+ * read leaves the card without a figure instead of without a screen.
+ */
+async function thumbnailRouteFacts(
+  channelId: string,
+  places: number,
+): Promise<{ costUsd: number | null; styleLeftOut: string | null }> {
+  try {
+    const { thumbnailSetEstimateUsd, thumbnailStyleReferencesLeftOut } =
+      await import('./thumbnail-set')
+    return {
+      costUsd: places > 0 ? await thumbnailSetEstimateUsd(channelId, places) : null,
+      styleLeftOut: await thumbnailStyleReferencesLeftOut(channelId),
+    }
+  } catch {
+    return { costUsd: null, styleLeftOut: null }
   }
 }
 
@@ -625,7 +742,21 @@ export async function publishModel(
   // Everything below the fold runs while the items assemble (decision 237):
   // the card renders in one batch instead of one lookup per Short, and the
   // attribution and retention reads stop serialising behind the loop.
-  const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs] =
+  const masterThumbnails = async () => {
+    if (!masterRecord) return { packages: [], costUsd: null, styleLeftOut: null }
+    // The format's title frame, for the slots each package's title lacks.
+    const { titleFrameFor } = await import('./publish-grounding')
+    const frame = await titleFrameFor(projectId, project, channel)
+    const packages = await packagePropsFor(db, masterRecord, {
+      presign: options.presign,
+      frame: frame ? { slots: frame.slots, values: frame.values } : null,
+    })
+    const free = PACKAGES_MAX - packages.filter((pack) => pack.approved).length
+    const facts = await thumbnailRouteFacts(channel.channelId, free)
+    return { packages, ...facts }
+  }
+
+  const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs, masterSet] =
     await Promise.all([
       getRendersByIds(
         db,
@@ -641,6 +772,7 @@ export async function publishModel(
         ? firstSnapshotDateForVideo(db, masterRecord.youtubeVideoId)
         : Promise.resolve(null),
       masterRecord ? thumbsFor(masterRecord) : Promise.resolve([]),
+      masterThumbnails(),
     ])
 
   // The master's copy against the topic, the format and the pillar, from the
@@ -682,9 +814,16 @@ export async function publishModel(
           ? null
           : 'There is no finished master render yet.',
       relatedLinkChecked: null,
-      record: masterRecord ? toRecordProp(masterRecord, masterThumbs, current) : null,
+      record: masterRecord
+        ? toRecordProp(masterRecord, masterThumbs, current, masterSet.packages)
+        : null,
       syntheticLikenesses: likenesses,
       cohesion: masterCohesion(),
+      thumbnailSetCostUsd: masterSet.costUsd,
+      studioUrl: masterRecord?.youtubeVideoId
+        ? `https://studio.youtube.com/video/${masterRecord.youtubeVideoId}/edit`
+        : null,
+      styleReferencesLeftOut: masterSet.styleLeftOut,
       briefFit: project.searchBrief?.fit
         ? {
             fit: project.searchBrief.fit,
@@ -717,6 +856,9 @@ export async function publishModel(
       record: record ? toRecordProp(record, await thumbsFor(record), current) : null,
       syntheticLikenesses: likenesses,
       cohesion: null,
+      thumbnailSetCostUsd: null,
+      studioUrl: null,
+      styleReferencesLeftOut: null,
     })
   }
 
