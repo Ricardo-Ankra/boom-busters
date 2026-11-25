@@ -21,6 +21,7 @@ import {
   removeThumbnailPackage,
   replaceUnapprovedGenerated,
   swapApprovedKey,
+  syncApprovedToRecord,
   updateThumbnailPackage,
 } from './thumbnail-packages'
 
@@ -452,6 +453,31 @@ suite('thumbnail packages', () => {
       expect(added.position).toBe(1)
       expect(added.state).toBe('ready')
       expect(added.approvedAt).toBeNull()
+    })
+  })
+
+  it('a title edit on the first approved package reaches the record', async () => {
+    await withRecord(async (record) => {
+      const first = await seedRow(record.id, 0, {
+        title: 'Old title',
+        composedKey: 'k0.jpg',
+        approvedAt: new Date(),
+      })
+      await seedRow(record.id, 1, { composedKey: 'k1.jpg', approvedAt: new Date() })
+      await db
+        .update(publishRecords)
+        .set({
+          uploadedThumbKeys: ['k0.jpg', 'k1.jpg'],
+          metadata: { title: 'Old title', tags: ['keep'] },
+        })
+        .where(eq(publishRecords.id, record.id))
+
+      await updateThumbnailPackage(db, first.id, { title: 'New title' })
+      await syncApprovedToRecord(db, record.id)
+
+      const [row] = await db.select().from(publishRecords).where(eq(publishRecords.id, record.id))
+      expect(row!.metadata).toMatchObject({ title: 'New title', tags: ['keep'] })
+      expect(row!.uploadedThumbKeys).toEqual(['k0.jpg', 'k1.jpg'])
     })
   })
 

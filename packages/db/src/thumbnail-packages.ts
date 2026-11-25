@@ -236,6 +236,19 @@ async function writeApprovedToRecord(
 }
 
 /**
+ * Re-derives `uploaded_thumb_keys` and `metadata.title` from the approved
+ * packages, for a caller that changed a package's title in place. The same
+ * derivation approving runs, under the record's lock.
+ */
+export async function syncApprovedToRecord(db: Database, publishRecordId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockRecord(tx, publishRecordId)
+    await backfillStoredKeys(tx, publishRecordId)
+    await writeApprovedToRecord(tx, publishRecordId)
+  })
+}
+
+/**
  * That package becomes the first; the rest keep their order. Only an approved
  * package changes the upload: then the keys and the title follow the new first
  * approved package. Making an unapproved one the default changes neither.
