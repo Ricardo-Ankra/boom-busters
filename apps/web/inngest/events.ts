@@ -25,6 +25,7 @@ import {
   ShortsPointStudioRequestedSchema,
   TeaserRebuildRequestedSchema,
   TeaserShotsRequestedSchema,
+  ThumbnailSetRequestedSchema,
   VisualsFetchResumedSchema,
   VisualsPlanApprovedSchema,
   VisualsRebriefRequestedSchema,
@@ -139,6 +140,9 @@ export const events = {
     schema: TeaserShotsRequestedSchema,
   }),
   publishRequested: eventType('publish/requested', { schema: PublishRequestedSchema }),
+  thumbnailSetRequested: eventType('thumbnails/set.requested', {
+    schema: ThumbnailSetRequestedSchema,
+  }),
   renderSettled: eventType('render/settled', { schema: RenderSettledSchema }),
 
   analyticsRefreshRequested: eventType('analytics/refresh.requested', {
