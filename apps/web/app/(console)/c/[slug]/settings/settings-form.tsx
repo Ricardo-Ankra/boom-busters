@@ -398,6 +398,16 @@ export function SettingsForm({
               styleNote={initialSettings.thumbnails.styleNote}
               markPlacement={initialSettings.brandKit.look.thumbnailMarkPlacement}
               references={thumbnailReferences}
+              onStyleSaved={(saved) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  brandKit: {
+                    ...prev.brandKit,
+                    look: { ...prev.brandKit.look, thumbnailMarkPlacement: saved.markPlacement },
+                  },
+                  thumbnails: { ...prev.thumbnails, styleNote: saved.styleNote },
+                }))
+              }
             />
           </Lock>
         </TabsContent>

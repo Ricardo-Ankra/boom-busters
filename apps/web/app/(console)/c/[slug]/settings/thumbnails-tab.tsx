@@ -58,11 +58,14 @@ export function ThumbnailsTab({
   styleNote,
   markPlacement,
   references,
+  onStyleSaved,
 }: {
   slug: string
   styleNote: string
   markPlacement: MarkPlacement
   references: ThumbnailReferenceView[]
+  /** Called after the server accepted the style, so the form's own copy follows. */
+  onStyleSaved: (saved: { styleNote: string; markPlacement: MarkPlacement }) => void
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -151,6 +154,7 @@ export function ThumbnailsTab({
                   })
                   if (result.ok) {
                     setSavedStyle({ styleNote: noteDraft, markPlacement: cornerDraft })
+                    onStyleSaved({ styleNote: noteDraft, markPlacement: cornerDraft })
                   }
                   return result
                 }, 'Thumbnail style saved')
