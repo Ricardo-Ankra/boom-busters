@@ -25,11 +25,15 @@ import type {
   ExemplarPlan,
   GraphicCode,
   MotionMetrics,
+  PackageState,
   PairwiseOutcome,
+  PictureBrief,
   ReferenceFrames,
   ReferenceReading,
   TechniqueKey,
   TechniqueProposal,
+  TestResult,
+  ThumbnailIdea,
   SearchBrief,
   SearchReport,
   CaseResearchJob,
@@ -50,6 +54,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  real,
   text,
   timestamp,
   unique,
@@ -1570,6 +1575,12 @@ export const publishRecords = pgTable(
      */
     uploadStartedAt: timestamp('upload_started_at', { withTimezone: true }),
     error: jsonb('error').$type<Record<string, unknown>>(),
+    /** When the owner was reminded to start the manual thumbnail test. */
+    testReminderSentAt: timestamp('test_reminder_sent_at', { withTimezone: true }),
+    /** When the owner said the thumbnail test began. */
+    testStartedAt: timestamp('test_started_at', { withTimezone: true }),
+    /** When the owner said the thumbnail test ended. */
+    testEndedAt: timestamp('test_ended_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1582,6 +1593,53 @@ export const publishRecords = pgTable(
     unique('publish_records_target_key').on(t.targetType, t.targetId),
     index('publish_records_channel_idx').on(t.channelId),
   ],
+)
+
+/**
+ * A thumbnail and its title (generated thumbnails and title sets). A master's
+ * publish record holds at most three approved packages; approving writes their
+ * composed image keys into `publish_records.uploaded_thumb_keys`, which stays
+ * the only thing the upload runner reads.
+ */
+export const thumbnailPackages = pgTable(
+  'thumbnail_packages',
+  {
+    id: id(),
+    publishRecordId: text('publish_record_id')
+      .notNull()
+      .references(() => publishRecords.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    /** `generated` or `uploaded`. */
+    source: text('source').$type<'generated' | 'uploaded'>().notNull(),
+    state: text('state').$type<PackageState>().notNull().default('ready'),
+    idea: text('idea').$type<ThumbnailIdea>(),
+    angle: text('angle').notNull().default(''),
+    title: text('title').notNull().default(''),
+    headline: text('headline').notNull().default(''),
+    picture: jsonb('picture').$type<PictureBrief>(),
+    claimIds: text('claim_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    depicts: text('depicts')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    pictureKey: text('picture_key'),
+    composedKey: text('composed_key'),
+    textSide: text('text_side').notNull().default('left'),
+    warnings: jsonb('warnings')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<string[]>(),
+    error: text('error'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    result: text('result').$type<TestResult>(),
+    watchTimeShare: real('watch_time_share'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('thumbnail_packages_record_idx').on(t.publishRecordId)],
 )
 
 // ---------------------------------------------------------------------------
@@ -2001,6 +2059,7 @@ export type RenderRow = typeof renders.$inferSelect
 export type ShortRow = typeof shorts.$inferSelect
 export type TalkingPointSetRow = typeof talkingPointSets.$inferSelect
 export type PublishRecordRow = typeof publishRecords.$inferSelect
+export type ThumbnailPackageRow = typeof thumbnailPackages.$inferSelect
 export type ProviderCredentialRow = typeof providerCredentials.$inferSelect
 export type CostLedgerRow = typeof costLedger.$inferSelect
 export type RunRow = typeof runs.$inferSelect

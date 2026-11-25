@@ -393,6 +393,13 @@
       "when": 1794573539083,
       "tag": "0055_case_seed_keywords",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1795625292882,
+      "tag": "0056_thumbnail_packages",
+      "breakpoints": true
     }
   ]
 }
