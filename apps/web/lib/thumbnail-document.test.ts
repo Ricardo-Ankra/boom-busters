@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { TextBox } from './graphic-code/frames'
 import {
   SCRIM_ALPHA,
+  headlineBoxes,
   headlineFontPx,
   scrimContrast,
   thumbnailDocument,
@@ -175,5 +176,18 @@ describe('thumbnailWarnings', () => {
       thumbnailWarnings({ ...OK, boxes: [box({ x: 1500, y: 100, width: 100, height: 200 })] }),
     ).toEqual([])
     expect(thumbnailWarnings({ ...OK, boxes: [box({ x: 60, y: 900, height: 100 })] })).toEqual([])
+  })
+})
+
+describe('headlineBoxes', () => {
+  it("picks the headline's boxes when a wordmark follows", () => {
+    const lineOne = box({ node: 4, text: 'THE CRASH' })
+    const lineTwo = box({ node: 4, text: 'NOBODY SAW', y: 300 })
+    const wordmark = box({ node: 7, text: 'BOOM & BUSTERS', x: 77, y: 43, fontPx: 43 })
+    expect(headlineBoxes([lineOne, lineTwo, wordmark])).toEqual([lineOne, lineTwo])
+  })
+
+  it('returns none when there is no text', () => {
+    expect(headlineBoxes([])).toEqual([])
   })
 })

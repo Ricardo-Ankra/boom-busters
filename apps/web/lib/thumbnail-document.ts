@@ -139,6 +139,16 @@ export function thumbnailDocument(input: {
   ].join('')
 }
 
+/**
+ * The headline's boxes out of a page's text boxes: those of the first text
+ * node. The headline is the first text in the page; the wordmark, when there
+ * is one, comes after it and is not the headline's to answer for.
+ */
+export function headlineBoxes(boxes: readonly TextBox[]): TextBox[] {
+  const first = boxes[0]
+  return first === undefined ? [] : boxes.filter((candidate) => candidate.node === first.node)
+}
+
 /** What to tell the owner about a composed headline, in the console's own words. */
 export function thumbnailWarnings(input: {
   headline: string

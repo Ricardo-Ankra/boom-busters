@@ -2,6 +2,7 @@ import 'server-only'
 import { THUMB_HEIGHT, THUMB_JPEG_QUALITY, THUMB_WIDTH } from '@boom-busters/schemas'
 import { screenshotFrame } from './graphic-code/frames'
 import {
+  headlineBoxes,
   headlineFontPx,
   scrimContrast,
   thumbnailDocument,
@@ -21,14 +22,10 @@ export async function composeThumbnail(
     height: THUMB_HEIGHT,
     quality: THUMB_JPEG_QUALITY,
   })
-  // The headline is the first text in the page; the wordmark, when there is
-  // one, comes after it and is not the headline's to answer for.
-  const headlineNode = boxes[0]?.node
-  const headlineBoxes = boxes.filter((box) => box.node === headlineNode)
   const warnings = thumbnailWarnings({
     headline: input.headline,
     fontPx: headlineFontPx(input.headline),
-    boxes: headlineBoxes,
+    boxes: headlineBoxes(boxes),
     contrast: scrimContrast(input.brand.colors.textPrimary, input.brand.colors.background),
   })
   return { jpeg, warnings }
