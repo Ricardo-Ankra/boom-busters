@@ -255,6 +255,42 @@ describe('normaliseSettings and the direction route (decision 252)', () => {
   })
 })
 
+describe('merging the thumbnail settings', () => {
+  const ref = (id: string, inUse: boolean) => ({
+    id,
+    r2Key: `boom-busters/thumb-references/c/${id}.png`,
+    mimeType: 'image/png' as const,
+    note: '',
+    inUse,
+  })
+  const ids = [
+    '01JD0000000000000000000001',
+    '01JD0000000000000000000002',
+    '01JD0000000000000000000003',
+    '01JD0000000000000000000004',
+  ]
+
+  it('a thumbnails patch is merged, not dropped', () => {
+    const merged = mergeSettings(
+      DEFAULT_SETTINGS,
+      SettingsPatchSchema.parse({
+        thumbnails: { styleNote: 'Bold and plain', references: [ref(ids[0]!, true)] },
+      }),
+    )
+    expect(merged.thumbnails.styleNote).toBe('Bold and plain')
+    expect(merged.thumbnails.references).toHaveLength(1)
+  })
+
+  it('a patch with four references in use is refused at the merge', () => {
+    const patch = SettingsPatchSchema.parse({
+      thumbnails: { references: ids.map((id) => ref(id, true)) },
+    })
+    expect(() => mergeSettings(DEFAULT_SETTINGS, patch)).toThrow(
+      /At most three reference thumbnails can be in use\./,
+    )
+  })
+})
+
 describe('merging the VidIQ cap', () => {
   it('writes the cap from a patch and keeps it through a budget-only save', () => {
     const capped = mergeWorkspaceSettings(DEFAULT_WORKSPACE_SETTINGS, {
