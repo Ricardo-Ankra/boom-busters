@@ -6,6 +6,7 @@ import {
   DEFAULT_BIBLE_ROUTE,
   DEFAULT_CRITIC_ROUTE,
   DEFAULT_SET_SHEET_ROUTE,
+  DEFAULT_THUMBNAIL_ROUTE,
   DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
   WorkspaceSettingsSchema,
@@ -498,5 +499,42 @@ describe('BrandLookSchema chapterMarking', () => {
     expect(look.chapterMarking).toBe('cards')
     expect(BrandLookSchema.safeParse({ chapterMarking: 'off' }).success).toBe(false)
     expect(DEFAULT_SETTINGS.brandKit.look.chapterMarking).toBe('cards')
+  })
+})
+
+describe('thumbnail settings', () => {
+  it('reads a row stored before thumbnails as the defaults', () => {
+    const { thumbnails: _t, ...older } = DEFAULT_SETTINGS
+    const { thumbnails: _r, ...routing } = older.modelRouting
+    const { thumbnailMarkPlacement: _p, ...look } = older.brandKit.look
+    const parsed = SettingsSchema.parse({
+      ...older,
+      modelRouting: routing,
+      brandKit: { ...older.brandKit, look },
+    })
+    expect(parsed.thumbnails).toEqual({ styleNote: '', references: [] })
+    expect(parsed.modelRouting.thumbnails).toEqual(DEFAULT_THUMBNAIL_ROUTE)
+    expect(parsed.brandKit.look.thumbnailMarkPlacement).toBe('tl')
+  })
+
+  it('refuses a bottom right mark, where the duration badge sits', () => {
+    expect(BrandLookSchema.safeParse({ thumbnailMarkPlacement: 'br' }).success).toBe(false)
+  })
+
+  it('refuses four references in use', () => {
+    const ref = (n: number, inUse: boolean) => ({
+      id: `01HZX3K9Q8W2N5M7R4T6V8Y0A${n}`,
+      r2Key: `k${n}`,
+      mimeType: 'image/png' as const,
+      inUse,
+    })
+    const four = [1, 2, 3, 4].map((n) => ref(n, true))
+    expect(
+      SettingsSchema.safeParse({ ...DEFAULT_SETTINGS, thumbnails: { references: four } }).success,
+    ).toBe(false)
+    const three = [ref(1, true), ref(2, true), ref(3, true), ref(4, false)]
+    expect(
+      SettingsSchema.safeParse({ ...DEFAULT_SETTINGS, thumbnails: { references: three } }).success,
+    ).toBe(true)
   })
 })
