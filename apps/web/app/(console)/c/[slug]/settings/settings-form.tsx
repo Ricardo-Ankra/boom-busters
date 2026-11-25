@@ -396,18 +396,8 @@ export function SettingsForm({
             <ThumbnailsTab
               slug={channelSlug}
               styleNote={initialSettings.thumbnails.styleNote}
-              markPlacement={initialSettings.brandKit.look.thumbnailMarkPlacement}
+              markPlacement={initialSettings.thumbnails.markPlacement}
               references={thumbnailReferences}
-              onStyleSaved={(saved) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  brandKit: {
-                    ...prev.brandKit,
-                    look: { ...prev.brandKit.look, thumbnailMarkPlacement: saved.markPlacement },
-                  },
-                  thumbnails: { ...prev.thumbnails, styleNote: saved.styleNote },
-                }))
-              }
             />
           </Lock>
         </TabsContent>

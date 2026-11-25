@@ -27,8 +27,6 @@ const REFERENCES: ThumbnailReferenceView[] = [
   { id: '01JD0000000000000000000002', note: '', inUse: false, url: null },
 ]
 
-const onStyleSaved = vi.fn()
-
 function renderTab(
   references = REFERENCES,
   styleNote = 'Plain and loud',
@@ -40,7 +38,6 @@ function renderTab(
       styleNote={styleNote}
       markPlacement={markPlacement}
       references={references}
-      onStyleSaved={onStyleSaved}
     />,
   )
 }
@@ -138,35 +135,6 @@ describe('the Thumbnails tab', () => {
       styleNote: 'Calm',
       markPlacement: 'bl',
     })
-  })
-
-  it('tells the form what was saved', async () => {
-    renderTab()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Mark on thumbnails' }),
-      'bl',
-    )
-    await userEvent.clear(screen.getByRole('textbox', { name: 'Style note' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'Style note' }), 'Calm')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() =>
-      expect(onStyleSaved).toHaveBeenCalledWith({ styleNote: 'Calm', markPlacement: 'bl' }),
-    )
-  })
-
-  it('tells the form nothing when the save is refused', async () => {
-    actions.saveThumbnailStyle.mockResolvedValue({ ok: false, error: 'No.' })
-    renderTab()
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Mark on thumbnails' }),
-      'bl',
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(actions.saveThumbnailStyle).toHaveBeenCalled())
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'error' })),
-    )
-    expect(onStyleSaved).not.toHaveBeenCalled()
   })
 
   it('uploads a picture and stops at six references', async () => {

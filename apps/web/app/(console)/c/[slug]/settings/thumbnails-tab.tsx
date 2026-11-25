@@ -3,7 +3,7 @@
 import { ImagePlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { THUMB_REFERENCES_MAX } from '@boom-busters/schemas'
+import { THUMB_REFERENCES_MAX, type ThumbMarkPlacement } from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,8 +27,6 @@ import {
  * here copies a prop into state after the first render.
  */
 
-export type MarkPlacement = 'none' | 'tl' | 'tr' | 'bl'
-
 export interface ThumbnailReferenceView {
   id: string
   note: string
@@ -38,7 +36,7 @@ export interface ThumbnailReferenceView {
 }
 
 /** Bottom right is not offered: YouTube draws the duration there. */
-const CORNERS: { value: MarkPlacement; label: string }[] = [
+const CORNERS: { value: ThumbMarkPlacement; label: string }[] = [
   { value: 'tl', label: 'Top left' },
   { value: 'tr', label: 'Top right' },
   { value: 'bl', label: 'Bottom left' },
@@ -58,21 +56,18 @@ export function ThumbnailsTab({
   styleNote,
   markPlacement,
   references,
-  onStyleSaved,
 }: {
   slug: string
   styleNote: string
-  markPlacement: MarkPlacement
+  markPlacement: ThumbMarkPlacement
   references: ThumbnailReferenceView[]
-  /** Called after the server accepted the style, so the form's own copy follows. */
-  onStyleSaved: (saved: { styleNote: string; markPlacement: MarkPlacement }) => void
 }) {
   const router = useRouter()
   const { toast } = useToast()
   const fileRef = React.useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [noteDraft, setNoteDraft] = React.useState(styleNote)
-  const [cornerDraft, setCornerDraft] = React.useState<MarkPlacement>(markPlacement)
+  const [cornerDraft, setCornerDraft] = React.useState<ThumbMarkPlacement>(markPlacement)
   // What the server last accepted, so Save wakes only for a real change.
   const [savedStyle, setSavedStyle] = React.useState({ styleNote, markPlacement })
 
@@ -131,7 +126,7 @@ export function ThumbnailsTab({
               id="thumbnail-mark-corner"
               value={cornerDraft}
               className="sm:w-48"
-              onChange={(event) => setCornerDraft(event.target.value as MarkPlacement)}
+              onChange={(event) => setCornerDraft(event.target.value as ThumbMarkPlacement)}
             >
               {CORNERS.map((corner) => (
                 <option key={corner.value} value={corner.value}>
@@ -154,7 +149,6 @@ export function ThumbnailsTab({
                   })
                   if (result.ok) {
                     setSavedStyle({ styleNote: noteDraft, markPlacement: cornerDraft })
-                    onStyleSaved({ styleNote: noteDraft, markPlacement: cornerDraft })
                   }
                   return result
                 }, 'Thumbnail style saved')

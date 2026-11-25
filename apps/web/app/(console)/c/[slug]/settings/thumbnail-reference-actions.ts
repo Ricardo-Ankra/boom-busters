@@ -18,6 +18,7 @@ import {
   newId,
   SettingsPatchSchema,
   THUMB_REFERENCES_MAX,
+  type ThumbMarkPlacement,
   type ThumbnailReference,
 } from '@boom-busters/schemas'
 import { revalidatePath } from 'next/cache'
@@ -174,19 +175,14 @@ export async function removeThumbnailReference(slug: string, id: string): Promis
 
 export async function saveThumbnailStyle(
   slug: string,
-  input: { styleNote: string; markPlacement: 'none' | 'tl' | 'tr' | 'bl' },
+  input: { styleNote: string; markPlacement: ThumbMarkPlacement },
 ): Promise<ActionResult> {
   await requireOwner()
   const found = await writableChannel(slug)
   if ('refusal' in found) return found.refusal
 
-  // The merge is two levels deep: a brandKit patch carries the whole look.
-  const current = await getChannelSettings(db, found.id)
   const parsed = SettingsPatchSchema.safeParse({
-    brandKit: {
-      look: { ...current.brandKit.look, thumbnailMarkPlacement: input.markPlacement },
-    },
-    thumbnails: { styleNote: input.styleNote.trim() },
+    thumbnails: { styleNote: input.styleNote.trim(), markPlacement: input.markPlacement },
   })
   if (!parsed.success) {
     const first = parsed.error.issues[0]

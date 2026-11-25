@@ -281,6 +281,22 @@ describe('merging the thumbnail settings', () => {
     expect(merged.thumbnails.references).toHaveLength(1)
   })
 
+  it('a mark placement patch keeps the style note and the references', () => {
+    const current = mergeSettings(
+      DEFAULT_SETTINGS,
+      SettingsPatchSchema.parse({
+        thumbnails: { styleNote: 'Bold and plain', references: [ref(ids[0]!, true)] },
+      }),
+    )
+    const merged = mergeSettings(
+      current,
+      SettingsPatchSchema.parse({ thumbnails: { markPlacement: 'bl' } }),
+    )
+    expect(merged.thumbnails.markPlacement).toBe('bl')
+    expect(merged.thumbnails.styleNote).toBe('Bold and plain')
+    expect(merged.thumbnails.references).toHaveLength(1)
+  })
+
   it('a patch with four references in use is refused at the merge', () => {
     const patch = SettingsPatchSchema.parse({
       thumbnails: { references: ids.map((id) => ref(id, true)) },

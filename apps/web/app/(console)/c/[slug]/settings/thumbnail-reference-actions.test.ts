@@ -7,6 +7,7 @@ import {
   seed,
   updateChannelSettings,
 } from '@boom-busters/db'
+import type * as DbModule from '@boom-busters/db'
 import { FIRST_CHANNEL_ID, newId, type Settings } from '@boom-busters/schemas'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
@@ -30,6 +31,19 @@ const authMock = vi.hoisted(() => ({
 }))
 vi.mock('@/auth', () => authMock)
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
+// The real save, with its calls recorded so a test can read the patch it was given.
+const dbSpy = vi.hoisted(() => ({ patches: [] as unknown[] }))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof DbModule>()
+  return {
+    ...actual,
+    updateChannelSettings: (...args: Parameters<typeof actual.updateChannelSettings>) => {
+      dbSpy.patches.push(args[2])
+      return actual.updateChannelSettings(...args)
+    },
+  }
+})
 
 const storage = vi.hoisted(() => ({
   configured: true,
@@ -198,10 +212,6 @@ describeDb('thumbnail reference actions', () => {
   })
 
   it("saves the style note and the mark's corner", async () => {
-    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
-      brandKit: { look: { ...original.brandKit.look, watermarkPlacement: 'tr' } },
-    })
-
     expect(
       await saveThumbnailStyle(slug, { styleNote: ' Flat colour, one face ', markPlacement: 'bl' }),
     ).toEqual({
@@ -210,10 +220,23 @@ describeDb('thumbnail reference actions', () => {
 
     const saved = await current()
     expect(saved.thumbnails.styleNote).toBe('Flat colour, one face')
-    expect(saved.brandKit.look.thumbnailMarkPlacement).toBe('bl')
-    // The merge is two levels deep: the rest of the look must come through the save.
-    expect(saved.brandKit.look.watermarkPlacement).toBe('tr')
-    expect(saved.brandKit.look.logoR2Key).toBe(original.brandKit.look.logoR2Key)
+    expect(saved.thumbnails.markPlacement).toBe('bl')
+  })
+
+  it('saving the style sends no brandKit patch', async () => {
+    await updateChannelSettings(db, FIRST_CHANNEL_ID, {
+      brandKit: { look: { ...original.brandKit.look, watermarkPlacement: 'tr' } },
+    })
+    const before = await current()
+    dbSpy.patches = []
+
+    expect(await saveThumbnailStyle(slug, { styleNote: 'Calm', markPlacement: 'tr' })).toEqual({
+      ok: true,
+    })
+
+    expect(dbSpy.patches).toEqual([{ thumbnails: { styleNote: 'Calm', markPlacement: 'tr' } }])
+    expect('brandKit' in (dbSpy.patches[0] as object)).toBe(false)
+    expect((await current()).brandKit).toEqual(before.brandKit)
   })
 
   it('refuses a corner the player draws over, and an unknown channel', async () => {

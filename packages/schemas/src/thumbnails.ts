@@ -32,6 +32,10 @@ export const IDEA_LABELS: Record<ThumbnailIdea, string> = {
   contrast: 'Contrast',
 }
 
+/** Where the channel mark sits on a thumbnail; never bottom right, where the duration badge sits. */
+export const THUMB_MARK_PLACEMENTS = ['none', 'tl', 'tr', 'bl'] as const
+export type ThumbMarkPlacement = (typeof THUMB_MARK_PLACEMENTS)[number]
+
 export const PACKAGE_STATES = ['planned', 'painting', 'ready', 'failed'] as const
 export type PackageState = (typeof PACKAGE_STATES)[number]
 
@@ -84,6 +88,7 @@ export type ThumbnailReference = z.infer<typeof ThumbnailReferenceSchema>
 export const ThumbnailSettingsSchema = z
   .object({
     styleNote: z.string().trim().max(600).default(''),
+    markPlacement: z.enum(THUMB_MARK_PLACEMENTS).default('tl'),
     references: z.array(ThumbnailReferenceSchema).max(THUMB_REFERENCES_MAX).default([]),
   })
   .refine(

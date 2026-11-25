@@ -403,6 +403,7 @@ describeDb('thumbnail set (mock mode)', () => {
     it('sends style references only to a model that takes them', async () => {
       await setThumbnailSettings({
         styleNote: '',
+        markPlacement: 'tl',
         references: [
           {
             id: newId(),

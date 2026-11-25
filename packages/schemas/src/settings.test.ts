@@ -506,19 +506,35 @@ describe('thumbnail settings', () => {
   it('reads a row stored before thumbnails as the defaults', () => {
     const { thumbnails: _t, ...older } = DEFAULT_SETTINGS
     const { thumbnails: _r, ...routing } = older.modelRouting
-    const { thumbnailMarkPlacement: _p, ...look } = older.brandKit.look
-    const parsed = SettingsSchema.parse({
-      ...older,
-      modelRouting: routing,
-      brandKit: { ...older.brandKit, look },
-    })
-    expect(parsed.thumbnails).toEqual({ styleNote: '', references: [] })
+    const parsed = SettingsSchema.parse({ ...older, modelRouting: routing })
+    expect(parsed.thumbnails).toEqual({ styleNote: '', markPlacement: 'tl', references: [] })
     expect(parsed.modelRouting.thumbnails).toEqual(DEFAULT_THUMBNAIL_ROUTE)
-    expect(parsed.brandKit.look.thumbnailMarkPlacement).toBe('tl')
   })
 
   it('refuses a bottom right mark, where the duration badge sits', () => {
-    expect(BrandLookSchema.safeParse({ thumbnailMarkPlacement: 'br' }).success).toBe(false)
+    expect(
+      SettingsSchema.safeParse({
+        ...DEFAULT_SETTINGS,
+        thumbnails: { ...DEFAULT_SETTINGS.thumbnails, markPlacement: 'br' },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('drops the corner an earlier build stored in the brand look', () => {
+    const parsed = SettingsSchema.parse({
+      ...DEFAULT_SETTINGS,
+      brandKit: {
+        ...DEFAULT_SETTINGS.brandKit,
+        look: { ...DEFAULT_SETTINGS.brandKit.look, thumbnailMarkPlacement: 'bl' },
+      },
+    })
+    expect('thumbnailMarkPlacement' in parsed.brandKit.look).toBe(false)
+    expect(parsed.thumbnails.markPlacement).toBe('tl')
+  })
+
+  it('keeps the thumbnail corner out of the brand look', () => {
+    expect('thumbnailMarkPlacement' in BrandLookSchema.parse({})).toBe(false)
+    expect('thumbnailMarkPlacement' in DEFAULT_SETTINGS.brandKit.look).toBe(false)
   })
 
   it('refuses four references in use', () => {

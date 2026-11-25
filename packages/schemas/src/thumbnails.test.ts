@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  THUMB_MARK_PLACEMENTS,
   ThumbnailSetRequestedSchema,
+  ThumbnailSettingsSchema,
   figuresIn,
   headlineWords,
   packageInFlight,
@@ -41,6 +43,14 @@ function input(over: Partial<Parameters<typeof vetPlannedPackages>[0]> = {}) {
     ...over,
   }
 }
+
+describe('ThumbnailSettingsSchema markPlacement', () => {
+  it('defaults to the top left and offers no bottom right', () => {
+    expect(ThumbnailSettingsSchema.parse({}).markPlacement).toBe('tl')
+    expect(THUMB_MARK_PLACEMENTS).toEqual(['none', 'tl', 'tr', 'bl'])
+    expect(ThumbnailSettingsSchema.safeParse({ markPlacement: 'br' }).success).toBe(false)
+  })
+})
 
 describe('headlineWords', () => {
   it('counts headline words', () => {

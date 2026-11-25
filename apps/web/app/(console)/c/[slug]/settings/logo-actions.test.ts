@@ -82,7 +82,6 @@ describeDb('logo actions', () => {
         look: {
           logoR2Key: null,
           watermarkPlacement: 'br',
-          thumbnailMarkPlacement: 'tl',
           grainPreset: 'subtle',
           lowerThirdVariant: 'bar',
           chapterCardVariant: 'full',

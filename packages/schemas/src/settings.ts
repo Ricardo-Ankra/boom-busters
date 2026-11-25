@@ -451,8 +451,6 @@ export type GradePreset = (typeof GRADE_PRESETS)[number]
 export const BrandLookSchema = z.object({
   logoR2Key: z.string().nullable().default(null),
   watermarkPlacement: z.enum(['none', 'tl', 'tr', 'bl', 'br']).default('br'),
-  /** The channel mark on a thumbnail; never bottom right, where the duration badge sits. */
-  thumbnailMarkPlacement: z.enum(['none', 'tl', 'tr', 'bl']).default('tl'),
   grainPreset: z.enum(['none', 'subtle', 'film', 'heavy']).default('subtle'),
   gradePreset: z.enum(GRADE_PRESETS).optional(),
   lowerThirdVariant: z.enum(['bar', 'stack', 'minimal']).default('bar'),
@@ -808,7 +806,6 @@ export const DEFAULT_SETTINGS: Settings = {
     look: {
       logoR2Key: null,
       watermarkPlacement: 'br',
-      thumbnailMarkPlacement: 'tl',
       grainPreset: 'subtle',
       gradePreset: 'muted',
       lowerThirdVariant: 'bar',
@@ -824,7 +821,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   features: { heroSlots: false, graphicReview: true },
   motion: DEFAULT_MOTION_IDENTITY,
-  thumbnails: { styleNote: '', references: [] },
+  thumbnails: { styleNote: '', markPlacement: 'tl', references: [] },
 }
 
 /**

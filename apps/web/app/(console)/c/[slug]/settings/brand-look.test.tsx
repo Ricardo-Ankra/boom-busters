@@ -57,12 +57,11 @@ vi.mock('./motion-actions', () => ({
   archiveReferenceAction: vi.fn(),
   draftMotionIdentityAction: vi.fn(),
 }))
-const saveThumbnailStyle = vi.fn()
 vi.mock('./thumbnail-reference-actions', () => ({
   uploadThumbnailReference: vi.fn(),
   saveThumbnailReference: vi.fn(),
   removeThumbnailReference: vi.fn(),
-  saveThumbnailStyle: (...args: unknown[]) => saveThumbnailStyle(...args),
+  saveThumbnailStyle: vi.fn(),
 }))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
@@ -108,7 +107,6 @@ function modelOptions() {
 beforeEach(() => {
   vi.clearAllMocks()
   saveSettings.mockResolvedValue({ ok: true })
-  saveThumbnailStyle.mockResolvedValue({ ok: true })
 })
 
 async function openBrandKitTab(): Promise<void> {
@@ -161,35 +159,14 @@ describe('the Photographic look card (decision 287)', () => {
     )
   })
 
-  it('a Brand Kit change after a saved thumbnail corner keeps the corner', async () => {
+  it('a Brand Kit change carries no thumbnail setting', async () => {
     const user = userEvent.setup()
-    const initial = structuredClone(DEFAULT_SETTINGS)
-    initial.brandKit.look.thumbnailMarkPlacement = 'tl'
-    render(
-      <SettingsForm
-        channelId="01J00000000000000000000001"
-        channelSlug="first"
-        channel={FIXTURE_CHANNEL_VIEW}
-        initialSettings={initial}
-        modelOptions={modelOptions()}
-      />,
-    )
-    // The Thumbnails tab saves through its own action, not through the form's state.
-    await user.click(screen.getByRole('tab', { name: 'Thumbnails' }))
-    await user.selectOptions(screen.getByLabelText('Mark on thumbnails'), 'bl')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(saveThumbnailStyle).toHaveBeenCalledTimes(1)
-
-    await user.click(screen.getByRole('tab', { name: 'Brand Kit' }))
+    await openBrandKitTab()
     await user.selectOptions(screen.getByLabelText('Grade'), 'strong')
 
-    expect(saveSettings).toHaveBeenCalledWith(
-      '01J00000000000000000000001',
-      expect.objectContaining({
-        brandKit: expect.objectContaining({
-          look: expect.objectContaining({ gradePreset: 'strong', thumbnailMarkPlacement: 'bl' }),
-        }),
-      }),
-    )
+    const patch = saveSettings.mock.calls[0]![1]
+    expect(patch.brandKit?.look).toEqual(expect.objectContaining({ gradePreset: 'strong' }))
+    expect('thumbnailMarkPlacement' in patch.brandKit!.look!).toBe(false)
+    expect('thumbnails' in patch).toBe(false)
   })
 })
