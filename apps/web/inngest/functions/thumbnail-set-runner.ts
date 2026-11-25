@@ -3,7 +3,7 @@ import {
   getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
-  updatePublishRecord,
+  mergePublishMetadata,
   updateThumbnailPackage,
 } from '@boom-busters/db'
 import { parseEventData } from '@boom-busters/schemas'
@@ -59,11 +59,8 @@ export const thumbnailSetRunner = inngest.createFunction(
       const current = await getPublishRecord(db, 'master', targetId)
       const note = (current?.metadata as Record<string, unknown> | undefined)?.['thumbnailSetNote']
       if (current && (note === undefined || note === '')) {
-        await updatePublishRecord(db, current.id, {
-          metadata: {
-            ...current.metadata,
-            thumbnailSetNote: `The set could not be made: ${message}`.slice(0, 500),
-          },
+        await mergePublishMetadata(db, current.id, {
+          thumbnailSetNote: `The set could not be made: ${message}`.slice(0, 500),
         })
       }
     },

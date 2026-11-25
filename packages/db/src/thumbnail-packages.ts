@@ -1,6 +1,6 @@
 import { PACKAGES_MAX, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
 import type { PlannedPackage, TestResult, ThumbnailIdea } from '@boom-busters/schemas'
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { projects, publishRecords, thumbnailPackages } from './schema'
 import type { PublishRecordRow, ThumbnailPackageRow } from './schema'
@@ -43,6 +43,25 @@ export async function getThumbnailPackage(
 ): Promise<ThumbnailPackageRow | undefined> {
   const [row] = await db.select().from(thumbnailPackages).where(eq(thumbnailPackages.id, id))
   return row
+}
+
+/**
+ * Merges a patch into the record's `metadata` in SQL (`metadata || patch`), so
+ * the owner's draft fields saved a moment ago are never overwritten by a stale
+ * read. Never read the metadata and write the whole object back.
+ */
+export async function mergePublishMetadata(
+  db: Executor,
+  publishRecordId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(publishRecords)
+    .set({
+      metadata: sql`${publishRecords.metadata} || ${JSON.stringify(patch)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(publishRecords.id, publishRecordId))
 }
 
 /** Serialise writers of one record's packages: the lock is held to the end of the transaction. */
@@ -549,14 +568,20 @@ export async function finishedTests(
   return totals
 }
 
+/** A video older than this is not reminded about: its first days, when a test is worth running, are gone. */
+export const TEST_REMINDER_MAX_AGE_DAYS = 14
+
 /**
- * Live masters whose test is ready to start: a video on YouTube, two or more
- * approved packages to compare, and no reminder sent yet.
+ * Live masters whose test is ready to start: a video on YouTube that went out
+ * within `TEST_REMINDER_MAX_AGE_DAYS` (by its publish time, else its upload
+ * start; a record with neither counts as recent), two or more approved
+ * packages to compare, no test already marked started and no reminder sent yet.
  */
 export async function recordsAwaitingTestReminder(
   db: Executor,
   channelId: string,
 ): Promise<{ id: string; targetId: string; youtubeVideoId: string }[]> {
+  const cutoff = new Date(Date.now() - TEST_REMINDER_MAX_AGE_DAYS * 24 * 60 * 60_000)
   const rows = await db
     .select({
       id: publishRecords.id,
@@ -570,7 +595,15 @@ export async function recordsAwaitingTestReminder(
         eq(publishRecords.targetType, 'master'),
         eq(publishRecords.status, 'live'),
         isNull(publishRecords.testReminderSentAt),
+        isNull(publishRecords.testStartedAt),
         isNotNull(publishRecords.youtubeVideoId),
+        or(
+          and(isNull(publishRecords.publishAt), isNull(publishRecords.uploadStartedAt)),
+          gte(
+            sql`coalesce(${publishRecords.publishAt}, ${publishRecords.uploadStartedAt})`,
+            cutoff.toISOString(),
+          ),
+        ),
         sql`(select count(*) from ${thumbnailPackages} where ${thumbnailPackages.publishRecordId} = ${publishRecords.id} and ${thumbnailPackages.approvedAt} is not null) >= 2`,
       ),
     )

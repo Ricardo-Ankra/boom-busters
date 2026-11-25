@@ -33,6 +33,11 @@ describe('whatHasWon', () => {
     )
   })
 
+  it('says nothing when five tests have winners but none carries an idea', () => {
+    const unlabelled = results.map((row) => ({ ...row, tests: 0, wins: 0 }))
+    expect(whatHasWon(unlabelled, 5)).toBeNull()
+  })
+
   it('has a singular test and leaves out ideas never tested', () => {
     const text = whatHasWon([{ idea: 'person', tests: 1, wins: 1 }, ...results.slice(3, 4)], 9)
     expect(text).toBe('Person: won 1 of 1 test.')

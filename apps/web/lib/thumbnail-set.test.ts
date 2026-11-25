@@ -17,7 +17,6 @@ import {
   setCastPhotos,
   thumbnailPackages,
   channels,
-  projects,
   publishRecords,
 } from '@boom-busters/db'
 import {
@@ -169,7 +168,6 @@ const image = { url: png, width: 2048, height: 1152 }
 
 describeDb('thumbnail set (mock mode)', () => {
   let recordId = ''
-  let originalTitle = ''
   let originalThumbnails: Awaited<ReturnType<typeof getChannelSettings>>['thumbnails']
 
   const setNote = async (note: string | undefined) => {
@@ -207,7 +205,6 @@ describeDb('thumbnail set (mock mode)', () => {
       scriptVersion: 1,
     })
     await seed(db)
-    originalTitle = (await getProject(db, FIXTURE_PROJECT_ID))!.title
     originalThumbnails = (await getChannelSettings(db, FIRST_CHANNEL_ID)).thumbnails
     const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
     recordId = record.id
@@ -227,10 +224,6 @@ describeDb('thumbnail set (mock mode)', () => {
     await setThumbnailSettings(originalThumbnails)
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
     await setNote(undefined)
-    await db
-      .update(projects)
-      .set({ title: originalTitle })
-      .where(eq(projects.id, FIXTURE_PROJECT_ID))
   })
 
   it("estimates three images at the routed model's 2K price", async () => {
@@ -333,10 +326,9 @@ describeDb('thumbnail set (mock mode)', () => {
 
     it('plans in mock mode on a project with no claims', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '1')
-      await db
-        .update(projects)
-        .set({ title: 'The 1.9 Billion Collapse' })
-        .where(eq(projects.id, FIXTURE_PROJECT_ID))
+      // The synthetic claim's text is the project's title, so a title with a
+      // figure is what lets a figure headline plan. The seeded fixture has one.
+      expect((await getProject(db, FIXTURE_PROJECT_ID))!.title).toMatch(/\d/)
       grounding.metadataGrounding.mockResolvedValue({
         claims: [],
         centralQuestion: undefined,

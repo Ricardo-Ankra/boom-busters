@@ -15,9 +15,9 @@ import {
   listCastMembers,
   listShotSlots,
   listThumbnailPackages,
+  mergePublishMetadata,
   publishRecords,
   replaceUnapprovedGenerated,
-  updatePublishRecord,
   swapApprovedKey,
   updateThumbnailPackage,
   visualCredentials,
@@ -111,18 +111,6 @@ async function thumbnailRoute(channelId: string) {
 export async function thumbnailSetEstimateUsd(channelId: string, images: number): Promise<number> {
   const { route, live } = await thumbnailRoute(channelId)
   return imageGenPrice(live, images, route.model, '2K')
-}
-
-/**
- * The routed model's label when it takes no style references while the
- * channel has some in use, so the Publish card can say they were left out.
- * Null when they are used, or none are in use.
- */
-export async function thumbnailStyleReferencesLeftOut(channelId: string): Promise<string | null> {
-  const { settings, route, live } = await thumbnailRoute(channelId)
-  if (!settings.thumbnails.references.some((reference) => reference.inUse)) return null
-  if (live.referenceLimits(route.model).styles > 0) return null
-  return live.models.find((model) => model.id === route.model)?.label ?? route.model
 }
 
 /**
@@ -326,14 +314,7 @@ export async function planThumbnailSet(input: {
 
 /** The run's words for the Publish card: merged over the draft in the record's metadata, never replacing it. */
 export async function writeSetNote(publishRecordId: string, note: string): Promise<void> {
-  const [record] = await db
-    .select({ metadata: publishRecords.metadata })
-    .from(publishRecords)
-    .where(eq(publishRecords.id, publishRecordId))
-  if (!record) return
-  await updatePublishRecord(db, publishRecordId, {
-    metadata: { ...record.metadata, thumbnailSetNote: note },
-  })
+  await mergePublishMetadata(db, publishRecordId, { thumbnailSetNote: note })
 }
 
 /** The master a record belongs to: its target is the project's id. Generated sets are for masters only. */

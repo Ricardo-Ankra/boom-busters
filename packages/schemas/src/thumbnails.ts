@@ -197,7 +197,7 @@ export function whatHasWon(
 ): string | null {
   if (withWinner < WINS_MIN_TESTS) return null
   const order = (idea: ThumbnailIdea) => THUMBNAIL_IDEAS.indexOf(idea)
-  return results
+  const text = results
     .filter((row) => row.tests > 0)
     .sort((a, b) => b.tests - a.tests || order(a.idea) - order(b.idea))
     .map(
@@ -205,6 +205,8 @@ export function whatHasWon(
         `${IDEA_LABELS[row.idea]}: won ${row.wins} of ${row.tests} ${row.tests === 1 ? 'test' : 'tests'}.`,
     )
     .join(' ')
+  // Winners recorded, but none on an idea (left unlabelled): nothing to tell.
+  return text === '' ? null : text
 }
 
 /** The planner's packages that survive every rule, cut to the free places. */

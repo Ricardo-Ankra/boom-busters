@@ -176,7 +176,13 @@ export async function addWinnerToReferences(packageId: string): Promise<ActionRe
   if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
   if (!storageConfigured()) return STORAGE_REFUSAL
 
-  const { bytes } = await getObjectBytes(pack.composedKey)
+  let bytes: Uint8Array
+  try {
+    bytes = (await getObjectBytes(pack.composedKey)).bytes
+  } catch (error) {
+    console.error('[thumbnails] the winning picture could not be read', error)
+    return { ok: false, error: "The winning thumbnail's picture could not be read." }
+  }
   return appendReference(channel.id, {
     bytes: Buffer.from(bytes),
     mimeType: 'image/jpeg',

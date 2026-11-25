@@ -18,6 +18,7 @@ import {
   getThumbnailPackage,
   ideaResults,
   listThumbnailPackages,
+  mergePublishMetadata,
   makeDefaultPackage,
   recordTestOutcome,
   recordsAwaitingTestReminder,
@@ -626,6 +627,67 @@ suite('thumbnail packages', () => {
       expect(await ids()).not.toContain(record.id)
     })
   })
+  it('does not remind for a test already marked started', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ status: 'live', youtubeVideoId: 'vid123', testStartedAt: new Date() })
+        .where(eq(publishRecords.id, record.id))
+      await seedRow(record.id, 0, { approvedAt: new Date() })
+      await seedRow(record.id, 1, { approvedAt: new Date() })
+
+      const ids = (await recordsAwaitingTestReminder(db, FIRST_CHANNEL_ID)).map((r) => r.id)
+      expect(ids).not.toContain(record.id)
+    })
+  })
+
+  it('does not remind for a video that went out more than fourteen days ago', async () => {
+    await withRecord(async (record) => {
+      const day = 24 * 60 * 60_000
+      await db
+        .update(publishRecords)
+        .set({
+          status: 'live',
+          youtubeVideoId: 'vid123',
+          publishAt: new Date(Date.now() - 15 * day),
+        })
+        .where(eq(publishRecords.id, record.id))
+      await seedRow(record.id, 0, { approvedAt: new Date() })
+      await seedRow(record.id, 1, { approvedAt: new Date() })
+      const ids = async () =>
+        (await recordsAwaitingTestReminder(db, FIRST_CHANNEL_ID)).map((r) => r.id)
+
+      expect(await ids()).not.toContain(record.id)
+
+      // With no publish time the upload start counts; a recent one is reminded.
+      await db
+        .update(publishRecords)
+        .set({ publishAt: null, uploadStartedAt: new Date(Date.now() - 2 * day) })
+        .where(eq(publishRecords.id, record.id))
+      expect(await ids()).toContain(record.id)
+
+      await db
+        .update(publishRecords)
+        .set({ uploadStartedAt: new Date(Date.now() - 20 * day) })
+        .where(eq(publishRecords.id, record.id))
+      expect(await ids()).not.toContain(record.id)
+    })
+  })
+
+  it('merges a metadata patch without replacing the rest', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ metadata: { title: 'Kept', tags: ['a'] } })
+        .where(eq(publishRecords.id, record.id))
+
+      await mergePublishMetadata(db, record.id, { thumbnailSetNote: 'Said' })
+
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata).toEqual({ title: 'Kept', tags: ['a'], thumbnailSetNote: 'Said' })
+    })
+  })
+
   it("records every approved package's result and the end stamp together", async () => {
     await withRecord(async (record) => {
       const a = await seedRow(record.id, 0, { approvedAt: new Date() })

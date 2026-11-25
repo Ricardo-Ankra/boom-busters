@@ -55,6 +55,7 @@ const storage = vi.hoisted(() => ({
   put: [] as { key: string; type: string }[],
   deleted: [] as string[],
   read: [] as string[],
+  readFails: false,
   bytes: new Uint8Array(Buffer.from('a winning thumbnail')),
 }))
 vi.mock('@/lib/storage', () => ({
@@ -63,6 +64,7 @@ vi.mock('@/lib/storage', () => ({
     `boom-busters/thumb-refs/${input.channelId}/${input.contentHash}.${input.ext}`,
   getObjectBytes: async (key: string) => {
     storage.read.push(key)
+    if (storage.readFails) throw new Error('NoSuchKey')
     return { bytes: storage.bytes, contentType: 'image/jpeg' }
   },
   putObject: async (key: string, _body: Buffer, type: string) => {
@@ -118,6 +120,7 @@ describeDb('thumbnail reference actions', () => {
     storage.put = []
     storage.deleted = []
     storage.read = []
+    storage.readFails = false
     await seed(db)
     original = await current()
     const first = (await listChannels(db)).find((channel) => channel.id === FIRST_CHANNEL_ID)
@@ -349,6 +352,17 @@ describeDb('thumbnail reference actions', () => {
       })
       expect(storage.put).toHaveLength(putBefore)
       expect((await current()).thumbnails.references).toHaveLength(6)
+    })
+
+    it('says so when the winning picture cannot be read', async () => {
+      const pack = await winner()
+      storage.readFails = true
+      expect(await addWinnerToReferences(pack.id)).toEqual({
+        ok: false,
+        error: "The winning thumbnail's picture could not be read.",
+      })
+      expect(storage.put).toEqual([])
+      expect((await current()).thumbnails.references).toEqual([])
     })
 
     it('says so when nothing can store the picture', async () => {
