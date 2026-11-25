@@ -4,18 +4,21 @@ import {
   approvePackages,
   ensurePublishRecord,
   ensureUploadedPackages,
+  getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
   makeDefaultPackage,
   publishRecords,
+  recordTestOutcome,
   removeThumbnailPackage,
   syncApprovedToRecord,
+  updatePublishRecord,
   updateThumbnailPackage,
   visualCredentials,
 } from '@boom-busters/db'
 import type { PublishRecordRow, ThumbnailPackageRow } from '@boom-busters/db'
 import { PACKAGES_MAX, THUMBNAIL_IDEAS, UlidSchema, packageInFlight } from '@boom-busters/schemas'
-import type { ThumbnailIdea } from '@boom-busters/schemas'
+import type { TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -293,6 +296,96 @@ export async function removeThumbnailPackageAction(packageId: string): Promise<A
   await deleteOrphans(removed.orphanedKeys)
 
   revalidatePath(`/projects/${loaded.projectId}`)
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Test & Compare (design 7.7 and 7.8). Not bound by the editable rule: these
+// exist for a record that is already on YouTube.
+// ---------------------------------------------------------------------------
+
+const TEST_NEEDS_VIDEO = 'A test needs the video on YouTube and at least two approved thumbnails.'
+const TEST_NOT_STARTED = 'Mark the test as started first.'
+const NOT_IN_TEST = 'That thumbnail is not part of this test.'
+const SHARE_RANGE = 'A watch time share is a percentage from 0 to 100.'
+
+/** The master record of a target, after the Short and unknown-project guards. */
+async function loadMasterRecord(
+  targetType: string,
+  targetId: string,
+): Promise<{ record: PublishRecordRow | undefined; projectId: string } | ActionResult> {
+  const invalid = parseTarget(targetType, targetId)
+  if (invalid) return invalid
+  if (targetType === 'short') return { ok: false, error: SHORT_REFUSAL }
+  const projectId = await projectIdOf('master', targetId)
+  if (!projectId) return { ok: false, error: 'Unknown target' }
+  return { record: await getPublishRecord(db, 'master', targetId), projectId }
+}
+
+export async function markTestStarted(targetType: string, targetId: string): Promise<ActionResult> {
+  await requireOwner()
+  const loaded = await loadMasterRecord(targetType, targetId)
+  if (!('projectId' in loaded)) return loaded
+  const { record, projectId } = loaded
+
+  const onYoutube =
+    record?.status === 'uploaded' || record?.status === 'scheduled' || record?.status === 'live'
+  const approved = record
+    ? (await listThumbnailPackages(db, record.id)).filter((row) => row.approvedAt !== null)
+    : []
+  if (!record || !onYoutube || approved.length < 2) {
+    return { ok: false, error: TEST_NEEDS_VIDEO }
+  }
+  // Pressing it twice leaves the first stamp.
+  if (record.testStartedAt) return { ok: true }
+
+  await updatePublishRecord(db, record.id, { testStartedAt: new Date() })
+
+  revalidatePath(`/projects/${projectId}`)
+  return { ok: true }
+}
+
+export async function recordTestResult(
+  targetType: string,
+  targetId: string,
+  input: {
+    outcome: { winner: string } | 'same' | 'inconclusive'
+    shares?: Record<string, number>
+  },
+): Promise<ActionResult> {
+  await requireOwner()
+  const loaded = await loadMasterRecord(targetType, targetId)
+  if (!('projectId' in loaded)) return loaded
+  const { record, projectId } = loaded
+  if (!record || !record.testStartedAt) return { ok: false, error: TEST_NOT_STARTED }
+
+  const approvedIds = (await listThumbnailPackages(db, record.id))
+    .filter((row) => row.approvedAt !== null)
+    .map((row) => row.id)
+
+  const results: Record<string, TestResult> = {}
+  if (input.outcome === 'same' || input.outcome === 'inconclusive') {
+    for (const id of approvedIds) results[id] = input.outcome
+  } else {
+    const winner = typeof input.outcome === 'object' ? input.outcome?.winner : undefined
+    if (typeof winner !== 'string' || !approvedIds.includes(winner)) {
+      return { ok: false, error: NOT_IN_TEST }
+    }
+    for (const id of approvedIds) results[id] = id === winner ? 'won' : 'lost'
+  }
+
+  const shares: Record<string, number | null> = {}
+  for (const [id, value] of Object.entries(input.shares ?? {})) {
+    if (!approvedIds.includes(id)) return { ok: false, error: NOT_IN_TEST }
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+      return { ok: false, error: SHARE_RANGE }
+    }
+    shares[id] = value
+  }
+
+  await recordTestOutcome(db, record.id, { results, shares, endedAt: new Date() })
+
+  revalidatePath(`/projects/${projectId}`)
   return { ok: true }
 }
 

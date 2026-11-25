@@ -132,6 +132,10 @@ export async function updatePublishRecord(
     error: Record<string, unknown> | null
     /** Stamped once the owner has been reminded to start the thumbnail test. */
     testReminderSentAt: Date | null
+    /** Stamped when the owner says the Studio test has started. */
+    testStartedAt: Date | null
+    /** Stamped when the owner records how it ended. */
+    testEndedAt: Date | null
   }>,
 ): Promise<void> {
   await db

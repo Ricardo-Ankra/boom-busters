@@ -1,5 +1,5 @@
 import { PACKAGES_MAX } from '@boom-busters/schemas'
-import type { PlannedPackage } from '@boom-busters/schemas'
+import type { PlannedPackage, TestResult } from '@boom-busters/schemas'
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { publishRecords, thumbnailPackages } from './schema'
@@ -382,6 +382,37 @@ export async function approvedDepicts(db: Executor, publishRecordId: string): Pr
       ),
     )
   return [...new Set(rows.flatMap((row) => row.depicts))]
+}
+
+/**
+ * What a finished Test & Compare wrote, all in one transaction: each given
+ * package's result, its watch time share (null when none was given) and the
+ * record's end stamp. The caller decides the results; this only writes.
+ */
+export async function recordTestOutcome(
+  db: Database,
+  publishRecordId: string,
+  input: {
+    results: Record<string, TestResult>
+    shares: Record<string, number | null>
+    endedAt: Date
+  },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockRecord(tx, publishRecordId)
+    for (const [id, result] of Object.entries(input.results)) {
+      await tx
+        .update(thumbnailPackages)
+        .set({ result, watchTimeShare: input.shares[id] ?? null })
+        .where(
+          and(eq(thumbnailPackages.id, id), eq(thumbnailPackages.publishRecordId, publishRecordId)),
+        )
+    }
+    await tx
+      .update(publishRecords)
+      .set({ testEndedAt: input.endedAt, updatedAt: new Date() })
+      .where(eq(publishRecords.id, publishRecordId))
+  })
 }
 
 /**

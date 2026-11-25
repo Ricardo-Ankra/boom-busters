@@ -23,7 +23,11 @@ const saveThumbnailPackage = vi.fn()
 const makeDefaultThumbnail = vi.fn()
 const removeThumbnailPackageAction = vi.fn()
 const approveThumbnailSet = vi.fn()
+const markTestStarted = vi.fn()
+const recordTestResult = vi.fn()
 vi.mock('./thumbnail-actions', () => ({
+  markTestStarted: (...args: unknown[]) => markTestStarted(...args),
+  recordTestResult: (...args: unknown[]) => recordTestResult(...args),
   generateThumbnailSet: (...args: unknown[]) => generateThumbnailSet(...args),
   regenerateThumbnailPicture: (...args: unknown[]) => regenerateThumbnailPicture(...args),
   saveThumbnailPackage: (...args: unknown[]) => saveThumbnailPackage(...args),
@@ -49,6 +53,8 @@ beforeEach(() => {
     makeDefaultThumbnail,
     removeThumbnailPackageAction,
     approveThumbnailSet,
+    markTestStarted,
+    recordTestResult,
   ]) {
     action.mockResolvedValue({ ok: true })
   }
@@ -580,7 +586,98 @@ describe('ThumbnailSet', () => {
       const studio = screen.getByRole('link', { name: 'Open this video in Studio' })
       expect(studio).toHaveAttribute('href', 'https://studio.youtube.com/video/abc123/edit')
       expect(studio).toHaveAttribute('target', '_blank')
-      expect(screen.queryByRole('button', { name: /started the test/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /started the test/i })).toBeInTheDocument()
+    })
+
+    describe('the test', () => {
+      const started = (over: Partial<PublishRecordProp> = {}) =>
+        item({
+          record: {
+            ...uploadedRecord('live'),
+            testStartedAtIso: '2026-11-20T10:00:00.000Z',
+            ...over,
+          },
+        })
+
+      it('offers the result buttons only after the test started', async () => {
+        const user = userEvent.setup()
+        const { rerender } = render(
+          <ThumbnailSet item={item({ record: uploadedRecord('live') })} busy={false} />,
+        )
+        expect(screen.queryByText('How did the test end?')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: '2 won' })).not.toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'I have started the test' }))
+        expect(markTestStarted).toHaveBeenCalledWith('master', PROJECT)
+
+        rerender(<ThumbnailSet item={started()} busy={false} />)
+        expect(screen.getByText('How did the test end?')).toBeInTheDocument()
+        for (const name of ['1 won', '2 won', '3 won', 'Performed the same', 'Inconclusive']) {
+          expect(screen.getByRole('button', { name })).toBeInTheDocument()
+        }
+        expect(screen.queryByRole('button', { name: 'I have started the test' })).toBeNull()
+        expect(screen.getAllByLabelText(/^Watch time share/)).toHaveLength(3)
+      })
+
+      it('says once that a running test blocks title and thumbnail changes', () => {
+        render(<ThumbnailSet item={started()} busy={false} />)
+        expect(screen.getAllByText(/A Test & Compare is running on this video\./)).toHaveLength(1)
+      })
+
+      it('sends the shares typed with the pressed result button', async () => {
+        const user = userEvent.setup()
+        render(<ThumbnailSet item={started()} busy={false} />)
+        await user.type(screen.getByLabelText('Watch time share, variant 1'), '40')
+        await user.type(screen.getByLabelText('Watch time share, variant 2'), '60')
+        await user.click(screen.getByRole('button', { name: '2 won' }))
+        expect(recordTestResult).toHaveBeenCalledWith('master', PROJECT, {
+          outcome: { winner: '01HQ00000000000000000000K2' },
+          shares: { '01HQ00000000000000000000K1': 40, '01HQ00000000000000000000K2': 60 },
+        })
+      })
+
+      it('sends no shares when none were typed', async () => {
+        const user = userEvent.setup()
+        render(<ThumbnailSet item={started()} busy={false} />)
+        await user.click(screen.getByRole('button', { name: 'Performed the same' }))
+        expect(recordTestResult).toHaveBeenCalledWith('master', PROJECT, {
+          outcome: 'same',
+          shares: {},
+        })
+      })
+
+      it('shows the recorded result in words with the shares, and a Change the result button', async () => {
+        const user = userEvent.setup()
+        const ended = started({
+          testEndedAtIso: '2026-11-24T10:00:00.000Z',
+          packages: uploadedRecord('live').packages.map((p, at) => ({
+            ...p,
+            result: at === 1 ? ('won' as const) : ('lost' as const),
+            watchTimeShare: at === 2 ? null : at === 1 ? 60 : 40,
+          })),
+        })
+        render(<ThumbnailSet item={ended} busy={false} />)
+        expect(screen.getByText('Variant 2 won.')).toBeInTheDocument()
+        expect(screen.getByText(/Variant 1: 40%/)).toBeInTheDocument()
+        expect(screen.getByText(/Variant 2: 60%/)).toBeInTheDocument()
+        expect(screen.queryByText(/A Test & Compare is running/)).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: '2 won' })).not.toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Change the result' }))
+        expect(screen.getByRole('button', { name: '2 won' })).toBeInTheDocument()
+      })
+
+      it('words a same and an inconclusive result without a winner', () => {
+        const base = (result: 'same' | 'inconclusive') =>
+          started({
+            testEndedAtIso: '2026-11-24T10:00:00.000Z',
+            packages: uploadedRecord('live').packages.map((p) => ({ ...p, result })),
+          })
+        const { rerender } = render(
+          <ThumbnailSet item={item({ record: base('same').record })} busy={false} />,
+        )
+        expect(screen.getByText('The variants performed the same.')).toBeInTheDocument()
+        rerender(<ThumbnailSet item={item({ record: base('inconclusive').record })} busy={false} />)
+        expect(screen.getByText('The test was inconclusive.')).toBeInTheDocument()
+      })
     })
 
     it('freezes the packages: no generate, approve or edit buttons', () => {

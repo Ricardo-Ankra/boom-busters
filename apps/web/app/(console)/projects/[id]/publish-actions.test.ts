@@ -1188,3 +1188,26 @@ describeDb('the search brief in titles, description and tags', () => {
     })
   })
 })
+
+describeDb('a Test & Compare that is running', () => {
+  beforeEach(async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+  })
+  afterEach(async () => {
+    await db.delete(publishRecords)
+  })
+
+  it('refuses a new schedule while a test runs', async () => {
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, { testStartedAt: new Date() })
+    const refusal = {
+      ok: false,
+      error:
+        'A Test & Compare is running on this video. YouTube stops the test if its title or thumbnail changes; record how it ended first.',
+    }
+    const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
+    expect(await schedulePublish('master', FIXTURE_PROJECT_ID, later)).toEqual(refusal)
+    expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual(refusal)
+  })
+})

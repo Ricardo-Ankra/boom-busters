@@ -68,6 +68,7 @@ import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
 import { metadataGrounding, titleFrameFor } from '@/lib/publish-grounding'
 import { pillarOf } from '@/lib/pillar'
+import { testRunningReason } from '@/lib/test-running'
 import { searchTags } from '@/lib/search-tags'
 import { unscoredDistinctTitles } from '@/lib/title-scores'
 import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
@@ -917,6 +918,19 @@ async function pointShortRefusal(
 }
 
 /**
+ * A video with a Test & Compare marked running takes no upload that would
+ * write its title or thumbnail: YouTube stops the test on that change.
+ */
+async function runningTestRefusal(
+  type: 'master' | 'short',
+  targetId: string,
+): Promise<ActionResult | null> {
+  const record = await getPublishRecord(db, type, targetId)
+  const reason = record ? testRunningReason(record) : null
+  return reason ? { ok: false, error: reason } : null
+}
+
+/**
  * The other half of the order: the long form may not be moved to, or past, a
  * moment a scheduled point Short already holds, nor unlinked while one does.
  * `publishAt` null is the unlink. Null result when the master is free to move.
@@ -966,6 +980,9 @@ export async function schedulePublish(
     (await masterMoveRefusal(type, projectId, publishAt))
   if (refused) return refused
 
+  const running = await runningTestRefusal(type, targetId)
+  if (running) return running
+
   return requestUpload(type, targetId, projectId, publishAt, 'private')
 }
 
@@ -987,6 +1004,9 @@ export async function publishNow(targetType: string, targetId: string): Promise<
 
   const refused = await pointShortRefusal(type, targetId, projectId, 'now')
   if (refused) return refused
+
+  const running = await runningTestRefusal(type, targetId)
+  if (running) return running
 
   const { settings } = await channelForProject(db, projectId)
   const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'

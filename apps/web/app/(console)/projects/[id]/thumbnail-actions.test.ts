@@ -4,6 +4,7 @@ import {
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getPublishRecord,
+  getThumbnailPackage,
   listThumbnailPackages,
   publishRecords,
   requireTestDatabase,
@@ -20,6 +21,8 @@ import {
   approveThumbnailSet,
   generateThumbnailSet,
   makeDefaultThumbnail,
+  markTestStarted,
+  recordTestResult,
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
   saveThumbnailPackage,
@@ -507,6 +510,150 @@ describeDb('the thumbnail actions', () => {
         .from(thumbnailPackages)
         .where(eq(thumbnailPackages.publishRecordId, id))
       expect(rows.map((row) => row.composedKey)).toEqual(['old-b.png'])
+    })
+  })
+})
+
+describeDb('the Test & Compare actions', () => {
+  const NOT_ON_YOUTUBE = 'A test needs the video on YouTube and at least two approved thumbnails.'
+
+  beforeEach(async () => {
+    vi.stubEnv('MOCK_PROVIDERS', '1')
+    await seed(db)
+    await db.delete(publishRecords)
+  })
+
+  afterEach(async () => {
+    vi.unstubAllEnvs()
+    await db.delete(publishRecords)
+  })
+
+  /** An uploaded record with approved packages; returns the record and package ids. */
+  async function liveRecord(approved = 3, status: 'uploaded' | 'scheduled' | 'live' = 'live') {
+    const id = await recordId()
+    await updatePublishRecord(db, id, { status, youtubeVideoId: 'vid-1' })
+    const ids: string[] = []
+    for (let position = 0; position < approved; position += 1) {
+      ids.push((await addPackage(id, position, { approvedAt: new Date() })).id)
+    }
+    return { id, ids }
+  }
+
+  const outcomes = async (id: string) =>
+    (await listThumbnailPackages(db, id)).map((row) => [row.result, row.watchTimeShare])
+
+  describe('markTestStarted', () => {
+    it('marks a test started only with two approved packages on an uploaded video', async () => {
+      const id = await recordId()
+      await addPackage(id, 0, { approvedAt: new Date() })
+      await addPackage(id, 1, { approvedAt: new Date() })
+      // Still a draft: not on YouTube.
+      expect(await markTestStarted('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: NOT_ON_YOUTUBE,
+      })
+      await updatePublishRecord(db, id, { status: 'uploaded' })
+      expect(await markTestStarted('short', FIXTURE_PROJECT_ID)).toMatchObject({ ok: false })
+      expect(await markTestStarted('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      const first = (await storedRecord()).testStartedAt
+      expect(first).not.toBeNull()
+      // Pressing it twice is harmless and keeps the first stamp.
+      expect(await markTestStarted('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      expect((await storedRecord()).testStartedAt).toEqual(first)
+    })
+
+    it('refuses with one approved package', async () => {
+      await liveRecord(1)
+      expect(await markTestStarted('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: NOT_ON_YOUTUBE,
+      })
+      expect((await storedRecord()).testStartedAt).toBeNull()
+    })
+  })
+
+  describe('recordTestResult', () => {
+    it('refuses a result before the test started', async () => {
+      const { ids } = await liveRecord()
+      expect(
+        await recordTestResult('master', FIXTURE_PROJECT_ID, { outcome: { winner: ids[1]! } }),
+      ).toEqual({ ok: false, error: 'Mark the test as started first.' })
+      expect((await storedRecord()).testEndedAt).toBeNull()
+    })
+
+    it('a winner marks the others lost', async () => {
+      const { id, ids } = await liveRecord()
+      const extra = await addPackage(id, 3, {}) // unapproved: takes no part
+      await markTestStarted('master', FIXTURE_PROJECT_ID)
+      expect(
+        await recordTestResult('master', FIXTURE_PROJECT_ID, {
+          outcome: { winner: ids[1]! },
+          shares: { [ids[0]!]: 30, [ids[1]!]: 70 },
+        }),
+      ).toEqual({ ok: true })
+      expect(await outcomes(id)).toEqual([
+        ['lost', 30],
+        ['won', 70],
+        ['lost', null],
+        [null, null],
+      ])
+      expect((await getThumbnailPackage(db, extra.id))!.result).toBeNull()
+      expect((await storedRecord()).testEndedAt).not.toBeNull()
+    })
+
+    it('the same and inconclusive are never recorded as wins or losses', async () => {
+      const { id } = await liveRecord()
+      await markTestStarted('master', FIXTURE_PROJECT_ID)
+      await recordTestResult('master', FIXTURE_PROJECT_ID, { outcome: 'same' })
+      expect(await outcomes(id)).toEqual([
+        ['same', null],
+        ['same', null],
+        ['same', null],
+      ])
+      // A correction overwrites the earlier answer.
+      await recordTestResult('master', FIXTURE_PROJECT_ID, { outcome: 'inconclusive' })
+      expect((await listThumbnailPackages(db, id)).map((row) => row.result)).toEqual([
+        'inconclusive',
+        'inconclusive',
+        'inconclusive',
+      ])
+    })
+
+    it('refuses a share above 100, a negative one and an unknown package', async () => {
+      const { id, ids } = await liveRecord()
+      await markTestStarted('master', FIXTURE_PROJECT_ID)
+      const refusal = { ok: false, error: 'A watch time share is a percentage from 0 to 100.' }
+      for (const value of [100.5, -1, Number.NaN]) {
+        expect(
+          await recordTestResult('master', FIXTURE_PROJECT_ID, {
+            outcome: 'same',
+            shares: { [ids[0]!]: value },
+          }),
+        ).toEqual(refusal)
+      }
+      expect(
+        await recordTestResult('master', FIXTURE_PROJECT_ID, {
+          outcome: 'same',
+          shares: { [MISSING_ID]: 10 },
+        }),
+      ).toMatchObject({ ok: false })
+      expect(await outcomes(id)).toEqual([
+        [null, null],
+        [null, null],
+        [null, null],
+      ])
+      expect((await storedRecord()).testEndedAt).toBeNull()
+    })
+
+    it('refuses a winner that is not an approved package of this record', async () => {
+      const { id } = await liveRecord()
+      const unapproved = await addPackage(id, 3, {})
+      await markTestStarted('master', FIXTURE_PROJECT_ID)
+      for (const winner of [MISSING_ID, unapproved.id]) {
+        expect(
+          await recordTestResult('master', FIXTURE_PROJECT_ID, { outcome: { winner } }),
+        ).toEqual({ ok: false, error: 'That thumbnail is not part of this test.' })
+      }
     })
   })
 })

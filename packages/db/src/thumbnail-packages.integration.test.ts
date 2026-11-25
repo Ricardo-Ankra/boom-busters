@@ -17,6 +17,7 @@ import {
   getThumbnailPackage,
   listThumbnailPackages,
   makeDefaultPackage,
+  recordTestOutcome,
   recordsAwaitingTestReminder,
   removeThumbnailPackage,
   replaceUnapprovedGenerated,
@@ -506,6 +507,32 @@ suite('thumbnail packages', () => {
         .set({ testReminderSentAt: new Date() })
         .where(eq(publishRecords.id, record.id))
       expect(await ids()).not.toContain(record.id)
+    })
+  })
+  it("records every approved package's result and the end stamp together", async () => {
+    await withRecord(async (record) => {
+      const a = await seedRow(record.id, 0, { approvedAt: new Date() })
+      const b = await seedRow(record.id, 1, { approvedAt: new Date() })
+      const stale = await seedRow(record.id, 2, { approvedAt: new Date(), result: 'won' })
+      const endedAt = new Date('2026-11-25T08:00:00Z')
+
+      await recordTestOutcome(db, record.id, {
+        results: { [a.id]: 'lost', [b.id]: 'won', [stale.id]: 'lost' },
+        shares: { [a.id]: 40.5, [b.id]: 59.5, [stale.id]: null },
+        endedAt,
+      })
+
+      const rows = await listThumbnailPackages(db, record.id)
+      expect(rows.map((r) => [r.result, r.watchTimeShare])).toEqual([
+        ['lost', 40.5],
+        ['won', 59.5],
+        ['lost', null],
+      ])
+      const [stored] = await db
+        .select()
+        .from(publishRecords)
+        .where(eq(publishRecords.id, record.id))
+      expect(stored!.testEndedAt).toEqual(endedAt)
     })
   })
 })

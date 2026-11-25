@@ -19,11 +19,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import type { PublishItemModel, ThumbnailPackageProp } from '@/lib/publish-review'
+import { testRunningReason } from '@/lib/test-running'
 import { useAction } from './project-controls'
 import {
   approveThumbnailSet,
   generateThumbnailSet,
   makeDefaultThumbnail,
+  markTestStarted,
+  recordTestResult,
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
   saveThumbnailPackage,
@@ -336,13 +339,197 @@ function PackageCard({
   )
 }
 
+/** The recorded result in words (design 7.8); the variant number is the one the panel shows. */
+function resultSentence(approved: ThumbnailPackageProp[]): string | null {
+  const won = approved.findIndex((pack) => pack.result === 'won')
+  if (won >= 0) return `Variant ${won + 1} won.`
+  if (approved[0]?.result === 'same') return 'The variants performed the same.'
+  if (approved[0]?.result === 'inconclusive') return 'The test was inconclusive.'
+  return null
+}
+
+/** Start and result of the Studio test: "I have started the test", then how it ended. */
+function TestPanel({
+  approved,
+  targetId,
+  startedAtIso,
+  endedAtIso,
+  act,
+  pressed,
+  locked,
+}: {
+  approved: ThumbnailPackageProp[]
+  targetId: string
+  startedAtIso: string | null
+  endedAtIso: string | null
+  act: ReturnType<typeof useAction>['act']
+  pressed: string | null
+  locked: boolean
+}) {
+  // Share fields keep local drafts, seeded from what was stored; never reset by an effect.
+  const [shares, setShares] = React.useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      approved.flatMap((pack) =>
+        pack.watchTimeShare === null ? [] : [[pack.id, String(pack.watchTimeShare)]],
+      ),
+    ),
+  )
+  const [changing, setChanging] = React.useState(false)
+
+  if (!startedAtIso) {
+    return (
+      <div>
+        <Button
+          variant="outline"
+          busy={pressed === 'test-started'}
+          disabled={locked}
+          onClick={() =>
+            void act(
+              () => markTestStarted('master', targetId),
+              'Test marked as started',
+              'test-started',
+            )
+          }
+        >
+          I have started the test
+        </Button>
+      </div>
+    )
+  }
+
+  const sentence = endedAtIso ? resultSentence(approved) : null
+  if (endedAtIso && !changing) {
+    const given = approved.flatMap((pack, at) =>
+      pack.watchTimeShare === null ? [] : [{ id: pack.id, n: at + 1, share: pack.watchTimeShare }],
+    )
+    return (
+      <div className="flex flex-col gap-1">
+        {sentence ? (
+          <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">{sentence}</p>
+        ) : null}
+        {given.length > 0 ? (
+          <ul className="flex flex-col gap-0.5 text-[12px] text-[var(--color-text-secondary)]">
+            {given.map((item) => (
+              <li key={item.id}>
+                Variant {item.n}: {item.share}%
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div>
+          <Button variant="outline" disabled={locked} onClick={() => setChanging(true)}>
+            Change the result
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const send = (outcome: { winner: string } | 'same' | 'inconclusive', press: string) => {
+    const typed: Record<string, number> = {}
+    for (const [id, text] of Object.entries(shares)) {
+      if (text.trim() !== '') typed[id] = Number(text)
+    }
+    void act(
+      () => recordTestResult('master', targetId, { outcome, shares: typed }),
+      'Result recorded',
+      press,
+    ).then((ok) => {
+      if (ok) setChanging(false)
+    })
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {!endedAtIso ? (
+        <p className="text-[12px] text-[var(--color-text-muted)]">
+          {testRunningReason({ testStartedAt: new Date(startedAtIso), testEndedAt: null })}
+        </p>
+      ) : null}
+      <h4 className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+        How did the test end?
+      </h4>
+      <div className="flex flex-wrap gap-2">
+        {approved.map((pack, at) => (
+          <Button
+            key={pack.id}
+            variant="outline"
+            busy={pressed === `won-${pack.id}`}
+            disabled={locked}
+            onClick={() => send({ winner: pack.id }, `won-${pack.id}`)}
+          >
+            {at + 1} won
+          </Button>
+        ))}
+        <Button
+          variant="outline"
+          busy={pressed === 'result-same'}
+          disabled={locked}
+          onClick={() => send('same', 'result-same')}
+        >
+          Performed the same
+        </Button>
+        <Button
+          variant="outline"
+          busy={pressed === 'result-inconclusive'}
+          disabled={locked}
+          onClick={() => send('inconclusive', 'result-inconclusive')}
+        >
+          Inconclusive
+        </Button>
+      </div>
+      <p className="text-[12px] text-[var(--color-text-secondary)]">Watch time share, optional</p>
+      <div className="flex flex-wrap gap-2">
+        {approved.map((pack, at) => (
+          <label
+            key={pack.id}
+            className="flex items-center gap-1 text-[12px] text-[var(--color-text-secondary)]"
+          >
+            <span aria-hidden>{at + 1}</span>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step="any"
+              aria-label={`Watch time share, variant ${at + 1}`}
+              className="w-24"
+              value={shares[pack.id] ?? ''}
+              onChange={(event) => setShares({ ...shares, [pack.id]: event.target.value })}
+            />
+            %
+          </label>
+        ))}
+      </div>
+      {endedAtIso ? (
+        <div>
+          <Button variant="outline" onClick={() => setChanging(false)}>
+            Keep the recorded result
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 /** After the upload: variant 1 is on the video, the others wait for a Studio test. */
 function HandOff({
   approved,
   studioUrl,
+  targetId,
+  startedAtIso,
+  endedAtIso,
+  act,
+  pressed,
+  locked,
 }: {
   approved: ThumbnailPackageProp[]
   studioUrl: string | null
+  targetId: string
+  startedAtIso: string | null
+  endedAtIso: string | null
+  act: ReturnType<typeof useAction>['act']
+  pressed: string | null
+  locked: boolean
 }) {
   const { toast } = useToast()
   const others = approved.slice(1)
@@ -404,6 +591,15 @@ function HandOff({
           </Button>
         </div>
       ) : null}
+      <TestPanel
+        approved={approved}
+        targetId={targetId}
+        startedAtIso={startedAtIso}
+        endedAtIso={endedAtIso}
+        act={act}
+        pressed={pressed}
+        locked={locked}
+      />
     </section>
   )
 }
@@ -529,7 +725,16 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
       ) : null}
 
       {showHandOff ? (
-        <HandOff approved={packages.filter((pack) => pack.approved)} studioUrl={item.studioUrl} />
+        <HandOff
+          approved={packages.filter((pack) => pack.approved)}
+          studioUrl={item.studioUrl}
+          targetId={item.targetId}
+          startedAtIso={record?.testStartedAtIso ?? null}
+          endedAtIso={record?.testEndedAtIso ?? null}
+          act={act}
+          pressed={pressed}
+          locked={working}
+        />
       ) : null}
     </div>
   )
