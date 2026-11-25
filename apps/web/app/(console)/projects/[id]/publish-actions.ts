@@ -5,20 +5,26 @@ import {
   ensurePublishRecord,
   getProject,
   earliestScheduledPointShort,
+  ensureUploadedPackages,
   getPublishRecord,
   getRender,
   getShort,
   hasLiveRun,
   latestRender,
   latestScriptParagraphSources,
+  listThumbnailPackages,
   listCastMembers,
+  addUploadedPackage,
   channelForProject,
   channelYoutubeConnected,
   channelYoutubeConnection,
   channelYoutubeToken,
   recordChannelYoutubeVerify,
+  removeThumbnailPackage,
   setProjectStage,
+  syncApprovedToRecord,
   updatePublishRecord,
+  updateThumbnailPackage,
   vidiqCredential,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
@@ -692,9 +698,19 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
   }
 
   await putObject(key, bytes, 'image/png')
-  await updatePublishRecord(db, record.id, {
-    uploadedThumbKeys: [...record.uploadedThumbKeys, key],
-  })
+  if (type === 'master') {
+    // A master's picture is a package too, approved by the act of uploading.
+    // Keys stored before the table existed get their rows first, so the new
+    // package takes its place after them.
+    await ensureUploadedPackages(db, record)
+    const added = await addUploadedPackage(db, record.id, key)
+    await updateThumbnailPackage(db, added.id, { approvedAt: new Date() })
+    await syncApprovedToRecord(db, record.id)
+  } else {
+    await updatePublishRecord(db, record.id, {
+      uploadedThumbKeys: [...record.uploadedThumbKeys, key],
+    })
+  }
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
@@ -719,14 +735,25 @@ export async function removeThumbnail(
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
 
-  await updatePublishRecord(db, record.id, {
-    uploadedThumbKeys: record.uploadedThumbKeys.filter((stored) => stored !== key),
-  })
-  try {
-    await deleteObject(key)
-  } catch {
-    // Bytes left behind cost fractions of a cent; the record no longer
-    // points at them, which is what mattered.
+  let orphaned = [key]
+  if (type === 'master') {
+    // The row holding this key goes, and with it any picture it kept.
+    await ensureUploadedPackages(db, record)
+    const held = (await listThumbnailPackages(db, record.id)).find((row) => row.composedKey === key)
+    const removed = held ? await removeThumbnailPackage(db, held.id) : undefined
+    if (removed) orphaned = removed.orphanedKeys
+  } else {
+    await updatePublishRecord(db, record.id, {
+      uploadedThumbKeys: record.uploadedThumbKeys.filter((stored) => stored !== key),
+    })
+  }
+  for (const orphan of orphaned) {
+    try {
+      await deleteObject(orphan)
+    } catch {
+      // Bytes left behind cost fractions of a cent; the record no longer
+      // points at them, which is what mattered.
+    }
   }
 
   revalidatePath(`/projects/${projectId}`)
