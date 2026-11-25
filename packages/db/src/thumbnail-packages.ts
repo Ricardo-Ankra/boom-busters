@@ -2,7 +2,7 @@ import { PACKAGES_MAX, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
 import type { PlannedPackage, TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { publishRecords, thumbnailPackages } from './schema'
+import { projects, publishRecords, thumbnailPackages } from './schema'
 import type { PublishRecordRow, ThumbnailPackageRow } from './schema'
 
 /**
@@ -54,6 +54,35 @@ async function lockRecord(tx: Tx, publishRecordId: string): Promise<void> {
     .for('update')
 }
 
+const UPLOADED_TITLE_MAX = 100
+
+/**
+ * The title a new uploaded package carries: the record's saved video title,
+ * else the project's working title (a master's `targetId` is its project id).
+ * With it, making an uploaded thumbnail the default again writes a title that
+ * belongs to it, and its hand-off never offers an empty one.
+ */
+async function titleForUploaded(tx: Tx, publishRecordId: string): Promise<string> {
+  const [record] = await tx
+    .select({
+      targetType: publishRecords.targetType,
+      targetId: publishRecords.targetId,
+      saved: sql<string | null>`${publishRecords.metadata}->>'title'`,
+    })
+    .from(publishRecords)
+    .where(eq(publishRecords.id, publishRecordId))
+  if (!record) return ''
+  let title = record.saved?.trim() ?? ''
+  if (title === '' && record.targetType === 'master') {
+    const [project] = await tx
+      .select({ title: projects.title })
+      .from(projects)
+      .where(eq(projects.id, record.targetId))
+    title = project?.title.trim() ?? ''
+  }
+  return title.slice(0, UPLOADED_TITLE_MAX)
+}
+
 async function nextPosition(tx: Tx, publishRecordId: string): Promise<number> {
   const [row] = await tx
     .select({ highest: sql<number | null>`max(${thumbnailPackages.position})` })
@@ -99,12 +128,14 @@ async function backfillStoredKeys(tx: Tx, publishRecordId: string): Promise<void
   if (missing.length === 0) return
   const first = await nextPosition(tx, publishRecordId)
   const approvedAt = new Date()
+  const title = await titleForUploaded(tx, publishRecordId)
   await tx.insert(thumbnailPackages).values(
     missing.map((key, index) => ({
       publishRecordId,
       position: first + index,
       source: 'uploaded' as const,
       state: 'ready' as const,
+      title,
       composedKey: key,
       approvedAt,
     })),
@@ -194,6 +225,7 @@ export async function addUploadedPackage(
         position: await nextPosition(tx, publishRecordId),
         source: 'uploaded',
         state: 'ready',
+        title: await titleForUploaded(tx, publishRecordId),
         composedKey: key,
       })
       .returning()
@@ -202,25 +234,35 @@ export async function addUploadedPackage(
   })
 }
 
+/** The package whose image is `keys[0]`: the first approved one with an image, in position order. */
+async function firstGoingUp(tx: Tx, publishRecordId: string): Promise<ThumbnailPackageRow | null> {
+  const rows = await listThumbnailPackages(tx, publishRecordId)
+  return rows.find((row) => row.approvedAt !== null && row.composedKey !== null) ?? null
+}
+
 /**
  * Writes the approved packages' images to `uploaded_thumb_keys` in position
- * order and the first approved package's title to `metadata.title` (merged
- * over the rest of the metadata, never replacing it). The first approved
- * package with an image is the one whose image is `keys[0]`, the default the
- * runner uploads, so the title always belongs to that picture. A blank title,
- * or no approved package, leaves `metadata.title` alone. Callers hold the
+ * order. `metadata.title` is written (merged over the rest of the metadata,
+ * never replacing it) only when the package that goes up CHANGED: the first
+ * approved package with an image is not the one it was before (`beforeId`,
+ * read under the same lock before the change), and its title is not blank.
+ * Otherwise the owner's saved title, hand-edited or not, stays. `forceTitle`
+ * is the explicit title edit of the package that is going up. Callers hold the
  * record's lock and have backfilled stored keys.
  */
 async function writeApprovedToRecord(
   tx: Tx,
   publishRecordId: string,
+  beforeId: string | null,
+  forceTitle = false,
 ): Promise<{ keys: string[]; title: string | null }> {
   const approved = (await listThumbnailPackages(tx, publishRecordId)).filter(
     (row) => row.approvedAt !== null && row.composedKey !== null,
   )
   const keys = approved.flatMap((row) => (row.composedKey === null ? [] : [row.composedKey]))
   const first = approved[0]
-  const title = first?.title.trim() ? first.title : null
+  const changed = (first?.id ?? null) !== beforeId || forceTitle
+  const title = changed && first?.title.trim() ? first.title : null
   await tx
     .update(publishRecords)
     .set(
@@ -236,15 +278,20 @@ async function writeApprovedToRecord(
 }
 
 /**
- * Re-derives `uploaded_thumb_keys` and `metadata.title` from the approved
- * packages, for a caller that changed a package's title in place. The same
- * derivation approving runs, under the record's lock.
+ * Re-derives `uploaded_thumb_keys` from the approved packages, for a caller
+ * that changed the approved set in place. The title is written only when
+ * `titleChanged` says the owner just edited the going-up package's title.
  */
-export async function syncApprovedToRecord(db: Database, publishRecordId: string): Promise<void> {
+export async function syncApprovedToRecord(
+  db: Database,
+  publishRecordId: string,
+  options: { titleChanged?: boolean } = {},
+): Promise<void> {
   await db.transaction(async (tx) => {
     await lockRecord(tx, publishRecordId)
     await backfillStoredKeys(tx, publishRecordId)
-    await writeApprovedToRecord(tx, publishRecordId)
+    const before = await firstGoingUp(tx, publishRecordId)
+    await writeApprovedToRecord(tx, publishRecordId, before?.id ?? null, options.titleChanged)
   })
 }
 
@@ -264,20 +311,23 @@ export async function makeDefaultPackage(
     const rows = await listThumbnailPackages(tx, publishRecordId)
     const chosen = rows.find((row) => row.id === packageId)
     if (!chosen) return
+    const before = await firstGoingUp(tx, publishRecordId)
     const ordered = [chosen, ...rows.filter((row) => row.id !== packageId)]
     for (const [position, row] of ordered.entries()) {
       if (row.position !== position) {
         await tx.update(thumbnailPackages).set({ position }).where(eq(thumbnailPackages.id, row.id))
       }
     }
-    if (chosen.approvedAt !== null) await writeApprovedToRecord(tx, publishRecordId)
+    if (chosen.approvedAt !== null) {
+      await writeApprovedToRecord(tx, publishRecordId, before?.id ?? null)
+    }
   })
 }
 
 /**
  * Approves every ready, composed package not yet approved, unless that would
  * leave more than three approved: then nothing changes and `over` says by how
- * many. The first approved package's title becomes the video's title.
+ * many. The video's title follows only when the first approved package changes.
  */
 export async function approvePackages(
   db: Database,
@@ -286,6 +336,7 @@ export async function approvePackages(
   return db.transaction(async (tx) => {
     await lockRecord(tx, publishRecordId)
     await backfillStoredKeys(tx, publishRecordId)
+    const before = await firstGoingUp(tx, publishRecordId)
     const rows = await listThumbnailPackages(tx, publishRecordId)
     const approvedCount = rows.filter((row) => row.approvedAt !== null).length
     const candidates = rows.filter(
@@ -305,7 +356,7 @@ export async function approvePackages(
           ),
         )
     }
-    const written = await writeApprovedToRecord(tx, publishRecordId)
+    const written = await writeApprovedToRecord(tx, publishRecordId, before?.id ?? null)
     return { ok: true as const, ...written }
   })
 }
@@ -325,13 +376,14 @@ export async function removeThumbnailPackage(
     if (!found) return undefined
     await lockRecord(tx, found.publishRecordId)
     await backfillStoredKeys(tx, found.publishRecordId)
+    const before = await firstGoingUp(tx, found.publishRecordId)
     const [removed] = await tx
       .delete(thumbnailPackages)
       .where(eq(thumbnailPackages.id, id))
       .returning()
     if (!removed) return undefined
     if (removed.approvedAt !== null && removed.composedKey !== null) {
-      await writeApprovedToRecord(tx, removed.publishRecordId)
+      await writeApprovedToRecord(tx, removed.publishRecordId, before?.id ?? null)
     }
     return {
       orphanedKeys: [removed.pictureKey, removed.composedKey].filter(

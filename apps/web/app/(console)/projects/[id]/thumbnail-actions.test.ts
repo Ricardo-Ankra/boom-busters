@@ -433,12 +433,27 @@ describeDb('the thumbnail actions', () => {
       expect((await storedRecord()).uploadedThumbKeys).toEqual(['composed-0.jpg'])
     })
 
-    it('approval replaces a saved title with the default’s', async () => {
+    it('approval leaves a saved title alone when the default does not change', async () => {
       const id = await recordId()
       await addPackage(id, 0, { title: 'The default', approvedAt: new Date() })
       await addPackage(id, 1)
       await updatePublishRecord(db, id, {
         uploadedThumbKeys: ['composed-0.jpg'],
+        metadata: { title: 'A draft title the owner typed', tags: ['keep'] },
+      })
+
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+
+      expect((await storedRecord()).metadata).toMatchObject({
+        title: 'A draft title the owner typed',
+        tags: ['keep'],
+      })
+    })
+
+    it('approval replaces a saved title with the title of a new default', async () => {
+      const id = await recordId()
+      await addPackage(id, 0, { title: 'The default' })
+      await updatePublishRecord(db, id, {
         metadata: { title: 'A draft title the owner typed', tags: ['keep'] },
       })
 
@@ -496,6 +511,26 @@ describeDb('the thumbnail actions', () => {
       expect(await listThumbnailPackages(db, record.id)).toEqual([])
       expect((await storedRecord()).uploadedThumbKeys).toEqual([])
       expect(storageSeam.deleteObject).toHaveBeenCalledWith(key)
+    })
+
+    it('uploading a third thumbnail leaves the saved title alone', async () => {
+      const id = await recordId()
+      await addPackage(id, 0, { title: 'A', composedKey: 'k0.jpg', approvedAt: new Date() })
+      await addPackage(id, 1, { title: 'B', composedKey: 'k1.jpg', approvedAt: new Date() })
+      await updatePublishRecord(db, id, {
+        uploadedThumbKeys: ['k0.jpg', 'k1.jpg'],
+        metadata: { title: 'A hand-edited' },
+      })
+      const form = new FormData()
+      form.set('targetType', 'master')
+      form.set('targetId', FIXTURE_PROJECT_ID)
+      form.set('file', new File([new Uint8Array(pngBytes(1280, 720))], 'thumb.png'))
+
+      expect(await uploadThumbnail(form)).toEqual({ ok: true })
+
+      const record = await storedRecord()
+      expect(record.uploadedThumbKeys).toHaveLength(3)
+      expect(record.metadata['title']).toBe('A hand-edited')
     })
 
     it('removing a key stored before the table existed backfills its row first', async () => {

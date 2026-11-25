@@ -421,6 +421,121 @@ suite('thumbnail packages', () => {
     })
   })
 
+  async function savedTitle(record: { targetId: string }): Promise<unknown> {
+    const stored = (await getPublishRecord(db, 'master', record.targetId))!
+    return stored.metadata['title']
+  }
+
+  it('approving a second package leaves a hand-edited title alone', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, { title: 'A', composedKey: 'k0.jpg' })
+      await approvePackages(db, record.id)
+      expect(await savedTitle(record)).toBe('A')
+      await db
+        .update(publishRecords)
+        .set({ metadata: { title: "A'" } })
+        .where(eq(publishRecords.id, record.id))
+      await seedRow(record.id, 1, { title: 'B', composedKey: 'k1.jpg' })
+      await addUploadedPackage(db, record.id, 'mine.png')
+
+      await approvePackages(db, record.id)
+      expect(await savedTitle(record)).toBe("A'")
+
+      await syncApprovedToRecord(db, record.id)
+      expect(await savedTitle(record)).toBe("A'")
+    })
+  })
+
+  it('removing a non-default package leaves the title alone', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, { title: 'A', composedKey: 'k0.jpg', approvedAt: new Date() })
+      const second = await seedRow(record.id, 1, {
+        title: 'B',
+        composedKey: 'k1.jpg',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['k0.jpg', 'k1.jpg'], metadata: { title: "A'" } })
+        .where(eq(publishRecords.id, record.id))
+
+      await removeThumbnailPackage(db, second.id)
+
+      expect(await storedKeys(record.id)).toEqual(['k0.jpg'])
+      expect(await savedTitle(record)).toBe("A'")
+    })
+  })
+
+  it('making another package the default writes its title', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, { title: 'A', composedKey: 'k0.jpg', approvedAt: new Date() })
+      const second = await seedRow(record.id, 1, {
+        title: 'B',
+        composedKey: 'k1.jpg',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['k0.jpg', 'k1.jpg'], metadata: { title: "A'" } })
+        .where(eq(publishRecords.id, record.id))
+
+      await makeDefaultPackage(db, record.id, second.id)
+
+      expect(await savedTitle(record)).toBe('B')
+    })
+  })
+
+  it('an uploaded package takes the saved title', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ metadata: { title: 'x'.repeat(130) } })
+        .where(eq(publishRecords.id, record.id))
+
+      const added = await addUploadedPackage(db, record.id, 'mine.png')
+
+      expect(added.title).toBe('x'.repeat(100))
+    })
+  })
+
+  it("a backfilled package takes the project's title when no title is saved", async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['legacy.png'] })
+        .where(eq(publishRecords.id, record.id))
+      const row = (await getPublishRecord(db, 'master', record.targetId))!
+
+      await ensureUploadedPackages(db, row)
+
+      const rows = await listThumbnailPackages(db, record.id)
+      expect(rows.map((r) => r.title)).toEqual(['On packages'])
+    })
+  })
+
+  it('making an uploaded package the default again restores its title', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['legacy.png'], metadata: { title: 'Canva title' } })
+        .where(eq(publishRecords.id, record.id))
+      const row = (await getPublishRecord(db, 'master', record.targetId))!
+      await ensureUploadedPackages(db, row)
+      const [uploaded] = await listThumbnailPackages(db, record.id)
+      const generated = await seedRow(record.id, 1, {
+        title: 'Generated title',
+        composedKey: 'g.jpg',
+        approvedAt: new Date(),
+      })
+
+      await makeDefaultPackage(db, record.id, generated.id)
+      expect(await savedTitle(record)).toBe('Generated title')
+
+      await makeDefaultPackage(db, record.id, uploaded!.id)
+      expect(await savedTitle(record)).toBe('Canva title')
+    })
+  })
+
   it('lists depicted names of approved generated packages only', async () => {
     await withRecord(async (record) => {
       await seedRow(record.id, 0, { depicts: ['Ada', 'Bo'], approvedAt: new Date() })
@@ -476,7 +591,7 @@ suite('thumbnail packages', () => {
         .where(eq(publishRecords.id, record.id))
 
       await updateThumbnailPackage(db, first.id, { title: 'New title' })
-      await syncApprovedToRecord(db, record.id)
+      await syncApprovedToRecord(db, record.id, { titleChanged: true })
 
       const [row] = await db.select().from(publishRecords).where(eq(publishRecords.id, record.id))
       expect(row!.metadata).toMatchObject({ title: 'New title', tags: ['keep'] })

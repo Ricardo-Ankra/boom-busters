@@ -261,7 +261,9 @@ export async function saveThumbnailPackage(
     const approved = (await listThumbnailPackages(db, record.id)).filter(
       (item) => item.approvedAt !== null && item.composedKey !== null,
     )
-    if (approved[0]?.id === packageId) await syncApprovedToRecord(db, record.id)
+    if (approved[0]?.id === packageId) {
+      await syncApprovedToRecord(db, record.id, { titleChanged: true })
+    }
   }
 
   if (retype && row.source === 'generated' && row.pictureKey !== null) {
