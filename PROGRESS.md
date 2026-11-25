@@ -5160,6 +5160,49 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 - [ ] Whole e2e suite in batches on a warm server and the database quiet
       (two shared-database interferences were seen on the way).
 
+## Generated thumbnails and title sets (2026-11-24 to 2026-11-25)
+
+> A master's Publish card plans up to three packages, a thumbnail and its
+> title each on a different idea, paints the pictures, sets the headline and
+> the channel mark on them, and hands the approved set to YouTube Studio for a
+> Test & Compare. Branch `worktree-generated-thumbnails`, decision 484. Spec
+> `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md`,
+> plan `docs/superpowers/plans/2026-11-25-generated-thumbnails-and-title-sets.md`.
+> Migration `0056_thumbnail_packages`.
+
+### Phase 1
+
+- [x] Schemas: package shapes, the ideas, the checks' constants, the channel's
+      `thumbnails` settings and `modelRouting.thumbnails`.
+- [x] Providers: a `style` reference kind on the Gemini image adapter, the set
+      planner and the picture prompts.
+- [x] Database: the `thumbnail_packages` table (migration 0056), approval that
+      writes `uploaded_thumb_keys` and the draft title in order, and stored
+      keys from before the table backfilled into packages.
+- [x] Composing: the headline and the channel mark set on the picture in the
+      headless browser, at 1920 by 1080, with the five checks as warnings.
+- [x] The runner: plan, paint and compose as an Inngest function, one run per
+      target, with a stale-run limit.
+- [x] The Publish card: Generate a set with its cost, the package cards, edit,
+      make default, regenerate, approve, remove, and the Studio hand-off after
+      the upload.
+- [x] Settings: the Thumbnails tab with the style note, the reference
+      thumbnails and the routing.
+- [x] The altered-content label counts an approved generated thumbnail that
+      shows a cast member, and the analytics run sends the reminder to start
+      the test.
+- [x] End to end in mock mode, and this decision (`e2e/tests/thumbnail-set.spec.ts`).
+- [ ] Whole unit and e2e suites in batches, run by the controller before the
+      merge.
+- [ ] A paid check on real pictures ($0.45 a set), the owner's to ask for;
+      `gemini-3-pro-image` is confirmed against the key's own `ListModels`
+      first.
+
+### Phase 2
+
+- [ ] Record a test's start and result.
+- [ ] What has won, told to the planner.
+
 ---
 
 # Decisions made
@@ -12589,3 +12632,57 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      WebCodecs audio plays through Web Audio buffer nodes, whose rate raises
      the pitch, so narration sounds higher at 1.5× and 2× in the preview; the
      rendered files keep their pitch.
+484. **Generated thumbnails and title sets** (2026-11-25, owner's request of
+     2026-11-24, approved 2026-11-25; branch `worktree-generated-thumbnails`;
+     migration `0056_thumbnail_packages`; design
+     `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md`).
+     (a) What it is: on a master's Publish card, "Generate a set" plans up to
+     three packages, each a thumbnail and its own title on a different idea
+     (person, figure, object, moment, contrast), through an Inngest function.
+     The image model paints the picture from the film's own stills and the
+     cast's photos; the app sets the headline and the channel mark on top. The
+     owner edits and approves; the first approved package uploads as before
+     and the others are handed over for a Test & Compare in YouTube Studio.
+     Phase 1 only: recording a test's start and result, and telling the
+     planner what has won, are phase 2.
+     (b) It reverses two recorded positions: build spec section 2's
+     out-of-scope line on thumbnail generation, and the app spec's "No AI
+     thumbnail generation anywhere in the pipeline". Both documents now say a
+     master's thumbnails may be generated in the app or uploaded from Canva.
+     A Short's thumbnail stays an upload.
+     (c) The evidence that shaped it (read 2026-11-24, YouTube Help 16391400):
+     Test & Compare picks its winner on watch time share, not click rate, so a
+     thumbnail has to promise what the film's opening delivers. No API starts
+     or reads a test, so the hand-off is by hand: a download, a title to copy,
+     a link to Studio and a reminder. Rotating thumbnails on a timer was
+     refused because it compares days, not viewers.
+     (d) The title written to the upload follows the first approved package
+     that has an image, not position 0, so the title always belongs to the
+     picture that goes up (`syncApprovedToRecord`).
+     (e) A package is `ready` only once it is composed. A run that died stops
+     blocking after fifteen minutes (`PACKAGE_STALE_MS`): its planned or
+     painting packages read as "did not finish" and Generate is open again.
+     (f) A failed plan leaves the old packages in place and says why in
+     `thumbnailSetNote`, rather than clearing what the owner had.
+     (g) Thumbnails uploaded before this work get their package row the first
+     time the record is read or written (`ensureUploadedPackages`), not in the
+     SQL migration, because package ids are made by the app.
+     (h) The mark sits top left by default, never bottom right where YouTube
+     draws the duration badge, at 8% of the frame height and 80% opacity
+     (`THUMB_MARK_HEIGHT_RATIO`, `THUMB_MARK_ALPHA`), against the film
+     watermark's 3.5% and 60%. The owner is to check it at real size.
+     (i) `mergeSettings` now carries the channel's `thumbnails` section, and
+     the Thumbnails tab tells the settings form what it saved, so a later
+     Brand Kit save cannot write the old values back over it.
+     (j) The altered-content label counts an approved generated thumbnail that
+     shows a cast member, for masters only, beside the film's own likenesses.
+     YouTube's rule is written for the video and is silent on thumbnails;
+     counting it errs toward disclosure.
+     (k) The reminder to start the test is sent once, on the channel's first
+     healthy analytics run after the video is live, and only when more than
+     one package is approved; a stamp on the record keeps it to once.
+     (l) The end-to-end spec (`e2e/tests/thumbnail-set.spec.ts`) cannot watch a
+     run: the suite has no Inngest, so it presses Generate to prove the
+     action accepts, writes the three ready packages a finished run leaves,
+     and carries on through edit, approve and the hand-off. It borrows the
+     seeded publish project and puts back its stage, record and packages.

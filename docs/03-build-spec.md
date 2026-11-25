@@ -15,7 +15,7 @@
 7. **Traceability is the compliance story.** Dossier claims carry sources; script sentences reference claims; chart slots reference claims by ID; human edits are recorded. This chain must never be broken by convenience.
 8. **UI: calm, dense, button-first.** A production console, not a marketing site. Speed of review is the product, achieved through clear, always-visible buttons, one obvious primary action per screen, and minimal clicks between gates — not through keyboard shortcuts.
 
-Out of scope (do not build): thumbnail generation (thumbnails are made in Canva; the app only accepts uploads), multi-user/teams/roles, TikTok/Instagram export, comment management, any social features, mobile native apps (the web UI must be responsive instead).
+Out of scope (do not build): multi-user/teams/roles, TikTok/Instagram export, comment management, any social features, mobile native apps (the web UI must be responsive instead).
 
 ---
 
@@ -247,7 +247,7 @@ TimelineSchema = {
 - OAuth once in Settings, requesting exactly these scopes: `youtube.upload`, `youtube` (metadata/thumbnails), `yt-analytics.readonly`. Store the refresh token encrypted (AES-GCM, key in env); surface connection health (a daily `channels.list` ping) as a status chip.
 - **Token flow to media-utils:** the Lambda never sees the refresh token. The publish-runner (web side) exchanges it for a short-lived access token and passes that token in the job payload; if the upload outlives the token, media-utils calls back to a token-refresh endpoint on the web app.
 - Upload runs **in media-utils Lambda**, streaming from S3 with resumable uploads (256 KB-aligned chunks, resume on 5xx/308, max 6h). Metadata: title, description (hook paragraph + chapter timestamps + sources from dossier + disclaimer), tags, `privacyStatus:'private'` + `publishAt`, `selfDeclaredMadeForKids:false`, AI-disclosure flag when settings say so.
-- Thumbnails: `thumbnails.set` with the **Canva-exported PNG** the user uploaded (validate 1280×720 min, ≤2 MB, JPEG/PNG). Shorts get no thumbnail call.
+- Thumbnails: `thumbnails.set` with the thumbnail the user approved for a master: generated in the app or the **Canva-exported PNG** the user uploaded (validate 1280×720 min, ≤2 MB, JPEG/PNG). A master's thumbnails may be generated in the app or uploaded from Canva; see `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md`. Shorts get no thumbnail call.
 - Quota: `videos.insert`=1600 units against a 10k/day default → the app enforces its own daily upload budget (default 4) and queues the rest. Every YouTube error is mapped: `quotaExceeded` → requeue tomorrow + notify; `uploadLimitExceeded` → pause queue 24h; auth errors → "Reconnect YouTube" card in Needs-you.
 - **Until `apiAuditPassed` is set in settings**, the publish screen shows a completion checklist ending in "flip to public in YouTube Studio" instead of pretending the API can do it.
 
