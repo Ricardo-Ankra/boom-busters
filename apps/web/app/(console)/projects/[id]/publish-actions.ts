@@ -1,7 +1,6 @@
 'use server'
 
 import { createHash } from 'node:crypto'
-import { NonRetriableError } from 'inngest'
 import {
   ensurePublishRecord,
   getProject,
@@ -55,7 +54,6 @@ import {
 import type { DescriptionAnswer } from '@boom-busters/providers'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { revalidatePath } from 'next/cache'
-import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtube'
@@ -70,8 +68,14 @@ import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
-import { requireCompleteBible } from '@/inngest/lib/channel'
-import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import {
+  completeFrozenBible,
+  editableReason,
+  parseTarget,
+  projectIdOf,
+  requireOwner,
+} from '@/lib/publish-action-guards'
+import type { ActionResult } from '@/lib/publish-action-guards'
 import { events } from '@/inngest/events'
 
 /**
@@ -83,49 +87,13 @@ import { events } from '@/inngest/events'
  * generated titles, thumbnails, and the stage handover from Shorts.
  */
 
-export interface ActionResult {
-  ok: boolean
-  error?: string
-}
-
-async function requireOwner(): Promise<void> {
-  const session = await auth()
-  if (!session?.user?.email) throw new Error('Not signed in')
-}
-
-function parseTarget(targetType: string, targetId: string): ActionResult | null {
-  if (targetType !== 'master' && targetType !== 'short') {
-    return { ok: false, error: `Unknown publish target "${targetType}"` }
-  }
-  if (!UlidSchema.safeParse(targetId).success) return { ok: false, error: 'Unknown target' }
-  return null
-}
-
-/** A target's project, so every action can revalidate the right screen. */
-async function projectIdOf(
-  targetType: 'master' | 'short',
-  targetId: string,
-): Promise<string | undefined> {
-  if (targetType === 'master') {
-    return (await getProject(db, targetId)) ? targetId : undefined
-  }
-  return (await getShort(db, targetId))?.projectId
-}
+export type { ActionResult }
 
 /** Draft fields merged over what the jsonb already holds — never replaced. */
 async function mergeDraft(record: PublishRecordRow, patch: Record<string, unknown>): Promise<void> {
   await updatePublishRecord(db, record.id, {
     metadata: { ...record.metadata, ...patch },
   })
-}
-
-const EDITABLE = ['draft', 'failed'] as const
-function editableReason(record: PublishRecordRow | undefined): string | null {
-  if (!record) return null
-  if ((EDITABLE as readonly string[]).includes(record.status)) return null
-  return record.status === 'scheduled' || record.status === 'live'
-    ? 'This item is already on YouTube — edit it in Studio.'
-    : 'This item is uploading right now.'
 }
 
 // ---------------------------------------------------------------------------
@@ -228,25 +196,6 @@ function joinTags(kept: readonly string[], written: readonly string[]): string[]
     tags.push(tag)
   }
   return tags
-}
-
-/**
- * The project's frozen bible, refused when incomplete. A server action answers
- * with an error result, so the owner reads the bible gate's own words; the
- * gate sits before the mock branch, as every stage's does.
- */
-async function completeFrozenBible(
-  projectId: string,
-): Promise<{ ok: true; frozen: Awaited<ReturnType<typeof channelForProject>> } | ActionResult> {
-  const frozen = await channelForProject(db, projectId)
-  try {
-    return { ok: true, frozen: requireCompleteBible(frozen) }
-  } catch (error) {
-    if (error instanceof NonRetriableError && error.message === FROZEN_BIBLE_INCOMPLETE_MESSAGE) {
-      return { ok: false, error: FROZEN_BIBLE_INCOMPLETE_MESSAGE }
-    }
-    throw error
-  }
 }
 
 /**
