@@ -665,6 +665,40 @@ describe('ThumbnailSet', () => {
         expect(screen.getByRole('button', { name: '2 won' })).toBeInTheDocument()
       })
 
+      it('puts the recorded result back when Keep the recorded result is pressed', async () => {
+        const user = userEvent.setup()
+        const ended = started({
+          testEndedAtIso: '2026-11-24T10:00:00.000Z',
+          packages: uploadedRecord('live').packages.map((p, at) => ({
+            ...p,
+            result: at === 1 ? ('won' as const) : ('lost' as const),
+          })),
+        })
+        render(<ThumbnailSet item={ended} busy={false} />)
+        await user.click(screen.getByRole('button', { name: 'Change the result' }))
+        expect(screen.queryByText('Variant 2 won.')).not.toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Keep the recorded result' }))
+        expect(screen.getByText('Variant 2 won.')).toBeInTheDocument()
+        expect(recordTestResult).not.toHaveBeenCalled()
+      })
+
+      it('a result from an earlier video is not shown once the stamps are cleared', () => {
+        const earlier = item({
+          record: {
+            ...uploadedRecord('scheduled'),
+            testStartedAtIso: null,
+            testEndedAtIso: null,
+            packages: uploadedRecord('scheduled').packages.map((p, at) => ({
+              ...p,
+              result: at === 1 ? ('won' as const) : ('lost' as const),
+            })),
+          },
+        })
+        render(<ThumbnailSet item={earlier} busy={false} />)
+        expect(screen.getByRole('button', { name: 'I have started the test' })).toBeInTheDocument()
+        expect(screen.queryByText(/^Variant \d+ won\./)).not.toBeInTheDocument()
+      })
+
       it('words a same and an inconclusive result without a winner', () => {
         const base = (result: 'same' | 'inconclusive') =>
           started({

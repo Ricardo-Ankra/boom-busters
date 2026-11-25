@@ -1168,6 +1168,11 @@ export async function unlinkPublishRecord(
     publishAt: null,
     privacyStatus: 'private',
     error: null,
+    // The test stamps belong to the video; the next video gets its own. The
+    // packages' recorded results stay: they are evidence of a test that ran.
+    testStartedAt: null,
+    testEndedAt: null,
+    testReminderSentAt: null,
   })
 
   revalidatePath(`/projects/${projectId}`)

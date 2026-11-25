@@ -23,6 +23,7 @@ import {
   scripts,
   shorts,
   seed,
+  thumbnailPackages,
   timelines,
   updateWorkspace,
   vidiqCredits,
@@ -39,6 +40,7 @@ import {
 import type { SearchBrief, Timeline } from '@boom-busters/schemas'
 import type * as DbModule from '@boom-busters/db'
 import type * as YoutubeLib from '@/lib/youtube'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
 import { db } from '@/lib/db'
@@ -1209,5 +1211,43 @@ describeDb('a Test & Compare that is running', () => {
     const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
     expect(await schedulePublish('master', FIXTURE_PROJECT_ID, later)).toEqual(refusal)
     expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual(refusal)
+  })
+
+  it('unlinking a video clears its test stamps and frees a new upload', async () => {
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, {
+      status: 'live',
+      youtubeVideoId: 'abc123',
+      testStartedAt: new Date(Date.now() - 86_400_000),
+      testReminderSentAt: new Date(),
+    })
+    await db.insert(thumbnailPackages).values({
+      publishRecordId: record.id,
+      position: 1,
+      source: 'generated',
+      state: 'ready',
+      title: 'Title 1',
+      pictureKey: 'picture-1.png',
+      composedKey: 'composed-1.jpg',
+      approvedAt: new Date(),
+      result: 'won',
+      watchTimeShare: 60,
+    })
+
+    expect(await unlinkPublishRecord('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+
+    const after = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    expect(after?.testStartedAt).toBeNull()
+    expect(after?.testEndedAt).toBeNull()
+    expect(after?.testReminderSentAt).toBeNull()
+    const [pack] = await db
+      .select()
+      .from(thumbnailPackages)
+      .where(eq(thumbnailPackages.publishRecordId, record.id))
+    expect(pack?.result).toBe('won')
+    expect(pack?.watchTimeShare).toBe(60)
+    const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
+    const scheduled = await schedulePublish('master', FIXTURE_PROJECT_ID, later)
+    expect(JSON.stringify(scheduled)).not.toContain('A Test & Compare is running')
   })
 })
