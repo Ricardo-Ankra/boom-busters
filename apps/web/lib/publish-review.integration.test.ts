@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  channelForProject,
   createCase,
   createChannel,
   createProjectFromCase,
@@ -30,10 +31,11 @@ import {
   defaultFormat,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
+  PACKAGES_MAX,
   PUBLISH_DISCLAIMER,
 } from '@boom-busters/schemas'
 import type { TalkingPoint } from '@boom-busters/schemas'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { descriptionIngredients, publishModel, spokenIntro } from './publish-review'
 
@@ -296,6 +298,39 @@ describeDb('publishModel thumbnail packages', () => {
       }
     } finally {
       await db.delete(publishRecords)
+    }
+  })
+
+  it('prices three places for a master with no record', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const { thumbnailSetEstimateUsd } = await import('./thumbnail-set')
+    const channel = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+    const masterItem = model.items.find((item) => item.targetType === 'master')!
+    expect(masterItem.record).toBeNull()
+    expect(masterItem.thumbnailSetCostUsd).toBe(
+      await thumbnailSetEstimateUsd(channel.channelId, PACKAGES_MAX),
+    )
+    expect(masterItem.thumbnailSetCostUsd).toBeGreaterThan(0)
+  })
+
+  it('a failed price read logs and leaves the cost empty', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const thumbnailSet = await import('./thumbnail-set')
+    const failure = new Error('price table unreadable')
+    const read = vi.spyOn(thumbnailSet, 'thumbnailRouteFacts').mockRejectedValue(failure)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.thumbnailSetCostUsd).toBeNull()
+      expect(logged).toHaveBeenCalledTimes(1)
+      expect(logged).toHaveBeenCalledWith('[thumbnails] could not read the route', failure)
+    } finally {
+      read.mockRestore()
+      logged.mockRestore()
     }
   })
 })

@@ -63,7 +63,8 @@ function useDraft(saved: string): [string, (value: string) => void] {
   const [value, setValue] = React.useState(saved)
   if (saved !== seen) {
     setSeen(saved)
-    if (value === seen) setValue(saved)
+    // Untouched (its trimmed text is what was saved) or just saved: show the saved text.
+    if (value.trim() === seen || value.trim() === saved) setValue(saved)
   }
   return [value, setValue]
 }
@@ -125,8 +126,8 @@ function PackageCard({
   const died = (pack.state === 'planned' || pack.state === 'painting') && !pack.inFlight
   const waiting = locked || pack.inFlight
 
-  const titleChanged = title !== pack.title
-  const headlineChanged = generated && headline !== pack.headline
+  const titleChanged = title.trim() !== pack.title
+  const headlineChanged = generated && headline.trim() !== pack.headline
   const ideaChanged = !generated && idea !== (pack.idea ?? '')
   const changed = titleChanged || headlineChanged || ideaChanged
 
@@ -134,8 +135,8 @@ function PackageCard({
     act(
       () =>
         saveThumbnailPackage(pack.id, {
-          ...(titleChanged ? { title } : {}),
-          ...(headlineChanged ? { headline } : {}),
+          ...(titleChanged ? { title: title.trim() } : {}),
+          ...(headlineChanged ? { headline: headline.trim() } : {}),
           ...(ideaChanged ? { idea: idea === '' ? null : (idea as ThumbnailIdea) } : {}),
         }),
       'Changes saved',
@@ -454,7 +455,7 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
             <Button
               variant="outline"
               busy={pressed === 'generate-set'}
-              disabled={working || inFlight || full || !record}
+              disabled={working || inFlight || full}
               onClick={() =>
                 void act(
                   () => generateThumbnailSet('master', item.targetId),

@@ -666,13 +666,10 @@ async function thumbnailRouteFacts(
   places: number,
 ): Promise<{ costUsd: number | null; styleLeftOut: string | null }> {
   try {
-    const { thumbnailSetEstimateUsd, thumbnailStyleReferencesLeftOut } =
-      await import('./thumbnail-set')
-    return {
-      costUsd: places > 0 ? await thumbnailSetEstimateUsd(channelId, places) : null,
-      styleLeftOut: await thumbnailStyleReferencesLeftOut(channelId),
-    }
-  } catch {
+    const { thumbnailRouteFacts: read } = await import('./thumbnail-set')
+    return await read(channelId, places)
+  } catch (error) {
+    console.error('[thumbnails] could not read the route', error)
     return { costUsd: null, styleLeftOut: null }
   }
 }
@@ -743,7 +740,10 @@ export async function publishModel(
   // the card renders in one batch instead of one lookup per Short, and the
   // attribution and retention reads stop serialising behind the loop.
   const masterThumbnails = async () => {
-    if (!masterRecord) return { packages: [], costUsd: null, styleLeftOut: null }
+    // No record yet: Generate creates it, so the card still prices three places.
+    if (!masterRecord) {
+      return { packages: [], ...(await thumbnailRouteFacts(channel.channelId, PACKAGES_MAX)) }
+    }
     // The format's title frame, for the slots each package's title lacks.
     const { titleFrameFor } = await import('./publish-grounding')
     const frame = await titleFrameFor(projectId, project, channel)

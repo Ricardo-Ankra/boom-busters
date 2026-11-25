@@ -169,6 +169,15 @@ describe('ThumbnailSet', () => {
     expect(generateThumbnailSet).toHaveBeenCalledWith('master', PROJECT)
   })
 
+  it('offers Generate on a master that has no record yet', async () => {
+    const user = userEvent.setup()
+    render(<ThumbnailSet item={item({ record: null, thumbnailSetCostUsd: 0.45 })} busy={false} />)
+    const generate = screen.getByRole('button', { name: 'Generate a set · about $0.45' })
+    expect(generate).toBeEnabled()
+    await user.click(generate)
+    expect(generateThumbnailSet).toHaveBeenCalledWith('master', PROJECT)
+  })
+
   it('shows each package with its idea, promise, title and headline', () => {
     render(<ThumbnailSet item={item({ record: record({ packages: three() }) })} busy={false} />)
     expect(screen.getByText('Idea: Person')).toBeInTheDocument()
@@ -445,6 +454,40 @@ describe('ThumbnailSet', () => {
       expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue(
         'Wirecard: The Man Who Signed Off (typed)',
       )
+    })
+
+    it('a trailing space alone does not make a field dirty', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={item()} busy={false} />)
+      await user.type(screen.getByRole('textbox', { name: 'Title' }), ' ')
+      await user.type(screen.getByRole('textbox', { name: 'Headline' }), ' ')
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
+    })
+
+    it('after a save the field shows the trimmed text and Save changes is gone', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<ThumbnailSet item={item()} busy={false} />)
+      await user.type(screen.getByRole('textbox', { name: 'Title' }), ' and more ')
+      await user.click(screen.getByRole('button', { name: 'Save changes' }))
+      expect(saveThumbnailPackage).toHaveBeenCalledWith('01HQ00000000000000000000K1', {
+        title: 'Wirecard: The Man Who Signed Off and more',
+      })
+
+      // The refresh after the save brings the trimmed text as the saved one.
+      rerender(
+        <ThumbnailSet
+          item={item({
+            record: record({
+              packages: [pack({ title: 'Wirecard: The Man Who Signed Off and more' })],
+            }),
+          })}
+          busy={false}
+        />,
+      )
+      expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue(
+        'Wirecard: The Man Who Signed Off and more',
+      )
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument()
     })
 
     it('follows the saved title when the field was not touched', () => {

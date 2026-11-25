@@ -122,6 +122,25 @@ export async function thumbnailStyleReferencesLeftOut(channelId: string): Promis
   return live.models.find((model) => model.id === route.model)?.label ?? route.model
 }
 
+/**
+ * Both facts the Publish card needs from the thumbnail route, read once: the
+ * price of `places` pictures (null when none are free) and the left-out label.
+ */
+export async function thumbnailRouteFacts(
+  channelId: string,
+  places: number,
+): Promise<{ costUsd: number | null; styleLeftOut: string | null }> {
+  const { settings, route, live } = await thumbnailRoute(channelId)
+  const costUsd = places > 0 ? imageGenPrice(live, places, route.model, '2K') : null
+  const unused =
+    settings.thumbnails.references.some((reference) => reference.inUse) &&
+    live.referenceLimits(route.model).styles <= 0
+  const styleLeftOut = unused
+    ? (live.models.find((model) => model.id === route.model)?.label ?? route.model)
+    : null
+  return { costUsd, styleLeftOut }
+}
+
 export type FilmStill = {
   slotId: string
   shows: string
