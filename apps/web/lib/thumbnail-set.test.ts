@@ -31,6 +31,7 @@ import type { PlannedPackage, ThumbnailIdea } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
+import type * as DbModule from '@boom-busters/db'
 import type * as Answer from '@/lib/answer'
 import type * as Catalogue from '@/lib/model-catalogue'
 import type * as Cost from '@boom-busters/cost'
@@ -39,6 +40,23 @@ import type * as Cost from '@boom-busters/cost'
  * The thumbnail set against the real database in mock-provider mode, with the
  * image adapter, the planner call and the film's grounding replaced.
  */
+
+// The channel's recorded tests are shared state; a test sets what the planner is told by
+// replacing the two readers, and the real ones answer when nothing is set.
+const tests = vi.hoisted(() => ({
+  results: null as { idea: string; tests: number; wins: number }[] | null,
+  finished: null as { withWinner: number; same: number; inconclusive: number } | null,
+}))
+vi.mock('@boom-busters/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof DbModule>()
+  return {
+    ...actual,
+    ideaResults: (...args: Parameters<typeof actual.ideaResults>) =>
+      tests.results ? Promise.resolve(tests.results) : actual.ideaResults(...args),
+    finishedTests: (...args: Parameters<typeof actual.finishedTests>) =>
+      tests.finished ? Promise.resolve(tests.finished) : actual.finishedTests(...args),
+  }
+})
 
 const answer = vi.hoisted(() => ({ callForAnswer: vi.fn() }))
 vi.mock('@/lib/answer', async (importOriginal) => ({
@@ -203,6 +221,8 @@ describeDb('thumbnail set (mock mode)', () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs()
+    tests.results = null
+    tests.finished = null
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await setThumbnailSettings(originalThumbnails)
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
@@ -252,6 +272,37 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(rows.map((row) => row.idea)).toEqual(['figure', 'object', 'moment'])
       expect(rows.map((row) => row.id).slice(1)).toEqual(result.inserted)
       expect(rows.slice(1).every((row) => row.state === 'planned')).toBe(true)
+    })
+
+    it('tells the planner what has won only when there is something to tell', async () => {
+      const pastOf = (call: number): string | undefined =>
+        (answer.callForAnswer.mock.calls[call]![0].request.messages as { content: string }[]).find(
+          (message) => message.content.startsWith('Past results:'),
+        )?.content
+      answer.callForAnswer.mockResolvedValue({
+        ok: true,
+        value: [planned('object'), planned('moment'), planned('figure')],
+        calls: 1,
+      })
+      const plan = () =>
+        planThumbnailSet({ projectId: FIXTURE_PROJECT_ID, publishRecordId: recordId })
+      tests.results = [
+        { idea: 'person', tests: 4, wins: 3 },
+        { idea: 'figure', tests: 2, wins: 0 },
+        { idea: 'object', tests: 0, wins: 0 },
+        { idea: 'moment', tests: 0, wins: 0 },
+        { idea: 'contrast', tests: 0, wins: 0 },
+      ]
+
+      // Four tests with a winner: nothing to say yet.
+      tests.finished = { withWinner: 4, same: 3, inconclusive: 1 }
+      await plan()
+      expect(pastOf(0)).toBeUndefined()
+
+      // Five: the sentences, and nothing about the tests that ended the same.
+      tests.finished = { withWinner: 5, same: 3, inconclusive: 1 }
+      await plan()
+      expect(pastOf(1)).toBe('Past results:\nPerson: won 3 of 4 tests. Figure: won 0 of 2 tests.')
     })
 
     it('asks once more when a package is dropped, never twice', async () => {

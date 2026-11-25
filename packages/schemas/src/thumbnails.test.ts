@@ -8,8 +8,36 @@ import {
   packageInFlight,
   PACKAGE_STALE_MS,
   vetPlannedPackages,
+  whatHasWon,
   type PlannedPackage,
 } from './thumbnails'
+
+describe('whatHasWon', () => {
+  const results = [
+    { idea: 'person' as const, tests: 4, wins: 3 },
+    { idea: 'figure' as const, tests: 1, wins: 0 },
+    { idea: 'object' as const, tests: 4, wins: 1 },
+    { idea: 'moment' as const, tests: 0, wins: 0 },
+    { idea: 'contrast' as const, tests: 6, wins: 2 },
+  ]
+
+  it('says nothing below five tests with a winner', () => {
+    expect(whatHasWon(results, 4)).toBeNull()
+    expect(whatHasWon(results, 0)).toBeNull()
+  })
+
+  it('lists ideas most tested first', () => {
+    expect(whatHasWon(results, 5)).toBe(
+      'Contrast: won 2 of 6 tests. Person: won 3 of 4 tests. Object: won 1 of 4 tests. ' +
+        'Figure: won 0 of 1 test.',
+    )
+  })
+
+  it('has a singular test and leaves out ideas never tested', () => {
+    const text = whatHasWon([{ idea: 'person', tests: 1, wins: 1 }, ...results.slice(3, 4)], 9)
+    expect(text).toBe('Person: won 1 of 1 test.')
+  })
+})
 
 const ID = '01HZX3K9Q8W2N5M7R4T6V8Y0AB'
 const ID2 = '01HZX3K9Q8W2N5M7R4T6V8Y0AC'

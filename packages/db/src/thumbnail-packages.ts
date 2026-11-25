@@ -1,5 +1,5 @@
-import { PACKAGES_MAX } from '@boom-busters/schemas'
-import type { PlannedPackage, TestResult } from '@boom-busters/schemas'
+import { PACKAGES_MAX, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
+import type { PlannedPackage, TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { Database } from './client'
 import { publishRecords, thumbnailPackages } from './schema'
@@ -413,6 +413,88 @@ export async function recordTestOutcome(
       .set({ testEndedAt: input.endedAt, updatedAt: new Date() })
       .where(eq(publishRecords.id, publishRecordId))
   })
+}
+
+/**
+ * Every approved package of the channel's masters that carries a recorded
+ * result. A record whose video was later unlinked keeps its results, so this
+ * does not look at `test_ended_at`.
+ */
+async function recordedResults(
+  db: Executor,
+  channelId: string,
+): Promise<{ recordId: string; idea: ThumbnailIdea | null; result: TestResult }[]> {
+  const rows = await db
+    .select({
+      recordId: thumbnailPackages.publishRecordId,
+      idea: thumbnailPackages.idea,
+      result: thumbnailPackages.result,
+    })
+    .from(thumbnailPackages)
+    .innerJoin(publishRecords, eq(publishRecords.id, thumbnailPackages.publishRecordId))
+    .where(
+      and(
+        eq(publishRecords.channelId, channelId),
+        eq(publishRecords.targetType, 'master'),
+        isNotNull(thumbnailPackages.approvedAt),
+        isNotNull(thumbnailPackages.result),
+      ),
+    )
+  return rows.flatMap((row) =>
+    row.result === null ? [] : [{ recordId: row.recordId, idea: row.idea, result: row.result }],
+  )
+}
+
+/**
+ * Per idea, in the order of `THUMBNAIL_IDEAS`: the videos in which a package
+ * of that idea took part in a recorded test (`tests`) and those in which one
+ * won (`wins`). A video counts once per idea however many of its packages
+ * share it; a package with no idea counts for none.
+ */
+export async function ideaResults(
+  db: Executor,
+  channelId: string,
+): Promise<{ idea: ThumbnailIdea; tests: number; wins: number }[]> {
+  const tested = new Map<ThumbnailIdea, Set<string>>()
+  const won = new Map<ThumbnailIdea, Set<string>>()
+  const note = (map: Map<ThumbnailIdea, Set<string>>, idea: ThumbnailIdea, recordId: string) => {
+    const records = map.get(idea) ?? new Set<string>()
+    records.add(recordId)
+    map.set(idea, records)
+  }
+  for (const row of await recordedResults(db, channelId)) {
+    if (row.idea === null) continue
+    note(tested, row.idea, row.recordId)
+    if (row.result === 'won') note(won, row.idea, row.recordId)
+  }
+  return THUMBNAIL_IDEAS.map((idea) => ({
+    idea,
+    tests: tested.get(idea)?.size ?? 0,
+    wins: won.get(idea)?.size ?? 0,
+  }))
+}
+
+/**
+ * The channel's videos with recorded results, each counted once: with a
+ * winner when any approved package won, else the same, else inconclusive.
+ */
+export async function finishedTests(
+  db: Executor,
+  channelId: string,
+): Promise<{ withWinner: number; same: number; inconclusive: number }> {
+  const byRecord = new Map<string, Set<TestResult>>()
+  for (const row of await recordedResults(db, channelId)) {
+    const seen = byRecord.get(row.recordId) ?? new Set<TestResult>()
+    seen.add(row.result)
+    byRecord.set(row.recordId, seen)
+  }
+  const totals = { withWinner: 0, same: 0, inconclusive: 0 }
+  for (const results of byRecord.values()) {
+    if (results.has('won')) totals.withWinner += 1
+    else if (results.has('same')) totals.same += 1
+    else totals.inconclusive += 1
+  }
+  return totals
 }
 
 /**

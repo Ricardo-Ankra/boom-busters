@@ -3,7 +3,13 @@
 import { ImagePlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import * as React from 'react'
-import { THUMB_REFERENCES_MAX, type ThumbMarkPlacement } from '@boom-busters/schemas'
+import {
+  IDEA_LABELS,
+  THUMB_REFERENCES_MAX,
+  WINS_MIN_TESTS,
+  type ThumbMarkPlacement,
+  type ThumbnailIdea,
+} from '@boom-busters/schemas'
 import { ConfirmButton } from '@/components/confirm-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,6 +41,18 @@ export interface ThumbnailReferenceView {
   url: string | null
 }
 
+export interface IdeaResult {
+  idea: ThumbnailIdea
+  tests: number
+  wins: number
+}
+
+export interface FinishedTests {
+  withWinner: number
+  same: number
+  inconclusive: number
+}
+
 /** Bottom right is not offered: YouTube draws the duration there. */
 const CORNERS: { value: ThumbMarkPlacement; label: string }[] = [
   { value: 'tl', label: 'Top left' },
@@ -56,11 +74,16 @@ export function ThumbnailsTab({
   styleNote,
   markPlacement,
   references,
+  ideaResults,
+  finishedTests,
 }: {
   slug: string
   styleNote: string
   markPlacement: ThumbMarkPlacement
   references: ThumbnailReferenceView[]
+  /** Per idea, in the order of the ideas, counted on the server. */
+  ideaResults: IdeaResult[]
+  finishedTests: FinishedTests
 }) {
   const router = useRouter()
   const { toast } = useToast()
@@ -220,6 +243,39 @@ export function ThumbnailsTab({
           <p className="text-[12px] text-[var(--color-text-muted)]">
             References steer the look. They are never published and never copied.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card role="region" aria-label="What has won">
+        <CardHeader>
+          <CardTitle>What has won</CardTitle>
+          <CardDescription>
+            How each idea has done in the Test &amp; Compare runs you recorded.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-col divide-y divide-[var(--color-border)]">
+            {ideaResults.map((row) => (
+              <div
+                key={row.idea}
+                data-testid="idea-result"
+                className="flex items-center justify-between gap-3 py-1.5 text-[13px]"
+              >
+                <span className="text-[var(--color-text-primary)]">{IDEA_LABELS[row.idea]}</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  {row.tests === 0 ? 'No tests yet' : `${row.wins} of ${row.tests}`}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[13px] text-[var(--color-text-secondary)]">
+            {`Ended the same: ${finishedTests.same}. Inconclusive: ${finishedTests.inconclusive}.`}
+          </p>
+          {finishedTests.withWinner < WINS_MIN_TESTS ? (
+            <p className="text-[12px] text-[var(--color-text-muted)]">
+              {`${finishedTests.withWinner} of ${WINS_MIN_TESTS} tests with a winner. The planner is told nothing until there are five.`}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>

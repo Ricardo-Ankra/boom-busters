@@ -14,7 +14,9 @@ import {
   approvePackages,
   approvedDepicts,
   ensureUploadedPackages,
+  finishedTests,
   getThumbnailPackage,
+  ideaResults,
   listThumbnailPackages,
   makeDefaultPackage,
   recordTestOutcome,
@@ -533,6 +535,68 @@ suite('thumbnail packages', () => {
         .from(publishRecords)
         .where(eq(publishRecords.id, record.id))
       expect(stored!.testEndedAt).toEqual(endedAt)
+    })
+  })
+
+  it('counts tests and wins per idea, one test per video', async () => {
+    const before = await ideaResults(db, FIRST_CHANNEL_ID)
+    const finishedBefore = await finishedTests(db, FIRST_CHANNEL_ID)
+    const at = (rows: typeof before, idea: string) => rows.find((r) => r.idea === idea)!
+
+    await withRecord(async (first) => {
+      await withRecord(async (second) => {
+        const approvedAt = new Date()
+        // First video: a person won over a figure and a second person; one test per idea.
+        await seedRow(first.id, 0, { approvedAt, idea: 'person', result: 'won' })
+        await seedRow(first.id, 1, { approvedAt, idea: 'person', result: 'lost' })
+        await seedRow(first.id, 2, { approvedAt, idea: 'figure', result: 'lost' })
+        // Second video: the figure took part and lost; an unlabelled upload counts for no idea.
+        await seedRow(second.id, 0, { approvedAt, idea: 'figure', result: 'lost' })
+        await seedRow(second.id, 1, { approvedAt, idea: 'object', result: 'won' })
+        await seedRow(second.id, 2, { approvedAt, idea: null, result: 'lost', source: 'uploaded' })
+
+        const after = await ideaResults(db, FIRST_CHANNEL_ID)
+        expect(after.map((r) => r.idea)).toEqual([
+          'person',
+          'figure',
+          'object',
+          'moment',
+          'contrast',
+        ])
+        expect(at(after, 'person').tests - at(before, 'person').tests).toBe(1)
+        expect(at(after, 'person').wins - at(before, 'person').wins).toBe(1)
+        expect(at(after, 'figure').tests - at(before, 'figure').tests).toBe(2)
+        expect(at(after, 'figure').wins - at(before, 'figure').wins).toBe(0)
+        expect(at(after, 'object').tests - at(before, 'object').tests).toBe(1)
+        expect(at(after, 'object').wins - at(before, 'object').wins).toBe(1)
+        expect(at(after, 'moment')).toEqual(at(before, 'moment'))
+
+        const finished = await finishedTests(db, FIRST_CHANNEL_ID)
+        expect(finished.withWinner - finishedBefore.withWinner).toBe(2)
+        expect(finished.same).toBe(finishedBefore.same)
+        expect(finished.inconclusive).toBe(finishedBefore.inconclusive)
+      })
+    })
+  })
+
+  it('classifies a finished test as won, the same or inconclusive, once', async () => {
+    const before = await finishedTests(db, FIRST_CHANNEL_ID)
+    await withRecord(async (same) => {
+      await withRecord(async (open) => {
+        const approvedAt = new Date()
+        await seedRow(same.id, 0, { approvedAt, idea: 'person', result: 'same' })
+        await seedRow(same.id, 1, { approvedAt, idea: 'figure', result: 'same' })
+        await seedRow(open.id, 0, { approvedAt, idea: 'person', result: 'inconclusive' })
+        await seedRow(open.id, 1, { approvedAt, idea: 'figure', result: 'inconclusive' })
+        // No result yet: not a finished test.
+        await withRecord(async (untested) => {
+          await seedRow(untested.id, 0, { approvedAt, idea: 'person' })
+          const after = await finishedTests(db, FIRST_CHANNEL_ID)
+          expect(after.same - before.same).toBe(1)
+          expect(after.inconclusive - before.inconclusive).toBe(1)
+          expect(after.withWinner).toBe(before.withWinner)
+        })
+      })
     })
   })
 })

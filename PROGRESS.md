@@ -5200,8 +5200,8 @@ The nine findings the final review parked, plus the flaky test (decision 453):
 
 ### Phase 2
 
-- [ ] Record a test's start and result.
-- [ ] What has won, told to the planner.
+- [x] Record a test's start and result.
+- [x] What has won, told to the planner.
 
 ---
 
@@ -12689,3 +12689,8 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      action accepts, writes the three ready packages a finished run leaves,
      and carries on through edit, approve and the hand-off. It borrows the
      seeded publish project and puts back its stage, record and packages.
+     (m) Phase 2: a test counts once per video per idea, and a video's
+     recorded results keep counting after its video is unlinked until a new
+     result overwrites them. The planner is told what has won only once five
+     tests have a winner (`WINS_MIN_TESTS`); Settings shows the counts, and a
+     winning thumbnail can be kept as a reference that is not in use.

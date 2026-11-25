@@ -1,7 +1,12 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ThumbnailsTab, type ThumbnailReferenceView } from './thumbnails-tab'
+import {
+  ThumbnailsTab,
+  type FinishedTests,
+  type IdeaResult,
+  type ThumbnailReferenceView,
+} from './thumbnails-tab'
 
 const actions = vi.hoisted(() => ({
   uploadThumbnailReference: vi.fn(),
@@ -31,6 +36,10 @@ function renderTab(
   references = REFERENCES,
   styleNote = 'Plain and loud',
   markPlacement = 'tl' as const,
+  wins: { results: IdeaResult[]; finished: FinishedTests } = {
+    results: [],
+    finished: { withWinner: 0, same: 0, inconclusive: 0 },
+  },
 ) {
   return render(
     <ThumbnailsTab
@@ -38,6 +47,8 @@ function renderTab(
       styleNote={styleNote}
       markPlacement={markPlacement}
       references={references}
+      ideaResults={wins.results}
+      finishedTests={wins.finished}
     />,
   )
 }
@@ -87,6 +98,45 @@ describe('the Thumbnails tab', () => {
     expect(
       screen.getByText('References steer the look. They are never published and never copied.'),
     ).toBeInTheDocument()
+  })
+
+  it('shows the counts and how many tests are still needed', () => {
+    renderTab(REFERENCES, 'Plain and loud', 'tl', {
+      results: [
+        { idea: 'person', tests: 3, wins: 2 },
+        { idea: 'figure', tests: 1, wins: 0 },
+        { idea: 'object', tests: 0, wins: 0 },
+        { idea: 'moment', tests: 0, wins: 0 },
+        { idea: 'contrast', tests: 0, wins: 0 },
+      ],
+      finished: { withWinner: 3, same: 2, inconclusive: 1 },
+    })
+
+    expect(screen.getByText('What has won')).toBeInTheDocument()
+    const card = screen.getByRole('region', { name: 'What has won' })
+    const rows = within(card).getAllByTestId('idea-result')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Person2 of 3',
+      'Figure0 of 1',
+      'ObjectNo tests yet',
+      'MomentNo tests yet',
+      'ContrastNo tests yet',
+    ])
+    expect(within(card).getByText('Ended the same: 2. Inconclusive: 1.')).toBeInTheDocument()
+    expect(
+      within(card).getByText(
+        '3 of 5 tests with a winner. The planner is told nothing until there are five.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('stops saying the planner is told nothing once five tests have a winner', () => {
+    renderTab(REFERENCES, 'Plain and loud', 'tl', {
+      results: [{ idea: 'person', tests: 5, wins: 5 }],
+      finished: { withWinner: 5, same: 0, inconclusive: 0 },
+    })
+    expect(screen.queryByText(/The planner is told nothing/)).not.toBeInTheDocument()
+    expect(screen.getByText('Ended the same: 0. Inconclusive: 0.')).toBeInTheDocument()
   })
 
   it('puts a refused switch back and says why', async () => {

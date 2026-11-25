@@ -13,7 +13,13 @@
  */
 
 import { createHash } from 'node:crypto'
-import { getChannelBySlug, getChannelSettings, updateChannelSettings } from '@boom-busters/db'
+import {
+  getChannelBySlug,
+  getChannelSettings,
+  getThumbnailPackage,
+  publishRecords,
+  updateChannelSettings,
+} from '@boom-busters/db'
 import {
   newId,
   SettingsPatchSchema,
@@ -21,13 +27,20 @@ import {
   type ThumbMarkPlacement,
   type ThumbnailReference,
 } from '@boom-busters/schemas'
+import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { auth } from '@/auth'
-import { writeRefusalFor } from '@/lib/channel-lookup'
+import { findChannel, writeRefusalFor } from '@/lib/channel-lookup'
 import { db } from '@/lib/db'
 import { settingsErrorMessage } from '@/lib/settings-error'
-import { deleteObject, putObject, storageConfigured, thumbnailReferenceKey } from '@/lib/storage'
+import {
+  deleteObject,
+  getObjectBytes,
+  putObject,
+  storageConfigured,
+  thumbnailReferenceKey,
+} from '@/lib/storage'
 import type { ActionResult } from './actions'
 
 const MAX_BYTES = 8 * 1024 * 1024
@@ -89,36 +102,86 @@ export async function uploadThumbnailReference(formData: FormData): Promise<Acti
   if (file.size > MAX_BYTES) {
     return { ok: false, error: 'Reference thumbnails must be 8 MB or less.' }
   }
-  if (!storageConfigured()) {
-    return {
-      ok: false,
-      error: 'Reference uploads need R2 configured; there is nowhere to store them.',
-    }
-  }
+  if (!storageConfigured()) return STORAGE_REFUSAL
+  // Read before the limit is checked, as the picture is hashed to find a duplicate.
+  const bytes = Buffer.from(await file.arrayBuffer())
+  return appendReference(found.id, { bytes, mimeType: file.type as ReferenceMime, note: '' })
+}
 
-  const settings = await getChannelSettings(db, found.id)
-  const existing = settings.thumbnails.references
+const STORAGE_REFUSAL: ActionResult = {
+  ok: false,
+  error: 'Reference uploads need R2 configured; there is nowhere to store them.',
+}
+
+/**
+ * Keeps a picture as the channel's next reference, not in use: refuses a
+ * seventh and a file already held, stores the object under its content hash,
+ * then writes the list through the settings patch path. The caller has
+ * checked that storage is configured.
+ */
+async function appendReference(
+  channelId: string,
+  picture: { bytes: Buffer; mimeType: ReferenceMime; note: string },
+): Promise<ActionResult> {
+  const existing = (await getChannelSettings(db, channelId)).thumbnails.references
   if (existing.length >= THUMB_REFERENCES_MAX) {
     return { ok: false, error: 'Six reference thumbnails at most. Remove one first.' }
   }
-
-  const mimeType = file.type as ReferenceMime
-  const bytes = Buffer.from(await file.arrayBuffer())
-  const contentHash = createHash('sha256').update(bytes).digest('hex')
+  const contentHash = createHash('sha256').update(picture.bytes).digest('hex')
   const r2Key = thumbnailReferenceKey({
-    channelId: found.id,
+    channelId,
     contentHash,
-    ext: EXTENSIONS[mimeType],
+    ext: EXTENSIONS[picture.mimeType],
   })
   if (existing.some((ref) => ref.r2Key === r2Key)) {
     return { ok: false, error: 'That exact file is already a reference.' }
   }
 
-  await putObject(r2Key, bytes, mimeType)
-  return writeReferences(found.id, [
+  await putObject(r2Key, picture.bytes, picture.mimeType)
+  return writeReferences(channelId, [
     ...existing,
-    { id: newId<'thumbnail-reference'>(), r2Key, mimeType, note: '', inUse: false },
+    {
+      id: newId<'thumbnail-reference'>(),
+      r2Key,
+      mimeType: picture.mimeType,
+      note: picture.note,
+      inUse: false,
+    },
   ])
+}
+
+const WINNER_REFUSAL = 'Only a thumbnail that won its test can be added.'
+
+/**
+ * Keeps a thumbnail that won its Test & Compare as a style reference. The
+ * channel is the one the package's record belongs to, never the client's.
+ */
+export async function addWinnerToReferences(packageId: string): Promise<ActionResult> {
+  await requireOwner()
+  const pack = typeof packageId === 'string' ? await getThumbnailPackage(db, packageId) : undefined
+  const [record] = pack
+    ? await db.select().from(publishRecords).where(eq(publishRecords.id, pack.publishRecordId))
+    : []
+  if (
+    !pack ||
+    !record ||
+    record.targetType !== 'master' ||
+    pack.result !== 'won' ||
+    pack.composedKey === null
+  ) {
+    return { ok: false, error: WINNER_REFUSAL }
+  }
+  const channel = await findChannel(record.channelId)
+  const refusal = writeRefusalFor(channel)
+  if (refusal || !channel) return refusal ?? { ok: false, error: 'Unknown channel' }
+  if (!storageConfigured()) return STORAGE_REFUSAL
+
+  const { bytes } = await getObjectBytes(pack.composedKey)
+  return appendReference(channel.id, {
+    bytes: Buffer.from(bytes),
+    mimeType: 'image/jpeg',
+    note: `Won its test: ${pack.title}`.slice(0, 200),
+  })
 }
 
 export async function saveThumbnailReference(

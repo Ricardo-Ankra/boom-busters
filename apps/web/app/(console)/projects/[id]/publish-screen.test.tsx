@@ -62,6 +62,9 @@ vi.mock('./thumbnail-actions', () => ({
 // The related-link reminder on scheduled Short cards records the Studio act
 // through the Shorts screen's own action — same module, same bookkeeping.
 const setShortRelatedLink = vi.fn()
+vi.mock('@/app/(console)/c/[slug]/settings/thumbnail-reference-actions', () => ({
+  addWinnerToReferences: vi.fn(),
+}))
 vi.mock('./shorts-actions', () => ({
   setShortRelatedLink: (...args: unknown[]) => setShortRelatedLink(...args),
 }))

@@ -185,6 +185,28 @@ function firstFailure(
   return null
 }
 
+/**
+ * What the channel's finished tests say, for the set planner: one sentence per
+ * tested idea, most tested first (ties in the order of `THUMBNAIL_IDEAS`).
+ * Null until `WINS_MIN_TESTS` tests have a winner. Tests that ended the same
+ * or inconclusive are never mentioned.
+ */
+export function whatHasWon(
+  results: { idea: ThumbnailIdea; tests: number; wins: number }[],
+  withWinner: number,
+): string | null {
+  if (withWinner < WINS_MIN_TESTS) return null
+  const order = (idea: ThumbnailIdea) => THUMBNAIL_IDEAS.indexOf(idea)
+  return results
+    .filter((row) => row.tests > 0)
+    .sort((a, b) => b.tests - a.tests || order(a.idea) - order(b.idea))
+    .map(
+      (row) =>
+        `${IDEA_LABELS[row.idea]}: won ${row.wins} of ${row.tests} ${row.tests === 1 ? 'test' : 'tests'}.`,
+    )
+    .join(' ')
+}
+
 /** The planner's packages that survive every rule, cut to the free places. */
 export function vetPlannedPackages(input: VetInput): VetResult {
   const kept: PlannedPackage[] = []

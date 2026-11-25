@@ -1,17 +1,22 @@
 // @vitest-environment node
 
 import {
+  ensurePublishRecord,
+  FIXTURE_PROJECT_ID,
   getChannelSettings,
   listChannels,
   requireTestDatabase,
   seed,
+  thumbnailPackages,
   updateChannelSettings,
 } from '@boom-busters/db'
 import type * as DbModule from '@boom-busters/db'
 import { FIRST_CHANNEL_ID, newId, type Settings } from '@boom-busters/schemas'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import {
+  addWinnerToReferences,
   removeThumbnailReference,
   saveThumbnailReference,
   saveThumbnailStyle,
@@ -49,11 +54,17 @@ const storage = vi.hoisted(() => ({
   configured: true,
   put: [] as { key: string; type: string }[],
   deleted: [] as string[],
+  read: [] as string[],
+  bytes: new Uint8Array(Buffer.from('a winning thumbnail')),
 }))
 vi.mock('@/lib/storage', () => ({
   storageConfigured: () => storage.configured,
   thumbnailReferenceKey: (input: { channelId: string; contentHash: string; ext: string }) =>
     `boom-busters/thumb-refs/${input.channelId}/${input.contentHash}.${input.ext}`,
+  getObjectBytes: async (key: string) => {
+    storage.read.push(key)
+    return { bytes: storage.bytes, contentType: 'image/jpeg' }
+  },
   putObject: async (key: string, _body: Buffer, type: string) => {
     storage.put.push({ key, type })
     return { key }
@@ -106,6 +117,7 @@ describeDb('thumbnail reference actions', () => {
     storage.configured = true
     storage.put = []
     storage.deleted = []
+    storage.read = []
     await seed(db)
     original = await current()
     const first = (await listChannels(db)).find((channel) => channel.id === FIRST_CHANNEL_ID)
@@ -250,6 +262,103 @@ describeDb('thumbnail reference actions', () => {
     ).toEqual({
       ok: false,
       error: 'Unknown channel',
+    })
+  })
+
+  describe('adding a winner', () => {
+    const made: string[] = []
+
+    /** A package of the fixture's master record, in the state a test left it. */
+    const winner = async (over: Partial<typeof thumbnailPackages.$inferInsert> = {}) => {
+      const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      const [row] = await db
+        .insert(thumbnailPackages)
+        .values({
+          publishRecordId: record.id,
+          position: made.length,
+          source: 'generated',
+          state: 'ready',
+          idea: 'person',
+          title: 'The $47 Billion Lie',
+          composedKey: 'boom-busters/thumbs/x/won.jpg',
+          approvedAt: new Date(),
+          result: 'won',
+          ...over,
+        })
+        .returning()
+      made.push(row!.id)
+      return row!
+    }
+
+    afterEach(async () => {
+      for (const id of made.splice(0)) {
+        await db.delete(thumbnailPackages).where(eq(thumbnailPackages.id, id))
+      }
+    })
+
+    it('adds a winner as a reference that is not in use', async () => {
+      const pack = await winner()
+
+      expect(await addWinnerToReferences(pack.id)).toEqual({ ok: true })
+
+      const [ref] = (await current()).thumbnails.references
+      expect(ref).toMatchObject({
+        mimeType: 'image/jpeg',
+        note: 'Won its test: The $47 Billion Lie',
+        inUse: false,
+      })
+      expect(ref!.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/)
+      expect(ref!.r2Key).toMatch(
+        new RegExp(`^boom-busters/thumb-refs/${FIRST_CHANNEL_ID}/[0-9a-f]{64}\\.jpg$`),
+      )
+      expect(storage.read).toEqual(['boom-busters/thumbs/x/won.jpg'])
+      expect(storage.put).toEqual([{ key: ref!.r2Key, type: 'image/jpeg' }])
+    })
+
+    it('cuts a long title so the note fits', async () => {
+      const pack = await winner({ title: 'x'.repeat(300) })
+      expect(await addWinnerToReferences(pack.id)).toEqual({ ok: true })
+      const [ref] = (await current()).thumbnails.references
+      expect(ref!.note).toHaveLength(200)
+      expect(ref!.note.startsWith('Won its test: xxx')).toBe(true)
+    })
+
+    it('refuses a package that did not win', async () => {
+      const refusal = { ok: false, error: 'Only a thumbnail that won its test can be added.' }
+      expect(await addWinnerToReferences((await winner({ result: 'lost' })).id)).toEqual(refusal)
+      expect(await addWinnerToReferences((await winner({ result: null })).id)).toEqual(refusal)
+      expect(await addWinnerToReferences((await winner({ composedKey: null })).id)).toEqual(refusal)
+      expect(await addWinnerToReferences(newId<'thumbnail-reference'>())).toEqual(refusal)
+      expect(storage.put).toEqual([])
+      expect((await current()).thumbnails.references).toEqual([])
+    })
+
+    it('refuses a seventh reference and the same file twice', async () => {
+      const pack = await winner()
+      expect(await addWinnerToReferences(pack.id)).toEqual({ ok: true })
+      expect(await addWinnerToReferences(pack.id)).toEqual({
+        ok: false,
+        error: 'That exact file is already a reference.',
+      })
+
+      await addRefs(5)
+      const putBefore = storage.put.length
+      expect(await addWinnerToReferences((await winner()).id)).toEqual({
+        ok: false,
+        error: 'Six reference thumbnails at most. Remove one first.',
+      })
+      expect(storage.put).toHaveLength(putBefore)
+      expect((await current()).thumbnails.references).toHaveLength(6)
+    })
+
+    it('says so when nothing can store the picture', async () => {
+      const pack = await winner()
+      storage.configured = false
+      expect(await addWinnerToReferences(pack.id)).toEqual({
+        ok: false,
+        error: 'Reference uploads need R2 configured; there is nowhere to store them.',
+      })
+      expect((await current()).thumbnails.references).toEqual([])
     })
   })
 

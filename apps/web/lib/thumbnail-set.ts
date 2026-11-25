@@ -6,10 +6,12 @@ import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { withCost } from '@boom-busters/cost'
 import {
   channelForProject,
+  finishedTests,
   getChannelSettings,
   getProject,
   getThumbnailPackage,
   getWorkspace,
+  ideaResults,
   listCastMembers,
   listShotSlots,
   listThumbnailPackages,
@@ -41,6 +43,7 @@ import {
   spreadReferencePhotos,
   ValidationError,
   vetPlannedPackages,
+  whatHasWon,
 } from '@boom-busters/schemas'
 import type { PlannedPackage, ThumbnailIdea } from '@boom-busters/schemas'
 import { callForAnswer } from '@/lib/answer'
@@ -224,6 +227,11 @@ export async function planThumbnailSet(input: {
       titleFrameFor(projectId, project, frozen),
     ])
     const { settings } = frozen
+    const [byIdea, finished] = await Promise.all([
+      ideaResults(db, frozen.channelId),
+      finishedTests(db, frozen.channelId),
+    ])
+    const pastResults = whatHasWon(byIdea, finished.withWinner)
     const answer = await callForAnswer({
       request: buildThumbnailSetRequest({
         bible: frozen,
@@ -248,6 +256,7 @@ export async function planThumbnailSet(input: {
         referenceNotes: settings.thumbnails.references
           .filter((reference) => reference.inUse)
           .map((reference) => reference.note),
+        ...(pastResults === null ? {} : { pastResults }),
       }),
       parse: (text) => parseThumbnailSet(text),
       complete: completeForProject(projectId, { estimateOutputTokens: 1500 }),

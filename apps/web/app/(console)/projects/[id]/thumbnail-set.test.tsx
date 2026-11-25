@@ -36,6 +36,11 @@ vi.mock('./thumbnail-actions', () => ({
   approveThumbnailSet: (...args: unknown[]) => approveThumbnailSet(...args),
 }))
 
+const addWinnerToReferences = vi.fn()
+vi.mock('@/app/(console)/c/[slug]/settings/thumbnail-reference-actions', () => ({
+  addWinnerToReferences: (...args: unknown[]) => addWinnerToReferences(...args),
+}))
+
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
@@ -55,6 +60,7 @@ beforeEach(() => {
     approveThumbnailSet,
     markTestStarted,
     recordTestResult,
+    addWinnerToReferences,
   ]) {
     action.mockResolvedValue({ ok: true })
   }
@@ -697,6 +703,71 @@ describe('ThumbnailSet', () => {
         render(<ThumbnailSet item={earlier} busy={false} />)
         expect(screen.getByRole('button', { name: 'I have started the test' })).toBeInTheDocument()
         expect(screen.queryByText(/^Variant \d+ won\./)).not.toBeInTheDocument()
+      })
+
+      it('offers Add to references on the winner only, once the result is recorded', async () => {
+        const user = userEvent.setup()
+        const ended = started({
+          testEndedAtIso: '2026-11-24T10:00:00.000Z',
+          packages: uploadedRecord('live').packages.map((p, at) => ({
+            ...p,
+            result: at === 1 ? ('won' as const) : ('lost' as const),
+          })),
+        })
+        const winnerId = ended.record!.packages[1]!.id
+        render(<ThumbnailSet item={ended} busy={false} />)
+
+        const button = screen.getByRole('button', { name: 'Add to references' })
+        expect(screen.getAllByRole('button', { name: 'Add to references' })).toHaveLength(1)
+        await user.click(button)
+        expect(addWinnerToReferences).toHaveBeenCalledWith(winnerId)
+        await vi.waitFor(() => expect(toast).toHaveBeenCalledWith({ title: 'Added to references' }))
+      })
+
+      it('says why when the winner cannot be added', async () => {
+        const user = userEvent.setup()
+        addWinnerToReferences.mockResolvedValue({
+          ok: false,
+          error: 'Six reference thumbnails at most. Remove one first.',
+        })
+        const ended = started({
+          testEndedAtIso: '2026-11-24T10:00:00.000Z',
+          packages: uploadedRecord('live').packages.map((p, at) => ({
+            ...p,
+            result: at === 1 ? ('won' as const) : ('lost' as const),
+          })),
+        })
+        render(<ThumbnailSet item={ended} busy={false} />)
+        await user.click(screen.getByRole('button', { name: 'Add to references' }))
+        await vi.waitFor(() =>
+          expect(toast).toHaveBeenCalledWith(
+            expect.objectContaining({
+              description: 'Six reference thumbnails at most. Remove one first.',
+              variant: 'error',
+            }),
+          ),
+        )
+      })
+
+      it('offers no Add to references without a recorded end, or when nobody won', () => {
+        const noEnd = started({
+          packages: uploadedRecord('live').packages.map((p, at) => ({
+            ...p,
+            result: at === 1 ? ('won' as const) : ('lost' as const),
+          })),
+        })
+        const { rerender } = render(<ThumbnailSet item={noEnd} busy={false} />)
+        expect(screen.queryByRole('button', { name: 'Add to references' })).not.toBeInTheDocument()
+        rerender(
+          <ThumbnailSet
+            item={started({
+              testEndedAtIso: '2026-11-24T10:00:00.000Z',
+              packages: uploadedRecord('live').packages.map((p) => ({ ...p, result: 'same' })),
+            })}
+            busy={false}
+          />,
+        )
+        expect(screen.queryByRole('button', { name: 'Add to references' })).not.toBeInTheDocument()
       })
 
       it('words a same and an inconclusive result without a winner', () => {

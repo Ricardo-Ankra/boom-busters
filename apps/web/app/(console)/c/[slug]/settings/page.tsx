@@ -18,6 +18,8 @@ import {
   runningDerivation,
   maskKey,
   channelYoutubeConnection,
+  finishedTests,
+  ideaResults,
 } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { hasEnvGroup } from '@boom-busters/schemas'
@@ -183,6 +185,12 @@ export default async function SettingsPage({
     })),
   )
 
+  // What the recorded Test & Compare runs say, for the Thumbnails tab's card.
+  const [thumbnailIdeaResults, thumbnailFinishedTests] = await Promise.all([
+    ideaResults(db, channel.id),
+    finishedTests(db, channel.id),
+  ])
+
   // The thumbnail references' pictures, presigned like the logos' when storage holds them.
   const thumbnailReferenceViews = await Promise.all(
     settings.thumbnails.references.map(async (ref) => ({
@@ -279,6 +287,8 @@ export default async function SettingsPage({
         initialTab={tab}
         logos={logoViews}
         thumbnailReferences={thumbnailReferenceViews}
+        thumbnailIdeaResults={thumbnailIdeaResults}
+        thumbnailFinishedTests={thumbnailFinishedTests}
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}

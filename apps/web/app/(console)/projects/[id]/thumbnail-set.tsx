@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import type { PublishItemModel, ThumbnailPackageProp } from '@/lib/publish-review'
 import { testRunningReason } from '@/lib/test-running'
+import { addWinnerToReferences } from '@/app/(console)/c/[slug]/settings/thumbnail-reference-actions'
 import { useAction } from './project-controls'
 import {
   approveThumbnailSet,
@@ -416,7 +417,26 @@ function TestPanel({
             ))}
           </ul>
         ) : null}
-        <div>
+        <div className="flex flex-wrap items-center gap-2">
+          {approved
+            .filter((pack) => pack.result === 'won')
+            .map((pack) => (
+              <Button
+                key={pack.id}
+                variant="outline"
+                busy={pressed === `reference-${pack.id}`}
+                disabled={locked}
+                onClick={() =>
+                  void act(
+                    () => addWinnerToReferences(pack.id),
+                    'Added to references',
+                    `reference-${pack.id}`,
+                  )
+                }
+              >
+                Add to references
+              </Button>
+            ))}
           <Button variant="outline" disabled={locked} onClick={() => setChanging(true)}>
             Change the result
           </Button>
