@@ -375,6 +375,37 @@ describeDb('the thumbnail actions', () => {
       })
     })
 
+    it('a compose that cannot be requested puts the headline and the side back', async () => {
+      inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        headline: 'OLD',
+        textSide: 'left',
+        title: 'Old title',
+        error: 'kept words',
+      })
+      try {
+        expect(
+          await saveThumbnailPackage(row.id, {
+            headline: 'NEW',
+            textSide: 'right',
+            title: 'New title',
+          }),
+        ).toEqual({ ok: false, error: 'Could not reach Inngest to start the work.' })
+      } finally {
+        logged.mockRestore()
+      }
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        state: 'ready',
+        error: 'kept words',
+        headline: 'OLD',
+        textSide: 'left',
+        // A title changed in the same save stays changed.
+        title: 'New title',
+      })
+    })
+
     it('a text-side change recomposes too, and a long headline only warns on the card', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0, { textSide: 'left' })

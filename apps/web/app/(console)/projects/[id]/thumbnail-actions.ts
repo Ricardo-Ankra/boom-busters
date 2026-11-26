@@ -319,7 +319,14 @@ export async function saveThumbnailPackage(
   if (recomposing) {
     const failed = await sendPackageEvent(loaded, 'compose')
     if (failed) {
-      await updateThumbnailPackage(db, packageId, { state: row.state, error: row.error })
+      // The type goes back with the state: a ready row would otherwise keep the new
+      // headline over the old composite.
+      await updateThumbnailPackage(db, packageId, {
+        state: row.state,
+        error: row.error,
+        headline: row.headline,
+        textSide: row.textSide,
+      })
       return failed
     }
   }
