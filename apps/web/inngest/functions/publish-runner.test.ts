@@ -573,7 +573,7 @@ describeDb('publish-runner', () => {
             ...ctx,
             step: {
               ...ctx.step,
-              waitForEvent: async () => {
+              waitForEvent: (async () => {
                 await change()
                 return {
                   name: 'media/job.completed',
@@ -585,7 +585,7 @@ describeDb('publish-runner', () => {
                     result: { videoId: 'vid1', status: 'uploaded' },
                   },
                 }
-              },
+              }) as never,
             },
           }),
         })
