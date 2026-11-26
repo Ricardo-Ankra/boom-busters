@@ -107,11 +107,11 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
       opts: { onFailure: (ctx: unknown) => Promise<void> }
     }
   ).opts.onFailure
-  const failure = (message: string) => ({
+  const failure = (message: string, mode: 'set' | 'paint' | 'compose' = 'set') => ({
     event: {
       data: {
         error: { message },
-        event: { data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID } },
+        event: { data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID, mode } },
       },
     },
   })
@@ -215,6 +215,18 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
 
     const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
     expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()
+  })
+
+  it('a failed paint run leaves the claim alone', async () => {
+    // The claim belongs to a set run that is queued behind this paint run.
+    await mergePublishMetadata(db, recordId, {
+      thumbnailSetRequestedAt: new Date().toISOString(),
+    })
+
+    await onFailure(failure('The picture model refused.', 'paint'))
+
+    const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+    expect(metadata['thumbnailSetRequestedAt']).toEqual(expect.any(String))
   })
 
   it('a set run does not repaint a package that already has its picture', async () => {

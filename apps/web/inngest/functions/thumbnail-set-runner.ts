@@ -48,8 +48,9 @@ export const thumbnailSetRunner = inngest.createFunction(
       if (typeof targetId !== 'string') return
       const record = await ensurePublishRecord(db, 'master', targetId)
       const message = event.data.error.message
-      // A dead run gives the claim back, or the next Generate waits out the fifteen minutes.
-      await clearThumbnailSetRequest(db, record.id)
+      // A dead set run gives the claim back, or the next Generate waits out the fifteen
+      // minutes. A paint or compose run never held it: the claim may be a queued set run's.
+      if (event.data.event.data['mode'] === 'set') await clearThumbnailSetRequest(db, record.id)
       let marked = 0
       for (const row of await listThumbnailPackages(db, record.id)) {
         if (row.state === 'planned' || row.state === 'painting') {
