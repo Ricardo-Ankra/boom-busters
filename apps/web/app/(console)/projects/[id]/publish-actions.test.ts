@@ -1213,6 +1213,22 @@ describeDb('a Test & Compare that is running', () => {
     expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual(refusal)
   })
 
+  it('refuses to schedule while the set is being planned', async () => {
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    // A Generate claim is fresh and no package row exists yet.
+    await updatePublishRecord(db, record.id, {
+      uploadedThumbKeys: ['boom-busters/thumbs/a.png'],
+      metadata: {
+        ...(record.metadata as object),
+        thumbnailSetRequestedAt: new Date().toISOString(),
+      },
+    })
+    const refusal = { ok: false, error: 'A set is being made. Wait for it to finish.' }
+    const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
+    expect(await schedulePublish('master', FIXTURE_PROJECT_ID, later)).toEqual(refusal)
+    expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual(refusal)
+  })
+
   it('unlinking a video clears its test stamps and frees a new upload', async () => {
     const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
     await updatePublishRecord(db, record.id, {

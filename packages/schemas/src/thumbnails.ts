@@ -50,6 +50,17 @@ export function packageInFlight(row: { state: string; updatedAt: Date }, now: Da
   )
 }
 
+/**
+ * True while a Generate claim is fresh: a set was requested and its plan has
+ * not landed, so no package row exists yet. A claim older than
+ * `PACKAGE_STALE_MS` is a run that died.
+ */
+export function setBeingPlanned(requestedAtIso: string | undefined, now: Date): boolean {
+  return (
+    requestedAtIso !== undefined && now.getTime() - Date.parse(requestedAtIso) <= PACKAGE_STALE_MS
+  )
+}
+
 export const TEST_RESULTS = ['won', 'lost', 'same', 'inconclusive'] as const
 export type TestResult = (typeof TEST_RESULTS)[number]
 

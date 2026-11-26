@@ -43,6 +43,7 @@ import {
   splitParagraphs,
   TeaserScriptSchema,
   searchBriefLine,
+  setBeingPlanned,
   tagBudgetMessage,
   UlidSchema,
   YOUTUBE_TAGS_MAX_CHARS,
@@ -784,12 +785,17 @@ async function requestUpload(
 ): Promise<ActionResult> {
   let workingTitle: string
   if (type === 'master') {
-    // A package still being made (or recomposed) is not what the upload should carry.
+    // A package still being made (or recomposed), or a set still being
+    // planned, is not what the upload should carry.
     const existing = await getPublishRecord(db, 'master', targetId)
     const now = new Date()
     if (
       existing &&
-      (await listThumbnailPackages(db, existing.id)).some((row) => packageInFlight(row, now))
+      (setBeingPlanned(
+        PublishDraftSchema.safeParse(existing.metadata).data?.thumbnailSetRequestedAt,
+        now,
+      ) ||
+        (await listThumbnailPackages(db, existing.id)).some((row) => packageInFlight(row, now)))
     ) {
       return { ok: false, error: 'A set is being made. Wait for it to finish.' }
     }

@@ -34,11 +34,11 @@ import {
   nameMatches,
   normaliseArticleUrl,
   PACKAGES_MAX,
-  PACKAGE_STALE_MS,
   packageInFlight,
   PublishDraftSchema,
   quotaDayStartUtc,
   researchKeywords,
+  setBeingPlanned,
   ShotBriefSchema,
   SlotCandidateSchema,
   sourceLabel,
@@ -627,10 +627,7 @@ function toRecordProp(
     thumbs,
     packages,
     thumbnailSetNote: draft.success ? draft.data.thumbnailSetNote : '',
-    planning:
-      draft.success &&
-      draft.data.thumbnailSetRequestedAt !== undefined &&
-      Date.now() - Date.parse(draft.data.thumbnailSetRequestedAt) <= PACKAGE_STALE_MS,
+    planning: draft.success && setBeingPlanned(draft.data.thumbnailSetRequestedAt, new Date()),
     testStartedAtIso: row.testStartedAt?.toISOString() ?? null,
     testEndedAtIso: row.testEndedAt?.toISOString() ?? null,
   }
