@@ -151,6 +151,23 @@ describe('mockThumbnailSet', () => {
       mockThumbnailSet({ workingTitle: 'x', places: 2, heldIdeas: [], claimIds: ['c1'] }),
     ).toHaveLength(2)
   })
+
+  it('the mock subject never holds the working title', () => {
+    const set = mockThumbnailSet({
+      workingTitle: 'Jane Example',
+      places: 3,
+      heldIdeas: [],
+      claimIds: ['c1'],
+    })
+    expect(set).toHaveLength(3)
+    for (const p of set) {
+      expect(p.picture.subject).toBe(`[mock] a ${p.idea}`)
+      expect(p.picture.subject).not.toContain('Jane Example')
+      // The angle and the title keep the stem.
+      expect(p.angle).toContain('Jane Example')
+      expect(p.title).toContain('Jane Example')
+    }
+  })
 })
 
 describe('buildThumbnailPicturePrompt', () => {

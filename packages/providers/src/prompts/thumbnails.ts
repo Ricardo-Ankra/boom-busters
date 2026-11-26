@@ -218,7 +218,8 @@ export function mockThumbnailSet(input: {
       title: `[mock] ${stem}, the ${idea} version`,
       headline: `[mock] ${idea}`,
       picture: {
-        subject: `[mock] a ${idea} for ${stem}`,
+        // No stem: a working title that is a cast member's name would trip the name rule.
+        subject: `[mock] a ${idea}`,
         framing: '',
         textSide: index % 2 === 0 ? ('left' as const) : ('right' as const),
         stillSlotIds: [],
