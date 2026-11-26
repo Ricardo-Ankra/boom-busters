@@ -12643,8 +12643,8 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      cast's photos; the app sets the headline and the channel mark on top. The
      owner edits and approves; the first approved package uploads as before
      and the others are handed over for a Test & Compare in YouTube Studio.
-     Phase 1 only: recording a test's start and result, and telling the
-     planner what has won, are phase 2.
+     Both phases are built: recording a test's start and result, and telling
+     the planner what has won, are sub-item (m).
      (b) It reverses two recorded positions: build spec section 2's
      out-of-scope line on thumbnail generation, and the app spec's "No AI
      thumbnail generation anywhere in the pipeline". Both documents now say a
@@ -12694,3 +12694,18 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      result overwrites them. The planner is told what has won only once five
      tests have a winner (`WINS_MIN_TESTS`); Settings shows the counts, and a
      winning thumbnail can be kept as a reference that is not in use.
+     (n) The final review's fixes. Generate is claimed on the record under its
+     lock, so a second press cannot buy the set twice.
+     (o) A recompose is in flight while it runs, uploads wait for it, and a
+     composite lands through one locked helper that never alters a record that
+     is uploading or on YouTube. The card offers a free `Compose again` for a
+     package that has a picture but no composite, and says `Planning the set.`
+     while the plan is pending.
+     (p) The upload title is written only when the package that goes up
+     changes, and an uploaded package carries a title of its own. The card's
+     Default tag follows the package that will go up, not position 0.
+     (q) The vet refuses a picture that names a cast member it does not list,
+     a `person` package must show someone, and a picture with nobody shown is
+     told to hold no recognisable real person.
+     (r) The reminder skips a test already marked started and a video more than
+     fourteen days out.

@@ -139,7 +139,8 @@ A package holds:
 Packages live in a table of their own, one row per package, keyed to the
 publish record. `publish_records.uploaded_thumb_keys` stays what the publish
 runner reads: approving a set writes the approved packages' composed keys into
-it in order, and the default's title into the draft title. The runner's
+it in order, and the default's title into the draft title, written when the
+package that goes up changes and not on every approval. The runner's
 upload rounds and its `set-thumbnail` step do not change; its preflight gains
 one read (7.9).
 
@@ -192,7 +193,11 @@ that fails, asking once for a replacement:
 - every claim id exists and is verified, and there is at least one;
 - any figure in the title or headline appears in one of those claims;
 - the three ideas differ;
-- the headline is within the word ceiling.
+- the headline is within the word ceiling;
+- the picture's subject and framing name no cast member who is not listed in
+  `depicts` (the full name as whole words, ignoring case; the title and the
+  headline may name anyone);
+- a `person` package lists at least one cast member in `depicts`.
 
 A package that depicts a person must name at least one film still that depicts
 the same person. That is how "only in a situation the film shows" is held: the
@@ -328,6 +333,12 @@ Thumbnails and titles
   words.
 - "Regenerate picture" buys one image for that package. Title and headline
   edits are free.
+- While the plan is pending the card says `Planning the set.` and keeps
+  Generate and Approve disabled.
+- "Compose again" appears beside "Regenerate picture" on a generated package
+  that has a stored picture and failed, or whose run died. It sets the type
+  and mark again at no cost.
+- Scheduling and publishing wait while a set is being made, uploads included.
 - "Approve this set" is the gate. Before it, a master has no thumbnail as far
   as the runner is concerned, so the existing precondition refuses the upload.
   A package that shows a person lists the names under "Shows", so the owner

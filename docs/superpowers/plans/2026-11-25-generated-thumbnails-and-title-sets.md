@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md` (approved by the owner 2026-11-25). Read it in full before Task 1; this plan argues from it and does not repeat its reasons.
 
+## Overruled during the build
+
+- The mark's corner is `settings.thumbnails.markPlacement` (decision 484), not a brand kit field.
+- The upload title follows the first approved package with an image and is written only when that package changes.
+- A package is `ready` only once composed, and a recomposing package is in flight.
+- Generate is claimed on the record, so it cannot be bought twice.
+
 ## Global Constraints
 
 - Branch `worktree-generated-thumbnails` in worktree `.claude/worktrees/generated-thumbnails`, cut from master at `0605a0bc`. Small commits, one logical change each. Commit messages end with `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`.
