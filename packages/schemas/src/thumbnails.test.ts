@@ -180,6 +180,106 @@ describe('vetPlannedPackages', () => {
     expect(held.dropped[0]!.idea).toBe('figure')
   })
 
+  it('drops a picture that names a cast member it does not list', () => {
+    const out = vetPlannedPackages(
+      input({
+        packages: [
+          pkg({
+            idea: 'moment',
+            picture: {
+              subject: 'Adam Neumann at a podium',
+              framing: '',
+              textSide: 'left',
+              stillSlotIds: [],
+              depicts: [],
+            },
+          }),
+        ],
+      }),
+    )
+    expect(out.kept).toEqual([])
+    expect(out.dropped[0]!.reason).toBe(
+      'Adam Neumann is described in the picture but is not listed as shown.',
+    )
+    const viaFraming = vetPlannedPackages(
+      input({
+        packages: [
+          pkg({
+            idea: 'moment',
+            picture: {
+              subject: 'A podium',
+              framing: 'close on adam neumann, low angle',
+              textSide: 'left',
+              stillSlotIds: [],
+              depicts: [],
+            },
+          }),
+        ],
+      }),
+    )
+    expect(viaFraming.kept).toEqual([])
+  })
+
+  it('a title may name someone the picture does not show', () => {
+    const out = vetPlannedPackages(
+      input({
+        packages: [
+          pkg({
+            idea: 'figure',
+            title: 'Adam Neumann and the $47 Billion Lie',
+            headline: 'The $47bn lie',
+            picture: {
+              subject: 'A huge number on a wall',
+              framing: '',
+              textSide: 'left',
+              stillSlotIds: [],
+              depicts: [],
+            },
+          }),
+        ],
+      }),
+    )
+    expect(out.kept).toHaveLength(1)
+  })
+
+  it('matches the name as whole words only', () => {
+    const picture = (subject: string) => ({
+      subject,
+      framing: '',
+      textSide: 'left' as const,
+      stillSlotIds: [],
+      depicts: [],
+    })
+    const run = (subject: string) =>
+      vetPlannedPackages(input({ packages: [pkg({ idea: 'object', picture: picture(subject) })] }))
+        .kept.length
+    expect(run('Neumann alone at a podium')).toBe(1)
+    expect(run('Adamson Neumannsburg at a podium')).toBe(1)
+    expect(run('Adam Neumann at a podium')).toBe(0)
+    expect(run('Adam Neumann, at a podium')).toBe(0)
+  })
+
+  it('a person package must show someone', () => {
+    const out = vetPlannedPackages(
+      input({
+        packages: [
+          pkg({
+            idea: 'person',
+            picture: {
+              subject: 'A founder at a podium',
+              framing: '',
+              textSide: 'left',
+              stillSlotIds: [],
+              depicts: [],
+            },
+          }),
+        ],
+      }),
+    )
+    expect(out.kept).toEqual([])
+    expect(out.dropped[0]!.reason).toBe('A person package must show someone from the cast.')
+  })
+
   it('cuts to the free places', () => {
     const out = vetPlannedPackages(
       input({

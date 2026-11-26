@@ -182,7 +182,30 @@ function firstFailure(
     if (!shown) return `No named still shows ${member.name}.`
   }
 
+  // The subject and framing go to the image model word for word, so a cast
+  // member named there but not listed as shown would escape the likeness rules.
+  const listed = depictedMembers(candidate.picture.depicts, input.cast)
+  const described = `${candidate.picture.subject} ${candidate.picture.framing}`
+  for (const member of input.cast) {
+    if (listed.includes(member)) continue
+    if (namesWholeName(described, member.name)) {
+      return `${member.name} is described in the picture but is not listed as shown.`
+    }
+  }
+
+  if (candidate.idea === 'person' && candidate.picture.depicts.length === 0) {
+    return 'A person package must show someone from the cast.'
+  }
+
   return null
+}
+
+/** Whether a text holds a full name as whole words, ignoring case and spacing. */
+function namesWholeName(text: string, name: string): boolean {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return false
+  const escaped = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+')
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu').test(text)
 }
 
 /**

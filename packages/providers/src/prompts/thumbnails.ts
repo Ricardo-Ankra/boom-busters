@@ -127,6 +127,7 @@ ${ideaLines}
 - The thumbnail promises only what the claims support: every package names the claim ids it rests on in "claimIds", using the ids in the claim list, and every figure in the title or headline appears in a claim it names.
 - A claim marked ALLEGED is an allegation: frame it as an allegation or a question, never as fact about a named person.
 - A person may appear only if they are in the cast, and only with a still that shows them: "depicts" holds only a person who is in the cast, and "stillSlotIds" must include a still that shows that person. A picture with nobody named needs no still.
+- The picture description must not name or describe a real person unless that person is listed in "depicts". A "person" package must list who is shown in "depicts". A person who is shown appears as in the named film still.
 - The headline is at most ${HEADLINE_WORDS_MAX} words and adds to the title, never repeats it: the title carries the subject, the headline carries the tension.
 - The title is at most ${TITLE_MAX_CHARS} characters.${titleFrameRules(input.titleFrame)}
 - "picture.subject" says what fills the frame. "picture.textSide" is the side the headline will sit on, "left" or "right", chosen so the subject sits on the other side.
@@ -255,6 +256,11 @@ export function buildThumbnailPicturePrompt(input: {
   for (const guard of input.guardrails) {
     const text = guard.guardrail.trim()
     parts.push(`${guard.name}: ${text === '' ? 'shown as themselves.' : text}`)
+    if (attached.stills > 0) {
+      parts.push(
+        `Show ${guard.name} in the setting and situation of the attached film still, not in an invented one.`,
+      )
+    }
   }
 
   const travelling: string[] = []
@@ -274,6 +280,7 @@ export function buildThumbnailPicturePrompt(input: {
   }
   if (input.styleNote.trim() !== '') parts.push(`Style: ${input.styleNote.trim()}`)
 
+  if (picture.depicts.length === 0) parts.push('No recognisable real person appears.')
   parts.push('No text, no letters, no logos, no watermark, no interface elements.')
   return parts.join(' ')
 }

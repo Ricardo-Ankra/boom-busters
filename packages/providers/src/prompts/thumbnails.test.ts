@@ -64,6 +64,14 @@ describe('buildThumbnailSetRequest', () => {
     expect(request.system).toContain('{"packages"')
   })
 
+  it('tells the planner the picture may not name an unlisted person', () => {
+    expect(request.system).toContain(
+      'The picture description must not name or describe a real person unless that person is listed in "depicts".',
+    )
+    expect(request.system).toContain('A "person" package must list who is shown in "depicts".')
+    expect(request.system).toContain('A person who is shown appears as in the named film still.')
+  })
+
   it('shows the claims with their ids', () => {
     const content = request.messages.map((m) => m.content).join('\n')
     expect(content).toContain(`(id: ${CLAIM.id})`)
@@ -178,6 +186,40 @@ describe('buildThumbnailPicturePrompt', () => {
     expect(
       prompt.endsWith('No text, no letters, no logos, no watermark, no interface elements.'),
     ).toBe(true)
+  })
+
+  it('says no real person appears when nobody is shown', () => {
+    const none = buildThumbnailPicturePrompt({
+      picture: { ...picture, depicts: [], stillSlotIds: [] },
+      styleNote: '',
+      guardrails: [],
+      attached: { people: [], stills: 0, styles: 0 },
+    })
+    const sentence = 'No recognisable real person appears.'
+    const closing = 'No text, no letters, no logos, no watermark, no interface elements.'
+    expect(none).toContain(sentence)
+    expect(none.indexOf(sentence)).toBe(none.indexOf(closing) - sentence.length - 1)
+    expect(prompt).not.toContain(sentence)
+  })
+
+  it('ties a shown person to the film still', () => {
+    expect(prompt).toContain(
+      'Show Emad Mostaque in the setting and situation of the attached film still, not in an invented one.',
+    )
+    expect(prompt.indexOf('Show Emad Mostaque in the setting')).toBeGreaterThan(
+      prompt.indexOf('Show him as a man in a suit.'),
+    )
+  })
+
+  it('leaves the tie out when no still travels', () => {
+    const noStill = buildThumbnailPicturePrompt({
+      picture,
+      styleNote: '',
+      guardrails: [{ name: 'Emad Mostaque', guardrail: 'Show him as a man in a suit.' }],
+      attached: { people: ['Emad Mostaque'], stills: 0, styles: 0 },
+    })
+    expect(noStill).toContain('Show him as a man in a suit.')
+    expect(noStill).not.toContain('setting and situation')
   })
 
   it('declares only the references that travel', () => {
