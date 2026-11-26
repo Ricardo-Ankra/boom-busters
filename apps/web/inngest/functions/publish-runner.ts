@@ -600,9 +600,24 @@ export const publishRunner = inngest.createFunction(
 
     if (preflight.thumbKey !== null) {
       await step.run('set-thumbnail', async () => {
-        const url = await presignGet(preflight.thumbKey!)
-        const bytes = Buffer.from(await (await fetch(url)).arrayBuffer())
-        const contentType = preflight.thumbKey!.endsWith('.jpg') ? 'image/jpeg' : 'image/png'
+        // The record stays editable while a run sleeps for the quota day, so
+        // the key memoised by preflight may be gone: read what it lists now.
+        const current = await getPublishRecord(db, targetType, targetId)
+        const thumbKey = current?.uploadedThumbKeys[0] ?? preflight.thumbKey!
+        const url = await presignGet(thumbKey)
+        const response = await fetch(url)
+        if (!response.ok) {
+          console.error('[publish] stored thumbnail unreadable:', response.status)
+          await notify({
+            kind: 'run-failed',
+            title: 'Thumbnail did not stick',
+            body: 'The video is scheduled, but its stored thumbnail could not be read. Set it in Studio.',
+            href: `/projects/${projectId}?stage=publish`,
+          })
+          return
+        }
+        const bytes = Buffer.from(await response.arrayBuffer())
+        const contentType = thumbKey.endsWith('.jpg') ? 'image/jpeg' : 'image/png'
         const result = await setThumbnail(accessToken, videoId, bytes, contentType)
         if (!result.ok) {
           console.error('[publish] thumbnails.set failed:', result.error)

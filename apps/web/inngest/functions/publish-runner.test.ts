@@ -30,8 +30,11 @@ import {
 } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
+import { presignGet } from '@/lib/storage'
+import { setThumbnail } from '@/lib/youtube'
 import { forgetRunRows } from '../middleware/run-mirror'
 import { nextUploadRound, publishRunner } from './publish-runner'
 
@@ -550,6 +553,99 @@ describeDb('publish-runner', () => {
       const job = broker.submitMediaJob.mock.calls[0]![0] as Record<string, unknown>
       expect(job['budgetMs']).toBe(720000)
       expect(job).not.toHaveProperty('resume')
+    })
+
+    describe('set-thumbnail', () => {
+      const OLD_KEY = 'boom-busters/thumbs/old.jpg'
+      const NEW_KEY = 'boom-busters/thumbs/new.jpg'
+
+      // Runs the whole live path with the upload round answered at once. The
+      // harness cannot hand a waitForEvent result through its step mocks, so
+      // the wait is replaced on the context. It is also where the record's
+      // first key changes: after the request and the preflight, before
+      // set-thumbnail runs.
+      async function runToThumbnail(change: () => Promise<void>) {
+        await doneMasterRender()
+        await draftRecord('master', FIXTURE_PROJECT_ID, { uploadedThumbKeys: [OLD_KEY] })
+        const answering = new InngestTestEngine({
+          function: publishRunner,
+          transformCtx: (ctx) => ({
+            ...ctx,
+            step: {
+              ...ctx.step,
+              waitForEvent: async () => {
+                await change()
+                return {
+                  name: 'media/job.completed',
+                  data: {
+                    projectId: FIXTURE_PROJECT_ID,
+                    jobId: newId<'run'>(),
+                    kind: 'upload-youtube',
+                    ok: true,
+                    result: { videoId: 'vid1', status: 'uploaded' },
+                  },
+                }
+              },
+            },
+          }),
+        })
+        return answering.execute({ events: requestedEvent('master', FIXTURE_PROJECT_ID) })
+      }
+
+      const changeFirstKey = () =>
+        db
+          .update(publishRecords)
+          .set({ uploadedThumbKeys: [NEW_KEY] })
+          .where(eq(publishRecords.targetId, FIXTURE_PROJECT_ID))
+          .then(() => undefined)
+
+      it(
+        'sets the thumbnail the record lists when the upload runs',
+        { timeout: 120_000 },
+        async () => {
+          vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) }),
+          )
+          try {
+            await runToThumbnail(changeFirstKey)
+          } finally {
+            vi.unstubAllGlobals()
+          }
+
+          expect(presignGet).toHaveBeenCalledWith(NEW_KEY)
+          expect(presignGet).not.toHaveBeenCalledWith(OLD_KEY)
+          expect(setThumbnail).toHaveBeenCalledWith(
+            'ya29.short',
+            'vid1',
+            expect.any(Buffer),
+            'image/jpeg',
+          )
+        },
+      )
+
+      it(
+        'a thumbnail that cannot be read is reported and not sent',
+        { timeout: 120_000 },
+        async () => {
+          vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
+          const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+          try {
+            await runToThumbnail(async () => undefined)
+          } finally {
+            vi.unstubAllGlobals()
+            errorLog.mockRestore()
+          }
+
+          expect(setThumbnail).not.toHaveBeenCalled()
+          expect(notify).toHaveBeenCalledWith(
+            expect.objectContaining({
+              title: 'Thumbnail did not stick',
+              body: 'The video is scheduled, but its stored thumbnail could not be read. Set it in Studio.',
+            }),
+          )
+        },
+      )
     })
   })
 })
