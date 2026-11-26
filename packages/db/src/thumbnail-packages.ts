@@ -458,30 +458,73 @@ export async function removeThumbnailPackage(
 }
 
 /**
- * Replaces one approved image with another at the same place in
- * `uploaded_thumb_keys`. A key not in the array changes nothing.
+ * Lands a finished composite, the one write a compose makes. Under the record's
+ * lock it re-reads the package and the record, so an approval that happened
+ * while the browser worked is seen:
+ * - the package is gone: nothing lands, the new object is for deletion;
+ * - the package is approved and the video is already uploading or on YouTube:
+ *   nothing changes (a late composite never alters what was uploaded), the
+ *   new object is for deletion, and a `painting` row goes back to `ready`;
+ * - otherwise the composite lands (`composedKey`, `warnings`, `ready`), and
+ *   for an approved package its key replaces the old one in
+ *   `uploaded_thumb_keys` at the same index.
+ * `deleteKeys` are the objects to remove from storage afterwards: the old
+ * composite only when the record no longer lists it.
  */
-export async function swapApprovedKey(
+export async function landComposedThumbnail(
   db: Database,
-  publishRecordId: string,
-  oldKey: string,
-  newKey: string,
-): Promise<void> {
-  await db.transaction(async (tx) => {
+  packageId: string,
+  input: { composedKey: string; warnings: string[] },
+): Promise<{ landed: boolean; deleteKeys: string[] }> {
+  return db.transaction(async (tx) => {
+    const found = await getThumbnailPackage(tx, packageId)
+    if (!found) return { landed: false, deleteKeys: [input.composedKey] }
+    await lockRecord(tx, found.publishRecordId)
+    const row = await getThumbnailPackage(tx, packageId)
+    if (!row) return { landed: false, deleteKeys: [input.composedKey] }
     const [record] = await tx
-      .select({ keys: publishRecords.uploadedThumbKeys })
+      .select({ status: publishRecords.status, keys: publishRecords.uploadedThumbKeys })
       .from(publishRecords)
-      .where(eq(publishRecords.id, publishRecordId))
-      .for('update')
-    if (!record) return
-    const index = record.keys.indexOf(oldKey)
-    if (index === -1) return
-    const keys = [...record.keys]
-    keys[index] = newKey
+      .where(eq(publishRecords.id, row.publishRecordId))
+    if (!record) return { landed: false, deleteKeys: [input.composedKey] }
+
+    const old = row.composedKey
+    const sameObject = old === input.composedKey
+    if (row.approvedAt !== null && record.status !== 'draft' && record.status !== 'failed') {
+      if (row.state === 'painting' && old !== null) {
+        await tx
+          .update(thumbnailPackages)
+          .set({ state: 'ready', error: null })
+          .where(eq(thumbnailPackages.id, packageId))
+      }
+      return { landed: false, deleteKeys: sameObject ? [] : [input.composedKey] }
+    }
+
     await tx
-      .update(publishRecords)
-      .set({ uploadedThumbKeys: keys })
-      .where(eq(publishRecords.id, publishRecordId))
+      .update(thumbnailPackages)
+      .set({
+        composedKey: input.composedKey,
+        warnings: input.warnings,
+        state: 'ready',
+        error: null,
+      })
+      .where(eq(thumbnailPackages.id, packageId))
+    let keys = record.keys
+    if (row.approvedAt !== null && old !== null && !sameObject) {
+      const index = keys.indexOf(old)
+      if (index !== -1) {
+        keys = [...keys]
+        keys[index] = input.composedKey
+        await tx
+          .update(publishRecords)
+          .set({ uploadedThumbKeys: keys })
+          .where(eq(publishRecords.id, row.publishRecordId))
+      }
+    }
+    return {
+      landed: true,
+      deleteKeys: old !== null && !sameObject && !keys.includes(old) ? [old] : [],
+    }
   })
 }
 

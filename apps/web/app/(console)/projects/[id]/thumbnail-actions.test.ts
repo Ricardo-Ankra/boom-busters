@@ -12,16 +12,18 @@ import {
   thumbnailPackages,
   updatePublishRecord,
 } from '@boom-busters/db'
+import { packageInFlight } from '@boom-busters/schemas'
 import { eq } from 'drizzle-orm'
 import type * as StorageLib from '@/lib/storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
-import { uploadThumbnail, removeThumbnail } from './publish-actions'
+import { publishNow, removeThumbnail, schedulePublish, uploadThumbnail } from './publish-actions'
 import {
   approveThumbnailSet,
   generateThumbnailSet,
   makeDefaultThumbnail,
   markTestStarted,
+  recomposeThumbnail,
   recordTestResult,
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
@@ -321,6 +323,45 @@ describeDb('the thumbnail actions', () => {
       expect((await listThumbnailPackages(db, id))[0]!.headline).toBe('THE FALL')
     })
 
+    it('a headline edit puts the package in flight', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { headline: 'OLD', error: 'a stale warning' })
+
+      expect(await saveThumbnailPackage(row.id, { headline: 'NEW' })).toEqual({ ok: true })
+
+      const stored = await getThumbnailPackage(db, row.id)
+      expect(stored).toMatchObject({ state: 'painting', error: null })
+      expect(packageInFlight(stored!, new Date())).toBe(true)
+      // Nothing can approve it, or change it again, until the compose lands.
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect(await saveThumbnailPackage(row.id, { headline: 'NEWER' })).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+    })
+
+    it('a failed compose send restores the package', async () => {
+      inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const id = await recordId()
+      const row = await addPackage(id, 0, { headline: 'OLD', error: 'kept words' })
+      try {
+        expect(await saveThumbnailPackage(row.id, { headline: 'NEW' })).toEqual({
+          ok: false,
+          error: 'Could not reach Inngest to start the work.',
+        })
+      } finally {
+        logged.mockRestore()
+      }
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        state: 'ready',
+        error: 'kept words',
+      })
+    })
+
     it('a text-side change recomposes too, and a long headline only warns on the card', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0, { textSide: 'left' })
@@ -394,6 +435,83 @@ describeDb('the thumbnail actions', () => {
       })
       await saveThumbnailPackage(second.id, { title: 'Changed' })
       expect((await storedRecord()).metadata).toMatchObject({ title: 'Default' })
+    })
+  })
+
+  describe('recomposeThumbnail', () => {
+    it('sends a compose for a failed package that kept its picture, and buys nothing', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'failed',
+        error: 'The browser would not start.',
+      })
+
+      expect(await recomposeThumbnail(row.id)).toEqual({ ok: true })
+
+      expect(inngestSeam.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            projectId: FIXTURE_PROJECT_ID,
+            targetId: FIXTURE_PROJECT_ID,
+            mode: 'compose',
+            packageId: row.id,
+          },
+        }),
+      )
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        state: 'painting',
+        error: null,
+      })
+    })
+
+    it('refuses a package with no picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: null, state: 'failed' })
+      const uploaded = await addPackage(id, 1, { source: 'uploaded', pictureKey: null })
+
+      for (const target of [row, uploaded]) {
+        expect(await recomposeThumbnail(target.id)).toEqual({
+          ok: false,
+          error: 'There is no picture to compose. Regenerate the picture.',
+        })
+      }
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+    })
+
+    it('refuses a package in flight, and restores the package when the send fails', async () => {
+      const id = await recordId()
+      const busy = await addPackage(id, 0, { state: 'painting' })
+      expect(await recomposeThumbnail(busy.id)).toEqual({ ok: false, error: IN_FLIGHT })
+
+      inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const failed = await addPackage(id, 1, { state: 'failed', error: 'kept words' })
+      try {
+        expect((await recomposeThumbnail(failed.id)).ok).toBe(false)
+      } finally {
+        logged.mockRestore()
+      }
+      expect(await getThumbnailPackage(db, failed.id)).toMatchObject({
+        state: 'failed',
+        error: 'kept words',
+      })
+    })
+  })
+
+  describe('scheduling while a set is being made', () => {
+    it('refuses to schedule while a package is in flight', async () => {
+      const id = await recordId()
+      await addPackage(id, 0, { state: 'painting' })
+
+      const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
+      expect(await schedulePublish('master', FIXTURE_PROJECT_ID, later)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
     })
   })
 

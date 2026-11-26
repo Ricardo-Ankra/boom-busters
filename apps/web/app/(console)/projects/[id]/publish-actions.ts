@@ -36,6 +36,7 @@ import {
   dropFixedParagraphs,
   missingTitleSlots,
   normaliseHashtag,
+  packageInFlight,
   splitHashtags,
   PublishDraftSchema,
   PublishMetadataSchema,
@@ -783,6 +784,15 @@ async function requestUpload(
 ): Promise<ActionResult> {
   let workingTitle: string
   if (type === 'master') {
+    // A package still being made (or recomposed) is not what the upload should carry.
+    const existing = await getPublishRecord(db, 'master', targetId)
+    const now = new Date()
+    if (
+      existing &&
+      (await listThumbnailPackages(db, existing.id)).some((row) => packageInFlight(row, now))
+    ) {
+      return { ok: false, error: 'A set is being made. Wait for it to finish.' }
+    }
     const render = await latestRender(db, projectId, 'master')
     if (render?.status !== 'done' || !render.outputS3Key) {
       return { ok: false, error: 'There is no finished master render to upload.' }

@@ -198,6 +198,33 @@ export async function regenerateThumbnailPicture(packageId: string): Promise<Act
   return { ok: true }
 }
 
+/**
+ * Sets the type on a package's stored picture again, for free: the way out of a
+ * failed compose, or of a run that died after the picture was stored.
+ */
+export async function recomposeThumbnail(packageId: string): Promise<ActionResult> {
+  await requireOwner()
+  const loaded = await loadPackage(packageId)
+  if (!isLoaded(loaded)) return loaded
+  if (loaded.row.source !== 'generated' || loaded.row.pictureKey === null) {
+    return { ok: false, error: 'There is no picture to compose. Regenerate the picture.' }
+  }
+  if (packageInFlight(loaded.row, new Date())) return { ok: false, error: IN_FLIGHT_REFUSAL }
+
+  await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
+  const failed = await sendPackageEvent(loaded, 'compose')
+  if (failed) {
+    await updateThumbnailPackage(db, packageId, {
+      state: loaded.row.state,
+      error: loaded.row.error,
+    })
+    return failed
+  }
+
+  revalidatePath(`/projects/${loaded.projectId}`)
+  return { ok: true }
+}
+
 export async function saveThumbnailPackage(
   packageId: string,
   patch: {
@@ -263,7 +290,14 @@ export async function saveThumbnailPackage(
   }
   if (Object.keys(changes).length === 0) return { ok: true }
 
-  await updateThumbnailPackage(db, packageId, changes)
+  // A retype of a painted package sends a compose. The row is marked at once, so
+  // Approve and Schedule cannot take the old composite while the new one is made.
+  const recomposing = retype && row.source === 'generated' && row.pictureKey !== null
+  await updateThumbnailPackage(
+    db,
+    packageId,
+    recomposing ? { ...changes, state: 'painting', error: null } : changes,
+  )
 
   if (changes.title !== undefined && changes.title !== '' && row.approvedAt !== null) {
     const approved = (await listThumbnailPackages(db, record.id)).filter(
@@ -274,9 +308,12 @@ export async function saveThumbnailPackage(
     }
   }
 
-  if (retype && row.source === 'generated' && row.pictureKey !== null) {
+  if (recomposing) {
     const failed = await sendPackageEvent(loaded, 'compose')
-    if (failed) return failed
+    if (failed) {
+      await updateThumbnailPackage(db, packageId, { state: row.state, error: row.error })
+      return failed
+    }
   }
 
   revalidatePath(`/projects/${projectId}`)

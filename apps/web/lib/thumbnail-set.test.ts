@@ -100,13 +100,17 @@ vi.mock('@/lib/model-catalogue', async (importOriginal) => {
 const compose = vi.hoisted(() => ({ composeThumbnail: vi.fn() }))
 vi.mock('@/lib/thumbnail-compose', () => compose)
 
-const storage = vi.hoisted(() => ({ configured: false }))
+const storage = vi.hoisted(() => ({
+  configured: false,
+  put: vi.fn(async (_key: string): Promise<undefined> => undefined),
+  delete: vi.fn(async (_key: string): Promise<undefined> => undefined),
+}))
 vi.mock('@/lib/storage', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   storageConfigured: () => storage.configured,
   presignGet: async (key: string) => `https://signed.test/${key}`,
-  putObject: async () => undefined,
-  deleteObject: async () => undefined,
+  putObject: (key: string) => storage.put(key),
+  deleteObject: (key: string) => storage.delete(key),
 }))
 
 const cost = vi.hoisted(() => ({ refuse: false }))
@@ -650,6 +654,47 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(row?.error).toBe('The browser would not start.')
       expect(row?.pictureKey).toBe(pictureKey)
       expect(row?.composedKey).toBeNull()
+    })
+
+    it('a recompose deletes the old object only after the record lists the new one', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '0')
+      storage.configured = true
+      compose.composeThumbnail.mockResolvedValue({ jpeg: Buffer.from('new jpeg'), warnings: [] })
+      const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+      const id = inserted[0]!.id
+      const old = `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/old-composite.jpg`
+      await db
+        .update(thumbnailPackages)
+        .set({
+          pictureKey: `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-ccc.png`,
+          composedKey: old,
+          state: 'painting',
+          approvedAt: new Date(),
+        })
+        .where(eq(thumbnailPackages.id, id))
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: [old, 'boom-busters/thumbs/x/other.jpg'] })
+        .where(eq(publishRecords.id, recordId))
+      let listedAtDelete: string[] = []
+      storage.delete.mockImplementation(async () => {
+        const [record] = await db
+          .select()
+          .from(publishRecords)
+          .where(eq(publishRecords.id, recordId))
+        listedAtDelete = record!.uploadedThumbKeys
+        return undefined
+      })
+
+      await composeThumbnailPackage(id)
+
+      const row = await getThumbnailPackage(db, id)
+      const fresh = row!.composedKey!
+      expect(fresh).not.toBe(old)
+      expect(storage.put).toHaveBeenCalledWith(fresh)
+      expect(storage.delete.mock.calls.map((call) => call[0])).toEqual([old])
+      expect(listedAtDelete).toEqual([fresh, 'boom-busters/thumbs/x/other.jpg'])
+      expect(row?.state).toBe('ready')
     })
 
     it('composing an approved package swaps its key in the record', async () => {

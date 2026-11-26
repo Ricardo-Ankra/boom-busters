@@ -26,7 +26,7 @@ import {
   recordsAwaitingTestReminder,
   removeThumbnailPackage,
   replaceUnapprovedGenerated,
-  swapApprovedKey,
+  landComposedThumbnail,
   syncApprovedToRecord,
   updateThumbnailPackage,
 } from './thumbnail-packages'
@@ -409,18 +409,137 @@ suite('thumbnail packages', () => {
     })
   })
 
-  it('swaps an approved key in place and ignores an unknown one', async () => {
+  it('a composite landing on an approved draft swaps the key in place', async () => {
     await withRecord(async (record) => {
+      const row = await seedRow(record.id, 1, {
+        composedKey: 'b.jpg',
+        state: 'painting',
+        approvedAt: new Date(),
+        error: 'old',
+      })
+      await seedRow(record.id, 0, { composedKey: 'a.jpg', approvedAt: new Date() })
       await db
         .update(publishRecords)
-        .set({ uploadedThumbKeys: ['a.jpg', 'b.jpg', 'c.jpg'] })
+        .set({ uploadedThumbKeys: ['a.jpg', 'b.jpg'] })
         .where(eq(publishRecords.id, record.id))
 
-      await swapApprovedKey(db, record.id, 'b.jpg', 'b2.jpg')
-      expect(await storedKeys(record.id)).toEqual(['a.jpg', 'b2.jpg', 'c.jpg'])
+      const landed = await landComposedThumbnail(db, row.id, {
+        composedKey: 'b2.jpg',
+        warnings: ['W'],
+      })
 
-      await swapApprovedKey(db, record.id, 'missing.jpg', 'x.jpg')
-      expect(await storedKeys(record.id)).toEqual(['a.jpg', 'b2.jpg', 'c.jpg'])
+      expect(landed).toEqual({ landed: true, deleteKeys: ['b.jpg'] })
+      expect(await storedKeys(record.id)).toEqual(['a.jpg', 'b2.jpg'])
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        composedKey: 'b2.jpg',
+        warnings: ['W'],
+        state: 'ready',
+        error: null,
+      })
+    })
+  })
+
+  it('a composite landing after approval that happened mid-compose still swaps the key', async () => {
+    await withRecord(async (record) => {
+      // Unapproved when the compose started.
+      const row = await seedRow(record.id, 0, { composedKey: 'old.jpg', state: 'painting' })
+      await seedRow(record.id, 1, { composedKey: 'other.jpg', approvedAt: new Date() })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['other.jpg'] })
+        .where(eq(publishRecords.id, record.id))
+
+      // Approve lands while the browser works: the old composite is approved and listed.
+      await db
+        .update(thumbnailPackages)
+        .set({ approvedAt: new Date() })
+        .where(eq(thumbnailPackages.id, row.id))
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['old.jpg', 'other.jpg'] })
+        .where(eq(publishRecords.id, record.id))
+
+      const landed = await landComposedThumbnail(db, row.id, {
+        composedKey: 'new.jpg',
+        warnings: [],
+      })
+
+      expect(landed).toEqual({ landed: true, deleteKeys: ['old.jpg'] })
+      expect(await storedKeys(record.id)).toEqual(['new.jpg', 'other.jpg'])
+    })
+  })
+
+  it('a composite landing on a record that is uploading changes nothing and asks for the new object to be deleted', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        composedKey: 'old.jpg',
+        state: 'painting',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['old.jpg'], status: 'uploading' })
+        .where(eq(publishRecords.id, record.id))
+
+      const landed = await landComposedThumbnail(db, row.id, {
+        composedKey: 'new.jpg',
+        warnings: [],
+      })
+
+      expect(landed).toEqual({ landed: false, deleteKeys: ['new.jpg'] })
+      expect(await storedKeys(record.id)).toEqual(['old.jpg'])
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        composedKey: 'old.jpg',
+        state: 'ready',
+      })
+    })
+  })
+
+  it('a composite for a package that is gone is deleted, and an identical one is kept', async () => {
+    await withRecord(async (record) => {
+      expect(
+        await landComposedThumbnail(db, '01HQ0000000000000000000000', {
+          composedKey: 'x.jpg',
+          warnings: [],
+        }),
+      ).toEqual({ landed: false, deleteKeys: ['x.jpg'] })
+
+      const row = await seedRow(record.id, 0, {
+        composedKey: 'same.jpg',
+        state: 'painting',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['same.jpg'], status: 'scheduled' })
+        .where(eq(publishRecords.id, record.id))
+      expect(
+        await landComposedThumbnail(db, row.id, { composedKey: 'same.jpg', warnings: [] }),
+      ).toEqual({ landed: false, deleteKeys: [] })
+    })
+  })
+
+  it('the old object is kept while the record still lists it', async () => {
+    await withRecord(async (record) => {
+      // Unapproved package whose old composite is still in the record's list (held by another row).
+      const row = await seedRow(record.id, 0, { composedKey: 'shared.jpg', state: 'painting' })
+      await seedRow(record.id, 1, {
+        source: 'uploaded',
+        composedKey: 'shared.jpg',
+        approvedAt: new Date(),
+      })
+      await db
+        .update(publishRecords)
+        .set({ uploadedThumbKeys: ['shared.jpg'] })
+        .where(eq(publishRecords.id, record.id))
+
+      const landed = await landComposedThumbnail(db, row.id, {
+        composedKey: 'new.jpg',
+        warnings: [],
+      })
+
+      expect(landed).toEqual({ landed: true, deleteKeys: [] })
+      expect(await storedKeys(record.id)).toEqual(['shared.jpg'])
     })
   })
 

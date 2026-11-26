@@ -13,13 +13,13 @@ import {
   getThumbnailPackage,
   getWorkspace,
   ideaResults,
+  landComposedThumbnail,
   listCastMembers,
   listShotSlots,
   listThumbnailPackages,
   mergePublishMetadata,
   publishRecords,
   replaceUnapprovedGenerated,
-  swapApprovedKey,
   updateThumbnailPackage,
   visualCredentials,
 } from '@boom-busters/db'
@@ -553,15 +553,7 @@ export async function composeThumbnailPackage(packageId: string): Promise<void> 
         targetId,
         contentHash: `${MOCK_PREFIX}${packageId}`,
       })
-      await updateThumbnailPackage(db, packageId, {
-        composedKey,
-        warnings: [],
-        state: 'ready',
-        error: null,
-      })
-      if (row.approvedAt !== null && row.composedKey !== null && row.composedKey !== composedKey) {
-        await swapApprovedKey(db, row.publishRecordId, row.composedKey, composedKey)
-      }
+      await landComposedThumbnail(db, packageId, { composedKey, warnings: [] })
       return
     }
 
@@ -579,18 +571,11 @@ export async function composeThumbnailPackage(packageId: string): Promise<void> 
     const contentHash = createHash('sha256').update(jpeg).digest('hex')
     const composedKey = thumbnailComposedKey({ targetId, contentHash })
     await putObject(composedKey, jpeg, 'image/jpeg')
-    await updateThumbnailPackage(db, packageId, {
-      composedKey,
-      warnings,
-      state: 'ready',
-      error: null,
-    })
-    const old = row.composedKey
-    if (old !== null && old !== composedKey) {
-      if (row.approvedAt !== null) {
-        await swapApprovedKey(db, row.publishRecordId, old, composedKey)
-      }
-      if (!old.includes(`/${MOCK_PREFIX}`)) await deleteObject(old).catch(() => undefined)
+    // The new object is stored first; the helper decides under the record's lock
+    // whether it lands, and says which objects are now unreferenced.
+    const { deleteKeys } = await landComposedThumbnail(db, packageId, { composedKey, warnings })
+    for (const key of deleteKeys) {
+      if (!key.includes(`/${MOCK_PREFIX}`)) await deleteObject(key).catch(() => undefined)
     }
   } catch (error) {
     await updateThumbnailPackage(db, packageId, { state: 'failed', error: errorMessage(error) })
