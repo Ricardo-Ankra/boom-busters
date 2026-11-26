@@ -527,6 +527,42 @@ describe('ThumbnailSet', () => {
     expect(screen.queryByText(/This replaces the saved title/)).not.toBeInTheDocument()
   })
 
+  it('no replaces note when the default is already approved', () => {
+    const [first, second, third] = three()
+    // Approve changes nothing when the package that goes up is already the default.
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            title: 'A hand-edited title',
+            packages: [{ ...first!, approved: true }, second!, third!],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.queryByText(/This replaces the saved title/)).not.toBeInTheDocument()
+  })
+
+  it('on an uploaded record the Default tag is on the approved package', () => {
+    const [first, second] = three()
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            status: 'scheduled',
+            packages: [first!, { ...second!, approved: true }],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    const cards = screen.getAllByRole('article')
+    expect(within(cards[0]!).queryByText('Default')).toBeNull()
+    expect(within(cards[1]!).getByText('Default')).toBeInTheDocument()
+    expect(screen.getAllByText('Default')).toHaveLength(1)
+  })
+
   it('labels the text button with the side it moves the headline to', async () => {
     const user = userEvent.setup()
     render(

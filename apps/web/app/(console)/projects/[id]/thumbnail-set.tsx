@@ -693,9 +693,15 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
   const full = approvedCount >= PACKAGES_MAX
   const approvable = packages.some((pack) => pack.state === 'ready' && !pack.approved)
   const saved = record?.title?.trim() ?? ''
-  const defaultId = upcomingDefaultId(packages)
-  const defaultTitle = packages.find((pack) => pack.id === defaultId)?.title.trim() ?? ''
-  const replaces = defaultTitle !== '' && saved !== '' && defaultTitle !== saved
+  // Approve can still take a ready package only while the record is editable;
+  // once it is closed, only what was approved went up.
+  const defaultId = upcomingDefaultId(open ? packages : packages.filter((pack) => pack.approved))
+  const defaultPack = packages.find((pack) => pack.id === defaultId)
+  const defaultTitle = defaultPack?.title.trim() ?? ''
+  // Approve writes the title only when the package that goes up changes; an
+  // approved default changes nothing.
+  const replaces =
+    defaultTitle !== '' && saved !== '' && defaultTitle !== saved && defaultPack?.approved !== true
 
   const generateLabel =
     item.thumbnailSetCostUsd === null
