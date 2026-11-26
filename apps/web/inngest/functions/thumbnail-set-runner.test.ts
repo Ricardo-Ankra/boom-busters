@@ -8,6 +8,7 @@ import {
   getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
+  mergePublishMetadata,
   replaceUnapprovedGenerated,
   requireTestDatabase,
   seed,
@@ -203,6 +204,43 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     await onFailure(failure('The planner was unreachable.'))
 
     expect(await noteOf()).toBe('Planned 1 of 3. Figure: x.')
+  })
+
+  it('a crash clears the claim', async () => {
+    await mergePublishMetadata(db, recordId, {
+      thumbnailSetRequestedAt: new Date().toISOString(),
+    })
+
+    await onFailure(failure('The planner was unreachable.'))
+
+    const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+    expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()
+  })
+
+  it('a set run does not repaint a package that already has its picture', async () => {
+    const ids = await seedThree()
+    const picture = `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-kept.png`
+    await db
+      .update(thumbnailPackages)
+      .set({ pictureKey: picture, state: 'painting' })
+      .where(eq(thumbnailPackages.id, ids[0]!))
+
+    // The plan step has already landed (a retried run): only its result is replayed.
+    const { state } = await new InngestTestEngine({ function: thumbnailSetRunner }).execute({
+      events: [
+        {
+          name: 'thumbnails/set.requested',
+          data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID, mode: 'set' },
+        },
+      ],
+      steps: [{ id: 'plan', handler: () => ({ inserted: [ids[0]!], dropped: [] }) }],
+    })
+
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(Object.keys(state)).toEqual(stepKeys(['plan', `paint-${ids[0]}`, `compose-${ids[0]}`]))
+    const row = await getThumbnailPackage(db, ids[0]!)
+    expect(row).toMatchObject({ state: 'ready', pictureKey: picture })
+    expect(row?.composedKey).not.toBeNull()
   })
 
   it('a crash marks unfinished packages failed', async () => {

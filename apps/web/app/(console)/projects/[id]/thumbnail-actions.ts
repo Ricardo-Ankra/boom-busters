@@ -2,6 +2,8 @@
 
 import {
   approvePackages,
+  claimThumbnailSetRequest,
+  clearThumbnailSetRequest,
   ensurePublishRecord,
   ensureUploadedPackages,
   getPublishRecord,
@@ -155,10 +157,16 @@ export async function generateThumbnailSet(
     }
   }
 
+  // The plan writes no rows for 10 to 30 seconds: until it does, this claim is
+  // what tells a second press that a set is being made.
+  if (!(await claimThumbnailSetRequest(db, record.id, now))) {
+    return { ok: false, error: IN_FLIGHT_REFUSAL }
+  }
   try {
     await inngest.send(events.thumbnailSetRequested.create({ projectId, targetId, mode: 'set' }))
   } catch (error) {
     console.error('[thumbnails] could not request the set', error)
+    await clearThumbnailSetRequest(db, record.id)
     return { ok: false, error: 'Could not reach Inngest to start the set.' }
   }
 

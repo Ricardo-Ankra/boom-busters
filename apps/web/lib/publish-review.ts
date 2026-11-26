@@ -34,6 +34,7 @@ import {
   nameMatches,
   normaliseArticleUrl,
   PACKAGES_MAX,
+  PACKAGE_STALE_MS,
   packageInFlight,
   PublishDraftSchema,
   quotaDayStartUtc,
@@ -133,6 +134,8 @@ export interface PublishRecordProp {
   packages: ThumbnailPackageProp[]
   /** The last set run's sentence; empty when it went cleanly. */
   thumbnailSetNote: string
+  /** A set was requested and its plan has not landed: a claim younger than `PACKAGE_STALE_MS`. */
+  planning: boolean
   testStartedAtIso: string | null
   testEndedAtIso: string | null
 }
@@ -620,6 +623,10 @@ function toRecordProp(
     thumbs,
     packages,
     thumbnailSetNote: draft.success ? draft.data.thumbnailSetNote : '',
+    planning:
+      draft.success &&
+      draft.data.thumbnailSetRequestedAt !== undefined &&
+      Date.now() - Date.parse(draft.data.thumbnailSetRequestedAt) <= PACKAGE_STALE_MS,
     testStartedAtIso: row.testStartedAt?.toISOString() ?? null,
     testEndedAtIso: row.testEndedAt?.toISOString() ?? null,
   }

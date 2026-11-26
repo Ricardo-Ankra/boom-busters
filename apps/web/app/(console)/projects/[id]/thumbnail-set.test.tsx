@@ -118,6 +118,7 @@ function record(over: Partial<PublishRecordProp> = {}): PublishRecordProp {
     thumbs: [],
     packages: [pack()],
     thumbnailSetNote: '',
+    planning: false,
     testStartedAtIso: null,
     testEndedAtIso: null,
     ...over,

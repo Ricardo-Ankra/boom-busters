@@ -309,6 +309,32 @@ describeDb('publishModel altered-content list', () => {
 })
 
 describeDb('publishModel thumbnail packages', () => {
+  it('planning is true while a claim is fresh', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    try {
+      const planning = async (): Promise<boolean | undefined> =>
+        (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items.find(
+          (item) => item.targetType === 'master',
+        )?.record?.planning
+
+      expect(await planning()).toBe(false)
+
+      await updatePublishRecord(db, master.id, {
+        metadata: { thumbnailSetRequestedAt: new Date().toISOString() },
+      })
+      expect(await planning()).toBe(true)
+
+      await updatePublishRecord(db, master.id, {
+        metadata: { thumbnailSetRequestedAt: new Date(Date.now() - 16 * 60_000).toISOString() },
+      })
+      expect(await planning()).toBe(false)
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
   it('lists a master’s packages, brings a stored key in as an uploaded one, and gives a Short none', async () => {
     await seed(db)
     await db.delete(publishRecords)

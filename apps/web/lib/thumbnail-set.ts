@@ -6,6 +6,7 @@ import { graphicBrand } from '@boom-busters/compositions/graphic-code-pure'
 import { withCost } from '@boom-busters/cost'
 import {
   channelForProject,
+  clearThumbnailSetRequest,
   finishedTests,
   getChannelSettings,
   getProject,
@@ -181,7 +182,10 @@ export async function planThumbnailSet(input: {
   const rows = await listThumbnailPackages(db, publishRecordId)
   const approved = rows.filter((row) => row.approvedAt !== null)
   const places = PACKAGES_MAX - approved.length
-  if (places <= 0) return { inserted: [], dropped: [] }
+  if (places <= 0) {
+    await clearThumbnailSetRequest(db, publishRecordId)
+    return { inserted: [], dropped: [] }
+  }
   const approvedIdeas = approved.flatMap((row) => (row.idea === null ? [] : [row.idea]))
 
   const project = await getProject(db, projectId)
@@ -314,7 +318,10 @@ export async function planThumbnailSet(input: {
 
 /** The run's words for the Publish card: merged over the draft in the record's metadata, never replacing it. */
 export async function writeSetNote(publishRecordId: string, note: string): Promise<void> {
-  await mergePublishMetadata(db, publishRecordId, { thumbnailSetNote: note })
+  // Saying how the plan ended is also the write that finishes it: the claim goes in the same statement.
+  await mergePublishMetadata(db, publishRecordId, { thumbnailSetNote: note }, [
+    'thumbnailSetRequestedAt',
+  ])
 }
 
 /** The master a record belongs to: its target is the project's id. Generated sets are for masters only. */

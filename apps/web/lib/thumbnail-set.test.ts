@@ -11,6 +11,7 @@ import {
   getThumbnailPackage,
   insertCastMember,
   listThumbnailPackages,
+  mergePublishMetadata,
   replaceUnapprovedGenerated,
   requireTestDatabase,
   seed,
@@ -344,6 +345,39 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(result.inserted).toHaveLength(3)
       const rows = await listThumbnailPackages(db, recordId)
       expect(rows.every((row) => row.claimIds.join() === 'mock-claim')).toBe(true)
+    })
+
+    it('a finished plan clears the claim', async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '1')
+      grounding.metadataGrounding.mockResolvedValue({
+        claims: [],
+        centralQuestion: undefined,
+        scriptVersion: 0,
+      })
+      await mergePublishMetadata(db, recordId, {
+        thumbnailSetRequestedAt: new Date().toISOString(),
+        title: 'Kept',
+      })
+
+      await planThumbnailSet({ projectId: FIXTURE_PROJECT_ID, publishRecordId: recordId })
+
+      const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+      expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()
+      expect(metadata['title']).toBe('Kept')
+    })
+
+    it('a plan that cannot be made clears the claim', async () => {
+      await mergePublishMetadata(db, recordId, {
+        thumbnailSetRequestedAt: new Date().toISOString(),
+      })
+      answer.callForAnswer.mockResolvedValue({ ok: false, issue: 'The answer was not JSON.' })
+
+      await expect(
+        planThumbnailSet({ projectId: FIXTURE_PROJECT_ID, publishRecordId: recordId }),
+      ).rejects.toThrow('The set could not be planned')
+
+      const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+      expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()
     })
 
     it('a vet that keeps nothing leaves the old packages and says why', async () => {

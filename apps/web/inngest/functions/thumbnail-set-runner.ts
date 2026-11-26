@@ -1,4 +1,5 @@
 import {
+  clearThumbnailSetRequest,
   ensurePublishRecord,
   getPublishRecord,
   getThumbnailPackage,
@@ -47,6 +48,8 @@ export const thumbnailSetRunner = inngest.createFunction(
       if (typeof targetId !== 'string') return
       const record = await ensurePublishRecord(db, 'master', targetId)
       const message = event.data.error.message
+      // A dead run gives the claim back, or the next Generate waits out the fifteen minutes.
+      await clearThumbnailSetRequest(db, record.id)
       let marked = 0
       for (const row of await listThumbnailPackages(db, record.id)) {
         if (row.state === 'planned' || row.state === 'painting') {
@@ -70,11 +73,20 @@ export const thumbnailSetRunner = inngest.createFunction(
     const request = parseEventData('thumbnails/set.requested', event.data)
 
     /** Paint (when asked) then compose one package; no compose after a failed paint. */
-    const finish = async (packageId: string, paint: boolean): Promise<void> => {
+    const finish = async (
+      packageId: string,
+      paint: boolean,
+      keepPicture = false,
+    ): Promise<void> => {
       if (paint) {
         // A painted package stays `painting` until composed; compose only what
-        // the paint left with a picture.
+        // the paint left with a picture. A step retried after its picture was
+        // stored (`keepPicture`, a set run) goes straight on: it never buys it twice.
         const composable = await step.run(`paint-${packageId}`, async () => {
+          if (keepPicture) {
+            const stored = await getThumbnailPackage(db, packageId)
+            if (stored?.pictureKey) return true
+          }
           await paintThumbnailPicture(packageId)
           const row = await getThumbnailPackage(db, packageId)
           return row !== undefined && row.state !== 'failed' && row.pictureKey !== null
@@ -89,7 +101,7 @@ export const thumbnailSetRunner = inngest.createFunction(
         const record = await ensurePublishRecord(db, 'master', request.targetId)
         return planThumbnailSet({ projectId: request.projectId, publishRecordId: record.id })
       })
-      for (const packageId of planned.inserted) await finish(packageId, true)
+      for (const packageId of planned.inserted) await finish(packageId, true, true)
       return {
         mode: request.mode,
         packages: planned.inserted.length,

@@ -12,6 +12,8 @@ import { requireTestDatabase } from './test-database'
 import {
   addUploadedPackage,
   approvePackages,
+  claimThumbnailSetRequest,
+  clearThumbnailSetRequest,
   approvedDepicts,
   ensureUploadedPackages,
   finishedTests,
@@ -671,6 +673,50 @@ suite('thumbnail packages', () => {
         .set({ uploadStartedAt: new Date(Date.now() - 20 * day) })
         .where(eq(publishRecords.id, record.id))
       expect(await ids()).not.toContain(record.id)
+    })
+  })
+
+  it('a second claim inside fifteen minutes is refused, a stale one is taken', async () => {
+    await withRecord(async (record) => {
+      await db
+        .update(publishRecords)
+        .set({ metadata: { title: 'Kept' } })
+        .where(eq(publishRecords.id, record.id))
+      const start = new Date('2026-11-25T10:00:00.000Z')
+      const metadata = async () => (await getPublishRecord(db, 'master', record.targetId))!.metadata
+
+      expect(await claimThumbnailSetRequest(db, record.id, start)).toBe(true)
+      expect(await metadata()).toEqual({
+        title: 'Kept',
+        thumbnailSetRequestedAt: start.toISOString(),
+      })
+
+      const fourteen = new Date(start.getTime() + 14 * 60_000)
+      expect(await claimThumbnailSetRequest(db, record.id, fourteen)).toBe(false)
+      expect((await metadata())['thumbnailSetRequestedAt']).toBe(start.toISOString())
+
+      const sixteen = new Date(start.getTime() + 16 * 60_000)
+      expect(await claimThumbnailSetRequest(db, record.id, sixteen)).toBe(true)
+      expect((await metadata())['thumbnailSetRequestedAt']).toBe(sixteen.toISOString())
+
+      await clearThumbnailSetRequest(db, record.id)
+      expect(await metadata()).toEqual({ title: 'Kept' })
+      expect(await claimThumbnailSetRequest(db, record.id, sixteen)).toBe(true)
+    })
+  })
+
+  it('a claim is refused while a package is in flight', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, { state: 'painting' })
+
+      expect(await claimThumbnailSetRequest(db, record.id, new Date())).toBe(false)
+      const stored = (await getPublishRecord(db, 'master', record.targetId))!
+      expect(stored.metadata['thumbnailSetRequestedAt']).toBeUndefined()
+
+      // A package stuck for sixteen minutes no longer holds it.
+      expect(
+        await claimThumbnailSetRequest(db, record.id, new Date(Date.now() + 16 * 60_000)),
+      ).toBe(true)
     })
   })
 

@@ -145,6 +145,33 @@ describeDb('the thumbnail actions', () => {
       expect(inngestSeam.send).not.toHaveBeenCalled()
     })
 
+    it('a second Generate before the plan lands is refused', async () => {
+      expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+      // The plan has not landed: there is no package row yet.
+      expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      expect((await storedRecord()).metadata['thumbnailSetRequestedAt']).toEqual(expect.any(String))
+    })
+
+    it('a failed send releases the claim', async () => {
+      inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({
+          ok: false,
+          error: 'Could not reach Inngest to start the set.',
+        })
+      } finally {
+        logged.mockRestore()
+      }
+      expect((await storedRecord()).metadata['thumbnailSetRequestedAt']).toBeUndefined()
+
+      expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    })
+
     it('a set stuck for sixteen minutes no longer blocks a new one', async () => {
       const id = await recordId()
       await addPackage(id, 0, { state: 'planned', updatedAt: new Date(Date.now() - 16 * 60_000) })

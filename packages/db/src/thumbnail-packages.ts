@@ -1,4 +1,9 @@
-import { PACKAGES_MAX, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
+import {
+  PACKAGES_MAX,
+  PACKAGE_STALE_MS,
+  THUMBNAIL_IDEAS,
+  packageInFlight,
+} from '@boom-busters/schemas'
 import type { PlannedPackage, TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { and, asc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { Database } from './client'
@@ -54,14 +59,54 @@ export async function mergePublishMetadata(
   db: Executor,
   publishRecordId: string,
   patch: Record<string, unknown>,
+  removeKeys: readonly string[] = [],
 ): Promise<void> {
+  let merged = sql`(${publishRecords.metadata} || ${JSON.stringify(patch)}::jsonb)`
+  for (const key of removeKeys) merged = sql`(${merged} - ${key}::text)`
   await db
     .update(publishRecords)
-    .set({
-      metadata: sql`${publishRecords.metadata} || ${JSON.stringify(patch)}::jsonb`,
-      updatedAt: new Date(),
-    })
+    .set({ metadata: merged, updatedAt: new Date() })
     .where(eq(publishRecords.id, publishRecordId))
+}
+
+const SET_REQUESTED_KEY = 'thumbnailSetRequestedAt'
+
+/**
+ * Takes the right to plan a set, so a second "Generate a set" before the first
+ * plan has written its rows cannot buy the set twice. Under the record's lock:
+ * refused when a claim younger than `PACKAGE_STALE_MS` stands or any package is
+ * in flight; otherwise stamps `metadata.thumbnailSetRequestedAt` (merged in
+ * SQL) and returns true.
+ */
+export async function claimThumbnailSetRequest(
+  db: Database,
+  publishRecordId: string,
+  now: Date,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await lockRecord(tx, publishRecordId)
+    const [record] = await tx
+      .select({
+        claimed: sql<string | null>`${publishRecords.metadata}->>'thumbnailSetRequestedAt'`,
+      })
+      .from(publishRecords)
+      .where(eq(publishRecords.id, publishRecordId))
+    if (!record) return false
+    const claimedAt = record.claimed === null ? Number.NaN : Date.parse(record.claimed)
+    if (!Number.isNaN(claimedAt) && now.getTime() - claimedAt <= PACKAGE_STALE_MS) return false
+    const rows = await listThumbnailPackages(tx, publishRecordId)
+    if (rows.some((row) => packageInFlight(row, now))) return false
+    await mergePublishMetadata(tx, publishRecordId, { [SET_REQUESTED_KEY]: now.toISOString() })
+    return true
+  })
+}
+
+/** Gives the claim back: the plan finished, the send failed or the run died. */
+export async function clearThumbnailSetRequest(
+  db: Executor,
+  publishRecordId: string,
+): Promise<void> {
+  await mergePublishMetadata(db, publishRecordId, {}, [SET_REQUESTED_KEY])
 }
 
 /** Serialise writers of one record's packages: the lock is held to the end of the transaction. */
