@@ -84,15 +84,23 @@ function editable(status: string | undefined): boolean {
   return status === undefined || status === 'draft' || status === 'failed'
 }
 
+/**
+ * YouTube's own page colours, fixed: the previews stand for YouTube's page, not
+ * for the console, so they are the one place the theme tokens do not apply.
+ */
+const YT_DARK = '#0f0f0f'
+const YT_LIGHT = '#ffffff'
+
 function PreviewGround({ pack, tone }: { pack: ThumbnailPackageProp; tone: 'dark' | 'light' }) {
   const ground =
     tone === 'dark'
-      ? 'bg-[var(--color-background)] text-[var(--color-text-primary)]'
-      : 'bg-[var(--color-text-primary)] text-[var(--color-background)]'
+      ? { backgroundColor: YT_DARK, color: YT_LIGHT }
+      : { backgroundColor: YT_LIGHT, color: YT_DARK }
   return (
     <div
       data-testid={`preview-${tone}`}
-      className={`flex flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-2 ${ground}`}
+      style={ground}
+      className="flex shrink-0 flex-col gap-2 rounded-[8px] border border-[var(--color-border)] p-2"
     >
       {[320, 168].map((width) => (
         <div key={width} className="flex flex-col gap-1" style={{ width }}>
@@ -190,7 +198,7 @@ function PackageCard({
       )}
 
       {pack.url && pack.state === 'ready' ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex max-w-full gap-2 overflow-x-auto">
           <PreviewGround pack={pack} tone="dark" />
           <PreviewGround pack={pack} tone="light" />
         </div>
@@ -379,6 +387,7 @@ function resultSentence(approved: ThumbnailPackageProp[]): string | null {
 
 /** Start and result of the Studio test: "I have started the test", then how it ended. */
 function TestPanel({
+  isPublic,
   approved,
   targetId,
   startedAtIso,
@@ -387,6 +396,8 @@ function TestPanel({
   pressed,
   locked,
 }: {
+  /** The video is public, so a Studio test can start. */
+  isPublic: boolean
   approved: ThumbnailPackageProp[]
   targetId: string
   startedAtIso: string | null
@@ -407,7 +418,12 @@ function TestPanel({
 
   if (!startedAtIso) {
     return (
-      <div>
+      <div className="flex flex-col gap-1">
+        {isPublic ? null : (
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            YouTube tests only a public video. Start the test once this one is public.
+          </p>
+        )}
         <Button
           variant="outline"
           busy={pressed === 'test-started'}
@@ -561,6 +577,7 @@ function TestPanel({
 
 /** After the upload: variant 1 is on the video, the others wait for a Studio test. */
 function HandOff({
+  isPublic,
   approved,
   studioUrl,
   targetId,
@@ -570,6 +587,7 @@ function HandOff({
   pressed,
   locked,
 }: {
+  isPublic: boolean
   approved: ThumbnailPackageProp[]
   studioUrl: string | null
   targetId: string
@@ -640,6 +658,7 @@ function HandOff({
         </div>
       ) : null}
       <TestPanel
+        isPublic={isPublic}
         approved={approved}
         targetId={targetId}
         startedAtIso={startedAtIso}
@@ -782,6 +801,7 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
 
       {showHandOff ? (
         <HandOff
+          isPublic={record?.status === 'live'}
           approved={packages.filter((pack) => pack.approved)}
           studioUrl={item.studioUrl}
           targetId={item.targetId}

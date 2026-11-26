@@ -231,6 +231,13 @@ describe('ThumbnailSet', () => {
     }
   })
 
+  it("shows the previews on YouTube's dark and light page colours", () => {
+    render(<ThumbnailSet item={item()} busy={false} />)
+    expect(screen.getByTestId('preview-dark')).toHaveStyle({ backgroundColor: '#0f0f0f' })
+    expect(screen.getByTestId('preview-light')).toHaveStyle({ backgroundColor: '#ffffff' })
+    expect(screen.getByTestId('preview-dark').parentElement).toHaveClass('overflow-x-auto')
+  })
+
   it('shows a placeholder tile and no previews when a package has no image URL', () => {
     render(
       <ThumbnailSet
@@ -747,6 +754,20 @@ describe('ThumbnailSet', () => {
       expect(studio).toHaveAttribute('href', 'https://studio.youtube.com/video/abc123/edit')
       expect(studio).toHaveAttribute('target', '_blank')
       expect(screen.queryByRole('button', { name: /started the test/i })).toBeInTheDocument()
+    })
+
+    it('says the test waits for the video to be public', () => {
+      const { rerender } = render(
+        <ThumbnailSet item={item({ record: uploadedRecord('uploaded') })} busy={false} />,
+      )
+      const line = 'YouTube tests only a public video. Start the test once this one is public.'
+      const started = screen.getByRole('button', { name: 'I have started the test' })
+      expect(screen.getByText(line)).toBeInTheDocument()
+      expect(
+        screen.getByText(line).compareDocumentPosition(started) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      rerender(<ThumbnailSet item={item({ record: uploadedRecord('live') })} busy={false} />)
+      expect(screen.queryByText(line)).not.toBeInTheDocument()
     })
 
     describe('the test', () => {

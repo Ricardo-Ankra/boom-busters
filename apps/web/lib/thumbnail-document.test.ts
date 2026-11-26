@@ -4,6 +4,7 @@ import {
   SCRIM_ALPHA,
   headlineBoxes,
   headlineFontPx,
+  headlineWeight,
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
@@ -47,6 +48,32 @@ function box(over: Partial<TextBox> = {}): TextBox {
 }
 
 const OK = { headline: 'The crash', fontPx: 200, boxes: [box()], contrast: 9 }
+
+describe('headline weight', () => {
+  const fonts = (heading: string) => ({ ...BRAND.fonts, heading })
+
+  it("uses the face's own heaviest weight", () => {
+    const catalogue = [{ family: 'Two Weights', weights: [400, 600] }]
+    expect(headlineWeight('Two Weights', catalogue)).toBe(600)
+    expect(headlineWeight('Inter')).toBe(800)
+    expect(headlineWeight('JetBrains Mono')).toBe(700)
+    expect(headlineWeight('Heavy', [{ family: 'Heavy', weights: [400, 900] }])).toBe(800)
+    expect(document({ brand: { ...BRAND, fonts: fonts('JetBrains Mono') } })).toContain(
+      'font-weight:700',
+    )
+    expect(document({ brand: { ...BRAND, fonts: fonts('Inter') } })).toContain('font-weight:800')
+  })
+
+  it('a single-weight face is not asked for bold', () => {
+    const catalogue = [{ family: 'Display', weights: [400] }]
+    expect(headlineWeight('Display', catalogue)).toBe(400)
+  })
+
+  it('asks for 700 when the face is not in the catalogue', () => {
+    expect(headlineWeight('Anton')).toBe(700)
+    expect(document()).toContain('font-weight:700')
+  })
+})
 
 describe('thumbnailDocument', () => {
   it('composes without a headline', () => {

@@ -1,3 +1,4 @@
+import { AVAILABLE_FONTS } from '@boom-busters/compositions/fonts'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import {
   HEADLINE_CONTRAST_MIN,
@@ -38,6 +39,24 @@ const MARK_HEIGHT_PX = Math.round(THUMB_MARK_HEIGHT_RATIO * THUMB_HEIGHT)
 const MARK_MAX_WIDTH_PX = Math.round(0.22 * THUMB_WIDTH)
 /** The wordmark is set at half the mark's height: the film's corner watermark look, at the thumbnail's size. */
 const WORDMARK_PX = Math.round(MARK_HEIGHT_PX / 2)
+
+/** The heaviest weight cap: beyond this the headline would crowd its box. */
+const HEADLINE_WEIGHT_MAX = 800
+const HEADLINE_WEIGHT_UNKNOWN = 700
+
+/**
+ * The headline's weight from the font catalogue: the heaviest the face offers,
+ * capped at 800. A single-weight display face gets its own weight, never a
+ * synthesised bold; a face the catalogue does not hold gets 700.
+ */
+export function headlineWeight(
+  family: string,
+  catalogue: readonly { family: string; weights: readonly number[] }[] = AVAILABLE_FONTS,
+): number {
+  const known = catalogue.find((font) => font.family === family)
+  if (!known || known.weights.length === 0) return HEADLINE_WEIGHT_UNKNOWN
+  return Math.min(HEADLINE_WEIGHT_MAX, Math.max(...known.weights))
+}
 
 /** 220 px for up to 8 characters, falling linearly to the floor at 28, never below it. */
 export function headlineFontPx(headline: string): number {
@@ -113,7 +132,7 @@ export function thumbnailDocument(input: {
   const text =
     headline === ''
       ? ''
-      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:700;text-transform:uppercase;color:${brand.colors.textPrimary}"><span>${escapeHtml(headline)}</span></div>`
+      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}"><span>${escapeHtml(headline)}</span></div>`
 
   let mark = ''
   if (input.mark !== null && input.markPlacement !== 'none') {
