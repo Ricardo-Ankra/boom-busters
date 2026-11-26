@@ -158,6 +158,14 @@ describeDb('the thumbnail actions', () => {
       expect((await storedRecord()).metadata['thumbnailSetRequestedAt']).toEqual(expect.any(String))
     })
 
+    it('sends the stamp of its own claim with the request', async () => {
+      expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+
+      const stamp = (await storedRecord()).metadata['thumbnailSetRequestedAt']
+      expect(stamp).toEqual(expect.any(String))
+      expect(inngestSeam.send.mock.calls[0]![0].data.requestedAt).toBe(stamp)
+    })
+
     it('a failed send releases the claim', async () => {
       inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -210,7 +218,12 @@ describeDb('the thumbnail actions', () => {
       expect(inngestSeam.send).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'thumbnails/set.requested',
-          data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID, mode: 'set' },
+          data: {
+            projectId: FIXTURE_PROJECT_ID,
+            targetId: FIXTURE_PROJECT_ID,
+            mode: 'set',
+            requestedAt: expect.any(String),
+          },
         }),
       )
       const rows = await listThumbnailPackages(db, id)

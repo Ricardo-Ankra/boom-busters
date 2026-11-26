@@ -357,6 +357,24 @@ describe('ThumbnailSetRequestedSchema', () => {
   })
 })
 
+describe('ThumbnailSetRequestedSchema requestedAt', () => {
+  const base = { projectId: ID, targetId: ID2, mode: 'set' as const }
+
+  it('is optional', () => {
+    expect(ThumbnailSetRequestedSchema.safeParse(base).success).toBe(true)
+  })
+
+  it('must be a datetime', () => {
+    expect(
+      ThumbnailSetRequestedSchema.safeParse({ ...base, requestedAt: '2026-11-25T12:00:00.000Z' })
+        .success,
+    ).toBe(true)
+    expect(
+      ThumbnailSetRequestedSchema.safeParse({ ...base, requestedAt: 'yesterday' }).success,
+    ).toBe(false)
+  })
+})
+
 describe('packageInFlight', () => {
   const now = new Date('2026-11-25T12:00:00Z')
   const ago = (ms: number) => new Date(now.getTime() - ms)

@@ -163,7 +163,15 @@ export async function generateThumbnailSet(
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
   try {
-    await inngest.send(events.thumbnailSetRequested.create({ projectId, targetId, mode: 'set' }))
+    // The run plans only while the record still holds this stamp.
+    await inngest.send(
+      events.thumbnailSetRequested.create({
+        projectId,
+        targetId,
+        mode: 'set',
+        requestedAt: now.toISOString(),
+      }),
+    )
   } catch (error) {
     console.error('[thumbnails] could not request the set', error)
     await clearThumbnailSetRequest(db, record.id)

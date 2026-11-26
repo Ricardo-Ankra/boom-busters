@@ -114,6 +114,8 @@ export const ThumbnailSetRequestedSchema = z
     targetId: UlidSchema,
     mode: z.enum(['set', 'paint', 'compose']),
     packageId: UlidSchema.optional(),
+    /** A set run: the stamp of the claim it was sent under. Absent on events sent before it existed. */
+    requestedAt: z.string().datetime().optional(),
   })
   .refine((value) => value.mode === 'set' || value.packageId !== undefined, {
     message: 'A request for one package needs its id.',

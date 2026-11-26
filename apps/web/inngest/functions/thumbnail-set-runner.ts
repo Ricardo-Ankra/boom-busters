@@ -50,7 +50,15 @@ export const thumbnailSetRunner = inngest.createFunction(
       const message = event.data.error.message
       // A dead set run gives the claim back, or the next Generate waits out the fifteen
       // minutes. A paint or compose run never held it: the claim may be a queued set run's.
-      if (event.data.event.data['mode'] === 'set') await clearThumbnailSetRequest(db, record.id)
+      // A set run sent with a stamp clears the claim only while it is still its own: a
+      // newer press owns a newer claim.
+      if (event.data.event.data['mode'] === 'set') {
+        const sentUnder = event.data.event.data['requestedAt']
+        const held = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+        if (typeof sentUnder !== 'string' || held === sentUnder) {
+          await clearThumbnailSetRequest(db, record.id)
+        }
+      }
       let marked = 0
       for (const row of await listThumbnailPackages(db, record.id)) {
         if (row.state === 'planned' || row.state === 'painting') {
@@ -100,6 +108,15 @@ export const thumbnailSetRunner = inngest.createFunction(
     if (request.mode === 'set') {
       const planned = await step.run('plan', async () => {
         const record = await ensurePublishRecord(db, 'master', request.targetId)
+        // The claim this run was sent under was given back or replaced: planning now would
+        // buy a second set. An event sent before the stamp existed plans as it always did.
+        if (
+          request.requestedAt !== undefined &&
+          (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt'] !==
+            request.requestedAt
+        ) {
+          return { inserted: [], dropped: [] }
+        }
         return planThumbnailSet({ projectId: request.projectId, publishRecordId: record.id })
       })
       for (const packageId of planned.inserted) await finish(packageId, true, true)
