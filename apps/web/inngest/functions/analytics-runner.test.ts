@@ -276,6 +276,8 @@ describeDb('analytics-runner (mock mode)', () => {
 
   describe('the Test & Compare reminder', () => {
     async function approvedPackages(recordId: string, count: number): Promise<void> {
+      // The reminder skips a video older than fourteen days, so this one went out two days ago.
+      await updatePublishRecord(db, recordId, { publishAt: new Date(Date.now() - 2 * 86_400_000) })
       await db.insert(thumbnailPackages).values(
         Array.from({ length: count }, (_, position) => ({
           publishRecordId: recordId,
