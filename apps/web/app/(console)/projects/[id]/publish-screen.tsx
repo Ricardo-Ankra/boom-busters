@@ -43,6 +43,7 @@ import {
   uploadThumbnail,
 } from './publish-actions'
 import { setShortRelatedLink } from './shorts-actions'
+import { SLOT_LABEL, ThumbnailSet } from './thumbnail-set'
 import { useAction } from './project-controls'
 
 /**
@@ -58,14 +59,6 @@ import { useAction } from './project-controls'
  */
 
 const DAYS_SHOWN = 14
-
-/** What the screen calls each title slot a candidate can lack. */
-const SLOT_LABEL = {
-  topic: 'topic',
-  formatKeyword: 'format keyword',
-  pillar: 'pillar',
-  runtime: 'runtime',
-} as const
 
 // Thumbnail limits and copy come from `lib/thumbnail-rules.ts`, shared with
 // the server action; the action re-checks everything (decision 251).
@@ -1142,61 +1135,67 @@ function ItemEditor({
               {thumbError ? (
                 <p className="text-[12px] text-[var(--color-danger)]">{thumbError}</p>
               ) : null}
-              {/* The constant-height strip: tiles side by side, placeholder
+              {isMaster ? (
+                <ThumbnailSet item={item} busy={busy} />
+              ) : (
+                <>
+                  {/* The constant-height strip: tiles side by side, placeholder
                   when empty, so an upload swaps words for a tile at the same
                   height instead of growing the panel. The 109px is one tile:
                   45 image + 16 caption + a 40px button + the two 4px gaps
                   between them (re-derived for the 4px unit, decision 242). */}
-              <div className="flex min-h-[109px] w-full flex-wrap items-start gap-2">
-                {(record?.thumbs ?? []).length === 0 ? (
-                  <p className="self-center text-[12px] text-[var(--color-text-muted)]">
-                    No thumbnails stored yet.
-                  </p>
-                ) : (
-                  (record?.thumbs ?? []).map((thumb, index) => (
-                    <div key={thumb.key} className="flex w-[100px] flex-col gap-1">
-                      {thumb.url ? (
-                        // A presigned R2 URL, not an optimisable asset — plain img.
-                        <img
-                          src={thumb.url}
-                          alt={`Thumbnail ${index + 1}`}
-                          className="h-[45px] w-[80px] rounded-[4px] border border-[var(--color-border)] object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-[45px] w-[80px] items-center justify-center rounded-[4px] border border-[var(--color-border)] text-[10px] text-[var(--color-text-muted)]">
-                          PNG
-                        </span>
-                      )}
-                      <span className="min-h-[16px] text-[11px] leading-[16px] whitespace-nowrap text-[var(--color-text-muted)]">
-                        {index === 0 ? 'Set via the API' : 'Test & Compare'}
-                      </span>
-                      {/* No icon: the tile is 100px wide and the label is the
+                  <div className="flex min-h-[109px] w-full flex-wrap items-start gap-2">
+                    {(record?.thumbs ?? []).length === 0 ? (
+                      <p className="self-center text-[12px] text-[var(--color-text-muted)]">
+                        No thumbnails stored yet.
+                      </p>
+                    ) : (
+                      (record?.thumbs ?? []).map((thumb, index) => (
+                        <div key={thumb.key} className="flex w-[100px] flex-col gap-1">
+                          {thumb.url ? (
+                            // A presigned R2 URL, not an optimisable asset — plain img.
+                            <img
+                              src={thumb.url}
+                              alt={`Thumbnail ${index + 1}`}
+                              className="h-[45px] w-[80px] rounded-[4px] border border-[var(--color-border)] object-cover"
+                            />
+                          ) : (
+                            <span className="flex h-[45px] w-[80px] items-center justify-center rounded-[4px] border border-[var(--color-border)] text-[10px] text-[var(--color-text-muted)]">
+                              PNG
+                            </span>
+                          )}
+                          <span className="min-h-[16px] text-[11px] leading-[16px] whitespace-nowrap text-[var(--color-text-muted)]">
+                            {index === 0 ? 'Set via the API' : 'Test & Compare'}
+                          </span>
+                          {/* No icon: the tile is 100px wide and the label is the
                           requirement (spec section 11.1), not the glyph. */}
-                      <Button
-                        variant="outline"
-                        className="w-full px-2"
-                        busy={pressed === `rm-${thumb.key}`}
-                        disabled={busy}
-                        onClick={() =>
-                          void act(
-                            () => removeThumbnail(item.targetType, item.targetId, thumb.key),
-                            'Thumbnail removed',
-                            `rm-${thumb.key}`,
-                          )
-                        }
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-              {/* Static, so it never appears/disappears under the cursor. */}
-              <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
-                <Check aria-hidden className="h-3.5 w-3.5" />
-                Only the first is set via the API — set up Test &amp; Compare with the others in
-                YouTube Studio yourself.
-              </p>
+                          <Button
+                            variant="outline"
+                            className="w-full px-2"
+                            busy={pressed === `rm-${thumb.key}`}
+                            disabled={busy}
+                            onClick={() =>
+                              void act(
+                                () => removeThumbnail(item.targetType, item.targetId, thumb.key),
+                                'Thumbnail removed',
+                                `rm-${thumb.key}`,
+                              )
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {/* Static, so it never appears/disappears under the cursor. */}
+                  <p className="flex items-center gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
+                    <Check aria-hidden className="h-3.5 w-3.5" />
+                    Only the first is set via the API — set up Test &amp; Compare with the others in
+                    YouTube Studio yourself.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

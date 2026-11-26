@@ -27,6 +27,7 @@ const routing: ModelRouting = {
   stills: { provider: 'google', model: 'gemini-2.5-flash-image' },
   stillsLikeness: null,
   setSheet: { provider: 'google', model: 'gemini-3-pro-image' },
+  thumbnails: { provider: 'google', model: 'gemini-3-pro-image' },
 }
 
 const request: LLMTaskRequest = {

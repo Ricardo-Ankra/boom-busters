@@ -57,6 +57,12 @@ vi.mock('./motion-actions', () => ({
   archiveReferenceAction: vi.fn(),
   draftMotionIdentityAction: vi.fn(),
 }))
+vi.mock('./thumbnail-reference-actions', () => ({
+  uploadThumbnailReference: vi.fn(),
+  saveThumbnailReference: vi.fn(),
+  removeThumbnailReference: vi.fn(),
+  saveThumbnailStyle: vi.fn(),
+}))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
   finaliseLogoAction: vi.fn(),
@@ -151,5 +157,16 @@ describe('the Photographic look card (decision 287)', () => {
         }),
       }),
     )
+  })
+
+  it('a Brand Kit change carries no thumbnail setting', async () => {
+    const user = userEvent.setup()
+    await openBrandKitTab()
+    await user.selectOptions(screen.getByLabelText('Grade'), 'strong')
+
+    const patch = saveSettings.mock.calls[0]![1]
+    expect(patch.brandKit?.look).toEqual(expect.objectContaining({ gradePreset: 'strong' }))
+    expect('thumbnailMarkPlacement' in patch.brandKit!.look!).toBe(false)
+    expect('thumbnails' in patch).toBe(false)
   })
 })

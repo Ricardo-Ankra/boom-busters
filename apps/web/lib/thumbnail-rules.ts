@@ -76,7 +76,8 @@ export function thumbnailHint(target: ThumbnailTarget): string {
   const spec = `${rule.shape}, ${rule.recommended} ideal, up to ${THUMB_LIMIT} PNGs, 2 MB max.`
 
   return target === 'master'
-    ? `Thumbnail: export from Canva. ${spec} Masters need one before upload.`
+    ? `Thumbnail: generate a set, or export from Canva. ${rule.shape}, ${rule.recommended} ideal, ` +
+        `up to ${THUMB_LIMIT}, 2 MB max for an upload. Masters need one before upload.`
     : `Thumbnail: optional for a Short. The feed plays the video itself, but search and ` +
         `channel pages show it. Vertical ${spec}`
 }

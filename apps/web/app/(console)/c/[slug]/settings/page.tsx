@@ -18,6 +18,8 @@ import {
   runningDerivation,
   maskKey,
   channelYoutubeConnection,
+  finishedTests,
+  ideaResults,
 } from '@boom-busters/db'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { hasEnvGroup } from '@boom-busters/schemas'
@@ -53,6 +55,7 @@ const TABS = [
   'motion',
   'voice',
   'logos',
+  'thumbnails',
   'exemplars',
   'publishing',
   'connections',
@@ -182,6 +185,25 @@ export default async function SettingsPage({
     })),
   )
 
+  // What the recorded Test & Compare runs say, for the Thumbnails tab's card.
+  const [thumbnailIdeaResults, thumbnailFinishedTests] = await Promise.all([
+    ideaResults(db, channel.id),
+    finishedTests(db, channel.id),
+  ])
+
+  // The thumbnail references' pictures, presigned like the logos' when storage holds them.
+  const thumbnailReferenceViews = await Promise.all(
+    settings.thumbnails.references.map(async (ref) => ({
+      id: ref.id,
+      note: ref.note,
+      inUse: ref.inUse,
+      url:
+        storageConfigured() && !ref.r2Key.startsWith('mock://')
+          ? await presignGet(ref.r2Key)
+          : null,
+    })),
+  )
+
   // The reference pack's cards: the first frame, the sheets and, for a clip,
   // the original, each presigned when storage holds it (spec 2026-11-04, 11.2).
   const sign = async (key: string | null | undefined) =>
@@ -264,6 +286,9 @@ export default async function SettingsPage({
         youtubeOutcome={typeof params['youtube'] === 'string' ? params['youtube'] : undefined}
         initialTab={tab}
         logos={logoViews}
+        thumbnailReferences={thumbnailReferenceViews}
+        thumbnailIdeaResults={thumbnailIdeaResults}
+        thumbnailFinishedTests={thumbnailFinishedTests}
         channelMarkKey={settings.brandKit.look.logoR2Key}
         modelOptions={modelOptions}
         exemplars={exemplarViews()}

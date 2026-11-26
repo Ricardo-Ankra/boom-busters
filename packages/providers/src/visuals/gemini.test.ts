@@ -222,10 +222,12 @@ describe('referenceLimits', () => {
     expect(geminiImageGen.referenceLimits('gemini-3.1-flash-image')).toEqual({
       characters: 4,
       objects: 10,
+      styles: 0,
     })
     expect(geminiImageGen.referenceLimits('gemini-3-pro-image')).toEqual({
       characters: 5,
       objects: 6,
+      styles: 3,
     })
   })
 
@@ -236,6 +238,7 @@ describe('referenceLimits', () => {
     expect(geminiImageGen.referenceLimits('gemini-2.5-flash-image')).toEqual({
       characters: 3,
       objects: 2,
+      styles: 0,
     })
   })
 
@@ -251,6 +254,99 @@ describe('referenceLimits', () => {
     expect(geminiImageGen.referenceLimits()).toEqual(
       geminiImageGen.referenceLimits(geminiImageGen.models[0]!.id),
     )
+  })
+})
+
+describe('style references', () => {
+  const style = (n: number) => ({
+    name: `thumb${n}`,
+    kind: 'style' as const,
+    mimeType: 'image/jpeg' as const,
+    data: `S${n}`,
+  })
+  const LABEL_TAIL =
+    'Use it for the look only: palette, light and finish. Never copy its subject or its layout.'
+
+  it('reports three styles for Pro and none for Flash', () => {
+    expect(geminiImageGen.referenceLimits('gemini-3-pro-image').styles).toBe(3)
+    expect(geminiImageGen.referenceLimits('gemini-3.1-flash-image').styles).toBe(0)
+    expect(geminiImageGen.referenceLimits('gemini-2.5-flash-image').styles).toBe(0)
+  })
+
+  it('sends style references last, each with its label', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      {
+        prompt: 'A thumbnail',
+        count: 1,
+        model: 'gemini-3-pro-image',
+        references: [
+          style(1),
+          { name: 'Room', kind: 'object', mimeType: 'image/jpeg', data: 'OBJ' },
+          { name: 'Emad', kind: 'character', mimeType: 'image/jpeg', data: 'CHR' },
+          style(2),
+        ],
+      },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const parts = (calls[0]?.body as { contents: { parts: Record<string, unknown>[] }[] })
+      .contents[0]!.parts
+    expect(parts.map((part) => ('inlineData' in part ? 'image' : 'text'))).toEqual([
+      'text',
+      'image',
+      'text',
+      'image',
+      'text',
+      'image',
+      'text',
+      'image',
+      'text',
+    ])
+    expect(parts.filter((part) => 'inlineData' in part).map((part) => part.inlineData)).toEqual([
+      { mimeType: 'image/jpeg', data: 'CHR' },
+      { mimeType: 'image/jpeg', data: 'OBJ' },
+      { mimeType: 'image/jpeg', data: 'S1' },
+      { mimeType: 'image/jpeg', data: 'S2' },
+    ])
+    expect(parts[4]).toEqual({ text: `Reference image 3 of 4: thumb1. ${LABEL_TAIL}` })
+    expect(parts[6]).toEqual({ text: `Reference image 4 of 4: thumb2. ${LABEL_TAIL}` })
+    expect(parts[8]).toEqual({ text: 'A thumbnail' })
+  })
+
+  it('refuses a style reference on a model with no style channel', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      geminiImageGen.generate(
+        {
+          prompt: 'x',
+          count: 1,
+          model: 'gemini-3.1-flash-image',
+          references: [style(1)],
+        },
+        { apiKey: 'k', fetchImpl },
+      ),
+    ).rejects.toThrow(
+      'Gemini 3.1 Flash Image takes no style references. Route thumbnails at Gemini 3 Pro Image, or switch the references off.',
+    )
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('refuses a fourth style reference on Pro', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      geminiImageGen.generate(
+        {
+          prompt: 'x',
+          count: 1,
+          model: 'gemini-3-pro-image',
+          references: [1, 2, 3, 4].map(style),
+        },
+        { apiKey: 'k', fetchImpl },
+      ),
+    ).rejects.toThrow(
+      'Gemini 3 Pro Image takes at most 3 style references; this request carries 4.',
+    )
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 })
 
@@ -435,7 +531,11 @@ describe('a live Gemini image model the catalogue does not hold (decision 288)',
     }
     expect(body.generationConfig.imageConfig.imageSize).toBe('4K')
     expect(body.generationConfig.thinkingConfig).toBeUndefined()
-    expect(adapter.referenceLimits('gemini-9-pro-image')).toEqual({ characters: 5, objects: 6 })
+    expect(adapter.referenceLimits('gemini-9-pro-image')).toEqual({
+      characters: 5,
+      objects: 6,
+      styles: 3,
+    })
   })
 
   it('still refuses an id the list it was built over does not hold', async () => {

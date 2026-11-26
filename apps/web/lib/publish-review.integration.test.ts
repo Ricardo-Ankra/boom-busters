@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import {
+  channelForProject,
   createCase,
   createChannel,
   createProjectFromCase,
@@ -22,6 +23,7 @@ import {
   seed,
   shorts,
   talkingPointSets,
+  thumbnailPackages,
   updatePublishRecord,
   updateChannelSettings,
 } from '@boom-busters/db'
@@ -30,10 +32,11 @@ import {
   defaultFormat,
   EMPTY_BIBLE,
   FIRST_CHANNEL_ID,
+  PACKAGES_MAX,
   PUBLISH_DISCLAIMER,
 } from '@boom-busters/schemas'
 import type { TalkingPoint } from '@boom-busters/schemas'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { descriptionIngredients, publishModel, spokenIntro } from './publish-review'
 
@@ -253,6 +256,158 @@ describeDb('publishModel search brief fields', () => {
       })
     } finally {
       await db.update(projects).set({ searchBrief: null })
+    }
+  })
+})
+
+describeDb('publishModel altered-content list', () => {
+  it('adds the approved thumbnails’ people to the master card and leaves a Short’s list alone', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await db.insert(thumbnailPackages).values([
+      {
+        publishRecordId: master.id,
+        position: 0,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/a.jpg',
+        depicts: ['Jan Marsalek'],
+        approvedAt: new Date(),
+      },
+      {
+        publishRecordId: master.id,
+        position: 1,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/b.jpg',
+        depicts: ['Jan Marsalek'],
+        approvedAt: new Date(),
+      },
+      {
+        publishRecordId: master.id,
+        position: 2,
+        source: 'generated',
+        composedKey: 'boom-busters/thumbs/p/c.jpg',
+        depicts: ['Not Approved'],
+        approvedAt: null,
+      },
+    ])
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.syntheticLikenesses).toContain('Jan Marsalek')
+      expect(masterItem.syntheticLikenesses).not.toContain('Not Approved')
+      expect(masterItem.syntheticLikenesses.filter((name) => name === 'Jan Marsalek')).toHaveLength(
+        1,
+      )
+      for (const item of model.items.filter((i) => i.targetType === 'short')) {
+        expect(item.syntheticLikenesses).not.toContain('Jan Marsalek')
+      }
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+})
+
+describeDb('publishModel thumbnail packages', () => {
+  it('planning is true while a claim is fresh', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    try {
+      const planning = async (): Promise<boolean | undefined> =>
+        (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items.find(
+          (item) => item.targetType === 'master',
+        )?.record?.planning
+
+      expect(await planning()).toBe(false)
+
+      await updatePublishRecord(db, master.id, {
+        metadata: { thumbnailSetRequestedAt: new Date().toISOString() },
+      })
+      expect(await planning()).toBe(true)
+
+      await updatePublishRecord(db, master.id, {
+        metadata: { thumbnailSetRequestedAt: new Date(Date.now() - 16 * 60_000).toISOString() },
+      })
+      expect(await planning()).toBe(false)
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
+  it('lists a master’s packages, brings a stored key in as an uploaded one, and gives a Short none', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, master.id, {
+      uploadedThumbKeys: ['boom-busters/thumbs/p/legacy.png'],
+      youtubeVideoId: 'abc123',
+      metadata: { thumbnailSetNote: 'Planned 1 of 3. Figure: no claim.' },
+    })
+    const shortRow = (await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })).items.find(
+      (item) => item.targetType === 'short',
+    )
+    if (shortRow) await ensurePublishRecord(db, 'short', shortRow.targetId)
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, {
+        presign: async (key) => `https://signed.example/${key}`,
+      })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.record?.packages).toMatchObject([
+        {
+          source: 'uploaded',
+          state: 'ready',
+          approved: true,
+          inFlight: false,
+          hasImage: true,
+          hasPicture: false,
+          slotMisses: [],
+          url: 'https://signed.example/boom-busters/thumbs/p/legacy.png',
+        },
+      ])
+      expect(masterItem.record?.thumbnailSetNote).toBe('Planned 1 of 3. Figure: no claim.')
+      expect(masterItem.studioUrl).toBe('https://studio.youtube.com/video/abc123/edit')
+      for (const item of model.items.filter((i) => i.targetType === 'short')) {
+        expect(item.record?.packages ?? []).toEqual([])
+        expect(item.thumbnailSetCostUsd).toBeNull()
+        expect(item.studioUrl).toBeNull()
+        expect(item.styleReferencesLeftOut).toBeNull()
+      }
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
+  it('prices three places for a master with no record', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const { thumbnailSetEstimateUsd } = await import('./thumbnail-set')
+    const channel = await channelForProject(db, FIXTURE_PROJECT_ID)
+    const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+    const masterItem = model.items.find((item) => item.targetType === 'master')!
+    expect(masterItem.record).toBeNull()
+    expect(masterItem.thumbnailSetCostUsd).toBe(
+      await thumbnailSetEstimateUsd(channel.channelId, PACKAGES_MAX),
+    )
+    expect(masterItem.thumbnailSetCostUsd).toBeGreaterThan(0)
+  })
+
+  it('a failed price read logs and leaves the cost empty', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const thumbnailSet = await import('./thumbnail-set')
+    const failure = new Error('price table unreadable')
+    const read = vi.spyOn(thumbnailSet, 'thumbnailRouteFacts').mockRejectedValue(failure)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.thumbnailSetCostUsd).toBeNull()
+      expect(logged).toHaveBeenCalledTimes(1)
+      expect(logged).toHaveBeenCalledWith('[thumbnails] could not read the route', failure)
+    } finally {
+      read.mockRestore()
+      logged.mockRestore()
     }
   })
 })

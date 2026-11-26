@@ -1,6 +1,6 @@
 import { buildModelOptions, mockListedModels } from '@boom-busters/providers'
 import { DEFAULT_SETTINGS, EMPTY_MODEL_PRICES, type Settings } from '@boom-busters/schemas'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FIXTURE_CHANNEL_VIEW } from './channel-view-fixture'
@@ -60,6 +60,12 @@ vi.mock('./motion-actions', () => ({
   saveReadingAction: vi.fn(),
   archiveReferenceAction: vi.fn(),
   draftMotionIdentityAction: vi.fn(),
+}))
+vi.mock('./thumbnail-reference-actions', () => ({
+  uploadThumbnailReference: vi.fn(),
+  saveThumbnailReference: vi.fn(),
+  removeThumbnailReference: vi.fn(),
+  saveThumbnailStyle: vi.fn(),
 }))
 vi.mock('./logo-actions', () => ({
   createLogoUploadAction: vi.fn(),
@@ -176,6 +182,26 @@ describe('routing the set sheet generator (decision 275)', () => {
       options.image.fal.map((o) => o.id),
     )
     expect(screen.getByText(/each plate comes out about 1,000 pixels wide/)).toBeInTheDocument()
+  })
+})
+
+describe('routing the thumbnail painter', () => {
+  it('routes thumbnails on their own row', async () => {
+    const options = modelOptions()
+    renderModelsTab(options)
+
+    expect(screen.getByText('Thumbnails', { selector: 'label' })).toBeInTheDocument()
+    const select = screen.getByRole('combobox', { name: 'Thumbnails model' })
+    expect(select).toHaveValue('gemini-3-pro-image')
+    expect(Array.from(select.querySelectorAll('option')).map((option) => option.value)).toEqual(
+      options.image.google.map((o) => o.id),
+    )
+
+    await userEvent.selectOptions(select, 'gemini-3.1-flash-image')
+
+    expect(saveSettings).toHaveBeenCalledWith('01J00000000000000000000001', {
+      modelRouting: { thumbnails: { provider: 'google', model: 'gemini-3.1-flash-image' } },
+    })
   })
 })
 
@@ -442,7 +468,11 @@ describe('unpriced image models (decision 288)', () => {
       fallsBackTo: null,
     })
     renderModelsTab(options)
-    expect(screen.getByRole('option', { name: 'Imagen Mock (needs a price)' })).toBeDisabled()
+    // Every image row offers the model, so the stills row is read on its own.
+    const stills = screen.getByRole('combobox', { name: 'Still images model' })
+    expect(
+      within(stills).getByRole('option', { name: 'Imagen Mock (needs a price)' }),
+    ).toBeDisabled()
   })
 })
 

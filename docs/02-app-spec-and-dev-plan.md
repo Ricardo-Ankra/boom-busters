@@ -91,7 +91,7 @@ Each video is a **Project** moving through eight stages. Stages 2-8 each have a 
 
 ### Stage 8: Publish
 - Metadata studio: 8-10 title options, description (hook paragraph, chapter timestamps, source list auto-inserted from the dossier, standard disclaimer), tags.
-- Thumbnail lane: **made entirely in Canva, outside the app.** The app shows a deep link to the Canva template, a drag-and-drop upload slot for the exported PNGs (up to 3 variants for Test & Compare), validation (1280×720, ≤2 MB), and stores them per video. No AI thumbnail generation anywhere in the pipeline.
+- Thumbnail lane: a master's thumbnails may be **generated in the app or uploaded from Canva** (see `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md`). The app shows a deep link to the Canva template, a drag-and-drop upload slot for the exported PNGs (up to 3 variants for Test & Compare), validation (1280×720, ≤2 MB), and stores them per video; "Generate a set" plans up to three thumbnail and title packages for the owner to approve. A Short's thumbnail stays an upload.
 - Upload via YouTube Data API: scheduled (`privacyStatus: private` + `publishAt`), thumbnail set via API for long-form (not possible for Shorts), AI-disclosure flag where applicable.
 - **Gate 5:** final approve → schedule. Long-form and its Shorts are auto-spaced (e.g. long-form Friday, Shorts Sat/Mon/Wed pointing at it, inside the 10-day engagement window).
 - **Constraint to plan around:** API projects must pass YouTube's compliance audit before API uploads can be public. Apply immediately (2-4 weeks). Until then the app schedules as private and you flip to public/scheduled in Studio (one click, still saves hours).
@@ -170,7 +170,7 @@ Alternatives exist (Trigger.dev, Vercel Workflows, QStash, AWS Step Functions), 
 
 **Verdict: reuse both.** One caveat on the broker: reuse the infrastructure and pattern, but fork the handler if Reelscript's version encodes a Reelscript-specific composition contract. The broker should speak Boom-Busters's timeline schema, not Reelscript's.
 
-**External APIs:** Anthropic (scripts, shot lists, self-checks, analytics digests), Google Gemini TTS (narration, batch API; ElevenLabs optional behind the provider abstraction), fal.ai (Flux; Veo optional), Pexels, Pixabay, YouTube Data + Analytics (OAuth, offline refresh token). Thumbnails are made in Canva outside the app; no thumbnail-generation API.
+**External APIs:** Anthropic (scripts, shot lists, self-checks, analytics digests), Google Gemini TTS (narration, batch API; ElevenLabs optional behind the provider abstraction), fal.ai (Flux; Veo optional), Pexels, Pixabay, YouTube Data + Analytics (OAuth, offline refresh token). A master's thumbnails may be made in Canva or generated in the app (the Gemini image API, with the design in `docs/superpowers/specs/2026-11-24-generated-thumbnails-and-title-sets-design.md`).
 
 **Key data model:** `BrandKit(typography, colours, look, voice, music)` + `Case → Project → Dossier(Claims[source,confidence]) → Script(Chapters, Edits[]) → VoiceTake(chunks) → ShotList(Slots[type, description, motion, duration, dataRef, candidates[], chosenAsset]) → Timeline → Render → Short[] → PublishRecord → AnalyticsSnapshot[]`. Claims link forward into script sentences and chart slots reference dossier claims by ID (traceability is the compliance story; charts can never show unsourced numbers).
 

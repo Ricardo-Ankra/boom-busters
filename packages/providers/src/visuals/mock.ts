@@ -108,7 +108,7 @@ export const mockImageGen: ImageGenProvider = {
   // The most generous shape offered by either live adapter, so mock mode
   // never refuses a path the live adapters allow.
   referenceLimits(): ReferenceLimits {
-    return { characters: 4, objects: 10 }
+    return { characters: 4, objects: 10, styles: 3 }
   },
 
   async verifyKey() {

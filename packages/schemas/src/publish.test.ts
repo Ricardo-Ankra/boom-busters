@@ -337,6 +337,19 @@ describe('PublishDraftSchema', () => {
     expect(old.searchTags).toEqual([])
   })
 
+  it('thumbnailSetRequestedAt is optional and must be a datetime', () => {
+    expect(PublishDraftSchema.parse({}).thumbnailSetRequestedAt).toBeUndefined()
+    expect(
+      PublishDraftSchema.parse({ thumbnailSetRequestedAt: '2026-11-25T10:00:00.000Z' })
+        .thumbnailSetRequestedAt,
+    ).toBe('2026-11-25T10:00:00.000Z')
+    expect(PublishDraftSchema.safeParse({ thumbnailSetRequestedAt: 'now' }).success).toBe(false)
+  })
+
+  it('thumbnailSetNote defaults to an empty string on a draft saved before it', () => {
+    expect(PublishDraftSchema.parse({ titleOptions: ['A'] }).thumbnailSetNote).toBe('')
+  })
+
   it('refuses an overlong title — YouTube would truncate it silently', () => {
     expect(PublishDraftSchema.safeParse({ title: 'x'.repeat(101) }).success).toBe(false)
   })

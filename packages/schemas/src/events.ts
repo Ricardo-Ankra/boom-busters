@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { BibleDraftUnitSchema } from './bible-draft'
 import { ExemplarSteerSchema } from './channel-exemplars'
 import { UlidSchema } from './ids'
+import { ThumbnailSetRequestedSchema } from './thumbnails'
 import { ShotSlotTypeSchema } from './visuals'
 
 /**
@@ -483,6 +484,8 @@ export const EVENT_SCHEMAS = {
   'project/created': ProjectCreatedSchema,
   'project/cancelled': ProjectCancelledSchema,
   'project/master.ready': ProjectMasterReadySchema,
+
+  'thumbnails/set.requested': ThumbnailSetRequestedSchema,
 
   'gate/dossier.approved': GateApprovedSchema,
   'gate/dossier.changes_requested': GateChangesRequestedSchema,

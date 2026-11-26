@@ -52,6 +52,14 @@ export const PublishDraftSchema = z.object({
   titleScores: z.record(z.string(), z.number().nullable()).default({}),
   /** Why the last scoring run kept no scores (a cap, a refused key); empty when it did not fail. */
   titleScoreNote: z.string().max(500).default(''),
+  /** What the last thumbnail set run did or why it made none (dropped packages, an unusable plan); empty when every place was filled. */
+  thumbnailSetNote: z.string().max(500).default(''),
+  /**
+   * When "Generate a set" was accepted and its plan has not landed yet: a claim
+   * younger than `PACKAGE_STALE_MS` counts as a set in flight, so a second press
+   * cannot buy the set twice. Cleared when the plan finishes or the run fails.
+   */
+  thumbnailSetRequestedAt: z.string().datetime().optional(),
   /** The format's required title slots an option lacks, by the option's text; an option with none has no entry. */
   titleSlotMisses: z.record(z.string(), z.array(z.enum(TITLE_SLOTS))).default({}),
   /** The human-owned opening — the auto-blocks are appended at compose time. */

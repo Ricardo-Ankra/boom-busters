@@ -1,27 +1,30 @@
 'use server'
 
 import { createHash } from 'node:crypto'
-import { NonRetriableError } from 'inngest'
 import {
   ensurePublishRecord,
-  getLatestScript,
   getProject,
   earliestScheduledPointShort,
+  ensureUploadedPackages,
   getPublishRecord,
   getRender,
   getShort,
   hasLiveRun,
   latestRender,
   latestScriptParagraphSources,
+  listThumbnailPackages,
   listCastMembers,
+  addUploadedPackage,
   channelForProject,
   channelYoutubeConnected,
   channelYoutubeConnection,
   channelYoutubeToken,
   recordChannelYoutubeVerify,
-  scriptableClaims,
+  removeThumbnailPackage,
   setProjectStage,
+  syncApprovedToRecord,
   updatePublishRecord,
+  updateThumbnailPackage,
   vidiqCredential,
 } from '@boom-busters/db'
 import type { PublishRecordRow } from '@boom-busters/db'
@@ -30,26 +33,23 @@ import {
   channelTagsWithin,
   composeDescription,
   HASHTAGS_MAX,
-  fillTitleTemplate,
-  leadKeyword,
   dropFixedParagraphs,
   missingTitleSlots,
   normaliseHashtag,
-  OutlineSchema,
-  runtimeWords,
+  packageInFlight,
   splitHashtags,
-  topicForTitle,
   PublishDraftSchema,
   PublishMetadataSchema,
   splitParagraphs,
   TeaserScriptSchema,
   searchBriefLine,
+  setBeingPlanned,
   tagBudgetMessage,
   UlidSchema,
   YOUTUBE_TAGS_MAX_CHARS,
   youtubeTagChars,
 } from '@boom-busters/schemas'
-import type { SearchBrief, TitleSlot, TitleSlotValues } from '@boom-busters/schemas'
+import type { TitleSlot } from '@boom-busters/schemas'
 import {
   buildDescriptionRequest,
   buildTitlesRequest,
@@ -59,25 +59,32 @@ import {
   parseDescriptionAnswer,
   parseTitleOptions,
 } from '@boom-busters/providers'
-import type { DescriptionAnswer, ScriptClaim } from '@boom-busters/providers'
+import type { DescriptionAnswer } from '@boom-busters/providers'
 import { VIDIQ_CREDIT_COST } from '@boom-busters/providers/vidiq'
 import { revalidatePath } from 'next/cache'
-import { auth } from '@/auth'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { movePublishAt, refreshAccessToken, YoutubeAuthError } from '@/lib/youtube'
 import { callForAnswer } from '@/lib/answer'
 import { completeForProject } from '@/lib/answer-call'
 import { descriptionIngredients } from '@/lib/publish-review'
+import { metadataGrounding, titleFrameFor } from '@/lib/publish-grounding'
 import { pillarOf } from '@/lib/pillar'
+import { testRunningReason } from '@/lib/test-running'
 import { searchTags } from '@/lib/search-tags'
 import { unscoredDistinctTitles } from '@/lib/title-scores'
 import { checkVidiqBudget, spendVidiq } from '@/lib/vidiq-spend'
 import { deleteObject, putObject, R2_PREFIX, storageConfigured } from '@/lib/storage'
 import { THUMB_LIMIT, THUMB_MAX_BYTES, thumbnailDimensionError } from '@/lib/thumbnail-rules'
 import { inngest } from '@/inngest/client'
-import { requireCompleteBible } from '@/inngest/lib/channel'
-import { FROZEN_BIBLE_INCOMPLETE_MESSAGE } from '@/lib/bible-gate'
+import {
+  completeFrozenBible,
+  editableReason,
+  parseTarget,
+  projectIdOf,
+  requireOwner,
+} from '@/lib/publish-action-guards'
+import type { ActionResult } from '@/lib/publish-action-guards'
 import { events } from '@/inngest/events'
 
 /**
@@ -89,49 +96,13 @@ import { events } from '@/inngest/events'
  * generated titles, thumbnails, and the stage handover from Shorts.
  */
 
-export interface ActionResult {
-  ok: boolean
-  error?: string
-}
-
-async function requireOwner(): Promise<void> {
-  const session = await auth()
-  if (!session?.user?.email) throw new Error('Not signed in')
-}
-
-function parseTarget(targetType: string, targetId: string): ActionResult | null {
-  if (targetType !== 'master' && targetType !== 'short') {
-    return { ok: false, error: `Unknown publish target "${targetType}"` }
-  }
-  if (!UlidSchema.safeParse(targetId).success) return { ok: false, error: 'Unknown target' }
-  return null
-}
-
-/** A target's project, so every action can revalidate the right screen. */
-async function projectIdOf(
-  targetType: 'master' | 'short',
-  targetId: string,
-): Promise<string | undefined> {
-  if (targetType === 'master') {
-    return (await getProject(db, targetId)) ? targetId : undefined
-  }
-  return (await getShort(db, targetId))?.projectId
-}
+export type { ActionResult }
 
 /** Draft fields merged over what the jsonb already holds — never replaced. */
 async function mergeDraft(record: PublishRecordRow, patch: Record<string, unknown>): Promise<void> {
   await updatePublishRecord(db, record.id, {
     metadata: { ...record.metadata, ...patch },
   })
-}
-
-const EDITABLE = ['draft', 'failed'] as const
-function editableReason(record: PublishRecordRow | undefined): string | null {
-  if (!record) return null
-  if ((EDITABLE as readonly string[]).includes(record.status)) return null
-  return record.status === 'scheduled' || record.status === 'live'
-    ? 'This item is already on YouTube — edit it in Studio.'
-    : 'This item is uploading right now.'
 }
 
 // ---------------------------------------------------------------------------
@@ -234,53 +205,6 @@ function joinTags(kept: readonly string[], written: readonly string[]): string[]
     tags.push(tag)
   }
   return tags
-}
-
-/** The film's facts, as the claim list every metadata call reads (decision 303). */
-async function metadataGrounding(projectId: string): Promise<{
-  claims: ScriptClaim[]
-  centralQuestion: string | undefined
-  scriptVersion: number
-}> {
-  const [claims, latest] = await Promise.all([
-    scriptableClaims(db, projectId),
-    getLatestScript(db, projectId),
-  ])
-  const outline = OutlineSchema.safeParse(latest?.script.outline)
-  return {
-    // An unverified claim is no ground for a public title or description,
-    // and its source is not listed either (decision 303, review).
-    claims: claims
-      .filter((claim) => claim.confidence !== 'unverified')
-      .map((claim) => ({
-        id: claim.id,
-        text: claim.text,
-        sourceUrl: claim.sourceUrl,
-        confidence: claim.confidence,
-        legal: claim.legalStatus,
-      })),
-    centralQuestion: outline.success ? outline.data.centralQuestion : undefined,
-    scriptVersion: latest?.script.version ?? 0,
-  }
-}
-
-/**
- * The project's frozen bible, refused when incomplete. A server action answers
- * with an error result, so the owner reads the bible gate's own words; the
- * gate sits before the mock branch, as every stage's does.
- */
-async function completeFrozenBible(
-  projectId: string,
-): Promise<{ ok: true; frozen: Awaited<ReturnType<typeof channelForProject>> } | ActionResult> {
-  const frozen = await channelForProject(db, projectId)
-  try {
-    return { ok: true, frozen: requireCompleteBible(frozen) }
-  } catch (error) {
-    if (error instanceof NonRetriableError && error.message === FROZEN_BIBLE_INCOMPLETE_MESSAGE) {
-      return { ok: false, error: FROZEN_BIBLE_INCOMPLETE_MESSAGE }
-    }
-    throw error
-  }
 }
 
 /**
@@ -535,52 +459,6 @@ async function vidiqAvailable(): Promise<boolean> {
 }
 
 /**
- * The format's title template filled for this project, and the values a title
- * must hold. Null for a Short and for a format with no template: titles are
- * then written and scored as they always were.
- */
-async function titleFrameFor(
-  projectId: string,
-  project: {
-    caseTitle: string
-    caseCategory: string
-    searchBrief: SearchBrief | null
-  },
-  frozen: Awaited<ReturnType<typeof channelForProject>>,
-): Promise<{
-  pattern: string
-  required: string[]
-  slots: readonly TitleSlot[]
-  values: TitleSlotValues
-} | null> {
-  const { format } = frozen
-  if (format.titleTemplate === '') return null
-  const brief = project.searchBrief
-  const runtimeSec = format.titleTemplate.includes('{runtime}')
-    ? (await descriptionIngredients(db, projectId)).runtimeSec
-    : null
-  const values: TitleSlotValues = {
-    topic: topicForTitle({
-      targetKeyword: brief?.targetKeyword?.keyword ?? null,
-      subject: brief?.subject ?? project.caseTitle,
-      formatKeywords: format.keywords,
-    }),
-    formatKeyword: leadKeyword(format),
-    pillar: format.titleTemplate.includes('{pillar}')
-      ? (pillarOf(frozen.bible, project.caseCategory)?.label ?? null)
-      : null,
-    runtime: runtimeSec === null ? null : runtimeWords(runtimeSec),
-  }
-  const slots = format.titleRequiredSlots
-  return {
-    pattern: fillTitleTemplate(format.titleTemplate, values),
-    required: slots.flatMap((slot) => (values[slot] === null ? [] : [values[slot]])),
-    slots,
-    values,
-  }
-}
-
-/**
  * The 8 generated title options (spec section 11.3): the 'metadata' LLM task,
  * routed and budget-guarded like every other call. Mock mode answers locally
  * — deterministic, obviously mock — for free.
@@ -823,9 +701,19 @@ export async function uploadThumbnail(formData: FormData): Promise<ActionResult>
   }
 
   await putObject(key, bytes, 'image/png')
-  await updatePublishRecord(db, record.id, {
-    uploadedThumbKeys: [...record.uploadedThumbKeys, key],
-  })
+  if (type === 'master') {
+    // A master's picture is a package too, approved by the act of uploading.
+    // Keys stored before the table existed get their rows first, so the new
+    // package takes its place after them.
+    await ensureUploadedPackages(db, record)
+    const added = await addUploadedPackage(db, record.id, key)
+    await updateThumbnailPackage(db, added.id, { approvedAt: new Date() })
+    await syncApprovedToRecord(db, record.id)
+  } else {
+    await updatePublishRecord(db, record.id, {
+      uploadedThumbKeys: [...record.uploadedThumbKeys, key],
+    })
+  }
 
   revalidatePath(`/projects/${projectId}`)
   return { ok: true }
@@ -850,14 +738,25 @@ export async function removeThumbnail(
   const blocked = editableReason(record)
   if (blocked) return { ok: false, error: blocked }
 
-  await updatePublishRecord(db, record.id, {
-    uploadedThumbKeys: record.uploadedThumbKeys.filter((stored) => stored !== key),
-  })
-  try {
-    await deleteObject(key)
-  } catch {
-    // Bytes left behind cost fractions of a cent; the record no longer
-    // points at them, which is what mattered.
+  let orphaned = [key]
+  if (type === 'master') {
+    // The row holding this key goes, and with it any picture it kept.
+    await ensureUploadedPackages(db, record)
+    const held = (await listThumbnailPackages(db, record.id)).find((row) => row.composedKey === key)
+    const removed = held ? await removeThumbnailPackage(db, held.id) : undefined
+    if (removed) orphaned = removed.orphanedKeys
+  } else {
+    await updatePublishRecord(db, record.id, {
+      uploadedThumbKeys: record.uploadedThumbKeys.filter((stored) => stored !== key),
+    })
+  }
+  for (const orphan of orphaned) {
+    try {
+      await deleteObject(orphan)
+    } catch {
+      // Bytes left behind cost fractions of a cent; the record no longer
+      // points at them, which is what mattered.
+    }
   }
 
   revalidatePath(`/projects/${projectId}`)
@@ -886,6 +785,20 @@ async function requestUpload(
 ): Promise<ActionResult> {
   let workingTitle: string
   if (type === 'master') {
+    // A package still being made (or recomposed), or a set still being
+    // planned, is not what the upload should carry.
+    const existing = await getPublishRecord(db, 'master', targetId)
+    const now = new Date()
+    if (
+      existing &&
+      (setBeingPlanned(
+        PublishDraftSchema.safeParse(existing.metadata).data?.thumbnailSetRequestedAt,
+        now,
+      ) ||
+        (await listThumbnailPackages(db, existing.id)).some((row) => packageInFlight(row, now)))
+    ) {
+      return { ok: false, error: 'A set is being made. Wait for it to finish.' }
+    }
     const render = await latestRender(db, projectId, 'master')
     if (render?.status !== 'done' || !render.outputS3Key) {
       return { ok: false, error: 'There is no finished master render to upload.' }
@@ -1021,6 +934,19 @@ async function pointShortRefusal(
 }
 
 /**
+ * A video with a Test & Compare marked running takes no upload that would
+ * write its title or thumbnail: YouTube stops the test on that change.
+ */
+async function runningTestRefusal(
+  type: 'master' | 'short',
+  targetId: string,
+): Promise<ActionResult | null> {
+  const record = await getPublishRecord(db, type, targetId)
+  const reason = record ? testRunningReason(record) : null
+  return reason ? { ok: false, error: reason } : null
+}
+
+/**
  * The other half of the order: the long form may not be moved to, or past, a
  * moment a scheduled point Short already holds, nor unlinked while one does.
  * `publishAt` null is the unlink. Null result when the master is free to move.
@@ -1070,6 +996,9 @@ export async function schedulePublish(
     (await masterMoveRefusal(type, projectId, publishAt))
   if (refused) return refused
 
+  const running = await runningTestRefusal(type, targetId)
+  if (running) return running
+
   return requestUpload(type, targetId, projectId, publishAt, 'private')
 }
 
@@ -1091,6 +1020,9 @@ export async function publishNow(targetType: string, targetId: string): Promise<
 
   const refused = await pointShortRefusal(type, targetId, projectId, 'now')
   if (refused) return refused
+
+  const running = await runningTestRefusal(type, targetId)
+  if (running) return running
 
   const { settings } = await channelForProject(db, projectId)
   const privacy = settings.publish.apiAuditPassed ? 'public' : 'private'
@@ -1252,6 +1184,11 @@ export async function unlinkPublishRecord(
     publishAt: null,
     privacyStatus: 'private',
     error: null,
+    // The test stamps belong to the video; the next video gets its own. The
+    // packages' recorded results stay: they are evidence of a test that ran.
+    testStartedAt: null,
+    testEndedAt: null,
+    testReminderSentAt: null,
   })
 
   revalidatePath(`/projects/${projectId}`)

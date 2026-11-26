@@ -59,6 +59,8 @@ export function mergeSettings(current: Settings, patch: SettingsPatch): Settings
     brandKit: { ...current.brandKit, ...patch.brandKit },
     features: { ...current.features, ...patch.features },
     motion: { ...current.motion, ...patch.motion },
+    // `references` is an array, so a patch that carries it replaces it whole.
+    thumbnails: { ...current.thumbnails, ...patch.thumbnails },
   }
 
   return SettingsSchema.parse(merged)

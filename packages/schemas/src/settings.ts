@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { CHAPTER_MARKINGS } from './formats'
 import { DEFAULT_MOTION_IDENTITY, MotionIdentitySchema } from './motion-identity'
+import { ThumbnailSettingsSchema } from './thumbnails'
 
 /**
  * The single-row `settings` table (build spec section 4) plus the Brand Kit
@@ -149,6 +150,12 @@ export const DEFAULT_SET_SHEET_ROUTE: StillRoute = {
   model: 'gemini-3-pro-image',
 }
 
+/** Where generated thumbnails are painted: the same generator as the set sheet. */
+export const DEFAULT_THUMBNAIL_ROUTE: StillRoute = {
+  provider: 'google',
+  model: 'gemini-3-pro-image',
+}
+
 // ---------------------------------------------------------------------------
 // Model prices (decision 288)
 // ---------------------------------------------------------------------------
@@ -243,6 +250,8 @@ export const ModelRoutingSchema = z.object({
   stillsLikeness: StillRouteSchema.nullable(),
   /** The contact-sheet generator (decision 275); a row stored before it reads the default. */
   setSheet: StillRouteSchema.default(DEFAULT_SET_SHEET_ROUTE),
+  /** The generated-thumbnail painter; a row stored before it reads the default. */
+  thumbnails: StillRouteSchema.default(DEFAULT_THUMBNAIL_ROUTE),
 })
 export type ModelRouting = z.infer<typeof ModelRoutingSchema>
 
@@ -660,6 +669,8 @@ export const SettingsSchema = z.object({
   features: FeatureFlagsSchema,
   /** The channel's motion identity (spec 2026-11-04); absent on a row saved before it, so the house identity. */
   motion: MotionIdentitySchema.prefault({}),
+  /** Generated thumbnails: a style note and the reference thumbnails; absent on an older row. */
+  thumbnails: ThumbnailSettingsSchema.prefault({}),
 })
 export type Settings = z.infer<typeof SettingsSchema>
 
@@ -703,6 +714,7 @@ export const SettingsPatchSchema = z
     brandKit: patchSection(BrandKitStoredSchema),
     features: patchSection(FeatureFlagsSchema),
     motion: patchSection(MotionIdentitySchema),
+    thumbnails: patchSection(ThumbnailSettingsSchema),
     // Strict: prices and the budget moved to the workspace, so a patch that
     // still carries them must fail loudly rather than be stripped in silence.
   })
@@ -752,6 +764,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // asks for two, so nothing changes under anyone who never opens this.
     stillsLikeness: null,
     setSheet: DEFAULT_SET_SHEET_ROUTE,
+    thumbnails: DEFAULT_THUMBNAIL_ROUTE,
   },
   fallbackChain: [],
   tts: {
@@ -808,6 +821,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   features: { heroSlots: false, graphicReview: true },
   motion: DEFAULT_MOTION_IDENTITY,
+  thumbnails: { styleNote: '', markPlacement: 'tl', references: [] },
 }
 
 /**

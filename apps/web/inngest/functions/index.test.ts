@@ -91,6 +91,10 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   //   one per Short (`concurrency` keyed on the Short): the action wins an
   //   atomic claim on the Short's slot of work before it sends, and a cancel
   //   would throw away paid work.
+  // - thumbnail-set-runner queues one master's requests behind each other
+  //   (`concurrency` keyed on the target): a duplicate must never cancel a run
+  //   that is paying for pictures.
+  'thumbnail-set-runner': null,
   'analytics-runner': null,
   'bible-drafter': null,
   'bible-researcher': null,

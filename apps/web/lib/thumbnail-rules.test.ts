@@ -61,5 +61,8 @@ describe('thumbnailHint', () => {
     expect(hint).toMatch(/16:9/)
     expect(hint).toMatch(/1280×720/)
     expect(hint).toMatch(/need one before upload/i)
+    expect(hint).toBe(
+      'Thumbnail: generate a set, or export from Canva. 16:9, 1280×720 ideal, up to 3, 2 MB max for an upload. Masters need one before upload.',
+    )
   })
 })

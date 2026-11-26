@@ -1,6 +1,5 @@
 import { safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
-import { AVAILABLE_FONTS } from '@boom-busters/compositions/fonts'
 import { GRAPHIC_TEXT_MIN_PX } from '@boom-busters/providers'
 import type { Browser, Page } from 'playwright-core'
 import {
@@ -10,7 +9,10 @@ import {
   type FrameSize,
   type GraphicFrameSet,
 } from './dry-run'
+import { contrastRatio, fontsHref } from './page-pure'
 import { SHEET_WIDTH, sheetDocument, type SheetTile } from './sheet-document'
+
+export { contrastRatio, fontsHref }
 
 /**
  * The designer's frames (decision 389): the code rendered in a real browser
@@ -303,62 +305,6 @@ export const CONTRAST_SMALL_MIN = 4.5
 /** At most this many findings per inspection, beyond the cut-short line. */
 const FINDINGS_MAX = 8
 
-/** A CSS colour as the page reports it (`rgb()`, `rgba()`) or as the brand holds it (`#rgb`, `#rrggbb`); null otherwise. */
-function cssColour(value: string): { r: number; g: number; b: number; a: number } | null {
-  const text = value.trim()
-  const fn = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(
-    text,
-  )
-  if (fn) {
-    return {
-      r: Number(fn[1]),
-      g: Number(fn[2]),
-      b: Number(fn[3]),
-      a: fn[4] === undefined ? 1 : Number(fn[4]),
-    }
-  }
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text)
-  if (hex) {
-    const digits = hex[1]!
-    const wide = digits.length === 3 ? [...digits].map((d) => d + d).join('') : digits
-    return {
-      r: parseInt(wide.slice(0, 2), 16),
-      g: parseInt(wide.slice(2, 4), 16),
-      b: parseInt(wide.slice(4, 6), 16),
-      a: 1,
-    }
-  }
-  return null
-}
-
-function luminance(c: { r: number; g: number; b: number }): number {
-  const channel = (v: number) => {
-    const s = v / 255
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
-  }
-  return 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
-}
-
-/**
- * The WCAG contrast ratio of type over its ground. A translucent foreground
- * is blended over the ground first; a ground that is itself translucent
- * cannot be judged (what shows through is unknown), so null, as is a colour
- * the page did not resolve to numbers.
- */
-export function contrastRatio(foreground: string, background: string): number | null {
-  const fg = cssColour(foreground)
-  const bg = cssColour(background)
-  if (!fg || !bg || bg.a < 1) return null
-  const blended = {
-    r: fg.a * fg.r + (1 - fg.a) * bg.r,
-    g: fg.a * fg.g + (1 - fg.a) * bg.g,
-    b: fg.a * fg.b + (1 - fg.a) * bg.b,
-  }
-  const l1 = luminance(blended)
-  const l2 = luminance(bg)
-  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
-}
-
 /**
  * The first run of settled text under its contrast bar at this moment, as a
  * finding for the critic, or null. Measured against the nearest painted
@@ -386,21 +332,6 @@ export function contrastFindingIn(
 // ---------------------------------------------------------------------------
 // The page
 // ---------------------------------------------------------------------------
-
-/** The Google Fonts stylesheet for the brand's faces, at the weights the catalogue bundles. */
-export function fontsHref(fonts: GraphicProps['brand']['fonts']): string | null {
-  const families = [...new Set(Object.values(fonts))]
-  const params = families.flatMap((family) => {
-    const known = AVAILABLE_FONTS.find((font) => font.family === family)
-    if (!known) return []
-    return [
-      `family=${encodeURIComponent(family).replace(/%20/g, '+')}:wght@${known.weights.join(';')}`,
-    ]
-  })
-  return params.length > 0
-    ? `https://fonts.googleapis.com/css2?${params.join('&')}&display=block`
-    : null
-}
 
 /** A one-pixel transparent PNG: a logo's place without fetching the mark. */
 const BLANK_IMAGE =
@@ -765,6 +696,58 @@ export async function screenshotDocument(input: {
     if (error instanceof FramesUnavailable) throw error
     throw new FramesUnavailable(
       `the sheet failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  } finally {
+    await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
+  }
+}
+
+/**
+ * The thumbnail (spec 2026-11-25): one page at exactly `width` by `height`,
+ * one pixel per CSS pixel, photographed as a JPEG with the text boxes the
+ * in-page measure finds in `#frame`. The launch, the bounds and the
+ * `FramesUnavailable` wrapping are `screenshotDocument`'s.
+ */
+export async function screenshotFrame(input: {
+  html: string
+  width: number
+  height: number
+  quality?: number
+  timeoutMs?: number
+}): Promise<{ jpeg: Buffer; boxes: TextBox[] }> {
+  const budget = input.timeoutMs ?? INSPECT_MAX_MS
+  const started = Date.now()
+  const launching = launchBrowser()
+  const browser = await withinTime(launching, Math.min(budget, LAUNCH_MAX_MS), 'the launch').catch(
+    (error: unknown) => {
+      launching.then((late) => late.close()).catch(() => undefined)
+      throw error
+    },
+  )
+  try {
+    const shoot = async () => {
+      const page = await browser.newPage({
+        viewport: { width: input.width, height: input.height },
+        deviceScaleFactor: 1,
+      })
+      await page.setContent(input.html, { waitUntil: 'load', timeout: 15_000 })
+      // The faces get three seconds: a font that never arrives is set in the fallback, not waited on.
+      await page.evaluate(
+        `Promise.race([document.fonts.ready, new Promise((done) => setTimeout(done, 3000))])`,
+      )
+      const boxes = (await page.evaluate(MEASURE_IN_PAGE)) as TextBox[]
+      const jpeg = await page.screenshot({
+        type: 'jpeg',
+        quality: input.quality ?? 90,
+        fullPage: false,
+      })
+      return { jpeg, boxes }
+    }
+    return await withinTime(shoot(), Math.max(1, budget - (Date.now() - started)), 'the frame')
+  } catch (error) {
+    if (error instanceof FramesUnavailable) throw error
+    throw new FramesUnavailable(
+      `the frame failed: ${error instanceof Error ? error.message : String(error)}`,
     )
   } finally {
     await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)

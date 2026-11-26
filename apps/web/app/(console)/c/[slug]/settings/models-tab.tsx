@@ -48,7 +48,7 @@ const TASK_LABELS: Record<LlmTask, string> = {
 }
 
 /** The image routes, which are priced per image rather than per token. */
-type ImageRoute = 'stills' | 'stillsLikeness' | 'setSheet'
+type ImageRoute = 'stills' | 'stillsLikeness' | 'setSheet' | 'thumbnails'
 type RouteKey = LlmTask | ImageRoute
 type AnyProvider = LlmProvider | StillProvider
 
@@ -57,6 +57,7 @@ const ROUTE_LABELS: Record<RouteKey, string> = {
   stills: 'Still images (visuals)',
   stillsLikeness: 'Stills showing the cast',
   setSheet: 'Set sheets (Build the set)',
+  thumbnails: 'Thumbnails',
 }
 
 const PROVIDER_NAMES = {
@@ -108,6 +109,8 @@ function routePatch(
   switch (key) {
     case 'setSheet':
       return { setSheet: { provider: provider as StillProvider, model } }
+    case 'thumbnails':
+      return { thumbnails: { provider: provider as StillProvider, model } }
     case 'stills':
       return { stills: { provider: provider as StillProvider, model } }
     case 'stillsLikeness':
@@ -351,6 +354,10 @@ export function ModelsTab({
         )
       : options.image[sheet.provider]
   const sheetSelected = sheetOptions.find((o) => o.id === sheet.model)
+
+  const thumbs = settings.modelRouting.thumbnails
+  const thumbOptions = options.image[thumbs.provider]
+  const thumbSelected = thumbOptions.find((o) => o.id === thumbs.model)
 
   return (
     <Card>
@@ -612,6 +619,44 @@ export function ModelsTab({
               near 1,600.
             </p>
           ) : null}
+        </div>
+
+        {/* The generated-thumbnail painter: the same image models as the rows above. */}
+        <div className="flex flex-col gap-2">
+          <div className="grid items-center gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <Label htmlFor="route-thumbnails-provider">{ROUTE_LABELS.thumbnails}</Label>
+
+            <Select
+              id="route-thumbnails-provider"
+              aria-label="Thumbnails provider"
+              value={thumbs.provider}
+              disabled={saving}
+              onChange={(event) => {
+                const provider = event.target.value as StillProvider
+                const first = firstRunnable(options.image[provider])
+                if (first) choose('thumbnails', provider, first.id)
+              }}
+              className="sm:w-40"
+            >
+              {STILL_PROVIDERS.map((provider) => (
+                <option key={provider} value={provider}>
+                  {provider}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              aria-label="Thumbnails model"
+              value={thumbs.model}
+              disabled={saving}
+              onChange={(event) => choose('thumbnails', thumbs.provider, event.target.value)}
+              className="sm:w-56"
+            >
+              {renderChoices(thumbOptions, thumbs.model)}
+            </Select>
+          </div>
+
+          {renderNotes(thumbOptions, thumbs.model, thumbSelected)}
         </div>
       </CardContent>
     </Card>

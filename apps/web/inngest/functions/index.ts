@@ -23,6 +23,7 @@ import { shortsRunner } from './shorts-runner'
 import { talkingPointsRunner } from './talking-points-runner'
 import { teaserRebuildRunner } from './teaser-rebuild-runner'
 import { teaserShotFetcher } from './teaser-shot-fetcher'
+import { thumbnailSetRunner } from './thumbnail-set-runner'
 import { slotRefetcher } from './slot-refetcher'
 import { slotRebriefer } from './slot-rebriefer'
 import { slotRedirector } from './slot-redirector'
@@ -92,6 +93,7 @@ export const functions = [
   teaserRebuildRunner,
   teaserShotFetcher,
   publishRunner,
+  thumbnailSetRunner,
 ]
 
 // `demoPipeline` is deliberately absent here too: its test imports it from
@@ -115,6 +117,7 @@ export {
   pointShortRunner,
   pointStudioRunner,
   publishRunner,
+  thumbnailSetRunner,
   renderRunner,
   dossierReviser,
   dossierRunner,

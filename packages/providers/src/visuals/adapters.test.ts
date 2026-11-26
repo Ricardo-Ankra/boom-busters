@@ -1,6 +1,7 @@
 import { RateLimitError, TransientProviderError, ValidationError } from '@boom-busters/schemas'
 import { describe, expect, it } from 'vitest'
 import { FAL_MODELS, FAL_REFERENCE_MODELS, createFalImageGen, falImageGen } from './fal'
+import { mockImageGen } from './mock'
 import { pexelsStock } from './pexels'
 import { pixabayStock } from './pixabay'
 import { wikimediaStock } from './wikimedia'
@@ -328,6 +329,11 @@ describe('wikimediaStock', () => {
 // ---------------------------------------------------------------------------
 
 describe('falImageGen', () => {
+  it('has no style channel, and the mock takes three', () => {
+    expect(falImageGen.referenceLimits().styles).toBe(0)
+    expect(mockImageGen.referenceLimits().styles).toBe(3)
+  })
+
   it('folds the negative prompt into the prompt — FLUX has no negative input', async () => {
     let sentBody: Record<string, unknown> = {}
     const result = await falImageGen.generate(
