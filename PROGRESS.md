@@ -12700,7 +12700,9 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      composite lands through one locked helper that never alters a record that
      is uploading or on YouTube. The card offers a free `Compose again` for a
      package that has a picture but no composite, and says `Planning the set.`
-     while the plan is pending.
+     while the plan is pending. An upload also waits while a set is being
+     planned, and the upload sets the thumbnail the record lists at that
+     moment, not the one listed when it was requested.
      (p) The upload title is written only when the package that goes up
      changes, and an uploaded package carries a title of its own. The card's
      Default tag follows the package that will go up, not position 0.
