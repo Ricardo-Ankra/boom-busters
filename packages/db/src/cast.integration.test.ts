@@ -10,6 +10,7 @@ import {
   getCastMember,
   insertCastMember,
   listCastMembers,
+  listDismissedCastNames,
   restorableCastNames,
   restoreCastFromPrincipals,
   seedCastFromPrincipals,
@@ -86,6 +87,30 @@ suite('cast members', () => {
     expect(back.id).toBe(member.id)
     expect(back).toMatchObject({ role: 'CEO', photos: [] })
     expect((await listCastMembers(db, projectId)).map((m) => m.name)).toEqual(['Emad Mostaque'])
+  })
+
+  it('lists the names of the dismissed of this project only', async () => {
+    const gone = await insertCastMember(db, { projectId, name: 'Emad Mostaque', role: 'Founder' })
+    await insertCastMember(db, { projectId, name: 'Prem Akkaraju', role: 'CEO' })
+    await dismissCastMember(db, gone.id)
+    const other = await createProjectFromCase(db, {
+      caseId: (
+        await createCase(db, {
+          channelId: (await ensureFirstChannel(db)).id,
+          title: 'Another',
+          category: 'collapse',
+        })
+      ).id,
+      title: 'Another',
+    })
+    const stranger = await insertCastMember(db, {
+      projectId: other.id,
+      name: 'Someone Else',
+      role: 'x',
+    })
+    await dismissCastMember(db, stranger.id)
+
+    expect(await listDismissedCastNames(db, projectId)).toEqual(['Emad Mostaque'])
   })
 
   it('puts a revived person where a new one goes, not back in their old place', async () => {

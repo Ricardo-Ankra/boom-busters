@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { CastMemberSchema, MAX_CAST_PHOTOS, ValidationError } from '@boom-busters/schemas'
 import type { CastMember, CastPhoto, Principal } from '@boom-busters/schemas'
 import type { Database } from './client'
@@ -47,6 +47,16 @@ export async function listCastMembers(db: Database, projectId: string): Promise<
     // this is insertion order.
     .orderBy(asc(castMembers.createdAt), asc(castMembers.id))
   return rows.map(toMember)
+}
+
+/** The names of the people the producer removed from this project's cast. */
+export async function listDismissedCastNames(db: Database, projectId: string): Promise<string[]> {
+  const rows = await db
+    .select({ name: castMembers.name })
+    .from(castMembers)
+    .where(and(eq(castMembers.projectId, projectId), isNotNull(castMembers.dismissedAt)))
+    .orderBy(asc(castMembers.createdAt), asc(castMembers.id))
+  return rows.map((row) => row.name)
 }
 
 export async function getCastMember(db: Database, id: string): Promise<CastMember | null> {

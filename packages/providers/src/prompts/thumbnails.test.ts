@@ -219,6 +219,33 @@ describe('buildThumbnailPicturePrompt', () => {
     expect(prompt).not.toContain(sentence)
   })
 
+  it('names the people it may show, and nobody else', () => {
+    const one = buildThumbnailPicturePrompt({
+      picture,
+      styleNote: '',
+      guardrails: [{ name: 'Emad Mostaque', guardrail: 'Show him as a man in a suit.' }],
+      attached: { people: ['Emad Mostaque'], stills: 0, styles: 0 },
+    })
+    const sentence = 'No recognisable real person appears other than Emad Mostaque.'
+    const closing = 'No text, no letters, no logos, no watermark, no interface elements.'
+    expect(one).toContain(sentence)
+    expect(one.indexOf(sentence)).toBe(one.indexOf(closing) - sentence.length - 1)
+
+    const two = buildThumbnailPicturePrompt({
+      picture,
+      styleNote: '',
+      guardrails: [
+        { name: 'Emad Mostaque', guardrail: '' },
+        { name: 'Prem Akkaraju', guardrail: '' },
+      ],
+      attached: { people: [], stills: 0, styles: 0 },
+    })
+    expect(two).toContain(
+      'No recognisable real person appears other than Emad Mostaque, Prem Akkaraju.',
+    )
+    expect(two).not.toContain('No recognisable real person appears.')
+  })
+
   it('ties a shown person to the film still', () => {
     expect(prompt).toContain(
       'Show Emad Mostaque in the setting and situation of the attached film still, not in an invented one.',

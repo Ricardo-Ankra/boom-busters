@@ -221,6 +221,48 @@ describe('vetPlannedPackages', () => {
     expect(viaFraming.kept).toEqual([])
   })
 
+  const removedPicture = () =>
+    pkg({
+      idea: 'moment',
+      picture: {
+        subject: 'Jane Example at a podium',
+        framing: '',
+        textSide: 'left',
+        stillSlotIds: [],
+        depicts: [],
+      },
+    })
+
+  it('drops a picture that describes someone removed from the cast', () => {
+    const out = vetPlannedPackages(
+      input({ packages: [removedPicture()], dismissed: [{ name: 'Jane Example' }] }),
+    )
+    expect(out.kept).toEqual([])
+    expect(out.dropped[0]!.reason).toBe(
+      'Jane Example is described in the picture but was removed from the cast.',
+    )
+  })
+
+  it('a removed name that is also in the cast again is not refused', () => {
+    const out = vetPlannedPackages(
+      input({
+        packages: [removedPicture()],
+        cast: [{ name: 'Adam Neumann' }, { name: 'Jane Example' }],
+        dismissed: [{ name: 'Jane Example' }],
+      }),
+    )
+    // The ordinary rule still holds for a live member: described, not listed.
+    expect(out.dropped[0]!.reason).toBe(
+      'Jane Example is described in the picture but is not listed as shown.',
+    )
+  })
+
+  it('with no dismissed list the vet behaves as before', () => {
+    const out = vetPlannedPackages(input({ packages: [removedPicture()] }))
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
+  })
+
   it('a title may name someone the picture does not show', () => {
     const out = vetPlannedPackages(
       input({

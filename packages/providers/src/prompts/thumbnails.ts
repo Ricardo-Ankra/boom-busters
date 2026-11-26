@@ -281,7 +281,12 @@ export function buildThumbnailPicturePrompt(input: {
   }
   if (input.styleNote.trim() !== '') parts.push(`Style: ${input.styleNote.trim()}`)
 
-  if (picture.depicts.length === 0) parts.push('No recognisable real person appears.')
+  if (input.guardrails.length === 0) {
+    parts.push('No recognisable real person appears.')
+  } else {
+    const names = input.guardrails.map((guard) => guard.name).join(', ')
+    parts.push(`No recognisable real person appears other than ${names}.`)
+  }
   parts.push('No text, no letters, no logos, no watermark, no interface elements.')
   return parts.join(' ')
 }

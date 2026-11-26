@@ -142,6 +142,8 @@ export type VetInput = {
   packages: PlannedPackage[]
   /** Not dismissed. */
   cast: { name: string }[]
+  /** Removed from the cast: never to be described. */
+  dismissed?: { name: string }[]
   /** Verified. */
   claims: { id: string; text: string }[]
   stills: { slotId: string; depicts: string[] }[]
@@ -203,6 +205,12 @@ function firstFailure(
     if (listed.includes(member)) continue
     if (namesWholeName(described, member.name)) {
       return `${member.name} is described in the picture but is not listed as shown.`
+    }
+  }
+  for (const entry of input.dismissed ?? []) {
+    if (input.cast.some((member) => nameMatches(entry.name, member.name))) continue
+    if (namesWholeName(described, entry.name)) {
+      return `${entry.name} is described in the picture but was removed from the cast.`
     }
   }
 
