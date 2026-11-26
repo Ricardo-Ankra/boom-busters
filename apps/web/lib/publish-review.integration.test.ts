@@ -359,6 +359,7 @@ describeDb('publishModel thumbnail packages', () => {
           state: 'ready',
           approved: true,
           inFlight: false,
+          hasImage: true,
           slotMisses: [],
           url: 'https://signed.example/boom-busters/thumbs/p/legacy.png',
         },

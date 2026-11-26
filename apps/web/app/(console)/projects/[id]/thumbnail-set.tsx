@@ -12,7 +12,12 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { IDEA_LABELS, PACKAGES_MAX, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
+import {
+  IDEA_LABELS,
+  PACKAGES_MAX,
+  THUMBNAIL_IDEAS,
+  upcomingDefaultId,
+} from '@boom-busters/schemas'
 import type { ThumbnailIdea } from '@boom-busters/schemas'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -271,7 +276,7 @@ function PackageCard({
               Save changes
             </Button>
           ) : null}
-          {!isDefault ? (
+          {!isDefault && (pack.state === 'ready' || pack.approved) ? (
             <Button
               variant="outline"
               busy={pressed === `default-${pack.id}`}
@@ -645,7 +650,8 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
   const full = approvedCount >= PACKAGES_MAX
   const approvable = packages.some((pack) => pack.state === 'ready' && !pack.approved)
   const saved = record?.title?.trim() ?? ''
-  const defaultTitle = packages[0]?.title.trim() ?? ''
+  const defaultId = upcomingDefaultId(packages)
+  const defaultTitle = packages.find((pack) => pack.id === defaultId)?.title.trim() ?? ''
   const replaces = defaultTitle !== '' && saved !== '' && defaultTitle !== saved
 
   const generateLabel =
@@ -709,7 +715,7 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
               key={pack.id}
               pack={pack}
               index={index}
-              isDefault={index === 0}
+              isDefault={pack.id === defaultId}
               open={open}
               locked={working || inFlight}
               act={act}

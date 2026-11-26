@@ -232,6 +232,27 @@ export function whatHasWon(
   return text === '' ? null : text
 }
 
+/**
+ * The package that will be the default once the set is approved: the first, in
+ * position order, among those already approved with an image and those
+ * `Approve this set` would take (ready, with an image, not yet approved).
+ * Null when none can go up.
+ */
+export function upcomingDefaultId(
+  packages: readonly {
+    id: string
+    position: number
+    state: string
+    approved: boolean
+    hasImage: boolean
+  }[],
+): string | null {
+  const first = [...packages]
+    .filter((pack) => pack.hasImage && (pack.approved || pack.state === 'ready'))
+    .sort((a, b) => a.position - b.position)[0]
+  return first?.id ?? null
+}
+
 /** The planner's packages that survive every rule, cut to the free places. */
 export function vetPlannedPackages(input: VetInput): VetResult {
   const kept: PlannedPackage[] = []

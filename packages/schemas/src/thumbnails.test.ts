@@ -7,6 +7,7 @@ import {
   headlineWords,
   packageInFlight,
   PACKAGE_STALE_MS,
+  upcomingDefaultId,
   vetPlannedPackages,
   whatHasWon,
   type PlannedPackage,
@@ -288,6 +289,51 @@ describe('vetPlannedPackages', () => {
       }),
     )
     expect(out.kept).toHaveLength(2)
+  })
+})
+
+describe('upcomingDefaultId', () => {
+  const row = (over: Partial<Parameters<typeof upcomingDefaultId>[0][number]> = {}) => ({
+    id: 'a',
+    position: 0,
+    state: 'ready',
+    approved: false,
+    hasImage: true,
+    ...over,
+  })
+
+  it('the upcoming default skips a failed package at the front', () => {
+    expect(
+      upcomingDefaultId([
+        row({ id: 'a', position: 0, state: 'failed', hasImage: false }),
+        row({ id: 'b', position: 1 }),
+      ]),
+    ).toBe('b')
+  })
+
+  it('an approved package ahead of a ready one is the default', () => {
+    expect(
+      upcomingDefaultId([
+        row({ id: 'a', position: 0 }),
+        row({ id: 'b', position: 1, approved: true }),
+      ]),
+    ).toBe('a')
+    expect(
+      upcomingDefaultId([
+        row({ id: 'b', position: 2, approved: true }),
+        row({ id: 'a', position: 1, state: 'ready', approved: false }),
+      ]),
+    ).toBe('a')
+  })
+
+  it('nothing is the default when nothing can go up', () => {
+    expect(upcomingDefaultId([])).toBeNull()
+    expect(
+      upcomingDefaultId([
+        row({ state: 'painting', hasImage: false }),
+        row({ id: 'c', position: 1, state: 'ready', hasImage: false }),
+      ]),
+    ).toBeNull()
   })
 })
 

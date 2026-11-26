@@ -91,6 +91,8 @@ export interface ThumbnailPackageProp {
   approved: boolean
   /** The composed picture, presigned; null when storage is not configured or there is none yet. */
   url: string | null
+  /** A composed picture is stored, whether or not storage can presign it. */
+  hasImage: boolean
   result: 'won' | 'lost' | 'same' | 'inconclusive' | null
   watchTimeShare: number | null
   /** The format's required title slots this package's title lacks. */
@@ -660,6 +662,7 @@ async function packagePropsFor(
       error: row.error,
       approved: row.approvedAt !== null,
       url: row.composedKey && options.presign ? await options.presign(row.composedKey) : null,
+      hasImage: row.composedKey !== null,
       result: row.result,
       watchTimeShare: row.watchTimeShare,
       slotMisses:

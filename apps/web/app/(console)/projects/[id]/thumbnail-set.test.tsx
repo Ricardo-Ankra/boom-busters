@@ -86,6 +86,7 @@ function pack(over: Partial<ThumbnailPackageProp> = {}): ThumbnailPackageProp {
     error: null,
     approved: false,
     url: 'https://r2.example/a.jpg',
+    hasImage: true,
     result: null,
     watchTimeShare: null,
     slotMisses: [],
@@ -365,6 +366,77 @@ describe('ThumbnailSet', () => {
     expect(within(cards[1]!).getByRole('button', { name: 'Make default' })).toBeInTheDocument()
     expect(within(cards[2]!).getByRole('button', { name: 'Make default' })).toBeInTheDocument()
     expect(screen.getAllByText('Default')).toHaveLength(1)
+  })
+
+  it('a failed first package is not tagged Default', () => {
+    const [first, second, third] = three()
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            packages: [
+              { ...first!, state: 'failed', hasImage: false, url: null, error: 'It failed.' },
+              second!,
+              third!,
+            ],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    const cards = screen.getAllByRole('article')
+    expect(within(cards[0]!).queryByText('Default')).toBeNull()
+    expect(within(cards[0]!).queryByRole('button', { name: 'Make default' })).toBeNull()
+    expect(within(cards[1]!).getByText('Default')).toBeInTheDocument()
+    expect(within(cards[1]!).queryByRole('button', { name: 'Make default' })).toBeNull()
+    expect(within(cards[2]!).getByRole('button', { name: 'Make default' })).toBeInTheDocument()
+    expect(screen.getAllByText('Default')).toHaveLength(1)
+  })
+
+  it('the replaces note names the title that will go up', () => {
+    const [first, second] = three()
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            title: 'An older title',
+            packages: [{ ...first!, state: 'failed', hasImage: false, url: null }, second!],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.getByText('This replaces the saved title "An older title".')).toBeInTheDocument()
+  })
+
+  it('the replaces note is judged on the package that will go up, not on position 0', () => {
+    const [first, second] = three()
+    // The saved title is the failed first package's: Approve will put the second one up.
+    const { rerender } = render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            title: first!.title,
+            packages: [{ ...first!, state: 'failed', hasImage: false, url: null }, second!],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.getByText(/This replaces the saved title/)).toBeInTheDocument()
+    // The saved title is already the one that will go up: nothing is replaced.
+    rerender(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            title: second!.title,
+            packages: [{ ...first!, state: 'failed', hasImage: false, url: null }, second!],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.queryByText(/This replaces the saved title/)).not.toBeInTheDocument()
   })
 
   it('labels the text button with the side it moves the headline to', async () => {
