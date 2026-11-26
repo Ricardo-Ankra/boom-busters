@@ -6,6 +6,7 @@ import {
   getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
+  mergePublishMetadata,
   publishRecords,
   requireTestDatabase,
   seed,
@@ -539,6 +540,48 @@ describeDb('the thumbnail actions', () => {
         state: 'failed',
         error: 'kept words',
       })
+    })
+  })
+
+  describe('a set being planned (the claim, before any row)', () => {
+    const SIXTEEN_MINUTES = 16 * 60_000
+
+    async function claim(ageMs: number): Promise<void> {
+      await mergePublishMetadata(db, await recordId(), {
+        thumbnailSetRequestedAt: new Date(Date.now() - ageMs).toISOString(),
+      })
+    }
+
+    it('approving is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      await addPackage(id, 0)
+      await claim(1000)
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      await claim(SIXTEEN_MINUTES)
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    })
+
+    it('painting a picture again is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await claim(1000)
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: false, error: IN_FLIGHT })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      await claim(SIXTEEN_MINUTES)
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+    })
+
+    it('setting the type again is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await claim(1000)
+      expect(await recomposeThumbnail(row.id)).toEqual({ ok: false, error: IN_FLIGHT })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      await claim(SIXTEEN_MINUTES)
+      expect(await recomposeThumbnail(row.id)).toEqual({ ok: true })
     })
   })
 
