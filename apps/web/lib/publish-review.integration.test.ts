@@ -360,6 +360,7 @@ describeDb('publishModel thumbnail packages', () => {
           approved: true,
           inFlight: false,
           hasImage: true,
+          hasPicture: false,
           slotMisses: [],
           url: 'https://signed.example/boom-busters/thumbs/p/legacy.png',
         },

@@ -19,6 +19,7 @@ vi.mock('../actions', () => ({ approveGate: vi.fn(), stopProject: vi.fn() }))
 
 const generateThumbnailSet = vi.fn()
 const regenerateThumbnailPicture = vi.fn()
+const recomposeThumbnail = vi.fn()
 const saveThumbnailPackage = vi.fn()
 const makeDefaultThumbnail = vi.fn()
 const removeThumbnailPackageAction = vi.fn()
@@ -30,6 +31,7 @@ vi.mock('./thumbnail-actions', () => ({
   recordTestResult: (...args: unknown[]) => recordTestResult(...args),
   generateThumbnailSet: (...args: unknown[]) => generateThumbnailSet(...args),
   regenerateThumbnailPicture: (...args: unknown[]) => regenerateThumbnailPicture(...args),
+  recomposeThumbnail: (...args: unknown[]) => recomposeThumbnail(...args),
   saveThumbnailPackage: (...args: unknown[]) => saveThumbnailPackage(...args),
   makeDefaultThumbnail: (...args: unknown[]) => makeDefaultThumbnail(...args),
   removeThumbnailPackageAction: (...args: unknown[]) => removeThumbnailPackageAction(...args),
@@ -54,6 +56,7 @@ beforeEach(() => {
   for (const action of [
     generateThumbnailSet,
     regenerateThumbnailPicture,
+    recomposeThumbnail,
     saveThumbnailPackage,
     makeDefaultThumbnail,
     removeThumbnailPackageAction,
@@ -87,6 +90,7 @@ function pack(over: Partial<ThumbnailPackageProp> = {}): ThumbnailPackageProp {
     approved: false,
     url: 'https://r2.example/a.jpg',
     hasImage: true,
+    hasPicture: true,
     result: null,
     watchTimeShare: null,
     slotMisses: [],
@@ -285,6 +289,83 @@ describe('ThumbnailSet', () => {
     expect(screen.getByText('The image model returned no picture.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Regenerate picture' }))
     expect(regenerateThumbnailPicture).toHaveBeenCalledWith('01HQ00000000000000000000K1')
+  })
+
+  it('shows that the set is being planned and keeps Generate disabled', () => {
+    vi.useFakeTimers()
+    render(
+      <ThumbnailSet
+        item={item({ record: record({ planning: true, packages: [] }) })}
+        busy={false}
+      />,
+    )
+    expect(screen.getByText('Planning the set.')).toBeInTheDocument()
+    expect(screen.queryByText('No thumbnails stored yet.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Generate a set/ })).toBeDisabled()
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    })
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables Approve while the set is being planned', () => {
+    render(<ThumbnailSet item={item({ record: record({ planning: true }) })} busy={false} />)
+    expect(screen.getByRole('button', { name: 'Approve this set' })).toBeDisabled()
+  })
+
+  it('offers a free Compose again when a picture is stored', async () => {
+    const user = userEvent.setup()
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            packages: [pack({ state: 'failed', error: 'Compose failed.', hasPicture: true })],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(
+      screen.getByText('Compose again is free. Regenerate picture buys a new image.'),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Compose again' }))
+    expect(recomposeThumbnail).toHaveBeenCalledWith('01HQ00000000000000000000K1')
+    expect(regenerateThumbnailPicture).not.toHaveBeenCalled()
+  })
+
+  it('offers Compose again for a run that died after the picture was stored', () => {
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            packages: [pack({ state: 'painting', inFlight: false, url: null, hasPicture: true })],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Compose again' })).toBeEnabled()
+  })
+
+  it('offers only Regenerate when there is no picture', () => {
+    render(
+      <ThumbnailSet
+        item={item({
+          record: record({
+            packages: [pack({ state: 'failed', error: 'No picture.', hasPicture: false })],
+          }),
+        })}
+        busy={false}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Regenerate picture' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Compose again' })).toBeNull()
+    expect(screen.queryByText(/Compose again is free/)).toBeNull()
+  })
+
+  it('does not offer Compose again on a ready package', () => {
+    render(<ThumbnailSet item={item()} busy={false} />)
+    expect(screen.queryByRole('button', { name: 'Compose again' })).toBeNull()
   })
 
   it('says a stalled run did not finish, offers a regenerate and does not poll', () => {

@@ -33,6 +33,7 @@ import {
   makeDefaultThumbnail,
   markTestStarted,
   recordTestResult,
+  recomposeThumbnail,
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
   saveThumbnailPackage,
@@ -134,6 +135,7 @@ function PackageCard({
   const generated = pack.source === 'generated'
   const died = (pack.state === 'planned' || pack.state === 'painting') && !pack.inFlight
   const waiting = locked || pack.inFlight
+  const canRecompose = generated && pack.hasPicture && (pack.state === 'failed' || died)
 
   const titleChanged = title.trim() !== pack.title
   const headlineChanged = generated && headline.trim() !== pack.headline
@@ -294,6 +296,22 @@ function PackageCard({
           ) : null}
           {generated ? (
             <>
+              {canRecompose ? (
+                <Button
+                  variant="outline"
+                  busy={pressed === `recompose-${pack.id}`}
+                  disabled={waiting}
+                  onClick={() =>
+                    void act(
+                      () => recomposeThumbnail(pack.id),
+                      'Composing the thumbnail again',
+                      `recompose-${pack.id}`,
+                    )
+                  }
+                >
+                  Compose again
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 busy={pressed === `regen-${pack.id}`}
@@ -309,6 +327,11 @@ function PackageCard({
                 <RefreshCw aria-hidden className="h-4 w-4" />
                 Regenerate picture
               </Button>
+              {canRecompose ? (
+                <p className="w-full text-[12px] text-[var(--color-text-muted)]">
+                  Compose again is free. Regenerate picture buys a new image.
+                </p>
+              ) : null}
               <Button
                 variant="outline"
                 busy={pressed === `side-${pack.id}`}
@@ -636,7 +659,8 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
   const packages = record?.packages ?? []
   const open = editable(record?.status)
   const working = busy || acting
-  const inFlight = packages.some((pack) => pack.inFlight)
+  const planning = record?.planning ?? false
+  const inFlight = planning || packages.some((pack) => pack.inFlight)
 
   // The route is re-read while a run works. A run that died has inFlight false
   // and is not polled for.
@@ -706,8 +730,14 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
         </div>
       ) : null}
 
+      {planning ? (
+        <p className="text-[12px] text-[var(--color-text-muted)]">Planning the set.</p>
+      ) : null}
+
       {packages.length === 0 ? (
-        <p className="text-[12px] text-[var(--color-text-muted)]">No thumbnails stored yet.</p>
+        planning ? null : (
+          <p className="text-[12px] text-[var(--color-text-muted)]">No thumbnails stored yet.</p>
+        )
       ) : (
         <div className="grid [grid-template-columns:repeat(auto-fit,minmax(340px,1fr))] gap-3">
           {packages.map((pack, index) => (

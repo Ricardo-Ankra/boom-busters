@@ -93,6 +93,8 @@ export interface ThumbnailPackageProp {
   url: string | null
   /** A composed picture is stored, whether or not storage can presign it. */
   hasImage: boolean
+  /** The painted picture is stored, so a failed compose can be redone without buying a new one. */
+  hasPicture: boolean
   result: 'won' | 'lost' | 'same' | 'inconclusive' | null
   watchTimeShare: number | null
   /** The format's required title slots this package's title lacks. */
@@ -663,6 +665,7 @@ async function packagePropsFor(
       approved: row.approvedAt !== null,
       url: row.composedKey && options.presign ? await options.presign(row.composedKey) : null,
       hasImage: row.composedKey !== null,
+      hasPicture: row.pictureKey !== null,
       result: row.result,
       watchTimeShare: row.watchTimeShare,
       slotMisses:
