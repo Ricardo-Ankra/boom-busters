@@ -864,6 +864,17 @@ suite('thumbnail packages', () => {
     })
   })
 
+  it('releasing a project that holds no claim leaves its record as it was', async () => {
+    await withRecord(async (record) => {
+      const before = (await getPublishRecord(db, 'master', record.targetId))!.updatedAt
+
+      await releaseThumbnailWork(db, record.targetId, 'The project was stopped.')
+
+      const after = (await getPublishRecord(db, 'master', record.targetId))!.updatedAt
+      expect(after).toEqual(before)
+    })
+  })
+
   it('releasing a project with no publish record does not throw', async () => {
     await expect(
       releaseThumbnailWork(db, '01JZZZZZZZZZZZZZZZZZZZZZZZ', 'The project was stopped.'),

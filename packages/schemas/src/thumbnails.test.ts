@@ -244,17 +244,24 @@ describe('vetPlannedPackages', () => {
   })
 
   it('a removed name that is also in the cast again is not refused', () => {
+    // Listed as shown and described by name: only the removed-cast rule could refuse it.
+    const shown = pkg({
+      picture: { ...pkg().picture, subject: 'Adam Neumann at a podium' },
+    })
     const out = vetPlannedPackages(
-      input({
-        packages: [removedPicture()],
-        cast: [{ name: 'Adam Neumann' }, { name: 'Jane Example' }],
-        dismissed: [{ name: 'Jane Example' }],
-      }),
+      input({ packages: [shown], dismissed: [{ name: 'Adam Neumann' }] }),
     )
-    // The ordinary rule still holds for a live member: described, not listed.
-    expect(out.dropped[0]!.reason).toBe(
-      'Jane Example is described in the picture but is not listed as shown.',
-    )
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
+  })
+
+  it('a removed short name does not refuse the cast member whose name holds it', () => {
+    const shown = pkg({
+      picture: { ...pkg().picture, subject: 'Adam Neumann at a podium' },
+    })
+    const out = vetPlannedPackages(input({ packages: [shown], dismissed: [{ name: 'Neumann' }] }))
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
   })
 
   it('with no dismissed list the vet behaves as before', () => {

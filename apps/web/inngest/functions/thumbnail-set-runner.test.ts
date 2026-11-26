@@ -78,6 +78,7 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     adapter.generate.mockImplementation(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
     await seed(db)
     recordId = (await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)).id
+    await clearNote()
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
   })
@@ -91,7 +92,12 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
 
   const clearNote = async () => {
     const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
-    const { thumbnailSetNote: _gone, ...rest } = record.metadata as Record<string, unknown>
+    // The claim goes with the note: a test's claim must not reach the next test or another suite.
+    const {
+      thumbnailSetNote: _gone,
+      thumbnailSetRequestedAt: _claim,
+      ...rest
+    } = record.metadata as Record<string, unknown>
     await db.update(publishRecords).set({ metadata: rest }).where(eq(publishRecords.id, record.id))
   }
   const noteOf = async (): Promise<unknown> =>
@@ -155,6 +161,35 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     expect(await listThumbnailPackages(db, recordId)).toHaveLength(0)
     expect(adapter.generate).not.toHaveBeenCalled()
     expect(result).toMatchObject({ mode: 'set', packages: 0 })
+  })
+
+  it('a plan step that runs again after its plan landed paints what it wrote', async () => {
+    // The first attempt stored its packages and cleared the claim; its answer was lost.
+    const requestedAt = new Date(Date.now() - 1000).toISOString()
+    const ids = await seedThree()
+
+    const { result, state } = await run({ mode: 'set', requestedAt })
+
+    expect(Object.keys(state)).toEqual(
+      stepKeys(['plan', ...ids.flatMap((id) => [`paint-${id}`, `compose-${id}`])]),
+    )
+    expect(adapter.generate).toHaveBeenCalledTimes(3)
+    const rows = await listThumbnailPackages(db, recordId)
+    expect(rows.map((row) => row.id)).toEqual(ids)
+    expect(rows.every((row) => row.state === 'ready')).toBe(true)
+    expect(result).toMatchObject({ mode: 'set', packages: 3 })
+  })
+
+  it('packages planned before the claim are not picked up by a run that lost its claim', async () => {
+    await seedThree()
+
+    const { result } = await run({
+      mode: 'set',
+      requestedAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    })
+
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ packages: 0 })
   })
 
   it('a set run whose claim was replaced plans nothing', async () => {

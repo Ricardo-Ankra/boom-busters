@@ -21,7 +21,6 @@ import {
 import type { PublishRecordRow, ThumbnailPackageRow } from '@boom-busters/db'
 import {
   PACKAGES_MAX,
-  PublishDraftSchema,
   THUMBNAIL_IDEAS,
   UlidSchema,
   packageInFlight,
@@ -64,10 +63,9 @@ const HEADLINE_MAX = 60
 
 /** Whether a Generate claim on this record is fresh: the set is still being planned. */
 function planning(record: PublishRecordRow, now: Date): boolean {
-  return setBeingPlanned(
-    PublishDraftSchema.safeParse(record.metadata).data?.thumbnailSetRequestedAt,
-    now,
-  )
+  // The one key, read on its own: a draft another field makes unreadable still holds its claim.
+  const claimed = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+  return setBeingPlanned(typeof claimed === 'string' ? claimed : undefined, now)
 }
 
 const unknownThumbnail = (): ActionResult => ({ ok: false, error: UNKNOWN_THUMBNAIL })

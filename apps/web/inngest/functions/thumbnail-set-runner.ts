@@ -30,6 +30,8 @@ import { events } from '../events'
  */
 
 const FUNCTION_ID = 'thumbnail-set-runner'
+/** The claim is stamped by the app's clock, a package's `createdAt` may be the database's. */
+const CLOCK_SLACK_MS = 60_000
 
 export const thumbnailSetRunner = inngest.createFunction(
   {
@@ -110,12 +112,22 @@ export const thumbnailSetRunner = inngest.createFunction(
         const record = await ensurePublishRecord(db, 'master', request.targetId)
         // The claim this run was sent under was given back or replaced: planning now would
         // buy a second set. An event sent before the stamp existed plans as it always did.
-        if (
-          request.requestedAt !== undefined &&
-          (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt'] !==
-            request.requestedAt
-        ) {
-          return { inserted: [], dropped: [] }
+        const held = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+        if (request.requestedAt !== undefined && held !== request.requestedAt) {
+          // A newer press holds the record: this run has nothing to do.
+          if (held !== undefined) return { inserted: [], dropped: [] }
+          // No claim at all. Either it was given back before this run planned, and
+          // there is nothing to paint, or this step is running again after its own
+          // plan landed (the plan's last write clears the claim): then the packages
+          // it wrote are still waiting, and are painted, not planned again.
+          const since = Date.parse(request.requestedAt) - CLOCK_SLACK_MS
+          const waiting = (await listThumbnailPackages(db, record.id)).filter(
+            (row) =>
+              row.source === 'generated' &&
+              row.state === 'planned' &&
+              row.createdAt.getTime() >= since,
+          )
+          return { inserted: waiting.map((row) => row.id), dropped: [] }
         }
         return planThumbnailSet({ projectId: request.projectId, publishRecordId: record.id })
       })

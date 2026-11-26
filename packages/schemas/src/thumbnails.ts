@@ -208,7 +208,14 @@ function firstFailure(
     }
   }
   for (const entry of input.dismissed ?? []) {
-    if (input.cast.some((member) => nameMatches(entry.name, member.name))) continue
+    // Back in the cast, or a shorter spelling of someone who is: the rule above owns them.
+    if (
+      input.cast.some(
+        (member) => nameMatches(entry.name, member.name) || namesWholeName(member.name, entry.name),
+      )
+    ) {
+      continue
+    }
     if (namesWholeName(described, entry.name)) {
       return `${entry.name} is described in the picture but was removed from the cast.`
     }

@@ -1276,11 +1276,17 @@ describeDb('a Test & Compare that is running', () => {
     }
     const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
 
-    await schedulePublish('master', FIXTURE_PROJECT_ID, later)
+    try {
+      await schedulePublish('master', FIXTURE_PROJECT_ID, later)
 
-    const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
-    expect(stored?.publishAt).not.toBeNull()
-    expect(stored?.metadata).toMatchObject({ thumbnailSetNote: 'Keep the red one.' })
+      const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      expect(stored?.publishAt).not.toBeNull()
+      expect(stored?.metadata).toMatchObject({ thumbnailSetNote: 'Keep the red one.' })
+    } finally {
+      // The fixture project is shared: its finished render must not outlive the test.
+      readSeam.after = undefined
+      await db.delete(renders).where(eq(renders.id, render.id))
+    }
   })
 
   it('unlinking a video clears its test stamps and frees a new upload', async () => {

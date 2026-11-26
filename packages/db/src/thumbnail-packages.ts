@@ -121,11 +121,16 @@ export async function releaseThumbnailWork(
   reason: string,
 ): Promise<void> {
   const [record] = await db
-    .select({ id: publishRecords.id })
+    .select({
+      id: publishRecords.id,
+      claimed: sql<string | null>`${publishRecords.metadata}->>'thumbnailSetRequestedAt'`,
+    })
     .from(publishRecords)
     .where(and(eq(publishRecords.targetType, 'master'), eq(publishRecords.targetId, projectId)))
   if (!record) return
-  await clearThumbnailSetRequest(db, record.id)
+  // Only a record that holds a claim is written: the clear stamps `updatedAt`,
+  // which a live video's "went public" date can fall back to.
+  if (record.claimed !== null) await clearThumbnailSetRequest(db, record.id)
   await db
     .update(thumbnailPackages)
     .set({ state: 'failed', error: reason, updatedAt: new Date() })
