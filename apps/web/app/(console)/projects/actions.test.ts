@@ -12,8 +12,11 @@ import {
   deleteProject,
   ensureRun,
   getRender,
+  ensurePublishRecord,
+  getPublishRecord,
   insertRender,
   listShotSlots,
+  mergePublishMetadata,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
@@ -307,6 +310,16 @@ describeDb('stopping a master rendered in parts', () => {
     expect(called).toEqual([parts[0]!.renderId, parts[1]!.renderId].sort())
     expect(called).not.toContain(row.id)
     expect((await getRender(db, row.id))?.status).toBe('cancelled')
+  })
+
+  it('stopping a project gives back a thumbnail claim', async () => {
+    const record = await ensurePublishRecord(db, 'master', projectId)
+    await mergePublishMetadata(db, record.id, { thumbnailSetRequestedAt: new Date().toISOString() })
+
+    expect((await stopProject(projectId)).ok).toBe(true)
+
+    const stored = await getPublishRecord(db, 'master', projectId)
+    expect(stored?.metadata['thumbnailSetRequestedAt']).toBeUndefined()
   })
 
   it('settles the reservation at the parts that ran, not the full estimate', async () => {

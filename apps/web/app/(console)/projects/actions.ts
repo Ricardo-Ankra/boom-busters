@@ -4,6 +4,7 @@ import {
   PIPELINE_STAGES,
   blockingClaims,
   cancelRunsForProject,
+  releaseThumbnailWork,
   channelForProject,
   currentBible,
   deleteProject,
@@ -534,6 +535,9 @@ export async function stopProject(projectId: string, reason?: string): Promise<A
   // here as well is what makes the screen honest immediately: until the mirror
   // shows no live run, the project has no way back.
   await cancelRunsForProject(db, projectId)
+  // `cancelOn` ends a thumbnail run without calling its `onFailure`, so the claim and
+  // the packages in flight are released here.
+  await releaseThumbnailWork(db, projectId, 'The project was stopped.')
 
   /**
    * The section 8.1 half of stopping: the cancelled Inngest run can no longer
