@@ -98,6 +98,8 @@ function pack(over: Partial<ThumbnailPackageProp> = {}): ThumbnailPackageProp {
     hasImage: true,
     hasPicture: true,
     hasPrevious: false,
+    subject: 'A tired auditor over a ledger',
+    framing: 'Close, eye level',
     result: null,
     watchTimeShare: null,
     slotMisses: [],
@@ -129,6 +131,8 @@ function record(over: Partial<PublishRecordProp> = {}): PublishRecordProp {
     channelTagsDropped: [],
     thumbs: [],
     packages: [pack()],
+    thumbnailCast: [{ name: 'Adam Neumann', hasPortrait: true }],
+    thumbnailDismissed: [],
     thumbnailSetNote: '',
     planning: false,
     testStartedAtIso: null,
@@ -777,6 +781,145 @@ describe('ThumbnailSet', () => {
       expect(screen.getByRole('textbox', { name: 'Change the picture' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Change picture' })).toBeDisabled()
       expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeDisabled()
+    })
+  })
+
+  describe('the picture brief', () => {
+    const one = (over: Partial<ThumbnailPackageProp> = {}, rec: Partial<PublishRecordProp> = {}) =>
+      item({ record: record({ packages: [pack(over)], ...rec }) })
+    const ID = '01HQ00000000000000000000K1'
+    const HINT = 'Regenerate picture paints what this says and buys a new image.'
+    const picture = () => screen.getByRole('textbox', { name: 'Picture' })
+    const framing = () => screen.getByRole('textbox', { name: 'Framing' })
+    const regenerate = () => screen.getByRole('button', { name: 'Regenerate picture' })
+
+    it('the fields open filled', () => {
+      render(<ThumbnailSet item={one()} busy={false} />)
+      expect(picture()).toHaveValue('A tired auditor over a ledger')
+      expect(picture()).toHaveAttribute('maxlength', '400')
+      expect(framing()).toHaveValue('Close, eye level')
+      expect(framing()).toHaveAttribute('maxlength', '400')
+      expect(screen.getByText(HINT)).toBeInTheDocument()
+      expect(screen.queryByText(/^Will show:/)).toBeNull()
+    })
+
+    it('Will show follows the text', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.clear(picture())
+      await user.type(picture(), 'Adam Neumann at a desk')
+      expect(screen.getByText('Will show: Adam Neumann')).toBeInTheDocument()
+      await user.clear(picture())
+      await user.type(picture(), 'Neumann at a desk')
+      expect(screen.getByText('Will show: nobody from the cast')).toBeInTheDocument()
+    })
+
+    it('Regenerate sends the brief only when a field changed', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.click(regenerate())
+      expect(regenerateThumbnailPicture).toHaveBeenLastCalledWith(ID)
+
+      await user.clear(picture())
+      await user.type(picture(), ' A vault door left open ')
+      await user.click(regenerate())
+      expect(regenerateThumbnailPicture).toHaveBeenLastCalledWith(ID, {
+        subject: 'A vault door left open',
+        framing: 'Close, eye level',
+      })
+      expect(toast).toHaveBeenCalledWith({ title: 'Painting a new picture' })
+    })
+
+    it('spaces around the saved brief are not a change', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.type(framing(), '  ')
+      expect(screen.queryByText(/^Will show:/)).toBeNull()
+      await user.click(regenerate())
+      expect(regenerateThumbnailPicture).toHaveBeenLastCalledWith(ID)
+    })
+
+    it('an empty picture holds Regenerate back', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.clear(picture())
+      expect(regenerate()).toBeDisabled()
+    })
+
+    it('Save changes does not send the brief', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.clear(picture())
+      await user.type(picture(), 'A vault door left open')
+      expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull()
+
+      const title = screen.getByRole('textbox', { name: 'Title' })
+      await user.clear(title)
+      await user.type(title, 'A New Title')
+      await user.click(screen.getByRole('button', { name: 'Save changes' }))
+      expect(saveThumbnailPackage).toHaveBeenCalledWith(ID, { title: 'A New Title' })
+      expect(regenerateThumbnailPicture).not.toHaveBeenCalled()
+    })
+
+    it('a refresh does not overwrite typing', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<ThumbnailSet item={one()} busy={false} />)
+      await user.clear(picture())
+      await user.type(picture(), 'A vault door left open')
+
+      // The poll re-reads the route: same saved brief, new props.
+      rerender(<ThumbnailSet item={one({ title: 'Another title' })} busy={false} />)
+      expect(picture()).toHaveValue('A vault door left open')
+      expect(screen.getByText(/^Will show:/)).toBeInTheDocument()
+
+      // The request went through: the saved brief is what was typed.
+      rerender(<ThumbnailSet item={one({ subject: 'A vault door left open' })} busy={false} />)
+      expect(picture()).toHaveValue('A vault door left open')
+      expect(screen.queryByText(/^Will show:/)).toBeNull()
+    })
+
+    it('a failed package still shows its brief fields', () => {
+      render(
+        <ThumbnailSet
+          item={one({ state: 'failed', error: 'The picture was refused.', hasPicture: false })}
+          busy={false}
+        />,
+      )
+      expect(picture()).toBeEnabled()
+      expect(framing()).toBeEnabled()
+      expect(regenerate()).toBeEnabled()
+    })
+
+    it('names someone removed from the cast as nobody', async () => {
+      const user = userEvent.setup()
+      render(
+        <ThumbnailSet
+          item={one({}, { thumbnailCast: [], thumbnailDismissed: ['Rebekah Neumann'] })}
+          busy={false}
+        />,
+      )
+      await user.clear(picture())
+      await user.type(picture(), 'Rebekah Neumann at a desk')
+      expect(screen.getByText('Will show: nobody from the cast')).toBeInTheDocument()
+    })
+
+    it('an uploaded thumbnail has no brief', () => {
+      render(<ThumbnailSet item={one({ source: 'uploaded', idea: null })} busy={false} />)
+      expect(screen.queryByRole('textbox', { name: 'Picture' })).toBeNull()
+      expect(screen.queryByRole('textbox', { name: 'Framing' })).toBeNull()
+      expect(screen.queryByText(HINT)).toBeNull()
+    })
+
+    it('a locked record has no brief', () => {
+      render(<ThumbnailSet item={one({ approved: true }, { status: 'uploading' })} busy={false} />)
+      expect(screen.queryByRole('textbox', { name: 'Picture' })).toBeNull()
+      expect(screen.queryByText(HINT)).toBeNull()
+    })
+
+    it('the brief waits while the package is being made', () => {
+      render(<ThumbnailSet item={one({ inFlight: true })} busy={false} />)
+      expect(picture()).toBeDisabled()
+      expect(framing()).toBeDisabled()
     })
   })
 

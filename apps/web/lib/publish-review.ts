@@ -16,6 +16,7 @@ import {
   latestSnapshotForVideo,
   latestTimeline,
   listCastMembers,
+  listDismissedCastNames,
   listPublishRecords,
   listShorts,
   listShotSlots,
@@ -97,6 +98,9 @@ export interface ThumbnailPackageProp {
   hasPicture: boolean
   /** The picture before the last change is kept, so the owner can put it back for free. */
   hasPrevious: boolean
+  /** The brief the picture is painted from: what it shows, and how it is framed. Empty for an upload. */
+  subject: string
+  framing: string
   result: 'won' | 'lost' | 'same' | 'inconclusive' | null
   watchTimeShare: number | null
   /** The format's required title slots this package's title lacks. */
@@ -138,6 +142,10 @@ export interface PublishRecordProp {
   thumbs: { key: string; url: string | null }[]
   /** A master's thumbnail and title packages, in position order; empty for a Short. */
   packages: ThumbnailPackageProp[]
+  /** The film's cast, for who a picture brief the owner writes will show; empty for a Short. */
+  thumbnailCast: { name: string; hasPortrait: boolean }[]
+  /** The people removed from the cast, whom a brief may not name; empty for a Short. */
+  thumbnailDismissed: string[]
   /** The last set run's sentence; empty when it went cleanly. */
   thumbnailSetNote: string
   /** A set was requested and its plan has not landed: a claim younger than `PACKAGE_STALE_MS`. */
@@ -596,6 +604,10 @@ function toRecordProp(
   thumbs: { key: string; url: string | null }[],
   current: { hook: string; scriptVersion: number },
   packages: ThumbnailPackageProp[] = [],
+  people: Pick<PublishRecordProp, 'thumbnailCast' | 'thumbnailDismissed'> = {
+    thumbnailCast: [],
+    thumbnailDismissed: [],
+  },
 ): PublishRecordProp {
   const draft = PublishDraftSchema.safeParse(row.metadata)
   const error = row.error as { message?: string } | null
@@ -628,6 +640,7 @@ function toRecordProp(
     channelTagsDropped: draft.success ? draft.data.channelTagsDropped : [],
     thumbs,
     packages,
+    ...people,
     thumbnailSetNote: draft.success ? draft.data.thumbnailSetNote : '',
     planning: draft.success && setBeingPlanned(draft.data.thumbnailSetRequestedAt, new Date()),
     testStartedAtIso: row.testStartedAt?.toISOString() ?? null,
@@ -666,6 +679,8 @@ async function packagePropsFor(
       hasImage: row.composedKey !== null,
       hasPicture: row.pictureKey !== null,
       hasPrevious: row.previousPictureKey !== null,
+      subject: row.picture?.subject ?? '',
+      framing: row.picture?.framing ?? '',
       result: row.result,
       watchTimeShare: row.watchTimeShare,
       slotMisses:
@@ -774,18 +789,26 @@ export async function publishModel(
   const masterThumbnails = async () => {
     // No record yet: Generate creates it, so the card still prices three places.
     if (!masterRecord) {
-      return { packages: [], ...(await thumbnailRouteFacts(channel.channelId, PACKAGES_MAX)) }
+      return {
+        packages: [],
+        dismissed: [],
+        ...(await thumbnailRouteFacts(channel.channelId, PACKAGES_MAX)),
+      }
     }
     // The format's title frame, for the slots each package's title lacks.
     const { titleFrameFor } = await import('./publish-grounding')
-    const frame = await titleFrameFor(projectId, project, channel)
+    const [frame, dismissed] = await Promise.all([
+      titleFrameFor(projectId, project, channel),
+      // Whom a picture brief the owner writes may not name.
+      listDismissedCastNames(db, projectId),
+    ])
     const packages = await packagePropsFor(db, masterRecord, {
       presign: options.presign,
       frame: frame ? { slots: frame.slots, values: frame.values } : null,
     })
     const free = PACKAGES_MAX - packages.filter((pack) => pack.approved).length
     const facts = await thumbnailRouteFacts(channel.channelId, free)
-    return { packages, ...facts }
+    return { packages, dismissed, ...facts }
   }
 
   const [rendersById, musicAttribution, snapshot, firstSnapshotDate, masterThumbs, masterSet] =
@@ -847,7 +870,13 @@ export async function publishModel(
           : 'There is no finished master render yet.',
       relatedLinkChecked: null,
       record: masterRecord
-        ? toRecordProp(masterRecord, masterThumbs, current, masterSet.packages)
+        ? toRecordProp(masterRecord, masterThumbs, current, masterSet.packages, {
+            thumbnailCast: cast.map((member) => ({
+              name: member.name,
+              hasPortrait: member.photos.length > 0,
+            })),
+            thumbnailDismissed: masterSet.dismissed,
+          })
         : null,
       syntheticLikenesses: masterLikenesses,
       cohesion: masterCohesion(),
