@@ -37,6 +37,7 @@ import {
 import type { ImageReference } from '@boom-busters/providers'
 import {
   BudgetExceededError,
+  changeNoteIssue,
   depictedMembers,
   IDEA_LABELS,
   MAX_CHARACTER_REFERENCES,
@@ -410,6 +411,17 @@ export async function paintThumbnailPicture(
 
     const limits = live.referenceLimits(route.model)
     const cast = await listCastMembers(db, projectId)
+    if (note !== undefined) {
+      // The action checks this too; an event sent any other way is checked here, before any buying.
+      const dismissed = await listDismissedCastNames(db, projectId)
+      const issue = changeNoteIssue({
+        note,
+        depicts: row.depicts,
+        cast,
+        dismissed: dismissed.map((name) => ({ name })),
+      })
+      if (issue) throw new ValidationError(issue)
+    }
     const depicted = depictedMembers(picture.depicts, cast)
     const stills = (await filmStills(projectId)).filter((still) =>
       picture.stillSlotIds.includes(still.slotId),

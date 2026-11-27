@@ -810,6 +810,36 @@ describeDb('thumbnail set (mock mode)', () => {
         expect(adapter.generate).not.toHaveBeenCalled()
       })
 
+      it('a change that names someone the picture does not show is not bought', async () => {
+        const member = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name: 'Zelda Quillfeather',
+          role: 'Witness',
+        })
+        try {
+          await withPicture({
+            previousPictureKey: 'boom-busters/thumbs/x/art-older.png',
+            depicts: [],
+          })
+
+          await paintThumbnailPicture(ids[0]!, {
+            baseKey: OLD,
+            note: 'put Zelda Quillfeather on the left',
+          })
+
+          expect(adapter.generate).not.toHaveBeenCalled()
+          expect(await thumbnailLedger()).toHaveLength(0)
+          expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+            state: 'failed',
+            error: 'Zelda Quillfeather is not shown in this picture. A change cannot add a person.',
+            pictureKey: OLD,
+            previousPictureKey: 'boom-busters/thumbs/x/art-older.png',
+          })
+        } finally {
+          await deleteCastMember(db, member.id)
+        }
+      })
+
       it('a failed change leaves both pictures and the composite', async () => {
         await withPicture({ previousPictureKey: 'boom-busters/thumbs/x/art-older.png' })
         adapter.generate.mockImplementationOnce(async () => {
