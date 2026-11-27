@@ -106,7 +106,8 @@ Change picture buys a new image. Back to previous picture is free.
 - A change that is painted but cannot be composed leaves the new picture with
   the old composite and the error. Compose again and Back to previous picture
   both show then, and both are free. The paint is not undone: the image was
-  bought, and the picture may be the one the owner wants.
+  bought, and the picture may be the one the owner wants. Change picture and
+  Regenerate picture wait until then.
 - The cost line is words, not a figure, matching "Regenerate picture buys a
   new image" on the same card.
 
@@ -122,8 +123,13 @@ A new server action, `changeThumbnailPicture(packageId, note)`, in
    picture to change. Regenerate the picture."
 3. Refused while the package is in flight or a set is being planned, with the
    existing "A set is being made. Wait for it to finish."
-4. The note is trimmed and checked (section 6.5).
-5. The row is marked `painting` at once, then the event is sent. If the send
+4. Refused unless the package is `ready`, with `Compose this thumbnail again
+   first. It is free.` A package that was painted but not composed still
+   shows its old thumbnail, and a change then would edit a picture the owner
+   has not seen and delete the one they can see. Regenerate picture is
+   refused the same way when the package has a picture.
+5. The note is trimmed and checked (section 6.5).
+6. The row is marked `painting` at once, then the event is sent. If the send
    fails the row's state and error go back, as they do today.
 
 The event is the existing `thumbnails/set.requested` with a new mode,
@@ -252,6 +258,9 @@ shows:
   never in the cast is held back only by the prompt's closing line, as in the
   set design.
 
+The paint checks the name rule again before it buys, so it holds whatever
+sends the event.
+
 Text in the picture is not parsed out of the note. The prompt's closing line
 forbids it, and a picture that comes back with letters is what Back to
 previous picture is for.
@@ -330,3 +339,5 @@ For the owner to check while reading:
    thumbnails are routed at Gemini, where the model does not change.
 9. On Gemini, portraits past a 12 MB total are left out of a change; the
    picture being edited always travels (6.3).
+10. Change picture and Regenerate picture wait for a composed thumbnail
+    (6.2). Found by the whole-branch review, 2026-11-27.

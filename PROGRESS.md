@@ -12788,16 +12788,38 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      button was pressed. A paint step whose row no longer holds that key
      buys nothing and goes to the compose. Without it, a retried step would
      apply the change a second time to the picture it had just made and
-     delete the original.
+     delete the original. `baseKey` also travels on `paint`, null when the
+     package has no picture yet, and an event without it, sent before the
+     field existed, paints as before.
      (f) A change that was painted but not composed is not undone: the image
      was bought and may be the one wanted. The card then offers Compose again
      and Back to previous picture, both free.
      (g) Calls made without the owner (design section 8): a note can never add
-     a cast member; the note is not stored on the package, only its first 200
-     characters in the cost ledger; on a fal model a change runs on the edit
-     endpoint at its price, as a repaint with portraits does; on Gemini the
-     portraits past 12 MB are left out, and the picture being edited always
-     travels.
+     a cast member; the note is not stored on the package. Its first 200
+     characters are in the cost ledger's `meta.change`, the ledger's
+     `meta.prompt` carries the start of the prompt (which holds the note), and
+     the Inngest event's history holds the whole note; on a fal model a change
+     runs on the edit endpoint at its price, as a repaint with portraits does;
+     on Gemini the portraits past 12 MB are left out, and the picture being
+     edited always travels.
      (h) Left open: no history of pictures beyond one, no preview of the
      previous picture on the card, and no masked edits. Regenerate picture
      still paints from the planner's brief, so it discards the changes.
+     (i) Found by the whole-branch review, 2026-11-27. After a change that
+     painted but did not compose, the card still shows the old thumbnail, and
+     a second change or a repaint would have worked on the picture the owner
+     had not seen and deleted the one on screen. Now Change picture needs a
+     `ready` package, and Regenerate picture needs one when the package has a
+     picture. Both are refused with "Compose this thumbnail again first. It is
+     free." and the card holds both buttons back with "Compose again is free.
+     Regenerate picture and Change picture wait for it." Compose again and
+     Back to previous picture stay open as the two ways out. The paint also
+     checks the name rule itself, so it holds whatever sends the event. The
+     review left open: the name rule matches whole names, so a surname alone
+     is not caught; a paint is not stopped when its record went to uploading
+     during a queue wedge, which was true of Regenerate picture before this
+     too; on fal's multi-image edit endpoint nothing marks which image is the
+     one to edit, which matters only if thumbnails are routed at fal; and the
+     e2e suite runs no Inngest, so it proves the card and the refusal, while
+     the paint, the rotation and the swap are proved by the unit, runner,
+     action and database tests.
