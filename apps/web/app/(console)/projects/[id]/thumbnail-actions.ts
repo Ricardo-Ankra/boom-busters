@@ -27,10 +27,11 @@ import {
   THUMBNAIL_IDEAS,
   UlidSchema,
   changeNoteIssue,
+  ownerBrief,
   packageInFlight,
   setBeingPlanned,
 } from '@boom-busters/schemas'
-import type { TestResult, ThumbnailIdea } from '@boom-busters/schemas'
+import type { PictureBrief, TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { eq } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -204,30 +205,87 @@ export async function generateThumbnailSet(
   return { ok: true }
 }
 
-export async function regenerateThumbnailPicture(packageId: string): Promise<ActionResult> {
+/**
+ * Paints a generated package's picture again. With a `brief` that differs from
+ * the stored one, the owner's words become the package's brief first: the cast
+ * members they name are who the picture shows, and the planner's film stills,
+ * chosen for its own scene, no longer travel.
+ */
+export async function regenerateThumbnailPicture(
+  packageId: string,
+  brief?: { subject: string; framing: string },
+): Promise<ActionResult> {
   await requireOwner()
+  // A server action takes whatever the client sends.
+  if (
+    brief !== undefined &&
+    (typeof brief !== 'object' ||
+      brief === null ||
+      typeof brief.subject !== 'string' ||
+      typeof brief.framing !== 'string')
+  ) {
+    return { ok: false, error: 'Write what the picture shows.' }
+  }
   const loaded = await loadPackage(packageId)
   if (!isLoaded(loaded)) return loaded
-  if (loaded.row.source !== 'generated') {
+  const { row } = loaded
+  if (row.source !== 'generated') {
     return { ok: false, error: 'Only a generated thumbnail has a picture to paint again.' }
   }
   const now = new Date()
-  if (packageInFlight(loaded.row, now) || planning(loaded.record, now)) {
+  if (packageInFlight(row, now) || planning(loaded.record, now)) {
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
   // A picture the owner has not seen composed must not become the previous one.
-  if (loaded.row.pictureKey !== null && loaded.row.state !== 'ready') {
+  if (row.pictureKey !== null && row.state !== 'ready') {
     return { ok: false, error: NOT_COMPOSED_REFUSAL }
   }
 
-  // Marked at once, so a second click before the run starts is refused.
-  await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
+  // Fields the owner opened and left alone are not a new brief: the planner's stills stay.
+  const subject = brief?.subject.trim() ?? ''
+  const framing = brief?.framing.trim() ?? ''
+  const rewritten =
+    brief !== undefined &&
+    (row.picture === null || subject !== row.picture.subject || framing !== row.picture.framing)
+
+  let picture: PictureBrief | null = row.picture
+  let depicts = row.depicts
+  if (rewritten) {
+    const [cast, dismissed] = await Promise.all([
+      listCastMembers(db, loaded.projectId),
+      listDismissedCastNames(db, loaded.projectId),
+    ])
+    const { shown, issue } = ownerBrief({
+      subject,
+      framing,
+      cast: cast.map((member) => ({ name: member.name, hasPortrait: member.photos.length > 0 })),
+      dismissed: dismissed.map((name) => ({ name })),
+    })
+    if (issue) return { ok: false, error: issue }
+    depicts = shown
+    picture = {
+      textSide: row.picture?.textSide ?? (row.textSide === 'right' ? 'right' : 'left'),
+      subject,
+      framing,
+      stillSlotIds: [],
+      depicts: shown,
+    }
+  }
+
+  // Marked at once, so a second click before the run starts is refused. The brief
+  // goes in with the mark: the card never holds one no paint was asked for.
+  await updateThumbnailPackage(db, packageId, {
+    state: 'painting',
+    error: null,
+    ...(rewritten ? { picture, depicts } : {}),
+  })
   // The run paints only while the row still holds the picture it was asked to replace.
-  const failed = await sendPackageEvent(loaded, 'paint', { baseKey: loaded.row.pictureKey })
+  const failed = await sendPackageEvent(loaded, 'paint', { baseKey: row.pictureKey })
   if (failed) {
     await updateThumbnailPackage(db, packageId, {
-      state: loaded.row.state,
-      error: loaded.row.error,
+      state: row.state,
+      error: row.error,
+      ...(rewritten ? { picture: row.picture, depicts: row.depicts } : {}),
     })
     return failed
   }
