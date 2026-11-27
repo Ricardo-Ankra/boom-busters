@@ -21,7 +21,9 @@ import { events } from '../events'
  * thumbnail-set-runner (design 2026-11-24, 7.4): `thumbnails/set.requested`.
  *
  * `set` plans the free places, then paints and composes each new package;
- * `paint` repaints one package and composes it; `compose` sets the type on one
+ * `paint` repaints one package and composes it; `change` edits its stored picture by
+ * the owner's note and composes it (a retry whose base picture has moved on only
+ * composes); `compose` sets the type on one
  * package's stored picture again and buys nothing. A package whose paint
  * failed is not composed. Painting and composing never throw (a paint leaves its
  * package painting with a picture or failed with words, a compose leaves it
@@ -88,6 +90,7 @@ export const thumbnailSetRunner = inngest.createFunction(
       packageId: string,
       paint: boolean,
       keepPicture = false,
+      options?: { baseKey?: string | null; note?: string },
     ): Promise<void> => {
       if (paint) {
         // A painted package stays `painting` until composed; compose only what
@@ -98,7 +101,9 @@ export const thumbnailSetRunner = inngest.createFunction(
             const stored = await getThumbnailPackage(db, packageId)
             if (stored?.pictureKey) return true
           }
-          await paintThumbnailPicture(packageId)
+          await (options
+            ? paintThumbnailPicture(packageId, options)
+            : paintThumbnailPicture(packageId))
           const row = await getThumbnailPackage(db, packageId)
           return row !== undefined && row.state !== 'failed' && row.pictureKey !== null
         })
@@ -141,7 +146,15 @@ export const thumbnailSetRunner = inngest.createFunction(
 
     // The schema holds that a request for one package carries its id.
     const packageId = request.packageId!
-    await finish(packageId, request.mode === 'paint')
+    const paints = request.mode === 'paint' || request.mode === 'change'
+    // `baseKey` and `note` are absent on a plain repaint sent before the field existed;
+    // the paint then behaves as it always did.
+    await finish(
+      packageId,
+      paints,
+      false,
+      paints ? { baseKey: request.baseKey, note: request.note } : undefined,
+    )
     return { mode: request.mode, packages: 1 }
   },
 )

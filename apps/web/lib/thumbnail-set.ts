@@ -14,6 +14,7 @@ import {
   getWorkspace,
   ideaResults,
   landComposedThumbnail,
+  landPaintedPicture,
   listCastMembers,
   listDismissedCastNames,
   listShotSlots,
@@ -25,6 +26,7 @@ import {
   visualCredentials,
 } from '@boom-busters/db'
 import {
+  buildThumbnailChangePrompt,
   buildThumbnailPicturePrompt,
   buildThumbnailSetRequest,
   imageGenPrice,
@@ -75,6 +77,8 @@ import { requireCompleteBible } from '@/inngest/lib/channel'
 
 const MOCK_BYTES = 'bW9jaw=='
 const MOCK_PREFIX = 'mock-'
+/** The most raw image bytes one change request carries: the picture first, then portraits while they fit. */
+export const CHANGE_IMAGES_MAX_BYTES = 12 * 1024 * 1024
 
 const BUDGET_REFUSAL =
   'The monthly spend ceiling would be crossed by this picture, so it was not painted. ' +
@@ -366,13 +370,27 @@ async function referenceBytes(key: string, mocked: boolean): Promise<string> {
   return Buffer.from(object.bytes).toString('base64')
 }
 
-/** Paints one package's picture. Never throws: every exit ends in a stored picture (still `painting`, awaiting compose) or a failed row with words. */
-export async function paintThumbnailPicture(packageId: string): Promise<void> {
+/**
+ * Paints one package's picture. Never throws: every exit ends in a stored picture (still `painting`, awaiting compose) or a failed row with words.
+ *
+ * With a `note` the stored picture goes to the model to be edited, with the portraits of
+ * the people it shows (no stills, no styles). `baseKey` is the picture the request was
+ * made against: when the row's picture has moved on (a retried run), nothing is painted.
+ */
+export async function paintThumbnailPicture(
+  packageId: string,
+  options: { baseKey?: string | null; note?: string } = {},
+): Promise<void> {
   try {
     const row = await getThumbnailPackage(db, packageId)
     if (!row) return
+    if (options.baseKey !== undefined && options.baseKey !== row.pictureKey) return
+    const note = options.note
     await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
     if (!row.picture) throw new ValidationError('This package has no picture brief to paint.')
+    if (note !== undefined && row.pictureKey === null) {
+      throw new ValidationError('There is no picture to change. Regenerate the picture.')
+    }
     const picture = row.picture
     const projectId = await masterOf(row.publishRecordId)
     const targetId = projectId
@@ -401,9 +419,10 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
       depicted,
       Math.min(MAX_CHARACTER_REFERENCES, limits.characters),
     )
-    const objectShots = stills.slice(0, Math.max(0, limits.objects))
+    // A change edits the picture it is given: the film's stills and the style references stay out.
+    const objectShots = note !== undefined ? [] : stills.slice(0, Math.max(0, limits.objects))
     const styleShots =
-      limits.styles > 0
+      note === undefined && limits.styles > 0
         ? settings.thumbnails.references
             .filter((reference) => reference.inUse)
             .slice(0, limits.styles)
@@ -411,12 +430,31 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
 
     const references: ImageReference[] = []
     const storedKeys: string[] = []
+    let sizeSent = 0
+    if (note !== undefined && row.pictureKey !== null) {
+      const data = await referenceBytes(row.pictureKey, mocked)
+      references.push({
+        name: 'The picture to edit',
+        kind: 'base',
+        mimeType: mimeOfKey(row.pictureKey),
+        data,
+      })
+      storedKeys.push(row.pictureKey)
+      sizeSent = Buffer.byteLength(data, 'base64')
+    }
+    const portraitsSent: typeof characterShots = []
     for (const { member, photo } of characterShots) {
+      const data = await referenceBytes(photo.r2Key, mocked)
+      // The first portrait that would pass the cap, and every one after it, stay out.
+      const size = Buffer.byteLength(data, 'base64')
+      if (note !== undefined && sizeSent + size > CHANGE_IMAGES_MAX_BYTES) break
+      sizeSent += size
+      portraitsSent.push({ member, photo })
       references.push({
         name: member.name,
         kind: 'character',
         mimeType: photo.mimeType,
-        data: await referenceBytes(photo.r2Key, mocked),
+        data,
       })
       storedKeys.push(photo.r2Key)
     }
@@ -446,16 +484,26 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
           )
         : []
 
-    const prompt = buildThumbnailPicturePrompt({
-      picture,
-      styleNote: settings.thumbnails.styleNote,
-      guardrails: depicted.map((member) => ({ name: member.name, guardrail: member.guardrail })),
-      attached: {
-        people: [...new Set(characterShots.map(({ member }) => member.name))],
-        stills: objectShots.length,
-        styles: styleShots.length,
-      },
-    })
+    const guardrails = depicted.map((member) => ({
+      name: member.name,
+      guardrail: member.guardrail,
+    }))
+    const people = [...new Set(portraitsSent.map(({ member }) => member.name))]
+    const prompt =
+      note !== undefined
+        ? buildThumbnailChangePrompt({
+            note,
+            textSide: row.textSide === 'right' ? 'right' : 'left',
+            styleNote: settings.thumbnails.styleNote,
+            guardrails,
+            attached: { people },
+          })
+        : buildThumbnailPicturePrompt({
+            picture,
+            styleNote: settings.thumbnails.styleNote,
+            guardrails,
+            attached: { people, stills: objectShots.length, styles: styleShots.length },
+          })
 
     const billed = live.referenceRoute?.(route.model, referenceUrls.length) ?? null
     const adapter = stillGenerator(provider, catalogue)
@@ -473,6 +521,7 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
             kind: 'thumbnail',
             package: packageId,
             prompt: prompt.slice(0, 200),
+            ...(note !== undefined ? { change: note.slice(0, 200) } : {}),
           },
         },
         async () => {
@@ -503,7 +552,10 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
       // Mock mode writes no object: the key says where a real one would live.
       pictureKey = thumbnailPictureKey({
         targetId,
-        contentHash: `${MOCK_PREFIX}${packageId}`,
+        contentHash:
+          note === undefined
+            ? `${MOCK_PREFIX}${packageId}`
+            : `${MOCK_PREFIX}${packageId}-${createHash('sha256').update(note).digest('hex').slice(0, 8)}`,
         ext: 'png',
       })
     } else {
@@ -512,17 +564,13 @@ export async function paintThumbnailPicture(packageId: string): Promise<void> {
       pictureKey = thumbnailPictureKey({ targetId, contentHash, ext: extOf(mimeType) })
       await putObject(pictureKey, bytes, mimeType)
     }
-    const previous = row.pictureKey
-    // The package is ready only once composed; until then it stays painting.
-    await updateThumbnailPackage(db, packageId, { pictureKey, state: 'painting', error: null })
-    if (
-      previous !== null &&
-      previous !== pictureKey &&
-      !mocked &&
-      storageConfigured() &&
-      !previous.includes(`/${MOCK_PREFIX}`)
-    ) {
-      await deleteObject(previous).catch(() => undefined)
+    // The package is ready only once composed; until then it stays painting. The helper
+    // keeps the picture it replaced and says which objects no row names any more.
+    const { deleteKeys } = await landPaintedPicture(db, packageId, pictureKey)
+    if (!mocked && storageConfigured()) {
+      for (const key of deleteKeys) {
+        if (!key.includes(`/${MOCK_PREFIX}`)) await deleteObject(key).catch(() => undefined)
+      }
     }
   } catch (error) {
     // Even the failure write must not rethrow: the run's onFailure marks what is left.

@@ -46,11 +46,18 @@ import type * as Cost from '@boom-busters/cost'
 const tests = vi.hoisted(() => ({
   results: null as { idea: string; tests: number; wins: number }[] | null,
   finished: null as { withWinner: number; same: number; inconclusive: number } | null,
+  // A film's slots and the stored visual keys, replaced only by the tests that need them.
+  slots: null as Awaited<ReturnType<typeof DbModule.listShotSlots>> | null,
+  keys: null as { google: string } | null,
 }))
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const actual = await importOriginal<typeof DbModule>()
   return {
     ...actual,
+    listShotSlots: (...args: Parameters<typeof actual.listShotSlots>) =>
+      tests.slots ? Promise.resolve(tests.slots) : actual.listShotSlots(...args),
+    visualCredentials: (...args: Parameters<typeof actual.visualCredentials>) =>
+      tests.keys ? Promise.resolve(tests.keys) : actual.visualCredentials(...args),
     ideaResults: (...args: Parameters<typeof actual.ideaResults>) =>
       tests.results ? Promise.resolve(tests.results) : actual.ideaResults(...args),
     finishedTests: (...args: Parameters<typeof actual.finishedTests>) =>
@@ -104,9 +111,15 @@ const storage = vi.hoisted(() => ({
   configured: false,
   put: vi.fn(async (_key: string): Promise<undefined> => undefined),
   delete: vi.fn(async (_key: string): Promise<undefined> => undefined),
+  // Stored objects' sizes in bytes; a key not listed is four bytes.
+  sizes: new Map<string, number>(),
 }))
 vi.mock('@/lib/storage', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  getObjectBytes: async (key: string) => ({
+    bytes: new Uint8Array(storage.sizes.get(key) ?? 4),
+    contentType: 'image/png',
+  }),
   storageConfigured: () => storage.configured,
   presignGet: async (key: string) => `https://signed.test/${key}`,
   putObject: (key: string) => storage.put(key),
@@ -135,6 +148,7 @@ vi.mock('@boom-busters/cost', async (importOriginal) => {
 })
 
 import {
+  CHANGE_IMAGES_MAX_BYTES,
   composeThumbnailPackage,
   paintThumbnailPicture,
   planThumbnailSet,
@@ -203,6 +217,7 @@ describeDb('thumbnail set (mock mode)', () => {
     adapter.styles = 3
     cost.refuse = false
     storage.configured = false
+    storage.sizes.clear()
     adapter.generate.mockImplementation(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
     grounding.metadataGrounding.mockResolvedValue({
       claims: CLAIMS,
@@ -225,6 +240,8 @@ describeDb('thumbnail set (mock mode)', () => {
     vi.unstubAllEnvs()
     tests.results = null
     tests.finished = null
+    tests.slots = null
+    tests.keys = null
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await setThumbnailSettings(originalThumbnails)
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
@@ -611,6 +628,257 @@ describeDb('thumbnail set (mock mode)', () => {
       await composeThumbnailPackage(ids[0]!)
 
       expect((await getThumbnailPackage(db, ids[0]!))?.state).toBe('ready')
+    })
+
+    describe('changing a picture', () => {
+      const OLD = 'boom-busters/thumbs/x/art-old.png'
+      const OLD_COMPOSITE = 'boom-busters/thumbs/x/old.jpg'
+
+      /** A package holding a picture and a composite, ready to be changed. */
+      const withPicture = async (over: Partial<typeof thumbnailPackages.$inferInsert> = {}) =>
+        db
+          .update(thumbnailPackages)
+          .set({ pictureKey: OLD, composedKey: OLD_COMPOSITE, state: 'ready', ...over })
+          .where(eq(thumbnailPackages.id, ids[0]!))
+
+      const portrait = (key: string) => ({
+        r2Key: key,
+        contentHash: key,
+        mimeType: 'image/jpeg' as const,
+        width: 100,
+        height: 100,
+        view: 'front' as const,
+      })
+
+      /** Two cast members with one portrait each, both depicted by the first package. */
+      const withCast = async (portraits: [string, string]) => {
+        const one = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name: 'Test Person One',
+          role: 'Founder',
+        })
+        const two = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name: 'Test Person Two',
+          role: 'Auditor',
+        })
+        await setCastPhotos(db, one.id, [portrait(portraits[0])])
+        await setCastPhotos(db, two.id, [portrait(portraits[1])])
+        await db
+          .update(thumbnailPackages)
+          .set({
+            picture: {
+              ...planned('figure').picture,
+              depicts: ['Test Person One', 'Test Person Two'],
+            },
+          })
+          .where(eq(thumbnailPackages.id, ids[0]!))
+        return async () => {
+          await deleteCastMember(db, one.id)
+          await deleteCastMember(db, two.id)
+        }
+      }
+
+      it('a change sends the picture and the portraits, and no stills or styles', async () => {
+        const removeCast = await withCast([
+          'boom-busters/cast/x/one.jpg',
+          'boom-busters/cast/x/two.jpg',
+        ])
+        try {
+          await setThumbnailSettings({
+            styleNote: '',
+            markPlacement: 'tl',
+            references: [
+              {
+                id: newId(),
+                r2Key: 'boom-busters/thumb-refs/x/a.png',
+                mimeType: 'image/png',
+                note: 'Hard side light',
+                inUse: true,
+              },
+            ],
+          })
+          tests.slots = [
+            {
+              id: 'slot-1',
+              type: 'still',
+              brief: {
+                type: 'still',
+                coversText: 'x',
+                description: 'A boardroom',
+                motion: { kind: 'static' },
+                transition: 'cut',
+                prompt: 'a boardroom',
+              },
+              candidates: [
+                {
+                  id: 'c',
+                  provider: 'pexels',
+                  kind: 'image',
+                  sourceUrl: 'https://x.test/a.png',
+                  r2Key: 'boom-busters/stills/x/a.png',
+                  licence: 'test',
+                  chosen: true,
+                },
+              ],
+            },
+          ] as unknown as typeof tests.slots
+          await db
+            .update(thumbnailPackages)
+            .set({
+              picture: {
+                ...planned('figure').picture,
+                depicts: ['Test Person One'],
+                stillSlotIds: ['slot-1'],
+              },
+            })
+            .where(eq(thumbnailPackages.id, ids[0]!))
+
+          // The plain paint is the control: it carries the still and the style as well.
+          await paintThumbnailPicture(ids[0]!)
+          expect(requestOf(0).references?.map((reference) => reference.kind)).toEqual([
+            'character',
+            'object',
+            'style',
+          ])
+
+          const base = (await getThumbnailPackage(db, ids[0]!))!.pictureKey
+          await paintThumbnailPicture(ids[0]!, { baseKey: base, note: 'fewer people' })
+
+          const request = requestOf(1)
+          expect(request.references?.map((reference) => reference.kind)).toEqual([
+            'base',
+            'character',
+          ])
+          expect(request.references?.[0]).toMatchObject({
+            name: 'The picture to edit',
+            mimeType: 'image/png',
+          })
+          expect(
+            request.prompt.startsWith('Edit the attached picture. Change only this: fewer people.'),
+          ).toBe(true)
+          expect(request.prompt).toContain('1 portrait of Test Person One')
+        } finally {
+          await removeCast()
+        }
+      })
+
+      it('a change keeps the picture it replaced', async () => {
+        await withPicture()
+
+        await paintThumbnailPicture(ids[0]!, { baseKey: OLD, note: 'darker sky' })
+
+        const row = await getThumbnailPackage(db, ids[0]!)
+        expect(row?.pictureKey).not.toBe(OLD)
+        expect(row?.previousPictureKey).toBe(OLD)
+        expect(row?.state).toBe('painting')
+      })
+
+      it('a repaint keeps the picture it replaced too', async () => {
+        await withPicture()
+
+        await paintThumbnailPicture(ids[0]!)
+
+        const row = await getThumbnailPackage(db, ids[0]!)
+        expect(row?.pictureKey).not.toBe(OLD)
+        expect(row?.previousPictureKey).toBe(OLD)
+      })
+
+      it('a paint whose base moved buys nothing', async () => {
+        await withPicture({ pictureKey: 'b', previousPictureKey: 'z' })
+
+        await paintThumbnailPicture(ids[0]!, { baseKey: 'a', note: 'x' })
+
+        expect(adapter.generate).not.toHaveBeenCalled()
+        expect(await thumbnailLedger()).toHaveLength(0)
+        expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+          pictureKey: 'b',
+          previousPictureKey: 'z',
+          state: 'ready',
+        })
+      })
+
+      it('a change on a package with no picture fails in words', async () => {
+        await paintThumbnailPicture(ids[0]!, { baseKey: null, note: 'darker sky' })
+
+        const row = await getThumbnailPackage(db, ids[0]!)
+        expect(row).toMatchObject({
+          state: 'failed',
+          error: 'There is no picture to change. Regenerate the picture.',
+          pictureKey: null,
+        })
+        expect(adapter.generate).not.toHaveBeenCalled()
+      })
+
+      it('a failed change leaves both pictures and the composite', async () => {
+        await withPicture({ previousPictureKey: 'boom-busters/thumbs/x/art-older.png' })
+        adapter.generate.mockImplementationOnce(async () => {
+          throw new ContentPolicyError('google', 'the picture was refused')
+        })
+
+        await paintThumbnailPicture(ids[0]!, { baseKey: OLD, note: 'darker sky' })
+
+        expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+          state: 'failed',
+          error: 'google: the picture was refused',
+          pictureKey: OLD,
+          previousPictureKey: 'boom-busters/thumbs/x/art-older.png',
+          composedKey: OLD_COMPOSITE,
+        })
+      })
+
+      it('portraits past the size cap are left out', async () => {
+        // The real path: stored bytes are read, so their sizes count.
+        vi.stubEnv('MOCK_PROVIDERS', '0')
+        tests.keys = { google: 'test-key' }
+        storage.configured = true
+        const base = 6 * 1024 * 1024
+        const each = 5 * 1024 * 1024
+        expect(base + each).toBeLessThanOrEqual(CHANGE_IMAGES_MAX_BYTES)
+        expect(base + 2 * each).toBeGreaterThan(CHANGE_IMAGES_MAX_BYTES)
+        storage.sizes.set(OLD, base)
+        storage.sizes.set('boom-busters/cast/x/one.jpg', each)
+        storage.sizes.set('boom-busters/cast/x/two.jpg', each)
+        const removeCast = await withCast([
+          'boom-busters/cast/x/one.jpg',
+          'boom-busters/cast/x/two.jpg',
+        ])
+        try {
+          await withPicture()
+
+          await paintThumbnailPicture(ids[0]!, { baseKey: OLD, note: 'darker sky' })
+
+          const request = requestOf(0)
+          expect(request.references?.map((reference) => reference.name)).toEqual([
+            'The picture to edit',
+            'Test Person One',
+          ])
+          expect(request.prompt).toContain('1 portrait of Test Person One')
+          expect(request.prompt).not.toContain('Test Person Two,')
+        } finally {
+          await removeCast()
+        }
+      })
+
+      it('a change records its note on the ledger', async () => {
+        await withPicture()
+        const note = 'a'.repeat(300)
+
+        await paintThumbnailPicture(ids[0]!, { baseKey: OLD, note })
+
+        const [entry] = await thumbnailLedger()
+        expect((entry!.meta as Record<string, unknown>)['change']).toBe('a'.repeat(200))
+      })
+
+      it('a mock change gets a key of its own', async () => {
+        await withPicture()
+
+        await paintThumbnailPicture(ids[0]!, { baseKey: OLD, note: 'darker sky' })
+
+        const row = await getThumbnailPackage(db, ids[0]!)
+        expect(row?.pictureKey).toMatch(new RegExp(`/art-mock-${ids[0]}-[0-9a-f]{8}\\.png$`))
+        expect(row?.previousPictureKey).toBe(OLD)
+      })
     })
 
     it('painting an unknown package does nothing and does not throw', async () => {
