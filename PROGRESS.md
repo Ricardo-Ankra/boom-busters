@@ -12742,3 +12742,20 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      title or the description. The record has no marker for "queued", and the
      fix changes what the upload runner remembers for every upload, so it is
      its own decision.
+     (y) The compose failed in production with "the frame failed: page.setContent:
+     Target page, context or browser has been closed" on a package that had
+     composed thirteen minutes earlier from the same picture, logo and headline
+     (2026-11-27). The real files replay cleanly in the Lambda image, so the
+     cause is the instance's state. Found there: the packaged single-process
+     browser does not finish its close in 5 s on 7 of 12 closes, and the code
+     walked away and left it running (about 50 threads, 22 to 36 MB of the
+     500 MB temp folder). Leftover browsers under a thread cap give the same
+     words. Not proven to be what happened on Vercel: no log line survives a
+     compose failure. Now every launch carries a switch of its own
+     (`--boom-busters-launch=<id>`), a browser that will not close is found by
+     it in `/proc` and killed (`browser-process.ts`), and a failure after the
+     browser was lost says how many browsers are still running, their threads
+     and the room left in the temp folder. All three frame functions close
+     this way. Playwright's launch `logger` carries no browser stderr;
+     `DEBUG=pw:browser` in the environment is the way to see it if this
+     returns.
