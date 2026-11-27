@@ -68,12 +68,17 @@ export type TestResult = (typeof TEST_RESULTS)[number]
 // Shapes
 // ---------------------------------------------------------------------------
 
+/** The longest a picture's subject, its framing, and the list of cast members it shows can be. */
+export const PICTURE_SUBJECT_MAX = 400
+export const PICTURE_FRAMING_MAX = 400
+export const PICTURE_DEPICTS_MAX = 5
+
 export const PictureBriefSchema = z.object({
-  subject: z.string().trim().min(1).max(400),
-  framing: z.string().trim().max(400).default(''),
+  subject: z.string().trim().min(1).max(PICTURE_SUBJECT_MAX),
+  framing: z.string().trim().max(PICTURE_FRAMING_MAX).default(''),
   textSide: z.enum(['left', 'right']),
   stillSlotIds: z.array(z.string()).max(6).default([]),
-  depicts: z.array(z.string()).max(5).default([]),
+  depicts: z.array(z.string()).max(PICTURE_DEPICTS_MAX).default([]),
 })
 export type PictureBrief = z.infer<typeof PictureBriefSchema>
 
@@ -269,11 +274,67 @@ export function changeNoteIssue(input: {
       return `${member.name} is not shown in this picture. A change cannot add a person.`
     }
   }
-  for (const entry of input.dismissed ?? []) {
-    if (isCastSpelling(entry.name, input.cast)) continue
-    if (namesWholeName(note, entry.name)) return `${entry.name} was removed from the cast.`
+  const removed = dismissedNamed(note, input.cast, input.dismissed ?? [])
+  if (removed !== null) return `${removed} was removed from the cast.`
+  return null
+}
+
+/**
+ * The first person removed from the cast that a text names, or null. Someone
+ * back in the cast, or a shorter spelling of someone who is, is left to the
+ * cast's own rules.
+ */
+export function dismissedNamed(
+  text: string,
+  cast: { name: string }[],
+  dismissed: { name: string }[],
+): string | null {
+  for (const entry of dismissed) {
+    if (isCastSpelling(entry.name, cast)) continue
+    if (namesWholeName(text, entry.name)) return entry.name
   }
   return null
+}
+
+/**
+ * Who a picture brief written by the owner shows, and why it cannot be
+ * painted, or null. `cast` is not dismissed. A member is shown when the
+ * subject or the framing holds their full name as whole words; a surname
+ * alone names nobody. `shown` is the cast's own spelling, in cast order,
+ * and is never cut, so the card can say who was named even when that is
+ * too many.
+ */
+export function ownerBrief(input: {
+  subject: string
+  framing: string
+  cast: { name: string; hasPortrait: boolean }[]
+  dismissed?: { name: string }[]
+}): { shown: string[]; issue: string | null } {
+  const subject = input.subject.trim()
+  const framing = input.framing.trim()
+  const text = `${subject} ${framing}`
+  const members = input.cast.filter((member) => namesWholeName(text, member.name))
+  const shown = members.map((member) => member.name)
+
+  const issue = (): string | null => {
+    if (subject.length === 0) return 'Write what the picture shows.'
+    if (subject.length > PICTURE_SUBJECT_MAX) {
+      return `The picture is at most ${PICTURE_SUBJECT_MAX} characters.`
+    }
+    if (framing.length > PICTURE_FRAMING_MAX) {
+      return `The framing is at most ${PICTURE_FRAMING_MAX} characters.`
+    }
+    const removed = dismissedNamed(text, input.cast, input.dismissed ?? [])
+    if (removed !== null) return `${removed} was removed from the cast.`
+    if (members.length > PICTURE_DEPICTS_MAX) {
+      return `A picture shows at most ${PICTURE_DEPICTS_MAX} people from the cast.`
+    }
+    const faceless = members.find((member) => !member.hasPortrait)
+    if (faceless) return `${faceless.name} has no portrait. Add one on the Cast card first.`
+    return null
+  }
+
+  return { shown, issue: issue() }
 }
 
 /** Whether a text holds a full name as whole words, ignoring case and spacing. */

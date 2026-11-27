@@ -4,8 +4,10 @@ import {
   ThumbnailSetRequestedSchema,
   ThumbnailSettingsSchema,
   changeNoteIssue,
+  dismissedNamed,
   figuresIn,
   headlineWords,
+  ownerBrief,
   packageInFlight,
   PACKAGE_STALE_MS,
   upcomingDefaultId,
@@ -495,6 +497,127 @@ describe('changeNoteIssue', () => {
   it('a name inside a longer word is not a name', () => {
     expect(
       changeNoteIssue({ note: 'add a personal touch', depicts: [], cast: [{ name: 'Son' }] }),
+    ).toBeNull()
+  })
+})
+
+describe("the owner's brief", () => {
+  const cast = [
+    { name: 'Adam Neumann', hasPortrait: true },
+    { name: 'Masayoshi Son', hasPortrait: true },
+  ]
+
+  it('finds a full name whatever its case and spacing', () => {
+    expect(
+      ownerBrief({ subject: 'adam  NEUMANN barefoot on a glass floor', framing: '', cast }),
+    ).toEqual({ shown: ['Adam Neumann'], issue: null })
+  })
+
+  it('a surname alone names nobody', () => {
+    expect(ownerBrief({ subject: 'Neumann barefoot on a glass floor', framing: '', cast })).toEqual(
+      { shown: [], issue: null },
+    )
+  })
+
+  it('a name in the framing counts', () => {
+    expect(
+      ownerBrief({
+        subject: 'A glass office floor',
+        framing: 'Masayoshi Son in the doorway, out of focus',
+        cast,
+      }).shown,
+    ).toEqual(['Masayoshi Son'])
+  })
+
+  it('lists people in cast order, each once', () => {
+    expect(
+      ownerBrief({
+        subject: 'Masayoshi Son beside Adam Neumann, and Adam Neumann again',
+        framing: '',
+        cast,
+      }).shown,
+    ).toEqual(['Adam Neumann', 'Masayoshi Son'])
+  })
+
+  it('a name inside a longer word is not a name', () => {
+    expect(
+      ownerBrief({
+        subject: 'A personal ledger',
+        framing: '',
+        cast: [{ name: 'Son', hasPortrait: true }],
+      }).shown,
+    ).toEqual([])
+  })
+
+  it('checks the lengths', () => {
+    expect(ownerBrief({ subject: '   ', framing: '', cast }).issue).toBe(
+      'Write what the picture shows.',
+    )
+    expect(ownerBrief({ subject: 'a'.repeat(400), framing: '', cast }).issue).toBeNull()
+    expect(ownerBrief({ subject: 'a'.repeat(401), framing: '', cast }).issue).toBe(
+      'The picture is at most 400 characters.',
+    )
+    expect(ownerBrief({ subject: 'A ledger', framing: 'a'.repeat(401), cast }).issue).toBe(
+      'The framing is at most 400 characters.',
+    )
+  })
+
+  it('refuses someone removed from the cast', () => {
+    const subject = 'Rebekah Neumann at a desk'
+    const dismissed = [{ name: 'Rebekah Neumann' }]
+    expect(ownerBrief({ subject, framing: '', cast, dismissed }).issue).toBe(
+      'Rebekah Neumann was removed from the cast.',
+    )
+    const back = [...cast, { name: 'Rebekah Neumann', hasPortrait: true }]
+    expect(ownerBrief({ subject, framing: '', cast: back, dismissed })).toEqual({
+      shown: ['Rebekah Neumann'],
+      issue: null,
+    })
+  })
+
+  it('refuses more than five people', () => {
+    const six = ['Ann One', 'Ben Two', 'Cal Three', 'Dee Four', 'Eli Five', 'Fay Six']
+    const result = ownerBrief({
+      subject: six.join(', '),
+      framing: '',
+      cast: six.map((name) => ({ name, hasPortrait: true })),
+    })
+    expect(result.issue).toBe('A picture shows at most 5 people from the cast.')
+    expect(result.shown).toHaveLength(6)
+  })
+
+  it('refuses a named person with no portrait', () => {
+    const noPortrait = [
+      { name: 'Adam Neumann', hasPortrait: true },
+      { name: 'Masayoshi Son', hasPortrait: false },
+    ]
+    expect(
+      ownerBrief({
+        subject: 'Adam Neumann beside Masayoshi Son',
+        framing: '',
+        cast: noPortrait,
+      }).issue,
+    ).toBe('Masayoshi Son has no portrait. Add one on the Cast card first.')
+    expect(
+      ownerBrief({ subject: 'Adam Neumann at a desk', framing: '', cast: noPortrait }).issue,
+    ).toBeNull()
+  })
+})
+
+describe('dismissedNamed', () => {
+  const dismissed = [{ name: 'Rebekah Neumann' }]
+
+  it('names the removed person a text holds', () => {
+    expect(dismissedNamed('beside rebekah neumann', [], dismissed)).toBe('Rebekah Neumann')
+  })
+
+  it('finds nobody in a text without the name', () => {
+    expect(dismissedNamed('a glass office floor', [], dismissed)).toBeNull()
+  })
+
+  it('leaves someone who is back in the cast to the cast rules', () => {
+    expect(
+      dismissedNamed('beside rebekah neumann', [{ name: 'Rebekah Neumann' }], dismissed),
     ).toBeNull()
   })
 })
