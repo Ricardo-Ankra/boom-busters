@@ -742,7 +742,9 @@ describe('ThumbnailSet', () => {
       expect(screen.getByRole('button', { name: 'Compose again' })).toBeEnabled()
       expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeEnabled()
       expect(
-        screen.getByText('Compose again is free. Regenerate picture and Change picture wait for it.'),
+        screen.getByText(
+          'Compose again is free. Regenerate picture and Change picture wait for it.',
+        ),
       ).toBeInTheDocument()
     })
 

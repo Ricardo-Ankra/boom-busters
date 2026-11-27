@@ -62,7 +62,7 @@ import { events } from '@/inngest/events'
 const SHORT_REFUSAL = "Generated sets are for the full film. A Short's thumbnail is an upload."
 const IN_FLIGHT_REFUSAL = 'A set is being made. Wait for it to finish.'
 const NOT_COMPOSED_REFUSAL = 'Compose this thumbnail again first. It is free.'
-const UNKNOWN_THUMBNAIL ='Unknown thumbnail'
+const UNKNOWN_THUMBNAIL = 'Unknown thumbnail'
 const TITLE_MAX = 100
 const HEADLINE_MAX = 60
 
