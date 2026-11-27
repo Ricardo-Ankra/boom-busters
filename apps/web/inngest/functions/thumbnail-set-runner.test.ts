@@ -226,6 +226,71 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     expect(rows.map((row) => row.state)).toEqual(['planned', 'ready', 'planned'])
   })
 
+  const OLD_PICTURE = `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-old.png`
+
+  it('a change paints with the note and the base key, then composes', async () => {
+    const ids = await seedThree()
+    await db
+      .update(thumbnailPackages)
+      .set({ pictureKey: OLD_PICTURE, state: 'ready' })
+      .where(eq(thumbnailPackages.id, ids[0]!))
+
+    const { state } = await run({
+      mode: 'change',
+      packageId: ids[0],
+      note: 'darker sky',
+      baseKey: OLD_PICTURE,
+    })
+
+    expect(Object.keys(state)).toEqual(stepKeys([`paint-${ids[0]}`, `compose-${ids[0]}`]))
+    expect(adapter.generate).toHaveBeenCalledTimes(1)
+    const request = adapter.generate.mock.calls[0]![0] as { prompt: string }
+    expect(request.prompt).toContain('Change only this: darker sky.')
+    const row = await getThumbnailPackage(db, ids[0]!)
+    expect(row).toMatchObject({ state: 'ready', previousPictureKey: OLD_PICTURE })
+    expect(row?.pictureKey).not.toBe(OLD_PICTURE)
+    expect(row?.composedKey).not.toBeNull()
+  })
+
+  it('a retried change goes straight to the compose', async () => {
+    const ids = await seedThree()
+    const landed = `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-landed.png`
+    await db
+      .update(thumbnailPackages)
+      .set({ pictureKey: landed, previousPictureKey: OLD_PICTURE, state: 'painting' })
+      .where(eq(thumbnailPackages.id, ids[0]!))
+
+    await run({ mode: 'change', packageId: ids[0], note: 'darker sky', baseKey: OLD_PICTURE })
+
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(
+      await db
+        .select()
+        .from(costLedger)
+        .where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`),
+    ).toHaveLength(0)
+    const row = await getThumbnailPackage(db, ids[0]!)
+    expect(row).toMatchObject({ state: 'ready', pictureKey: landed })
+    expect(row?.composedKey).not.toBeNull()
+  })
+
+  it('a paint sent before the base key existed paints as before', async () => {
+    const ids = await seedThree()
+    await db
+      .update(thumbnailPackages)
+      .set({ pictureKey: OLD_PICTURE, state: 'ready' })
+      .where(eq(thumbnailPackages.id, ids[0]!))
+
+    await run({ mode: 'paint', packageId: ids[0] })
+
+    expect(adapter.generate).toHaveBeenCalledTimes(1)
+    const request = adapter.generate.mock.calls[0]![0] as { prompt: string }
+    expect(request.prompt).not.toContain('Edit the attached picture')
+    const row = await getThumbnailPackage(db, ids[0]!)
+    expect(row?.pictureKey).not.toBe(OLD_PICTURE)
+    expect(row?.previousPictureKey).toBe(OLD_PICTURE)
+  })
+
   it('compose mode buys nothing', async () => {
     const ids = await seedThree()
     await db

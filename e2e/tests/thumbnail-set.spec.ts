@@ -196,6 +196,61 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await second.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByText('Changes saved').first()).toBeVisible({ timeout: 15_000 })
 
+    // Ask for a change to the first picture. No Inngest runs in this suite, so
+    // the paint itself never happens: the action is accepted up to the send,
+    // says plainly that it could not reach Inngest, and puts the card back as
+    // it was. A package with a picture is what the card needs for the field,
+    // so the picture a finished run leaves is written here, after the save
+    // above (a save on a package with a picture asks for a new compose).
+    const keys = await withDb(async ({ sql }) => {
+      const rows = await sql<{ id: string }[]>`
+        select tp.id from thumbnail_packages tp
+        join publish_records pr on pr.id = tp.publish_record_id
+        where pr.target_type = 'master' and pr.target_id = ${saved.projectId}
+        order by tp.position asc limit 1`
+      const id = rows[0]!.id
+      await sql`update thumbnail_packages
+        set picture_key = ${`boom-busters/thumbs/${saved.projectId}/mock-picture-${id}.png`}
+        where id = ${id}`
+      return id
+    })
+    await expect(async () => {
+      await page.reload()
+      await expect(first.getByRole('textbox', { name: 'Change the picture' })).toBeVisible({
+        timeout: 5_000,
+      })
+    }).toPass({ timeout: 30_000 })
+    await expect(first.getByRole('button', { name: 'Change picture', exact: true })).toBeDisabled()
+    await expect(first.getByRole('button', { name: 'Back to previous picture' })).toHaveCount(0)
+    await first
+      .getByRole('textbox', { name: 'Change the picture' })
+      .fill('fewer people in the queue')
+    await first.getByRole('button', { name: 'Change picture', exact: true }).click()
+    await expect(page.getByText('Could not reach Inngest to start the work.').first()).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })
+
+    // What a finished change leaves behind: the picture it replaced. Then the
+    // way back shows, and pressing it fails the same plain way and leaves the
+    // card, and the button, as they were.
+    await withDb(async ({ sql }) => {
+      await sql`update thumbnail_packages
+        set previous_picture_key = ${`boom-busters/thumbs/${saved.projectId}/mock-before-${keys}.png`}
+        where id = ${keys}`
+    })
+    const back = first.getByRole('button', { name: 'Back to previous picture' })
+    await expect(async () => {
+      await page.reload()
+      await expect(back).toBeVisible({ timeout: 5_000 })
+    }).toPass({ timeout: 30_000 })
+    await back.click()
+    await expect(page.getByText('Could not reach Inngest to start the work.').first()).toBeVisible({
+      timeout: 15_000,
+    })
+    await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })
+    await expect(back).toBeVisible()
+
     // Approve the set.
     await page.getByRole('button', { name: 'Approve this set' }).click()
     await expect(page.getByText('Set approved').first()).toBeVisible({ timeout: 15_000 })

@@ -466,6 +466,42 @@ describe('falImageGen', () => {
     expect(sentBody['image_urls']).toEqual(['https://r2.example/a.jpg', 'https://r2.example/b.jpg'])
   })
 
+  it("fal sends its images in the caller's order", async () => {
+    const seen: { url: string; body: Record<string, unknown> }[] = []
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      })
+      return new Response(JSON.stringify({ images: [{ url: 'https://fal.media/files/a.png' }] }), {
+        status: 200,
+      })
+    }) as typeof fetch
+    await falImageGen.generate(
+      {
+        prompt: 'edit it',
+        count: 1,
+        model: 'fal-ai/flux/dev',
+        referenceUrls: ['https://x/base', 'https://x/face'],
+      },
+      { apiKey: 'key', fetchImpl },
+    )
+    expect(seen[0]!.url).toBe(`https://fal.run/${FAL_REFERENCE_MODELS.multi.id}`)
+    expect(seen[0]!.body['image_urls']).toEqual(['https://x/base', 'https://x/face'])
+
+    await falImageGen.generate(
+      {
+        prompt: 'edit it',
+        count: 1,
+        model: 'fal-ai/flux/dev',
+        referenceUrls: ['https://x/base'],
+      },
+      { apiKey: 'key', fetchImpl },
+    )
+    expect(seen[1]!.url).toBe(`https://fal.run/${FAL_REFERENCE_MODELS.single.id}`)
+    expect(seen[1]!.body['image_url']).toBe('https://x/base')
+  })
+
   it('keeps FLUX.2 in its own family: references go to flux-2/edit, not Kontext', async () => {
     let calledUrl = ''
     let sentBody: Record<string, unknown> = {}

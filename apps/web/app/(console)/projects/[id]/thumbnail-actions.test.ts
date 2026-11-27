@@ -1,10 +1,13 @@
 // @vitest-environment node
 
 import {
+  deleteCastMember,
+  dismissCastMember,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getPublishRecord,
   getThumbnailPackage,
+  insertCastMember,
   listThumbnailPackages,
   mergePublishMetadata,
   publishRecords,
@@ -21,6 +24,7 @@ import { db } from '@/lib/db'
 import { publishNow, removeThumbnail, schedulePublish, uploadThumbnail } from './publish-actions'
 import {
   approveThumbnailSet,
+  changeThumbnailPicture,
   generateThumbnailSet,
   makeDefaultThumbnail,
   markTestStarted,
@@ -29,6 +33,7 @@ import {
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
   saveThumbnailPackage,
+  switchThumbnailPicture,
 } from './thumbnail-actions'
 
 /**
@@ -284,6 +289,7 @@ describeDb('the thumbnail actions', () => {
             targetId: FIXTURE_PROJECT_ID,
             mode: 'paint',
             packageId: row.id,
+            baseKey: row.pictureKey,
           },
         }),
       )
@@ -311,6 +317,334 @@ describeDb('the thumbnail actions', () => {
       const row = await addPackage(id, 0, { source: 'uploaded', pictureKey: null })
       expect((await regenerateThumbnailPicture(row.id)).ok).toBe(false)
       expect(inngestSeam.send).not.toHaveBeenCalled()
+    })
+
+    it('regenerate sends the picture it replaces', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: 'the-old-one.png' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+      expect(inngestSeam.send.mock.calls[0]![0].data.baseKey).toBe('the-old-one.png')
+    })
+
+    it('regenerate is refused on a failed package that has a picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { state: 'failed', error: 'Compose failed.' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({
+        ok: false,
+        error: 'Compose this thumbnail again first. It is free.',
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+    })
+
+    it('regenerate still paints a failed package that has no picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: null, composedKey: null, state: 'failed' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      expect(inngestSeam.send.mock.calls[0]![0].data).toMatchObject({
+        mode: 'paint',
+        baseKey: null,
+      })
+    })
+
+    it('regenerate sends a null base key for a package with no picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: null, composedKey: null, state: 'failed' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+      expect(inngestSeam.send.mock.calls[0]![0].data.baseKey).toBeNull()
+    })
+  })
+
+  describe('changeThumbnailPicture', () => {
+    const NO_PICTURE = 'There is no picture to change. Regenerate the picture.'
+    const NOT_COMPOSED = 'Compose this thumbnail again first. It is free.'
+
+    /** The row exactly as stored, for "left as it was". */
+    async function stored(id: string, packageId: string) {
+      return (await listThumbnailPackages(db, id)).find((row) => row.id === packageId)!
+    }
+
+    /** Runs a body with cast members of the fixture project, removing them after. */
+    async function withCast(
+      present: string[],
+      removed: string[],
+      body: () => Promise<void>,
+    ): Promise<void> {
+      const made: string[] = []
+      try {
+        for (const name of [...present, ...removed]) {
+          const member = await insertCastMember(db, {
+            projectId: FIXTURE_PROJECT_ID,
+            name,
+            role: 'a test person',
+          })
+          made.push(member.id)
+          if (removed.includes(name)) await dismissCastMember(db, member.id)
+        }
+        await body()
+      } finally {
+        for (const memberId of made) await deleteCastMember(db, memberId)
+      }
+    }
+
+    it('a change marks the package and sends the note with its base key', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+
+      expect(await changeThumbnailPicture(row.id, '  darker sky ')).toEqual({ ok: true })
+
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      expect(inngestSeam.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'thumbnails/set.requested',
+          data: {
+            projectId: FIXTURE_PROJECT_ID,
+            targetId: FIXTURE_PROJECT_ID,
+            mode: 'change',
+            packageId: row.id,
+            note: 'darker sky',
+            baseKey: row.pictureKey,
+          },
+        }),
+      )
+      expect((await stored(id, row.id)).state).toBe('painting')
+    })
+
+    it('a change is refused without a picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: null, composedKey: null, state: 'failed' })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: NO_PICTURE,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused while the package is being made', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { state: 'painting' })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused while a set is being planned', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await mergePublishMetadata(db, id, { thumbnailSetRequestedAt: new Date().toISOString() })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused for an empty note and for a note past 300 characters', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      expect(await changeThumbnailPicture(row.id, '   ')).toEqual({
+        ok: false,
+        error: 'Write what to change.',
+      })
+      expect(await changeThumbnailPicture(row.id, 'x'.repeat(301))).toEqual({
+        ok: false,
+        error: 'A change is at most 300 characters.',
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused for a cast member the picture does not show', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { depicts: [] })
+      await withCast(['Zelda Quillfeather'], [], async () => {
+        expect(await changeThumbnailPicture(row.id, 'put Zelda Quillfeather on the left')).toEqual({
+          ok: false,
+          error: 'Zelda Quillfeather is not shown in this picture. A change cannot add a person.',
+        })
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused for someone removed from the cast', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { depicts: [] })
+      await withCast([], ['Mortimer Vandersloot'], async () => {
+        expect(await changeThumbnailPicture(row.id, 'add Mortimer Vandersloot behind')).toEqual({
+          ok: false,
+          error: 'Mortimer Vandersloot was removed from the cast.',
+        })
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused on a package that was painted but not composed', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'failed',
+        error: 'Compose failed.',
+        pictureKey: 'p2.png',
+        previousPictureKey: 'p1.png',
+      })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: NOT_COMPOSED,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused on a package whose run died after the picture landed', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'painting',
+        pictureKey: 'p2.png',
+        previousPictureKey: 'p1.png',
+        updatedAt: new Date(Date.now() - 16 * 60_000),
+      })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: NOT_COMPOSED,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a note that is not text is refused', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      for (const note of [undefined, 42]) {
+        expect(await changeThumbnailPicture(row.id, note as unknown as string)).toEqual({
+          ok: false,
+          error: 'Write what to change.',
+        })
+      }
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused on a record that is uploading', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await updatePublishRecord(db, id, { status: 'live' })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: 'This item is already on YouTube — edit it in Studio.',
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change that cannot be requested puts the state back', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { state: 'ready', error: 'old trouble' })
+      inngestSeam.send.mockRejectedValueOnce(new Error('down'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+          ok: false,
+          error: 'Could not reach Inngest to start the work.',
+        })
+      } finally {
+        logged.mockRestore()
+      }
+      const after = await stored(id, row.id)
+      expect(after.state).toBe('ready')
+      expect(after.error).toBe('old trouble')
+    })
+  })
+
+  describe('switchThumbnailPicture', () => {
+    it('back to previous swaps the pictures and composes', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        pictureKey: 'now.png',
+        previousPictureKey: 'before.png',
+      })
+
+      expect(await switchThumbnailPicture(row.id)).toEqual({ ok: true })
+
+      const after = (await listThumbnailPackages(db, id))[0]!
+      expect(after).toMatchObject({
+        pictureKey: 'before.png',
+        previousPictureKey: 'now.png',
+        state: 'painting',
+      })
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      const data = inngestSeam.send.mock.calls[0]![0].data
+      expect(data).toEqual({
+        projectId: FIXTURE_PROJECT_ID,
+        targetId: FIXTURE_PROJECT_ID,
+        mode: 'compose',
+        packageId: row.id,
+      })
+      expect('note' in data).toBe(false)
+      expect('baseKey' in data).toBe(false)
+    })
+
+    it('back to previous is refused without a previous picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      expect(await switchThumbnailPicture(row.id)).toEqual({
+        ok: false,
+        error: 'There is no previous picture.',
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+    })
+
+    it('back to previous is refused while the package is being made', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { state: 'painting', previousPictureKey: 'before.png' })
+      expect(await switchThumbnailPicture(row.id)).toEqual({ ok: false, error: IN_FLIGHT })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+    })
+
+    it('back to previous that cannot be requested swaps back', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'failed',
+        error: 'old trouble',
+        pictureKey: 'now.png',
+        previousPictureKey: 'before.png',
+      })
+      inngestSeam.send.mockRejectedValueOnce(new Error('down'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      try {
+        expect(await switchThumbnailPicture(row.id)).toEqual({
+          ok: false,
+          error: 'Could not reach Inngest to start the work.',
+        })
+      } finally {
+        logged.mockRestore()
+      }
+      expect((await listThumbnailPackages(db, id))[0]).toMatchObject({
+        pictureKey: 'now.png',
+        previousPictureKey: 'before.png',
+        state: 'failed',
+        error: 'old trouble',
+      })
+    })
+
+    it("back to previous on an approved package leaves the record's keys alone", async () => {
+      const id = await recordId()
+      await updatePublishRecord(db, id, { uploadedThumbKeys: ['composed-0.jpg'] })
+      const row = await addPackage(id, 0, {
+        approvedAt: new Date(),
+        pictureKey: 'now.png',
+        previousPictureKey: 'before.png',
+      })
+      expect(await switchThumbnailPicture(row.id)).toEqual({ ok: true })
+      expect((await storedRecord()).uploadedThumbKeys).toEqual(['composed-0.jpg'])
     })
   })
 

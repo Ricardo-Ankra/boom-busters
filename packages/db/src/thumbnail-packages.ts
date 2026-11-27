@@ -262,10 +262,13 @@ export async function replaceUnapprovedGenerated(
       )
       .returning({
         pictureKey: thumbnailPackages.pictureKey,
+        previousPictureKey: thumbnailPackages.previousPictureKey,
         composedKey: thumbnailPackages.composedKey,
       })
     const orphanedKeys = deleted.flatMap((row) =>
-      [row.pictureKey, row.composedKey].filter((key): key is string => key !== null),
+      [row.pictureKey, row.previousPictureKey, row.composedKey].filter(
+        (key): key is string => key !== null,
+      ),
     )
     if (planned.length === 0) return { inserted: [], orphanedKeys }
 
@@ -483,7 +486,7 @@ export async function removeThumbnailPackage(
       await writeApprovedToRecord(tx, removed.publishRecordId, before?.id ?? null)
     }
     return {
-      orphanedKeys: [removed.pictureKey, removed.composedKey].filter(
+      orphanedKeys: [removed.pictureKey, removed.previousPictureKey, removed.composedKey].filter(
         (key): key is string => key !== null,
       ),
     }
@@ -559,6 +562,73 @@ export async function landComposedThumbnail(
       deleteKeys: old !== null && !sameObject && !keys.includes(old) ? [old] : [],
     }
   })
+}
+
+/**
+ * Lands a newly painted picture. Under a lock on the package row, the picture
+ * it replaces becomes `previousPictureKey` and the state goes to `painting`
+ * (the composite follows). The same key rotates nothing. `deleteKeys` are the
+ * objects to remove from storage afterwards: the old previous picture when
+ * neither key of the row names it now, or the new object when the package is gone.
+ */
+export async function landPaintedPicture(
+  db: Database,
+  packageId: string,
+  pictureKey: string,
+): Promise<{ landed: boolean; deleteKeys: string[] }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(thumbnailPackages)
+      .where(eq(thumbnailPackages.id, packageId))
+      .for('update')
+    if (!row) return { landed: false, deleteKeys: [pictureKey] }
+
+    if (row.pictureKey === pictureKey) {
+      await tx
+        .update(thumbnailPackages)
+        .set({ state: 'painting', error: null })
+        .where(eq(thumbnailPackages.id, packageId))
+      return { landed: true, deleteKeys: [] }
+    }
+
+    await tx
+      .update(thumbnailPackages)
+      .set({
+        pictureKey,
+        previousPictureKey: row.pictureKey,
+        state: 'painting',
+        error: null,
+      })
+      .where(eq(thumbnailPackages.id, packageId))
+    const older = row.previousPictureKey
+    const stillNamed = older === pictureKey || older === row.pictureKey
+    return { landed: true, deleteKeys: older !== null && !stillNamed ? [older] : [] }
+  })
+}
+
+/**
+ * Swaps the picture and the previous picture in one statement (Postgres reads
+ * every `SET` expression from the old row). Undefined when there is no previous
+ * picture, or no such package.
+ */
+export async function swapThumbnailPictures(
+  db: Executor,
+  packageId: string,
+  patch: Pick<ThumbnailPackagePatch, 'state' | 'error'> = {},
+): Promise<ThumbnailPackageRow | undefined> {
+  const [row] = await db
+    .update(thumbnailPackages)
+    .set({
+      pictureKey: thumbnailPackages.previousPictureKey,
+      previousPictureKey: thumbnailPackages.pictureKey,
+      ...patch,
+    })
+    .where(
+      and(eq(thumbnailPackages.id, packageId), isNotNull(thumbnailPackages.previousPictureKey)),
+    )
+    .returning()
+  return row
 }
 
 /** The names the approved generated pictures show, so a new plan can avoid repeating them. */

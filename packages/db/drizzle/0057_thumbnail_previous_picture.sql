@@ -1,0 +1,1 @@
+ALTER TABLE "thumbnail_packages" ADD COLUMN "previous_picture_key" text;

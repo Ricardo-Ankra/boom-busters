@@ -12759,3 +12759,67 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      this way. Playwright's launch `logger` carries no browser stderr;
      `DEBUG=pw:browser` in the environment is the way to see it if this
      returns.
+
+485. **Changes to a thumbnail picture** (2026-11-27, owner: "a field that
+     allows us to request changes to the image. So if its 90% there, and we
+     want to make tweaks we can."; branch `worktree-generated-thumbnails`;
+     migration `0057`; design
+     `docs/superpowers/specs/2026-11-27-thumbnail-picture-changes-design.md`).
+     (a) What it does: on a generated package with a picture, the card has a
+     field, "Change the picture", and a "Change picture" button. The stored
+     picture goes to the image model with the owner's note and an instruction
+     to change only what the note names; the headline and mark are set on the
+     result again. The owner chose, on 2026-11-27, to keep the old picture
+     rather than replace it.
+     (b) What travels: the stored picture as a `base` reference, sent first,
+     with the portraits of the people the package depicts. No film stills and
+     no style references, because the picture already carries the setting and
+     the look. The prompt opens with the edit and the note, word for word.
+     (c) Rules on the note: 1 to 300 characters, and the name rule of decision
+     484 (v). A cast member named in the note who is not shown is refused, and
+     so is one removed from the cast. A real person who was never in the cast
+     is held back only by the prompt's closing line.
+     (d) Every paint that replaces a picture keeps the one it replaced in
+     `thumbnail_packages.previous_picture_key` (migration 0057), Regenerate
+     picture included. "Back to previous picture" swaps the two keys and
+     composes again, and buys nothing. Same bytes rotate nothing and delete
+     nothing. Removal also deletes the previous picture's object.
+     (e) The event carries `baseKey`, the package's `picture_key` when the
+     button was pressed. A paint step whose row no longer holds that key
+     buys nothing and goes to the compose. Without it, a retried step would
+     apply the change a second time to the picture it had just made and
+     delete the original. `baseKey` also travels on `paint`, null when the
+     package has no picture yet, and an event without it, sent before the
+     field existed, paints as before.
+     (f) A change that was painted but not composed is not undone: the image
+     was bought and may be the one wanted. The card then offers Compose again
+     and Back to previous picture, both free.
+     (g) Calls made without the owner (design section 8): a note can never add
+     a cast member; the note is not stored on the package. Its first 200
+     characters are in the cost ledger's `meta.change`, the ledger's
+     `meta.prompt` carries the start of the prompt (which holds the note), and
+     the Inngest event's history holds the whole note; on a fal model a change
+     runs on the edit endpoint at its price, as a repaint with portraits does;
+     on Gemini the portraits past 12 MB are left out, and the picture being
+     edited always travels.
+     (h) Left open: no history of pictures beyond one, no preview of the
+     previous picture on the card, and no masked edits. Regenerate picture
+     still paints from the planner's brief, so it discards the changes.
+     (i) Found by the whole-branch review, 2026-11-27. After a change that
+     painted but did not compose, the card still shows the old thumbnail, and
+     a second change or a repaint would have worked on the picture the owner
+     had not seen and deleted the one on screen. Now Change picture needs a
+     `ready` package, and Regenerate picture needs one when the package has a
+     picture. Both are refused with "Compose this thumbnail again first. It is
+     free." and the card holds both buttons back with "Compose again is free.
+     Regenerate picture and Change picture wait for it." Compose again and
+     Back to previous picture stay open as the two ways out. The paint also
+     checks the name rule itself, so it holds whatever sends the event. The
+     review left open: the name rule matches whole names, so a surname alone
+     is not caught; a paint is not stopped when its record went to uploading
+     during a queue wedge, which was true of Regenerate picture before this
+     too; on fal's multi-image edit endpoint nothing marks which image is the
+     one to edit, which matters only if thumbnails are routed at fal; and the
+     e2e suite runs no Inngest, so it proves the card and the refusal, while
+     the paint, the rotation and the swap are proved by the unit, runner,
+     action and database tests.

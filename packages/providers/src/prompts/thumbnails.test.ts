@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FIRST_CHANNEL_IN_USE, THUMBNAIL_IDEAS } from '@boom-busters/schemas'
 import type { PictureBrief } from '@boom-busters/schemas'
 import {
+  buildThumbnailChangePrompt,
   buildThumbnailPicturePrompt,
   buildThumbnailSetRequest,
   mockThumbnailSet,
@@ -278,5 +279,40 @@ describe('buildThumbnailPicturePrompt', () => {
     expect(bare).not.toContain('style reference')
     expect(bare).not.toContain('still')
     expect(bare).not.toContain('Attached')
+  })
+})
+
+describe('buildThumbnailChangePrompt', () => {
+  const base = {
+    note: 'fewer people in the queue',
+    textSide: 'right' as const,
+    styleNote: '',
+    guardrails: [],
+    attached: { people: [] },
+  }
+
+  it('opens with the edit and closes on the rules', () => {
+    expect(buildThumbnailChangePrompt(base)).toBe(
+      'Edit the attached picture. Change only this: fewer people in the queue. Keep everything else as it is: the composition, the framing, the people, the light and the colour. A 16:9 photograph. The right third stays plain and uncluttered, kept clear for a headline. No recognisable real person appears. No text, no letters, no logos, no watermark, no interface elements.',
+    )
+  })
+
+  it('writes the note once, with one full stop', () => {
+    expect(buildThumbnailChangePrompt({ ...base, note: ' darker sky...' })).toContain(
+      'Change only this: darker sky. Keep',
+    )
+  })
+
+  it('names the people shown and the portraits sent', () => {
+    const prompt = buildThumbnailChangePrompt({
+      ...base,
+      styleNote: 'Cold light.',
+      guardrails: [{ name: 'Adam Neumann', guardrail: 'in a dark suit.' }],
+      attached: { people: ['Adam Neumann'] },
+    })
+    expect(prompt).toContain('Adam Neumann: in a dark suit.')
+    expect(prompt).toContain('Attached for likeness: 1 portrait of Adam Neumann.')
+    expect(prompt).toContain('Style: Cold light.')
+    expect(prompt).toContain('No recognisable real person appears other than Adam Neumann.')
   })
 })

@@ -547,3 +547,70 @@ describe('a live Gemini image model the catalogue does not hold (decision 288)',
     ).rejects.toThrow(/does not offer the image model "gemini-9-flash-image"/)
   })
 })
+
+describe('the picture to edit', () => {
+  const base = (n = 1) => ({
+    name: 'The picture to edit',
+    kind: 'base' as const,
+    mimeType: 'image/png' as const,
+    data: `BASE${n}`,
+  })
+  const face = (n: number) => ({
+    name: `face${n}`,
+    kind: 'character' as const,
+    mimeType: 'image/jpeg' as const,
+    data: `FACE${n}`,
+  })
+
+  it('sends the picture to edit first, under its own label', async () => {
+    const calls: { url: string; body: unknown }[] = []
+    await geminiImageGen.generate(
+      {
+        prompt: 'Edit it',
+        count: 1,
+        model: 'gemini-3-pro-image',
+        references: [face(1), base(), face(2)],
+      },
+      { apiKey: 'k', fetchImpl: fetchRecording(calls, IMAGE_REPLY) },
+    )
+    const parts = (calls[0]?.body as { contents: { parts: Record<string, unknown>[] }[] })
+      .contents[0]!.parts
+    expect(parts[0]).toEqual({
+      text: 'Reference image 1 of 3: The picture to edit. Keep everything in it except what the text asks to change.',
+    })
+    expect(parts[1]).toEqual({ inlineData: { mimeType: 'image/png', data: 'BASE1' } })
+    expect(parts[3]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'FACE1' } })
+    expect(parts[5]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'FACE2' } })
+  })
+
+  it('the picture to edit spends no reference budget', async () => {
+    const limit = geminiImageGen.referenceLimits('gemini-3-pro-image').characters
+    const fetchImpl = vi.fn(fetchRecording([], IMAGE_REPLY))
+    await geminiImageGen.generate(
+      {
+        prompt: 'Edit it',
+        count: 1,
+        model: 'gemini-3-pro-image',
+        references: [base(), ...Array.from({ length: limit }, (_, n) => face(n))],
+      },
+      { apiKey: 'k', fetchImpl },
+    )
+    expect(fetchImpl).toHaveBeenCalled()
+  })
+
+  it('refuses two pictures to edit', async () => {
+    const fetchImpl = vi.fn()
+    await expect(
+      geminiImageGen.generate(
+        {
+          prompt: 'Edit it',
+          count: 1,
+          model: 'gemini-3-pro-image',
+          references: [base(1), base(2)],
+        },
+        { apiKey: 'k', fetchImpl },
+      ),
+    ).rejects.toThrow('A request edits one picture; this one carries 2.')
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})

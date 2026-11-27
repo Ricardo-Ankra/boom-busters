@@ -8,11 +8,14 @@ import {
   ensureUploadedPackages,
   getPublishRecord,
   getThumbnailPackage,
+  listCastMembers,
+  listDismissedCastNames,
   listThumbnailPackages,
   makeDefaultPackage,
   publishRecords,
   recordTestOutcome,
   removeThumbnailPackage,
+  swapThumbnailPictures,
   syncApprovedToRecord,
   updatePublishRecord,
   updateThumbnailPackage,
@@ -23,6 +26,7 @@ import {
   PACKAGES_MAX,
   THUMBNAIL_IDEAS,
   UlidSchema,
+  changeNoteIssue,
   packageInFlight,
   setBeingPlanned,
 } from '@boom-busters/schemas'
@@ -57,6 +61,7 @@ import { events } from '@/inngest/events'
 // Words the card shows; copied verbatim from the design and the task brief.
 const SHORT_REFUSAL = "Generated sets are for the full film. A Short's thumbnail is an upload."
 const IN_FLIGHT_REFUSAL = 'A set is being made. Wait for it to finish.'
+const NOT_COMPOSED_REFUSAL = 'Compose this thumbnail again first. It is free.'
 const UNKNOWN_THUMBNAIL = 'Unknown thumbnail'
 const TITLE_MAX = 100
 const HEADLINE_MAX = 60
@@ -94,7 +99,8 @@ const isLoaded = (value: Loaded | ActionResult): value is Loaded => 'row' in val
 /** Sends one event for a package; a failure to reach Inngest is said in words. */
 async function sendPackageEvent(
   loaded: Loaded,
-  mode: 'paint' | 'compose',
+  mode: 'paint' | 'compose' | 'change',
+  extra: { note?: string; baseKey?: string | null } = {},
 ): Promise<ActionResult | null> {
   try {
     await inngest.send(
@@ -103,6 +109,9 @@ async function sendPackageEvent(
         targetId: loaded.record.targetId,
         mode,
         packageId: loaded.row.id,
+        // Only what was given: a compose carries neither key.
+        ...(extra.note === undefined ? {} : { note: extra.note }),
+        ...(extra.baseKey === undefined ? {} : { baseKey: extra.baseKey }),
       }),
     )
     return null
@@ -206,15 +215,97 @@ export async function regenerateThumbnailPicture(packageId: string): Promise<Act
   if (packageInFlight(loaded.row, now) || planning(loaded.record, now)) {
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
+  // A picture the owner has not seen composed must not become the previous one.
+  if (loaded.row.pictureKey !== null && loaded.row.state !== 'ready') {
+    return { ok: false, error: NOT_COMPOSED_REFUSAL }
+  }
 
   // Marked at once, so a second click before the run starts is refused.
   await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
-  const failed = await sendPackageEvent(loaded, 'paint')
+  // The run paints only while the row still holds the picture it was asked to replace.
+  const failed = await sendPackageEvent(loaded, 'paint', { baseKey: loaded.row.pictureKey })
   if (failed) {
     await updateThumbnailPackage(db, packageId, {
       state: loaded.row.state,
       error: loaded.row.error,
     })
+    return failed
+  }
+
+  revalidatePath(`/projects/${loaded.projectId}`)
+  return { ok: true }
+}
+
+/** Asks for a change to a generated package's stored picture, in the owner's words. */
+export async function changeThumbnailPicture(
+  packageId: string,
+  note: string,
+): Promise<ActionResult> {
+  await requireOwner()
+  // A server action takes whatever the client sends.
+  if (typeof note !== 'string') return { ok: false, error: 'Write what to change.' }
+  const loaded = await loadPackage(packageId)
+  if (!isLoaded(loaded)) return loaded
+  const { row } = loaded
+  if (row.source !== 'generated' || row.pictureKey === null) {
+    return { ok: false, error: 'There is no picture to change. Regenerate the picture.' }
+  }
+  const now = new Date()
+  if (packageInFlight(row, now) || planning(loaded.record, now)) {
+    return { ok: false, error: IN_FLIGHT_REFUSAL }
+  }
+  if (row.state !== 'ready') return { ok: false, error: NOT_COMPOSED_REFUSAL }
+
+  // The cast the way the planner vets it: those still in, and those removed.
+  const [cast, dismissed] = await Promise.all([
+    listCastMembers(db, loaded.projectId),
+    listDismissedCastNames(db, loaded.projectId),
+  ])
+  const issue = changeNoteIssue({
+    note,
+    depicts: row.depicts,
+    cast,
+    dismissed: dismissed.map((name) => ({ name })),
+  })
+  if (issue) return { ok: false, error: issue }
+
+  await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
+  const failed = await sendPackageEvent(loaded, 'change', {
+    note: note.trim(),
+    baseKey: row.pictureKey,
+  })
+  if (failed) {
+    await updateThumbnailPackage(db, packageId, { state: row.state, error: row.error })
+    return failed
+  }
+
+  revalidatePath(`/projects/${loaded.projectId}`)
+  return { ok: true }
+}
+
+/**
+ * Puts the previous picture back: the two swap, and the type is set on the one
+ * now in place. The in-flight check before the swap and the compose after it are
+ * what keep the swap safe without a lock.
+ */
+export async function switchThumbnailPicture(packageId: string): Promise<ActionResult> {
+  await requireOwner()
+  const loaded = await loadPackage(packageId)
+  if (!isLoaded(loaded)) return loaded
+  const { row } = loaded
+  if (row.source !== 'generated' || row.previousPictureKey === null) {
+    return { ok: false, error: 'There is no previous picture.' }
+  }
+  const now = new Date()
+  if (packageInFlight(row, now) || planning(loaded.record, now)) {
+    return { ok: false, error: IN_FLIGHT_REFUSAL }
+  }
+
+  const swapped = await swapThumbnailPictures(db, packageId, { state: 'painting', error: null })
+  if (!swapped) return { ok: false, error: 'There is no previous picture.' }
+  const failed = await sendPackageEvent(loaded, 'compose')
+  if (failed) {
+    await swapThumbnailPictures(db, packageId, { state: row.state, error: row.error })
     return failed
   }
 

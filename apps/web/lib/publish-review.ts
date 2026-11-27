@@ -95,6 +95,8 @@ export interface ThumbnailPackageProp {
   hasImage: boolean
   /** The painted picture is stored, so a failed compose can be redone without buying a new one. */
   hasPicture: boolean
+  /** The picture before the last change is kept, so the owner can put it back for free. */
+  hasPrevious: boolean
   result: 'won' | 'lost' | 'same' | 'inconclusive' | null
   watchTimeShare: number | null
   /** The format's required title slots this package's title lacks. */
@@ -663,6 +665,7 @@ async function packagePropsFor(
       url: row.composedKey && options.presign ? await options.presign(row.composedKey) : null,
       hasImage: row.composedKey !== null,
       hasPicture: row.pictureKey !== null,
+      hasPrevious: row.previousPictureKey !== null,
       result: row.result,
       watchTimeShare: row.watchTimeShare,
       slotMisses:

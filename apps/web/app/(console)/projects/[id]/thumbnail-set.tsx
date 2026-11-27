@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import {
   IDEA_LABELS,
   PACKAGES_MAX,
+  PICTURE_CHANGE_MAX,
   THUMBNAIL_IDEAS,
   upcomingDefaultId,
 } from '@boom-busters/schemas'
@@ -29,6 +30,7 @@ import { addWinnerToReferences } from '@/app/(console)/c/[slug]/settings/thumbna
 import { useAction } from './project-controls'
 import {
   approveThumbnailSet,
+  changeThumbnailPicture,
   generateThumbnailSet,
   makeDefaultThumbnail,
   markTestStarted,
@@ -37,6 +39,7 @@ import {
   regenerateThumbnailPicture,
   removeThumbnailPackageAction,
   saveThumbnailPackage,
+  switchThumbnailPicture,
 } from './thumbnail-actions'
 
 /**
@@ -140,6 +143,8 @@ function PackageCard({
   const [title, setTitle] = useDraft(pack.title)
   const [headline, setHeadline] = useDraft(pack.headline)
   const [idea, setIdea] = useDraft(pack.idea ?? '')
+  // The owner's words for a picture change: plain local state, not a stored value.
+  const [note, setNote] = React.useState('')
   const generated = pack.source === 'generated'
   const died = (pack.state === 'planned' || pack.state === 'painting') && !pack.inFlight
   const waiting = locked || pack.inFlight
@@ -161,6 +166,16 @@ function PackageCard({
       'Changes saved',
       `save-${pack.id}`,
     )
+
+  // The field empties only when the request went through; a refusal keeps the words.
+  const requestChange = () =>
+    act(
+      () => changeThumbnailPicture(pack.id, note.trim()),
+      'Changing the picture',
+      `change-${pack.id}`,
+    ).then((ok) => {
+      if (ok) setNote('')
+    })
 
   const otherSide = pack.textSide === 'left' ? 'right' : 'left'
   const misses = pack.slotMisses.map((slot) => SLOT_LABEL[slot])
@@ -273,6 +288,51 @@ function PackageCard({
         </ul>
       ) : null}
 
+      {open && generated && pack.hasPicture ? (
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Change the picture
+            <textarea
+              value={note}
+              rows={2}
+              maxLength={PICTURE_CHANGE_MAX}
+              disabled={waiting}
+              onChange={(event) => setNote(event.target.value)}
+              className={FIELD_CLASS}
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              busy={pressed === `change-${pack.id}`}
+              disabled={waiting || canRecompose || note.trim() === ''}
+              onClick={() => void requestChange()}
+            >
+              Change picture
+            </Button>
+            {pack.hasPrevious ? (
+              <Button
+                variant="outline"
+                busy={pressed === `switch-${pack.id}`}
+                disabled={waiting}
+                onClick={() =>
+                  void act(
+                    () => switchThumbnailPicture(pack.id),
+                    'Putting the previous picture back',
+                    `switch-${pack.id}`,
+                  )
+                }
+              >
+                Back to previous picture
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Change picture buys a new image. Back to previous picture is free.
+          </p>
+        </div>
+      ) : null}
+
       {open ? (
         <div className="flex flex-wrap gap-2">
           {changed ? (
@@ -323,7 +383,7 @@ function PackageCard({
               <Button
                 variant="outline"
                 busy={pressed === `regen-${pack.id}`}
-                disabled={waiting}
+                disabled={waiting || canRecompose}
                 onClick={() =>
                   void act(
                     () => regenerateThumbnailPicture(pack.id),
@@ -337,7 +397,7 @@ function PackageCard({
               </Button>
               {canRecompose ? (
                 <p className="w-full text-[12px] text-[var(--color-text-muted)]">
-                  Compose again is free. Regenerate picture buys a new image.
+                  Compose again is free. Regenerate picture and Change picture wait for it.
                 </p>
               ) : null}
               <Button

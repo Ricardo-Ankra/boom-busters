@@ -108,12 +108,19 @@ export const ThumbnailSettingsSchema = z
   )
 export type ThumbnailSettings = z.infer<typeof ThumbnailSettingsSchema>
 
+/** The longest note the owner can write to ask for a change to a picture. */
+export const PICTURE_CHANGE_MAX = 300
+
 export const ThumbnailSetRequestedSchema = z
   .object({
     projectId: UlidSchema,
     targetId: UlidSchema,
-    mode: z.enum(['set', 'paint', 'compose']),
+    mode: z.enum(['set', 'paint', 'compose', 'change']),
     packageId: UlidSchema.optional(),
+    /** A change: what the owner asked for. Present exactly when the mode is `change`. */
+    note: z.string().trim().min(1).max(PICTURE_CHANGE_MAX).optional(),
+    /** The picture a change starts from, or a paint's pick of one (null: none). Never on set or compose. */
+    baseKey: z.string().min(1).nullable().optional(),
     /** A set run: the stamp of the claim it was sent under. Absent on events sent before it existed. */
     requestedAt: z.string().datetime().optional(),
   })
@@ -121,6 +128,20 @@ export const ThumbnailSetRequestedSchema = z
     message: 'A request for one package needs its id.',
     path: ['packageId'],
   })
+  .refine((value) => (value.mode === 'change') === (value.note !== undefined), {
+    message: 'A note goes with a change, and only a change.',
+    path: ['note'],
+  })
+  .refine(
+    (value) =>
+      value.mode === 'change'
+        ? typeof value.baseKey === 'string'
+        : value.mode === 'paint' || value.baseKey === undefined,
+    {
+      message: 'A change needs its base key; only a paint may carry one otherwise.',
+      path: ['baseKey'],
+    },
+  )
 export type ThumbnailSetRequested = z.infer<typeof ThumbnailSetRequestedSchema>
 
 // ---------------------------------------------------------------------------
@@ -208,14 +229,7 @@ function firstFailure(
     }
   }
   for (const entry of input.dismissed ?? []) {
-    // Back in the cast, or a shorter spelling of someone who is: the rule above owns them.
-    if (
-      input.cast.some(
-        (member) => nameMatches(entry.name, member.name) || namesWholeName(member.name, entry.name),
-      )
-    ) {
-      continue
-    }
+    if (isCastSpelling(entry.name, input.cast)) continue
     if (namesWholeName(described, entry.name)) {
       return `${entry.name} is described in the picture but was removed from the cast.`
     }
@@ -225,6 +239,40 @@ function firstFailure(
     return 'A person package must show someone from the cast.'
   }
 
+  return null
+}
+
+/** Back in the cast, or a shorter spelling of someone who is: the cast rules own them, not the dismissed rule. */
+function isCastSpelling(name: string, cast: { name: string }[]): boolean {
+  return cast.some((member) => nameMatches(name, member.name) || namesWholeName(member.name, name))
+}
+
+/**
+ * Why an owner's note asking for a change to a picture cannot go ahead, or null.
+ * `cast` is not dismissed; `depicts` is who the picture shows.
+ */
+export function changeNoteIssue(input: {
+  note: string
+  depicts: string[]
+  cast: { name: string }[]
+  dismissed?: { name: string }[]
+}): string | null {
+  const note = input.note.trim()
+  if (note.length === 0) return 'Write what to change.'
+  if (note.length > PICTURE_CHANGE_MAX) {
+    return `A change is at most ${PICTURE_CHANGE_MAX} characters.`
+  }
+  const shown = depictedMembers(input.depicts, input.cast)
+  for (const member of input.cast) {
+    if (shown.includes(member)) continue
+    if (namesWholeName(note, member.name)) {
+      return `${member.name} is not shown in this picture. A change cannot add a person.`
+    }
+  }
+  for (const entry of input.dismissed ?? []) {
+    if (isCastSpelling(entry.name, input.cast)) continue
+    if (namesWholeName(note, entry.name)) return `${entry.name} was removed from the cast.`
+  }
   return null
 }
 

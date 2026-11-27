@@ -1626,6 +1626,7 @@ export const thumbnailPackages = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     pictureKey: text('picture_key'),
+    previousPictureKey: text('previous_picture_key'),
     composedKey: text('composed_key'),
     textSide: text('text_side').notNull().default('left'),
     warnings: jsonb('warnings')

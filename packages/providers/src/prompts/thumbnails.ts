@@ -255,8 +255,7 @@ export function buildThumbnailPicturePrompt(input: {
   if (picture.framing.trim() !== '') parts.push(`${picture.framing.trim().replace(/[.]+$/, '')}.`)
 
   for (const guard of input.guardrails) {
-    const text = guard.guardrail.trim()
-    parts.push(`${guard.name}: ${text === '' ? 'shown as themselves.' : text}`)
+    parts.push(guardrailLine(guard))
     if (attached.stills > 0) {
       parts.push(
         `Show ${guard.name} in the setting and situation of the attached film still, not in an invented one.`,
@@ -281,12 +280,53 @@ export function buildThumbnailPicturePrompt(input: {
   }
   if (input.styleNote.trim() !== '') parts.push(`Style: ${input.styleNote.trim()}`)
 
-  if (input.guardrails.length === 0) {
-    parts.push('No recognisable real person appears.')
-  } else {
-    const names = input.guardrails.map((guard) => guard.name).join(', ')
-    parts.push(`No recognisable real person appears other than ${names}.`)
-  }
-  parts.push('No text, no letters, no logos, no watermark, no interface elements.')
+  parts.push(...closingLines(input.guardrails))
   return parts.join(' ')
+}
+
+/**
+ * The text prompt for a change to a stored picture, which travels with it as
+ * the image to edit. It opens with the edit and what stays, because the model
+ * follows the opening of a prompt over its trailing lines, then repeats the
+ * format, the people and the style, and closes on the same rules as a new picture.
+ */
+export function buildThumbnailChangePrompt(input: {
+  note: string
+  textSide: 'left' | 'right'
+  styleNote: string
+  guardrails: { name: string; guardrail: string }[]
+  /** What actually travels with the request, besides the picture to edit. */
+  attached: { people: string[] }
+}): string {
+  const parts: string[] = [
+    'Edit the attached picture.',
+    `Change only this: ${input.note.trim().replace(/[.]+$/, '')}.`,
+    'Keep everything else as it is: the composition, the framing, the people, the light and the colour.',
+    'A 16:9 photograph.',
+    `The ${input.textSide} third stays plain and uncluttered, kept clear for a headline.`,
+  ]
+  for (const guard of input.guardrails) parts.push(guardrailLine(guard))
+  if (input.attached.people.length > 0) {
+    parts.push(
+      `Attached for likeness: ${plural(input.attached.people.length, 'portrait')} of ${input.attached.people.join(', ')}.`,
+    )
+  }
+  if (input.styleNote.trim() !== '') parts.push(`Style: ${input.styleNote.trim()}`)
+  parts.push(...closingLines(input.guardrails))
+  return parts.join(' ')
+}
+
+/** One person's line: what the picture shows of them, or that they appear as themselves. */
+function guardrailLine(guard: { name: string; guardrail: string }): string {
+  const text = guard.guardrail.trim()
+  return `${guard.name}: ${text === '' ? 'shown as themselves.' : text}`
+}
+
+/** The two closing lines every picture prompt ends on. */
+function closingLines(guardrails: { name: string }[]): string[] {
+  const people =
+    guardrails.length === 0
+      ? 'No recognisable real person appears.'
+      : `No recognisable real person appears other than ${guardrails.map((guard) => guard.name).join(', ')}.`
+  return [people, 'No text, no letters, no logos, no watermark, no interface elements.']
 }
