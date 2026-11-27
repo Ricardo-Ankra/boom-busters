@@ -3,6 +3,7 @@ import {
   THUMB_MARK_PLACEMENTS,
   ThumbnailSetRequestedSchema,
   ThumbnailSettingsSchema,
+  changeNoteIssue,
   figuresIn,
   headlineWords,
   packageInFlight,
@@ -421,6 +422,80 @@ describe('ThumbnailSetRequestedSchema requestedAt', () => {
     expect(
       ThumbnailSetRequestedSchema.safeParse({ ...base, requestedAt: 'yesterday' }).success,
     ).toBe(false)
+  })
+})
+
+describe('ThumbnailSetRequestedSchema change', () => {
+  const base = { projectId: ID, targetId: ID2, packageId: ID }
+  const parses = (value: object) => ThumbnailSetRequestedSchema.safeParse(value).success
+
+  it('a change event needs its note and its base key', () => {
+    expect(parses({ ...base, mode: 'change', note: 'darker sky', baseKey: 'k' })).toBe(true)
+    expect(parses({ ...base, mode: 'change', baseKey: 'k' })).toBe(false)
+    expect(parses({ ...base, mode: 'change', note: 'darker sky' })).toBe(false)
+    expect(parses({ ...base, mode: 'change', note: 'darker sky', baseKey: null })).toBe(false)
+  })
+
+  it('only a change carries a note', () => {
+    expect(parses({ ...base, mode: 'paint', note: 'darker sky' })).toBe(false)
+    expect(parses({ ...base, mode: 'compose', baseKey: 'k' })).toBe(false)
+    expect(parses({ projectId: ID, targetId: ID2, mode: 'set', baseKey: 'k' })).toBe(false)
+  })
+
+  it('a paint may carry its base key or none', () => {
+    expect(parses({ ...base, mode: 'paint', baseKey: null })).toBe(true)
+    expect(parses({ ...base, mode: 'paint', baseKey: 'k' })).toBe(true)
+    expect(parses({ ...base, mode: 'paint' })).toBe(true)
+  })
+})
+
+describe('changeNoteIssue', () => {
+  const cast = [{ name: 'Adam Neumann' }, { name: 'Masayoshi Son' }]
+
+  it("checks the note's length", () => {
+    expect(changeNoteIssue({ note: '   ', depicts: [], cast })).toBe('Write what to change.')
+    expect(changeNoteIssue({ note: 'a'.repeat(300), depicts: [], cast })).toBeNull()
+    expect(changeNoteIssue({ note: 'a'.repeat(301), depicts: [], cast })).toBe(
+      'A change is at most 300 characters.',
+    )
+  })
+
+  it('refuses a cast member the picture does not show', () => {
+    expect(
+      changeNoteIssue({
+        note: 'add adam  NEUMANN in the doorway',
+        depicts: ['Masayoshi Son'],
+        cast,
+      }),
+    ).toBe('Adam Neumann is not shown in this picture. A change cannot add a person.')
+  })
+
+  it('lets a shown person be named', () => {
+    expect(
+      changeNoteIssue({
+        note: 'make Adam Neumann look older',
+        depicts: ['Adam Neumann, co-founder of WeWork'],
+        cast,
+      }),
+    ).toBeNull()
+  })
+
+  it('refuses someone removed from the cast', () => {
+    const note = 'put Rebekah Neumann beside him'
+    const dismissed = [{ name: 'Rebekah Neumann' }]
+    expect(changeNoteIssue({ note, depicts: [], cast, dismissed })).toBe(
+      'Rebekah Neumann was removed from the cast.',
+    )
+    const back = [...cast, { name: 'Rebekah Neumann' }]
+    expect(
+      changeNoteIssue({ note, depicts: ['Rebekah Neumann'], cast: back, dismissed }),
+    ).toBeNull()
+  })
+
+  it('a name inside a longer word is not a name', () => {
+    expect(
+      changeNoteIssue({ note: 'add a personal touch', depicts: [], cast: [{ name: 'Son' }] }),
+    ).toBeNull()
   })
 })
 
