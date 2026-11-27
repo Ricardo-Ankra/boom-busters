@@ -12823,3 +12823,52 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      e2e suite runs no Inngest, so it proves the card and the refusal, while
      the paint, the rotation and the swap are proved by the unit, runner,
      action and database tests.
+
+486. **The owner's own brief for a thumbnail picture** (2026-11-27, owner:
+     "what if I want to generate a completely new image, but I get to prompt
+     what it should generate. So if I don't like the generated image at all I
+     can draft my idea of what I want"; branch `worktree-generated-thumbnails`;
+     no migration; design
+     `docs/superpowers/specs/2026-11-27-thumbnail-owner-picture-brief-design.md`).
+     (a) What it does: every generated package that is open shows the brief
+     its picture is painted from in two fields, Picture and Framing, filled
+     with what the package holds. The owner rewrites them and presses
+     Regenerate picture, which stores the brief with the `painting` mark and
+     sends the existing `paint` event. The owner's brief is the package's
+     brief from then on. The owner chose one editable brief over a one-off
+     prompt and over a planner rewrite, and chose that any cast member can be
+     named.
+     (b) Who it shows: one helper, `ownerBrief` in `packages/schemas`, used by
+     the action and by the card. A cast member is shown when the subject or
+     the framing holds their full name as whole words; their names become the
+     package's `depicts`, so their portraits travel. Refused: an empty
+     picture, more than 400 characters in either field, a person removed from
+     the cast, more than five people, and a named person with no portrait.
+     (c) What travels: the portraits of the people shown, the channel's style
+     references in use and the style note. No film stills: any edit empties
+     `stillSlotIds`, because the planner chose them for its own scene. The
+     picture prompt is unchanged, so the owner's words sit inside the fixed
+     frame (16:9, the clear third, no painted text).
+     (d) Calls made without the owner (design section 8): two fields, not one
+     box; only Regenerate picture stores the brief, Save changes never does;
+     any edit drops the film stills; a named person needs a full name and a
+     stored portrait; a "Will show" line under the fields, shown once a field
+     differs from the stored brief; the planner's wording is not kept; the
+     idea label stays as planned, so test results keep counting the package
+     under that idea; and every paint from the brief now refuses one that
+     names a person removed from the cast, where before only the planner's
+     vet and the change note checked.
+     (e) Fields the owner opened and left alone are not a new brief: equal
+     after trimming, the action repaints as before and the stills stay.
+     (f) After a paint that failed on a package with a picture, Regenerate
+     picture still waits for Compose again (decision 485 (i)). A brief the
+     model refuses therefore takes one free press before the next try.
+     (g) If the event cannot be sent, the brief, the people, the state and
+     the error go back to what the row held.
+     (h) The e2e suite runs no Inngest, so its step proves the fields, the
+     Will show line and that a request that cannot be sent puts the stored
+     brief back. The stored brief, the people and the paint are proved by the
+     schema, action, paint and card tests.
+     (i) Left open: no reset to the planner's wording, no history of briefs,
+     a surname alone names nobody, and a real person who was never in the
+     cast is held back only by the prompt's closing line.
