@@ -449,7 +449,8 @@ describeDb('the thumbnail actions', () => {
         const after = await stored(id, row.id)
         expect(after.state).toBe('painting')
         expect(after.error).toBeNull()
-        expect(after.depicts).toEqual(['Adam Neumann'])
+        // Who the picture on screen shows changes only when the new picture lands.
+        expect(after.depicts).toEqual([])
         expect(after.picture).toEqual({
           subject: 'Adam Neumann barefoot on a glass office floor',
           framing: '',
@@ -465,6 +466,27 @@ describeDb('the thumbnail actions', () => {
           packageId: row.id,
           baseKey: 'boom-busters/thumbs/p/a.png',
         })
+      })
+    })
+
+    it('a rewritten brief leaves who the picture on screen shows', async () => {
+      await withCast([{ name: 'Adam Neumann' }, { name: 'Masayoshi Son' }], async () => {
+        const id = await recordId()
+        const row = await planned(id, {
+          depicts: ['Masayoshi Son'],
+          picture: { ...PLANNED, depicts: ['Masayoshi Son'] },
+        })
+
+        expect(
+          await regenerateThumbnailPicture(row.id, {
+            subject: 'Adam Neumann at a desk',
+            framing: '',
+          }),
+        ).toEqual({ ok: true })
+
+        const after = await stored(id, row.id)
+        expect(after.depicts).toEqual(['Masayoshi Son'])
+        expect(after.picture?.depicts).toEqual(['Adam Neumann'])
       })
     })
 
@@ -841,6 +863,57 @@ describeDb('the thumbnail actions', () => {
       })
       expect('note' in data).toBe(false)
       expect('baseKey' in data).toBe(false)
+    })
+
+    it('going back brings back the people that picture shows, and a change answers to them', async () => {
+      const made: string[] = []
+      try {
+        for (const name of ['Adam Neumann', 'Masayoshi Son']) {
+          const member = await insertCastMember(db, {
+            projectId: FIXTURE_PROJECT_ID,
+            name,
+            role: 'a test person',
+          })
+          made.push(member.id)
+        }
+        const id = await recordId()
+        // The picture on screen was painted from the owner's brief and shows Adam
+        // Neumann; the one before it was the planner's and shows Masayoshi Son.
+        const row = await addPackage(id, 0, {
+          pictureKey: 'now.png',
+          previousPictureKey: 'before.png',
+          depicts: ['Adam Neumann'],
+          previousDepicts: ['Masayoshi Son'],
+        })
+
+        expect(await switchThumbnailPicture(row.id)).toEqual({ ok: true })
+
+        expect((await listThumbnailPackages(db, id))[0]).toMatchObject({
+          pictureKey: 'before.png',
+          depicts: ['Masayoshi Son'],
+          previousDepicts: ['Adam Neumann'],
+        })
+
+        // Composed again, the picture of Masayoshi Son is what a change edits.
+        await db
+          .update(thumbnailPackages)
+          .set({ state: 'ready' })
+          .where(eq(thumbnailPackages.id, row.id))
+        expect(await changeThumbnailPicture(row.id, 'make Masayoshi Son smile')).toEqual({
+          ok: true,
+        })
+        expect(await changeThumbnailPicture(row.id, 'x')).toEqual({ ok: false, error: IN_FLIGHT })
+        await db
+          .update(thumbnailPackages)
+          .set({ state: 'ready' })
+          .where(eq(thumbnailPackages.id, row.id))
+        expect(await changeThumbnailPicture(row.id, 'put Adam Neumann beside him')).toEqual({
+          ok: false,
+          error: 'Adam Neumann is not shown in this picture. A change cannot add a person.',
+        })
+      } finally {
+        for (const memberId of made) await deleteCastMember(db, memberId)
+      }
     })
 
     it('back to previous is refused without a previous picture', async () => {

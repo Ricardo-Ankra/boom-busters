@@ -1,0 +1,1 @@
+ALTER TABLE "thumbnail_packages" ADD COLUMN "previous_depicts" text[] DEFAULT '{}'::text[] NOT NULL;

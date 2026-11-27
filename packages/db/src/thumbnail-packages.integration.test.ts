@@ -483,6 +483,81 @@ suite('thumbnail packages', () => {
     })
   })
 
+  it("a new picture's people replace the old, which are kept with their picture", async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'a',
+        depicts: ['Old Person'],
+        previousDepicts: ['Older Person'],
+      })
+
+      await landPaintedPicture(db, row.id, 'b', { depicts: ['New Person'] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
+  it('a picture landed without its people keeps the ones the row holds', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', depicts: ['Old Person'] })
+
+      await landPaintedPicture(db, row.id, 'b')
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        depicts: ['Old Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
+  it('the same key takes the new people and rotates nothing', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'a',
+        previousPictureKey: 'z',
+        depicts: ['Old Person'],
+        previousDepicts: ['Older Person'],
+      })
+
+      await landPaintedPicture(db, row.id, 'a', { depicts: ['New Person'] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'z',
+        depicts: ['New Person'],
+        previousDepicts: ['Older Person'],
+      })
+    })
+  })
+
+  it('the swap takes the people with the pictures', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+
+      expect(await swapThumbnailPictures(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'b',
+        depicts: ['Old Person'],
+        previousDepicts: ['New Person'],
+      })
+      expect(await swapThumbnailPictures(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
   it('a package that is gone lands nothing', async () => {
     expect(await landPaintedPicture(db, '01HQ0000000000000000000000', 'b')).toEqual({
       landed: false,

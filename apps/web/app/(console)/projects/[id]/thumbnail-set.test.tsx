@@ -890,6 +890,25 @@ describe('ThumbnailSet', () => {
       expect(regenerate()).toBeEnabled()
     })
 
+    it('a failed repaint of a painted package keeps its brief and waits for Compose again', async () => {
+      const user = userEvent.setup()
+      const failed = { state: 'failed' as const, error: 'The picture was refused.' }
+      const { rerender } = render(<ThumbnailSet item={one(failed)} busy={false} />)
+      expect(screen.getByText('The picture was refused.')).toBeInTheDocument()
+      expect(picture()).toBeEnabled()
+      expect(framing()).toBeEnabled()
+      expect(regenerate()).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Compose again' })).toBeEnabled()
+
+      await user.clear(picture())
+      await user.type(picture(), 'A vault door left open')
+
+      // Composed again: the old picture is ready, and what was typed is still there to paint.
+      rerender(<ThumbnailSet item={one()} busy={false} />)
+      expect(picture()).toHaveValue('A vault door left open')
+      expect(regenerate()).toBeEnabled()
+    })
+
     it('names someone removed from the cast as nobody', async () => {
       const user = userEvent.setup()
       render(

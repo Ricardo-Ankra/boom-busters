@@ -758,6 +758,113 @@ describeDb('thumbnail set (mock mode)', () => {
         }
       })
 
+      /** Two cast members with a portrait each; the returned function deletes them. */
+      const twoPeople = async () => {
+        const made: string[] = []
+        for (const name of ['Test Person One', 'Test Person Two']) {
+          const member = await insertCastMember(db, {
+            projectId: FIXTURE_PROJECT_ID,
+            name,
+            role: 'Founder',
+          })
+          await setCastPhotos(db, member.id, [{ ...portrait, r2Key: `${name}.jpg` }])
+          made.push(member.id)
+        }
+        return async () => {
+          for (const id of made) await deleteCastMember(db, id)
+        }
+      }
+
+      /**
+       * A composed picture of Test Person Two, on a package whose brief the
+       * owner has since rewritten to show Test Person One.
+       */
+      const rewritten = async () =>
+        db
+          .update(thumbnailPackages)
+          .set({
+            pictureKey: 'boom-busters/thumbs/x/art-old.png',
+            composedKey: 'boom-busters/thumbs/x/old.jpg',
+            state: 'ready',
+            depicts: ['Test Person Two'],
+            picture: {
+              subject: 'Test Person One at a desk',
+              framing: '',
+              textSide: 'left',
+              stillSlotIds: [],
+              depicts: ['Test Person One'],
+            },
+          })
+          .where(eq(thumbnailPackages.id, ids[0]!))
+
+      it('a paint from the brief lands its people and keeps the old ones', async () => {
+        const remove = await twoPeople()
+        try {
+          await rewritten()
+
+          await paintThumbnailPicture(ids[0]!)
+
+          expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+            previousPictureKey: 'boom-busters/thumbs/x/art-old.png',
+            depicts: ['Test Person One'],
+            previousDepicts: ['Test Person Two'],
+          })
+        } finally {
+          await remove()
+        }
+      })
+
+      it('a failed paint from a new brief leaves who the picture shows', async () => {
+        const remove = await twoPeople()
+        try {
+          await rewritten()
+          adapter.generate.mockImplementationOnce(async () => {
+            throw new ContentPolicyError('google', 'the picture was refused')
+          })
+
+          await paintThumbnailPicture(ids[0]!)
+
+          expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+            state: 'failed',
+            pictureKey: 'boom-busters/thumbs/x/art-old.png',
+            depicts: ['Test Person Two'],
+            previousDepicts: [],
+          })
+        } finally {
+          await remove()
+        }
+      })
+
+      it('a change edits the people on screen, not the people the brief names', async () => {
+        const remove = await twoPeople()
+        try {
+          await rewritten()
+
+          await paintThumbnailPicture(ids[0]!, {
+            baseKey: 'boom-busters/thumbs/x/art-old.png',
+            note: 'darker sky',
+          })
+
+          const request = requestOf(0)
+          expect(
+            request.references
+              ?.filter((reference) => reference.kind === 'character')
+              .map((reference) => reference.name),
+          ).toEqual(['Test Person Two'])
+          expect(request.prompt).toContain('1 portrait of Test Person Two')
+          expect(request.prompt).toContain(
+            'No recognisable real person appears other than Test Person Two.',
+          )
+          expect(request.prompt).not.toContain('Test Person One')
+          expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+            depicts: ['Test Person Two'],
+            previousDepicts: ['Test Person Two'],
+          })
+        } finally {
+          await remove()
+        }
+      })
+
       it('a change does not read the brief', async () => {
         const remove = await removedPerson('Zelda Quillfeather')
         try {
@@ -816,9 +923,11 @@ describeDb('thumbnail set (mock mode)', () => {
         })
         await setCastPhotos(db, one.id, [portrait(portraits[0])])
         await setCastPhotos(db, two.id, [portrait(portraits[1])])
+        // As a planned row holds them: the brief's people and the picture's are the same.
         await db
           .update(thumbnailPackages)
           .set({
+            depicts: ['Test Person One', 'Test Person Two'],
             picture: {
               ...planned('figure').picture,
               depicts: ['Test Person One', 'Test Person Two'],

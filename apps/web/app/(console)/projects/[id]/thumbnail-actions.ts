@@ -248,8 +248,10 @@ export async function regenerateThumbnailPicture(
     brief !== undefined &&
     (row.picture === null || subject !== row.picture.subject || framing !== row.picture.framing)
 
+  // Only the brief is written here. Who the picture on screen shows (`depicts`) stays
+  // as it is until the new picture lands: a failed paint, or going back to the
+  // previous picture, must leave the people the stored picture really shows.
   let picture: PictureBrief | null = row.picture
-  let depicts = row.depicts
   if (rewritten) {
     const [cast, dismissed] = await Promise.all([
       listCastMembers(db, loaded.projectId),
@@ -262,7 +264,6 @@ export async function regenerateThumbnailPicture(
       dismissed: dismissed.map((name) => ({ name })),
     })
     if (issue) return { ok: false, error: issue }
-    depicts = shown
     picture = {
       textSide: row.picture?.textSide ?? (row.textSide === 'right' ? 'right' : 'left'),
       subject,
@@ -277,7 +278,7 @@ export async function regenerateThumbnailPicture(
   await updateThumbnailPackage(db, packageId, {
     state: 'painting',
     error: null,
-    ...(rewritten ? { picture, depicts } : {}),
+    ...(rewritten ? { picture } : {}),
   })
   // The run paints only while the row still holds the picture it was asked to replace.
   const failed = await sendPackageEvent(loaded, 'paint', { baseKey: row.pictureKey })
@@ -285,7 +286,7 @@ export async function regenerateThumbnailPicture(
     await updateThumbnailPackage(db, packageId, {
       state: row.state,
       error: row.error,
-      ...(rewritten ? { picture: row.picture, depicts: row.depicts } : {}),
+      ...(rewritten ? { picture: row.picture } : {}),
     })
     return failed
   }

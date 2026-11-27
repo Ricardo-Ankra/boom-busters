@@ -423,7 +423,11 @@ export async function paintThumbnailPicture(
       const removed = dismissedNamed(`${picture.subject} ${picture.framing}`, cast, dismissed)
       if (removed !== null) throw new ValidationError(`${removed} was removed from the cast.`)
     }
-    const depicted = depictedMembers(picture.depicts, cast)
+    // A change edits the picture that is stored, so its people are the row's. A paint
+    // from the brief shows who the brief names; the two differ once the owner has
+    // rewritten the brief and the picture on screen is still an earlier one.
+    const shows = note !== undefined ? row.depicts : picture.depicts
+    const depicted = depictedMembers(shows, cast)
     const stills = (await filmStills(projectId)).filter((still) =>
       picture.stillSlotIds.includes(still.slotId),
     )
@@ -579,7 +583,8 @@ export async function paintThumbnailPicture(
     }
     // The package is ready only once composed; until then it stays painting. The helper
     // keeps the picture it replaced and says which objects no row names any more.
-    const { deleteKeys } = await landPaintedPicture(db, packageId, pictureKey)
+    // Who the new picture shows lands with it: the row's people describe the stored picture.
+    const { deleteKeys } = await landPaintedPicture(db, packageId, pictureKey, { depicts: shows })
     if (!mocked && storageConfigured()) {
       for (const key of deleteKeys) {
         if (!key.includes(`/${MOCK_PREFIX}`)) await deleteObject(key).catch(() => undefined)
