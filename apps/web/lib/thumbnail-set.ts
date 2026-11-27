@@ -38,6 +38,7 @@ import type { ImageReference } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   changeNoteIssue,
+  dismissedNamed,
   depictedMembers,
   IDEA_LABELS,
   MAX_CHARACTER_REFERENCES,
@@ -411,16 +412,16 @@ export async function paintThumbnailPicture(
 
     const limits = live.referenceLimits(route.model)
     const cast = await listCastMembers(db, projectId)
+    const dismissed = (await listDismissedCastNames(db, projectId)).map((name) => ({ name }))
     if (note !== undefined) {
       // The action checks this too; an event sent any other way is checked here, before any buying.
-      const dismissed = await listDismissedCastNames(db, projectId)
-      const issue = changeNoteIssue({
-        note,
-        depicts: row.depicts,
-        cast,
-        dismissed: dismissed.map((name) => ({ name })),
-      })
+      const issue = changeNoteIssue({ note, depicts: row.depicts, cast, dismissed })
       if (issue) throw new ValidationError(issue)
+    } else {
+      // The brief reaches the model word for word, and the owner can write it. Someone
+      // removed from the cast since it was stored must not be painted from it.
+      const removed = dismissedNamed(`${picture.subject} ${picture.framing}`, cast, dismissed)
+      if (removed !== null) throw new ValidationError(`${removed} was removed from the cast.`)
     }
     const depicted = depictedMembers(picture.depicts, cast)
     const stills = (await filmStills(projectId)).filter((still) =>

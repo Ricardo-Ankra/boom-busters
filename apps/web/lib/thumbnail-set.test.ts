@@ -3,6 +3,7 @@
 import {
   costLedger,
   deleteCastMember,
+  dismissCastMember,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getChannelSettings,
@@ -628,6 +629,157 @@ describeDb('thumbnail set (mock mode)', () => {
       await composeThumbnailPackage(ids[0]!)
 
       expect((await getThumbnailPackage(db, ids[0]!))?.state).toBe('ready')
+    })
+
+    describe("an owner's brief", () => {
+      const portrait = {
+        r2Key: 'boom-busters/cast/x/one.jpg',
+        contentHash: 'one',
+        mimeType: 'image/jpeg' as const,
+        width: 100,
+        height: 100,
+        view: 'front' as const,
+      }
+
+      /** Someone the producer removed from the cast; the returned function deletes the row. */
+      const removedPerson = async (name: string) => {
+        const member = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name,
+          role: 'Witness',
+        })
+        await dismissCastMember(db, member.id)
+        return () => deleteCastMember(db, member.id)
+      }
+
+      it("an owner's brief sends portraits and style references and no stills", async () => {
+        const shown = await insertCastMember(db, {
+          projectId: FIXTURE_PROJECT_ID,
+          name: 'Test Person One',
+          role: 'Founder',
+        })
+        try {
+          await setCastPhotos(db, shown.id, [portrait])
+          await setThumbnailSettings({
+            styleNote: '',
+            markPlacement: 'tl',
+            references: [
+              {
+                id: newId(),
+                r2Key: 'boom-busters/thumb-refs/x/a.png',
+                mimeType: 'image/png',
+                note: 'Hard side light',
+                inUse: true,
+              },
+            ],
+          })
+          // The film has a chosen still; the owner's brief names none.
+          tests.slots = [
+            {
+              id: 'slot-1',
+              type: 'still',
+              brief: {
+                type: 'still',
+                coversText: 'x',
+                description: 'A boardroom',
+                motion: { kind: 'static' },
+                transition: 'cut',
+                prompt: 'a boardroom',
+              },
+              candidates: [
+                {
+                  id: 'c',
+                  provider: 'pexels',
+                  kind: 'image',
+                  sourceUrl: 'https://x.test/a.png',
+                  r2Key: 'boom-busters/stills/x/a.png',
+                  licence: 'test',
+                  chosen: true,
+                },
+              ],
+            },
+          ] as unknown as typeof tests.slots
+          await db
+            .update(thumbnailPackages)
+            .set({
+              picture: {
+                subject: 'Test Person One barefoot on a glass office floor',
+                framing: '',
+                textSide: 'left',
+                stillSlotIds: [],
+                depicts: ['Test Person One'],
+              },
+            })
+            .where(eq(thumbnailPackages.id, ids[0]!))
+
+          await paintThumbnailPicture(ids[0]!)
+
+          const request = requestOf(0)
+          expect(request.references?.map((reference) => reference.kind)).toEqual([
+            'character',
+            'style',
+          ])
+          expect(request.prompt).toContain('Test Person One barefoot on a glass office floor.')
+          expect(request.prompt).not.toContain('film still')
+        } finally {
+          await deleteCastMember(db, shown.id)
+        }
+      })
+
+      it('a brief naming someone removed from the cast is not bought', async () => {
+        const remove = await removedPerson('Zelda Quillfeather')
+        try {
+          await db
+            .update(thumbnailPackages)
+            .set({
+              pictureKey: 'boom-busters/thumbs/x/art-old.png',
+              composedKey: 'boom-busters/thumbs/x/old.jpg',
+              state: 'ready',
+              picture: {
+                ...planned('figure').picture,
+                subject: 'A ledger on a desk',
+                framing: 'zelda  quillfeather in the doorway',
+              },
+            })
+            .where(eq(thumbnailPackages.id, ids[0]!))
+
+          await paintThumbnailPicture(ids[0]!)
+
+          expect(adapter.generate).not.toHaveBeenCalled()
+          expect(await thumbnailLedger()).toHaveLength(0)
+          expect(await getThumbnailPackage(db, ids[0]!)).toMatchObject({
+            state: 'failed',
+            error: 'Zelda Quillfeather was removed from the cast.',
+            pictureKey: 'boom-busters/thumbs/x/art-old.png',
+            previousPictureKey: null,
+          })
+        } finally {
+          await remove()
+        }
+      })
+
+      it('a change does not read the brief', async () => {
+        const remove = await removedPerson('Zelda Quillfeather')
+        try {
+          const old = 'boom-busters/thumbs/x/art-old.png'
+          await db
+            .update(thumbnailPackages)
+            .set({
+              pictureKey: old,
+              composedKey: 'boom-busters/thumbs/x/old.jpg',
+              state: 'ready',
+              picture: { ...planned('figure').picture, subject: 'Zelda Quillfeather at a desk' },
+            })
+            .where(eq(thumbnailPackages.id, ids[0]!))
+
+          await paintThumbnailPicture(ids[0]!, { baseKey: old, note: 'darker sky' })
+
+          expect(adapter.generate).toHaveBeenCalledTimes(1)
+          expect((await getThumbnailPackage(db, ids[0]!))?.state).toBe('painting')
+        } finally {
+          await remove()
+        }
+      })
     })
 
     describe('changing a picture', () => {
