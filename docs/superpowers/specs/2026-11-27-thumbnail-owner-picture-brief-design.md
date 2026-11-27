@@ -3,7 +3,8 @@
 Design, 2026-11-27. An addition to generated thumbnails and title sets
 (`2026-11-24-generated-thumbnails-and-title-sets-design.md`, decision 484) and
 to picture changes (`2026-11-27-thumbnail-picture-changes-design.md`,
-decision 485). A small change: no migration, no new event mode.
+decision 485). A small change: no new event mode, and one column added after
+the whole-branch review (section 9).
 
 ## 1. Why
 
@@ -224,3 +225,56 @@ For the owner to check while reading:
    different kind (6.5).
 8. Every paint now refuses a brief that names a person removed from the cast
    (6.3). Today only the planner's vet and the change note check this.
+
+## 9. Found by the whole-branch review, 2026-11-27
+
+This section overrides 6.2, 6.3 and 6.5 where they differ, and the line at
+the top that says there is no migration.
+
+**The gap.** Section 6.2 wrote the people the owner named into the row's
+`depicts` when the paint was asked for, and 6.3 said Change picture needs no
+change. That holds only while the picture on screen is the one painted from
+the owner's brief. It is not after Back to previous picture, and not after a
+paint that failed and a Compose again. In both the card showed people the
+picture does not show, and a paid change would have been checked against the
+wrong people, sent with the wrong portraits, and closed on a line telling the
+model that the person in the picture must not appear. The altered-content
+count of an approved thumbnail reads the same list.
+
+**The rule now.** The row's `depicts` is who the stored picture shows. The
+brief's own `picture.depicts` is who the next paint will show. They are the
+same on a planned row and part ways when the owner rewrites the brief.
+
+- The action writes the brief only. It no longer touches the row's `depicts`.
+- The people land with the picture. `landPaintedPicture` takes who the new
+  picture shows: the brief's people for a paint from the brief, the row's own
+  people for a change. The people of the picture it replaces go to a new
+  column, `previous_depicts`, beside `previous_picture_key`.
+- Back to previous picture swaps the people with the two keys.
+- A change reads the row's people for its name rule, its portraits, its
+  guardrail lines and its closing line.
+- A paint that fails changes nobody.
+
+**Data.** Migration `0058_thumbnail_previous_depicts`: one column,
+`thumbnail_packages.previous_depicts text[] not null default '{}'`. A row
+from before it has an empty list, so going back on such a row shows nobody
+from the cast until its next paint.
+
+**Left open, for the owner.**
+
+1. The brief's text does not travel with its picture. After Back to previous
+   picture, and after a failed paint and a Compose again, the Picture and
+   Framing fields hold the newer brief while an earlier picture is on screen.
+   The fields say what Regenerate picture will paint, as the hint under them
+   states, and the Shows line is right. Keeping one brief per picture needs
+   the brief to travel in the event and land with the picture.
+2. The card works out a refusal it does not show: a brief naming someone
+   removed from the cast reads "Will show: nobody from the cast", and a
+   person with no portrait is listed. The press is refused and nothing is
+   bought.
+3. A rewritten brief keeps the side the planner cleared for the headline. If
+   the owner has since moved the headline with Text left or Text right, the
+   new picture clears the other third. A plain repaint did this before too.
+4. The paint does not check again that a named person still has a portrait.
+5. A name can be read across the two fields: a subject ending in a first
+   name and a framing starting with the surname.
