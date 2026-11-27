@@ -114,6 +114,8 @@ export const ThumbnailSetRequestedSchema = z
     targetId: UlidSchema,
     mode: z.enum(['set', 'paint', 'compose']),
     packageId: UlidSchema.optional(),
+    /** A set run: the stamp of the claim it was sent under. Absent on events sent before it existed. */
+    requestedAt: z.string().datetime().optional(),
   })
   .refine((value) => value.mode === 'set' || value.packageId !== undefined, {
     message: 'A request for one package needs its id.',
@@ -140,6 +142,8 @@ export type VetInput = {
   packages: PlannedPackage[]
   /** Not dismissed. */
   cast: { name: string }[]
+  /** Removed from the cast: never to be described. */
+  dismissed?: { name: string }[]
   /** Verified. */
   claims: { id: string; text: string }[]
   stills: { slotId: string; depicts: string[] }[]
@@ -201,6 +205,19 @@ function firstFailure(
     if (listed.includes(member)) continue
     if (namesWholeName(described, member.name)) {
       return `${member.name} is described in the picture but is not listed as shown.`
+    }
+  }
+  for (const entry of input.dismissed ?? []) {
+    // Back in the cast, or a shorter spelling of someone who is: the rule above owns them.
+    if (
+      input.cast.some(
+        (member) => nameMatches(entry.name, member.name) || namesWholeName(member.name, entry.name),
+      )
+    ) {
+      continue
+    }
+    if (namesWholeName(described, entry.name)) {
+      return `${entry.name} is described in the picture but was removed from the cast.`
     }
   }
 

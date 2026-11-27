@@ -218,7 +218,8 @@ export function mockThumbnailSet(input: {
       title: `[mock] ${stem}, the ${idea} version`,
       headline: `[mock] ${idea}`,
       picture: {
-        subject: `[mock] a ${idea} for ${stem}`,
+        // No stem: a working title that is a cast member's name would trip the name rule.
+        subject: `[mock] a ${idea}`,
         framing: '',
         textSide: index % 2 === 0 ? ('left' as const) : ('right' as const),
         stillSlotIds: [],
@@ -280,7 +281,12 @@ export function buildThumbnailPicturePrompt(input: {
   }
   if (input.styleNote.trim() !== '') parts.push(`Style: ${input.styleNote.trim()}`)
 
-  if (picture.depicts.length === 0) parts.push('No recognisable real person appears.')
+  if (input.guardrails.length === 0) {
+    parts.push('No recognisable real person appears.')
+  } else {
+    const names = input.guardrails.map((guard) => guard.name).join(', ')
+    parts.push(`No recognisable real person appears other than ${names}.`)
+  }
   parts.push('No text, no letters, no logos, no watermark, no interface elements.')
   return parts.join(' ')
 }

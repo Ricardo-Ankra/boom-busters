@@ -221,6 +221,55 @@ describe('vetPlannedPackages', () => {
     expect(viaFraming.kept).toEqual([])
   })
 
+  const removedPicture = () =>
+    pkg({
+      idea: 'moment',
+      picture: {
+        subject: 'Jane Example at a podium',
+        framing: '',
+        textSide: 'left',
+        stillSlotIds: [],
+        depicts: [],
+      },
+    })
+
+  it('drops a picture that describes someone removed from the cast', () => {
+    const out = vetPlannedPackages(
+      input({ packages: [removedPicture()], dismissed: [{ name: 'Jane Example' }] }),
+    )
+    expect(out.kept).toEqual([])
+    expect(out.dropped[0]!.reason).toBe(
+      'Jane Example is described in the picture but was removed from the cast.',
+    )
+  })
+
+  it('a removed name that is also in the cast again is not refused', () => {
+    // Listed as shown and described by name: only the removed-cast rule could refuse it.
+    const shown = pkg({
+      picture: { ...pkg().picture, subject: 'Adam Neumann at a podium' },
+    })
+    const out = vetPlannedPackages(
+      input({ packages: [shown], dismissed: [{ name: 'Adam Neumann' }] }),
+    )
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
+  })
+
+  it('a removed short name does not refuse the cast member whose name holds it', () => {
+    const shown = pkg({
+      picture: { ...pkg().picture, subject: 'Adam Neumann at a podium' },
+    })
+    const out = vetPlannedPackages(input({ packages: [shown], dismissed: [{ name: 'Neumann' }] }))
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
+  })
+
+  it('with no dismissed list the vet behaves as before', () => {
+    const out = vetPlannedPackages(input({ packages: [removedPicture()] }))
+    expect(out.dropped).toEqual([])
+    expect(out.kept).toHaveLength(1)
+  })
+
   it('a title may name someone the picture does not show', () => {
     const out = vetPlannedPackages(
       input({
@@ -354,6 +403,24 @@ describe('ThumbnailSetRequestedSchema', () => {
         packageId: ID,
       }).success,
     ).toBe(true)
+  })
+})
+
+describe('ThumbnailSetRequestedSchema requestedAt', () => {
+  const base = { projectId: ID, targetId: ID2, mode: 'set' as const }
+
+  it('is optional', () => {
+    expect(ThumbnailSetRequestedSchema.safeParse(base).success).toBe(true)
+  })
+
+  it('must be a datetime', () => {
+    expect(
+      ThumbnailSetRequestedSchema.safeParse({ ...base, requestedAt: '2026-11-25T12:00:00.000Z' })
+        .success,
+    ).toBe(true)
+    expect(
+      ThumbnailSetRequestedSchema.safeParse({ ...base, requestedAt: 'yesterday' }).success,
+    ).toBe(false)
   })
 })
 

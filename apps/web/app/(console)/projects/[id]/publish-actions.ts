@@ -13,6 +13,7 @@ import {
   latestRender,
   latestScriptParagraphSources,
   listThumbnailPackages,
+  mergePublishMetadata,
   listCastMembers,
   addUploadedPackage,
   channelForProject,
@@ -98,11 +99,13 @@ import { events } from '@/inngest/events'
 
 export type { ActionResult }
 
-/** Draft fields merged over what the jsonb already holds — never replaced. */
+/**
+ * Draft fields merged over what the jsonb already holds — never replaced. The
+ * merge happens in SQL, so a key another writer put there while this action
+ * waited on a model call (a Generate claim, a set note) is kept.
+ */
 async function mergeDraft(record: PublishRecordRow, patch: Record<string, unknown>): Promise<void> {
-  await updatePublishRecord(db, record.id, {
-    metadata: { ...record.metadata, ...patch },
-  })
+  await mergePublishMetadata(db, record.id, patch)
 }
 
 // ---------------------------------------------------------------------------
@@ -870,11 +873,11 @@ async function requestUpload(
   // event. A runner that fires between the two finds a claimable record.
   // `privacyStatus` is written every time so a failed publish-now that gets
   // re-scheduled onto a slot goes back to private-with-a-moment.
+  await mergePublishMetadata(db, record.id, metadata.data)
   await updatePublishRecord(db, record.id, {
     status: 'draft',
     publishAt,
     privacyStatus,
-    metadata: { ...record.metadata, ...metadata.data },
     error: null,
   })
 

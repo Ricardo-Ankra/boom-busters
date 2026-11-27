@@ -6,6 +6,7 @@ import {
   getPublishRecord,
   getThumbnailPackage,
   listThumbnailPackages,
+  mergePublishMetadata,
   publishRecords,
   requireTestDatabase,
   seed,
@@ -158,6 +159,14 @@ describeDb('the thumbnail actions', () => {
       expect((await storedRecord()).metadata['thumbnailSetRequestedAt']).toEqual(expect.any(String))
     })
 
+    it('sends the stamp of its own claim with the request', async () => {
+      expect(await generateThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+
+      const stamp = (await storedRecord()).metadata['thumbnailSetRequestedAt']
+      expect(stamp).toEqual(expect.any(String))
+      expect(inngestSeam.send.mock.calls[0]![0].data.requestedAt).toBe(stamp)
+    })
+
     it('a failed send releases the claim', async () => {
       inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -210,7 +219,12 @@ describeDb('the thumbnail actions', () => {
       expect(inngestSeam.send).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'thumbnails/set.requested',
-          data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID, mode: 'set' },
+          data: {
+            projectId: FIXTURE_PROJECT_ID,
+            targetId: FIXTURE_PROJECT_ID,
+            mode: 'set',
+            requestedAt: expect.any(String),
+          },
         }),
       )
       const rows = await listThumbnailPackages(db, id)
@@ -362,6 +376,37 @@ describeDb('the thumbnail actions', () => {
       })
     })
 
+    it('a compose that cannot be requested puts the headline and the side back', async () => {
+      inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        headline: 'OLD',
+        textSide: 'left',
+        title: 'Old title',
+        error: 'kept words',
+      })
+      try {
+        expect(
+          await saveThumbnailPackage(row.id, {
+            headline: 'NEW',
+            textSide: 'right',
+            title: 'New title',
+          }),
+        ).toEqual({ ok: false, error: 'Could not reach Inngest to start the work.' })
+      } finally {
+        logged.mockRestore()
+      }
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        state: 'ready',
+        error: 'kept words',
+        headline: 'OLD',
+        textSide: 'left',
+        // A title changed in the same save stays changed.
+        title: 'New title',
+      })
+    })
+
     it('a text-side change recomposes too, and a long headline only warns on the card', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0, { textSide: 'left' })
@@ -495,6 +540,48 @@ describeDb('the thumbnail actions', () => {
         state: 'failed',
         error: 'kept words',
       })
+    })
+  })
+
+  describe('a set being planned (the claim, before any row)', () => {
+    const SIXTEEN_MINUTES = 16 * 60_000
+
+    async function claim(ageMs: number): Promise<void> {
+      await mergePublishMetadata(db, await recordId(), {
+        thumbnailSetRequestedAt: new Date(Date.now() - ageMs).toISOString(),
+      })
+    }
+
+    it('approving is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      await addPackage(id, 0)
+      await claim(1000)
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      await claim(SIXTEEN_MINUTES)
+      expect(await approveThumbnailSet('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+    })
+
+    it('painting a picture again is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await claim(1000)
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: false, error: IN_FLIGHT })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      await claim(SIXTEEN_MINUTES)
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+    })
+
+    it('setting the type again is refused under a fresh claim, and allowed under a stale one', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      await claim(1000)
+      expect(await recomposeThumbnail(row.id)).toEqual({ ok: false, error: IN_FLIGHT })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      await claim(SIXTEEN_MINUTES)
+      expect(await recomposeThumbnail(row.id)).toEqual({ ok: true })
     })
   })
 

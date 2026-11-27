@@ -12711,3 +12711,34 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      told to hold no recognisable real person.
      (r) The reminder skips a test already marked started and a video more than
      fourteen days out.
+     (s) Follow-ups after the merge (2026-11-26, owner: "all the parked fixes
+     that need to be addressed"). Draft saves and the upload request merge
+     their fields into `metadata` in SQL (`mergePublishMetadata`), where they
+     wrote back the whole object from an earlier read. A description written
+     while a set was approved could erase the upload title, a claim or a set
+     note; it no longer can.
+     (t) The Generate event carries the stamp of its claim (`requestedAt`), and
+     a set run plans only while the record holds that stamp. A send that
+     Inngest accepted but reported as failed can no longer buy a second set.
+     A newer claim is never cleared by an older run's failure. A plan step
+     that runs again after its plan landed paints the packages it wrote. An
+     event with no stamp plans as before.
+     (u) Stopping a project gives back its claim and fails its packages in
+     flight with "The project was stopped." (`releaseThumbnailWork`), because
+     `cancelOn` never reaches `onFailure`. A step already running when Stop
+     lands can still write after the release; that work goes stale in fifteen
+     minutes, as before.
+     (v) The name rule also refuses a picture that describes someone removed
+     from the cast, unless that name is in the cast again or is a shorter
+     spelling of someone who is. A picture with someone shown is told that no
+     other recognisable real person appears. A real person who was never in
+     the cast is still held back only by the planner's prompt.
+     (w) A compose that cannot be requested puts the headline and the text side
+     back. Approve, Regenerate picture and Compose again check the planning
+     claim on the server. The mock picture brief no longer carries the project
+     title.
+     (x) Left open: an upload that sleeps for the quota day leaves its record
+     editable, and an edit then changes the thumbnail that goes up but not the
+     title or the description. The record has no marker for "queued", and the
+     fix changes what the upload runner remembers for every upload, so it is
+     its own decision.

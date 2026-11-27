@@ -109,6 +109,39 @@ export async function clearThumbnailSetRequest(
   await mergePublishMetadata(db, publishRecordId, {}, [SET_REQUESTED_KEY])
 }
 
+/**
+ * A stopped project's thumbnail work ends with it: the master record's claim is
+ * given back and every package still planned or painting is failed with the
+ * reason, so Generate is not blocked for fifteen minutes by a run that was
+ * cancelled and will never report. Finished packages are left as they are.
+ */
+export async function releaseThumbnailWork(
+  db: Database,
+  projectId: string,
+  reason: string,
+): Promise<void> {
+  const [record] = await db
+    .select({
+      id: publishRecords.id,
+      claimed: sql<string | null>`${publishRecords.metadata}->>'thumbnailSetRequestedAt'`,
+    })
+    .from(publishRecords)
+    .where(and(eq(publishRecords.targetType, 'master'), eq(publishRecords.targetId, projectId)))
+  if (!record) return
+  // Only a record that holds a claim is written: the clear stamps `updatedAt`,
+  // which a live video's "went public" date can fall back to.
+  if (record.claimed !== null) await clearThumbnailSetRequest(db, record.id)
+  await db
+    .update(thumbnailPackages)
+    .set({ state: 'failed', error: reason, updatedAt: new Date() })
+    .where(
+      and(
+        eq(thumbnailPackages.publishRecordId, record.id),
+        inArray(thumbnailPackages.state, ['planned', 'painting']),
+      ),
+    )
+}
+
 /** Serialise writers of one record's packages: the lock is held to the end of the transaction. */
 async function lockRecord(tx: Tx, publishRecordId: string): Promise<void> {
   await tx

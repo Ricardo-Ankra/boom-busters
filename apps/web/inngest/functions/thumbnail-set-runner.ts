@@ -30,6 +30,8 @@ import { events } from '../events'
  */
 
 const FUNCTION_ID = 'thumbnail-set-runner'
+/** The claim is stamped by the app's clock, a package's `createdAt` may be the database's. */
+const CLOCK_SLACK_MS = 60_000
 
 export const thumbnailSetRunner = inngest.createFunction(
   {
@@ -50,7 +52,15 @@ export const thumbnailSetRunner = inngest.createFunction(
       const message = event.data.error.message
       // A dead set run gives the claim back, or the next Generate waits out the fifteen
       // minutes. A paint or compose run never held it: the claim may be a queued set run's.
-      if (event.data.event.data['mode'] === 'set') await clearThumbnailSetRequest(db, record.id)
+      // A set run sent with a stamp clears the claim only while it is still its own: a
+      // newer press owns a newer claim.
+      if (event.data.event.data['mode'] === 'set') {
+        const sentUnder = event.data.event.data['requestedAt']
+        const held = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+        if (typeof sentUnder !== 'string' || held === sentUnder) {
+          await clearThumbnailSetRequest(db, record.id)
+        }
+      }
       let marked = 0
       for (const row of await listThumbnailPackages(db, record.id)) {
         if (row.state === 'planned' || row.state === 'painting') {
@@ -100,6 +110,25 @@ export const thumbnailSetRunner = inngest.createFunction(
     if (request.mode === 'set') {
       const planned = await step.run('plan', async () => {
         const record = await ensurePublishRecord(db, 'master', request.targetId)
+        // The claim this run was sent under was given back or replaced: planning now would
+        // buy a second set. An event sent before the stamp existed plans as it always did.
+        const held = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+        if (request.requestedAt !== undefined && held !== request.requestedAt) {
+          // A newer press holds the record: this run has nothing to do.
+          if (held !== undefined) return { inserted: [], dropped: [] }
+          // No claim at all. Either it was given back before this run planned, and
+          // there is nothing to paint, or this step is running again after its own
+          // plan landed (the plan's last write clears the claim): then the packages
+          // it wrote are still waiting, and are painted, not planned again.
+          const since = Date.parse(request.requestedAt) - CLOCK_SLACK_MS
+          const waiting = (await listThumbnailPackages(db, record.id)).filter(
+            (row) =>
+              row.source === 'generated' &&
+              row.state === 'planned' &&
+              row.createdAt.getTime() >= since,
+          )
+          return { inserted: waiting.map((row) => row.id), dropped: [] }
+        }
         return planThumbnailSet({ projectId: request.projectId, publishRecordId: record.id })
       })
       for (const packageId of planned.inserted) await finish(packageId, true, true)

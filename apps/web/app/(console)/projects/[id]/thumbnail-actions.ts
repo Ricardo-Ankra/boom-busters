@@ -19,7 +19,13 @@ import {
   visualCredentials,
 } from '@boom-busters/db'
 import type { PublishRecordRow, ThumbnailPackageRow } from '@boom-busters/db'
-import { PACKAGES_MAX, THUMBNAIL_IDEAS, UlidSchema, packageInFlight } from '@boom-busters/schemas'
+import {
+  PACKAGES_MAX,
+  THUMBNAIL_IDEAS,
+  UlidSchema,
+  packageInFlight,
+  setBeingPlanned,
+} from '@boom-busters/schemas'
 import type { TestResult, ThumbnailIdea } from '@boom-busters/schemas'
 import { mockProvidersEnabled } from '@boom-busters/providers'
 import { eq } from 'drizzle-orm'
@@ -54,6 +60,13 @@ const IN_FLIGHT_REFUSAL = 'A set is being made. Wait for it to finish.'
 const UNKNOWN_THUMBNAIL = 'Unknown thumbnail'
 const TITLE_MAX = 100
 const HEADLINE_MAX = 60
+
+/** Whether a Generate claim on this record is fresh: the set is still being planned. */
+function planning(record: PublishRecordRow, now: Date): boolean {
+  // The one key, read on its own: a draft another field makes unreadable still holds its claim.
+  const claimed = (record.metadata as Record<string, unknown>)['thumbnailSetRequestedAt']
+  return setBeingPlanned(typeof claimed === 'string' ? claimed : undefined, now)
+}
 
 const unknownThumbnail = (): ActionResult => ({ ok: false, error: UNKNOWN_THUMBNAIL })
 
@@ -163,7 +176,15 @@ export async function generateThumbnailSet(
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
   try {
-    await inngest.send(events.thumbnailSetRequested.create({ projectId, targetId, mode: 'set' }))
+    // The run plans only while the record still holds this stamp.
+    await inngest.send(
+      events.thumbnailSetRequested.create({
+        projectId,
+        targetId,
+        mode: 'set',
+        requestedAt: now.toISOString(),
+      }),
+    )
   } catch (error) {
     console.error('[thumbnails] could not request the set', error)
     await clearThumbnailSetRequest(db, record.id)
@@ -181,7 +202,10 @@ export async function regenerateThumbnailPicture(packageId: string): Promise<Act
   if (loaded.row.source !== 'generated') {
     return { ok: false, error: 'Only a generated thumbnail has a picture to paint again.' }
   }
-  if (packageInFlight(loaded.row, new Date())) return { ok: false, error: IN_FLIGHT_REFUSAL }
+  const now = new Date()
+  if (packageInFlight(loaded.row, now) || planning(loaded.record, now)) {
+    return { ok: false, error: IN_FLIGHT_REFUSAL }
+  }
 
   // Marked at once, so a second click before the run starts is refused.
   await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
@@ -209,7 +233,10 @@ export async function recomposeThumbnail(packageId: string): Promise<ActionResul
   if (loaded.row.source !== 'generated' || loaded.row.pictureKey === null) {
     return { ok: false, error: 'There is no picture to compose. Regenerate the picture.' }
   }
-  if (packageInFlight(loaded.row, new Date())) return { ok: false, error: IN_FLIGHT_REFUSAL }
+  const now = new Date()
+  if (packageInFlight(loaded.row, now) || planning(loaded.record, now)) {
+    return { ok: false, error: IN_FLIGHT_REFUSAL }
+  }
 
   await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
   const failed = await sendPackageEvent(loaded, 'compose')
@@ -311,7 +338,14 @@ export async function saveThumbnailPackage(
   if (recomposing) {
     const failed = await sendPackageEvent(loaded, 'compose')
     if (failed) {
-      await updateThumbnailPackage(db, packageId, { state: row.state, error: row.error })
+      // The type goes back with the state: a ready row would otherwise keep the new
+      // headline over the old composite.
+      await updateThumbnailPackage(db, packageId, {
+        state: row.state,
+        error: row.error,
+        headline: row.headline,
+        textSide: row.textSide,
+      })
       return failed
     }
   }
@@ -453,7 +487,7 @@ export async function approveThumbnailSet(
 
   const rows = await listThumbnailPackages(db, record.id)
   const now = new Date()
-  if (rows.some((row) => packageInFlight(row, now))) {
+  if (rows.some((row) => packageInFlight(row, now)) || planning(record, now)) {
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
   const fresh = rows.filter(

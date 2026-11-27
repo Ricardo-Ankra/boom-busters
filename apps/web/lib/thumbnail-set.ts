@@ -15,6 +15,7 @@ import {
   ideaResults,
   landComposedThumbnail,
   listCastMembers,
+  listDismissedCastNames,
   listShotSlots,
   listThumbnailPackages,
   mergePublishMetadata,
@@ -193,9 +194,10 @@ export async function planThumbnailSet(input: {
   const frozen: Frozen = requireCompleteBible(await channelForProject(db, projectId))
   const mocked = mockProvidersEnabled()
 
-  const [grounding, members, stills] = await Promise.all([
+  const [grounding, members, dismissed, stills] = await Promise.all([
     metadataGrounding(projectId),
     listCastMembers(db, projectId),
+    listDismissedCastNames(db, projectId),
     filmStills(projectId),
   ])
   // Mock mode needs no real claims: one synthetic claim stands in when the
@@ -261,6 +263,7 @@ export async function planThumbnailSet(input: {
     vetPlannedPackages({
       packages,
       cast: members,
+      dismissed: dismissed.map((name) => ({ name })),
       claims,
       stills,
       heldIdeas: held,

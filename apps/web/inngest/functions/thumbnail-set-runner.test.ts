@@ -78,6 +78,7 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     adapter.generate.mockImplementation(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
     await seed(db)
     recordId = (await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)).id
+    await clearNote()
     await db.delete(thumbnailPackages).where(eq(thumbnailPackages.publishRecordId, recordId))
     await db.delete(costLedger).where(sql`${costLedger.meta}->>'kind' = 'thumbnail'`)
   })
@@ -91,7 +92,12 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
 
   const clearNote = async () => {
     const record = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!
-    const { thumbnailSetNote: _gone, ...rest } = record.metadata as Record<string, unknown>
+    // The claim goes with the note: a test's claim must not reach the next test or another suite.
+    const {
+      thumbnailSetNote: _gone,
+      thumbnailSetRequestedAt: _claim,
+      ...rest
+    } = record.metadata as Record<string, unknown>
     await db.update(publishRecords).set({ metadata: rest }).where(eq(publishRecords.id, record.id))
   }
   const noteOf = async (): Promise<unknown> =>
@@ -107,11 +113,22 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
       opts: { onFailure: (ctx: unknown) => Promise<void> }
     }
   ).opts.onFailure
-  const failure = (message: string, mode: 'set' | 'paint' | 'compose' = 'set') => ({
+  const failure = (
+    message: string,
+    mode: 'set' | 'paint' | 'compose' = 'set',
+    requestedAt?: string,
+  ) => ({
     event: {
       data: {
         error: { message },
-        event: { data: { projectId: FIXTURE_PROJECT_ID, targetId: FIXTURE_PROJECT_ID, mode } },
+        event: {
+          data: {
+            projectId: FIXTURE_PROJECT_ID,
+            targetId: FIXTURE_PROJECT_ID,
+            mode,
+            ...(requestedAt ? { requestedAt } : {}),
+          },
+        },
       },
     },
   })
@@ -136,6 +153,66 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     expect(adapter.generate).toHaveBeenCalledTimes(3)
     expect(rows.every((row) => row.state === 'ready' && row.composedKey !== null)).toBe(true)
     expect(result).toMatchObject({ mode: 'set', packages: 3 })
+  })
+
+  it('a set run whose claim was given back plans nothing', async () => {
+    const { result } = await run({ mode: 'set', requestedAt: '2026-11-25T12:00:00.000Z' })
+
+    expect(await listThumbnailPackages(db, recordId)).toHaveLength(0)
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ mode: 'set', packages: 0 })
+  })
+
+  it('a plan step that runs again after its plan landed paints what it wrote', async () => {
+    // The first attempt stored its packages and cleared the claim; its answer was lost.
+    const requestedAt = new Date(Date.now() - 1000).toISOString()
+    const ids = await seedThree()
+
+    const { result, state } = await run({ mode: 'set', requestedAt })
+
+    expect(Object.keys(state)).toEqual(
+      stepKeys(['plan', ...ids.flatMap((id) => [`paint-${id}`, `compose-${id}`])]),
+    )
+    expect(adapter.generate).toHaveBeenCalledTimes(3)
+    const rows = await listThumbnailPackages(db, recordId)
+    expect(rows.map((row) => row.id)).toEqual(ids)
+    expect(rows.every((row) => row.state === 'ready')).toBe(true)
+    expect(result).toMatchObject({ mode: 'set', packages: 3 })
+  })
+
+  it('packages planned before the claim are not picked up by a run that lost its claim', async () => {
+    await seedThree()
+
+    const { result } = await run({
+      mode: 'set',
+      requestedAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    })
+
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ packages: 0 })
+  })
+
+  it('a set run whose claim was replaced plans nothing', async () => {
+    const newer = '2026-11-25T12:05:00.000Z'
+    await mergePublishMetadata(db, recordId, { thumbnailSetRequestedAt: newer })
+
+    const { result } = await run({ mode: 'set', requestedAt: '2026-11-25T12:00:00.000Z' })
+
+    expect(await listThumbnailPackages(db, recordId)).toHaveLength(0)
+    expect(adapter.generate).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ packages: 0 })
+    const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+    expect(metadata['thumbnailSetRequestedAt']).toBe(newer)
+  })
+
+  it('a set run under its own claim plans', async () => {
+    const stamp = new Date().toISOString()
+    await mergePublishMetadata(db, recordId, { thumbnailSetRequestedAt: stamp })
+
+    const { result } = await run({ mode: 'set', requestedAt: stamp })
+
+    expect(await listThumbnailPackages(db, recordId)).toHaveLength(3)
+    expect(result).toMatchObject({ packages: 3 })
   })
 
   it('paint mode touches one package', async () => {
@@ -212,6 +289,26 @@ describeDb('thumbnail-set-runner (mock mode)', () => {
     })
 
     await onFailure(failure('The planner was unreachable.'))
+
+    const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+    expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()
+  })
+
+  it('a failed set run leaves a newer claim alone', async () => {
+    const newer = new Date().toISOString()
+    await mergePublishMetadata(db, recordId, { thumbnailSetRequestedAt: newer })
+
+    await onFailure(failure('The planner was unreachable.', 'set', '2026-11-25T12:00:00.000Z'))
+
+    const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
+    expect(metadata['thumbnailSetRequestedAt']).toBe(newer)
+  })
+
+  it('a failed set run clears its own claim', async () => {
+    const stamp = new Date().toISOString()
+    await mergePublishMetadata(db, recordId, { thumbnailSetRequestedAt: stamp })
+
+    await onFailure(failure('The planner was unreachable.', 'set', stamp))
 
     const metadata = (await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))!.metadata
     expect(metadata['thumbnailSetRequestedAt']).toBeUndefined()

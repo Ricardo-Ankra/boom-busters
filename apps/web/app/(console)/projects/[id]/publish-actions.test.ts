@@ -10,14 +10,17 @@ import {
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
   getPublishRecord,
+  insertRender,
   insertShort,
   insertTimeline,
+  mergePublishMetadata,
   listCastMembers,
   recordChannelYoutubeVerify,
   saveChannelYoutubeConnection,
   updatePublishRecord,
   projects,
   publishRecords,
+  renders,
   requireTestDatabase,
   saveChapter,
   scripts,
@@ -77,6 +80,7 @@ vi.mock('@/lib/youtube', async (importOriginal) => ({
 }))
 const callLlm = vi.hoisted(() => vi.fn())
 const creditsSeam = vi.hoisted(() => ({ calls: 0, failOn: 0 }))
+const readSeam = vi.hoisted(() => ({ after: undefined as undefined | (() => Promise<void>) }))
 const credentialSeam = vi.hoisted(() => ({ fail: false, message: 'the credential store is down' }))
 vi.mock('@boom-busters/db', async (importOriginal) => {
   const original = await importOriginal<typeof DbModule>()
@@ -87,6 +91,13 @@ vi.mock('@boom-busters/db', async (importOriginal) => {
       creditsSeam.calls += 1
       if (creditsSeam.calls === creditsSeam.failOn) throw new Error('the ledger is unreachable')
       return original.vidiqCreditsThisMonth(...args)
+    },
+    // Runs once, after an action has read its record: another writer's turn.
+    latestTimeline: async (...args: Parameters<typeof original.latestTimeline>) => {
+      const hook = readSeam.after
+      readSeam.after = undefined
+      await hook?.()
+      return original.latestTimeline(...args)
     },
     vidiqCredential: (...args: Parameters<typeof original.vidiqCredential>) => {
       if (credentialSeam.fail) throw new Error(credentialSeam.message)
@@ -357,6 +368,24 @@ describeDb('the search description (decision 303)', () => {
       // The film's opening is another paragraph; it is not this Short.
       expect(sent).not.toContain('EY refused to sign the accounts')
     }
+  })
+
+  it('a description written while a set was claimed keeps the claim', async () => {
+    await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    const stamp = new Date().toISOString()
+    // The model call is the slow part: a Generate press lands while it runs.
+    callLlm.mockImplementationOnce(async () => {
+      const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      await mergePublishMetadata(db, record.id, { thumbnailSetRequestedAt: stamp })
+      return { text: DESCRIPTION }
+    })
+
+    expect(await generateDescription('master', FIXTURE_PROJECT_ID)).toEqual({ ok: true })
+
+    expect((await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID))?.metadata).toMatchObject({
+      thumbnailSetRequestedAt: stamp,
+      descriptionBody: 'How Wirecard, the German payments company, collapsed in June 2020.',
+    })
   })
 
   it('stamps an opening the owner rewrites, and leaves the stamp when only the tags change', async () => {
@@ -1227,6 +1256,37 @@ describeDb('a Test & Compare that is running', () => {
     const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
     expect(await schedulePublish('master', FIXTURE_PROJECT_ID, later)).toEqual(refusal)
     expect(await publishNow('master', FIXTURE_PROJECT_ID)).toEqual(refusal)
+  })
+
+  it('scheduling keeps a set note written meanwhile', async () => {
+    const record = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await updatePublishRecord(db, record.id, { uploadedThumbKeys: ['boom-busters/thumbs/a.png'] })
+    const render = await insertRender(db, {
+      projectId: FIXTURE_PROJECT_ID,
+      timelineVersion: 1,
+      kind: 'master',
+    })
+    await db
+      .update(renders)
+      .set({ status: 'done', outputS3Key: 'boom-busters/renders/master.mp4' })
+      .where(eq(renders.id, render.id))
+    // The note lands after the action has read the record.
+    readSeam.after = async () => {
+      await mergePublishMetadata(db, record.id, { thumbnailSetNote: 'Keep the red one.' })
+    }
+    const later = new Date(Date.now() + 3 * 86_400_000).toISOString()
+
+    try {
+      await schedulePublish('master', FIXTURE_PROJECT_ID, later)
+
+      const stored = await getPublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+      expect(stored?.publishAt).not.toBeNull()
+      expect(stored?.metadata).toMatchObject({ thumbnailSetNote: 'Keep the red one.' })
+    } finally {
+      // The fixture project is shared: its finished render must not outlive the test.
+      readSeam.after = undefined
+      await db.delete(renders).where(eq(renders.id, render.id))
+    }
   })
 
   it('unlinking a video clears its test stamps and frees a new upload', async () => {

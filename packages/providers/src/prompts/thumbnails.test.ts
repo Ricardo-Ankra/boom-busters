@@ -151,6 +151,23 @@ describe('mockThumbnailSet', () => {
       mockThumbnailSet({ workingTitle: 'x', places: 2, heldIdeas: [], claimIds: ['c1'] }),
     ).toHaveLength(2)
   })
+
+  it('the mock subject never holds the working title', () => {
+    const set = mockThumbnailSet({
+      workingTitle: 'Jane Example',
+      places: 3,
+      heldIdeas: [],
+      claimIds: ['c1'],
+    })
+    expect(set).toHaveLength(3)
+    for (const p of set) {
+      expect(p.picture.subject).toBe(`[mock] a ${p.idea}`)
+      expect(p.picture.subject).not.toContain('Jane Example')
+      // The angle and the title keep the stem.
+      expect(p.angle).toContain('Jane Example')
+      expect(p.title).toContain('Jane Example')
+    }
+  })
 })
 
 describe('buildThumbnailPicturePrompt', () => {
@@ -200,6 +217,33 @@ describe('buildThumbnailPicturePrompt', () => {
     expect(none).toContain(sentence)
     expect(none.indexOf(sentence)).toBe(none.indexOf(closing) - sentence.length - 1)
     expect(prompt).not.toContain(sentence)
+  })
+
+  it('names the people it may show, and nobody else', () => {
+    const one = buildThumbnailPicturePrompt({
+      picture,
+      styleNote: '',
+      guardrails: [{ name: 'Emad Mostaque', guardrail: 'Show him as a man in a suit.' }],
+      attached: { people: ['Emad Mostaque'], stills: 0, styles: 0 },
+    })
+    const sentence = 'No recognisable real person appears other than Emad Mostaque.'
+    const closing = 'No text, no letters, no logos, no watermark, no interface elements.'
+    expect(one).toContain(sentence)
+    expect(one.indexOf(sentence)).toBe(one.indexOf(closing) - sentence.length - 1)
+
+    const two = buildThumbnailPicturePrompt({
+      picture,
+      styleNote: '',
+      guardrails: [
+        { name: 'Emad Mostaque', guardrail: '' },
+        { name: 'Prem Akkaraju', guardrail: '' },
+      ],
+      attached: { people: [], stills: 0, styles: 0 },
+    })
+    expect(two).toContain(
+      'No recognisable real person appears other than Emad Mostaque, Prem Akkaraju.',
+    )
+    expect(two).not.toContain('No recognisable real person appears.')
   })
 
   it('ties a shown person to the film still', () => {

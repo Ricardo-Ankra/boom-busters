@@ -12,8 +12,12 @@ import {
   deleteProject,
   ensureRun,
   getRender,
+  ensurePublishRecord,
+  getPublishRecord,
   insertRender,
   listShotSlots,
+  mergePublishMetadata,
+  publishRecords,
   replaceShotList,
   requireTestDatabase,
   saveChapter,
@@ -33,6 +37,7 @@ import {
   FIRST_CHANNEL_BIBLE,
   newId,
 } from '@boom-busters/schemas'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as BrokerModule from '@/lib/broker'
 import { db } from '@/lib/db'
@@ -307,6 +312,21 @@ describeDb('stopping a master rendered in parts', () => {
     expect(called).toEqual([parts[0]!.renderId, parts[1]!.renderId].sort())
     expect(called).not.toContain(row.id)
     expect((await getRender(db, row.id))?.status).toBe('cancelled')
+  })
+
+  it('stopping a project gives back a thumbnail claim', async () => {
+    const record = await ensurePublishRecord(db, 'master', projectId)
+    await mergePublishMetadata(db, record.id, { thumbnailSetRequestedAt: new Date().toISOString() })
+
+    try {
+      expect((await stopProject(projectId)).ok).toBe(true)
+
+      const stored = await getPublishRecord(db, 'master', projectId)
+      expect(stored?.metadata['thumbnailSetRequestedAt']).toBeUndefined()
+    } finally {
+      // Deleting the project does not take its publish record with it.
+      await db.delete(publishRecords).where(eq(publishRecords.id, record.id))
+    }
   })
 
   it('settles the reservation at the parts that ran, not the full estimate', async () => {

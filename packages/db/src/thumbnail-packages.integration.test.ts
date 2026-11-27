@@ -24,6 +24,7 @@ import {
   makeDefaultPackage,
   recordTestOutcome,
   recordsAwaitingTestReminder,
+  releaseThumbnailWork,
   removeThumbnailPackage,
   replaceUnapprovedGenerated,
   landComposedThumbnail,
@@ -837,6 +838,47 @@ suite('thumbnail packages', () => {
         await claimThumbnailSetRequest(db, record.id, new Date(Date.now() + 16 * 60_000)),
       ).toBe(true)
     })
+  })
+
+  it('releasing a project gives back the claim and fails what is in flight', async () => {
+    await withRecord(async (record) => {
+      await mergePublishMetadata(db, record.id, {
+        title: 'Kept',
+        thumbnailSetRequestedAt: new Date().toISOString(),
+      })
+      const planned = await seedRow(record.id, 0, { state: 'planned' })
+      const painting = await seedRow(record.id, 1, { state: 'painting' })
+      const ready = await seedRow(record.id, 2, { state: 'ready' })
+
+      await releaseThumbnailWork(db, record.targetId, 'The project was stopped.')
+
+      const metadata = (await getPublishRecord(db, 'master', record.targetId))!.metadata
+      expect(metadata).toEqual({ title: 'Kept' })
+      for (const id of [planned.id, painting.id]) {
+        expect(await getThumbnailPackage(db, id)).toMatchObject({
+          state: 'failed',
+          error: 'The project was stopped.',
+        })
+      }
+      expect(await getThumbnailPackage(db, ready.id)).toMatchObject({ state: 'ready', error: null })
+    })
+  })
+
+  it('releasing a project that holds no claim leaves its record as it was', async () => {
+    await withRecord(async (record) => {
+      const before = (await getPublishRecord(db, 'master', record.targetId))!.updatedAt
+
+      await releaseThumbnailWork(db, record.targetId, 'The project was stopped.')
+
+      const after = (await getPublishRecord(db, 'master', record.targetId))!.updatedAt
+      expect(after).toEqual(before)
+    })
+  })
+
+  it('releasing a project with no publish record does not throw', async () => {
+    await expect(
+      releaseThumbnailWork(db, '01JZZZZZZZZZZZZZZZZZZZZZZZ', 'The project was stopped.'),
+    ).resolves.toBeUndefined()
   })
 
   it('merges a metadata patch without replacing the rest', async () => {
