@@ -361,6 +361,7 @@ describeDb('publishModel thumbnail packages', () => {
           inFlight: false,
           hasImage: true,
           hasPicture: false,
+          hasPrevious: false,
           slotMisses: [],
           url: 'https://signed.example/boom-busters/thumbs/p/legacy.png',
         },
@@ -373,6 +374,37 @@ describeDb('publishModel thumbnail packages', () => {
         expect(item.studioUrl).toBeNull()
         expect(item.styleReferencesLeftOut).toBeNull()
       }
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
+  it('a package with a previous picture maps to hasPrevious', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await db.insert(thumbnailPackages).values([
+      {
+        publishRecordId: master.id,
+        position: 0,
+        source: 'generated',
+        pictureKey: 'boom-busters/thumbs/p/art-new.png',
+        previousPictureKey: 'boom-busters/thumbs/p/art-old.png',
+      },
+      {
+        publishRecordId: master.id,
+        position: 1,
+        source: 'generated',
+        pictureKey: 'boom-busters/thumbs/p/art-only.png',
+      },
+    ])
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.record?.packages).toMatchObject([
+        { position: 0, hasPicture: true, hasPrevious: true },
+        { position: 1, hasPicture: true, hasPrevious: false },
+      ])
     } finally {
       await db.delete(publishRecords)
     }

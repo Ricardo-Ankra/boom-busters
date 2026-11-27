@@ -24,6 +24,8 @@ const saveThumbnailPackage = vi.fn()
 const makeDefaultThumbnail = vi.fn()
 const removeThumbnailPackageAction = vi.fn()
 const approveThumbnailSet = vi.fn()
+const changeThumbnailPicture = vi.fn()
+const switchThumbnailPicture = vi.fn()
 const markTestStarted = vi.fn()
 const recordTestResult = vi.fn()
 vi.mock('./thumbnail-actions', () => ({
@@ -36,6 +38,8 @@ vi.mock('./thumbnail-actions', () => ({
   makeDefaultThumbnail: (...args: unknown[]) => makeDefaultThumbnail(...args),
   removeThumbnailPackageAction: (...args: unknown[]) => removeThumbnailPackageAction(...args),
   approveThumbnailSet: (...args: unknown[]) => approveThumbnailSet(...args),
+  changeThumbnailPicture: (...args: unknown[]) => changeThumbnailPicture(...args),
+  switchThumbnailPicture: (...args: unknown[]) => switchThumbnailPicture(...args),
 }))
 
 const addWinnerToReferences = vi.fn()
@@ -61,6 +65,8 @@ beforeEach(() => {
     makeDefaultThumbnail,
     removeThumbnailPackageAction,
     approveThumbnailSet,
+    changeThumbnailPicture,
+    switchThumbnailPicture,
     markTestStarted,
     recordTestResult,
     addWinnerToReferences,
@@ -91,6 +97,7 @@ function pack(over: Partial<ThumbnailPackageProp> = {}): ThumbnailPackageProp {
     url: 'https://r2.example/a.jpg',
     hasImage: true,
     hasPicture: true,
+    hasPrevious: false,
     result: null,
     watchTimeShare: null,
     slotMisses: [],
@@ -621,6 +628,123 @@ describe('ThumbnailSet', () => {
     expect(
       screen.getByText('Reference thumbnails were left out: Gemini 3 Pro Image takes none.'),
     ).toBeInTheDocument()
+  })
+
+  describe('a change of picture', () => {
+    const one = (over: Partial<ThumbnailPackageProp> = {}, rec: Partial<PublishRecordProp> = {}) =>
+      item({ record: record({ packages: [pack(over)], ...rec }) })
+    const ID = '01HQ00000000000000000000K1'
+    const HINT = 'Change picture buys a new image. Back to previous picture is free.'
+
+    it('a generated package with a picture offers a change', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      const field = screen.getByRole('textbox', { name: 'Change the picture' })
+      expect(field).toHaveAttribute('maxlength', '300')
+      expect(screen.getByText(HINT)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Change picture' })).toBeDisabled()
+      await user.type(field, 'darker sky')
+      const button = screen.getByRole('button', { name: 'Change picture' })
+      expect(button).toBeEnabled()
+      await user.click(button)
+      expect(changeThumbnailPicture).toHaveBeenCalledWith(ID, 'darker sky')
+    })
+
+    it('a note of spaces alone does not enable the change', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      await user.type(screen.getByRole('textbox', { name: 'Change the picture' }), '   ')
+      expect(screen.getByRole('button', { name: 'Change picture' })).toBeDisabled()
+    })
+
+    it('the note empties when the change is requested', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={one()} busy={false} />)
+      const field = screen.getByRole('textbox', { name: 'Change the picture' })
+      await user.type(field, 'darker sky')
+      await user.click(screen.getByRole('button', { name: 'Change picture' }))
+      await vi.waitFor(() => expect(field).toHaveValue(''))
+      expect(toast).toHaveBeenCalledWith({ title: 'Changing the picture' })
+    })
+
+    it('the note stays when the change is refused', async () => {
+      const user = userEvent.setup()
+      changeThumbnailPicture.mockResolvedValue({ ok: false, error: 'No budget left.' })
+      render(<ThumbnailSet item={one()} busy={false} />)
+      const field = screen.getByRole('textbox', { name: 'Change the picture' })
+      await user.type(field, 'darker sky')
+      await user.click(screen.getByRole('button', { name: 'Change picture' }))
+      await vi.waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({ description: 'No budget left.', variant: 'error' }),
+        ),
+      )
+      expect(field).toHaveValue('darker sky')
+    })
+
+    it('has no change field without a stored picture', () => {
+      render(<ThumbnailSet item={one({ hasPicture: false })} busy={false} />)
+      expect(screen.queryByRole('textbox', { name: 'Change the picture' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Change picture' })).toBeNull()
+      expect(screen.queryByText(HINT)).toBeNull()
+    })
+
+    it('back to previous shows only with a previous picture', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<ThumbnailSet item={one()} busy={false} />)
+      expect(screen.queryByRole('button', { name: 'Back to previous picture' })).toBeNull()
+      rerender(<ThumbnailSet item={one({ hasPrevious: true })} busy={false} />)
+      await user.click(screen.getByRole('button', { name: 'Back to previous picture' }))
+      expect(switchThumbnailPicture).toHaveBeenCalledWith(ID)
+      expect(toast).toHaveBeenCalledWith({ title: 'Putting the previous picture back' })
+    })
+
+    it('a painted change that did not compose offers both ways out', () => {
+      render(
+        <ThumbnailSet
+          item={one({
+            state: 'failed',
+            error: 'Compose failed.',
+            hasPicture: true,
+            hasPrevious: true,
+          })}
+          busy={false}
+        />,
+      )
+      expect(screen.getByRole('button', { name: 'Compose again' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeInTheDocument()
+    })
+
+    it('an uploaded thumbnail has no change field', () => {
+      render(
+        <ThumbnailSet
+          item={one({ source: 'uploaded', idea: null, hasPrevious: true })}
+          busy={false}
+        />,
+      )
+      expect(screen.queryByRole('textbox', { name: 'Change the picture' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Change picture' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Back to previous picture' })).toBeNull()
+    })
+
+    it('a closed record has no change field', () => {
+      render(
+        <ThumbnailSet
+          item={one({ approved: true, hasPrevious: true }, { status: 'scheduled' })}
+          busy={false}
+        />,
+      )
+      expect(screen.queryByRole('textbox', { name: 'Change the picture' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Change picture' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Back to previous picture' })).toBeNull()
+    })
+
+    it('the change waits while the package is being made', () => {
+      render(<ThumbnailSet item={one({ inFlight: true, hasPrevious: true })} busy={false} />)
+      expect(screen.getByRole('textbox', { name: 'Change the picture' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Change picture' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeDisabled()
+    })
   })
 
   describe('editing', () => {
