@@ -400,6 +400,13 @@
       "when": 1795625292882,
       "tag": "0056_thumbnail_packages",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1795792467133,
+      "tag": "0057_thumbnail_previous_picture",
+      "breakpoints": true
     }
   ]
 }

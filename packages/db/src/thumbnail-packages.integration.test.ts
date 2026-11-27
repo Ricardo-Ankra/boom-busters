@@ -28,6 +28,8 @@ import {
   removeThumbnailPackage,
   replaceUnapprovedGenerated,
   landComposedThumbnail,
+  landPaintedPicture,
+  swapThumbnailPictures,
   syncApprovedToRecord,
   updateThumbnailPackage,
 } from './thumbnail-packages'
@@ -407,6 +409,147 @@ suite('thumbnail packages', () => {
       expect(await storedKeys(record.id)).toEqual(['k0.jpg'])
       expect(await getThumbnailPackage(db, second.id)).toBeUndefined()
       expect(await removeThumbnailPackage(db, second.id)).toBeUndefined()
+    })
+  })
+
+  it('a new picture keeps the one it replaced', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', state: 'ready', error: 'old' })
+
+      expect(await landPaintedPicture(db, row.id, 'b')).toEqual({ landed: true, deleteKeys: [] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        state: 'painting',
+        error: null,
+      })
+    })
+  })
+
+  it('the older previous picture is named for deletion', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', previousPictureKey: 'z' })
+
+      expect(await landPaintedPicture(db, row.id, 'b')).toEqual({
+        landed: true,
+        deleteKeys: ['z'],
+      })
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+      })
+    })
+  })
+
+  it('the same key rotates nothing', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', previousPictureKey: 'z' })
+
+      expect(await landPaintedPicture(db, row.id, 'a')).toEqual({ landed: true, deleteKeys: [] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'z',
+        state: 'painting',
+        error: null,
+      })
+    })
+  })
+
+  it('a picture that returns to an earlier key deletes nothing still named', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', previousPictureKey: 'z' })
+
+      expect(await landPaintedPicture(db, row.id, 'z')).toEqual({ landed: true, deleteKeys: [] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'z',
+        previousPictureKey: 'a',
+      })
+    })
+  })
+
+  it('a first picture has no previous', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: null })
+
+      expect(await landPaintedPicture(db, row.id, 'a')).toEqual({ landed: true, deleteKeys: [] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: null,
+      })
+    })
+  })
+
+  it('a package that is gone lands nothing', async () => {
+    expect(await landPaintedPicture(db, '01HQ0000000000000000000000', 'b')).toEqual({
+      landed: false,
+      deleteKeys: ['b'],
+    })
+  })
+
+  it('swaps the two pictures and swaps them back', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'b', previousPictureKey: 'a' })
+
+      const first = await swapThumbnailPictures(db, row.id, { state: 'painting', error: null })
+      expect(first).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'b',
+        state: 'painting',
+      })
+
+      const second = await swapThumbnailPictures(db, row.id)
+      expect(second).toMatchObject({ pictureKey: 'b', previousPictureKey: 'a' })
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+      })
+    })
+  })
+
+  it('there is nothing to swap without a previous picture', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', state: 'ready' })
+
+      expect(await swapThumbnailPictures(db, row.id, { state: 'painting' })).toBeUndefined()
+      expect(await swapThumbnailPictures(db, '01HQ0000000000000000000000')).toBeUndefined()
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: null,
+        state: 'ready',
+      })
+    })
+  })
+
+  it('removing a package names its previous picture', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'p.png',
+        previousPictureKey: 'q.png',
+        composedKey: 'c.jpg',
+      })
+
+      const result = await removeThumbnailPackage(db, row.id)
+
+      expect(result?.orphanedKeys.sort()).toEqual(['c.jpg', 'p.png', 'q.png'])
+    })
+  })
+
+  it('a fresh plan names the previous pictures of what it replaces', async () => {
+    await withRecord(async (record) => {
+      await seedRow(record.id, 0, {
+        pictureKey: 'p.png',
+        previousPictureKey: 'q.png',
+        composedKey: 'c.jpg',
+      })
+
+      const result = await replaceUnapprovedGenerated(db, record.id, [])
+
+      expect(result.orphanedKeys.sort()).toEqual(['c.jpg', 'p.png', 'q.png'])
     })
   })
 
