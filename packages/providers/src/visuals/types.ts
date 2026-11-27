@@ -87,8 +87,10 @@ export interface ImageReference {
    * separately and by different amounts: a face the model must keep is a
    * character, a room or a prop it must reproduce is an object. A style is a
    * reference thumbnail whose look, never its subject or layout, is followed.
+   * A base is the one picture a change request edits: it spends none of the
+   * three budgets, and a request carries at most one.
    */
-  kind: 'character' | 'object' | 'style'
+  kind: 'character' | 'object' | 'style' | 'base'
   /** For a set plate: the direction it faces, named in the image's label (decision 275). */
   facing?: 'north' | 'east' | 'south' | 'west' | 'detail'
 }

@@ -154,11 +154,13 @@ export function referenceLabel(
   total: number,
 ): string {
   const role =
-    reference.kind === 'character'
-      ? 'use it for the likeness only; pose, clothing and framing come from the text'
-      : reference.kind === 'style'
-        ? 'use it for the look only: palette, light and finish. Never copy its subject or its layout'
-        : "use it for the room's furniture, materials and light"
+    reference.kind === 'base'
+      ? 'keep everything in it except what the text asks to change'
+      : reference.kind === 'character'
+        ? 'use it for the likeness only; pose, clothing and framing come from the text'
+        : reference.kind === 'style'
+          ? 'use it for the look only: palette, light and finish. Never copy its subject or its layout'
+          : "use it for the room's furniture, materials and light"
   const facing =
     reference.facing === undefined
       ? ''
@@ -214,6 +216,14 @@ export function createGeminiImageGen(
         )
       }
       const limits = adapter.referenceLimits(request.model)
+      // The picture a change edits spends none of the three budgets (below).
+      const bases = references.filter((reference) => reference.kind === 'base')
+      if (bases.length > 1) {
+        throw new ValidationError(
+          `A request edits one picture; this one carries ${bases.length}.`,
+          { field: 'references' },
+        )
+      }
       const characters = references.filter((reference) => reference.kind === 'character')
       const objects = references.filter((reference) => reference.kind === 'object')
       const styles = references.filter((reference) => reference.kind === 'style')
@@ -255,7 +265,8 @@ export function createGeminiImageGen(
         : request.prompt
 
       const fetchImpl = options.fetchImpl ?? fetch
-      const ordered = [...characters, ...objects, ...styles]
+      // The picture to edit leads: the model reads it first, then the faces.
+      const ordered = [...bases, ...characters, ...objects, ...styles]
 
       const one = async (): Promise<{ url: string; width: number; height: number }> => {
         let response: Response
