@@ -2,6 +2,7 @@ import { safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { GRAPHIC_TEXT_MIN_PX } from '@boom-busters/providers'
 import type { Browser, Page } from 'playwright-core'
+import { closeOrKill, hostFacts, launchMark } from './browser-process'
 import {
   frameSizesFor,
   GRAPHIC_SAMPLE_MS,
@@ -443,17 +444,32 @@ async function loadModule<T>(name: string, load: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The switch each browser was launched under: how one that will not close is found (`browser-process.ts`). */
+const launchMarks = new WeakMap<Browser, string>()
+
+/** `(the browser was lost; ...)` with what the host can say, or nothing where it says nothing. */
+function lostBrowserNote(): string {
+  const facts = hostFacts()
+  return facts === '' ? '' : ` (the browser was lost; ${facts})`
+}
+
 async function launchBrowser(): Promise<Browser> {
   const { chromium } = await loadModule('playwright-core', () => import('playwright-core'))
   const own = process.env['GRAPHIC_CHROMIUM_PATH']
-  try {
+  const mark = launchMark()
+  const launch = async (): Promise<Browser> => {
     if (own)
-      return await chromium.launch({ executablePath: own, headless: true, timeout: LAUNCH_MAX_MS })
+      return chromium.launch({
+        executablePath: own,
+        args: [mark],
+        headless: true,
+        timeout: LAUNCH_MAX_MS,
+      })
     if (process.env['VERCEL'] || process.env['AWS_LAMBDA_FUNCTION_NAME']) {
       const packaged = await loadModule('@sparticuz/chromium', () => import('@sparticuz/chromium'))
-      return await chromium.launch({
+      return chromium.launch({
         executablePath: await packaged.default.executablePath(),
-        args: packaged.default.args,
+        args: [...packaged.default.args, mark],
         headless: true,
         timeout: LAUNCH_MAX_MS,
       })
@@ -461,12 +477,34 @@ async function launchBrowser(): Promise<Browser> {
     // GRAPHIC_CHROMIUM_ARGS adds flags to a local launch, so Vercel's
     // packaged browser (single-process, no zygote) can be reproduced here.
     const extra = (process.env['GRAPHIC_CHROMIUM_ARGS'] ?? '').split(' ').filter(Boolean)
-    return await chromium.launch({ headless: true, args: extra, timeout: LAUNCH_MAX_MS })
+    return chromium.launch({ headless: true, args: [...extra, mark], timeout: LAUNCH_MAX_MS })
+  }
+  try {
+    const browser = await launch()
+    launchMarks.set(browser, mark)
+    return browser
   } catch (error) {
     throw new FramesUnavailable(
-      `the designer's frames cannot start a browser: ${error instanceof Error ? error.message : String(error)}`,
+      `the designer's frames cannot start a browser:${error instanceof Error ? error.message : String(error)}${lostBrowserNote()}`,
     )
   }
+}
+
+/** Closes a browser, and kills one that will not close: it must not outlive its request. */
+function closeBrowser(browser: Browser): Promise<void> {
+  return closeOrKill(browser, launchMarks.get(browser), CLOSE_MAX_MS)
+}
+
+/**
+ * A failure as `FramesUnavailable`, in `what`'s words. A browser that went
+ * away mid-work says nothing of why, so the host's state goes into the words.
+ */
+function framesFailure(what: string, error: unknown, browser: Browser): FramesUnavailable {
+  if (error instanceof FramesUnavailable) return error
+  const message = (error instanceof Error ? error.message : String(error)).trimEnd()
+  return new FramesUnavailable(
+    `${what} failed: ${message}${browser.isConnected() ? '' : lostBrowserNote()}`,
+  )
 }
 
 /** The swap of one moment's markup into the page, then a wait for its faces. */
@@ -640,7 +678,7 @@ export function browserFrames(): GraphicFrames {
         'the launch',
       ).catch((error: unknown) => {
         // A browser that starts after its launch was given up on closes itself.
-        launching.then((late) => late.close()).catch(() => undefined)
+        launching.then(closeBrowser).catch(() => undefined)
         throw error
       })
       try {
@@ -651,12 +689,9 @@ export function browserFrames(): GraphicFrames {
           'the inspection',
         )
       } catch (error) {
-        if (error instanceof FramesUnavailable) throw error
-        throw new FramesUnavailable(
-          `the designer's frames failed: ${error instanceof Error ? error.message : String(error)}`,
-        )
+        throw framesFailure("the designer's frames", error, browser)
       } finally {
-        await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
+        await closeBrowser(browser)
       }
     },
   }
@@ -678,7 +713,7 @@ export async function screenshotDocument(input: {
   const launching = launchBrowser()
   const browser = await withinTime(launching, Math.min(budget, LAUNCH_MAX_MS), 'the launch').catch(
     (error: unknown) => {
-      launching.then((late) => late.close()).catch(() => undefined)
+      launching.then(closeBrowser).catch(() => undefined)
       throw error
     },
   )
@@ -693,12 +728,9 @@ export async function screenshotDocument(input: {
     }
     return await withinTime(shoot(), Math.max(1, budget - (Date.now() - started)), 'the sheet')
   } catch (error) {
-    if (error instanceof FramesUnavailable) throw error
-    throw new FramesUnavailable(
-      `the sheet failed: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    throw framesFailure('the sheet', error, browser)
   } finally {
-    await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
+    await closeBrowser(browser)
   }
 }
 
@@ -720,7 +752,7 @@ export async function screenshotFrame(input: {
   const launching = launchBrowser()
   const browser = await withinTime(launching, Math.min(budget, LAUNCH_MAX_MS), 'the launch').catch(
     (error: unknown) => {
-      launching.then((late) => late.close()).catch(() => undefined)
+      launching.then(closeBrowser).catch(() => undefined)
       throw error
     },
   )
@@ -745,11 +777,8 @@ export async function screenshotFrame(input: {
     }
     return await withinTime(shoot(), Math.max(1, budget - (Date.now() - started)), 'the frame')
   } catch (error) {
-    if (error instanceof FramesUnavailable) throw error
-    throw new FramesUnavailable(
-      `the frame failed: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    throw framesFailure('the frame', error, browser)
   } finally {
-    await withinTime(browser.close(), CLOSE_MAX_MS, 'the close').catch(() => undefined)
+    await closeBrowser(browser)
   }
 }
