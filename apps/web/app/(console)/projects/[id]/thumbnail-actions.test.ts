@@ -326,6 +326,28 @@ describeDb('the thumbnail actions', () => {
       expect(inngestSeam.send.mock.calls[0]![0].data.baseKey).toBe('the-old-one.png')
     })
 
+    it('regenerate is refused on a failed package that has a picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { state: 'failed', error: 'Compose failed.' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({
+        ok: false,
+        error: 'Compose this thumbnail again first. It is free.',
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+    })
+
+    it('regenerate still paints a failed package that has no picture', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { pictureKey: null, composedKey: null, state: 'failed' })
+      expect(await regenerateThumbnailPicture(row.id)).toEqual({ ok: true })
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      expect(inngestSeam.send.mock.calls[0]![0].data).toMatchObject({
+        mode: 'paint',
+        baseKey: null,
+      })
+    })
+
     it('regenerate sends a null base key for a package with no picture', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0, { pictureKey: null, composedKey: null, state: 'failed' })
@@ -336,6 +358,7 @@ describeDb('the thumbnail actions', () => {
 
   describe('changeThumbnailPicture', () => {
     const NO_PICTURE = 'There is no picture to change. Regenerate the picture.'
+    const NOT_COMPOSED = 'Compose this thumbnail again first. It is free.'
 
     /** The row exactly as stored, for "left as it was". */
     async function stored(id: string, packageId: string) {
@@ -463,6 +486,51 @@ describeDb('the thumbnail actions', () => {
       expect(await stored(id, row.id)).toEqual(row)
     })
 
+    it('a change is refused on a package that was painted but not composed', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'failed',
+        error: 'Compose failed.',
+        pictureKey: 'p2.png',
+        previousPictureKey: 'p1.png',
+      })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: NOT_COMPOSED,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a change is refused on a package whose run died after the picture landed', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, {
+        state: 'painting',
+        pictureKey: 'p2.png',
+        previousPictureKey: 'p1.png',
+        updatedAt: new Date(Date.now() - 16 * 60_000),
+      })
+      expect(await changeThumbnailPicture(row.id, 'darker sky')).toEqual({
+        ok: false,
+        error: NOT_COMPOSED,
+      })
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
+    it('a note that is not text is refused', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0)
+      for (const note of [undefined, 42]) {
+        expect(await changeThumbnailPicture(row.id, note as unknown as string)).toEqual({
+          ok: false,
+          error: 'Write what to change.',
+        })
+      }
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+      expect(await stored(id, row.id)).toEqual(row)
+    })
+
     it('a change is refused on a record that is uploading', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0)
@@ -477,7 +545,7 @@ describeDb('the thumbnail actions', () => {
 
     it('a change that cannot be requested puts the state back', async () => {
       const id = await recordId()
-      const row = await addPackage(id, 0, { state: 'failed', error: 'old trouble' })
+      const row = await addPackage(id, 0, { state: 'ready', error: 'old trouble' })
       inngestSeam.send.mockRejectedValueOnce(new Error('down'))
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       try {
@@ -489,7 +557,7 @@ describeDb('the thumbnail actions', () => {
         logged.mockRestore()
       }
       const after = await stored(id, row.id)
-      expect(after.state).toBe('failed')
+      expect(after.state).toBe('ready')
       expect(after.error).toBe('old trouble')
     })
   })

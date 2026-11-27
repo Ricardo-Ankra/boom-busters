@@ -305,7 +305,7 @@ function PackageCard({
             <Button
               variant="outline"
               busy={pressed === `change-${pack.id}`}
-              disabled={waiting || note.trim() === ''}
+              disabled={waiting || canRecompose || note.trim() === ''}
               onClick={() => void requestChange()}
             >
               Change picture
@@ -383,7 +383,7 @@ function PackageCard({
               <Button
                 variant="outline"
                 busy={pressed === `regen-${pack.id}`}
-                disabled={waiting}
+                disabled={waiting || canRecompose}
                 onClick={() =>
                   void act(
                     () => regenerateThumbnailPicture(pack.id),
@@ -397,7 +397,7 @@ function PackageCard({
               </Button>
               {canRecompose ? (
                 <p className="w-full text-[12px] text-[var(--color-text-muted)]">
-                  Compose again is free. Regenerate picture buys a new image.
+                  Compose again is free. Regenerate picture and Change picture wait for it.
                 </p>
               ) : null}
               <Button

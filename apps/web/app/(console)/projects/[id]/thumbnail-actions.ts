@@ -61,7 +61,8 @@ import { events } from '@/inngest/events'
 // Words the card shows; copied verbatim from the design and the task brief.
 const SHORT_REFUSAL = "Generated sets are for the full film. A Short's thumbnail is an upload."
 const IN_FLIGHT_REFUSAL = 'A set is being made. Wait for it to finish.'
-const UNKNOWN_THUMBNAIL = 'Unknown thumbnail'
+const NOT_COMPOSED_REFUSAL = 'Compose this thumbnail again first. It is free.'
+const UNKNOWN_THUMBNAIL ='Unknown thumbnail'
 const TITLE_MAX = 100
 const HEADLINE_MAX = 60
 
@@ -214,6 +215,10 @@ export async function regenerateThumbnailPicture(packageId: string): Promise<Act
   if (packageInFlight(loaded.row, now) || planning(loaded.record, now)) {
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
+  // A picture the owner has not seen composed must not become the previous one.
+  if (loaded.row.pictureKey !== null && loaded.row.state !== 'ready') {
+    return { ok: false, error: NOT_COMPOSED_REFUSAL }
+  }
 
   // Marked at once, so a second click before the run starts is refused.
   await updateThumbnailPackage(db, packageId, { state: 'painting', error: null })
@@ -237,6 +242,8 @@ export async function changeThumbnailPicture(
   note: string,
 ): Promise<ActionResult> {
   await requireOwner()
+  // A server action takes whatever the client sends.
+  if (typeof note !== 'string') return { ok: false, error: 'Write what to change.' }
   const loaded = await loadPackage(packageId)
   if (!isLoaded(loaded)) return loaded
   const { row } = loaded
@@ -247,6 +254,7 @@ export async function changeThumbnailPicture(
   if (packageInFlight(row, now) || planning(loaded.record, now)) {
     return { ok: false, error: IN_FLIGHT_REFUSAL }
   }
+  if (row.state !== 'ready') return { ok: false, error: NOT_COMPOSED_REFUSAL }
 
   // The cast the way the planner vets it: those still in, and those removed.
   const [cast, dismissed] = await Promise.all([

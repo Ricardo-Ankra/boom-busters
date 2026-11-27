@@ -294,7 +294,13 @@ describe('ThumbnailSet', () => {
       <ThumbnailSet
         item={item({
           record: record({
-            packages: [pack({ state: 'failed', error: 'The image model returned no picture.' })],
+            packages: [
+              pack({
+                state: 'failed',
+                error: 'The image model returned no picture.',
+                hasPicture: false,
+              }),
+            ],
           }),
         })}
         busy={false}
@@ -340,7 +346,7 @@ describe('ThumbnailSet', () => {
       />,
     )
     expect(
-      screen.getByText('Compose again is free. Regenerate picture buys a new image.'),
+      screen.getByText('Compose again is free. Regenerate picture and Change picture wait for it.'),
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Compose again' }))
     expect(recomposeThumbnail).toHaveBeenCalledWith('01HQ00000000000000000000K1')
@@ -387,7 +393,9 @@ describe('ThumbnailSet', () => {
     render(
       <ThumbnailSet
         item={item({
-          record: record({ packages: [pack({ state: 'painting', inFlight: false, url: null })] }),
+          record: record({
+            packages: [pack({ state: 'painting', inFlight: false, url: null, hasPicture: false })],
+          }),
         })}
         busy={false}
       />,
@@ -713,6 +721,29 @@ describe('ThumbnailSet', () => {
       )
       expect(screen.getByRole('button', { name: 'Compose again' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeInTheDocument()
+    })
+
+    it('a package that needs composing holds the change and the repaint back', async () => {
+      const user = userEvent.setup()
+      render(
+        <ThumbnailSet
+          item={one({
+            state: 'failed',
+            error: 'Compose failed.',
+            hasPicture: true,
+            hasPrevious: true,
+          })}
+          busy={false}
+        />,
+      )
+      await user.type(screen.getByRole('textbox', { name: 'Change the picture' }), 'darker sky')
+      expect(screen.getByRole('button', { name: 'Change picture' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Regenerate picture' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Compose again' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Back to previous picture' })).toBeEnabled()
+      expect(
+        screen.getByText('Compose again is free. Regenerate picture and Change picture wait for it.'),
+      ).toBeInTheDocument()
     })
 
     it('an uploaded thumbnail has no change field', () => {
