@@ -60,7 +60,8 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   // - cancel-reconciler is idempotent, and losing a sweep to a duplicate
   //   could miss runs that started between the two cancels.
   // - cancellation-mirror is idempotent for the same reason, and every
-  //   cancellation deserves its own pass.
+  //   cancellation deserves its own pass. failure-mirror likewise for every
+  //   failed run.
   // - teaser-shot-fetcher works per beat, and two beats of the same Short
   //   fetching at once is a feature; the action refuses per-beat duplicates
   //   against the stored fetch state instead.
@@ -103,6 +104,7 @@ const SINGLETONS: Record<string, { key: string; mode: 'cancel' } | null> = {
   'search-space-analyser': null,
   'cancel-reconciler': null,
   'cancellation-mirror': null,
+  'failure-mirror': null,
   'teaser-shot-fetcher': null,
   'stretch-replanner': null,
   'talking-points-runner': null,
