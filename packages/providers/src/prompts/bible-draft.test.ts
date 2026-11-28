@@ -169,6 +169,39 @@ describe('buildBibleUnitRequest', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 
+  it('asks for one list alone, showing the section’s other drafted lists but not its own', () => {
+    const entry = { text: 'An earlier line', note: 'n', drawnFrom: [] }
+    const request = buildBibleUnitRequest({
+      ...base,
+      unit: { section: 'hooks' },
+      only: 'titles',
+      draft: { ...EMPTY_BIBLE, hooks: [entry], titles: [{ ...entry, text: 'An old title' }] },
+    })
+    const content = request.messages[0]!.content
+    expect(content).toContain('- titles: array of up to 12 entries')
+    expect(content).not.toContain('- hooks: array')
+    expect(content).not.toContain('- openings: array')
+    expect(content).toContain('Already drafted for this channel')
+    expect(content).toContain('An earlier line')
+    // Its own old list and the empty openings are left out.
+    expect(content).not.toContain('An old title')
+    expect(content).not.toContain('"openings"')
+    expect(content).toContain(HOOKS_RULE)
+  })
+
+  it('takes one list alone as the strict answer, and refuses a field outside the unit', () => {
+    const unit = { section: 'hooks' } as const
+    const titles = mockBibleUnit(unit, 'titles')
+    expect(Object.keys(titles)).toEqual(['titles'])
+    expect(bibleUnitSchema(unit, 'titles').safeParse(titles).success).toBe(true)
+    expect(bibleUnitSchema(unit, 'titles').safeParse(mockBibleUnit(unit)).success).toBe(false)
+    expect(parseBibleUnit(unit, JSON.stringify(titles), 'titles')).toEqual(
+      bibleUnitSchema(unit, 'titles').parse(titles),
+    )
+    expect(() => bibleUnitSchema(unit, 'subject')).toThrow(/not a field/)
+    expect(() => bibleUnitSchema(scriptUnit, 'hooks')).toThrow(/not a field/)
+  })
+
   it('leaves the hooks rule out of other units', () => {
     const request = buildBibleUnitRequest({ ...base, unit: { section: 'look' } })
     expect(request.messages[0]!.content).not.toContain('Never copy a line from them')

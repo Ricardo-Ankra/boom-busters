@@ -8,6 +8,7 @@ import { cancelReconciler } from './cancel-reconciler'
 import { dossierReviser } from './dossier-reviser'
 import { dossierRunner } from './dossier-runner'
 import { draftRunner } from './draft-runner'
+import { failureMirror } from './failure-mirror'
 import { keywordMeasurer } from './keyword-measurer'
 import { motionDerivationCancelled, motionExemplarDeriver } from './motion-exemplar-deriver'
 import { motionExemplarRefiner } from './motion-exemplar-refiner'
@@ -69,6 +70,7 @@ export const functions = [
   motionReferenceReader,
   searchSpaceAnalyser,
   cancellationMirror,
+  failureMirror,
   cancelReconciler,
   dossierRunner,
   dossierReviser,
@@ -108,6 +110,7 @@ export {
   cancellationMirror,
   cancelReconciler,
   draftRunner,
+  failureMirror,
   keywordMeasurer,
   motionDerivationCancelled,
   motionExemplarDeriver,

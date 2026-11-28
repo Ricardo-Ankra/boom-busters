@@ -6,6 +6,7 @@ import {
   getBibleDraft,
   openBibleDraft,
   requireTestDatabase,
+  runs,
   seed,
   truncateRunMirror,
   updateWorkspace,
@@ -37,6 +38,7 @@ import type {
   ChannelBible,
 } from '@boom-busters/schemas'
 import { InngestTestEngine } from '@inngest/test'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import { forgetRunRows } from '../middleware/run-mirror'
@@ -50,11 +52,17 @@ import { bibleDrafter, failBibleDraft } from './bible-drafter'
 
 vi.mock('@/lib/notify', () => ({ notify: vi.fn() }))
 
-type Seam = (unit: BibleDraftUnit) => Partial<ChannelBible> | undefined
+type Seam = (unit: BibleDraftUnit, only?: keyof ChannelBible) => Partial<ChannelBible> | undefined
 
 const seams = vi.hoisted(() => ({
   answers: [] as unknown[],
-  requests: [] as { unit: BibleDraftUnit; text: string; steer?: string; previousError?: string }[],
+  requests: [] as {
+    unit: BibleDraftUnit
+    only?: string
+    text: string
+    steer?: string
+    previousError?: string
+  }[],
 }))
 
 vi.mock('@boom-busters/providers', async (importOriginal) => {
@@ -65,16 +73,17 @@ vi.mock('@boom-busters/providers', async (importOriginal) => {
       const built = original.buildBibleUnitRequest(input)
       seams.requests.push({
         unit: input.unit,
+        ...(input.only ? { only: input.only } : {}),
         text: built.messages.map((m) => m.content).join(' '),
         ...(input.steer ? { steer: input.steer } : {}),
         ...(input.previousError ? { previousError: input.previousError } : {}),
       })
       return built
     },
-    mockBibleUnit: (unit: BibleDraftUnit) => {
+    mockBibleUnit: (unit: BibleDraftUnit, only?: keyof ChannelBible) => {
       const next = seams.answers.shift() as Seam | Error | undefined
       if (next instanceof Error) throw next
-      return (next && next(unit)) ?? original.mockBibleUnit(unit)
+      return (next && next(unit, only)) ?? original.mockBibleUnit(unit, only)
     },
   }
 })
@@ -260,15 +269,66 @@ describeDb('bible-drafter (mock mode)', () => {
     expect(draft.job).toMatchObject({ state: 'done' })
   })
 
+  it('drafts hooks, openings and titles in a call each, every call asking for its one list', async () => {
+    await prepare(channelId, mockResearchDigest(INPUTS))
+    await engine.execute(request(channelId, [{ section: 'hooks' }]))
+
+    expect(seams.requests.map((r) => r.only)).toEqual(['hooks', 'openings', 'titles'])
+    for (const { only, text } of seams.requests) {
+      for (const list of ['hooks', 'openings', 'titles']) {
+        const asked = text.includes(`- ${list}: array of up to 12 entries`)
+        expect(asked).toBe(list === only)
+      }
+    }
+    // Titles are drafted seeing the hooks and openings just written.
+    expect(seams.requests[2]?.text).toContain('"openings"')
+
+    const draft = await draftOf()
+    expect(draft.bible.hooks.length).toBeGreaterThan(0)
+    expect(draft.bible.openings.length).toBeGreaterThan(0)
+    expect(draft.bible.titles.length).toBeGreaterThan(0)
+    expect(draft.statuses.hooks).toBe('drafted')
+    expect(draft.errors).toEqual({})
+
+    // The run's mirror rows carry the channel its event names, so they list
+    // under that channel and no other. (The test engine runs each step as an
+    // execution of its own, with a row each.)
+    const mirrored = await db.select().from(runs).where(eq(runs.functionName, 'bible-drafter'))
+    expect(mirrored.length).toBeGreaterThan(0)
+    expect([...new Set(mirrored.map((row) => row.channelId))]).toEqual([channelId])
+  })
+
+  it('a list refused twice leaves its own named error and the other lists are still drafted', async () => {
+    await prepare(channelId, mockResearchDigest(INPUTS))
+    await writeBibleDraft(
+      db,
+      channelId,
+      (draft) => ({ ...draft, errors: { hooks: 'a whole-section error from before' } }),
+      { allowWhileRunning: true },
+    )
+    const bad: Seam = () => ({ openings: [{ text: '', note: '', drawnFrom: [] }], titles: [] })
+    // The hooks call takes the mock; both openings calls are refused.
+    seams.answers = [() => undefined, bad, bad]
+
+    await engine.execute(request(channelId, [{ section: 'hooks' }]))
+
+    const draft = await draftOf()
+    expect(Object.keys(draft.errors)).toEqual(['hooks:openings'])
+    expect(draft.errors['hooks:openings']).toMatch(/^Openings: /)
+    expect(draft.bible.hooks.length).toBeGreaterThan(0)
+    expect(draft.bible.openings).toEqual([])
+    expect(draft.bible.titles.length).toBeGreaterThan(0)
+    expect(draft.job).toMatchObject({ state: 'done' })
+  })
+
   it('flags a hook sharing eight words with another creator’s quote, not an own one', async () => {
     const quote = 'one two three four five six seven eight nine'
+    // The first of the hooks unit's three calls is the hooks list.
     const copied: Seam = () => ({
       hooks: [
         { text: `Start ${quote} end`, note: 'n', drawnFrom: [] },
         { text: 'A wholly different line with its own words and shape', note: 'n', drawnFrom: [] },
       ],
-      openings: [],
-      titles: [],
     })
 
     await prepare(channelId, digestWith(quote, [false]))
