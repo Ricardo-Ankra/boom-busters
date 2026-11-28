@@ -12677,7 +12677,8 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      On 2026-11-28, after a check at real size, the owner raised the mark to
      12% of the frame height measured on the glyph (the logo's transparent
      padding is trimmed for the thumbnail only), solid, with a light shadow;
-     see decision 488 (k).
+     see decision 488 (k). Its top corner follows the headline's side:
+     decision 488 (l).
      (i) `mergeSettings` carries the channel's `thumbnails` section; the
      Thumbnails tab writes only that section, so it cannot collide with the
      Brand Kit's write of `look`.
@@ -13010,3 +13011,12 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      for a flat 86 px: a 14-letter name at that size ran 45% of the frame.
      A headline on the mark's side keeps clear of it, staying centred when it
      fits and moving down only when it would meet the mark.
+     (l) On 2026-11-28 the owner chose that the mark's top corner follows the
+     headline's side, so the mark always sits on the scrim: on a light
+     picture a mark away from the headline was faint. The setting keeps its
+     stored values, and `tl` and `tr` now both mean the top, beside the
+     headline (`markCornerFor` picks the corner from the text side), so
+     nothing stored or deployed breaks; a stored `tr` opens in the tab as
+     `tl`. The settings tab offers "Top, beside the headline", "Bottom left"
+     and "None". The keep-clear rule holds on both sides, whenever a mark is
+     drawn at the top.
