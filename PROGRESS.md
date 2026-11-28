@@ -12677,7 +12677,7 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      On 2026-11-28, after a check at real size, the owner raised the mark to
      12% of the frame height measured on the glyph (the logo's transparent
      padding is trimmed for the thumbnail only), solid, with a light shadow;
-     see decision 487 (k).
+     see decision 488 (k).
      (i) `mergeSettings` carries the channel's `thumbnails` section; the
      Thumbnails tab writes only that section, so it cannot collide with the
      Brand Kit's write of `look`.
@@ -12904,7 +12904,7 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      the paint does not check a named person's portrait again; and a name
      can be read across the two fields.
 
-487. **A highlighted word in a thumbnail headline** (2026-11-27, owner asked
+488. **A highlighted word in a thumbnail headline** (2026-11-27, owner asked
      for a word or run of words in the headline to sit on the brand accent
      colour; branch `worktree-generated-thumbnails`; migration `0059`; design
      `docs/superpowers/specs/2026-11-27-thumbnail-headline-highlight-design.md`).
@@ -12955,9 +12955,7 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      (j) The e2e suite runs no Inngest, so its step proves the field, the
      mismatch line, the disabled Save and that a saved highlight survives a
      reload. The compose and the pixels are proved by the schema, action,
-     document and real-browser tests. One slip in the plan was ruled on during
-     the build: a test named a planned row with no picture, which is in flight
-     and refused for that reason; the test uses a failed row with no picture.
+     document and real-browser tests.
      (k) The mark was too small to recognise at real size: the logo file is
      padded, so at 8% of the frame height the glyph was about 11 px tall in a
      360 px feed thumbnail, and at 80% opacity it nearly vanished on light
