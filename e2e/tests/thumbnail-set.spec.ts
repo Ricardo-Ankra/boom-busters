@@ -196,6 +196,26 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await second.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByText('Changes saved').first()).toBeVisible({ timeout: 15_000 })
 
+    // Highlight a word of that headline. Words that are not in it are refused
+    // on the card and cannot be saved; a word that is in it saves and stays.
+    const highlight = second.getByLabel('Highlight', { exact: true })
+    const mismatch = second.getByText('The highlight must be words from the headline.')
+    await highlight.fill('banks')
+    await expect(mismatch).toBeVisible()
+    await expect(second.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    await highlight.fill('checked')
+    await expect(mismatch).toHaveCount(0)
+    await second.getByRole('button', { name: 'Save changes' }).click()
+    await expect(async () => {
+      await page.reload()
+      await expect(second.getByLabel('Highlight', { exact: true })).toHaveValue('checked', {
+        timeout: 5_000,
+      })
+      await expect(second.getByLabel('Headline', { exact: true })).toHaveValue('Nobody checked', {
+        timeout: 5_000,
+      })
+    }).toPass({ timeout: 30_000 })
+
     // Ask for a change to the first picture. No Inngest runs in this suite, so
     // the paint itself never happens: the action is accepted up to the send,
     // says plainly that it could not reach Inngest, and puts the card back as
