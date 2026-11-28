@@ -206,6 +206,10 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await highlight.fill('checked')
     await expect(mismatch).toHaveCount(0)
     await second.getByRole('button', { name: 'Save changes' }).click()
+    // The button is not drawn once nothing differs from the saved row, so its
+    // going is the card's own sign that the save landed. A reload before that
+    // could abort the request, and the reload below cannot repair that.
+    await expect(second.getByRole('button', { name: 'Save changes' })).toHaveCount(0)
     await expect(async () => {
       await page.reload()
       await expect(second.getByLabel('Highlight', { exact: true })).toHaveValue('checked', {
