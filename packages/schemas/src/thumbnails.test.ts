@@ -6,6 +6,7 @@ import {
   changeNoteIssue,
   dismissedNamed,
   figuresIn,
+  headlineHighlight,
   headlineWords,
   ownerBrief,
   packageInFlight,
@@ -93,6 +94,73 @@ describe('headlineWords', () => {
   it('counts headline words', () => {
     expect(headlineWords('')).toBe(0)
     expect(headlineWords('  The $47bn  lie ')).toBe(3)
+  })
+})
+
+describe('headlineHighlight', () => {
+  it('splits around one word', () => {
+    expect(headlineHighlight('They lost $2 billion', 'lost')).toEqual({
+      before: 'They ',
+      hit: 'lost',
+      after: ' $2 billion',
+    })
+  })
+
+  it('takes a run of words, with their punctuation', () => {
+    expect(headlineHighlight('They lost $2 billion', '2 billion')).toEqual({
+      before: 'They lost ',
+      hit: '$2 billion',
+      after: '',
+    })
+  })
+
+  it('ignores case', () => {
+    expect(headlineHighlight('The CRASH nobody saw', 'crash')?.hit).toBe('CRASH')
+  })
+
+  it('ignores punctuation at the ends of a word', () => {
+    const expected = { before: '', hit: 'Gone.', after: ' All of it' }
+    expect(headlineHighlight('Gone. All of it', 'gone')).toEqual(expected)
+    expect(headlineHighlight('Gone. All of it', 'GONE!')).toEqual(expected)
+  })
+
+  it('a fragment of a word is no match', () => {
+    expect(headlineHighlight('They lost $2 billion', 'bill')).toBeNull()
+  })
+
+  it('words that are not neighbours are no match', () => {
+    expect(headlineHighlight('They lost $2 billion', 'they billion')).toBeNull()
+  })
+
+  it('takes the first of two runs', () => {
+    expect(headlineHighlight('Buy now pay now', 'now')).toEqual({
+      before: 'Buy ',
+      hit: 'now',
+      after: ' pay now',
+    })
+  })
+
+  it('collapses white space', () => {
+    expect(headlineHighlight('They   lost  $2 billion', '  lost   $2 ')).toEqual({
+      before: 'They ',
+      hit: 'lost $2',
+      after: ' billion',
+    })
+  })
+
+  it('a symbol on its own is a word', () => {
+    expect(headlineHighlight('Boom & bust', '&')).toEqual({
+      before: 'Boom ',
+      hit: '&',
+      after: ' bust',
+    })
+  })
+
+  it('nothing to match is null', () => {
+    expect(headlineHighlight('They lost', '')).toBeNull()
+    expect(headlineHighlight('They lost', '   ')).toBeNull()
+    expect(headlineHighlight('', 'lost')).toBeNull()
+    expect(headlineHighlight('Gone', 'gone for good')).toBeNull()
   })
 })
 
