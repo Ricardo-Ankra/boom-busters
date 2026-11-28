@@ -12779,7 +12779,26 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      largest things directly in it with a sub-folder counted whole
      (`largestTempEntries`, at most 20,000 files sized), and the memory the
      instance has left, since a temp folder held in memory shrinks with it.
-     Nothing is removed yet: the next failure names what to remove.
+     The next failure, the same day, named it: "6 MB free in the temp folder
+     (of 524 MB; largest there: core.chromium.66 1036 MB, chromium 199 MB,
+     core.chromium.100 128 MB, core.chromium.137 20 MB; memory 1806 of 2278 MB
+     free)". The host writes a core file into the temp folder when the
+     browser dies by a fault, and the first three browsers of the instance
+     each left one: the first as large as the folder allowed, the next two in
+     what remained. Their composes had finished, so the browser faults as it
+     closes, and from the fourth on there was no room to work. The Lambda
+     image does not show it (its closes end in exit 0 or in our kill, and its
+     host pipes cores away), which is why the replay stayed clean. Two
+     guards. The packaged browser is launched through a two-line shell script
+     that sets the core limit to nothing and then becomes the browser
+     (`noCoreLauncher`; in the Lambda image the browser's own process then
+     reads "Max core file size 0", and Playwright, the mark and the kill work
+     as before), with the browser's own path as the second try where the
+     script will not run (`launchFirst`). And the browser's core files are
+     removed from the temp folder before every launch and after every close
+     (`sweepCoreFiles`, `core.chromium` with or without a pid, files only).
+     Why the browser faults on closing on Vercel and not in the image is not
+     known and no longer matters to the temp folder.
 
 485. **Changes to a thumbnail picture** (2026-11-27, owner: "a field that
      allows us to request changes to the image. So if its 90% there, and we

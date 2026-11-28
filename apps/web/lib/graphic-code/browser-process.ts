@@ -1,5 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { lstatSync, readdirSync, readFileSync, statfsSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  statfsSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { freemem, tmpdir, totalmem } from 'node:os'
 import { join } from 'node:path'
 
@@ -116,6 +125,85 @@ export async function closeOrKill(
   } catch {
     // A host that cannot be read leaves the browser to the instance's end.
   }
+}
+
+/**
+ * A core file of the packaged browser: the host writes one into the temp
+ * folder as `core.<program>.<pid>` when the browser dies by a fault.
+ */
+const CORE_FILE = /^core\.chromium(\.\d+)?$/
+
+/**
+ * Removes the browser's core files from the temp folder; how many went. Never
+ * throws. On Vercel the first browser to die left a core of about a gigabyte
+ * in a 524 MB folder, the next two filled what remained, and every browser
+ * after that was lost for want of room (2026-11-28, decision 484 (z)).
+ */
+export function sweepCoreFiles(dir: string = tmpdir()): number {
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return 0
+  }
+  let removed = 0
+  for (const name of names) {
+    if (!CORE_FILE.test(name)) continue
+    try {
+      if (!lstatSync(join(dir, name)).isFile()) continue
+      unlinkSync(join(dir, name))
+      removed += 1
+    } catch {
+      // Gone already, or not ours to remove.
+    }
+  }
+  return removed
+}
+
+const NO_CORE_LAUNCHER = 'chromium-no-core.sh'
+
+/**
+ * A way to start the browser that cannot write a core file: a two-line shell
+ * script that sets the core limit to nothing and then becomes the browser, so
+ * the process Playwright drives, and the one the mark finds, is the browser
+ * itself. Where there is no shell, where the script cannot be written, or for
+ * a path a shell could misread, it is the browser's own path: the sweep is
+ * then the only guard.
+ */
+export function noCoreLauncher(binary: string, dir: string = tmpdir(), shell = '/bin/sh'): string {
+  if (!/^[\w./:\\ -]+$/.test(binary) || !existsSync(shell)) return binary
+  const launcher = join(dir, NO_CORE_LAUNCHER)
+  const script = `#!${shell}\nulimit -c 0\nexec "${binary}" "$@"\n`
+  try {
+    // Written once per instance: a second launch must not find it half written.
+    if (existsSync(launcher) && readFileSync(launcher, 'utf8') === script) return launcher
+    writeFileSync(launcher, script, { mode: 0o755 })
+    // The mode above is cut by the process's mask; the launcher must run.
+    chmodSync(launcher, 0o755)
+    return launcher
+  } catch {
+    return binary
+  }
+}
+
+/**
+ * Launches by the first of `paths` that starts, each tried once, and fails in
+ * the words of the last. The no-core launcher is tried first and the browser
+ * itself second: a host where the script will not run still gets its browser.
+ */
+export async function launchFirst<T>(
+  paths: readonly string[],
+  launch: (path: string) => Promise<T>,
+): Promise<T> {
+  let last: unknown = new Error('there is no browser to launch')
+  for (const path of new Set(paths)) {
+    try {
+      return await launch(path)
+    } catch (error) {
+      last = error
+    }
+  }
+  throw last
 }
 
 function freeTempMb(): number | null {

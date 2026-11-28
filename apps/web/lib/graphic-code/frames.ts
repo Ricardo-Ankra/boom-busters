@@ -2,7 +2,14 @@ import { safeInsets } from '@boom-busters/compositions/graphic-code-pure'
 import type { GraphicProps } from '@boom-busters/compositions/graphic-code-pure'
 import { GRAPHIC_TEXT_MIN_PX } from '@boom-busters/providers'
 import type { Browser, Page } from 'playwright-core'
-import { closeOrKill, hostFacts, launchMark } from './browser-process'
+import {
+  closeOrKill,
+  hostFacts,
+  launchFirst,
+  launchMark,
+  noCoreLauncher,
+  sweepCoreFiles,
+} from './browser-process'
 import {
   frameSizesFor,
   GRAPHIC_SAMPLE_MS,
@@ -467,12 +474,18 @@ async function launchBrowser(): Promise<Browser> {
       })
     if (process.env['VERCEL'] || process.env['AWS_LAMBDA_FUNCTION_NAME']) {
       const packaged = await loadModule('@sparticuz/chromium', () => import('@sparticuz/chromium'))
-      return chromium.launch({
-        executablePath: await packaged.default.executablePath(),
-        args: [...packaged.default.args, mark],
-        headless: true,
-        timeout: LAUNCH_MAX_MS,
-      })
+      const binary = await packaged.default.executablePath()
+      // The packaged browser must not write a core file: one fills the temp
+      // folder (decision 484 (z)). The launcher forbids it; the browser's own
+      // path is the second try, for a host where the launcher will not run.
+      return launchFirst([noCoreLauncher(binary), binary], (executablePath) =>
+        chromium.launch({
+          executablePath,
+          args: [...packaged.default.args, mark],
+          headless: true,
+          timeout: LAUNCH_MAX_MS,
+        }),
+      )
     }
     // GRAPHIC_CHROMIUM_ARGS adds flags to a local launch, so Vercel's
     // packaged browser (single-process, no zygote) can be reproduced here.
@@ -480,6 +493,8 @@ async function launchBrowser(): Promise<Browser> {
     return chromium.launch({ headless: true, args: [...extra, mark], timeout: LAUNCH_MAX_MS })
   }
   try {
+    // A core file an earlier browser left would leave this one no room to work.
+    sweepCoreFiles()
     const browser = await launch()
     launchMarks.set(browser, mark)
     return browser
@@ -492,7 +507,9 @@ async function launchBrowser(): Promise<Browser> {
 
 /** Closes a browser, and kills one that will not close: it must not outlive its request. */
 function closeBrowser(browser: Browser): Promise<void> {
-  return closeOrKill(browser, launchMarks.get(browser), CLOSE_MAX_MS)
+  return closeOrKill(browser, launchMarks.get(browser), CLOSE_MAX_MS).finally(() => {
+    sweepCoreFiles()
+  })
 }
 
 /**

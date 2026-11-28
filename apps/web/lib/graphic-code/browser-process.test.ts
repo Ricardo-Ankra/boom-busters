@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -9,8 +9,11 @@ import {
   largestTempEntries,
   LAUNCH_MARK,
   launchedBrowsers,
+  launchFirst,
   launchMark,
   LOW_TEMP_MB,
+  noCoreLauncher,
+  sweepCoreFiles,
   tempDetail,
   type HostProcesses,
 } from './browser-process'
@@ -238,5 +241,114 @@ describe('largestTempEntries', () => {
 
   it('is null for a folder that is not there', () => {
     expect(largestTempEntries(join(tmpdir(), 'bb-no-such-folder-here'), 3)).toBeNull()
+  })
+})
+
+describe('sweepCoreFiles', () => {
+  it("removes the browser's core files and nothing else", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-cores-'))
+    try {
+      for (const name of [
+        'core.chromium.66',
+        'core.chromium.100',
+        'core.chromium',
+        'chromium',
+        'core.node.5',
+        'core.chromium-notes.txt',
+        'note.txt',
+      ]) {
+        writeFileSync(join(dir, name), 'x')
+      }
+      mkdirSync(join(dir, 'core.chromium.dir'))
+      expect(sweepCoreFiles(dir)).toBe(3)
+      expect(readdirSync(dir).sort()).toEqual([
+        'chromium',
+        'core.chromium-notes.txt',
+        'core.chromium.dir',
+        'core.node.5',
+        'note.txt',
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('removes nothing from a folder that is not there, and does not throw', () => {
+    expect(sweepCoreFiles(join(tmpdir(), 'bb-no-such-folder-here'))).toBe(0)
+  })
+})
+
+describe('noCoreLauncher', () => {
+  it('writes a launcher that forbids core files and then becomes the browser', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-launcher-'))
+    try {
+      // Any file that exists stands for the shell here: the launcher is written, not run.
+      const launcher = noCoreLauncher('/tmp/chromium', dir, process.execPath)
+      expect(launcher).toBe(join(dir, 'chromium-no-core.sh'))
+      expect(readFileSync(launcher, 'utf8')).toBe(
+        `#!${process.execPath}\nulimit -c 0\nexec "/tmp/chromium" "$@"\n`,
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is the browser itself where there is no shell', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-launcher-'))
+    try {
+      expect(noCoreLauncher('/tmp/chromium', dir, join(dir, 'no-shell-here'))).toBe('/tmp/chromium')
+      expect(readdirSync(dir)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is the browser itself where the launcher cannot be written', () => {
+    const missing = join(tmpdir(), 'bb-no-such-folder-here')
+    expect(noCoreLauncher('/tmp/chromium', missing, process.execPath)).toBe('/tmp/chromium')
+  })
+
+  it('is the browser itself for a path a shell could misread', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-launcher-'))
+    try {
+      expect(noCoreLauncher('/tmp/chro"mium', dir, process.execPath)).toBe('/tmp/chro"mium')
+      expect(noCoreLauncher('/tmp/$HOME/chromium', dir, process.execPath)).toBe(
+        '/tmp/$HOME/chromium',
+      )
+      expect(readdirSync(dir)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('launchFirst', () => {
+  it('uses the first way that launches', async () => {
+    const launch = vi.fn(async (path: string) => `browser from ${path}`)
+    expect(await launchFirst(['/tmp/launcher.sh', '/tmp/chromium'], launch)).toBe(
+      'browser from /tmp/launcher.sh',
+    )
+    expect(launch).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the browser itself when the launcher will not start', async () => {
+    const launch = vi.fn(async (path: string) => {
+      if (path.endsWith('.sh')) throw new Error('spawn EACCES')
+      return `browser from ${path}`
+    })
+    expect(await launchFirst(['/tmp/launcher.sh', '/tmp/chromium'], launch)).toBe(
+      'browser from /tmp/chromium',
+    )
+    expect(launch).toHaveBeenCalledTimes(2)
+  })
+
+  it('tries one path once, and fails in the words of the last try', async () => {
+    const launch = vi.fn(async (path: string) => {
+      throw new Error(`no ${path}`)
+    })
+    await expect(launchFirst(['/tmp/chromium', '/tmp/chromium'], launch)).rejects.toThrow(
+      'no /tmp/chromium',
+    )
+    expect(launch).toHaveBeenCalledTimes(1)
   })
 })
