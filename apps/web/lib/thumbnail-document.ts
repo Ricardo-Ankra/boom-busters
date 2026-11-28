@@ -155,6 +155,19 @@ function headlineMarkup(headline: string, highlight: string, brand: GraphicProps
   return `${escapeHtml(parts.before)}${blocks}${escapeHtml(parts.after)}`
 }
 
+/**
+ * Where the mark is drawn. 'tl' and 'tr' both mean the top, on the headline's
+ * side; 'bl' stays bottom left; 'none' draws no mark.
+ */
+export function markCornerFor(
+  placement: 'none' | 'tl' | 'tr' | 'bl',
+  textSide: 'left' | 'right',
+): 'tl' | 'tr' | 'bl' | null {
+  if (placement === 'none') return null
+  if (placement === 'bl') return 'bl'
+  return textSide === 'left' ? 'tl' : 'tr'
+}
+
 /** The mark's corner; never bottom right, where YouTube draws the duration. */
 function markCorner(placement: 'tl' | 'tr' | 'bl'): string {
   const vertical = placement === 'bl' ? 'bottom' : 'top'
@@ -187,10 +200,8 @@ export function thumbnailDocument(input: {
   // A mark in the top corner on the headline's side: the headline is a column
   // with a spacer above and below, so it stays centred when it fits under the
   // mark and moves down only as far as it must.
-  const clearsMark =
-    input.mark !== null &&
-    ((input.markPlacement === 'tl' && textSide === 'left') ||
-      (input.markPlacement === 'tr' && textSide === 'right'))
+  const cornerPlacement = markCornerFor(input.markPlacement, textSide)
+  const clearsMark = input.mark !== null && (cornerPlacement === 'tl' || cornerPlacement === 'tr')
   const flow = clearsMark
     ? `display:flex;flex-direction:column;align-items:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
     : `display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
@@ -205,8 +216,8 @@ export function thumbnailDocument(input: {
       : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;${flow};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}">${spacers(`<span>${headlineMarkup(headline, input.highlight, brand)}</span>`)}</div>`
 
   let mark = ''
-  if (input.mark !== null && input.markPlacement !== 'none') {
-    const corner = markCorner(input.markPlacement)
+  if (input.mark !== null && cornerPlacement !== null) {
+    const corner = markCorner(cornerPlacement)
     mark =
       'src' in input.mark
         ? `<img data-role="mark" src="${escapeHtml(input.mark.src)}" alt="" style="position:absolute;${corner};height:${MARK_HEIGHT_PX}px;max-width:${MARK_MAX_WIDTH_PX}px;object-fit:contain;opacity:${THUMB_MARK_ALPHA};filter:${MARK_SHADOW}">`

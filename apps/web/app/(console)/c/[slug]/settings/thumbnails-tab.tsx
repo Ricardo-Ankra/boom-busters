@@ -53,13 +53,19 @@ export interface FinishedTests {
   inconclusive: number
 }
 
-/** Bottom right is not offered: YouTube draws the duration there. */
+/**
+ * Bottom right is not offered: YouTube draws the duration there. A stored 'tr'
+ * means the same as 'tl' (the top, on the headline's side), so it opens as 'tl'.
+ */
 const CORNERS: { value: ThumbMarkPlacement; label: string }[] = [
-  { value: 'tl', label: 'Top left' },
-  { value: 'tr', label: 'Top right' },
+  { value: 'tl', label: 'Top, beside the headline' },
   { value: 'bl', label: 'Bottom left' },
   { value: 'none', label: 'None' },
 ]
+
+function offered(placement: ThumbMarkPlacement): ThumbMarkPlacement {
+  return placement === 'tr' ? 'tl' : placement
+}
 
 const TEXTAREA_CLASS =
   'min-h-24 w-full rounded-[8px] border border-[var(--color-border-strong)] bg-[var(--color-background)] ' +
@@ -90,9 +96,12 @@ export function ThumbnailsTab({
   const fileRef = React.useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [noteDraft, setNoteDraft] = React.useState(styleNote)
-  const [cornerDraft, setCornerDraft] = React.useState<ThumbMarkPlacement>(markPlacement)
+  const [cornerDraft, setCornerDraft] = React.useState<ThumbMarkPlacement>(offered(markPlacement))
   // What the server last accepted, so Save wakes only for a real change.
-  const [savedStyle, setSavedStyle] = React.useState({ styleNote, markPlacement })
+  const [savedStyle, setSavedStyle] = React.useState({
+    styleNote,
+    markPlacement: offered(markPlacement),
+  })
 
   const run = async (work: () => Promise<Outcome>, success: string): Promise<boolean> => {
     setBusy(true)
@@ -158,7 +167,8 @@ export function ThumbnailsTab({
               ))}
             </Select>
             <p className="text-[12px] text-[var(--color-text-muted)]">
-              Bottom right is where YouTube draws the duration.
+              At the top, the mark sits on the headline&apos;s side. Bottom right is where YouTube
+              draws the duration.
             </p>
           </div>
           <div>

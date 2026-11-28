@@ -106,6 +106,26 @@ describe.skipIf(!(await browserAvailable()))('a highlighted thumbnail in a real 
     for (const box of own) expect(box.y).toBeGreaterThanOrEqual(173)
   }, 60_000)
 
+  it('a tall headline on the right keeps clear of the mark', async () => {
+    const headline = 'The crash nobody saw'
+    const { boxes } = await screenshotFrame({
+      html: thumbnailDocument({
+        pictureSrc: PICTURE,
+        headline,
+        textSide: 'right',
+        brand,
+        mark: { wordmark: 'Boom & Busters' },
+        markPlacement: 'tl',
+        highlight: '',
+      }),
+      width: THUMB_WIDTH,
+      height: THUMB_HEIGHT,
+    })
+    const own = headlineBoxes(boxes, headlineTextNodes(headline, ''))
+    expect(own.length).toBeGreaterThan(0)
+    for (const box of own) expect(box.y).toBeGreaterThanOrEqual(173)
+  }, 60_000)
+
   it('a headline that fits stays where it was', async () => {
     const headline = 'Signed for 18 years'
     const placed = async (markPlacement: 'tl' | 'none') => {

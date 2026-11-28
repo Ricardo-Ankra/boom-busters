@@ -7,6 +7,7 @@ import {
   headlineTextNodes,
   headlineWeight,
   highlightInk,
+  markCornerFor,
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
@@ -129,31 +130,47 @@ describe('thumbnailDocument', () => {
     expect(word).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
   })
 
+  it("the mark's top corner follows the headline", () => {
+    expect(markCornerFor('tl', 'left')).toBe('tl')
+    expect(markCornerFor('tl', 'right')).toBe('tr')
+    expect(markCornerFor('tr', 'left')).toBe('tl')
+    expect(markCornerFor('tr', 'right')).toBe('tr')
+    expect(markCornerFor('bl', 'right')).toBe('bl')
+    expect(markCornerFor('none', 'left')).toBeNull()
+  })
+
+  it('a headline on the right has its mark top right', () => {
+    const html = document({ textSide: 'right', markPlacement: 'tl' })
+    const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
+    expect(mark).toContain('top:')
+    expect(mark).toContain('right:')
+    expect(mark).not.toContain('left:')
+  })
+
   it("a headline on the mark's side keeps clear of it", () => {
-    const cases = [
-      ['left', 'tl'],
-      ['right', 'tr'],
-    ] as const
-    for (const [textSide, markPlacement] of cases) {
-      for (const mark of [{ wordmark: 'Boom & Busters' }, { src: 'https://cdn.example/l.png' }]) {
-        const html = document({ textSide, markPlacement, mark })
-        expect(html).toMatch(/data-role="headline"[^>]*flex-direction:column/)
-        expect(html).toContain('<div style="flex:1 1 0;min-height:173px"></div>')
-        expect(html).toContain('<div style="flex:1 1 0"></div>')
+    for (const textSide of ['left', 'right'] as const) {
+      for (const markPlacement of ['tl', 'tr'] as const) {
+        for (const mark of [{ wordmark: 'Boom & Busters' }, { src: 'https://cdn.example/l.png' }]) {
+          const html = document({ textSide, markPlacement, mark })
+          expect(html).toMatch(/data-role="headline"[^>]*flex-direction:column/)
+          expect(html).toContain('<div style="flex:1 1 0;min-height:173px"></div>')
+          expect(html).toContain('<div style="flex:1 1 0"></div>')
+        }
       }
     }
   })
 
-  it('a headline away from the mark is laid out as before', () => {
+  it('a headline with no mark at the top is laid out as before', () => {
     const today =
       '<div data-role="headline" style="position:absolute;top:0;bottom:16%;left:3%;width:41%;display:flex;align-items:center;justify-content:flex-start;text-align:left;font-family:\'Anton\',sans-serif;font-size:160px;line-height:0.95;font-weight:700;text-transform:uppercase;color:#f4f1ea">'
-    expect(document({ textSide: 'left', markPlacement: 'tr' })).toContain(today)
+    expect(document({ textSide: 'left', markPlacement: 'bl' })).toContain(today)
     const away = [
-      { textSide: 'left', markPlacement: 'tr' },
-      { textSide: 'right', markPlacement: 'tl' },
       { textSide: 'left', markPlacement: 'bl' },
+      { textSide: 'right', markPlacement: 'bl' },
       { textSide: 'left', markPlacement: 'none' },
+      { textSide: 'right', markPlacement: 'none' },
       { textSide: 'left', markPlacement: 'tl', mark: null },
+      { textSide: 'right', markPlacement: 'tr', mark: null },
     ] as const
     for (const over of away) {
       const html = document(over)
@@ -178,11 +195,14 @@ describe('thumbnailDocument', () => {
 
   it('never places the mark bottom right', () => {
     for (const markPlacement of ['tl', 'tr', 'bl'] as const) {
-      const html = document({ markPlacement })
-      const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
-      expect(mark.includes('right:') && mark.includes('bottom:')).toBe(false)
-      expect(mark).toContain(markPlacement.startsWith('t') ? 'top:' : 'bottom:')
-      expect(mark).toContain(markPlacement.endsWith('l') ? 'left:' : 'right:')
+      for (const textSide of ['left', 'right'] as const) {
+        const html = document({ markPlacement, textSide })
+        const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
+        expect(mark.includes('right:') && mark.includes('bottom:')).toBe(false)
+        expect(mark).toContain(markPlacement === 'bl' ? 'bottom:' : 'top:')
+        if (markPlacement === 'bl') expect(mark).toContain('left:')
+        else expect(mark).toContain(`${textSide}:`)
+      }
     }
   })
 })

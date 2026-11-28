@@ -32,7 +32,12 @@ export const IDEA_LABELS: Record<ThumbnailIdea, string> = {
   contrast: 'Contrast',
 }
 
-/** Where the channel mark sits on a thumbnail; never bottom right, where the duration badge sits. */
+/**
+ * Where the channel mark sits on a thumbnail; never bottom right, where the
+ * duration badge sits. `tl` and `tr` both mean the top corner on the headline's
+ * side: the page picks the corner from the text side. Both values are kept so
+ * stored settings and deployed code keep reading each other.
+ */
 export const THUMB_MARK_PLACEMENTS = ['none', 'tl', 'tr', 'bl'] as const
 export type ThumbMarkPlacement = (typeof THUMB_MARK_PLACEMENTS)[number]
 
