@@ -16,7 +16,10 @@ import {
   IDEA_LABELS,
   PACKAGES_MAX,
   PICTURE_CHANGE_MAX,
+  PICTURE_FRAMING_MAX,
+  PICTURE_SUBJECT_MAX,
   THUMBNAIL_IDEAS,
+  ownerBrief,
   upcomingDefaultId,
 } from '@boom-busters/schemas'
 import type { ThumbnailIdea } from '@boom-busters/schemas'
@@ -24,7 +27,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import type { PublishItemModel, ThumbnailPackageProp } from '@/lib/publish-review'
+import type {
+  PublishItemModel,
+  PublishRecordProp,
+  ThumbnailPackageProp,
+} from '@/lib/publish-review'
 import { testRunningReason } from '@/lib/test-running'
 import { addWinnerToReferences } from '@/app/(console)/c/[slug]/settings/thumbnail-reference-actions'
 import { useAction } from './project-controls'
@@ -129,10 +136,15 @@ function PackageCard({
   locked,
   act,
   pressed,
+  cast,
+  dismissed,
 }: {
   pack: ThumbnailPackageProp
   index: number
   isDefault: boolean
+  /** The film's cast and the people removed from it: who a rewritten picture brief will show. */
+  cast: PublishRecordProp['thumbnailCast']
+  dismissed: PublishRecordProp['thumbnailDismissed']
   /** The record still lets the owner change things. */
   open: boolean
   /** Another action or a run is working: buttons wait. */
@@ -150,9 +162,25 @@ function PackageCard({
   const waiting = locked || pack.inFlight
   const canRecompose = generated && pack.hasPicture && (pack.state === 'failed' || died)
 
+  // The brief the picture is painted from. It is stored only by Regenerate picture,
+  // with the paint, so the card never holds a brief no picture was asked for.
+  const [subject, setSubject] = useDraft(pack.subject)
+  const [framing, setFraming] = useDraft(pack.framing)
+  const briefChanged =
+    generated && (subject.trim() !== pack.subject || framing.trim() !== pack.framing)
+  const willShow = briefChanged
+    ? ownerBrief({
+        subject,
+        framing,
+        cast,
+        dismissed: dismissed.map((name) => ({ name })),
+      }).shown
+    : []
+
   const titleChanged = title.trim() !== pack.title
   const headlineChanged = generated && headline.trim() !== pack.headline
   const ideaChanged = !generated && idea !== (pack.idea ?? '')
+  // Save changes is for the free edits; it never counts or sends the brief.
   const changed = titleChanged || headlineChanged || ideaChanged
 
   const save = () =>
@@ -288,6 +316,41 @@ function PackageCard({
         </ul>
       ) : null}
 
+      {open && generated ? (
+        <div className="flex flex-col gap-2">
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Picture
+            <textarea
+              value={subject}
+              rows={2}
+              maxLength={PICTURE_SUBJECT_MAX}
+              disabled={waiting}
+              onChange={(event) => setSubject(event.target.value)}
+              className={FIELD_CLASS}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Framing
+            <textarea
+              value={framing}
+              rows={2}
+              maxLength={PICTURE_FRAMING_MAX}
+              disabled={waiting}
+              onChange={(event) => setFraming(event.target.value)}
+              className={FIELD_CLASS}
+            />
+          </label>
+          {briefChanged ? (
+            <p className="text-[12px] text-[var(--color-text-secondary)]">
+              {`Will show: ${willShow.length > 0 ? willShow.join(', ') : 'nobody from the cast'}`}
+            </p>
+          ) : null}
+          <p className="text-[12px] text-[var(--color-text-muted)]">
+            Regenerate picture paints what this says and buys a new image.
+          </p>
+        </div>
+      ) : null}
+
       {open && generated && pack.hasPicture ? (
         <div className="flex flex-col gap-2">
           <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
@@ -383,10 +446,16 @@ function PackageCard({
               <Button
                 variant="outline"
                 busy={pressed === `regen-${pack.id}`}
-                disabled={waiting || canRecompose}
+                disabled={waiting || canRecompose || (briefChanged && subject.trim() === '')}
                 onClick={() =>
                   void act(
-                    () => regenerateThumbnailPicture(pack.id),
+                    () =>
+                      briefChanged
+                        ? regenerateThumbnailPicture(pack.id, {
+                            subject: subject.trim(),
+                            framing: framing.trim(),
+                          })
+                        : regenerateThumbnailPicture(pack.id),
                     'Painting a new picture',
                     `regen-${pack.id}`,
                   )
@@ -831,6 +900,8 @@ export function ThumbnailSet({ item, busy }: { item: PublishItemModel; busy: boo
               pack={pack}
               index={index}
               isDefault={pack.id === defaultId}
+              cast={record?.thumbnailCast ?? []}
+              dismissed={record?.thumbnailDismissed ?? []}
               open={open}
               locked={working || inFlight}
               act={act}

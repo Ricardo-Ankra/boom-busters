@@ -6,9 +6,13 @@ import {
   createChannel,
   createProjectFromCase,
   createScriptVersion,
+  deleteCastMember,
+  dismissCastMember,
   ensurePublishRecord,
   FIXTURE_PROJECT_ID,
+  insertCastMember,
   insertShort,
+  setCastPhotos,
   moveProjectBible,
   saveBibleVersion,
   withTemporaryBible,
@@ -375,6 +379,68 @@ describeDb('publishModel thumbnail packages', () => {
         expect(item.styleReferencesLeftOut).toBeNull()
       }
     } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
+  it('a package carries its brief, and the master record the cast', async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await db.insert(thumbnailPackages).values([
+      {
+        publishRecordId: master.id,
+        position: 0,
+        source: 'generated',
+        picture: {
+          subject: 'A tired auditor over a ledger',
+          framing: 'Close, eye level',
+          textSide: 'left',
+          stillSlotIds: [],
+          depicts: [],
+        },
+      },
+      { publishRecordId: master.id, position: 1, source: 'uploaded' },
+    ])
+    const made: string[] = []
+    try {
+      for (const name of ['Brief Person One', 'Brief Person Two', 'Brief Person Gone']) {
+        made.push(
+          (await insertCastMember(db, { projectId: FIXTURE_PROJECT_ID, name, role: 'a test' })).id,
+        )
+      }
+      await setCastPhotos(db, made[0]!, [
+        {
+          r2Key: 'boom-busters/cast/p/one.jpg',
+          contentHash: 'one',
+          mimeType: 'image/jpeg',
+          width: 100,
+          height: 100,
+          view: 'front',
+        },
+      ])
+      await dismissCastMember(db, made[2]!)
+
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const record = model.items.find((item) => item.targetType === 'master')!.record!
+      expect(record.packages).toMatchObject([
+        { position: 0, subject: 'A tired auditor over a ledger', framing: 'Close, eye level' },
+        { position: 1, subject: '', framing: '' },
+      ])
+      expect(record.thumbnailCast).toEqual(
+        expect.arrayContaining([
+          { name: 'Brief Person One', hasPortrait: true },
+          { name: 'Brief Person Two', hasPortrait: false },
+        ]),
+      )
+      expect(record.thumbnailCast.map((member) => member.name)).not.toContain('Brief Person Gone')
+      expect(record.thumbnailDismissed).toContain('Brief Person Gone')
+      for (const item of model.items.filter((i) => i.targetType === 'short')) {
+        expect(item.record?.thumbnailCast ?? []).toEqual([])
+        expect(item.record?.thumbnailDismissed ?? []).toEqual([])
+      }
+    } finally {
+      for (const id of made) await deleteCastMember(db, id)
       await db.delete(publishRecords)
     }
   })

@@ -407,6 +407,13 @@
       "when": 1795792467133,
       "tag": "0057_thumbnail_previous_picture",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795812547825,
+      "tag": "0058_thumbnail_previous_depicts",
+      "breakpoints": true
     }
   ]
 }

@@ -251,6 +251,34 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })
     await expect(back).toBeVisible()
 
+    // Rewrite the first picture's brief. The fields open filled with what the
+    // planner wrote, and the card says who the new words will show. With no
+    // Inngest to reach, the request fails the same plain way and the stored
+    // brief is put back, which the second reload shows. Every name is matched
+    // exactly: "Picture" is also inside "Change the picture". The first reload
+    // clears the earlier refusals, which stay on screen, so the one asserted
+    // below is this press's own.
+    const unreachable = page.getByText('Could not reach Inngest to start the work.')
+    const picture = first.getByRole('textbox', { name: 'Picture', exact: true })
+    await expect(async () => {
+      await page.reload()
+      await expect(picture).toHaveValue('A tired auditor over a ledger', { timeout: 5_000 })
+    }).toPass({ timeout: 30_000 })
+    await expect(unreachable).toHaveCount(0)
+    await expect(first.getByRole('textbox', { name: 'Framing', exact: true })).toHaveValue(
+      'Close, eye level',
+    )
+    await picture.fill('A vault door left open at night')
+    await expect(first.getByText('Will show: nobody from the cast')).toBeVisible()
+    await first.getByRole('button', { name: 'Regenerate picture', exact: true }).click()
+    await expect(unreachable.first()).toBeVisible({ timeout: 15_000 })
+    await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })
+    await expect(picture).toHaveValue('A vault door left open at night')
+    await expect(async () => {
+      await page.reload()
+      await expect(picture).toHaveValue('A tired auditor over a ledger', { timeout: 5_000 })
+    }).toPass({ timeout: 30_000 })
+
     // Approve the set.
     await page.getByRole('button', { name: 'Approve this set' }).click()
     await expect(page.getByText('Set approved').first()).toBeVisible({ timeout: 15_000 })

@@ -570,11 +570,17 @@ export async function landComposedThumbnail(
  * (the composite follows). The same key rotates nothing. `deleteKeys` are the
  * objects to remove from storage afterwards: the old previous picture when
  * neither key of the row names it now, or the new object when the package is gone.
+ *
+ * `depicts` is who the new picture shows. The row's `depicts` describes the
+ * stored picture, so it changes here and nowhere earlier, and the people of the
+ * picture it replaces go to `previousDepicts` with that picture. Left out, the
+ * new picture shows who the old one did.
  */
 export async function landPaintedPicture(
   db: Database,
   packageId: string,
   pictureKey: string,
+  options: { depicts?: string[] } = {},
 ): Promise<{ landed: boolean; deleteKeys: string[] }> {
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -583,11 +589,12 @@ export async function landPaintedPicture(
       .where(eq(thumbnailPackages.id, packageId))
       .for('update')
     if (!row) return { landed: false, deleteKeys: [pictureKey] }
+    const depicts = options.depicts ?? row.depicts
 
     if (row.pictureKey === pictureKey) {
       await tx
         .update(thumbnailPackages)
-        .set({ state: 'painting', error: null })
+        .set({ state: 'painting', error: null, depicts })
         .where(eq(thumbnailPackages.id, packageId))
       return { landed: true, deleteKeys: [] }
     }
@@ -597,6 +604,9 @@ export async function landPaintedPicture(
       .set({
         pictureKey,
         previousPictureKey: row.pictureKey,
+        depicts,
+        // A first picture replaces none, so there are no people to keep.
+        previousDepicts: row.pictureKey === null ? [] : row.depicts,
         state: 'painting',
         error: null,
       })
@@ -608,9 +618,9 @@ export async function landPaintedPicture(
 }
 
 /**
- * Swaps the picture and the previous picture in one statement (Postgres reads
- * every `SET` expression from the old row). Undefined when there is no previous
- * picture, or no such package.
+ * Swaps the picture and the previous picture, and the people each shows, in one
+ * statement (Postgres reads every `SET` expression from the old row). Undefined
+ * when there is no previous picture, or no such package.
  */
 export async function swapThumbnailPictures(
   db: Executor,
@@ -622,6 +632,8 @@ export async function swapThumbnailPictures(
     .set({
       pictureKey: thumbnailPackages.previousPictureKey,
       previousPictureKey: thumbnailPackages.pictureKey,
+      depicts: thumbnailPackages.previousDepicts,
+      previousDepicts: thumbnailPackages.depicts,
       ...patch,
     })
     .where(

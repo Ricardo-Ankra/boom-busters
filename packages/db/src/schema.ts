@@ -1627,6 +1627,15 @@ export const thumbnailPackages = pgTable(
       .default(sql`'{}'::text[]`),
     pictureKey: text('picture_key'),
     previousPictureKey: text('previous_picture_key'),
+    /**
+     * Who the previous picture shows. `depicts` is who the stored picture shows,
+     * not who the brief names: the two part ways once the owner rewrites the
+     * brief, and they travel with their pictures.
+     */
+    previousDepicts: text('previous_depicts')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     composedKey: text('composed_key'),
     textSide: text('text_side').notNull().default('left'),
     warnings: jsonb('warnings')

@@ -38,6 +38,7 @@ import type { ImageReference } from '@boom-busters/providers'
 import {
   BudgetExceededError,
   changeNoteIssue,
+  dismissedNamed,
   depictedMembers,
   IDEA_LABELS,
   MAX_CHARACTER_REFERENCES,
@@ -411,18 +412,22 @@ export async function paintThumbnailPicture(
 
     const limits = live.referenceLimits(route.model)
     const cast = await listCastMembers(db, projectId)
+    const dismissed = (await listDismissedCastNames(db, projectId)).map((name) => ({ name }))
     if (note !== undefined) {
       // The action checks this too; an event sent any other way is checked here, before any buying.
-      const dismissed = await listDismissedCastNames(db, projectId)
-      const issue = changeNoteIssue({
-        note,
-        depicts: row.depicts,
-        cast,
-        dismissed: dismissed.map((name) => ({ name })),
-      })
+      const issue = changeNoteIssue({ note, depicts: row.depicts, cast, dismissed })
       if (issue) throw new ValidationError(issue)
+    } else {
+      // The brief reaches the model word for word, and the owner can write it. Someone
+      // removed from the cast since it was stored must not be painted from it.
+      const removed = dismissedNamed(`${picture.subject} ${picture.framing}`, cast, dismissed)
+      if (removed !== null) throw new ValidationError(`${removed} was removed from the cast.`)
     }
-    const depicted = depictedMembers(picture.depicts, cast)
+    // A change edits the picture that is stored, so its people are the row's. A paint
+    // from the brief shows who the brief names; the two differ once the owner has
+    // rewritten the brief and the picture on screen is still an earlier one.
+    const shows = note !== undefined ? row.depicts : picture.depicts
+    const depicted = depictedMembers(shows, cast)
     const stills = (await filmStills(projectId)).filter((still) =>
       picture.stillSlotIds.includes(still.slotId),
     )
@@ -578,7 +583,8 @@ export async function paintThumbnailPicture(
     }
     // The package is ready only once composed; until then it stays painting. The helper
     // keeps the picture it replaced and says which objects no row names any more.
-    const { deleteKeys } = await landPaintedPicture(db, packageId, pictureKey)
+    // Who the new picture shows lands with it: the row's people describe the stored picture.
+    const { deleteKeys } = await landPaintedPicture(db, packageId, pictureKey, { depicts: shows })
     if (!mocked && storageConfigured()) {
       for (const key of deleteKeys) {
         if (!key.includes(`/${MOCK_PREFIX}`)) await deleteObject(key).catch(() => undefined)

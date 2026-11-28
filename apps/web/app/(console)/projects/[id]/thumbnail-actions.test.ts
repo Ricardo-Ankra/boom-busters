@@ -13,6 +13,7 @@ import {
   publishRecords,
   requireTestDatabase,
   seed,
+  setCastPhotos,
   thumbnailPackages,
   updatePublishRecord,
 } from '@boom-busters/db'
@@ -356,6 +357,280 @@ describeDb('the thumbnail actions', () => {
     })
   })
 
+  describe("the owner's brief", () => {
+    const PLANNED = {
+      subject: 'A tired auditor over a ledger',
+      framing: 'Close, eye level',
+      textSide: 'right' as const,
+      stillSlotIds: ['s1'],
+      depicts: [] as string[],
+    }
+    const PHOTO = {
+      r2Key: 'boom-busters/cast/p/face.jpg',
+      contentHash: 'face',
+      mimeType: 'image/jpeg' as const,
+      width: 800,
+      height: 800,
+      view: 'front' as const,
+    }
+
+    async function stored(id: string, packageId: string) {
+      return (await listThumbnailPackages(db, id)).find((row) => row.id === packageId)!
+    }
+
+    /** A ready, painted package holding the planner's brief. */
+    async function planned(id: string, values: Parameters<typeof addPackage>[2] = {}) {
+      return addPackage(id, 0, {
+        pictureKey: 'boom-busters/thumbs/p/a.png',
+        picture: PLANNED,
+        ...values,
+      })
+    }
+
+    /** Runs a body with cast members on the fixture project, removing them after. */
+    async function withCast(
+      people: { name: string; portrait?: boolean; removed?: boolean }[],
+      body: () => Promise<void>,
+    ): Promise<void> {
+      const made: string[] = []
+      try {
+        for (const person of people) {
+          const member = await insertCastMember(db, {
+            projectId: FIXTURE_PROJECT_ID,
+            name: person.name,
+            role: 'a test person',
+          })
+          made.push(member.id)
+          if (person.portrait !== false) await setCastPhotos(db, member.id, [PHOTO])
+          if (person.removed) await dismissCastMember(db, member.id)
+        }
+        await body()
+      } finally {
+        for (const memberId of made) await deleteCastMember(db, memberId)
+      }
+    }
+
+    it('an untouched brief repaints as before', async () => {
+      const id = await recordId()
+      const row = await planned(id)
+
+      expect(
+        await regenerateThumbnailPicture(row.id, {
+          subject: ' A tired auditor over a ledger ',
+          framing: 'Close, eye level',
+        }),
+      ).toEqual({ ok: true })
+
+      const after = await stored(id, row.id)
+      expect(after.picture).toEqual(PLANNED)
+      expect(after.depicts).toEqual([])
+      expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      expect(inngestSeam.send.mock.calls[0]![0].data).toEqual({
+        projectId: FIXTURE_PROJECT_ID,
+        targetId: FIXTURE_PROJECT_ID,
+        mode: 'paint',
+        packageId: row.id,
+        baseKey: 'boom-busters/thumbs/p/a.png',
+      })
+    })
+
+    it("the owner's brief is stored with the painting mark", async () => {
+      await withCast([{ name: 'Adam Neumann' }], async () => {
+        const id = await recordId()
+        const row = await planned(id, { state: 'ready', error: null })
+
+        expect(
+          await regenerateThumbnailPicture(row.id, {
+            subject: ' Adam Neumann barefoot on a glass office floor ',
+            framing: '',
+          }),
+        ).toEqual({ ok: true })
+
+        const after = await stored(id, row.id)
+        expect(after.state).toBe('painting')
+        expect(after.error).toBeNull()
+        // Who the picture on screen shows changes only when the new picture lands.
+        expect(after.depicts).toEqual([])
+        expect(after.picture).toEqual({
+          subject: 'Adam Neumann barefoot on a glass office floor',
+          framing: '',
+          textSide: 'right',
+          stillSlotIds: [],
+          depicts: ['Adam Neumann'],
+        })
+        expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+        expect(inngestSeam.send.mock.calls[0]![0].data).toEqual({
+          projectId: FIXTURE_PROJECT_ID,
+          targetId: FIXTURE_PROJECT_ID,
+          mode: 'paint',
+          packageId: row.id,
+          baseKey: 'boom-busters/thumbs/p/a.png',
+        })
+      })
+    })
+
+    it('a rewritten brief leaves who the picture on screen shows', async () => {
+      await withCast([{ name: 'Adam Neumann' }, { name: 'Masayoshi Son' }], async () => {
+        const id = await recordId()
+        const row = await planned(id, {
+          depicts: ['Masayoshi Son'],
+          picture: { ...PLANNED, depicts: ['Masayoshi Son'] },
+        })
+
+        expect(
+          await regenerateThumbnailPicture(row.id, {
+            subject: 'Adam Neumann at a desk',
+            framing: '',
+          }),
+        ).toEqual({ ok: true })
+
+        const after = await stored(id, row.id)
+        expect(after.depicts).toEqual(['Masayoshi Son'])
+        expect(after.picture?.depicts).toEqual(['Adam Neumann'])
+      })
+    })
+
+    it('a refused brief touches nothing', async () => {
+      await withCast(
+        [
+          { name: 'Adam Neumann' },
+          { name: 'Masayoshi Son', portrait: false },
+          { name: 'Rebekah Neumann', removed: true },
+        ],
+        async () => {
+          const id = await recordId()
+          const row = await planned(id)
+          const refusals: [string, string][] = [
+            ['   ', 'Write what the picture shows.'],
+            ['a'.repeat(401), 'The picture is at most 400 characters.'],
+            ['Rebekah Neumann at a desk', 'Rebekah Neumann was removed from the cast.'],
+            [
+              'Masayoshi Son in a doorway',
+              'Masayoshi Son has no portrait. Add one on the Cast card first.',
+            ],
+          ]
+          for (const [subject, error] of refusals) {
+            expect(await regenerateThumbnailPicture(row.id, { subject, framing: '' })).toEqual({
+              ok: false,
+              error,
+            })
+          }
+          expect(
+            await regenerateThumbnailPicture(row.id, {
+              subject: 'A vault door',
+              framing: 'a'.repeat(401),
+            }),
+          ).toEqual({ ok: false, error: 'The framing is at most 400 characters.' })
+          expect(await stored(id, row.id)).toEqual(row)
+          expect(inngestSeam.send).not.toHaveBeenCalled()
+        },
+      )
+    })
+
+    it('a brief that is not text is refused', async () => {
+      const id = await recordId()
+      const row = await planned(id)
+      const junk = { subject: 5, framing: null } as unknown as { subject: string; framing: string }
+      expect(await regenerateThumbnailPicture(row.id, junk)).toEqual({
+        ok: false,
+        error: 'Write what the picture shows.',
+      })
+      expect(
+        await regenerateThumbnailPicture(row.id, 'a vault door' as unknown as typeof junk),
+      ).toEqual({ ok: false, error: 'Write what the picture shows.' })
+      expect(await stored(id, row.id)).toEqual(row)
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+    })
+
+    it('the brief is put back when the send fails', async () => {
+      await withCast([{ name: 'Adam Neumann' }], async () => {
+        const id = await recordId()
+        const row = await planned(id)
+        inngestSeam.send.mockRejectedValueOnce(new Error('down'))
+        vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+        expect(
+          await regenerateThumbnailPicture(row.id, {
+            subject: 'Adam Neumann at a desk',
+            framing: '',
+          }),
+        ).toEqual({ ok: false, error: 'Could not reach Inngest to start the work.' })
+
+        const after = await stored(id, row.id)
+        expect(after.state).toBe('ready')
+        expect(after.error).toBeNull()
+        expect(after.depicts).toEqual([])
+        expect(after.picture).toEqual(PLANNED)
+      })
+    })
+
+    it('the existing guards come first', async () => {
+      const brief = { subject: 'A vault door left open', framing: '' }
+      const id = await recordId()
+
+      const inFlight = await planned(id, { state: 'painting' })
+      expect(await regenerateThumbnailPicture(inFlight.id, brief)).toEqual({
+        ok: false,
+        error: IN_FLIGHT,
+      })
+      expect((await stored(id, inFlight.id)).picture).toEqual(PLANNED)
+      await db.delete(thumbnailPackages).where(eq(thumbnailPackages.id, inFlight.id))
+
+      const failed = await planned(id, { state: 'failed', error: 'Compose failed.' })
+      expect(await regenerateThumbnailPicture(failed.id, brief)).toEqual({
+        ok: false,
+        error: 'Compose this thumbnail again first. It is free.',
+      })
+      expect((await stored(id, failed.id)).picture).toEqual(PLANNED)
+
+      const uploaded = await addPackage(id, 1, { source: 'uploaded', pictureKey: null })
+      expect(await regenerateThumbnailPicture(uploaded.id, brief)).toEqual({
+        ok: false,
+        error: 'Only a generated thumbnail has a picture to paint again.',
+      })
+      expect((await stored(id, uploaded.id)).picture).toBeNull()
+      expect(inngestSeam.send).not.toHaveBeenCalled()
+    })
+
+    it('a failed package with no picture takes a new brief', async () => {
+      const id = await recordId()
+      const row = await planned(id, { state: 'failed', pictureKey: null, composedKey: null })
+
+      expect(
+        await regenerateThumbnailPicture(row.id, {
+          subject: 'A vault door left open',
+          framing: '',
+        }),
+      ).toEqual({ ok: true })
+
+      expect((await stored(id, row.id)).picture).toMatchObject({
+        subject: 'A vault door left open',
+        stillSlotIds: [],
+      })
+      expect(inngestSeam.send.mock.calls[0]![0].data.baseKey).toBeNull()
+    })
+
+    it('a package with no brief takes one, on the side its headline is set', async () => {
+      const id = await recordId()
+      const row = await addPackage(id, 0, { picture: null, textSide: 'right' })
+
+      expect(
+        await regenerateThumbnailPicture(row.id, {
+          subject: 'A vault door left open',
+          framing: '',
+        }),
+      ).toEqual({ ok: true })
+
+      expect((await stored(id, row.id)).picture).toEqual({
+        subject: 'A vault door left open',
+        framing: '',
+        textSide: 'right',
+        stillSlotIds: [],
+        depicts: [],
+      })
+    })
+  })
+
   describe('changeThumbnailPicture', () => {
     const NO_PICTURE = 'There is no picture to change. Regenerate the picture.'
     const NOT_COMPOSED = 'Compose this thumbnail again first. It is free.'
@@ -588,6 +863,57 @@ describeDb('the thumbnail actions', () => {
       })
       expect('note' in data).toBe(false)
       expect('baseKey' in data).toBe(false)
+    })
+
+    it('going back brings back the people that picture shows, and a change answers to them', async () => {
+      const made: string[] = []
+      try {
+        for (const name of ['Adam Neumann', 'Masayoshi Son']) {
+          const member = await insertCastMember(db, {
+            projectId: FIXTURE_PROJECT_ID,
+            name,
+            role: 'a test person',
+          })
+          made.push(member.id)
+        }
+        const id = await recordId()
+        // The picture on screen was painted from the owner's brief and shows Adam
+        // Neumann; the one before it was the planner's and shows Masayoshi Son.
+        const row = await addPackage(id, 0, {
+          pictureKey: 'now.png',
+          previousPictureKey: 'before.png',
+          depicts: ['Adam Neumann'],
+          previousDepicts: ['Masayoshi Son'],
+        })
+
+        expect(await switchThumbnailPicture(row.id)).toEqual({ ok: true })
+
+        expect((await listThumbnailPackages(db, id))[0]).toMatchObject({
+          pictureKey: 'before.png',
+          depicts: ['Masayoshi Son'],
+          previousDepicts: ['Adam Neumann'],
+        })
+
+        // Composed again, the picture of Masayoshi Son is what a change edits.
+        await db
+          .update(thumbnailPackages)
+          .set({ state: 'ready' })
+          .where(eq(thumbnailPackages.id, row.id))
+        expect(await changeThumbnailPicture(row.id, 'make Masayoshi Son smile')).toEqual({
+          ok: true,
+        })
+        expect(await changeThumbnailPicture(row.id, 'x')).toEqual({ ok: false, error: IN_FLIGHT })
+        await db
+          .update(thumbnailPackages)
+          .set({ state: 'ready' })
+          .where(eq(thumbnailPackages.id, row.id))
+        expect(await changeThumbnailPicture(row.id, 'put Adam Neumann beside him')).toEqual({
+          ok: false,
+          error: 'Adam Neumann is not shown in this picture. A change cannot add a person.',
+        })
+      } finally {
+        for (const memberId of made) await deleteCastMember(db, memberId)
+      }
     })
 
     it('back to previous is refused without a previous picture', async () => {

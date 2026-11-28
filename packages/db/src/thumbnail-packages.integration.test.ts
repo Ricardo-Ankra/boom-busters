@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { FIRST_CHANNEL_ID } from '@boom-busters/schemas'
 import type { PlannedPackage } from '@boom-busters/schemas'
-import { eq } from 'drizzle-orm'
+import { eq, sql as statement } from 'drizzle-orm'
 import { afterAll, describe, expect, it } from 'vitest'
 import { createCase } from './cases'
 import { ensureFirstChannel } from './channels'
@@ -480,6 +482,123 @@ suite('thumbnail packages', () => {
         pictureKey: 'a',
         previousPictureKey: null,
       })
+    })
+  })
+
+  it("a new picture's people replace the old, which are kept with their picture", async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'a',
+        depicts: ['Old Person'],
+        previousDepicts: ['Older Person'],
+      })
+
+      await landPaintedPicture(db, row.id, 'b', { depicts: ['New Person'] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
+  it('a picture landed without its people keeps the ones the row holds', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, { pictureKey: 'a', depicts: ['Old Person'] })
+
+      await landPaintedPicture(db, row.id, 'b')
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        depicts: ['Old Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
+  it('the same key takes the new people and rotates nothing', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'a',
+        previousPictureKey: 'z',
+        depicts: ['Old Person'],
+        previousDepicts: ['Older Person'],
+      })
+
+      await landPaintedPicture(db, row.id, 'a', { depicts: ['New Person'] })
+
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'z',
+        depicts: ['New Person'],
+        previousDepicts: ['Older Person'],
+      })
+    })
+  })
+
+  it('the swap takes the people with the pictures', async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0, {
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+
+      expect(await swapThumbnailPictures(db, row.id)).toMatchObject({
+        pictureKey: 'a',
+        previousPictureKey: 'b',
+        depicts: ['Old Person'],
+        previousDepicts: ['New Person'],
+      })
+      expect(await swapThumbnailPictures(db, row.id)).toMatchObject({
+        pictureKey: 'b',
+        depicts: ['New Person'],
+        previousDepicts: ['Old Person'],
+      })
+    })
+  })
+
+  it('migration 0058 gives a row from before it the people of its previous picture', async () => {
+    // Before 0058 a package's people were never rewritten, so both of its pictures
+    // show the row's `depicts`. Without the backfill, going back on such a row would
+    // empty the list while the picture still shows them.
+    const file = resolve(import.meta.dirname, '../drizzle/0058_thumbnail_previous_depicts.sql')
+    const backfill = readFileSync(file, 'utf8')
+      .split('--> statement-breakpoint')
+      .map((part) => part.trim())
+      .find((part) => /^update\s/i.test(part))
+    expect(backfill).toBeDefined()
+
+    await withRecord(async (record) => {
+      const withPrevious = await seedRow(record.id, 0, {
+        pictureKey: 'b',
+        previousPictureKey: 'a',
+        depicts: ['Old Person'],
+      })
+      const without = await seedRow(record.id, 1, { pictureKey: 'c', depicts: ['Other Person'] })
+
+      // Rolled back: the statement touches every row of the table, and other suites share it.
+      const read = await db
+        .transaction(async (tx) => {
+          await tx.execute(statement.raw(backfill!))
+          const rows = await tx
+            .select()
+            .from(thumbnailPackages)
+            .where(eq(thumbnailPackages.publishRecordId, record.id))
+          throw Object.assign(new Error('roll back'), { rows })
+        })
+        .catch((error: Error & { rows?: (typeof thumbnailPackages.$inferSelect)[] }) => {
+          if (!error.rows) throw error
+          return error.rows
+        })
+
+      expect(read.find((row) => row.id === withPrevious.id)?.previousDepicts).toEqual([
+        'Old Person',
+      ])
+      expect(read.find((row) => row.id === without.id)?.previousDepicts).toEqual([])
+      expect((await getThumbnailPackage(db, withPrevious.id))?.previousDepicts).toEqual([])
     })
   })
 
