@@ -1067,6 +1067,171 @@ describeDb('the thumbnail actions', () => {
       })
     })
 
+    describe('a highlight', () => {
+      const WORDS = 'The highlight must be words from the headline.'
+
+      it('saves and recomposes for free', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, { headline: 'They lost $2 billion' })
+
+        expect(await saveThumbnailPackage(row.id, { highlight: ' Billion ' })).toEqual({ ok: true })
+
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+          highlight: 'Billion',
+          state: 'painting',
+          error: null,
+        })
+        expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+        expect(inngestSeam.send).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: {
+              projectId: FIXTURE_PROJECT_ID,
+              targetId: FIXTURE_PROJECT_ID,
+              mode: 'compose',
+              packageId: row.id,
+            },
+          }),
+        )
+      })
+
+      it('unchanged sends nothing', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        expect(await saveThumbnailPackage(row.id, { highlight: 'billion' })).toEqual({ ok: true })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+        expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+      })
+
+      it('cleared recomposes', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        expect(await saveThumbnailPackage(row.id, { highlight: '' })).toEqual({ ok: true })
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({ highlight: '' })
+        expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      })
+
+      it('on a package with no picture is stored without a compose', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          // A fresh planned row is in flight, so this is a package whose painting failed.
+          state: 'failed',
+          pictureKey: null,
+          composedKey: null,
+          headline: 'They lost $2 billion',
+        })
+        expect(await saveThumbnailPackage(row.id, { highlight: 'billion' })).toEqual({ ok: true })
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({ highlight: 'billion' })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+      })
+
+      it('that is not in the headline is refused', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, { headline: 'They lost $2 billion' })
+        expect(await saveThumbnailPackage(row.id, { highlight: 'bankrupt' })).toEqual({
+          ok: false,
+          error: WORDS,
+        })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+        expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+      })
+
+      it('is orphaned by a headline edit, which is refused', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        expect(await saveThumbnailPackage(row.id, { headline: 'They lost it all' })).toEqual({
+          ok: false,
+          error: WORDS,
+        })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+        expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+      })
+
+      it('and a headline are checked as a pair', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        expect(
+          await saveThumbnailPackage(row.id, { headline: 'Nobody checked', highlight: 'checked' }),
+        ).toEqual({ ok: true })
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+          headline: 'Nobody checked',
+          highlight: 'checked',
+        })
+        expect(inngestSeam.send).toHaveBeenCalledTimes(1)
+      })
+
+      it('does not hold up a title save', async () => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, { headline: 'Gone', highlight: 'billion' })
+        expect(await saveThumbnailPackage(row.id, { title: 'A new title' })).toEqual({ ok: true })
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({ title: 'A new title' })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+      })
+
+      it.each([
+        [
+          'past 60 characters',
+          { highlight: 'x'.repeat(61) },
+          'A highlight is at most 60 characters.',
+          {},
+        ],
+        ['that is not text', { highlight: 42 as unknown as string }, WORDS, {}],
+        [
+          'on an uploaded thumbnail',
+          { highlight: 'billion' },
+          'An uploaded thumbnail has no headline to highlight.',
+          { source: 'uploaded' as const, pictureKey: null },
+        ],
+        [
+          'while the package is being made',
+          { highlight: 'billion' },
+          'A set is being made. Wait for it to finish.',
+          { state: 'painting' as const },
+        ],
+      ])('%s is refused', async (_name, patch, error, values) => {
+        const id = await recordId()
+        const row = await addPackage(id, 0, { headline: 'They lost $2 billion', ...values })
+        expect(await saveThumbnailPackage(row.id, patch)).toEqual({ ok: false, error })
+        expect(inngestSeam.send).not.toHaveBeenCalled()
+        expect((await listThumbnailPackages(db, id))[0]).toEqual(row)
+      })
+
+      it('goes back when a compose cannot be requested', async () => {
+        inngestSeam.send.mockRejectedValueOnce(new Error('unreachable'))
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+        const id = await recordId()
+        const row = await addPackage(id, 0, {
+          headline: 'They lost $2 billion',
+          highlight: 'lost',
+          error: 'kept words',
+        })
+        try {
+          expect(await saveThumbnailPackage(row.id, { highlight: 'billion' })).toEqual({
+            ok: false,
+            error: 'Could not reach Inngest to start the work.',
+          })
+        } finally {
+          logged.mockRestore()
+        }
+        expect(await getThumbnailPackage(db, row.id)).toMatchObject({
+          highlight: 'lost',
+          state: 'ready',
+          error: 'kept words',
+        })
+      })
+    })
+
     it('a text-side change recomposes too, and a long headline only warns on the card', async () => {
       const id = await recordId()
       const row = await addPackage(id, 0, { textSide: 'left' })
