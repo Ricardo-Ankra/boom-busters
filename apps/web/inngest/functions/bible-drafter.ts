@@ -104,6 +104,30 @@ function knownSources(
   }))
 }
 
+/**
+ * Sections drafted one field per step. The hooks section asked for hooks,
+ * openings and titles (up to 36 entries) in one model call, and that call ran
+ * past the server's 300-second limit on every attempt (2026-11-27): the step
+ * was killed, retried twice and the whole draft failed. One list per step
+ * keeps each call well inside the limit.
+ */
+const DRAFTED_BY_FIELD: Partial<Record<BibleDraftUnit['section'], readonly EntryList[]>> = {
+  hooks: BIBLE_ENTRY_LISTS,
+}
+
+type EntryList = (typeof BIBLE_ENTRY_LISTS)[number]
+
+const FIELD_LABELS: Record<EntryList, string> = {
+  hooks: 'Hooks',
+  openings: 'Openings',
+  titles: 'Titles',
+}
+
+/** The error key of a unit, or of one field of it (`hooks:openings`). */
+function errorKey(unit: BibleDraftUnit, only: EntryList | undefined): string {
+  return only === undefined ? unitKey(unit) : `${unitKey(unit)}:${only}`
+}
+
 /** The field paths a unit's answer wrote, with the text at each. */
 function writtenFields(unit: BibleDraftUnit, answer: Partial<ChannelBible>): [string, string][] {
   if (unit.section === 'examples') {
@@ -116,20 +140,31 @@ function writtenFields(unit: BibleDraftUnit, answer: Partial<ChannelBible>): [st
 }
 
 /** Whether a flag's path belongs to the fields a unit writes (so it is cleared before the new ones). */
-function belongsTo(unit: BibleDraftUnit, path: string, written: readonly string[]): boolean {
+function belongsTo(
+  unit: BibleDraftUnit,
+  path: string,
+  written: readonly string[],
+  only: EntryList | undefined,
+): boolean {
   if (unit.section === 'examples') return written.includes(path)
-  if (unit.section === 'hooks') return BIBLE_ENTRY_LISTS.some((list) => path.startsWith(`${list}.`))
+  if (unit.section === 'hooks') {
+    return (only === undefined ? BIBLE_ENTRY_LISTS : [only]).some((list) =>
+      path.startsWith(`${list}.`),
+    )
+  }
   return false
 }
 
 async function draftUnit(input: {
   channelId: string
   unit: BibleDraftUnit
+  /** One field of the unit's section, drafted in a step of its own. */
+  only?: EntryList
   steer: string | undefined
   jobStartedAt: string | undefined
 }): Promise<void> {
-  const { channelId, unit, steer, jobStartedAt } = input
-  const key = unitKey(unit)
+  const { channelId, unit, only, steer, jobStartedAt } = input
+  const key = errorKey(unit, only)
 
   const start = await getBibleDraft(db, channelId)
   if (!start) throw new NonRetriableError('The channel has no bible draft to write')
@@ -153,29 +188,32 @@ async function draftUnit(input: {
       inputs: start.inputs,
       research: start.research,
       draft: start.bible,
+      ...(only ? { only } : {}),
       ...(steer ? { steer } : {}),
       ...(previousError ? { previousError } : {}),
     })
 
   const answer = await callForAnswer({
     request: build(),
-    parse: (text) => parseBibleUnit(unit, text),
+    parse: (text) => parseBibleUnit(unit, text, only),
     retryWithReason: (reason) => build(reason),
     // Charged to the channel, to no project.
     complete: async (request, call) =>
       mockProvidersEnabled()
-        ? { text: JSON.stringify(mockBibleUnit(unit)) }
+        ? { text: JSON.stringify(mockBibleUnit(unit, only)) }
         : callLlm(request, { channelId, ...(call === 'answer' ? {} : { purpose: call }) }),
   })
 
   if (!answer.ok) {
-    // The section keeps its status: a unit that failed is not "drafted".
+    // The section keeps its status: a unit that failed is not "drafted". A
+    // field's error names the field, since the card lists its section's errors.
+    const issue = only ? `${FIELD_LABELS[only]}: ${answer.issue}` : answer.issue
     await writeBibleDraft(
       db,
       channelId,
       (draft) =>
         owns(draft, jobStartedAt)
-          ? { ...draft, errors: { ...draft.errors, [key]: answer.issue }, job: beat(draft) }
+          ? { ...draft, errors: { ...draft.errors, [key]: issue }, job: beat(draft) }
           : draft,
       { allowWhileRunning: true },
     )
@@ -198,7 +236,7 @@ async function draftUnit(input: {
       const fields = writtenFields(unit, value)
       const written = fields.map(([path]) => path)
       const tooClose: TooCloseFlags = Object.fromEntries(
-        Object.entries(draft.tooClose).filter(([path]) => !belongsTo(unit, path, written)),
+        Object.entries(draft.tooClose).filter(([path]) => !belongsTo(unit, path, written, only)),
       )
       for (const [path, text] of fields) {
         const found = overlapFlag(text, sources)
@@ -207,6 +245,8 @@ async function draftUnit(input: {
 
       const errors = { ...draft.errors }
       delete errors[key]
+      // A whole-section error from before the section was drafted by field.
+      if (only !== undefined) delete errors[unitKey(unit)]
       return {
         ...draft,
         bible: mergeBibleUnit(draft.bible, unit, value),
@@ -245,9 +285,18 @@ export const bibleDrafter = inngest.createFunction(
     )
 
     for (const unit of units) {
-      await step.run(`draft-${unitKey(unit)}`, () =>
-        draftUnit({ channelId, unit, steer, jobStartedAt }),
-      )
+      const fields = DRAFTED_BY_FIELD[unit.section]
+      if (!fields) {
+        await step.run(`draft-${unitKey(unit)}`, () =>
+          draftUnit({ channelId, unit, steer, jobStartedAt }),
+        )
+        continue
+      }
+      for (const only of fields) {
+        await step.run(`draft-${unitKey(unit)}:${only}`, () =>
+          draftUnit({ channelId, unit, only, steer, jobStartedAt }),
+        )
+      }
     }
 
     await step.run('finish', async () => {

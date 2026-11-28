@@ -11,8 +11,12 @@ export function flagSection(path: string): BibleSection | null {
   return (BIBLE_ENTRY_LISTS as readonly string[]).includes(head) ? 'hooks' : null
 }
 
-/** The section an error's key (a unit key: `voice`, `examples:<file>`, `slot:<id>`) belongs to. */
+/**
+ * The section an error's key belongs to: a unit key (`voice`, `examples:<file>`,
+ * `slot:<id>`), or one field of a section drafted by field (`hooks:openings`).
+ */
 export function errorSection(key: string): BibleSection | null {
   if (key.startsWith('examples:') || key.startsWith('slot:')) return 'examples'
-  return BIBLE_SECTION_ORDER.find((section) => section === key) ?? null
+  const head = key.split(':')[0] ?? ''
+  return BIBLE_SECTION_ORDER.find((section) => section === head) ?? null
 }

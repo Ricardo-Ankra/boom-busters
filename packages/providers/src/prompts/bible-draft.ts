@@ -83,11 +83,35 @@ function required(key: keyof ChannelBible): z.ZodType {
 }
 
 /**
- * What the model must answer with for a unit. A section is the strict pick of
- * its fields from the bible's own schema; an examples unit is exactly that
- * group's (or that one slot's) ids, each required and within its slot's limit.
+ * The keys a unit writes: its section's, or only the one `only` names.
+ *
+ * `only` drafts one field of a section in a call of its own. Hooks, openings
+ * and titles asked for together took one model call past the server's
+ * 300-second limit on every attempt (2026-11-27); one list per call fits.
  */
-export function bibleUnitSchema(unit: BibleDraftUnit): z.ZodType<Partial<ChannelBible>> {
+export function unitKeys(
+  unit: BibleDraftUnit,
+  only?: keyof ChannelBible,
+): readonly (keyof ChannelBible)[] {
+  const keys = BIBLE_SECTIONS[unit.section]
+  if (only === undefined) return keys
+  if (unit.section === 'examples' || !keys.includes(only)) {
+    throw new Error(`${only} is not a field the ${unit.section} unit can draft alone`)
+  }
+  return [only]
+}
+
+/**
+ * What the model must answer with for a unit. A section is the strict pick of
+ * its fields (or the one `only` names) from the bible's own schema; an examples
+ * unit is exactly that group's (or that one slot's) ids, each required and
+ * within its slot's limit.
+ */
+export function bibleUnitSchema(
+  unit: BibleDraftUnit,
+  only?: keyof ChannelBible,
+): z.ZodType<Partial<ChannelBible>> {
+  const keys = unitKeys(unit, only)
   if (unit.section === 'examples') {
     const ids = Object.fromEntries(
       slotsOf(unit).map((slot) => [slot.id, z.string().min(1).max(slot.maxLength)]),
@@ -96,12 +120,16 @@ export function bibleUnitSchema(unit: BibleDraftUnit): z.ZodType<Partial<Channel
       Partial<ChannelBible>
     >
   }
-  const picked = Object.fromEntries(BIBLE_SECTIONS[unit.section].map((key) => [key, required(key)]))
+  const picked = Object.fromEntries(keys.map((key) => [key, required(key)]))
   return z.object(picked).strict() as unknown as z.ZodType<Partial<ChannelBible>>
 }
 
-export function parseBibleUnit(unit: BibleDraftUnit, text: string): Partial<ChannelBible> {
-  return parseJsonCompletion(text, bibleUnitSchema(unit), 'bible section')
+export function parseBibleUnit(
+  unit: BibleDraftUnit,
+  text: string,
+  only?: keyof ChannelBible,
+): Partial<ChannelBible> {
+  return parseJsonCompletion(text, bibleUnitSchema(unit, only), 'bible section')
 }
 
 /** Examples merge by key; every other key is replaced. */
@@ -143,12 +171,17 @@ function digestBlock(research: BibleResearchDigest): string {
   return `Patterns:\n${patterns.join('\n')}\n\nVideos:\n${videos.join('\n')}`
 }
 
-/** The sections the draft already holds, except the unit's own words. */
-function draftBlock(draft: ChannelBible, unit: BibleDraftUnit): string {
+/**
+ * The sections the draft already holds, except the unit's own words. A unit
+ * drafting one field (`only`) sees its section's other non-empty fields, so
+ * openings drafted after hooks can follow them.
+ */
+function draftBlock(draft: ChannelBible, unit: BibleDraftUnit, only?: keyof ChannelBible): string {
   const own = new Set(slotsOf(unit).map((slot) => slot.id))
   const parts: string[] = []
   for (const section of Object.keys(BIBLE_SECTIONS) as BibleSection[]) {
-    if (section === unit.section && section !== 'examples') continue
+    const isOwn = section === unit.section && section !== 'examples'
+    if (isOwn && only === undefined) continue
     if (sectionIsEmpty(draft, section)) continue
     const fields: Partial<ChannelBible> = {}
     for (const key of BIBLE_SECTIONS[section]) {
@@ -157,6 +190,10 @@ function draftBlock(draft: ChannelBible, unit: BibleDraftUnit): string {
           Object.entries(draft.examples).filter(([id]) => !own.has(id)),
         )
         if (Object.keys(kept).length > 0) fields.examples = kept
+      } else if (isOwn) {
+        const value = draft[key]
+        const empty = Array.isArray(value) ? value.length === 0 : value === '' || value === null
+        if (key !== only && !empty) Object.assign(fields, { [key]: value })
       } else {
         Object.assign(fields, { [key]: draft[key] })
       }
@@ -166,13 +203,9 @@ function draftBlock(draft: ChannelBible, unit: BibleDraftUnit): string {
   return parts.join('\n\n')
 }
 
-function keysOf(unit: BibleDraftUnit): readonly (keyof ChannelBible)[] {
-  return BIBLE_SECTIONS[unit.section]
-}
-
-function fieldsBlock(unit: BibleDraftUnit): string {
+function fieldsBlock(unit: BibleDraftUnit, only?: keyof ChannelBible): string {
   if (unit.section !== 'examples') {
-    return keysOf(unit)
+    return unitKeys(unit, only)
       .map((key) => `- ${key}: ${FIELD_NOTES[key]}`)
       .join('\n')
   }
@@ -182,14 +215,16 @@ function fieldsBlock(unit: BibleDraftUnit): string {
   return `- examples: ${FIELD_NOTES.examples}\n\nAnswer {"examples": {...}} with exactly these ids, each a string:\n${lines.join('\n')}`
 }
 
-function shapeExample(unit: BibleDraftUnit): string {
+function shapeExample(unit: BibleDraftUnit, only?: keyof ChannelBible): string {
   if (unit.section === 'examples') {
     const examples = Object.fromEntries(
       slotsOf(unit).map((slot) => [slot.id, FIRST_CHANNEL_BIBLE.examples[slot.id] ?? '']),
     )
     return JSON.stringify({ examples }, null, 2)
   }
-  const fields = Object.fromEntries(keysOf(unit).map((key) => [key, FIRST_CHANNEL_BIBLE[key]]))
+  const fields = Object.fromEntries(
+    unitKeys(unit, only).map((key) => [key, FIRST_CHANNEL_BIBLE[key]]),
+  )
   return JSON.stringify(fields, null, 2)
 }
 
@@ -210,21 +245,23 @@ export function buildBibleUnitRequest(input: {
   inputs: BibleDraftInputs | null
   research: BibleResearchDigest | null
   draft: ChannelBible
+  /** Draft only this one field of the unit's section (see `unitKeys`). */
+  only?: keyof ChannelBible
   steer?: string
   previousError?: string
 }): LLMTaskRequest {
-  const { unit } = input
+  const { unit, only } = input
   const sections: string[] = []
   const add = (heading: string, body: string) => sections.push(`## ${heading}\n\n${body}`)
 
   if (input.inputs) add("The owner's inputs", inputsBlock(input.inputs))
   if (input.research) add('Research digest', digestBlock(input.research))
-  const drafted = draftBlock(input.draft, unit)
+  const drafted = draftBlock(input.draft, unit, only)
   if (drafted) add('Already drafted for this channel', drafted)
-  add('What to write', fieldsBlock(unit))
+  add('What to write', fieldsBlock(unit, only))
   add(
     'An example of shape and level of detail, from another channel. Do not reuse its subjects or words.',
-    shapeExample(unit),
+    shapeExample(unit, only),
   )
   if (unit.section === 'hooks') add('Hooks, openings and titles', HOOKS_RULE)
   if (input.steer) add('Steer', `The owner asks: ${input.steer}`)
