@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { readdirSync, readFileSync, statfsSync } from 'node:fs'
+import { lstatSync, readdirSync, readFileSync, statfsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 /**
  * The frames' browser as the host sees it: a process of its own.
@@ -127,13 +128,68 @@ function freeTempMb(): number | null {
 }
 
 /**
+ * Under this much room the temp folder is named in the failure: the packaged
+ * browser's own files take some 213 MB of Vercel's 500, and an open browser
+ * some 16 more, so less than this free means something else has filled it.
+ */
+export const LOW_TEMP_MB = 100
+
+/** A name in a failure message is cut at this length. */
+const TEMP_NAME_MAX = 48
+/** No more than this many files are sized: the listing runs on a failing request. */
+const TEMP_WALK_MAX = 20_000
+
+export interface TempEntry {
+  name: string
+  mb: number
+}
+
+/**
+ * The largest things directly in a folder, a sub-folder counted whole, largest
+ * first. Null where the folder cannot be read. A lost browser on Vercel was
+ * traced to a temp folder with 6 MB free and nothing of ours running
+ * (2026-11-28), and only the instance itself can say what filled it.
+ */
+export function largestTempEntries(dir: string = tmpdir(), limit = 4): TempEntry[] | null {
+  let names: string[]
+  try {
+    names = readdirSync(dir)
+  } catch {
+    return null
+  }
+  let walked = 0
+  const bytesOf = (path: string): number => {
+    if (walked >= TEMP_WALK_MAX) return 0
+    walked += 1
+    try {
+      const stats = lstatSync(path)
+      if (!stats.isDirectory()) return stats.size
+      return readdirSync(path).reduce((sum, name) => sum + bytesOf(join(path, name)), 0)
+    } catch {
+      // Gone, or not ours to read: it counts for nothing.
+      return 0
+    }
+  }
+  return names
+    .map((name) => ({ name, bytes: bytesOf(join(dir, name)) }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, limit)
+    .map(({ name, bytes }) => ({
+      name: name.slice(0, TEMP_NAME_MAX),
+      mb: Math.round(bytes / (1024 * 1024)),
+    }))
+}
+
+/**
  * What the host can say when a browser is lost, for the failure's own words:
  * a browser that dies tells Playwright nothing of why, and the function's log
- * is gone in an hour. Empty where the host tells nothing.
+ * is gone in an hour. Empty where the host tells nothing. A temp folder that
+ * is nearly full is listed, largest first.
  */
 export function hostFacts(
   host: HostProcesses = PROC,
   freeMb: () => number | null = freeTempMb,
+  largest: () => TempEntry[] | null = largestTempEntries,
 ): string {
   const facts: string[] = []
   const browsers = launchedBrowsers(host)
@@ -146,6 +202,12 @@ export function hostFacts(
     )
   }
   const free = freeMb()
-  if (free !== null) facts.push(`${free} MB free in the temp folder`)
+  if (free !== null) {
+    const entries = free < LOW_TEMP_MB ? (largest() ?? []) : []
+    const listed = entries.map((entry) => `${entry.name} ${entry.mb} MB`).join(', ')
+    facts.push(
+      `${free} MB free in the temp folder${listed === '' ? '' : ` (largest there: ${listed})`}`,
+    )
+  }
   return facts.join(', ')
 }

@@ -1,11 +1,16 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   closeOrKill,
   hostFacts,
   killLaunched,
+  largestTempEntries,
   LAUNCH_MARK,
   launchedBrowsers,
   launchMark,
+  LOW_TEMP_MB,
   type HostProcesses,
 } from './browser-process'
 
@@ -142,5 +147,76 @@ describe('hostFacts', () => {
       read: () => '',
     }
     expect(hostFacts(host, () => null)).toBe('')
+  })
+
+  it('names the largest things in a temp folder that is nearly full', () => {
+    const largest = vi.fn(() => [
+      { name: 'chromium', mb: 200 },
+      { name: 'core.1234', mb: 180 },
+    ])
+    expect(hostFacts(procOf({}), () => 6, largest)).toBe(
+      'no browser still running, 6 MB free in the temp folder (largest there: chromium 200 MB, core.1234 180 MB)',
+    )
+  })
+
+  it("says nothing of the folder's contents while there is room", () => {
+    const largest = vi.fn(() => [{ name: 'chromium', mb: 200 }])
+    expect(hostFacts(procOf({}), () => LOW_TEMP_MB, largest)).toBe(
+      `no browser still running, ${LOW_TEMP_MB} MB free in the temp folder`,
+    )
+    expect(largest).not.toHaveBeenCalled()
+  })
+
+  it('leaves out a folder it cannot list, or an empty one', () => {
+    expect(
+      hostFacts(
+        procOf({}),
+        () => 6,
+        () => null,
+      ),
+    ).toBe('no browser still running, 6 MB free in the temp folder')
+    expect(
+      hostFacts(
+        procOf({}),
+        () => 6,
+        () => [],
+      ),
+    ).toBe('no browser still running, 6 MB free in the temp folder')
+  })
+})
+
+describe('largestTempEntries', () => {
+  it('sizes files and whole folders, largest first', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-temp-facts-'))
+    try {
+      const mb = (count: number) => Buffer.alloc(count * 1024 * 1024)
+      writeFileSync(join(dir, 'binary'), mb(3))
+      mkdirSync(join(dir, 'profile', 'cache'), { recursive: true })
+      writeFileSync(join(dir, 'profile', 'a'), mb(1))
+      writeFileSync(join(dir, 'profile', 'cache', 'b'), mb(1))
+      writeFileSync(join(dir, 'note.txt'), 'small')
+      expect(largestTempEntries(dir, 2)).toEqual([
+        { name: 'binary', mb: 3 },
+        { name: 'profile', mb: 2 },
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('cuts a long name short', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-temp-facts-'))
+    try {
+      writeFileSync(join(dir, 'x'.repeat(90)), Buffer.alloc(1024 * 1024))
+      const [entry] = largestTempEntries(dir, 1) ?? []
+      expect(entry?.name).toBe('x'.repeat(48))
+      expect(entry?.mb).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is null for a folder that is not there', () => {
+    expect(largestTempEntries(join(tmpdir(), 'bb-no-such-folder-here'), 3)).toBeNull()
   })
 })
