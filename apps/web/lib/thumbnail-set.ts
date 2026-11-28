@@ -636,6 +636,7 @@ export async function composeThumbnailPackage(packageId: string): Promise<void> 
       brand: graphicBrand(kit),
       mark: logoKey ? { src: await loadable(logoKey) } : { wordmark: channel.name },
       markPlacement: channel.settings.thumbnails.markPlacement,
+      highlight: row.highlight,
     })
     const contentHash = createHash('sha256').update(jpeg).digest('hex')
     const composedKey = thumbnailComposedKey({ targetId, contentHash })

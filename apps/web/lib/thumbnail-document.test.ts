@@ -4,7 +4,9 @@ import {
   SCRIM_ALPHA,
   headlineBoxes,
   headlineFontPx,
+  headlineTextNodes,
   headlineWeight,
+  highlightInk,
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
@@ -14,6 +16,7 @@ const BRAND = {
   colors: {
     background: '#101418',
     textPrimary: '#f4f1ea',
+    accent: '#f5a524',
   },
   fonts: { heading: 'Anton', body: 'Inter' },
 } as unknown as Parameters<typeof thumbnailDocument>[0]['brand']
@@ -26,6 +29,7 @@ function document(over: Partial<Parameters<typeof thumbnailDocument>[0]> = {}): 
     brand: BRAND,
     mark: { wordmark: 'Boom & Busters' },
     markPlacement: 'tl',
+    highlight: '',
     ...over,
   })
 }
@@ -216,5 +220,105 @@ describe('headlineBoxes', () => {
 
   it('returns none when there is no text', () => {
     expect(headlineBoxes([])).toEqual([])
+  })
+})
+
+const BLOCK =
+  'style="display:inline-block;background:#f5a524;color:#101418;padding:0 0.14em;margin:0 -0.14em"'
+
+function brandWith(accent: string) {
+  return {
+    ...BRAND,
+    colors: { ...BRAND.colors, accent },
+  } as Parameters<typeof thumbnailDocument>[0]['brand']
+}
+
+describe('the highlight on the page', () => {
+  it('no highlight leaves the page as it was', () => {
+    const html = document({ highlight: '' })
+    expect(html).toContain('<span>The crash nobody saw</span>')
+    expect(html).not.toContain('data-role="highlight"')
+  })
+
+  it('sets each highlighted word on an accent block', () => {
+    const html = document({ headline: 'They lost $2 billion', highlight: '2 billion' })
+    expect(html).toContain(
+      `<span>They lost <span data-role="highlight" ${BLOCK}>$2</span> <span data-role="highlight" ${BLOCK}>billion</span></span>`,
+    )
+  })
+
+  it('keeps the words after the block', () => {
+    const html = document({ highlight: 'crash' })
+    expect(html).toContain(
+      `<span>The <span data-role="highlight" ${BLOCK}>crash</span> nobody saw</span>`,
+    )
+  })
+
+  it('the type size does not change with a highlight', () => {
+    expect(document({ highlight: '' })).toContain('font-size:160px')
+    expect(document({ highlight: 'crash' })).toContain('font-size:160px')
+  })
+
+  it('escapes the highlighted words', () => {
+    const html = document({ headline: 'Say <b> "&" now', highlight: '<b> "&"' })
+    expect(html).toMatch(/data-role="highlight"[^>]*>&lt;b&gt;<\/span>/)
+    expect(html).toMatch(/data-role="highlight"[^>]*>&quot;&amp;&quot;<\/span>/)
+    expect(html).not.toContain('<b>')
+  })
+
+  it('a highlight that is not in the headline draws the plain headline', () => {
+    expect(document({ highlight: 'bankrupt' })).toEqual(document({ highlight: '' }))
+  })
+})
+
+describe('highlightInk', () => {
+  it('the type on the block follows the higher contrast', () => {
+    const light = highlightInk(brandWith('#f5a524'))
+    expect(light.color).toBe('#101418')
+    expect(light.contrast!).toBeGreaterThan(4.5)
+    const dark = highlightInk(brandWith('#3a0d0d'))
+    expect(dark.color).toBe('#f4f1ea')
+    expect(dark.contrast!).toBeGreaterThan(4.5)
+  })
+
+  it('an unreadable colour is not a warning', () => {
+    expect(highlightInk(brandWith('not-a-colour'))).toEqual({ color: '#101418', contrast: null })
+  })
+})
+
+describe('headlineTextNodes', () => {
+  it("counts the headline's text nodes", () => {
+    expect(headlineTextNodes('', 'x')).toBe(0)
+    expect(headlineTextNodes('The crash nobody saw', '')).toBe(1)
+    expect(headlineTextNodes('The crash nobody saw', 'crash')).toBe(3)
+    expect(headlineTextNodes('They lost $2 billion', '2 billion')).toBe(3)
+    expect(headlineTextNodes('Bankrupt', 'bankrupt')).toBe(1)
+  })
+
+  it("the headline's boxes are all of its text nodes", () => {
+    const boxes = [
+      box({ node: 1, text: 'THE' }),
+      box({ node: 2, text: 'CRASH' }),
+      box({ node: 3, text: 'NOBODY SAW', y: 300 }),
+      box({ node: 3, text: 'NOBODY SAW', x: 1400, y: 950, width: 100, height: 60 }),
+      box({ node: 5, text: 'BOOM & BUSTERS', x: 77, y: 43 }),
+    ]
+    const own = headlineBoxes(boxes, 3)
+    expect(own).toEqual(boxes.slice(0, 4))
+    expect(thumbnailWarnings({ ...OK, headline: 'The crash nobody saw', boxes: own })).toContain(
+      'The headline sits where YouTube draws the duration.',
+    )
+    expect(headlineBoxes(boxes)).toEqual([boxes[0]])
+    expect(headlineBoxes(boxes, 0)).toEqual([])
+  })
+})
+
+describe('the highlight warning', () => {
+  it('warns when the highlighted words do not stand out', () => {
+    const warning = 'The highlighted words do not stand out enough from the accent colour.'
+    expect(thumbnailWarnings({ ...OK, highlightContrast: 4.4 })).toContain(warning)
+    expect(thumbnailWarnings({ ...OK, highlightContrast: 4.5 })).not.toContain(warning)
+    expect(thumbnailWarnings({ ...OK, highlightContrast: null })).not.toContain(warning)
+    expect(thumbnailWarnings(OK)).not.toContain(warning)
   })
 })

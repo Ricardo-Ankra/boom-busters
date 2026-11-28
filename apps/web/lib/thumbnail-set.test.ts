@@ -1215,6 +1215,29 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(row?.composedKey).toBeNull()
     })
 
+    it("a compose sets the package's highlight", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '0')
+      storage.configured = true
+      compose.composeThumbnail.mockResolvedValue({ jpeg: Buffer.from('jpeg'), warnings: [] })
+      const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+      const id = inserted[0]!.id
+      await db
+        .update(thumbnailPackages)
+        .set({
+          pictureKey: `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-ddd.png`,
+          state: 'painting',
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        .where(eq(thumbnailPackages.id, id))
+
+      await composeThumbnailPackage(id)
+
+      expect(compose.composeThumbnail).toHaveBeenCalledWith(
+        expect.objectContaining({ headline: 'They lost $2 billion', highlight: 'billion' }),
+      )
+    })
+
     it('a recompose deletes the old object only after the record lists the new one', async () => {
       vi.stubEnv('MOCK_PROVIDERS', '0')
       storage.configured = true

@@ -1,9 +1,16 @@
 import 'server-only'
-import { THUMB_HEIGHT, THUMB_JPEG_QUALITY, THUMB_WIDTH } from '@boom-busters/schemas'
+import {
+  THUMB_HEIGHT,
+  THUMB_JPEG_QUALITY,
+  THUMB_WIDTH,
+  headlineHighlight,
+} from '@boom-busters/schemas'
 import { screenshotFrame } from './graphic-code/frames'
 import {
   headlineBoxes,
   headlineFontPx,
+  headlineTextNodes,
+  highlightInk,
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
@@ -25,8 +32,11 @@ export async function composeThumbnail(
   const warnings = thumbnailWarnings({
     headline: input.headline,
     fontPx: headlineFontPx(input.headline),
-    boxes: headlineBoxes(boxes),
+    boxes: headlineBoxes(boxes, headlineTextNodes(input.headline, input.highlight)),
     contrast: scrimContrast(input.brand.colors.textPrimary, input.brand.colors.background),
+    ...(headlineHighlight(input.headline.trim(), input.highlight) === null
+      ? {}
+      : { highlightContrast: highlightInk(input.brand).contrast }),
   })
   return { jpeg, warnings }
 }
