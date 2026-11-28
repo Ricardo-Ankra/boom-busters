@@ -38,6 +38,8 @@ const SCRIM_FADE_PCT = 60
 const MARK_INSET_PX = Math.round(0.04 * THUMB_HEIGHT)
 const MARK_HEIGHT_PX = Math.round(THUMB_MARK_HEIGHT_RATIO * THUMB_HEIGHT)
 const MARK_MAX_WIDTH_PX = Math.round(0.22 * THUMB_WIDTH)
+/** How far down a top corner's mark reaches, which a headline on its side keeps clear of. */
+const MARK_CLEAR_PX = MARK_INSET_PX + MARK_HEIGHT_PX
 /** A light shadow, so the mark holds on a pale picture as well as a dark one. */
 const MARK_SHADOW = 'drop-shadow(0 4px 10px rgba(0,0,0,0.55))'
 /** The wordmark is at most two thirds of the mark's height. */
@@ -182,10 +184,25 @@ export function thumbnailDocument(input: {
       ? ''
       : `<div data-role="scrim" style="position:absolute;inset:0;background:linear-gradient(to ${toward},${scrimColour} 0%,${scrimColour} ${SCRIM_SOLID_PCT}%,rgba(${rgb.r},${rgb.g},${rgb.b},0) ${SCRIM_FADE_PCT}%)"></div>`
 
+  // A mark in the top corner on the headline's side: the headline is a column
+  // with a spacer above and below, so it stays centred when it fits under the
+  // mark and moves down only as far as it must.
+  const clearsMark =
+    input.mark !== null &&
+    ((input.markPlacement === 'tl' && textSide === 'left') ||
+      (input.markPlacement === 'tr' && textSide === 'right'))
+  const flow = clearsMark
+    ? `display:flex;flex-direction:column;align-items:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
+    : `display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
+  const spacers = (inner: string) =>
+    clearsMark
+      ? `<div style="flex:1 1 0;min-height:${MARK_CLEAR_PX}px"></div>${inner}<div style="flex:1 1 0"></div>`
+      : inner
+
   const text =
     headline === ''
       ? ''
-      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}"><span>${headlineMarkup(headline, input.highlight, brand)}</span></div>`
+      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;${flow};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}">${spacers(`<span>${headlineMarkup(headline, input.highlight, brand)}</span>`)}</div>`
 
   let mark = ''
   if (input.mark !== null && input.markPlacement !== 'none') {

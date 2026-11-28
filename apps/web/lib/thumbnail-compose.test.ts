@@ -86,6 +86,52 @@ describe.skipIf(!(await browserAvailable()))('a highlighted thumbnail in a real 
     }
   }, 60_000)
 
+  it('a tall headline keeps clear of the mark', async () => {
+    const headline = 'The crash nobody saw'
+    const { boxes } = await screenshotFrame({
+      html: thumbnailDocument({
+        pictureSrc: PICTURE,
+        headline,
+        textSide: 'left',
+        brand,
+        mark: { wordmark: 'Boom & Busters' },
+        markPlacement: 'tl',
+        highlight: '',
+      }),
+      width: THUMB_WIDTH,
+      height: THUMB_HEIGHT,
+    })
+    const own = headlineBoxes(boxes, headlineTextNodes(headline, ''))
+    expect(own.length).toBeGreaterThan(0)
+    for (const box of own) expect(box.y).toBeGreaterThanOrEqual(173)
+  }, 60_000)
+
+  it('a headline that fits stays where it was', async () => {
+    const headline = 'Signed for 18 years'
+    const placed = async (markPlacement: 'tl' | 'none') => {
+      const { boxes } = await screenshotFrame({
+        html: thumbnailDocument({
+          pictureSrc: PICTURE,
+          headline,
+          textSide: 'left',
+          brand,
+          mark: { wordmark: 'Boom & Busters' },
+          markPlacement,
+          highlight: '',
+        }),
+        width: THUMB_WIDTH,
+        height: THUMB_HEIGHT,
+      })
+      return headlineBoxes(boxes, headlineTextNodes(headline, '')).map((box) => [
+        Math.round(box.x),
+        Math.round(box.y),
+        Math.round(box.width),
+        Math.round(box.height),
+      ])
+    }
+    expect(await placed('tl')).toEqual(await placed('none'))
+  }, 60_000)
+
   it('the highlighted words report their block', async () => {
     const { boxes } = await photograph('The crash nobody saw', 'crash', 'left')
     const hit = boxes.find((candidate) => candidate.text === 'crash')

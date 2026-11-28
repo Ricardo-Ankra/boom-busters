@@ -129,6 +129,39 @@ describe('thumbnailDocument', () => {
     expect(word).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
   })
 
+  it("a headline on the mark's side keeps clear of it", () => {
+    const cases = [
+      ['left', 'tl'],
+      ['right', 'tr'],
+    ] as const
+    for (const [textSide, markPlacement] of cases) {
+      for (const mark of [{ wordmark: 'Boom & Busters' }, { src: 'https://cdn.example/l.png' }]) {
+        const html = document({ textSide, markPlacement, mark })
+        expect(html).toMatch(/data-role="headline"[^>]*flex-direction:column/)
+        expect(html).toContain('<div style="flex:1 1 0;min-height:173px"></div>')
+        expect(html).toContain('<div style="flex:1 1 0"></div>')
+      }
+    }
+  })
+
+  it('a headline away from the mark is laid out as before', () => {
+    const today =
+      '<div data-role="headline" style="position:absolute;top:0;bottom:16%;left:3%;width:41%;display:flex;align-items:center;justify-content:flex-start;text-align:left;font-family:\'Anton\',sans-serif;font-size:160px;line-height:0.95;font-weight:700;text-transform:uppercase;color:#f4f1ea">'
+    expect(document({ textSide: 'left', markPlacement: 'tr' })).toContain(today)
+    const away = [
+      { textSide: 'left', markPlacement: 'tr' },
+      { textSide: 'right', markPlacement: 'tl' },
+      { textSide: 'left', markPlacement: 'bl' },
+      { textSide: 'left', markPlacement: 'none' },
+      { textSide: 'left', markPlacement: 'tl', mark: null },
+    ] as const
+    for (const over of away) {
+      const html = document(over)
+      expect(html).not.toContain('flex-direction:column')
+      expect(html).not.toContain('flex:1 1 0')
+    }
+  })
+
   it('sizes the wordmark to the width cap', () => {
     expect(wordmarkPx('Boom & Busters')).toBe(43)
     expect(wordmarkPx('Logos')).toBe(87)

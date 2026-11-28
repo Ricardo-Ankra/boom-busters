@@ -12970,3 +12970,5 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      sized to the 22% width cap, at most two thirds of the mark's height
      (`wordmarkPx`), which is the controller's call where the request asked
      for a flat 86 px: a 14-letter name at that size ran 45% of the frame.
+     A headline on the mark's side keeps clear of it, staying centred when it
+     fits and moving down only when it would meet the mark.
