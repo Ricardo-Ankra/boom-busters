@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { lstatSync, readdirSync, readFileSync, statfsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { freemem, tmpdir, totalmem } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -181,15 +181,51 @@ export function largestTempEntries(dir: string = tmpdir(), limit = 4): TempEntry
 }
 
 /**
+ * A nearly full temp folder in words: how large it is, the largest things in
+ * it, and the memory the instance has left (a temp folder held in memory
+ * shrinks with it). Each part is left out where the host does not tell it.
+ */
+export function tempDetail(input: {
+  totalMb: number | null
+  largest: TempEntry[] | null
+  memory: { freeMb: number; totalMb: number } | null
+}): string {
+  const parts: string[] = []
+  if (input.totalMb !== null) parts.push(`of ${input.totalMb} MB`)
+  const listed = (input.largest ?? []).map((entry) => `${entry.name} ${entry.mb} MB`).join(', ')
+  if (listed !== '') parts.push(`largest there: ${listed}`)
+  if (input.memory !== null) {
+    parts.push(`memory ${input.memory.freeMb} of ${input.memory.totalMb} MB free`)
+  }
+  return parts.join('; ')
+}
+
+function hostTempDetail(): string {
+  let totalMb: number | null = null
+  try {
+    const stats = statfsSync(tmpdir())
+    totalMb = Math.floor((stats.blocks * stats.bsize) / (1024 * 1024))
+  } catch {
+    // The folder's size stays unsaid.
+  }
+  const mb = (bytes: number) => Math.floor(bytes / (1024 * 1024))
+  return tempDetail({
+    totalMb,
+    largest: largestTempEntries(),
+    memory: { freeMb: mb(freemem()), totalMb: mb(totalmem()) },
+  })
+}
+
+/**
  * What the host can say when a browser is lost, for the failure's own words:
  * a browser that dies tells Playwright nothing of why, and the function's log
  * is gone in an hour. Empty where the host tells nothing. A temp folder that
- * is nearly full is listed, largest first.
+ * is nearly full is described: its size, its largest things, the memory left.
  */
 export function hostFacts(
   host: HostProcesses = PROC,
   freeMb: () => number | null = freeTempMb,
-  largest: () => TempEntry[] | null = largestTempEntries,
+  detail: () => string = hostTempDetail,
 ): string {
   const facts: string[] = []
   const browsers = launchedBrowsers(host)
@@ -203,11 +239,8 @@ export function hostFacts(
   }
   const free = freeMb()
   if (free !== null) {
-    const entries = free < LOW_TEMP_MB ? (largest() ?? []) : []
-    const listed = entries.map((entry) => `${entry.name} ${entry.mb} MB`).join(', ')
-    facts.push(
-      `${free} MB free in the temp folder${listed === '' ? '' : ` (largest there: ${listed})`}`,
-    )
+    const more = free < LOW_TEMP_MB ? detail() : ''
+    facts.push(`${free} MB free in the temp folder${more === '' ? '' : ` (${more})`}`)
   }
   return facts.join(', ')
 }

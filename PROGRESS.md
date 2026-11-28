@@ -12771,10 +12771,14 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      It is not the compose: fourteen rounds in the Lambda image with the real
      picture and logo and a 512 MB temp folder left 299 MB free after every
      round, clean close or kill alike (the packaged browser's own files take
-     213 MB, an open browser about 16 more). Only the instance can say, so a
-     temp folder with under 100 MB free (`LOW_TEMP_MB`) is now listed in the
-     failure, largest first (`largestTempEntries`: the four largest things
-     directly in it, a sub-folder counted whole, at most 20,000 files sized).
+     213 MB, an open browser about 16 more). The request records for the hour
+     show it fills fast: on a deployment eight minutes old, about seven
+     Inngest steps ran before the one that failed. Only the instance can say
+     more, so a temp folder with under 100 MB free (`LOW_TEMP_MB`) is now
+     described in the failure (`tempDetail`): its whole size, the four
+     largest things directly in it with a sub-folder counted whole
+     (`largestTempEntries`, at most 20,000 files sized), and the memory the
+     instance has left, since a temp folder held in memory shrinks with it.
      Nothing is removed yet: the next failure names what to remove.
 
 485. **Changes to a thumbnail picture** (2026-11-27, owner: "a field that
