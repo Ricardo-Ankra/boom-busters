@@ -12674,6 +12674,10 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      corner is `settings.thumbnails.markPlacement`, not a field of the brand
      kit's look, because a compiled timeline snapshots the whole brand kit and
      a thumbnail-only setting there would ride in every film's render contract.
+     On 2026-11-28, after a check at real size, the owner raised the mark to
+     12% of the frame height measured on the glyph (the logo's transparent
+     padding is trimmed for the thumbnail only), solid, with a light shadow;
+     see decision 487 (k).
      (i) `mergeSettings` carries the channel's `thumbnails` section; the
      Thumbnails tab writes only that section, so it cannot collide with the
      Brand Kit's write of `look`.
@@ -12954,3 +12958,15 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      document and real-browser tests. One slip in the plan was ruled on during
      the build: a test named a planned row with no picture, which is in flight
      and refused for that reason; the test uses a failed row with no picture.
+     (k) The mark was too small to recognise at real size: the logo file is
+     padded, so at 8% of the frame height the glyph was about 11 px tall in a
+     360 px feed thumbnail, and at 80% opacity it nearly vanished on light
+     pictures. `THUMB_MARK_HEIGHT_RATIO` is now 0.12 and `THUMB_MARK_ALPHA` 1,
+     with `drop-shadow(0 4px 10px rgba(0,0,0,0.55))`. `thumbnail-mark.ts`
+     crops the logo to its visible pixels (alpha at or above `MARK_ALPHA_FLOOR`
+     8 of 255) before the compose, so the height is the glyph's. A file with
+     no alpha, nothing to trim or that cannot be read is used as it is. The
+     film's watermark still uses the untrimmed file. The wordmark fallback is
+     sized to the 22% width cap, at most two thirds of the mark's height
+     (`wordmarkPx`), which is the controller's call where the request asked
+     for a flat 86 px: a 14-letter name at that size ran 45% of the frame.
