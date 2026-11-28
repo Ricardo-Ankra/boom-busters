@@ -504,6 +504,18 @@ suite('thumbnail packages', () => {
     })
   })
 
+  it("a package holds its headline's highlight", async () => {
+    await withRecord(async (record) => {
+      const row = await seedRow(record.id, 0)
+      expect(row.highlight).toBe('')
+
+      const updated = await updateThumbnailPackage(db, row.id, { highlight: 'crash' })
+
+      expect(updated).toMatchObject({ highlight: 'crash' })
+      expect(await getThumbnailPackage(db, row.id)).toMatchObject({ highlight: 'crash' })
+    })
+  })
+
   it('a picture landed without its people keeps the ones the row holds', async () => {
     await withRecord(async (record) => {
       const row = await seedRow(record.id, 0, { pictureKey: 'a', depicts: ['Old Person'] })

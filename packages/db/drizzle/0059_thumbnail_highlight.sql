@@ -1,0 +1,1 @@
+ALTER TABLE "thumbnail_packages" ADD COLUMN "highlight" text DEFAULT '' NOT NULL;

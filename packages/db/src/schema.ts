@@ -1616,6 +1616,7 @@ export const thumbnailPackages = pgTable(
     angle: text('angle').notNull().default(''),
     title: text('title').notNull().default(''),
     headline: text('headline').notNull().default(''),
+    highlight: text('highlight').notNull().default(''),
     picture: jsonb('picture').$type<PictureBrief>(),
     claimIds: text('claim_ids')
       .array()
