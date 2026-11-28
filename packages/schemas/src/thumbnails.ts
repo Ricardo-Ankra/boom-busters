@@ -13,8 +13,8 @@ export const PACKAGES_MAX = 3
 export const HEADLINE_WORDS_MAX = 4
 export const HEADLINE_MIN_PX = 120
 export const HEADLINE_CONTRAST_MIN = 4.5
-export const THUMB_MARK_HEIGHT_RATIO = 0.08
-export const THUMB_MARK_ALPHA = 0.8
+export const THUMB_MARK_HEIGHT_RATIO = 0.12
+export const THUMB_MARK_ALPHA = 1
 /** The share of the frame, from the left and from the top, the player's overlays leave free. */
 export const THUMB_KEEP_OUT = { left: 0.78, top: 0.84 } as const
 export const THUMB_REFERENCES_MAX = 6

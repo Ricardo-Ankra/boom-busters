@@ -38,8 +38,23 @@ const SCRIM_FADE_PCT = 60
 const MARK_INSET_PX = Math.round(0.04 * THUMB_HEIGHT)
 const MARK_HEIGHT_PX = Math.round(THUMB_MARK_HEIGHT_RATIO * THUMB_HEIGHT)
 const MARK_MAX_WIDTH_PX = Math.round(0.22 * THUMB_WIDTH)
-/** The wordmark is set at half the mark's height: the film's corner watermark look, at the thumbnail's size. */
-const WORDMARK_PX = Math.round(MARK_HEIGHT_PX / 2)
+/** A light shadow, so the mark holds on a pale picture as well as a dark one. */
+const MARK_SHADOW = 'drop-shadow(0 4px 10px rgba(0,0,0,0.55))'
+/** The wordmark is at most two thirds of the mark's height. */
+const WORDMARK_MAX_PX = Math.round((2 * MARK_HEIGHT_PX) / 3)
+/** An estimate of an upper-case letter's advance plus the 0.08em letter spacing. */
+const WORDMARK_EM_PER_CHAR = 0.7
+
+/**
+ * The wordmark's type size: two thirds of the mark's height, or less when the
+ * name would run wider than the 22% width cap the image mark keeps to.
+ */
+export function wordmarkPx(name: string): number {
+  return Math.min(
+    WORDMARK_MAX_PX,
+    Math.floor(MARK_MAX_WIDTH_PX / (WORDMARK_EM_PER_CHAR * Math.max(1, name.trim().length))),
+  )
+}
 
 /** The heaviest weight cap: beyond this the headline would crowd its box. */
 const HEADLINE_WEIGHT_MAX = 800
@@ -177,8 +192,8 @@ export function thumbnailDocument(input: {
     const corner = markCorner(input.markPlacement)
     mark =
       'src' in input.mark
-        ? `<img data-role="mark" src="${escapeHtml(input.mark.src)}" alt="" style="position:absolute;${corner};height:${MARK_HEIGHT_PX}px;max-width:${MARK_MAX_WIDTH_PX}px;object-fit:contain;opacity:${THUMB_MARK_ALPHA}">`
-        : `<div data-role="mark" style="position:absolute;${corner};font-family:'${heading}',sans-serif;font-size:${WORDMARK_PX}px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;opacity:${THUMB_MARK_ALPHA};color:${brand.colors.textPrimary}">${escapeHtml(input.mark.wordmark)}</div>`
+        ? `<img data-role="mark" src="${escapeHtml(input.mark.src)}" alt="" style="position:absolute;${corner};height:${MARK_HEIGHT_PX}px;max-width:${MARK_MAX_WIDTH_PX}px;object-fit:contain;opacity:${THUMB_MARK_ALPHA};filter:${MARK_SHADOW}">`
+        : `<div data-role="mark" style="position:absolute;${corner};font-family:'${heading}',sans-serif;font-size:${wordmarkPx(input.mark.wordmark)}px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;opacity:${THUMB_MARK_ALPHA};filter:${MARK_SHADOW};color:${brand.colors.textPrimary}">${escapeHtml(input.mark.wordmark)}</div>`
   }
 
   return [

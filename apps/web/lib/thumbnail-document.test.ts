@@ -10,6 +10,7 @@ import {
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
+  wordmarkPx,
 } from './thumbnail-document'
 
 const BRAND = {
@@ -115,12 +116,24 @@ describe('thumbnailDocument', () => {
   it('uses the real mark when there is one and the wordmark when there is not', () => {
     const real = document({ mark: { src: 'https://cdn.example/logo.png' } })
     expect(real).toContain('src="https://cdn.example/logo.png"')
-    expect(real).toContain('height:86px')
-    expect(real).toContain('opacity:0.8')
+    expect(real).toContain('height:130px')
+    expect(real).toContain('max-width:422px')
+    expect(real).toContain('opacity:1')
+    expect(real).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
     expect(real).not.toContain('Boom &amp; Busters')
     const word = document({ mark: { wordmark: 'Boom & Busters' } })
     expect(word).toContain('Boom &amp; Busters')
     expect(word).toContain('letter-spacing:0.08em')
+    expect(word).toContain('font-size:43px')
+    expect(word).toContain('opacity:1')
+    expect(word).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
+  })
+
+  it('sizes the wordmark to the width cap', () => {
+    expect(wordmarkPx('Boom & Busters')).toBe(43)
+    expect(wordmarkPx('Logos')).toBe(87)
+    expect(wordmarkPx('')).toBe(87)
+    expect(wordmarkPx('x'.repeat(40))).toBe(15)
   })
 
   it('leaves the mark out at none', () => {
