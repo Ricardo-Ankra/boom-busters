@@ -13,8 +13,8 @@ export const PACKAGES_MAX = 3
 export const HEADLINE_WORDS_MAX = 4
 export const HEADLINE_MIN_PX = 120
 export const HEADLINE_CONTRAST_MIN = 4.5
-export const THUMB_MARK_HEIGHT_RATIO = 0.08
-export const THUMB_MARK_ALPHA = 0.8
+export const THUMB_MARK_HEIGHT_RATIO = 0.12
+export const THUMB_MARK_ALPHA = 1
 /** The share of the frame, from the left and from the top, the player's overlays leave free. */
 export const THUMB_KEEP_OUT = { left: 0.78, top: 0.84 } as const
 export const THUMB_REFERENCES_MAX = 6
@@ -32,7 +32,12 @@ export const IDEA_LABELS: Record<ThumbnailIdea, string> = {
   contrast: 'Contrast',
 }
 
-/** Where the channel mark sits on a thumbnail; never bottom right, where the duration badge sits. */
+/**
+ * Where the channel mark sits on a thumbnail; never bottom right, where the
+ * duration badge sits. `tl` and `tr` both mean the top corner on the headline's
+ * side: the page picks the corner from the text side. Both values are kept so
+ * stored settings and deployed code keep reading each other.
+ */
 export const THUMB_MARK_PLACEMENTS = ['none', 'tl', 'tr', 'bl'] as const
 export type ThumbMarkPlacement = (typeof THUMB_MARK_PLACEMENTS)[number]
 
@@ -116,6 +121,9 @@ export type ThumbnailSettings = z.infer<typeof ThumbnailSettingsSchema>
 /** The longest note the owner can write to ask for a change to a picture. */
 export const PICTURE_CHANGE_MAX = 300
 
+/** The longest highlight the owner can name: a run of the headline's words. */
+export const HIGHLIGHT_MAX = 60
+
 export const ThumbnailSetRequestedSchema = z
   .object({
     projectId: UlidSchema,
@@ -156,6 +164,44 @@ export type ThumbnailSetRequested = z.infer<typeof ThumbnailSetRequestedSchema>
 export function headlineWords(headline: string): number {
   const trimmed = headline.trim()
   return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length
+}
+
+/** A word's key: lower-cased, stripped at both ends of all but letters and digits; a word that strips to nothing keeps itself. */
+function wordKey(word: string): string {
+  const lower = word.toLowerCase()
+  const stripped = lower.replace(/^[^\p{L}\p{N}]+/u, '').replace(/[^\p{L}\p{N}]+$/u, '')
+  return stripped.length > 0 ? stripped : lower
+}
+
+/**
+ * Where a highlight sits in a headline: the first run of neighbouring whole words
+ * that equals the highlight's words, or null when there is none. The text is
+ * returned as the headline writes it, split into what comes before, the hit and
+ * what comes after, with single spaces between words.
+ */
+export function headlineHighlight(
+  headline: string,
+  highlight: string,
+): { before: string; hit: string; after: string } | null {
+  const words = headline.trim().split(/\s+/).filter(Boolean)
+  const wanted = highlight.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0 || wanted.length === 0 || wanted.length > words.length) return null
+
+  const keys = words.map(wordKey)
+  const wantedKeys = wanted.map(wordKey)
+  for (let start = 0; start + wantedKeys.length <= words.length; start++) {
+    if (wantedKeys.every((key, offset) => keys[start + offset] === key)) {
+      const end = start + wantedKeys.length
+      const before = words.slice(0, start).join(' ')
+      const after = words.slice(end).join(' ')
+      return {
+        before: before === '' ? '' : `${before} `,
+        hit: words.slice(start, end).join(' '),
+        after: after === '' ? '' : ` ${after}`,
+      }
+    }
+  }
+  return null
 }
 
 /** Every number in a text, commas removed, so "47,000" and "47000" are one figure. */

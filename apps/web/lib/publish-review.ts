@@ -85,6 +85,8 @@ export interface ThumbnailPackageProp {
   angle: string
   title: string
   headline: string
+  /** The words of the headline set on the accent; empty for none. */
+  highlight: string
   textSide: 'left' | 'right'
   depicts: string[]
   warnings: string[]
@@ -670,6 +672,7 @@ async function packagePropsFor(
       angle: row.angle,
       title: row.title,
       headline: row.headline,
+      highlight: row.highlight,
       textSide: row.textSide === 'right' ? 'right' : 'left',
       depicts: row.depicts,
       warnings: row.warnings,

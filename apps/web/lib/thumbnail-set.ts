@@ -69,6 +69,7 @@ import {
   thumbnailPictureKey,
 } from '@/lib/storage'
 import { composeThumbnail } from '@/lib/thumbnail-compose'
+import { trimmedMark } from '@/lib/thumbnail-mark'
 import { requireCompleteBible } from '@/inngest/lib/channel'
 
 /**
@@ -606,6 +607,21 @@ async function loadable(key: string): Promise<string> {
   return `data:${object.contentType};base64,${Buffer.from(object.bytes).toString('base64')}`
 }
 
+/**
+ * The logo as the page loads it: trimmed to its glyph when the file has
+ * transparent padding, otherwise as it is. A logo that cannot be read or trimmed
+ * falls back to the untrimmed file and never fails the compose.
+ */
+async function markSource(logoKey: string): Promise<string> {
+  try {
+    const trimmed = await trimmedMark((await getObjectBytes(logoKey)).bytes)
+    if (trimmed) return `data:image/png;base64,${trimmed.toString('base64')}`
+  } catch {
+    // Use the file as it is.
+  }
+  return loadable(logoKey)
+}
+
 /** Sets the headline and the mark on a package's picture. Never throws: a failure becomes a failed row, the picture kept. */
 export async function composeThumbnailPackage(packageId: string): Promise<void> {
   const row = await getThumbnailPackage(db, packageId)
@@ -634,8 +650,9 @@ export async function composeThumbnailPackage(packageId: string): Promise<void> 
       headline: row.headline,
       textSide: row.textSide === 'right' ? 'right' : 'left',
       brand: graphicBrand(kit),
-      mark: logoKey ? { src: await loadable(logoKey) } : { wordmark: channel.name },
+      mark: logoKey ? { src: await markSource(logoKey) } : { wordmark: channel.name },
       markPlacement: channel.settings.thumbnails.markPlacement,
+      highlight: row.highlight,
     })
     const contentHash = createHash('sha256').update(jpeg).digest('hex')
     const composedKey = thumbnailComposedKey({ targetId, contentHash })

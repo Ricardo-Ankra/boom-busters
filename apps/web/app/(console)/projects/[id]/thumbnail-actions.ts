@@ -23,10 +23,12 @@ import {
 } from '@boom-busters/db'
 import type { PublishRecordRow, ThumbnailPackageRow } from '@boom-busters/db'
 import {
+  HIGHLIGHT_MAX,
   PACKAGES_MAX,
   THUMBNAIL_IDEAS,
   UlidSchema,
   changeNoteIssue,
+  headlineHighlight,
   ownerBrief,
   packageInFlight,
   setBeingPlanned,
@@ -66,6 +68,7 @@ const NOT_COMPOSED_REFUSAL = 'Compose this thumbnail again first. It is free.'
 const UNKNOWN_THUMBNAIL = 'Unknown thumbnail'
 const TITLE_MAX = 100
 const HEADLINE_MAX = 60
+const HIGHLIGHT_REFUSAL = 'The highlight must be words from the headline.'
 
 /** Whether a Generate claim on this record is fresh: the set is still being planned. */
 function planning(record: PublishRecordRow, now: Date): boolean {
@@ -408,6 +411,7 @@ export async function saveThumbnailPackage(
     title?: string
     headline?: string
     textSide?: 'left' | 'right'
+    highlight?: string
     idea?: ThumbnailIdea | null
   },
 ): Promise<ActionResult> {
@@ -449,6 +453,33 @@ export async function saveThumbnailPackage(
       if (uploaded) return { ok: false, error: 'An uploaded thumbnail has no text side to change.' }
       changes.textSide = patch.textSide
       retype = true
+    }
+  }
+
+  if (patch.highlight !== undefined) {
+    if (typeof patch.highlight !== 'string') {
+      return { ok: false, error: HIGHLIGHT_REFUSAL }
+    }
+    const highlight = patch.highlight.trim()
+    if (highlight.length > HIGHLIGHT_MAX) {
+      return { ok: false, error: `A highlight is at most ${HIGHLIGHT_MAX} characters.` }
+    }
+    if (highlight !== row.highlight) {
+      if (uploaded) {
+        return { ok: false, error: 'An uploaded thumbnail has no headline to highlight.' }
+      }
+      changes.highlight = highlight
+      retype = true
+    }
+  }
+
+  // The pair that would be stored must still name words of the headline. A save that
+  // touches neither is not checked, so a title save is never held up by an old pair.
+  if (changes.headline !== undefined || changes.highlight !== undefined) {
+    const headline = changes.headline ?? row.headline
+    const highlight = changes.highlight ?? row.highlight
+    if (highlight !== '' && headlineHighlight(headline, highlight) === null) {
+      return { ok: false, error: HIGHLIGHT_REFUSAL }
     }
   }
 
@@ -495,6 +526,7 @@ export async function saveThumbnailPackage(
         error: row.error,
         headline: row.headline,
         textSide: row.textSide,
+        highlight: row.highlight,
       })
       return failed
     }

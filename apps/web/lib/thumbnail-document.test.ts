@@ -4,16 +4,21 @@ import {
   SCRIM_ALPHA,
   headlineBoxes,
   headlineFontPx,
+  headlineTextNodes,
   headlineWeight,
+  highlightInk,
+  markCornerFor,
   scrimContrast,
   thumbnailDocument,
   thumbnailWarnings,
+  wordmarkPx,
 } from './thumbnail-document'
 
 const BRAND = {
   colors: {
     background: '#101418',
     textPrimary: '#f4f1ea',
+    accent: '#f5a524',
   },
   fonts: { heading: 'Anton', body: 'Inter' },
 } as unknown as Parameters<typeof thumbnailDocument>[0]['brand']
@@ -26,6 +31,7 @@ function document(over: Partial<Parameters<typeof thumbnailDocument>[0]> = {}): 
     brand: BRAND,
     mark: { wordmark: 'Boom & Busters' },
     markPlacement: 'tl',
+    highlight: '',
     ...over,
   })
 }
@@ -111,12 +117,73 @@ describe('thumbnailDocument', () => {
   it('uses the real mark when there is one and the wordmark when there is not', () => {
     const real = document({ mark: { src: 'https://cdn.example/logo.png' } })
     expect(real).toContain('src="https://cdn.example/logo.png"')
-    expect(real).toContain('height:86px')
-    expect(real).toContain('opacity:0.8')
+    expect(real).toContain('height:130px')
+    expect(real).toContain('max-width:422px')
+    expect(real).toContain('opacity:1')
+    expect(real).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
     expect(real).not.toContain('Boom &amp; Busters')
     const word = document({ mark: { wordmark: 'Boom & Busters' } })
     expect(word).toContain('Boom &amp; Busters')
     expect(word).toContain('letter-spacing:0.08em')
+    expect(word).toContain('font-size:43px')
+    expect(word).toContain('opacity:1')
+    expect(word).toContain('filter:drop-shadow(0 4px 10px rgba(0,0,0,0.55))')
+  })
+
+  it("the mark's top corner follows the headline", () => {
+    expect(markCornerFor('tl', 'left')).toBe('tl')
+    expect(markCornerFor('tl', 'right')).toBe('tr')
+    expect(markCornerFor('tr', 'left')).toBe('tl')
+    expect(markCornerFor('tr', 'right')).toBe('tr')
+    expect(markCornerFor('bl', 'right')).toBe('bl')
+    expect(markCornerFor('none', 'left')).toBeNull()
+  })
+
+  it('a headline on the right has its mark top right', () => {
+    const html = document({ textSide: 'right', markPlacement: 'tl' })
+    const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
+    expect(mark).toContain('top:')
+    expect(mark).toContain('right:')
+    expect(mark).not.toContain('left:')
+  })
+
+  it("a headline on the mark's side keeps clear of it", () => {
+    for (const textSide of ['left', 'right'] as const) {
+      for (const markPlacement of ['tl', 'tr'] as const) {
+        for (const mark of [{ wordmark: 'Boom & Busters' }, { src: 'https://cdn.example/l.png' }]) {
+          const html = document({ textSide, markPlacement, mark })
+          expect(html).toMatch(/data-role="headline"[^>]*flex-direction:column/)
+          expect(html).toContain('<div style="flex:1 1 0;min-height:173px"></div>')
+          expect(html).toContain('<div style="flex:1 1 0"></div>')
+        }
+      }
+    }
+  })
+
+  it('a headline with no mark at the top is laid out as before', () => {
+    const today =
+      '<div data-role="headline" style="position:absolute;top:0;bottom:16%;left:3%;width:41%;display:flex;align-items:center;justify-content:flex-start;text-align:left;font-family:\'Anton\',sans-serif;font-size:160px;line-height:0.95;font-weight:700;text-transform:uppercase;color:#f4f1ea">'
+    expect(document({ textSide: 'left', markPlacement: 'bl' })).toContain(today)
+    const away = [
+      { textSide: 'left', markPlacement: 'bl' },
+      { textSide: 'right', markPlacement: 'bl' },
+      { textSide: 'left', markPlacement: 'none' },
+      { textSide: 'right', markPlacement: 'none' },
+      { textSide: 'left', markPlacement: 'tl', mark: null },
+      { textSide: 'right', markPlacement: 'tr', mark: null },
+    ] as const
+    for (const over of away) {
+      const html = document(over)
+      expect(html).not.toContain('flex-direction:column')
+      expect(html).not.toContain('flex:1 1 0')
+    }
+  })
+
+  it('sizes the wordmark to the width cap', () => {
+    expect(wordmarkPx('Boom & Busters')).toBe(43)
+    expect(wordmarkPx('Logos')).toBe(87)
+    expect(wordmarkPx('')).toBe(87)
+    expect(wordmarkPx('x'.repeat(40))).toBe(15)
   })
 
   it('leaves the mark out at none', () => {
@@ -128,11 +195,14 @@ describe('thumbnailDocument', () => {
 
   it('never places the mark bottom right', () => {
     for (const markPlacement of ['tl', 'tr', 'bl'] as const) {
-      const html = document({ markPlacement })
-      const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
-      expect(mark.includes('right:') && mark.includes('bottom:')).toBe(false)
-      expect(mark).toContain(markPlacement.startsWith('t') ? 'top:' : 'bottom:')
-      expect(mark).toContain(markPlacement.endsWith('l') ? 'left:' : 'right:')
+      for (const textSide of ['left', 'right'] as const) {
+        const html = document({ markPlacement, textSide })
+        const mark = /data-role="mark"[^>]*style="([^"]*)"/.exec(html)![1]!
+        expect(mark.includes('right:') && mark.includes('bottom:')).toBe(false)
+        expect(mark).toContain(markPlacement === 'bl' ? 'bottom:' : 'top:')
+        if (markPlacement === 'bl') expect(mark).toContain('left:')
+        else expect(mark).toContain(`${textSide}:`)
+      }
     }
   })
 })
@@ -216,5 +286,105 @@ describe('headlineBoxes', () => {
 
   it('returns none when there is no text', () => {
     expect(headlineBoxes([])).toEqual([])
+  })
+})
+
+const BLOCK =
+  'style="display:inline-block;background:#f5a524;color:#101418;padding:0 0.14em;margin:0 -0.14em"'
+
+function brandWith(accent: string) {
+  return {
+    ...BRAND,
+    colors: { ...BRAND.colors, accent },
+  } as Parameters<typeof thumbnailDocument>[0]['brand']
+}
+
+describe('the highlight on the page', () => {
+  it('no highlight leaves the page as it was', () => {
+    const html = document({ highlight: '' })
+    expect(html).toContain('<span>The crash nobody saw</span>')
+    expect(html).not.toContain('data-role="highlight"')
+  })
+
+  it('sets each highlighted word on an accent block', () => {
+    const html = document({ headline: 'They lost $2 billion', highlight: '2 billion' })
+    expect(html).toContain(
+      `<span>They lost <span data-role="highlight" ${BLOCK}>$2</span> <span data-role="highlight" ${BLOCK}>billion</span></span>`,
+    )
+  })
+
+  it('keeps the words after the block', () => {
+    const html = document({ highlight: 'crash' })
+    expect(html).toContain(
+      `<span>The <span data-role="highlight" ${BLOCK}>crash</span> nobody saw</span>`,
+    )
+  })
+
+  it('the type size does not change with a highlight', () => {
+    expect(document({ highlight: '' })).toContain('font-size:160px')
+    expect(document({ highlight: 'crash' })).toContain('font-size:160px')
+  })
+
+  it('escapes the highlighted words', () => {
+    const html = document({ headline: 'Say <b> "&" now', highlight: '<b> "&"' })
+    expect(html).toMatch(/data-role="highlight"[^>]*>&lt;b&gt;<\/span>/)
+    expect(html).toMatch(/data-role="highlight"[^>]*>&quot;&amp;&quot;<\/span>/)
+    expect(html).not.toContain('<b>')
+  })
+
+  it('a highlight that is not in the headline draws the plain headline', () => {
+    expect(document({ highlight: 'bankrupt' })).toEqual(document({ highlight: '' }))
+  })
+})
+
+describe('highlightInk', () => {
+  it('the type on the block follows the higher contrast', () => {
+    const light = highlightInk(brandWith('#f5a524'))
+    expect(light.color).toBe('#101418')
+    expect(light.contrast!).toBeGreaterThan(4.5)
+    const dark = highlightInk(brandWith('#3a0d0d'))
+    expect(dark.color).toBe('#f4f1ea')
+    expect(dark.contrast!).toBeGreaterThan(4.5)
+  })
+
+  it('an unreadable colour is not a warning', () => {
+    expect(highlightInk(brandWith('not-a-colour'))).toEqual({ color: '#101418', contrast: null })
+  })
+})
+
+describe('headlineTextNodes', () => {
+  it("counts the headline's text nodes", () => {
+    expect(headlineTextNodes('', 'x')).toBe(0)
+    expect(headlineTextNodes('The crash nobody saw', '')).toBe(1)
+    expect(headlineTextNodes('The crash nobody saw', 'crash')).toBe(3)
+    expect(headlineTextNodes('They lost $2 billion', '2 billion')).toBe(3)
+    expect(headlineTextNodes('Bankrupt', 'bankrupt')).toBe(1)
+  })
+
+  it("the headline's boxes are all of its text nodes", () => {
+    const boxes = [
+      box({ node: 1, text: 'THE' }),
+      box({ node: 2, text: 'CRASH' }),
+      box({ node: 3, text: 'NOBODY SAW', y: 300 }),
+      box({ node: 3, text: 'NOBODY SAW', x: 1400, y: 950, width: 100, height: 60 }),
+      box({ node: 5, text: 'BOOM & BUSTERS', x: 77, y: 43 }),
+    ]
+    const own = headlineBoxes(boxes, 3)
+    expect(own).toEqual(boxes.slice(0, 4))
+    expect(thumbnailWarnings({ ...OK, headline: 'The crash nobody saw', boxes: own })).toContain(
+      'The headline sits where YouTube draws the duration.',
+    )
+    expect(headlineBoxes(boxes)).toEqual([boxes[0]])
+    expect(headlineBoxes(boxes, 0)).toEqual([])
+  })
+})
+
+describe('the highlight warning', () => {
+  it('warns when the highlighted words do not stand out', () => {
+    const warning = 'The highlighted words do not stand out enough from the accent colour.'
+    expect(thumbnailWarnings({ ...OK, highlightContrast: 4.4 })).toContain(warning)
+    expect(thumbnailWarnings({ ...OK, highlightContrast: 4.5 })).not.toContain(warning)
+    expect(thumbnailWarnings({ ...OK, highlightContrast: null })).not.toContain(warning)
+    expect(thumbnailWarnings(OK)).not.toContain(warning)
   })
 })

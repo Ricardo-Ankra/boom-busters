@@ -12674,6 +12674,11 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      corner is `settings.thumbnails.markPlacement`, not a field of the brand
      kit's look, because a compiled timeline snapshots the whole brand kit and
      a thumbnail-only setting there would ride in every film's render contract.
+     On 2026-11-28, after a check at real size, the owner raised the mark to
+     12% of the frame height measured on the glyph (the logo's transparent
+     padding is trimmed for the thumbnail only), solid, with a light shadow;
+     see decision 488 (k). Its top corner follows the headline's side:
+     decision 488 (l).
      (i) `mergeSettings` carries the channel's `thumbnails` section; the
      Thumbnails tab writes only that section, so it cannot collide with the
      Brand Kit's write of `look`.
@@ -12940,3 +12945,78 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      but not by much). The same draft's formats answer was refused for title
      slots outside the four allowed; that refusal is a separate matter and is
      not changed here.
+488. **A highlighted word in a thumbnail headline** (2026-11-27, owner asked
+     for a word or run of words in the headline to sit on the brand accent
+     colour; branch `worktree-generated-thumbnails`; migration `0059`; design
+     `docs/superpowers/specs/2026-11-27-thumbnail-headline-highlight-design.md`).
+     (a) What was asked: on a generated thumbnail the owner types words from
+     the headline into a Highlight field, saves, and the app sets the accent
+     behind them when it composes the thumbnail. The Change the picture note
+     could not do it: that note goes to the image model, which never sees the
+     headline and is told to paint no text. The app sets the headline itself,
+     afterwards, so the highlight has to live there.
+     (b) The owner picks the words, on each card. The owner asked on
+     2026-11-27 and chose the same day to pick them by hand. The planner does
+     not pick them.
+     (c) The look: each highlighted word is a solid block of the brand accent,
+     and the type on it is whichever of the brand's background and text
+     colours has the higher contrast against the accent (`highlightInk`). If
+     that is under 4.5 the page warns "The highlighted words do not stand out
+     enough from the accent colour." The film's marker band was not reused: it
+     was made for dark ink on paper, and off-white type on amber has a
+     contrast near 1.9, where near-black on amber is near 9.7.
+     (d) The matching rule, `headlineHighlight(headline, highlight)` in
+     `packages/schemas/src/thumbnails.ts`, with `HIGHLIGHT_MAX = 60`: whole
+     words only; a run of neighbouring words; case ignored; punctuation at
+     either end of a word ignored; the first run wins.
+     (e) A changed highlight is a retype, which is free: `saveThumbnailPackage`
+     takes `highlight` and sends the existing `compose` event, with no new
+     picture. Refused: "A highlight is at most 60 characters.", "An uploaded
+     thumbnail has no headline to highlight." and "The highlight must be words
+     from the headline." A save whose headline no longer holds the stored
+     highlight is refused, so a highlight is never orphaned. If the event
+     cannot be sent, the highlight goes back to what the row held. On the
+     card, a Highlight field sits under Headline on generated packages; while
+     the typed words are not in the typed headline it shows the mismatch line
+     and Save changes is disabled.
+     (f) The column is `thumbnail_packages.highlight`, text, not null,
+     default `''`, in migration `0059_thumbnail_highlight`.
+     (g) Two CSS rules in `apps/web/lib/thumbnail-document.ts` keep the
+     highlight from moving a letter. Each word is its own `inline-block`
+     with the accent as its background, and its side room, `padding:0 0.14em`,
+     is cancelled by `margin:0 -0.14em`, so the line is as wide as without it.
+     A real-browser test, `apps/web/lib/thumbnail-compose.test.ts`, skipped
+     where no browser is available, holds this: four headline shapes, and
+     every line's extents are equal with and without the highlight.
+     (h) `headlineBoxes` now takes the first N distinct text nodes, N from
+     `headlineTextNodes`, so the frame and duration-corner warnings cover the
+     whole headline and not only its first node, which a highlight splits.
+     (i) Not built: the planner picking the words, more than one run per
+     headline, a choice of colour, uploaded thumbnails, and Shorts.
+     (j) The e2e suite runs no Inngest, so its step proves the field, the
+     mismatch line, the disabled Save and that a saved highlight survives a
+     reload. The compose and the pixels are proved by the schema, action,
+     document and real-browser tests.
+     (k) The mark was too small to recognise at real size: the logo file is
+     padded, so at 8% of the frame height the glyph was about 11 px tall in a
+     360 px feed thumbnail, and at 80% opacity it nearly vanished on light
+     pictures. `THUMB_MARK_HEIGHT_RATIO` is now 0.12 and `THUMB_MARK_ALPHA` 1,
+     with `drop-shadow(0 4px 10px rgba(0,0,0,0.55))`. `thumbnail-mark.ts`
+     crops the logo to its visible pixels (alpha at or above `MARK_ALPHA_FLOOR`
+     8 of 255) before the compose, so the height is the glyph's. A file with
+     no alpha, nothing to trim or that cannot be read is used as it is. The
+     film's watermark still uses the untrimmed file. The wordmark fallback is
+     sized to the 22% width cap, at most two thirds of the mark's height
+     (`wordmarkPx`), which is the controller's call where the request asked
+     for a flat 86 px: a 14-letter name at that size ran 45% of the frame.
+     A headline on the mark's side keeps clear of it, staying centred when it
+     fits and moving down only when it would meet the mark.
+     (l) On 2026-11-28 the owner chose that the mark's top corner follows the
+     headline's side, so the mark always sits on the scrim: on a light
+     picture a mark away from the headline was faint. The setting keeps its
+     stored values, and `tl` and `tr` now both mean the top, beside the
+     headline (`markCornerFor` picks the corner from the text side), so
+     nothing stored or deployed breaks; a stored `tr` opens in the tab as
+     `tl`. The settings tab offers "Top, beside the headline", "Bottom left"
+     and "None". The keep-clear rule holds on both sides, whenever a mark is
+     drawn at the top.

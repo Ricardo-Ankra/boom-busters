@@ -35,7 +35,7 @@ const REFERENCES: ThumbnailReferenceView[] = [
 function renderTab(
   references = REFERENCES,
   styleNote = 'Plain and loud',
-  markPlacement = 'tl' as const,
+  markPlacement = 'tl' as 'none' | 'tl' | 'tr' | 'bl',
   wins: { results: IdeaResult[]; finished: FinishedTests } = {
     results: [],
     finished: { withWinner: 0, same: 0, inconclusive: 0 },
@@ -159,19 +159,32 @@ describe('the Thumbnails tab', () => {
     expect(within(second).getByRole('switch', { name: 'In use' })).not.toBeChecked()
   })
 
-  it('offers no bottom right corner', async () => {
+  it('a stored top right opens as the top beside the headline', () => {
+    renderTab(REFERENCES, 'Plain and loud', 'tr')
+    const corner = screen.getByRole('combobox', { name: 'Mark on thumbnails' })
+    expect(corner).toHaveValue('tl')
+    expect(within(corner).getByRole('option', { selected: true })).toHaveTextContent(
+      'Top, beside the headline',
+    )
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  it("the mark's corner offers the top beside the headline, bottom left, or none", async () => {
     renderTab()
 
     const corner = screen.getByRole('combobox', { name: 'Mark on thumbnails' })
     expect(Array.from(corner.querySelectorAll('option')).map((o) => o.textContent)).toEqual([
-      'Top left',
-      'Top right',
+      'Top, beside the headline',
       'Bottom left',
       'None',
     ])
+    expect(screen.queryByRole('option', { name: 'Top left' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Top right' })).not.toBeInTheDocument()
     expect(corner).toHaveValue('tl')
     expect(
-      screen.getByText('Bottom right is where YouTube draws the duration.'),
+      screen.getByText(
+        "At the top, the mark sits on the headline's side. Bottom right is where YouTube draws the duration.",
+      ),
     ).toBeInTheDocument()
 
     // The style note and the corner save together, with one button.

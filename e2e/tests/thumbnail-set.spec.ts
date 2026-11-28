@@ -196,6 +196,30 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await second.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByText('Changes saved').first()).toBeVisible({ timeout: 15_000 })
 
+    // Highlight a word of that headline. Words that are not in it are refused
+    // on the card and cannot be saved; a word that is in it saves and stays.
+    const highlight = second.getByLabel('Highlight', { exact: true })
+    const mismatch = second.getByText('The highlight must be words from the headline.')
+    await highlight.fill('banks')
+    await expect(mismatch).toBeVisible()
+    await expect(second.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    await highlight.fill('checked')
+    await expect(mismatch).toHaveCount(0)
+    await second.getByRole('button', { name: 'Save changes' }).click()
+    // The button is not drawn once nothing differs from the saved row, so its
+    // going is the card's own sign that the save landed. A reload before that
+    // could abort the request, and the reload below cannot repair that.
+    await expect(second.getByRole('button', { name: 'Save changes' })).toHaveCount(0)
+    await expect(async () => {
+      await page.reload()
+      await expect(second.getByLabel('Highlight', { exact: true })).toHaveValue('checked', {
+        timeout: 5_000,
+      })
+      await expect(second.getByLabel('Headline', { exact: true })).toHaveValue('Nobody checked', {
+        timeout: 5_000,
+      })
+    }).toPass({ timeout: 30_000 })
+
     // Ask for a change to the first picture. No Inngest runs in this suite, so
     // the paint itself never happens: the action is accepted up to the send,
     // says plainly that it could not reach Inngest, and puts the card back as
@@ -268,8 +292,16 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await expect(first.getByRole('textbox', { name: 'Framing', exact: true })).toHaveValue(
       'Close, eye level',
     )
-    await picture.fill('A vault door left open at night')
-    await expect(first.getByText('Will show: nobody from the cast')).toBeVisible()
+    // The page may still be becoming interactive just after the reload: a fill
+    // that lands then can put the new words in front of the old ones. Fill until
+    // the field holds exactly what was typed and the card has answered it.
+    await expect(async () => {
+      await picture.fill('A vault door left open at night')
+      await expect(picture).toHaveValue('A vault door left open at night', { timeout: 2_000 })
+      await expect(first.getByText('Will show: nobody from the cast')).toBeVisible({
+        timeout: 2_000,
+      })
+    }).toPass({ timeout: 30_000 })
     await first.getByRole('button', { name: 'Regenerate picture', exact: true }).click()
     await expect(unreachable.first()).toBeVisible({ timeout: 15_000 })
     await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })

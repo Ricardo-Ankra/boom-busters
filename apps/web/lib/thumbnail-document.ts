@@ -9,6 +9,7 @@ import {
   THUMB_MARK_ALPHA,
   THUMB_MARK_HEIGHT_RATIO,
   THUMB_WIDTH,
+  headlineHighlight,
   headlineWords,
 } from '@boom-busters/schemas'
 import type { TextBox } from './graphic-code/frames'
@@ -37,8 +38,25 @@ const SCRIM_FADE_PCT = 60
 const MARK_INSET_PX = Math.round(0.04 * THUMB_HEIGHT)
 const MARK_HEIGHT_PX = Math.round(THUMB_MARK_HEIGHT_RATIO * THUMB_HEIGHT)
 const MARK_MAX_WIDTH_PX = Math.round(0.22 * THUMB_WIDTH)
-/** The wordmark is set at half the mark's height: the film's corner watermark look, at the thumbnail's size. */
-const WORDMARK_PX = Math.round(MARK_HEIGHT_PX / 2)
+/** How far down a top corner's mark reaches, which a headline on its side keeps clear of. */
+const MARK_CLEAR_PX = MARK_INSET_PX + MARK_HEIGHT_PX
+/** A light shadow, so the mark holds on a pale picture as well as a dark one. */
+const MARK_SHADOW = 'drop-shadow(0 4px 10px rgba(0,0,0,0.55))'
+/** The wordmark is at most two thirds of the mark's height. */
+const WORDMARK_MAX_PX = Math.round((2 * MARK_HEIGHT_PX) / 3)
+/** An estimate of an upper-case letter's advance plus the 0.08em letter spacing. */
+const WORDMARK_EM_PER_CHAR = 0.7
+
+/**
+ * The wordmark's type size: two thirds of the mark's height, or less when the
+ * name would run wider than the 22% width cap the image mark keeps to.
+ */
+export function wordmarkPx(name: string): number {
+  return Math.min(
+    WORDMARK_MAX_PX,
+    Math.floor(MARK_MAX_WIDTH_PX / (WORDMARK_EM_PER_CHAR * Math.max(1, name.trim().length))),
+  )
+}
 
 /** The heaviest weight cap: beyond this the headline would crowd its box. */
 const HEADLINE_WEIGHT_MAX = 800
@@ -101,6 +119,55 @@ const escapeHtml = (text: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+/**
+ * The type on a highlight block: the brand's background or its primary text
+ * colour, whichever reads better on the accent. A tie, or a colour that cannot
+ * be read, gives the background colour.
+ */
+export function highlightInk(brand: GraphicProps['brand']): {
+  color: string
+  contrast: number | null
+} {
+  const { accent, background, textPrimary } = brand.colors
+  const onBackground = contrastRatio(background, accent)
+  const onText = contrastRatio(textPrimary, accent)
+  if (onBackground === null || onText === null) {
+    return { color: background, contrast: null }
+  }
+  return onText > onBackground
+    ? { color: textPrimary, contrast: onText }
+    : { color: background, contrast: onBackground }
+}
+
+/** A block's side room, laid on and taken off again so the line does not move. */
+const HIGHLIGHT_SIDE_EM = 0.14
+
+/** The headline's markup: plain, or with each highlighted word on an accent block. */
+function headlineMarkup(headline: string, highlight: string, brand: GraphicProps['brand']): string {
+  const parts = headlineHighlight(headline, highlight)
+  if (parts === null) return escapeHtml(headline)
+  const ink = highlightInk(brand).color
+  const style = `display:inline-block;background:${brand.colors.accent};color:${ink};padding:0 ${HIGHLIGHT_SIDE_EM}em;margin:0 -${HIGHLIGHT_SIDE_EM}em`
+  const blocks = parts.hit
+    .split(' ')
+    .map((word) => `<span data-role="highlight" style="${style}">${escapeHtml(word)}</span>`)
+    .join(' ')
+  return `${escapeHtml(parts.before)}${blocks}${escapeHtml(parts.after)}`
+}
+
+/**
+ * Where the mark is drawn. 'tl' and 'tr' both mean the top, on the headline's
+ * side; 'bl' stays bottom left; 'none' draws no mark.
+ */
+export function markCornerFor(
+  placement: 'none' | 'tl' | 'tr' | 'bl',
+  textSide: 'left' | 'right',
+): 'tl' | 'tr' | 'bl' | null {
+  if (placement === 'none') return null
+  if (placement === 'bl') return 'bl'
+  return textSide === 'left' ? 'tl' : 'tr'
+}
+
 /** The mark's corner; never bottom right, where YouTube draws the duration. */
 function markCorner(placement: 'tl' | 'tr' | 'bl'): string {
   const vertical = placement === 'bl' ? 'bottom' : 'top'
@@ -115,6 +182,7 @@ export function thumbnailDocument(input: {
   brand: GraphicProps['brand']
   mark: { src: string } | { wordmark: string } | null
   markPlacement: 'none' | 'tl' | 'tr' | 'bl'
+  highlight: string
 }): string {
   const { brand, textSide } = input
   const headline = input.headline.trim()
@@ -129,18 +197,31 @@ export function thumbnailDocument(input: {
       ? ''
       : `<div data-role="scrim" style="position:absolute;inset:0;background:linear-gradient(to ${toward},${scrimColour} 0%,${scrimColour} ${SCRIM_SOLID_PCT}%,rgba(${rgb.r},${rgb.g},${rgb.b},0) ${SCRIM_FADE_PCT}%)"></div>`
 
+  // A mark in the top corner on the headline's side: the headline is a column
+  // with a spacer above and below, so it stays centred when it fits under the
+  // mark and moves down only as far as it must.
+  const cornerPlacement = markCornerFor(input.markPlacement, textSide)
+  const clearsMark = input.mark !== null && (cornerPlacement === 'tl' || cornerPlacement === 'tr')
+  const flow = clearsMark
+    ? `display:flex;flex-direction:column;align-items:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
+    : `display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'}`
+  const spacers = (inner: string) =>
+    clearsMark
+      ? `<div style="flex:1 1 0;min-height:${MARK_CLEAR_PX}px"></div>${inner}<div style="flex:1 1 0"></div>`
+      : inner
+
   const text =
     headline === ''
       ? ''
-      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;display:flex;align-items:center;justify-content:${textSide === 'left' ? 'flex-start' : 'flex-end'};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}"><span>${escapeHtml(headline)}</span></div>`
+      : `<div data-role="headline" style="position:absolute;top:0;bottom:${HEADLINE_BOTTOM_PCT}%;${textSide}:${HEADLINE_MARGIN_PCT}%;width:${HEADLINE_WIDTH_PCT}%;${flow};text-align:${textSide};font-family:'${heading}',sans-serif;font-size:${headlineFontPx(headline)}px;line-height:0.95;font-weight:${headlineWeight(brand.fonts.heading)};text-transform:uppercase;color:${brand.colors.textPrimary}">${spacers(`<span>${headlineMarkup(headline, input.highlight, brand)}</span>`)}</div>`
 
   let mark = ''
-  if (input.mark !== null && input.markPlacement !== 'none') {
-    const corner = markCorner(input.markPlacement)
+  if (input.mark !== null && cornerPlacement !== null) {
+    const corner = markCorner(cornerPlacement)
     mark =
       'src' in input.mark
-        ? `<img data-role="mark" src="${escapeHtml(input.mark.src)}" alt="" style="position:absolute;${corner};height:${MARK_HEIGHT_PX}px;max-width:${MARK_MAX_WIDTH_PX}px;object-fit:contain;opacity:${THUMB_MARK_ALPHA}">`
-        : `<div data-role="mark" style="position:absolute;${corner};font-family:'${heading}',sans-serif;font-size:${WORDMARK_PX}px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;opacity:${THUMB_MARK_ALPHA};color:${brand.colors.textPrimary}">${escapeHtml(input.mark.wordmark)}</div>`
+        ? `<img data-role="mark" src="${escapeHtml(input.mark.src)}" alt="" style="position:absolute;${corner};height:${MARK_HEIGHT_PX}px;max-width:${MARK_MAX_WIDTH_PX}px;object-fit:contain;opacity:${THUMB_MARK_ALPHA};filter:${MARK_SHADOW}">`
+        : `<div data-role="mark" style="position:absolute;${corner};font-family:'${heading}',sans-serif;font-size:${wordmarkPx(input.mark.wordmark)}px;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;opacity:${THUMB_MARK_ALPHA};filter:${MARK_SHADOW};color:${brand.colors.textPrimary}">${escapeHtml(input.mark.wordmark)}</div>`
   }
 
   return [
@@ -159,13 +240,34 @@ export function thumbnailDocument(input: {
 }
 
 /**
- * The headline's boxes out of a page's text boxes: those of the first text
- * node. The headline is the first text in the page; the wordmark, when there
- * is one, comes after it and is not the headline's to answer for.
+ * How many text nodes the headline's markup holds: one when it is plain, and
+ * one per highlighted word plus one for each side of them that has words.
  */
-export function headlineBoxes(boxes: readonly TextBox[]): TextBox[] {
-  const first = boxes[0]
-  return first === undefined ? [] : boxes.filter((candidate) => candidate.node === first.node)
+export function headlineTextNodes(headline: string, highlight: string): number {
+  const trimmed = headline.trim()
+  if (trimmed === '') return 0
+  const parts = headlineHighlight(trimmed, highlight)
+  if (parts === null) return 1
+  return (
+    parts.hit.split(' ').length +
+    (parts.before.trim() === '' ? 0 : 1) +
+    (parts.after.trim() === '' ? 0 : 1)
+  )
+}
+
+/**
+ * The headline's boxes out of a page's text boxes: those of its first `nodes`
+ * distinct text nodes. The headline is the first text in the page; the
+ * wordmark, when there is one, comes after it and is not the headline's to
+ * answer for.
+ */
+export function headlineBoxes(boxes: readonly TextBox[], nodes = 1): TextBox[] {
+  const own = new Set<number>()
+  for (const box of boxes) {
+    if (own.size >= nodes) break
+    own.add(box.node)
+  }
+  return boxes.filter((box) => own.has(box.node))
 }
 
 /** What to tell the owner about a composed headline, in the console's own words. */
@@ -174,6 +276,7 @@ export function thumbnailWarnings(input: {
   fontPx: number
   boxes: readonly TextBox[]
   contrast: number | null
+  highlightContrast?: number | null
 }): string[] {
   if (input.headline.trim() === '') return []
   const warnings: string[] = []
@@ -184,6 +287,13 @@ export function thumbnailWarnings(input: {
   if (input.fontPx < HEADLINE_MIN_PX) warnings.push("The headline's type is under the size floor.")
   if (input.contrast !== null && input.contrast < HEADLINE_CONTRAST_MIN) {
     warnings.push('The headline does not stand out enough from what is behind it.')
+  }
+  if (
+    input.highlightContrast !== undefined &&
+    input.highlightContrast !== null &&
+    input.highlightContrast < HEADLINE_CONTRAST_MIN
+  ) {
+    warnings.push('The highlighted words do not stand out enough from the accent colour.')
   }
   const outside = input.boxes.some(
     (box) =>

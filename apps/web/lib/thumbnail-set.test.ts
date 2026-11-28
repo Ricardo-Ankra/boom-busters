@@ -30,6 +30,7 @@ import {
 import type { ImageGenRequest } from '@boom-busters/providers'
 import type { PlannedPackage, ThumbnailIdea } from '@boom-busters/schemas'
 import { eq, sql } from 'drizzle-orm'
+import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '@/lib/db'
 import type * as DbModule from '@boom-busters/db'
@@ -114,13 +115,19 @@ const storage = vi.hoisted(() => ({
   delete: vi.fn(async (_key: string): Promise<undefined> => undefined),
   // Stored objects' sizes in bytes; a key not listed is four bytes.
   sizes: new Map<string, number>(),
+  // Stored objects' own bytes, and keys whose read fails.
+  contents: new Map<string, Uint8Array>(),
+  unreadable: new Set<string>(),
 }))
 vi.mock('@/lib/storage', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getObjectBytes: async (key: string) => ({
-    bytes: new Uint8Array(storage.sizes.get(key) ?? 4),
-    contentType: 'image/png',
-  }),
+  getObjectBytes: async (key: string) => {
+    if (storage.unreadable.has(key)) throw new Error('The object could not be read.')
+    return {
+      bytes: storage.contents.get(key) ?? new Uint8Array(storage.sizes.get(key) ?? 4),
+      contentType: 'image/png',
+    }
+  },
   storageConfigured: () => storage.configured,
   presignGet: async (key: string) => `https://signed.test/${key}`,
   putObject: (key: string) => storage.put(key),
@@ -219,6 +226,8 @@ describeDb('thumbnail set (mock mode)', () => {
     cost.refuse = false
     storage.configured = false
     storage.sizes.clear()
+    storage.contents.clear()
+    storage.unreadable.clear()
     adapter.generate.mockImplementation(async () => ({ images: [image], estimatedCostUsd: 0.15 }))
     grounding.metadataGrounding.mockResolvedValue({
       claims: CLAIMS,
@@ -1213,6 +1222,140 @@ describeDb('thumbnail set (mock mode)', () => {
       expect(row?.error).toBe('The browser would not start.')
       expect(row?.pictureKey).toBe(pictureKey)
       expect(row?.composedKey).toBeNull()
+    })
+
+    it("a compose sets the package's highlight", async () => {
+      vi.stubEnv('MOCK_PROVIDERS', '0')
+      storage.configured = true
+      compose.composeThumbnail.mockResolvedValue({ jpeg: Buffer.from('jpeg'), warnings: [] })
+      const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+      const id = inserted[0]!.id
+      await db
+        .update(thumbnailPackages)
+        .set({
+          pictureKey: `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-ddd.png`,
+          state: 'painting',
+          headline: 'They lost $2 billion',
+          highlight: 'billion',
+        })
+        .where(eq(thumbnailPackages.id, id))
+
+      await composeThumbnailPackage(id)
+
+      expect(compose.composeThumbnail).toHaveBeenCalledWith(
+        expect.objectContaining({ headline: 'They lost $2 billion', highlight: 'billion' }),
+      )
+    })
+
+    describe('the channel mark', () => {
+      const LOGO = 'boom-busters/logos/test-mark.png'
+      let originalLogo: string | null = null
+
+      async function setLogo(key: string | null): Promise<void> {
+        const settings = await getChannelSettings(db, FIRST_CHANNEL_ID)
+        await db
+          .update(channels)
+          .set({
+            settings: {
+              ...settings,
+              brandKit: {
+                ...settings.brandKit,
+                look: { ...settings.brandKit.look, logoR2Key: key },
+              },
+            },
+          })
+          .where(eq(channels.id, FIRST_CHANNEL_ID))
+      }
+
+      async function packageWithPicture(): Promise<string> {
+        vi.stubEnv('MOCK_PROVIDERS', '0')
+        storage.configured = true
+        compose.composeThumbnail.mockResolvedValue({ jpeg: Buffer.from('jpeg'), warnings: [] })
+        const { inserted } = await replaceUnapprovedGenerated(db, recordId, [planned('figure')])
+        const id = inserted[0]!.id
+        await db
+          .update(thumbnailPackages)
+          .set({
+            pictureKey: `boom-busters/thumbs/${FIXTURE_PROJECT_ID}/art-mark.png`,
+            state: 'painting',
+          })
+          .where(eq(thumbnailPackages.id, id))
+        return id
+      }
+
+      const block = (width: number, height: number) =>
+        sharp({
+          create: { width, height, channels: 4, background: { r: 200, g: 30, b: 30, alpha: 1 } },
+        })
+          .png()
+          .toBuffer()
+
+      beforeEach(async () => {
+        originalLogo = (await getChannelSettings(db, FIRST_CHANNEL_ID)).brandKit.look.logoR2Key
+      })
+
+      it('a padded logo is trimmed for the thumbnail', async () => {
+        const padded = await sharp({
+          create: {
+            width: 100,
+            height: 100,
+            channels: 4,
+            background: { r: 0, g: 0, b: 0, alpha: 0 },
+          },
+        })
+          .composite([{ input: await block(40, 30), left: 20, top: 10 }])
+          .png()
+          .toBuffer()
+        try {
+          await setLogo(LOGO)
+          storage.contents.set(LOGO, padded)
+          const id = await packageWithPicture()
+
+          await composeThumbnailPackage(id)
+
+          const { mark } = compose.composeThumbnail.mock.calls[0]![0] as { mark: { src: string } }
+          expect(mark.src.startsWith('data:image/png;base64,')).toBe(true)
+          const decoded = Buffer.from(mark.src.split(',')[1]!, 'base64')
+          const meta = await sharp(decoded).metadata()
+          expect([meta.width, meta.height]).toEqual([40, 30])
+        } finally {
+          await setLogo(originalLogo)
+        }
+      })
+
+      it('a logo with nothing to trim is sent as it is', async () => {
+        try {
+          await setLogo(LOGO)
+          storage.contents.set(LOGO, await block(50, 40))
+          const id = await packageWithPicture()
+
+          await composeThumbnailPackage(id)
+
+          expect(compose.composeThumbnail).toHaveBeenCalledWith(
+            expect.objectContaining({ mark: { src: `https://signed.test/${LOGO}` } }),
+          )
+        } finally {
+          await setLogo(originalLogo)
+        }
+      })
+
+      it('a logo that cannot be read does not fail the compose', async () => {
+        try {
+          await setLogo(LOGO)
+          storage.unreadable.add(LOGO)
+          const id = await packageWithPicture()
+
+          await composeThumbnailPackage(id)
+
+          expect(compose.composeThumbnail).toHaveBeenCalledWith(
+            expect.objectContaining({ mark: { src: `https://signed.test/${LOGO}` } }),
+          )
+          const row = await getThumbnailPackage(db, id)
+          expect(row?.state).toBe('ready')
+        } finally {
+          await setLogo(originalLogo)
+        }
+      })
     })
 
     it('a recompose deletes the old object only after the record lists the new one', async () => {

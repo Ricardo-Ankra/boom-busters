@@ -414,6 +414,13 @@
       "when": 1795812547825,
       "tag": "0058_thumbnail_previous_depicts",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795860186777,
+      "tag": "0059_thumbnail_highlight",
+      "breakpoints": true
     }
   ]
 }
