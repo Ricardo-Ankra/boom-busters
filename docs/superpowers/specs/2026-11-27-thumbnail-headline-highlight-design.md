@@ -114,9 +114,10 @@ the problem while typing and the refusal is the backstop.
 ### 6.1 What is stored
 
 `thumbnail_packages` gains one column, `highlight`: text, not null, default
-`''`. Migration `0058_thumbnail_highlight` (the next free number today; the
-journal on `origin/master` is compared again at merge). Existing rows and
-every newly planned package hold `''`.
+`''`. Migration `0059_thumbnail_highlight` (the next free number on
+2026-11-28, after the owner's picture brief took 0058; the journal on
+`origin/master` is compared again at merge). Existing rows and every newly
+planned package hold `''`.
 
 The planner's schema (`PlannedPackageSchema`) and prompt do not change.
 
@@ -180,38 +181,44 @@ passes the row's.
 - `headlineHighlight` returns null: the headline's markup is byte for byte
   what it is today. A mismatch that reaches the page (a row written some
   other way) draws the plain headline and never throws.
-- Otherwise the headline's inner span holds `before`, then a span with
-  `data-role="highlight"` holding `hit`, then `after`, each escaped.
+- Otherwise the headline's inner span holds `before`, then each word of `hit`
+  in a span of its own with `data-role="highlight"`, the words separated by
+  single spaces, then `after`, all escaped.
 - The block's colour is `brand.colors.accent`.
 - The type on the block is whichever of `brand.colors.background` and
   `brand.colors.textPrimary` has the higher contrast against the accent
   (`contrastRatio`, already in `page-pure.ts`). A channel with a dark accent
   therefore gets light type on it without a setting.
-- A highlight of several words that wraps gets a block on each line
-  (`box-decoration-break: clone`).
+- Each highlighted word is its own block. Neighbouring words on one line join
+  into one shape, and a highlight that wraps has a block on each line.
 
-Two rules bind the CSS, and the plan chooses how to meet them:
+Two rules bind the CSS:
 
-1. **A highlight never moves a letter.** The headline's text boxes (position,
-   size and text of every line, as `screenshotFrame` reports them) are the
-   same with the highlight and without it. The block's breathing room at the
-   sides comes from something that takes no space in the line, such as
-   padding cancelled by an equal negative margin.
+1. **A highlight never moves a letter.** Every line of the headline starts
+   and ends at the same pixel with the highlight and without it. The block's
+   breathing room at the sides takes no space in the line: padding of
+   `0.14em` cancelled by a margin of `-0.14em`.
 2. **A block stays on its own line.** The headline's line height is 0.95, and
    an inline background is as tall as the font's full ascent and descent, so a
-   naive background overlaps the lines above and below. The block is fitted
-   to the capitals: it reaches no further than the gap to the neighbouring
-   lines' letters.
+   plain inline background overlaps the lines above and below. Each word is an
+   `inline-block`, which is exactly as tall as its line and no taller.
+
+Both were tried in the local browser on 2026-11-28 with the default kit
+(Inter) before the plan was written: four headlines, one to four lines, left
+and right, a one-word and a two-word highlight. Every line kept its extents
+to the pixel and no block reached another line's letters.
 
 The type size (`headlineFontPx`) is still worked out from the whole headline.
 
 ### 6.5 Warnings
 
 - `headlineBoxes` today returns the boxes of the first text node, which was
-  the whole headline. With a highlight the headline is up to three text
-  nodes, so the frame and keep-out checks would see only the words before
-  the block. It must return every text box of the headline and none of the
-  wordmark's. The plan picks how they are told apart.
+  the whole headline. With a highlight the headline is several text nodes
+  (the words before, each highlighted word, the words after), so the frame
+  and keep-out checks would see only the words before the block. It must
+  return every text box of the headline and none of the wordmark's. The page
+  knows how many text nodes its headline has, and the headline's are the
+  first that many in the frame.
 - One new warning, raised only when a highlight is drawn and the better of
   the two type colours still has a contrast under `HEADLINE_CONTRAST_MIN`
   (4.5) against the accent: `The highlighted words do not stand out enough
@@ -262,19 +269,18 @@ so a highlight saved in mock mode is stored and nothing is drawn.
   changed fields.
 - **e2e:** the field is on the card, and a mismatch shows its line. The suite
   runs no Inngest, so a completed recompose is not provable there.
-- **Real frames, before merge:** the two CSS rules in 6.4 cannot be proved by
-  a string test. A throwaway probe in `apps/web` renders, in the local
-  browser and at no cost, the same headline with and without a highlight in
-  three shapes: one line, a highlighted word on the middle of three lines,
-  and a two-word highlight that wraps. The text boxes must be equal, and the
-  owner is shown the stills before anything is merged. The probe is deleted
-  after.
+- **Real frames:** the first CSS rule in 6.4 cannot be proved by a string
+  test. A test that runs only where a browser is available (as the real
+  browser tests in `frames.test.ts` do) renders the same headline with and
+  without a highlight in four shapes and compares every line's extents. The
+  second rule rests on each word being an `inline-block`, which the markup
+  test asserts.
+- **Stills, before merge:** the owner is shown stills rendered in the local
+  browser, at no cost, with the channel's default kit, before anything is
+  merged.
 
 ## 8. Left to the builder
 
-- The CSS that meets the two rules in 6.4, and the block's exact side room
-  and corner radius, within the look in 5.2.
-- How `headlineBoxes` tells the headline's nodes from the wordmark's.
 - Where on the card the mismatch line sits relative to the existing warnings.
 
 ## 9. Calls made here that the owner did not make
