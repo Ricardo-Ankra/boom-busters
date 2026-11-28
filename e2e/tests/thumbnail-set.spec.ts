@@ -292,8 +292,16 @@ test('a set is generated, edited, approved and handed over for a Studio test', a
     await expect(first.getByRole('textbox', { name: 'Framing', exact: true })).toHaveValue(
       'Close, eye level',
     )
-    await picture.fill('A vault door left open at night')
-    await expect(first.getByText('Will show: nobody from the cast')).toBeVisible()
+    // The page may still be becoming interactive just after the reload: a fill
+    // that lands then can put the new words in front of the old ones. Fill until
+    // the field holds exactly what was typed and the card has answered it.
+    await expect(async () => {
+      await picture.fill('A vault door left open at night')
+      await expect(picture).toHaveValue('A vault door left open at night', { timeout: 2_000 })
+      await expect(first.getByText('Will show: nobody from the cast')).toBeVisible({
+        timeout: 2_000,
+      })
+    }).toPass({ timeout: 30_000 })
     await first.getByRole('button', { name: 'Regenerate picture', exact: true }).click()
     await expect(unreachable.first()).toBeVisible({ timeout: 15_000 })
     await expect(first.getByText('Being made')).toHaveCount(0, { timeout: 15_000 })
