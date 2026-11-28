@@ -34,6 +34,17 @@ function projectIdOf(ctx: CtxLike): string | null {
 }
 
 /**
+ * The channel a run belongs to, when its triggering event names one. A
+ * channel's own jobs (bible drafting, research, keyword reads) carry no
+ * project; without this their rows had no channel, so they counted as running
+ * under every channel while no list could show what they were.
+ */
+function channelIdOf(ctx: CtxLike): string | null {
+  const value = ctx.event?.data?.['channelId']
+  return typeof value === 'string' ? value : null
+}
+
+/**
  * The stage a function serves, from its own id. Functions are named
  * `<stage>-runner` (spec section 7), so the id *is* the stage — no separate
  * registry to keep in sync.
@@ -108,6 +119,7 @@ export async function resolveRunRowId(identity: {
   inngestRunId: string
   functionId: string
   projectId?: string | null
+  channelId?: string | null
 }): Promise<string> {
   const cached = RUN_ROW_IDS.get(identity.inngestRunId)
   if (cached) return cached
@@ -116,6 +128,7 @@ export async function resolveRunRowId(identity: {
     inngestRunId: identity.inngestRunId,
     functionName: identity.functionId,
     projectId: identity.projectId ?? null,
+    channelId: identity.channelId ?? null,
     stage: stageOfFunction(identity.functionId),
   })
 
@@ -145,6 +158,7 @@ export class RunMirrorMiddleware extends Middleware.BaseMiddleware {
         inngestRunId,
         functionId,
         projectId: projectIdOf(ctx),
+        channelId: channelIdOf(ctx),
       })
     } catch (error) {
       console.error('[run-mirror] could not open a run row', error)

@@ -495,6 +495,16 @@ describeDb('run mirror', () => {
       expect(rows.find((row) => row.id === cron)?.channelId).toBeNull()
     })
 
+    it('writes a run naming a channel that no longer exists with no channel, not refused', async () => {
+      const gone = await ensureRun(db, {
+        inngestRunId: '01JCHAN0004',
+        functionName: 'bible-drafter',
+        channelId: '01JNOSUCHCHANNEL000000000',
+      })
+      const [row] = await db.select().from(runs).where(eq(runs.id, gone))
+      expect(row?.channelId).toBeNull()
+    })
+
     it('lists a run for a project on B under B and never under A', async () => {
       const runId = await ensureRun(db, {
         inngestRunId: '01JCHAN0004',

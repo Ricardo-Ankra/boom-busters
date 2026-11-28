@@ -12899,3 +12899,44 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      since then sits over the wrong third, as a plain repaint already did;
      the paint does not check a named person's portrait again; and a name
      can be read across the two fields.
+487. **A killed run no longer counts as running; hooks are drafted one list at
+     a time** (2026-11-28, owner: "My App shows 2 runs that are running but I
+     cant see what they are", then "Fix both").
+     (a) What it was: two bible drafts for rea-power-pyschology on 2026-11-27
+     (15:20 and 19:20 UTC). Each reached the hooks unit, whose one model call
+     asked for hooks, openings and titles together (up to 36 entries). One
+     call took 193 s and was refused, and its retry was cut at the route's
+     300 s limit (HTTP 504). Inngest retried twice, then failed the run and
+     `onFailure` marked the draft failed. But a killed attempt runs none of
+     our code, so the run mirror's `onRunError` hook never fired and both
+     rows said `running`. The rows also had no channel, so the top bar
+     counted them under every channel while no list could link to them.
+     The two rows were closed by hand in production the same day, with the
+     owner's approval.
+     (b) `failure-mirror` (new function) listens on `inngest/function.failed`,
+     which Inngest emits for every failed run however it failed, and closes a
+     row still `running` or `awaiting_gate` as `failed` with the error. It is
+     idempotent like `cancellation-mirror`: a row the hook already closed is
+     left alone. It ignores its own failures, so a failing pass cannot start
+     the next. It does not touch the stage; each stage runner's `onFailure`
+     settles that. No singleton (index.test.ts), like the cancellation mirror.
+     (c) The run mirror stamps a run with its event's `channelId` when the
+     event names no project (bible drafting and research, keyword reads,
+     derivations). `ensureRun` writes no channel when the named channel no
+     longer exists, rather than letting the foreign key refuse the row.
+     (d) The hooks section is drafted one list per step:
+     `draft-hooks:hooks`, `draft-hooks:openings`, `draft-hooks:titles`. Each
+     call asks for its one list (`only` on `buildBibleUnitRequest`,
+     `bibleUnitSchema`, `parseBibleUnit`, `mockBibleUnit`) and sees the
+     section's other lists already drafted, so titles follow the hooks just
+     written. The unit the owner asks for is still `{ section: 'hooks' }`, so
+     the screen, the event and Try again are unchanged. A list refused twice
+     leaves its own error, `hooks:openings`, worded "Openings: ...", which
+     `errorSection` files under the hooks card; the other lists are still
+     drafted, and a list's success also clears an old whole-section `hooks`
+     error. A list redrafted clears only its own too-close flags.
+     (e) Left open: the other sections are still drafted in one call each.
+     The longest, formats, took 170 s once on the same day (inside the limit
+     but not by much). The same draft's formats answer was refused for title
+     slots outside the four allowed; that refusal is a separate matter and is
+     not changed here.

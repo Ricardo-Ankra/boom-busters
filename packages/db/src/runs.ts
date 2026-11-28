@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import type { Database } from './client'
-import { projects, runEvents, runs } from './schema'
+import { channels, projects, runEvents, runs } from './schema'
 import type { ProjectStage, RunEventRow, RunRow, RunStatus } from './schema'
 
 /**
@@ -81,6 +81,13 @@ function runsOfChannel(channelId: string, ownOnly = false) {
  * guarantee across a run's transitions.
  */
 export async function ensureRun(db: Database, identity: RunIdentity): Promise<string> {
+  // A channel named by an event may since have been deleted; the row is then
+  // written with no channel rather than refused by the foreign key.
+  const named = identity.channelId
+    ? sql<
+        string | null
+      >`(select ${channels.id} from ${channels} where ${channels.id} = ${identity.channelId})`
+    : null
   const [row] = await db
     .insert(runs)
     .values({
@@ -90,8 +97,8 @@ export async function ensureRun(db: Database, identity: RunIdentity): Promise<st
       channelId: identity.projectId
         ? sql<
             string | null
-          >`coalesce((select ${projects.channelId} from ${projects} where ${projects.id} = ${identity.projectId}), ${identity.channelId ?? null})`
-        : (identity.channelId ?? null),
+          >`coalesce((select ${projects.channelId} from ${projects} where ${projects.id} = ${identity.projectId}), ${named})`
+        : named,
       projectId: identity.projectId ?? null,
       stage: identity.stage ?? null,
       status: 'running',

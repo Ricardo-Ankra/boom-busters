@@ -1,4 +1,4 @@
-import { BIBLE_SECTIONS, defaultFormat, EXAMPLE_SLOTS } from '@boom-busters/schemas'
+import { defaultFormat, EXAMPLE_SLOTS } from '@boom-busters/schemas'
 import type {
   BibleDraftInputs,
   BibleDraftUnit,
@@ -10,6 +10,7 @@ import type {
 import channelVideos from '../vidiq/fixtures/channel_videos.json' with { type: 'json' }
 import outliers from '../vidiq/fixtures/outliers.json' with { type: 'json' }
 import { parseChannelVideos, parseOutliers } from '../vidiq/shapes'
+import { unitKeys } from './bible-draft'
 
 /** Words that must never appear in a non-finance channel's bible. Matched case-insensitively. */
 export const FINANCE_WORDS = [
@@ -245,15 +246,18 @@ function exampleSlots(unit: BibleDraftUnit) {
   )
 }
 
-/** The mock bible's answer for one unit, shaped as `bibleUnitSchema(unit)` wants it. */
-export function mockBibleUnit(unit: BibleDraftUnit): Partial<ChannelBible> {
+/** The mock bible's answer for one unit, shaped as `bibleUnitSchema(unit, only)` wants it. */
+export function mockBibleUnit(
+  unit: BibleDraftUnit,
+  only?: keyof ChannelBible,
+): Partial<ChannelBible> {
   if (unit.section === 'examples') {
     const examples: Record<string, string> = {}
     for (const slot of exampleSlots(unit)) examples[slot.id] = MOCK_BIBLE.examples[slot.id] ?? ''
     return { examples }
   }
   const answer: Partial<ChannelBible> = {}
-  for (const key of BIBLE_SECTIONS[unit.section]) {
+  for (const key of unitKeys(unit, only)) {
     Object.assign(answer, { [key]: structuredClone(MOCK_BIBLE[key]) })
   }
   return answer
