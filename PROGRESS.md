@@ -12899,3 +12899,58 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      since then sits over the wrong third, as a plain repaint already did;
      the paint does not check a named person's portrait again; and a name
      can be read across the two fields.
+
+487. **A highlighted word in a thumbnail headline** (2026-11-27, owner asked
+     for a word or run of words in the headline to sit on the brand accent
+     colour; branch `worktree-generated-thumbnails`; migration `0059`; design
+     `docs/superpowers/specs/2026-11-27-thumbnail-headline-highlight-design.md`).
+     (a) What was asked: on a generated thumbnail the owner types words from
+     the headline into a Highlight field, saves, and the app sets the accent
+     behind them when it composes the thumbnail. The Change the picture note
+     could not do it: that note goes to the image model, which never sees the
+     headline and is told to paint no text. The app sets the headline itself,
+     afterwards, so the highlight has to live there.
+     (b) The owner picks the words, on each card. The owner asked on
+     2026-11-27 and chose the same day to pick them by hand. The planner does
+     not pick them.
+     (c) The look: each highlighted word is a solid block of the brand accent,
+     and the type on it is whichever of the brand's background and text
+     colours has the higher contrast against the accent (`highlightInk`). If
+     that is under 4.5 the page warns "The highlighted words do not stand out
+     enough from the accent colour." The film's marker band was not reused: it
+     was made for dark ink on paper, and off-white type on amber has a
+     contrast near 1.9, where near-black on amber is near 9.7.
+     (d) The matching rule, `headlineHighlight(headline, highlight)` in
+     `packages/schemas/src/thumbnails.ts`, with `HIGHLIGHT_MAX = 60`: whole
+     words only; a run of neighbouring words; case ignored; punctuation at
+     either end of a word ignored; the first run wins.
+     (e) A changed highlight is a retype, which is free: `saveThumbnailPackage`
+     takes `highlight` and sends the existing `compose` event, with no new
+     picture. Refused: "A highlight is at most 60 characters.", "An uploaded
+     thumbnail has no headline to highlight." and "The highlight must be words
+     from the headline." A save whose headline no longer holds the stored
+     highlight is refused, so a highlight is never orphaned. If the event
+     cannot be sent, the highlight goes back to what the row held. On the
+     card, a Highlight field sits under Headline on generated packages; while
+     the typed words are not in the typed headline it shows the mismatch line
+     and Save changes is disabled.
+     (f) The column is `thumbnail_packages.highlight`, text, not null,
+     default `''`, in migration `0059_thumbnail_highlight`.
+     (g) Two CSS rules in `apps/web/lib/thumbnail-document.ts` keep the
+     highlight from moving a letter. Each word is its own `inline-block`
+     with the accent as its background, and its side room, `padding:0 0.14em`,
+     is cancelled by `margin:0 -0.14em`, so the line is as wide as without it.
+     A real-browser test, `apps/web/lib/thumbnail-compose.test.ts`, skipped
+     where no browser is available, holds this: four headline shapes, and
+     every line's extents are equal with and without the highlight.
+     (h) `headlineBoxes` now takes the first N distinct text nodes, N from
+     `headlineTextNodes`, so the frame and duration-corner warnings cover the
+     whole headline and not only its first node, which a highlight splits.
+     (i) Not built: the planner picking the words, more than one run per
+     headline, a choice of colour, uploaded thumbnails, and Shorts.
+     (j) The e2e suite runs no Inngest, so its step proves the field, the
+     mismatch line, the disabled Save and that a saved highlight survives a
+     reload. The compose and the pixels are proved by the schema, action,
+     document and real-browser tests. One slip in the plan was ruled on during
+     the build: a test named a planned row with no picture, which is in flight
+     and refused for that reason; the test uses a failed row with no picture.
