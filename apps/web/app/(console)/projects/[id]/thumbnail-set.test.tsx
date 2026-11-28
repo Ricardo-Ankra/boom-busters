@@ -89,6 +89,7 @@ function pack(over: Partial<ThumbnailPackageProp> = {}): ThumbnailPackageProp {
     angle: 'The man who signed the accounts',
     title: 'Wirecard: The Man Who Signed Off',
     headline: 'HE SIGNED',
+    highlight: '',
     textSide: 'left',
     depicts: [],
     warnings: [],
@@ -1027,6 +1028,77 @@ describe('ThumbnailSet', () => {
         />,
       )
       expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Saved elsewhere')
+    })
+  })
+
+  describe('the highlight', () => {
+    const MISMATCH = 'The highlight must be words from the headline.'
+    const lost = (over: Partial<ThumbnailPackageProp> = {}, status = 'draft') =>
+      item({
+        record: record({
+          status: status as PublishRecordProp['status'],
+          packages: [pack({ headline: 'They lost $2 billion', ...over })],
+        }),
+      })
+
+    it('a generated package has a highlight field under its headline', () => {
+      render(<ThumbnailSet item={lost({ highlight: 'billion' })} busy={false} />)
+      const field = screen.getByRole('textbox', { name: 'Highlight' })
+      expect(field).toHaveValue('billion')
+      expect(field).toHaveAttribute('placeholder', 'A word from the headline')
+      expect(field).toHaveAttribute('maxlength', '60')
+    })
+
+    it('an uploaded package has no highlight field', () => {
+      render(
+        <ThumbnailSet
+          item={item({
+            record: record({
+              packages: [pack({ source: 'uploaded', idea: null, headline: '', approved: true })],
+            }),
+          })}
+          busy={false}
+        />,
+      )
+      expect(screen.queryByRole('textbox', { name: 'Highlight' })).not.toBeInTheDocument()
+    })
+
+    it('saving sends only the highlight when only it changed', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={lost()} busy={false} />)
+      await user.type(screen.getByRole('textbox', { name: 'Highlight' }), 'billion')
+      await user.click(screen.getByRole('button', { name: 'Save changes' }))
+      expect(saveThumbnailPackage).toHaveBeenCalledWith('01HQ00000000000000000000K1', {
+        highlight: 'billion',
+      })
+    })
+
+    it('a highlight that is not in the headline holds the save back', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={lost()} busy={false} />)
+      const field = screen.getByRole('textbox', { name: 'Highlight' })
+      await user.type(field, 'bankrupt')
+      expect(screen.getByText(MISMATCH)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+      await user.clear(field)
+      expect(screen.queryByText(MISMATCH)).not.toBeInTheDocument()
+    })
+
+    it('editing the headline away from its highlight says so', async () => {
+      const user = userEvent.setup()
+      render(<ThumbnailSet item={lost({ highlight: 'billion' })} busy={false} />)
+      expect(screen.queryByText(MISMATCH)).not.toBeInTheDocument()
+      const headline = screen.getByRole('textbox', { name: 'Headline' })
+      await user.clear(headline)
+      await user.type(headline, 'They lost it all')
+      expect(screen.getByText(MISMATCH)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    })
+
+    it('the highlight waits with the headline', () => {
+      render(<ThumbnailSet item={lost({}, 'uploading')} busy={false} />)
+      expect(screen.getByRole('textbox', { name: 'Headline' })).toBeDisabled()
+      expect(screen.getByRole('textbox', { name: 'Highlight' })).toBeDisabled()
     })
   })
 

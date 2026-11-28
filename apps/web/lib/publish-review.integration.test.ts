@@ -476,6 +476,26 @@ describeDb('publishModel thumbnail packages', () => {
     }
   })
 
+  it("a package's highlight reaches the card", async () => {
+    await seed(db)
+    await db.delete(publishRecords)
+    const master = await ensurePublishRecord(db, 'master', FIXTURE_PROJECT_ID)
+    await db.insert(thumbnailPackages).values({
+      publishRecordId: master.id,
+      position: 0,
+      source: 'generated',
+      headline: 'THE CRASH',
+      highlight: 'crash',
+    })
+    try {
+      const model = await publishModel(db, FIXTURE_PROJECT_ID, { presign: null })
+      const masterItem = model.items.find((item) => item.targetType === 'master')!
+      expect(masterItem.record?.packages).toMatchObject([{ highlight: 'crash' }])
+    } finally {
+      await db.delete(publishRecords)
+    }
+  })
+
   it('prices three places for a master with no record', async () => {
     await seed(db)
     await db.delete(publishRecords)

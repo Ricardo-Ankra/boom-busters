@@ -13,12 +13,14 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import {
+  HIGHLIGHT_MAX,
   IDEA_LABELS,
   PACKAGES_MAX,
   PICTURE_CHANGE_MAX,
   PICTURE_FRAMING_MAX,
   PICTURE_SUBJECT_MAX,
   THUMBNAIL_IDEAS,
+  headlineHighlight,
   ownerBrief,
   upcomingDefaultId,
 } from '@boom-busters/schemas'
@@ -154,6 +156,7 @@ function PackageCard({
 }) {
   const [title, setTitle] = useDraft(pack.title)
   const [headline, setHeadline] = useDraft(pack.headline)
+  const [highlight, setHighlight] = useDraft(pack.highlight)
   const [idea, setIdea] = useDraft(pack.idea ?? '')
   // The owner's words for a picture change: plain local state, not a stored value.
   const [note, setNote] = React.useState('')
@@ -179,9 +182,13 @@ function PackageCard({
 
   const titleChanged = title.trim() !== pack.title
   const headlineChanged = generated && headline.trim() !== pack.headline
+  const highlightChanged = generated && highlight.trim() !== pack.highlight
+  // Typed words that are not in the typed headline; Save waits until they are.
+  const highlightMisses =
+    generated && highlight.trim() !== '' && headlineHighlight(headline, highlight) === null
   const ideaChanged = !generated && idea !== (pack.idea ?? '')
   // Save changes is for the free edits; it never counts or sends the brief.
-  const changed = titleChanged || headlineChanged || ideaChanged
+  const changed = titleChanged || headlineChanged || highlightChanged || ideaChanged
 
   const save = () =>
     act(
@@ -189,6 +196,7 @@ function PackageCard({
         saveThumbnailPackage(pack.id, {
           ...(titleChanged ? { title: title.trim() } : {}),
           ...(headlineChanged ? { headline: headline.trim() } : {}),
+          ...(highlightChanged ? { highlight: highlight.trim() } : {}),
           ...(ideaChanged ? { idea: idea === '' ? null : (idea as ThumbnailIdea) } : {}),
         }),
       'Changes saved',
@@ -274,15 +282,32 @@ function PackageCard({
         />
       </label>
       {generated ? (
-        <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-          Headline
-          <Input
-            value={headline}
-            maxLength={HEADLINE_MAX}
-            disabled={!open}
-            onChange={(event) => setHeadline(event.target.value)}
-          />
-        </label>
+        <>
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Headline
+            <Input
+              value={headline}
+              maxLength={HEADLINE_MAX}
+              disabled={!open}
+              onChange={(event) => setHeadline(event.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            Highlight
+            <Input
+              value={highlight}
+              maxLength={HIGHLIGHT_MAX}
+              placeholder="A word from the headline"
+              disabled={!open}
+              onChange={(event) => setHighlight(event.target.value)}
+            />
+          </label>
+          {highlightMisses ? (
+            <p className="text-[12px] text-[var(--color-danger)]">
+              The highlight must be words from the headline.
+            </p>
+          ) : null}
+        </>
       ) : (
         <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
           Idea
@@ -402,7 +427,7 @@ function PackageCard({
             <Button
               variant="outline"
               busy={pressed === `save-${pack.id}`}
-              disabled={waiting}
+              disabled={waiting || highlightMisses}
               onClick={() => void save()}
             >
               <Save aria-hidden className="h-4 w-4" />
