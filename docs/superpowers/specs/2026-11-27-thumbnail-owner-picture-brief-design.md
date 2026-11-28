@@ -256,9 +256,14 @@ same on a planned row and part ways when the owner rewrites the brief.
 - A paint that fails changes nobody.
 
 **Data.** Migration `0058_thumbnail_previous_depicts`: one column,
-`thumbnail_packages.previous_depicts text[] not null default '{}'`. A row
-from before it has an empty list, so going back on such a row shows nobody
-from the cast until its next paint.
+`thumbnail_packages.previous_depicts text[] not null default '{}'`, and a
+backfill: every row that holds a previous picture takes its own `depicts` as
+that picture's people. This is exact, because before 0058 nothing rewrote a
+package's people after it was planned, so both of its pictures show them.
+Without it, going back on such a row would have emptied the list under a
+picture that still shows the person, and an approved thumbnail would have
+dropped out of the altered-content count. A second review of the fix found
+this.
 
 **Left open, for the owner.**
 

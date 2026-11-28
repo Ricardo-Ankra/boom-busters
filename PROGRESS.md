@@ -12883,9 +12883,13 @@ runner`), so an existing Short gets its own graphics by Re-plan. A shot
      writes the brief only; the people land with the picture in
      `landPaintedPicture`; the people of the picture it replaces are kept in
      `thumbnail_packages.previous_depicts` (migration 0058); Back to previous
-     picture swaps them with the keys; a change reads the row's people. A row
-     from before 0058 has no previous people, so going back on it shows
-     nobody from the cast until its next paint.
+     picture swaps them with the keys; a change reads the row's people. The
+     migration also gives every row that already holds a previous picture
+     its own `depicts` as that picture's people, which is exact because
+     nothing rewrote a package's people before 0058. A second review of the
+     fix found that without it, going back on such a row would have emptied
+     the list under a picture that still shows the person, and an approved
+     thumbnail would have dropped out of the altered-content count.
      (k) The review left open, for the owner: the brief's text does not
      travel with its picture, so after going back the two fields hold the
      newer brief, which is what Regenerate picture would paint; the card
