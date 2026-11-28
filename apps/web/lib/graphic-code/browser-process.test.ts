@@ -1,11 +1,17 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   closeOrKill,
   hostFacts,
   killLaunched,
+  largestTempEntries,
   LAUNCH_MARK,
   launchedBrowsers,
   launchMark,
+  LOW_TEMP_MB,
+  tempDetail,
   type HostProcesses,
 } from './browser-process'
 
@@ -142,5 +148,95 @@ describe('hostFacts', () => {
       read: () => '',
     }
     expect(hostFacts(host, () => null)).toBe('')
+  })
+
+  it('describes a temp folder that is nearly full', () => {
+    const detail = vi.fn(() => 'of 512 MB; largest there: chromium 200 MB')
+    expect(hostFacts(procOf({}), () => 6, detail)).toBe(
+      'no browser still running, 6 MB free in the temp folder (of 512 MB; largest there: chromium 200 MB)',
+    )
+  })
+
+  it('says nothing more of the folder while there is room', () => {
+    const detail = vi.fn(() => 'of 512 MB')
+    expect(hostFacts(procOf({}), () => LOW_TEMP_MB, detail)).toBe(
+      `no browser still running, ${LOW_TEMP_MB} MB free in the temp folder`,
+    )
+    expect(detail).not.toHaveBeenCalled()
+  })
+
+  it('adds nothing where the host has no more to say', () => {
+    const none = () => ''
+    expect(hostFacts(procOf({}), () => 6, none)).toBe(
+      'no browser still running, 6 MB free in the temp folder',
+    )
+  })
+
+  it('describes the real temp folder without throwing', () => {
+    // The real host, whatever it is: the words are the host's, the shape is ours.
+    const facts = hostFacts(procOf({}), () => 6)
+    expect(facts.startsWith('no browser still running, 6 MB free in the temp folder')).toBe(true)
+    expect(facts).toMatch(/memory \d+ of \d+ MB free\)$/)
+  })
+})
+
+describe('tempDetail', () => {
+  it("gives the folder's size, its largest things and the memory left", () => {
+    expect(
+      tempDetail({
+        totalMb: 512,
+        largest: [
+          { name: 'chromium', mb: 200 },
+          { name: 'core.1234', mb: 180 },
+        ],
+        memory: { freeMb: 1430, totalMb: 2048 },
+      }),
+    ).toBe(
+      'of 512 MB; largest there: chromium 200 MB, core.1234 180 MB; memory 1430 of 2048 MB free',
+    )
+  })
+
+  it('leaves out what the host does not tell', () => {
+    expect(tempDetail({ totalMb: null, largest: null, memory: null })).toBe('')
+    expect(tempDetail({ totalMb: 512, largest: [], memory: null })).toBe('of 512 MB')
+    expect(tempDetail({ totalMb: null, largest: [{ name: 'a', mb: 3 }], memory: null })).toBe(
+      'largest there: a 3 MB',
+    )
+  })
+})
+
+describe('largestTempEntries', () => {
+  it('sizes files and whole folders, largest first', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-temp-facts-'))
+    try {
+      const mb = (count: number) => Buffer.alloc(count * 1024 * 1024)
+      writeFileSync(join(dir, 'binary'), mb(3))
+      mkdirSync(join(dir, 'profile', 'cache'), { recursive: true })
+      writeFileSync(join(dir, 'profile', 'a'), mb(1))
+      writeFileSync(join(dir, 'profile', 'cache', 'b'), mb(1))
+      writeFileSync(join(dir, 'note.txt'), 'small')
+      expect(largestTempEntries(dir, 2)).toEqual([
+        { name: 'binary', mb: 3 },
+        { name: 'profile', mb: 2 },
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('cuts a long name short', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-temp-facts-'))
+    try {
+      writeFileSync(join(dir, 'x'.repeat(90)), Buffer.alloc(1024 * 1024))
+      const [entry] = largestTempEntries(dir, 1) ?? []
+      expect(entry?.name).toBe('x'.repeat(48))
+      expect(entry?.mb).toBe(1)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('is null for a folder that is not there', () => {
+    expect(largestTempEntries(join(tmpdir(), 'bb-no-such-folder-here'), 3)).toBeNull()
   })
 })
